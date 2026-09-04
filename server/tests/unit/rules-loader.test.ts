@@ -157,7 +157,8 @@ describe('Rules Loader', () => {
     const attendanceRules = loadRules({ selectedToolSetNames: ['meeting_attendance'] });
     const schedulingRules = loadRules({ selectedToolSetNames: ['meeting_scheduling'] });
     const seriesTopicRules = loadRules({ selectedToolSetNames: ['meeting_series_topics'] });
-    const directoryRules = loadRules({ selectedToolSetNames: ['directory'] });
+    const partnerDirectoryRules = loadRules({ selectedToolSetNames: ['partner_directory'] });
+    const agentDirectoryRules = loadRules({ selectedToolSetNames: ['agent_publisher_directory'] });
     const memberRules = loadRules({ selectedToolSetNames: ['member_profile'] });
     const schemaRules = loadRules({ selectedToolSetNames: ['schema_reference'] });
 
@@ -177,8 +178,12 @@ describe('Rules Loader', () => {
     expect(seriesTopicRules).not.toContain('## Meeting Attendance and Calendar');
     expect(attendanceRules).not.toContain('## Knowledge Search First');
 
-    expect(directoryRules).toContain('## Honest Reporting After Search');
-    expect(directoryRules).toContain('Registry visibility is not registry completeness');
+    expect(partnerDirectoryRules).toContain('## Partner Directory');
+    expect(partnerDirectoryRules).toContain('## Honest Reporting After Search');
+    expect(partnerDirectoryRules).toContain('Registry visibility is not registry completeness');
+    expect(agentDirectoryRules).not.toContain('## Partner Directory');
+    expect(agentDirectoryRules).toContain('## Honest Reporting After Search');
+    expect(agentDirectoryRules).toContain('Registry visibility is not registry completeness');
     expect(memberRules).not.toContain('## Honest Reporting After Search');
     expect(memberRules).not.toContain('Registry visibility is not registry completeness');
     expect(schemaRules).not.toContain('# Knowledge');
@@ -362,14 +367,34 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['knowledge'],
     });
     const directory = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['directory'], false, false),
-      selectedToolSetNames: ['directory'],
+      availableToolNames: getToolsForSets(['partner_directory'], false, false),
+      selectedToolSetNames: ['partner_directory'],
     });
 
     expect(knowledge).toContain('### Knowledge search operations');
-    expect(knowledge).not.toContain('### Member-directory operations');
-    expect(directory).toContain('### Member-directory operations');
+    expect(knowledge).not.toContain('### Partner-directory operations');
+    expect(directory).toContain('### Partner-directory operations');
     expect(directory).not.toContain('### Knowledge search operations');
+  });
+
+  it('scopes partner and agent-publisher directory guidance independently', () => {
+    const partner = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['partner_directory'], false, false),
+      selectedToolSetNames: ['partner_directory'],
+    });
+    const agentPublisher = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_publisher_directory'], false, false),
+      selectedToolSetNames: ['agent_publisher_directory'],
+    });
+
+    expect(partner).toContain('### Partner-directory operations');
+    expect(partner).toContain('request_introduction');
+    expect(partner).not.toContain('### Agent and publisher directory operations');
+    expect(partner).not.toContain('lookup_domain');
+    expect(agentPublisher).toContain('### Agent and publisher directory operations');
+    expect(agentPublisher).toContain('lookup_domain');
+    expect(agentPublisher).not.toContain('### Partner-directory operations');
+    expect(agentPublisher).not.toContain('request_introduction');
   });
 
   it('scopes community and content guidance to their selected sets', () => {
@@ -619,8 +644,8 @@ describe('Addie tool reference', () => {
 
   it('scopes brand guidance to brand-registry requests', () => {
     const directory = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['directory'], false, false),
-      selectedToolSetNames: ['directory'],
+      availableToolNames: getToolsForSets(['partner_directory'], false, false),
+      selectedToolSetNames: ['partner_directory'],
     });
     const records = buildAddieToolReference({
       availableToolNames: getToolsForSets(['brand_registry_records'], false, false),
@@ -644,7 +669,7 @@ describe('Addie tool reference', () => {
     expect(identity).toContain('### Brand identity and canonical-document operations');
     expect(identity).not.toContain('### Brand-registry records');
     expect(identity).toContain('upload_brand_logo');
-    expect(records).not.toContain('### Member-directory operations');
+    expect(records).not.toContain('### Partner-directory operations');
     expect(property).not.toContain('### Brand-registry records');
     expect(property).not.toContain('### Brand identity and canonical-document operations');
   });

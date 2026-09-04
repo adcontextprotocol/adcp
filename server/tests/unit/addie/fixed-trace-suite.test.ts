@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v18');
-    expect(FIXED_TRACE_SUITE).toHaveLength(17);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v19');
+    expect(FIXED_TRACE_SUITE).toHaveLength(18);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -265,6 +265,23 @@ describe('fixed cross-provider trace suite', () => {
     expect(trace.expectation.mutationAuthorization).toBe('none');
   });
 
+  it('keeps the agent-publisher directory trace read-only and isolated from partner search', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'directory-agent-lookup')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['agent_publisher_directory'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['list_agents']);
+    expect(trace.expectation.requiredTools).toEqual(['list_agents']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'search_members',
+      'request_introduction',
+      'get_my_search_analytics',
+      'list_members',
+      'get_member',
+      'lookup_domain',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
   it('retains the exact legacy community-group union for a confirmed four-workflow request', () => {
     const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'community-group-full-participation-confirmed')!;
     expect(trace.routing).toEqual({ action: 'respond', toolSets: ['community_group_full_participation'] });
@@ -374,8 +391,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 17,
-      observed: 17,
+      expected: 18,
+      observed: 18,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -386,11 +403,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 17);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.0135);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 18);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.014);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 14,
+      complete: 15,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -539,7 +556,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 17, observed: 3, omitted: 14, complete: false });
+    expect(summary).toMatchObject({ expected: 18, observed: 3, omitted: 15, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

@@ -530,14 +530,16 @@ describe('getToolSetDescriptionsForRouter', () => {
   describe('non-admin user', () => {
     const descriptions = getToolSetDescriptionsForRouter(false);
 
-    it('should include bounded knowledge, member-profile, community-group discovery, and directory sets', () => {
+    it('should include bounded knowledge, member-profile, community-group, and directory sets', () => {
       expect(descriptions).toContain('knowledge');
       expect(descriptions).toContain('member_profile');
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
       expect(descriptions).toContain('community_group_contribution');
-      expect(descriptions).toContain('directory');
+      expect(descriptions).toContain('partner_directory');
+      expect(descriptions).toContain('agent_publisher_directory');
+      expect(descriptions).not.toMatch(/\*\*directory\*\*/);
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
 
@@ -597,7 +599,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
       expect(descriptions).toContain('community_group_contribution');
-      expect(descriptions).toContain('directory');
+      expect(descriptions).toContain('partner_directory');
+      expect(descriptions).toContain('agent_publisher_directory');
+      expect(descriptions).not.toMatch(/\*\*directory\*\*/);
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
   });
@@ -1259,13 +1263,13 @@ describeWithApi('AddieRouter.route (LLM)', () => {
 
     // Jean-Sébastien — DM — who are the signal agent companies?
     // Prod: Used list_members, gave great answer
-    it('should route member directory lookups to directory tools', async () => {
+    it('should route member organization lookups to partner-directory tools', async () => {
       const plan = await routeAsMember(
         'who are the companies acting as signal agents that are members of this community?'
       );
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
-        expect(plan.tool_sets).toContain('directory');
+        expect(plan.tool_sets).toContain('partner_directory');
       }
     }, 15000);
 

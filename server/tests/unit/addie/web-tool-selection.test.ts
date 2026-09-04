@@ -139,7 +139,7 @@ describe('authenticated web Addie tool routing', () => {
   });
 
   it('fails closed when a router plan exceeds the two-domain direct-chat bound', async () => {
-    const selected = await select(routerFor(['member_billing', 'directory', 'events']));
+    const selected = await select(routerFor(['member_billing', 'partner_directory', 'events']));
 
     expect(selected.selectedToolSets).toEqual([
       'knowledge',

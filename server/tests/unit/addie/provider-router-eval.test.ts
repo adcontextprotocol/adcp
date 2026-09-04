@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(92);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(92);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(94);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(94);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
+      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
@@ -158,16 +158,45 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(91);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(93);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
     expect(expectedSets).not.toContain('meetings');
     expect(expectedSets).not.toContain('community_groups');
+    expect(expectedSets).not.toContain('directory');
     expect(expectedSets).not.toContain('brand_registry');
     expect(expectedSets).not.toContain('admin_organizations');
     expect(expectedSets).not.toContain('admin_brands');
+  });
+
+  it('selects only the bounded directory domain needed by an ordinary request', async () => {
+    const partner = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'directory-vendor')!;
+    const agentPublisher = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'directory-agent-publisher')!;
+    const partnerResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["partner_directory"],"confidence":"high","requires_depth":false,"reason":"partner lookup"}',
+    ), 'router-model', 'prompt_parity', partner);
+    const agentPublisherResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["agent_publisher_directory"],"confidence":"high","requires_depth":false,"reason":"agent and publisher lookup"}',
+    ), 'router-model', 'prompt_parity', agentPublisher);
+
+    expect(partnerResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+    expect(agentPublisherResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+  });
+
+  it('grades the documented dual-domain directory case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'directory-partner-and-agent')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["agent_publisher_directory","partner_directory"],"confidence":"high","requires_depth":true,"reason":"partner plus agent lookup"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["partner_directory"],"confidence":"high","requires_depth":true,"reason":"incomplete directory selection"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['partner_directory', 'agent_publisher_directory']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
   });
 
   it('selects only the bounded brand-registry domain needed by an ordinary request', async () => {
@@ -371,6 +400,9 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('→ ["brand_registry_records"]');
     expect(nonAdmin).toContain('→ ["brand_registry_identity"]');
     expect(nonAdmin).not.toContain('→ ["brand_registry"]');
+    expect(nonAdmin).toContain('→ ["partner_directory"]');
+    expect(nonAdmin).toContain('→ ["agent_publisher_directory"]');
+    expect(nonAdmin).not.toContain('→ ["directory"]');
     expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
     expect(admin).toContain('always select exactly ["events", "admin_events"]');
     expect(admin).toContain('→ ["admin_group_structure"]');
