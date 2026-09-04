@@ -787,6 +787,29 @@ export function createTavusRouter(options?: {
       }
     }
 
+    // Tavus's shared-secret LLM endpoint can be reached without a verified
+    // video thread (for example, an abandoned or malformed callback). Keep
+    // that degraded path useful for public knowledge questions, but never
+    // let it inherit the mutable global registry wholesale. In particular,
+    // unauthenticated callbacks must not see globally registered brand
+    // mutations. The normal selection boundary below intersects the safe
+    // read-only fallback with definitions that were paired at startup.
+    if (!pendingVoiceToolSelection) {
+      let globalToolNames: readonly string[] | undefined;
+      try {
+        globalToolNames = activeVoiceClient.getRegisteredTools?.();
+      } catch (error) {
+        logger.warn({ error, threadId }, 'Tavus: Could not inspect global tools for unverified-thread fallback');
+      }
+      pendingVoiceToolSelection = {
+        memberContext: null,
+        isAAOAdmin: false,
+        requestTools: { tools: [], handlers: new Map() },
+        globalToolNames,
+        forceSafeFallback: true,
+      };
+    }
+
     // Keep the spoken transcript separate from prompt decoration. Logging and
     // filler classification must reflect what the caller actually said.
     const spokenMessage = currentMessage;

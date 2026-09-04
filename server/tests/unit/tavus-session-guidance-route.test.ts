@@ -530,6 +530,53 @@ describe("Tavus session guidance route boundary", () => {
     expect([...requestTools.handlers.keys()]).toEqual([]);
   });
 
+  it('bounds a callback without a verified video thread to the read-only fallback', async () => {
+    const router = {
+      quickMatch: () => null,
+      route: vi.fn().mockResolvedValue({
+        action: 'respond' as const,
+        tool_sets: ['brand_registry_identity'],
+        confidence: 'high' as const,
+        reason: 'brand request',
+        decision_method: 'llm' as const,
+      }),
+    };
+
+    const response = await request(mountApp(router))
+      .post('/api/addie/v1/chat/completions')
+      .set('Authorization', 'Bearer test-llm-secret')
+      .send({
+        messages: [
+          { role: 'user', content: 'Please save this brand and upload its logo.' },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(mocks.getThread).not.toHaveBeenCalled();
+    expect(router.route).not.toHaveBeenCalled();
+    expect(mocks.checkCostCap).toHaveBeenCalledWith(
+      expect.stringMatching(/^tavus:ip:/),
+      'anonymous',
+      expect.objectContaining({ selection: expect.objectContaining({ provider: 'anthropic' }) }),
+    );
+    const [_message, _history, requestTools, options] = mocks.processMessageStream.mock.calls[0] as [
+      string,
+      unknown,
+      { tools: Array<{ name: string }>; handlers: Map<string, unknown> },
+      { selectedToolSetNames: string[]; allowedToolNames: string[] },
+    ];
+    expect(options.selectedToolSetNames).toEqual(['knowledge', 'community_research', 'schema_reference']);
+    expect(options.allowedToolNames).toEqual(expect.arrayContaining([
+      'search_docs',
+      'get_doc',
+      'search_repos',
+    ]));
+    expect(options.allowedToolNames).not.toContain('save_brand');
+    expect(options.allowedToolNames).not.toContain('upload_brand_logo');
+    expect(requestTools.tools).toEqual([]);
+    expect([...requestTools.handlers.keys()]).toEqual([]);
+  });
+
   it.each(['error_event', 'throw'] as const)(
     'does not persist partial assistant text after %s before terminal done',
     async (failureMode) => {

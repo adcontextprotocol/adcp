@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "ac9b9c5c1c521bc3c2fe8b5b49bc01c5c28c09cfd48f6b76447d2c97cea3084b",
-  "profile_contract_sha256": "dfc32181b4e44dc330269b17128038e94e9d8c2a425c86c636b85b21aaccf96d",
+  "profile_ids_sha256": "489a9fbc82dd87bf3109b7c5e164cdc99ed94224db56f13535bf1a12e6fd73de",
+  "profile_contract_sha256": "bc6e93bafa070d5771a3bf1cd0b27ef94f87516aeb5e347e7dfc6d14fa9b6a32",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -66,7 +66,7 @@
     "slack_bolt_reaction:public_channel": { "custom_tool_count": 32, "wire_schema_bytes": 32016, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "slack_bolt_reaction:public_channel_admin": { "custom_tool_count": 32, "wire_schema_bytes": 32016, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "tavus_voice:admin": { "custom_tool_count": 29, "wire_schema_bytes": 30911, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
-    "tavus_voice:baseline": { "custom_tool_count": 19, "wire_schema_bytes": 12257, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
+    "tavus_voice:unverified_thread": { "custom_tool_count": 5, "wire_schema_bytes": 4879, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "tavus_voice:committee_leader": { "custom_tool_count": 27, "wire_schema_bytes": 28617, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "tavus_voice:member": { "custom_tool_count": 25, "wire_schema_bytes": 25995, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "web_chat:anonymous": { "custom_tool_count": 13, "wire_schema_bytes": 9196, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
