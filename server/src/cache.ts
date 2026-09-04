@@ -14,7 +14,10 @@ export class Cache<T> {
     this.maxEntries = maxEntries;
   }
 
-  set(key: string, value: T): void {
+  set(key: string, value: T, ttlMs: number = this.ttlMs): void {
+    if (!Number.isFinite(ttlMs) || ttlMs < 0) {
+      throw new Error('ttlMs must be a non-negative finite number');
+    }
     // Only a bounded cache needs this: it keeps expired entries from consuming
     // the entry budget and evicting a live one. An unbounded cache never
     // evicts, so scanning the whole map on every write would be pure cost —
@@ -30,7 +33,7 @@ export class Cache<T> {
     }
     this.cache.set(key, {
       value,
-      expiresAt: Date.now() + this.ttlMs,
+      expiresAt: Date.now() + ttlMs,
     });
   }
 

@@ -52,6 +52,7 @@ import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from ".
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
+import { brandJsonCacheControl } from "./services/brand-resolution-cache-policy.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
@@ -1905,9 +1906,13 @@ export class HTTPServer {
     // Accessible at /brands/:domain/brand.json (no /api prefix — this is a public resource URL).
     this.app.get('/brands/:domain/brand.json', async (req, res) => {
       const domain = req.params.domain.toLowerCase();
+      const notFound = () => {
+        res.setHeader('Cache-Control', brandJsonCacheControl('miss'));
+        return res.status(404).json({ error: 'Brand not found' });
+      };
       try {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
-        if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
+        if (!brand || brand.is_public === false) return notFound();
 
         // Serve brand_json (brand-attested), community (human-curated), and enriched
         // (Brandfetch-derived) source types. Provenance is signaled to consumers via
@@ -1915,14 +1920,14 @@ export class HTTPServer {
         // place in each row — the JSON body itself stays clean of non-spec fields.
         const ALLOWED_SOURCE_TYPES = new Set(['brand_json', 'community', 'enriched']);
         if (!ALLOWED_SOURCE_TYPES.has(brand.source_type as string)) {
-          return res.status(404).json({ error: 'Brand not found' });
+          return notFound();
         }
 
         const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
-        if (!manifest) return res.status(404).json({ error: 'Brand not found' });
+        if (!manifest) return notFound();
 
         if (brand.source_type === 'community' && brand.review_status === 'pending') {
-          return res.status(404).json({ error: 'Brand not found' });
+          return notFound();
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
@@ -1933,11 +1938,15 @@ export class HTTPServer {
             : { $schema: schemaUrl, ...publicManifest };
 
         res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader(
+          'Cache-Control',
+          brandJsonCacheControl(brand.source_type as 'brand_json' | 'community' | 'enriched'),
+        );
         res.setHeader('X-AAO-Source', brand.source_type as string);
         return res.json(brandJson);
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');
+        res.setHeader('Cache-Control', brandJsonCacheControl('error'));
         return res.status(500).json({ error: 'Failed to retrieve brand' });
       }
     });

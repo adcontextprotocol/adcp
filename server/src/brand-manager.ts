@@ -18,6 +18,10 @@ import {
   observeBrandRelationshipDeclaration,
   type BrandRelationshipDeclaration,
 } from './db/brand-relationship-db.js';
+import {
+  BRAND_MANAGER_CACHE_TTL_SECONDS,
+  brandManagerResolutionTtlMs,
+} from './services/brand-resolution-cache-policy.js';
 
 export interface BrandValidationError {
   field: string;
@@ -194,18 +198,18 @@ export interface BrandAgentValidationResult {
 export class BrandManager {
   // Cache for successful brand.json lookups (24 hours)
   private validationCache: Cache<BrandValidationResult>;
-  // Cache for resolved brands (24 hours)
+  // Cache for resolved origin evidence (24 hours) and misses (5 minutes).
   private resolutionCache: Cache<ResolvedBrand | null>;
-  // Cache for failed lookups (1 hour)
+  // Cache for failed lookups (5 minutes, never longer than a resolution miss)
   private failedLookupCache: Cache<BrandValidationResult>;
   private observeRelationshipDeclaration: RelationshipDeclarationObserver;
 
   constructor(options: {
     observeRelationshipDeclaration?: RelationshipDeclarationObserver;
   } = {}) {
-    this.validationCache = new Cache<BrandValidationResult>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
-    this.resolutionCache = new Cache<ResolvedBrand | null>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
-    this.failedLookupCache = new Cache<BrandValidationResult>(60, BRAND_FAILED_CACHE_MAX_ENTRIES); // 1 hour
+    this.validationCache = new Cache<BrandValidationResult>(BRAND_MANAGER_CACHE_TTL_SECONDS.origin / 60, BRAND_CACHE_MAX_ENTRIES);
+    this.resolutionCache = new Cache<ResolvedBrand | null>(BRAND_MANAGER_CACHE_TTL_SECONDS.origin / 60, BRAND_CACHE_MAX_ENTRIES);
+    this.failedLookupCache = new Cache<BrandValidationResult>(BRAND_MANAGER_CACHE_TTL_SECONDS.negative / 60, BRAND_FAILED_CACHE_MAX_ENTRIES);
     this.observeRelationshipDeclaration = options.observeRelationshipDeclaration
       ?? observeBrandRelationshipDeclaration;
   }
@@ -228,6 +232,15 @@ export class BrandManager {
       resolution: this.resolutionCache.size(),
       failed: this.failedLookupCache.size(),
     };
+  }
+
+  /** Cache origin resolutions long-term but keep negative outcomes brief. */
+  private cacheResolution(cacheKey: string, result: ResolvedBrand | null): void {
+    this.resolutionCache.set(
+      cacheKey,
+      result,
+      brandManagerResolutionTtlMs(result?.source ?? null),
+    );
   }
 
   /**
@@ -501,7 +514,7 @@ export class BrandManager {
           message: statusMessage,
           severity: 'error',
         });
-        // Cache failed lookups for 1 hour
+        // Cache failed lookups briefly so a new origin document is not hidden.
         this.failedLookupCache.set(cacheKey, result);
         return result;
       }
@@ -537,10 +550,10 @@ export class BrandManager {
 
     // Cache the result
     if (result.valid) {
-      // Cache successful lookups for 24 hours
+      // Cache successful origin evidence for 24 hours.
       this.validationCache.set(cacheKey, result);
     } else {
-      // Cache failed lookups for 1 hour
+      // Cache failed lookups briefly so a new origin document is not hidden.
       this.failedLookupCache.set(cacheKey, result);
     }
 
@@ -1124,7 +1137,7 @@ export class BrandManager {
       const cached = this.resolutionCache.get(cacheKey);
       if (cached !== undefined) {
         const aged = this.applyDeclarationAgeCeiling(cached);
-        if (aged !== cached) this.resolutionCache.set(cacheKey, aged);
+        if (aged !== cached) this.cacheResolution(cacheKey, aged);
         return aged;
       }
     }
@@ -1149,7 +1162,7 @@ export class BrandManager {
       }
 
       if (!validationResult.valid || !validationResult.raw_data) {
-        if (!skipCache) this.resolutionCache.set(cacheKey, null);
+        if (!skipCache) this.cacheResolution(cacheKey, null);
         return null;
       }
 
@@ -1164,7 +1177,7 @@ export class BrandManager {
             redirectCount++;
             continue;
           } catch {
-            if (!skipCache) this.resolutionCache.set(cacheKey, null);
+            if (!skipCache) this.cacheResolution(cacheKey, null);
             return null;
           }
         }
@@ -1184,7 +1197,7 @@ export class BrandManager {
           const agentData = data as BrandAgentVariant;
           const agent = agentData.brand_agent ?? agentData.agents?.find((entry) => entry.type === 'brand');
           if (!agent) {
-            if (!skipCache) this.resolutionCache.set(cacheKey, null);
+            if (!skipCache) this.cacheResolution(cacheKey, null);
             return null;
           }
           // A house's agent is authoritative for the house. Reached through a
@@ -1204,7 +1217,7 @@ export class BrandManager {
             ...this.promotionMetadata(validationResult),
             source: 'brand_json',
           };
-          this.resolutionCache.set(cacheKey, result);
+          this.cacheResolution(cacheKey, result);
           return result;
         }
 
@@ -1231,7 +1244,7 @@ export class BrandManager {
               ...this.promotionMetadata(validationResult),
               source: 'brand_json',
             };
-            this.resolutionCache.set(cacheKey, result);
+            this.cacheResolution(cacheKey, result);
             return result;
           }
 
@@ -1247,7 +1260,7 @@ export class BrandManager {
             );
             // Same rule as every other branch: a fresh probe that fails must
             // not overwrite a live entry with a negative one.
-            if (pointed || !skipCache) this.resolutionCache.set(cacheKey, pointed);
+            if (pointed || !skipCache) this.cacheResolution(cacheKey, pointed);
             return pointed;
           }
 
@@ -1276,7 +1289,7 @@ export class BrandManager {
                 ...this.promotionMetadata(validationResult),
                 source: 'brand_json',
               };
-              this.resolutionCache.set(cacheKey, result);
+              this.cacheResolution(cacheKey, result);
               return result;
             }
           }
@@ -1287,11 +1300,11 @@ export class BrandManager {
               redirectedHouseDomain,
               validationResult
             );
-            this.resolutionCache.set(cacheKey, claim);
+            this.cacheResolution(cacheKey, claim);
             return claim;
           }
 
-          if (!skipCache) this.resolutionCache.set(cacheKey, null);
+          if (!skipCache) this.cacheResolution(cacheKey, null);
           return null;
         }
 
@@ -1305,7 +1318,7 @@ export class BrandManager {
               redirectedHouseDomain,
               validationResult
             );
-            this.resolutionCache.set(cacheKey, claim);
+            this.cacheResolution(cacheKey, claim);
             return claim;
           }
           const freshResolution = await this.resolveCanonicalDocument(
@@ -1322,17 +1335,17 @@ export class BrandManager {
             freshResolution.result,
             freshResolution.retainCachedMutual,
           );
-          this.resolutionCache.set(cacheKey, result);
+          this.cacheResolution(cacheKey, result);
           return result;
         }
 
         default:
-          if (!skipCache) this.resolutionCache.set(cacheKey, null);
+          if (!skipCache) this.cacheResolution(cacheKey, null);
           return null;
       }
     }
 
-    if (!skipCache) this.resolutionCache.set(cacheKey, null);
+    if (!skipCache) this.cacheResolution(cacheKey, null);
     return null; // Max redirects exceeded
   }
 

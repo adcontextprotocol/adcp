@@ -146,16 +146,13 @@ components:
             - enriched
             - stub
           description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence."
-        provenance:
+        enrichment_provider:
           type: string
-          enum:
-            - canonical
-            - community
-            - enriched
-          description: Caller-facing trust tier for the selected identity. `canonical` covers owner-hosted and origin-published brand.json records; `community` is member-contributed; `enriched` is provisional third-party data. Absent means the record has no recognized provenance tier. Use `source` when the distinction between hosted and origin-published canonical records is needed.
+          description: Preferred open-ended attribution/diagnostic identifier for the enrichment writer. Present only when `source` is `enriched`; it is not a trust tier or behavioral switch.
         provenance_provider:
           type: string
-          description: Provider identifier for provisional third-party enrichment. Present only when `provenance` is `enriched`; the provider is intentionally not constrained to a vendor-specific enum.
+          description: Deprecated compatibility alias for `enrichment_provider`. Present only when `source` is `enriched`; it is not a trust tier or behavioral switch.
+          deprecated: true
         live_brand_json:
           type: object
           properties:
@@ -5730,6 +5727,7 @@ paths:
 
         A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.
         Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.
+        HTTP cache lifetimes are source-aware. `fresh=true` responses are `no-store` so an intermediary cannot satisfy an explicit origin-read request from its cache.
         The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.
 
         **Rate limit:** 60 requests per minute per IP address.
@@ -5747,9 +5745,9 @@ paths:
             enum:
               - "true"
               - "false"
-            description: Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.
+            description: "Bypass the resolution cache and refetch from the origin. `fresh=true` responses are `Cache-Control: no-store`. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics."
           required: false
-          description: Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.
+          description: "Bypass the resolution cache and refetch from the origin. `fresh=true` responses are `Cache-Control: no-store`. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics."
           name: fresh
           in: query
       responses:

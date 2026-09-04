@@ -64,7 +64,12 @@ import { buildAaoVerificationBlock } from "../services/aao-verification-enrichme
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
+import { captureEvent } from "../utils/posthog.js";
 import { validateCrawlDomain, validateExternalUrl, safeFetchAxiosLike } from "../utils/url-security.js";
+import {
+  brandResolveCacheControl,
+  type BrandResolutionOutcome,
+} from "../services/brand-resolution-cache-policy.js";
 import { verifySupplyPath, parseInventoryPartnerDomains } from "../services/supply-path-verifier.js";
 import { canonicalizePublisherDomain } from "../services/publisher-domain.js";
 import { AAO_UA_VALIDATOR } from "../config/user-agents.js";
@@ -862,6 +867,7 @@ registry.registerPath({
     "",
     "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
     "Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.",
+    "HTTP cache lifetimes are source-aware. `fresh=true` responses are `no-store` so an intermediary cannot satisfy an explicit origin-read request from its cache.",
     "The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.",
     "",
     "**Rate limit:** 60 requests per minute per IP address.",
@@ -871,7 +877,7 @@ registry.registerPath({
     query: z.object({
       domain: z.string().openapi({ example: "acmecorp.com" }),
       fresh: z.enum(["true", "false"]).optional().openapi({
-        description: "Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.",
+        description: "Bypass the resolution cache and refetch from the origin. `fresh=true` responses are `Cache-Control: no-store`. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.",
       }),
     }),
   },
@@ -1170,35 +1176,34 @@ const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], nu
   stub: 5,
 };
 
-const BRAND_PROVENANCE_BY_SOURCE = {
-  hosted: "canonical",
-  brand_json: "canonical",
-  community: "community",
-  enriched: "enriched",
-} as const;
-
 /**
- * Keep the stable caller-facing tier separate from the detailed source label.
- * The only enrichment writer today is Brandfetch; the response contract keeps
- * the provider open-ended so a future writer can supply its own identifier.
+ * The exact source is response provenance. Provider attribution is intentionally
+ * open-ended diagnostic metadata and only applies to enriched responses.
+ * `enrichment_provider` is preferred; `provenance_provider` is its temporary
+ * deprecated compatibility alias.
  */
 function withBrandResolutionProvenance(
   brand: ResolvedBrandResponse,
 ): ResolvedBrandResponse {
-  const provenance = brand.source === "stub"
-    ? undefined
-    : BRAND_PROVENANCE_BY_SOURCE[brand.source];
   const response = { ...brand };
-  const provenanceProvider = response.provenance_provider;
-  delete response.provenance;
+  const enrichmentProvider = response.enrichment_provider ?? response.provenance_provider;
+  delete response.enrichment_provider;
   delete response.provenance_provider;
   return {
     ...response,
-    ...(provenance ? { provenance } : {}),
-    ...(provenance === "enriched" && provenanceProvider
-      ? { provenance_provider: provenanceProvider }
+    ...(response.source === "enriched" && enrichmentProvider
+      ? {
+        enrichment_provider: enrichmentProvider,
+        provenance_provider: enrichmentProvider,
+      }
       : {}),
   };
+}
+
+function recordBrandResolutionOutcome(outcome: BrandResolutionOutcome): void {
+  // Deliberately fixed-cardinality: never attach the requested domain or a
+  // provider identifier to this aggregate operational event.
+  captureEvent("server-metrics", "brand_resolution_outcome", { outcome });
 }
 
 function storedBrandResolutionResponse(
@@ -1215,7 +1220,7 @@ function storedBrandResolutionResponse(
     ...(brand.brand_agent_url ? { brand_agent_url: brand.brand_agent_url } : {}),
     source: resolvedStoredBrandSource(brand),
     ...(brand.enrichment_provider
-      ? { provenance_provider: brand.enrichment_provider }
+      ? { enrichment_provider: brand.enrichment_provider }
       : {}),
     brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
     ...(liveValidation ? { live_brand_json: liveValidation } : {}),
@@ -5204,6 +5209,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : '';
       const fresh = req.query.fresh === "true";
       if (!isValidDomain(domain)) {
+        res.setHeader("Cache-Control", brandResolveCacheControl("error", fresh));
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
@@ -5220,16 +5226,21 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          return res.json(storedBrandResolutionResponse(
+          const selected = storedBrandResolutionResponse(
             discovered,
             liveValidation ? serializeBrandValidation(liveValidation) : undefined,
-          ));
+          );
+          res.setHeader("Cache-Control", brandResolveCacheControl(selected.source, fresh));
+          recordBrandResolutionOutcome(selected.source);
+          return res.json(selected);
         }
         registryRequestsDb
           .trackRequest("brand", domain)
           .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
 
         const validation = liveValidation ?? await brandManager.validateDomain(domain);
+        res.setHeader("Cache-Control", brandResolveCacheControl("miss", fresh));
+        recordBrandResolutionOutcome("miss");
         return res.status(404).json({
           error: "Brand not found",
           domain,
@@ -5241,9 +5252,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       registryRequestsDb
         .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
+      res.setHeader("Cache-Control", brandResolveCacheControl(selected.source, fresh));
+      recordBrandResolutionOutcome(selected.source);
       return res.json(selected);
     } catch (error) {
       logger.error({ error }, "Failed to resolve brand");
+      res.setHeader("Cache-Control", brandResolveCacheControl("error"));
+      recordBrandResolutionOutcome("error");
       return res.status(500).json({ error: "Failed to resolve brand" });
     }
   });
@@ -5479,7 +5494,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     }
   });
 
-  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, brandBulkDomainRateLimiter, async (req, res) => {
+  router.post("/brands/resolve/bulk", (_req, res, next) => {
+    // Shared HTTP caches do not safely key public POST responses by request
+    // body. Set this before rate limiters so every bulk outcome is no-store.
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  }, bulkResolveRateLimiter, brandBulkDomainRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
 
@@ -5512,6 +5532,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
               return {
                 domain,
                 result: selected,
+                outcome: selected.source,
               };
             }
 
@@ -5522,20 +5543,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
               return {
                 domain,
                 result: storedBrandResolutionResponse(discovered),
+                outcome: resolvedStoredBrandSource(discovered),
               };
             }
 
             registryRequestsDb.trackRequest("brand", domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-            return { domain, result: null };
+            return { domain, result: null, outcome: "miss" as const };
           })
         );
 
         for (const outcome of settled) {
           if (outcome.status === "fulfilled") {
             results[outcome.value.domain] = outcome.value.result;
+            recordBrandResolutionOutcome(outcome.value.outcome);
           } else if (outcome.reason instanceof SemaphoreOverloadedError) {
             // Shedding one domain means the process is saturated; say so rather
             // than returning a partial map that reads as unresolvable domains.
+            throw outcome.reason;
+          } else {
+            // A partial bulk map would make an internal failure look like an
+            // ordinary miss and could be cached as a success. Fail the whole
+            // request so its no-store error policy and telemetry are accurate.
             throw outcome.reason;
           }
         }
@@ -5546,12 +5574,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       if (error instanceof SemaphoreOverloadedError) {
         logger.warn({ ip: req.ip }, "Brand bulk resolve shed load");
         res.setHeader("Retry-After", "5");
+        recordBrandResolutionOutcome("error");
         return res.status(503).json({
           error: "Brand resolution is busy",
           message: "Too much resolution work is already queued. Retry shortly.",
         });
       }
       logger.error({ error }, "Failed to bulk resolve brands");
+      recordBrandResolutionOutcome("error");
       return res.status(500).json({ error: "Failed to bulk resolve brands" });
     }
   });

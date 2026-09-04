@@ -10,6 +10,7 @@ vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
 
 import { BrandManager } from '../../src/brand-manager.js';
 import { safeFetchAxiosLike } from '../../src/utils/url-security.js';
+import { BRAND_MANAGER_CACHE_TTL_SECONDS } from '../../src/services/brand-resolution-cache-policy.js';
 
 const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
@@ -45,6 +46,7 @@ describe('BrandManager caching', () => {
 
   afterEach(() => {
     manager.clearCache();
+    vi.useRealTimers();
   });
 
   describe('validateDomain caching', () => {
@@ -573,6 +575,19 @@ describe('BrandManager caching', () => {
       const result2 = await manager.resolveBrand('notfound.com');
       expect(result2).toBeNull();
       expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('expires a resolution miss with its failed validation cache', async () => {
+      vi.useFakeTimers();
+      mockedSafeFetch.mockResolvedValue({ status: 404, data: null });
+
+      expect(await manager.resolveBrand('new-origin.example')).toBeNull();
+      expect(await manager.resolveBrand('new-origin.example')).toBeNull();
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(BRAND_MANAGER_CACHE_TTL_SECONDS.negative * 1000 + 1);
+      expect(await manager.resolveBrand('new-origin.example')).toBeNull();
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
 
     it('bypasses cache with skipCache option', async () => {
