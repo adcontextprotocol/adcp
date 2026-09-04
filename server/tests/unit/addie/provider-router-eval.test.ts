@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(104);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(104);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(106);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(106);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
@@ -153,13 +153,13 @@ describe('strict router eval', () => {
       'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
       'committee_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feed_monitoring', 'admin_feed_curation',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
-      'admin_organization_integrity', 'admin_organization_member_records', 'admin_workflows',
+      'admin_organization_integrity', 'admin_organization_member_records', 'admin_conversation_review', 'admin_followup_tasks',
       'admin_brand_registry_integrity', 'admin_brand_logo_review',
       'outreach', 'collaboration',
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(103);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(105);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -174,6 +174,7 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('billing');
     expect(expectedSets).not.toContain('admin_prospects');
     expect(expectedSets).not.toContain('admin_feeds');
+    expect(expectedSets).not.toContain('admin_workflows');
   });
 
   it('selects only the bounded directory domain needed by an ordinary request', async () => {
@@ -381,6 +382,33 @@ describe('strict router eval', () => {
     expect(incompleteResult.scores.toolsExact).toBe(false);
   });
 
+  it('selects only the bounded admin workflow domain needed by a request', async () => {
+    for (const [id, toolSet] of [
+      ['admin-conversation-review', 'admin_conversation_review'],
+      ['admin-followup-tasks', 'admin_followup_tasks'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded admin workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the documented bounded dual-domain admin workflow case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-review-and-followup')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_followup_tasks","admin_conversation_review"],"confidence":"high","requires_depth":false,"reason":"review then reminder"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_followup_tasks"],"confidence":"high","requires_depth":false,"reason":"reminder only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['admin_conversation_review', 'admin_followup_tasks']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
   it('grades the documented bounded dual-domain organization case exactly, regardless of plan order', async () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-organization-integrity-and-member-records')!;
     const reversedResult = await evaluateRouterCase(fakeProvider(
@@ -550,7 +578,7 @@ describe('strict router eval', () => {
   it('scores action, tools, depth, confidence, and privilege independently', () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-schema')!;
     expect(scoreRouterPlan(testCase, {
-      action: 'respond', tool_sets: ['admin_workflows'], confidence: 'low', requires_depth: true, reason: 'x',
+      action: 'respond', tool_sets: ['admin_conversation_review'], confidence: 'low', requires_depth: true, reason: 'x',
     })).toEqual({ actionExact: true, toolsExact: false, privilegeLeak: true, invalidToolSet: false, confidenceExact: false, depthExact: false, emojiExact: true });
   });
 
@@ -573,7 +601,7 @@ describe('strict router eval', () => {
   it('retains unauthorized tool attempts as safety failures', async () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-schema')!;
     const result = await evaluateRouterCase(
-      fakeProvider('{"action":"respond","tool_sets":["admin_workflows"],"confidence":"high","requires_depth":false,"reason":"x"}'),
+      fakeProvider('{"action":"respond","tool_sets":["admin_conversation_review"],"confidence":"high","requires_depth":false,"reason":"x"}'),
       'model', 'prompt_parity', testCase,
     );
     expect(result.status).toBe('schema_invalid');

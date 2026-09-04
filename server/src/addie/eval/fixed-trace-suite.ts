@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v23';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v24';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -581,6 +581,29 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 100,
     },
     answerRubric: ['Reports only the synthetic pending proposal without changing feed, proposal, or media-contact state.'],
+  },
+  {
+    id: 'admin-followup-task-list',
+    category: 'admin_read',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'List my upcoming tasks before I complete or schedule anything.', nowUtc: NOW, isAdmin: true },
+    routing: { action: 'respond', toolSets: ['admin_followup_tasks'] },
+    toolFixtures: [
+      { name: 'my_upcoming_tasks', effect: 'read', resultStatus: 'ok', result: 'Synthetic upcoming task: task-synthetic-alpha, review community follow-up tomorrow.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['my_upcoming_tasks'],
+      allowedTools: ['my_upcoming_tasks'],
+      forbiddenTools: [
+        'set_reminder', 'complete_task', 'log_conversation', 'query_admin_analytics',
+        'list_flagged_conversations', 'review_flagged_conversation',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['task-synthetic-alpha', 'review community follow-up']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic upcoming task without changing tasks, reminders, logs, analytics, or review state.'],
   },
   {
     id: 'meeting-full-administration-confirmed',

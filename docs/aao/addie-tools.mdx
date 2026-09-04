@@ -1721,9 +1721,9 @@ For logo changes, use update_member_logo instead.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-## admin_workflows (admin only)
+## admin_conversation_review (admin only)
 
-Run internal analytics, flagged-conversation review, reminders, tasks, and conversation logging (admin only)
+Query community analytics or review flagged conversations (admin only)
 
 ### `query_admin_analytics`
 
@@ -1742,6 +1742,10 @@ List conversations that have been flagged for sensitive topic detection. These n
 Mark a flagged conversation as reviewed. Use this after you've looked at a flagged message and determined if any follow-up action is needed.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_followup_tasks (admin only)
+
+Manage reminders and tasks or log member and prospect interactions (admin only)
 
 ### `set_reminder`
 

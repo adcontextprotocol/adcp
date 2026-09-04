@@ -308,7 +308,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['admin_workflows']);
+        expect(plan!.tool_sets).toEqual(['admin_conversation_review']);
       }
     });
 
@@ -359,7 +359,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['admin_workflows']);
+        expect(plan!.tool_sets).toEqual(['admin_followup_tasks']);
       }
     });
 
@@ -574,7 +574,9 @@ describe('getToolSetDescriptionsForRouter', () => {
     const descriptions = getToolSetDescriptionsForRouter(true);
 
     it('should include bounded admin domains and hide the legacy set', () => {
-      expect(descriptions).toMatch(/\*\*admin_workflows\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_conversation_review\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_followup_tasks\*\*/);
+      expect(descriptions).not.toMatch(/\*\*admin_workflows\*\*/);
       expect(descriptions).toMatch(/\*\*admin_group_structure\*\*/);
       expect(descriptions).toMatch(/\*\*admin_group_leadership\*\*/);
       expect(descriptions).toMatch(/\*\*admin_group_membership\*\*/);

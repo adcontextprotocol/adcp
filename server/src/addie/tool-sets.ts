@@ -130,10 +130,25 @@ export const ADMIN_FEED_DOMAIN_TOOL_SETS = {
   ],
 } as const;
 
+export const ADMIN_WORKFLOW_DOMAIN_TOOL_SETS = {
+  admin_conversation_review: [
+    "query_admin_analytics",
+    "list_flagged_conversations",
+    "review_flagged_conversation",
+  ],
+  admin_followup_tasks: [
+    "set_reminder",
+    "my_upcoming_tasks",
+    "complete_task",
+    "log_conversation",
+  ],
+} as const;
+
 export const ADMIN_DOMAIN_TOOL_SETS = {
   ...ADMIN_BILLING_DOMAIN_TOOL_SETS,
   ...ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
   ...ADMIN_FEED_DOMAIN_TOOL_SETS,
+  ...ADMIN_WORKFLOW_DOMAIN_TOOL_SETS,
   admin_events: [
     "create_event",
     "update_event",
@@ -173,15 +188,6 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "list_paying_members",
     "update_member_logo",
     "update_member_profile",
-  ],
-  admin_workflows: [
-    "query_admin_analytics",
-    "list_flagged_conversations",
-    "review_flagged_conversation",
-    "set_reminder",
-    "my_upcoming_tasks",
-    "complete_task",
-    "log_conversation",
   ],
   admin_brand_registry_integrity: [
     "list_missing_brands",
@@ -273,6 +279,20 @@ export const ADMIN_FEEDS_TOOLS = [
   "approve_feed_proposal",
   "reject_feed_proposal",
   "add_media_contact",
+] as const;
+
+export const ADMIN_CONVERSATION_REVIEW_TOOLS = ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_conversation_review;
+export const ADMIN_FOLLOWUP_TASK_TOOLS = ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_followup_tasks;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_WORKFLOWS_TOOLS = [
+  "query_admin_analytics",
+  "list_flagged_conversations",
+  "review_flagged_conversation",
+  "set_reminder",
+  "my_upcoming_tasks",
+  "complete_task",
+  "log_conversation",
 ] as const;
 
 /** Bounded member-facing brand-registry domains for ordinary router plans. */
@@ -1132,12 +1152,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  admin_conversation_review: {
+    name: "admin_conversation_review",
+    description:
+      "Query community analytics or review flagged conversations (admin only)",
+    tools: [...ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_conversation_review],
+    adminOnly: true,
+  },
+
+  admin_followup_tasks: {
+    name: "admin_followup_tasks",
+    description:
+      "Manage reminders and tasks or log member and prospect interactions (admin only)",
+    tools: [...ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_followup_tasks],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route,
+  // including the server-owned error channel.
   admin_workflows: {
     name: "admin_workflows",
-    description:
-      "Run internal analytics, flagged-conversation review, reminders, tasks, and conversation logging (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_workflows],
+    description: "Legacy combined admin-workflow compatibility surface",
+    tools: [...ADMIN_WORKFLOWS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   admin_brand_registry_integrity: {
