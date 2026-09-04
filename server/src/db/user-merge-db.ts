@@ -56,6 +56,7 @@ export async function previewUserMerge(
       { name: 'organization_memberships', col: 'workos_user_id' },
       { name: 'working_group_memberships', col: 'workos_user_id' },
       { name: 'learner_progress', col: 'workos_user_id' },
+      { name: 'admin_module_completions', col: 'workos_user_id' },
       { name: 'certification_attempts', col: 'workos_user_id' },
       { name: 'user_credentials', col: 'workos_user_id' },
       { name: 'teaching_checkpoints', col: 'workos_user_id' },
@@ -234,6 +235,156 @@ export async function mergeUsers(
       });
     }
 
+    /**
+     * Merge module progress without allowing a lower-state primary row to
+     * erase completed learning from the secondary account. Generic
+     * mergeWithConflict() deliberately keeps the primary row, which is right
+     * for membership-like tables but wrong for learner evidence.
+     */
+    async function mergeLearnerProgress(): Promise<void> {
+      const totalResult = await client.query(
+        `SELECT COUNT(*) as count FROM learner_progress WHERE workos_user_id = $1`,
+        [secondaryUserId]
+      );
+      const totalCount = parseInt(totalResult.rows[0].count, 10);
+
+      if (totalCount === 0) {
+        summary.tables_merged.push({
+          table_name: 'learner_progress',
+          rows_moved: 0,
+          rows_skipped_duplicate: 0,
+        });
+        return;
+      }
+
+      // Admin completion records retain a foreign key to the progress row.
+      // Point duplicate-module audits at the surviving row before deleting
+      // the secondary duplicate.
+      await client.query(
+        `UPDATE admin_module_completions audit
+            SET learner_progress_id = primary_progress.id
+           FROM learner_progress secondary_progress
+           JOIN learner_progress primary_progress
+             ON primary_progress.workos_user_id = $1
+            AND primary_progress.module_id = secondary_progress.module_id
+          WHERE secondary_progress.workos_user_id = $2
+            AND audit.learner_progress_id = secondary_progress.id`,
+        [primaryUserId, secondaryUserId]
+      );
+
+      // A terminal completion outranks in-progress, which outranks a known
+      // failed/expired result, which in turn outranks not-started. When states
+      // tie, keep the primary value but fill any missing evidence from the
+      // secondary row. Timestamps and attempt counts describe activity across
+      // both credentials and are combined.
+      const mergedDuplicates = await client.query(
+        `UPDATE learner_progress primary_progress
+            SET status = CASE
+                  WHEN CASE secondary_progress.status
+                         WHEN 'completed' THEN 3
+                         WHEN 'tested_out' THEN 3
+                         WHEN 'in_progress' THEN 2
+                         WHEN 'failed' THEN 1
+                         WHEN 'expired' THEN 1
+                         ELSE 0
+                       END
+                       > CASE primary_progress.status
+                           WHEN 'completed' THEN 3
+                           WHEN 'tested_out' THEN 3
+                           WHEN 'in_progress' THEN 2
+                           WHEN 'failed' THEN 1
+                           WHEN 'expired' THEN 1
+                           ELSE 0
+                         END
+                    THEN secondary_progress.status
+                  ELSE primary_progress.status
+                END,
+                started_at = CASE
+                  WHEN primary_progress.started_at IS NULL THEN secondary_progress.started_at
+                  WHEN secondary_progress.started_at IS NULL THEN primary_progress.started_at
+                  ELSE LEAST(primary_progress.started_at, secondary_progress.started_at)
+                END,
+                completed_at = CASE
+                  WHEN primary_progress.completed_at IS NULL THEN secondary_progress.completed_at
+                  WHEN secondary_progress.completed_at IS NULL THEN primary_progress.completed_at
+                  ELSE LEAST(primary_progress.completed_at, secondary_progress.completed_at)
+                END,
+                score = CASE
+                  WHEN CASE secondary_progress.status
+                         WHEN 'completed' THEN 3
+                         WHEN 'tested_out' THEN 3
+                         WHEN 'in_progress' THEN 2
+                         WHEN 'failed' THEN 1
+                         WHEN 'expired' THEN 1
+                         ELSE 0
+                       END
+                       > CASE primary_progress.status
+                           WHEN 'completed' THEN 3
+                           WHEN 'tested_out' THEN 3
+                           WHEN 'in_progress' THEN 2
+                           WHEN 'failed' THEN 1
+                           WHEN 'expired' THEN 1
+                           ELSE 0
+                         END
+                    THEN COALESCE(secondary_progress.score, primary_progress.score)
+                  ELSE COALESCE(primary_progress.score, secondary_progress.score)
+                END,
+                addie_thread_id = CASE
+                  WHEN CASE secondary_progress.status
+                         WHEN 'completed' THEN 3
+                         WHEN 'tested_out' THEN 3
+                         WHEN 'in_progress' THEN 2
+                         WHEN 'failed' THEN 1
+                         WHEN 'expired' THEN 1
+                         ELSE 0
+                       END
+                       > CASE primary_progress.status
+                           WHEN 'completed' THEN 3
+                           WHEN 'tested_out' THEN 3
+                           WHEN 'in_progress' THEN 2
+                           WHEN 'failed' THEN 1
+                           WHEN 'expired' THEN 1
+                           ELSE 0
+                         END
+                    THEN COALESCE(secondary_progress.addie_thread_id, primary_progress.addie_thread_id)
+                  ELSE COALESCE(primary_progress.addie_thread_id, secondary_progress.addie_thread_id)
+                END,
+                attempts = COALESCE(primary_progress.attempts, 0)
+                         + COALESCE(secondary_progress.attempts, 0),
+                created_at = LEAST(primary_progress.created_at, secondary_progress.created_at),
+                updated_at = GREATEST(primary_progress.updated_at, secondary_progress.updated_at)
+           FROM learner_progress secondary_progress
+          WHERE primary_progress.workos_user_id = $1
+            AND secondary_progress.workos_user_id = $2
+            AND primary_progress.module_id = secondary_progress.module_id
+        RETURNING 1`,
+        [primaryUserId, secondaryUserId]
+      );
+
+      await client.query(
+        `DELETE FROM learner_progress secondary_progress
+          USING learner_progress primary_progress
+          WHERE secondary_progress.workos_user_id = $2
+            AND primary_progress.workos_user_id = $1
+            AND primary_progress.module_id = secondary_progress.module_id`,
+        [primaryUserId, secondaryUserId]
+      );
+
+      const moved = await client.query(
+        `UPDATE learner_progress
+            SET workos_user_id = $1
+          WHERE workos_user_id = $2
+        RETURNING 1`,
+        [primaryUserId, secondaryUserId]
+      );
+
+      summary.tables_merged.push({
+        table_name: 'learner_progress',
+        rows_moved: moved.rows.length,
+        rows_skipped_duplicate: mergedDuplicates.rows.length,
+      });
+    }
+
     // =====================================================
     // 1. Tables with UNIQUE constraints (INSERT...ON CONFLICT)
     // =====================================================
@@ -244,8 +395,9 @@ export async function mergeUsers(
     // working_group_memberships: UNIQUE(working_group_id, workos_user_id)
     await mergeWithConflict('working_group_memberships', 'working_group_id');
 
-    // learner_progress: UNIQUE(workos_user_id, module_id)
-    await mergeWithConflict('learner_progress', 'module_id');
+    // learner_progress: UNIQUE(workos_user_id, module_id), with state-aware
+    // conflict handling so completed learning always survives the merge.
+    await mergeLearnerProgress();
 
     // user_credentials: UNIQUE(workos_user_id, credential_id)
     await mergeWithConflict('user_credentials', 'credential_id');
@@ -390,6 +542,7 @@ export async function mergeUsers(
     // =====================================================
     await mergeWithUpdate('certification_attempts');
     await mergeWithUpdate('teaching_checkpoints');
+    await mergeWithUpdate('admin_module_completions');
     await mergeWithUpdate('certification_learner_feedback');
     await mergeWithUpdate('agent_test_runs');
     await mergeWithUpdate('certification_expectations');
