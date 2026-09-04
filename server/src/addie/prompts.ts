@@ -94,23 +94,28 @@ These tools operate only on the signed-in member and their selected organization
 Escalate refunds, disputes, failed charges, identity mismatches, and anything these self-service tools cannot complete.`,
   },
   {
-    selectedToolSets: ['sponsored_intelligence'],
+    selectedToolSets: ['sponsored_intelligence_discovery', 'sponsored_intelligence'],
     requiredToolNames: [
       'get_si_availability',
       'list_si_agents',
       'connect_to_si_agent',
+    ],
+    text: `### Sponsored Intelligence discovery
+- get_si_availability: Check an offer or product before connecting without sharing user data.
+- list_si_agents: List available SI brand agents.
+- connect_to_si_agent: Start a brand-agent session.
+
+When SI agents appear in your context, tell the user the brand is available. When they agree, call connect_to_si_agent directly; the context already verifies availability, so do not call list_si_agents first.`,
+  },
+  {
+    selectedToolSets: ['sponsored_intelligence_session', 'sponsored_intelligence'],
+    requiredToolNames: [
       'send_to_si_agent',
       'end_si_session',
       'get_si_session_status',
     ],
-    text: `### Sponsored Intelligence conversations
-- get_si_availability: Check whether a specific offer or product is available before connecting, without sharing user data.
-- list_si_agents: List all brands with SI agents available.
-- connect_to_si_agent: Start a live conversation with a brand's SI agent.
-
-When SI agents appear in your context, tell the user the brand is available. When they agree, call connect_to_si_agent directly; the context already verifies availability, so do not call list_si_agents first.
-
-During an active SI session, use send_to_si_agent for every user message intended for the brand. You are a relay: let the actual SI agent respond. Use end_si_session when the user is finished and get_si_session_status when session state is unclear.`,
+    text: `### Sponsored Intelligence active sessions
+Use send_to_si_agent for every user message intended for the brand. You are a relay: let the actual SI agent respond. Use end_si_session when the user is finished and get_si_session_status when session state is unclear.`,
   },
   {
     selectedToolSets: ['certification_overview'],
@@ -771,6 +776,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'publishing_author'
       && ['publishing_submission', 'publishing_assets']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden SI union alongside both
+    // bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'sponsored_intelligence'
+      && ['sponsored_intelligence_discovery', 'sponsored_intelligence_session']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

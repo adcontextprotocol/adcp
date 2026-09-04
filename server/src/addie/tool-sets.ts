@@ -472,6 +472,35 @@ export const COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS = [
 /** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const COMMUNITY_GROUP_TOOLS = COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS;
 
+/** Bounded Sponsored Intelligence domains for ordinary router plans. */
+export const SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS = {
+  sponsored_intelligence_discovery: [
+    "get_si_availability",
+    "list_si_agents",
+    "connect_to_si_agent",
+  ],
+  sponsored_intelligence_session: [
+    "send_to_si_agent",
+    "end_si_session",
+    "get_si_session_status",
+  ],
+} as const;
+
+export const SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS =
+  SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_discovery;
+export const SPONSORED_INTELLIGENCE_SESSION_TOOLS =
+  SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_session;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const SPONSORED_INTELLIGENCE_TOOLS = [
+  "get_si_availability",
+  "list_si_agents",
+  "connect_to_si_agent",
+  "send_to_si_agent",
+  "end_si_session",
+  "get_si_session_status",
+] as const;
+
 /** Bounded member publishing domains for ordinary router plans. */
 export const PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS = {
   publishing_submission: [
@@ -970,18 +999,26 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  sponsored_intelligence_discovery: {
+    name: "sponsored_intelligence_discovery",
+    description:
+      "Discover and connect to member brand agents that support Sponsored Intelligence, including anonymous offer-availability checks",
+    tools: [...SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_discovery],
+  },
+
+  sponsored_intelligence_session: {
+    name: "sponsored_intelligence_session",
+    description:
+      "Relay messages to, inspect, or end an active Sponsored Intelligence brand-agent session",
+    tools: [...SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_session],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   sponsored_intelligence: {
     name: "sponsored_intelligence",
-    description:
-      "Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation",
-    tools: [
-      "get_si_availability",
-      "list_si_agents",
-      "connect_to_si_agent",
-      "send_to_si_agent",
-      "end_si_session",
-      "get_si_session_status",
-    ],
+    description: "Legacy combined Sponsored Intelligence compatibility surface",
+    tools: [...SPONSORED_INTELLIGENCE_TOOLS],
+    routerVisible: false,
   },
 
   content: {

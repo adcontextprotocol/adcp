@@ -195,6 +195,8 @@ const TOOL_DEFINITIONS = [
   'get_company_listing',
   'get_my_content',
   'check_illustration_status',
+  'list_si_agents',
+  'get_si_session_status',
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',

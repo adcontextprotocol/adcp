@@ -475,7 +475,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         source: surface.source,
         isAdmin: surface.isAdmin,
         isPublicChannel: surface.isPublic,
-        hasSponsoredIntelligenceContext,
+        sponsoredIntelligenceContextKind: hasSponsoredIntelligenceContext ? 'session' : null,
         isToolAvailable: (name) => availableToolNames.has(name),
       });
       return profile({
@@ -524,7 +524,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       source: surface.source,
       isAdmin: surface.isAdmin,
       isPublicChannel: surface.isPublic,
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
       isToolAvailable: (name) => availableToolNames.has(name),
     });
     profiles.push(...routed, ...maximums.values(), profile({
@@ -632,7 +632,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         source: 'channel',
         isAdmin: surface.isAdmin,
         isPublicChannel: surface.isPublic,
-        hasSponsoredIntelligenceContext,
+        sponsoredIntelligenceContextKind: hasSponsoredIntelligenceContext ? 'session' : null,
         isToolAvailable: (name) => availableReactionToolNames.has(name),
       });
       return profile({
@@ -670,7 +670,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       source: 'channel',
       isAdmin: surface.isAdmin,
       isPublicChannel: surface.isPublic,
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
       activeCertificationKind: 'mixed',
       systemRole: 'billing',
       isToolAvailable: (name) => availableReactionToolNames.has(name),
@@ -757,7 +757,7 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
       routerAvailable: true,
       source: 'dm',
       isAdmin,
-      hasSponsoredIntelligenceContext,
+      sponsoredIntelligenceContextKind: hasSponsoredIntelligenceContext ? 'session' : null,
       isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
     });
     const profileFor = (

@@ -544,6 +544,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('publishing_submission');
       expect(descriptions).toContain('publishing_assets');
       expect(descriptions).not.toMatch(/\*\*publishing_author\*\*/);
+      expect(descriptions).toContain('sponsored_intelligence_discovery');
+      expect(descriptions).toContain('sponsored_intelligence_session');
+      expect(descriptions).not.toMatch(/\*\*sponsored_intelligence\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
@@ -626,6 +629,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('publishing_submission');
       expect(descriptions).toContain('publishing_assets');
       expect(descriptions).not.toMatch(/\*\*publishing_author\*\*/);
+      expect(descriptions).toContain('sponsored_intelligence_discovery');
+      expect(descriptions).toContain('sponsored_intelligence_session');
+      expect(descriptions).not.toMatch(/\*\*sponsored_intelligence\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
@@ -667,6 +673,15 @@ describe('getToolsForSets', () => {
     expect(promotionTools).toContain('draft_social_posts');
     expect(promotionTools).not.toContain('approve_content');
     expect(getToolsForSets([], false)).not.toContain('propose_content');
+  });
+
+  it('should expose only the selected bounded Sponsored Intelligence workflow', () => {
+    const discoveryTools = getToolsForSets(['sponsored_intelligence_discovery'], false);
+    const sessionTools = getToolsForSets(['sponsored_intelligence_session'], false);
+    expect(discoveryTools).toContain('connect_to_si_agent');
+    expect(discoveryTools).not.toContain('send_to_si_agent');
+    expect(sessionTools).toContain('send_to_si_agent');
+    expect(sessionTools).not.toContain('connect_to_si_agent');
   });
 
   it('should keep read_google_doc with propose_content on the author surface', () => {

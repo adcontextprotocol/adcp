@@ -304,29 +304,29 @@ describe('Slack tool-set selection policy', () => {
     })).toEqual(['billing']);
   });
 
-  it('adds Sponsored Intelligence tools for a relevant retrieval or active session', () => {
+  it('adds only the server-trusted Sponsored Intelligence context domain', () => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['partner_directory'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
-      hasSponsoredIntelligenceContext: true,
-    })).toEqual(['partner_directory', 'sponsored_intelligence']);
+      sponsoredIntelligenceContextKind: 'discovery',
+    })).toEqual(['partner_directory', 'sponsored_intelligence_discovery']);
 
     expect(selectSlackToolSets({
-      routerSelectedSets: ['sponsored_intelligence'],
+      routerSelectedSets: ['sponsored_intelligence_session'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
-      hasSponsoredIntelligenceContext: true,
-    })).toEqual(['sponsored_intelligence']);
+      sponsoredIntelligenceContextKind: 'session',
+    })).toEqual(['sponsored_intelligence_session']);
 
     expect(selectSlackToolSets({
       routerAvailable: false,
       source: 'dm',
       isAdmin: false,
-      hasSponsoredIntelligenceContext: true,
-    })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence']);
+      sponsoredIntelligenceContextKind: 'session',
+    })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence_session']);
   });
 
   it('rejects obsolete router-plan aliases before they reach prompt or tool selection', () => {
@@ -666,6 +666,7 @@ describe('Slack tool-set selection policy', () => {
     ['legacy property-catalog union', { action: 'respond', tool_sets: ['property_catalog'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy Sponsored Intelligence union', { action: 'respond', tool_sets: ['sponsored_intelligence'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospect_pipeline'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized organization integrity domain', { action: 'respond', tool_sets: ['admin_organization_integrity'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized brand logo-review domain', { action: 'respond', tool_sets: ['admin_brand_logo_review'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
@@ -678,12 +679,12 @@ describe('Slack tool-set selection policy', () => {
       isAdmin: false,
       isPublicChannel: false,
       activeCertificationKind: 'mixed',
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
       systemRole: 'billing',
     });
     expect(selection.useSafeFallback).toBe(true);
     expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
-    expect(selection.selectedToolSets).not.toContain('sponsored_intelligence');
+    expect(selection.selectedToolSets).not.toContain('sponsored_intelligence_session');
     expect(selection.allowedToolNames).not.toEqual(expect.arrayContaining([
       'capture_learning', 'set_outreach_preference', 'create_payment_link',
       'add_prospect', 'send_to_si_agent', 'start_certification_module',
@@ -698,7 +699,7 @@ describe('Slack tool-set selection policy', () => {
       isAdmin: true,
       isPublicChannel: false,
       activeCertificationKind: 'learning',
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
     });
     expect(selection.useSafeFallback).toBe(true);
     expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
