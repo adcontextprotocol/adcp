@@ -172,13 +172,27 @@ export function syncReliableReportingReceiptsForAccount(
   const record = ledger.integrityRecords?.[0];
   if (record) {
     const accepted = ledger.receipts.filter(receipt => receipt.status === 'accepted').length;
-    const adjustmentAccepted = ledger.adjustmentReceipts.filter(receipt => receipt.status === 'accepted').length;
+    const revisionId = record.revision?.reporting_revision_id;
+    const adjustmentReceipts = ledger.adjustmentReceipts.filter(
+      receipt => receipt.adjusts_reporting_revision_id === revisionId,
+    );
+    const adjustmentAccepted = adjustmentReceipts.filter(receipt => receipt.status === 'accepted').length;
+    const hasOutstandingAdjustments = [...ledger.adjustments.values()].some(
+      adjustment => adjustment.adjusts_reporting_revision_id === revisionId,
+    );
     const isReconciled = record.obligation.reconciliation_mode === 'consumer_receipt';
-    const healthComplete = isReconciled ? accepted > 0 && adjustmentAccepted > 0 : accepted > 0;
+    // Post-official adjustments only become a reconciliation precondition once
+    // they exist. A clean official close needs its accepted revision receipt,
+    // not a hypothetical adjustment receipt.
+    const healthComplete = isReconciled
+      ? accepted > 0 && (!hasOutstandingAdjustments || adjustmentAccepted > 0)
+      : accepted > 0;
     record.obligation = {
       ...record.obligation,
       receipt_count: ledger.receipts.length,
       accepted_receipt_count: accepted,
+      adjustment_receipt_count: adjustmentReceipts.length,
+      accepted_adjustment_receipt_count: adjustmentAccepted,
       reconciliation_status: accepted > 0 ? 'accepted' : record.obligation.reconciliation_status,
       health: healthComplete ? 'complete' : record.obligation.health,
     } as ReportingObligation;
@@ -1418,7 +1432,13 @@ export function publishReliableReportingReconciledAdjustments(
     canonical_adjustment_sha256: createHash('sha256').update(canonicalize(definition)).digest('hex'),
   }));
   for (const adjustment of adjustments) ledger.adjustments.set(adjustment.reporting_adjustment_id, adjustment);
-  record.obligation = { ...record.obligation, adjustment_count: adjustments.length } as ReportingObligation;
+  record.obligation = {
+    ...record.obligation,
+    adjustment_count: adjustments.length,
+    // A newly published correction needs its own consumer acknowledgement;
+    // it therefore reopens an otherwise completed reconciled obligation.
+    health: record.obligation.reconciliation_mode === 'consumer_receipt' ? 'waiting' : record.obligation.health,
+  } as ReportingObligation;
   ledger.virtualNow = '2026-08-29T10:00:03.000Z';
   ledger.version += 1;
   return { adjustments, disputed_observed_adjustment_sha256: '0'.repeat(64) };

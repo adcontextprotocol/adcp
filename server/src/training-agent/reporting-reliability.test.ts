@@ -3,8 +3,8 @@
  *
  *   1A  recordsFor uses hardcoded HOUR_MS step regardless of period_duration;
  *       expected_at also hardcoded to +HOUR_MS instead of +delivery_sla.
- *   1B  health:'complete' set as soon as any revision receipt is accepted,
- *       without also checking adjustment receipts for consumer_receipt mode.
+ *   1B  reconciled health treated adjustment receipts as an unconditional
+ *       precondition, or failed to account for their receipt totals.
  *   2   Legacy getReportingStatus handler cast strips changes_after at the
  *       TypeScript boundary (req typed as old SDK GetReportingStatusRequest).
  *   3   Checkpoint fingerprint is order-dependent: unsorted delivery_config_ids,
@@ -95,15 +95,14 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Bug 1B: reconciled billing health must not be 'complete' until both
-  // revision receipts AND adjustment receipts are accepted
+  // Bug 1B: a clean official close needs no adjustment receipt; after an
+  // adjustment is published, its accepted receipt is required and counted.
   // ---------------------------------------------------------------------------
-  it('reconciled billing health stays non-complete until adjustment receipts are accepted', () => {
+  it('reconciles a clean official close, then waits for and counts adjustment receipts', () => {
     const principal = 'test-pr7228-1b';
     const accountId = 'acct-1b';
 
     const probe = prepareReliableReportingReconciledBillingProbe(principal, accountId);
-    const { adjustments } = publishReliableReportingReconciledAdjustments(principal, accountId);
 
     // Submit an accepted revision receipt. The canonical_digest verification data
     // is taken directly from the probe fixture (row_count=2, canonical SHA present).
@@ -135,10 +134,31 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
       accountId,
     ) as TrainingGetReportingStatusResponse;
 
-    // Before fix: health flips to 'complete' here (Bug 1B).
-    // After fix:  consumer_receipt mode requires adjustment receipts too.
+    // A clean official close has no adjustment precondition.
     const periodsAfterRevision = afterRevision.periods ?? [];
-    expect(periodsAfterRevision.some(p => p.health === 'complete')).toBe(false);
+    expect(periodsAfterRevision).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        health: 'complete',
+        adjustment_count: 0,
+        adjustment_receipt_count: 0,
+        accepted_adjustment_receipt_count: 0,
+      }),
+    ]));
+
+    const { adjustments } = publishReliableReportingReconciledAdjustments(principal, accountId);
+    const afterPublication = getReportingStatusForAccount(
+      { view: 'periods' } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+    expect(afterPublication.periods).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        health: 'waiting',
+        adjustment_count: 2,
+        adjustment_receipt_count: 0,
+        accepted_adjustment_receipt_count: 0,
+      }),
+    ]));
 
     // Now submit the accepted adjustment receipt.
     const acceptedAdj = adjustments.find(a => a.reason_code === 'invalid_traffic')!;
@@ -163,8 +183,14 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
       accountId,
     ) as TrainingGetReportingStatusResponse;
 
-    const periodsAfterAdjustment = afterAdjustment.periods ?? [];
-    expect(periodsAfterAdjustment.some(p => p.health === 'complete')).toBe(true);
+    expect(afterAdjustment.periods).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        health: 'complete',
+        adjustment_count: 2,
+        adjustment_receipt_count: 1,
+        accepted_adjustment_receipt_count: 1,
+      }),
+    ]));
   });
 
   // ---------------------------------------------------------------------------
