@@ -6,7 +6,8 @@
   "description": "One immutable data object committed by a reporting file manifest.",
   "type": "object",
   "properties": {
-    "object_ref": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "Credential-free object identifier resolved through the configured destination." },
+    "object_ref": { "$ref": "/schemas/core/reporting-file-object-ref.json" },
+    "native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json" },
     "size_bytes": { "type": "integer", "minimum": 0 },
     "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
     "row_count": { "type": "integer", "minimum": 0 },

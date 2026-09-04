@@ -26,7 +26,7 @@
             "title": "SHA-256 physical checksum",
             "type": "object",
             "properties": {
-              "object_ref": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "object_ref": { "$ref": "/schemas/core/reporting-file-object-ref.json" },
               "algorithm": { "type": "string", "const": "sha256" },
               "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
             },
@@ -37,7 +37,7 @@
             "title": "SHA-512 physical checksum",
             "type": "object",
             "properties": {
-              "object_ref": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "object_ref": { "$ref": "/schemas/core/reporting-file-object-ref.json" },
               "algorithm": { "type": "string", "const": "sha512" },
               "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{128}$" }
             },
@@ -52,7 +52,7 @@
       "type": "object",
       "description": "Provider-native immutable version evidence observed through the named consumer or destination path.",
       "properties": {
-        "native_version_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json" },
         "observed_through": { "type": "string", "enum": ["representative_consumer", "destination"] }
       },
       "required": ["native_version_ref", "observed_through"],
