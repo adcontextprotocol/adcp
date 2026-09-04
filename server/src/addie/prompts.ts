@@ -207,7 +207,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - get_github_issue: Read a specific issue or pull request by number or URL. It supports \`adcontextprotocol/*\` and \`prebid/*\`; pass the repository as \`owner/name\`.`,
   },
   {
-    selectedToolSets: ['member_profile'],
+    selectedToolSets: ['member_personal_profile', 'member_company_profile', 'member_profile'],
     text: `### Member account and organization self-service
 Direct members to the dashboard instead of escalating actions they can complete themselves:
 
@@ -479,9 +479,13 @@ Use this complete atomic-tool surface only for one long request that explicitly 
 Use this complete atomic-tool surface only for one long request spanning scheduling, attendance, and recurring-series or topic work.`,
   },
   {
-    selectedToolSets: ['member_profile'],
-    text: `### Member profile and company-listing operations
-- get_my_profile / update_my_profile: Show or update the person's profile.
+    selectedToolSets: ['member_personal_profile', 'member_profile'],
+    text: `### Personal profile
+- get_my_profile / update_my_profile: Show or update the person's profile.`,
+  },
+  {
+    selectedToolSets: ['member_company_profile', 'member_profile'],
+    text: `### Company listing
 - get_company_listing / update_company_listing: Show or update the organization's directory entry.
 
 When a member asks why their listing is missing:
@@ -755,6 +759,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'outreach'
       && ['outreach_reporting', 'outreach_contact_management']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden profile union alongside
+    // both bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'member_profile'
+      && ['member_personal_profile', 'member_company_profile']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

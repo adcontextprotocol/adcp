@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v26');
-    expect(FIXED_TRACE_SUITE).toHaveLength(25);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v27');
+    expect(FIXED_TRACE_SUITE).toHaveLength(26);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -211,6 +211,17 @@ describe('fixed cross-provider trace suite', () => {
       toolSelectionPass: false,
       mutationSafetyPass: false,
     });
+  });
+
+  it('keeps the company-profile trace read-only and isolated from personal-profile tools', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'member-company-listing')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['member_company_profile'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['get_company_listing']);
+    expect(trace.expectation.requiredTools).toEqual(['get_company_listing']);
+    expect(trace.expectation.allowedTools).toEqual(['get_company_listing']);
+    expect(trace.expectation.forbiddenTools).toContain('get_my_profile');
+    expect(trace.expectation.forbiddenTools).toContain('update_company_listing');
+    expect(trace.expectation.mutationAuthorization).toBe('none');
   });
 
   it('keeps the member-record fixed trace provider-neutral, read-only, and bounded', () => {
@@ -455,8 +466,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 25,
-      observed: 25,
+      expected: 26,
+      observed: 26,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -471,7 +482,7 @@ describe('fixed cross-provider trace suite', () => {
     expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.021);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 22,
+      complete: 23,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -620,7 +631,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 25, observed: 3, omitted: 22, complete: false });
+    expect(summary).toMatchObject({ expected: 26, observed: 3, omitted: 23, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

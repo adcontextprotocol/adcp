@@ -538,7 +538,9 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should include bounded knowledge, member-profile, community-group, and directory sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('member_personal_profile');
+      expect(descriptions).toContain('member_company_profile');
+      expect(descriptions).not.toMatch(/\*\*member_profile\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
@@ -615,7 +617,9 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should still include non-admin sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('member_personal_profile');
+      expect(descriptions).toContain('member_company_profile');
+      expect(descriptions).not.toMatch(/\*\*member_profile\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
@@ -706,7 +710,7 @@ describe('getToolsForSets', () => {
   });
 
   it('should combine multiple sets', () => {
-    const tools = getToolsForSets(['knowledge', 'member_profile'], false);
+    const tools = getToolsForSets(['knowledge', 'member_personal_profile'], false);
     expect(tools).toContain('search_docs');
     expect(tools).toContain('get_my_profile');
   });
@@ -1050,7 +1054,7 @@ describe('parseRouterResponse', () => {
   });
 
   it('should handle markdown-wrapped JSON', () => {
-    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member_profile"],"confidence":"suggest","reason":"test"}\n```');
+    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member_personal_profile"],"confidence":"suggest","reason":"test"}\n```');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
       expect(plan.confidence).toBe('suggest');

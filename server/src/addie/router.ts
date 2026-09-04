@@ -576,7 +576,7 @@ export function buildRoutingPrompt(ctx: RoutingContext): string {
   if (!isLinked) {
     conditionalRules += `
 The user has NOT linked their Slack account to AgenticAdvertising.org.
-- If they ask about membership or account features, include the "member_profile" tool set`;
+- If they ask about membership or account features, include the "member_personal_profile" tool set`;
   }
   if (isAAOAdmin) {
     conditionalRules += `
@@ -668,7 +668,9 @@ ${
 - Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure. "What do the official docs say about package identifiers?" → exactly ["knowledge"]
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating registry configuration, select exactly ["schema_reference", "agent_registry"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_registry"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
-- Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
+- Questions about the current member's personal profile or account details → ["member_personal_profile"]
+- Questions about the current member's company listing, logo, brand color, or organization brand-domain claim → ["member_company_profile"]
+- Requests needing both personal and company profile work may select both; never use the hidden legacy alias.
 - Browsing working groups or councils, inspecting one group, reviewing the current member's memberships, or reading committee documents → ["community_group_discovery"]
 - Joining a public working group or requesting access to a private group → ["community_group_membership"]
 - Expressing, withdrawing, or reviewing the current member's future-council interest → ["council_interest"]
@@ -702,7 +704,7 @@ ${
 - Placement assessment, testing out modules, or starting/continuing a specialist capstone or exam → ["certification_assessment"]
 - Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
 - Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those always use ["publishing_author"]
-- Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_profile"]
+- Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_company_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
     ? `- Sending a payment request, resending an open invoice, or listing pending invoices for other organizations → ["admin_billing_payments"]

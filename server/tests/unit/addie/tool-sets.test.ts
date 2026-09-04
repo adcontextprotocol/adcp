@@ -50,6 +50,9 @@ import {
   COMMUNITY_GROUP_TOOLS,
   COUNCIL_INTEREST_TOOLS,
   DIRECTORY_COMPATIBILITY_TOOLS,
+  MEMBER_COMPANY_PROFILE_TOOLS,
+  MEMBER_PERSONAL_PROFILE_TOOLS,
+  MEMBER_PROFILE_DOMAIN_TOOL_SETS,
   MEMBER_PROFILE_TOOLS,
   MEETING_ATTENDANCE_TOOLS,
   MEETING_FULL_ADMINISTRATION_TOOLS,
@@ -76,6 +79,36 @@ import {
 } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
+  it('keeps personal and company profiles separate with an exact hidden alias', () => {
+    expect(MEMBER_PERSONAL_PROFILE_TOOLS).toEqual([
+      'get_my_profile', 'update_my_profile',
+    ]);
+    expect(MEMBER_COMPANY_PROFILE_TOOLS).toEqual([
+      'get_company_listing', 'update_company_listing', 'update_company_logo',
+      'request_brand_domain_challenge', 'verify_brand_domain_challenge',
+    ]);
+    expect(MEMBER_PROFILE_TOOLS).toEqual([
+      'get_my_profile', 'update_my_profile', 'get_company_listing', 'update_company_listing',
+      'update_company_logo', 'request_brand_domain_challenge', 'verify_brand_domain_challenge',
+    ]);
+    expect(TOOL_SETS.member_profile.tools).toEqual(MEMBER_PROFILE_TOOLS);
+    expect(TOOL_SETS.member_profile.routerVisible).toBe(false);
+    expect(getValidToolSetNames(false).has('member_profile')).toBe(false);
+    for (const [name, domainTools] of Object.entries(MEMBER_PROFILE_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+    }
+    expect(getToolsForSets(['member_personal_profile'], false, false)).not.toEqual(
+      expect.arrayContaining(MEMBER_COMPANY_PROFILE_TOOLS),
+    );
+    expect(getToolsForSets(['member_company_profile'], false, false)).not.toEqual(
+      expect.arrayContaining(MEMBER_PERSONAL_PROFILE_TOOLS),
+    );
+    expect(getToolsForSets(['member_profile'], false, false)).toEqual(
+      expect.arrayContaining(MEMBER_PROFILE_TOOLS),
+    );
+  });
+
   it('keeps outreach reporting and contact work separate with an exact hidden alias', () => {
     expect(OUTREACH_REPORTING_TOOLS).toEqual([
       'get_outreach_stats', 'get_outreach_history', 'get_action_items',
@@ -202,6 +235,9 @@ describe('getToolsForSets', () => {
     });
 
     it('generates the compact catalog from router-visible domains only', () => {
+      expect(ADDIE_TOOL_CATALOG).toContain('- **member_personal_profile**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **member_company_profile**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **member_profile**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **outreach_reporting**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **outreach_contact_management**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **outreach**');
@@ -844,7 +880,8 @@ describe('getToolsForSets', () => {
 
   describe('bounded member-facing domains', () => {
     it.each([
-      ['member_profile', 7],
+      ['member_personal_profile', 2],
+      ['member_company_profile', 5],
       ['community_group_discovery', 4],
       ['community_group_membership', 4],
       ['council_interest', 4],
@@ -894,7 +931,9 @@ describe('getToolsForSets', () => {
       expect(COMMUNITY_GROUP_CONTRIBUTION_TOOLS).toEqual([
         'get_my_working_groups', 'create_working_group_post', 'bookmark_resource',
       ]);
-      expect(getValidToolSetNames(false).has('member_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('member_personal_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('member_company_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('member_profile')).toBe(false);
       for (const name of [
         'community_group_discovery', 'community_group_membership', 'council_interest',
         'community_group_contribution', 'community_group_full_participation',
@@ -907,7 +946,7 @@ describe('getToolsForSets', () => {
     });
 
     it('keeps profile, community-group, and bounded publishing workflows isolated', () => {
-      const profile = getToolsForSets(['member_profile'], false, false);
+      const profile = getToolsForSets(['member_personal_profile'], false, false);
       const discovery = getToolsForSets(['community_group_discovery'], false, false);
       const membership = getToolsForSets(['community_group_membership'], false, false);
       const councilInterest = getToolsForSets(['council_interest'], false, false);

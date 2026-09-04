@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(110);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(110);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(112);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(112);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
+      'knowledge', 'member_personal_profile', 'member_company_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
       'adcp_task_operations', 'adcp_agent_management', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
@@ -159,7 +159,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(109);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(111);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -177,6 +177,34 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('admin_workflows');
     expect(expectedSets).not.toContain('adcp_operations');
     expect(expectedSets).not.toContain('outreach');
+    expect(expectedSets).not.toContain('member_profile');
+  });
+
+  it('selects only the bounded member-profile domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['member-personal-profile', 'member_personal_profile'],
+      ['member-company-profile', 'member_company_profile'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded profile workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the dual-domain member-profile case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'member-personal-and-company-profile')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["member_company_profile","member_personal_profile"],"confidence":"high","requires_depth":false,"reason":"personal plus company profile"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["member_personal_profile"],"confidence":"high","requires_depth":false,"reason":"personal only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['member_personal_profile', 'member_company_profile']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
   });
 
   it('selects only the bounded directory domain needed by an ordinary request', async () => {
@@ -811,12 +839,12 @@ describe('strict router eval', () => {
     };
     const first = {
       ...base,
-      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member_profile'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
+      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member_personal_profile'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
       scores: { actionExact: false, toolsExact: false, privilegeLeak: false, invalidToolSet: false, confidenceExact: true, depthExact: true, emojiExact: true },
     };
     const second = {
       ...base,
-      plan: { ...first.plan, tool_sets: ['member_profile', 'knowledge'], reason: 'two' },
+      plan: { ...first.plan, tool_sets: ['member_personal_profile', 'knowledge'], reason: 'two' },
       scores: first.scores,
     };
     const summary = summarizeRouterEval([first, second]);
