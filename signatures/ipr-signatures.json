@@ -489,6 +489,16 @@
       "pullRequestNo": 7092,
       "comment_id": 5470378325,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7092#issuecomment-5470378325"
+    },
+    {
+      "name": "cdnicoll",
+      "id": 245761,
+      "created_at": "2026-09-04T18:11:48Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7273,
+      "comment_id": 5544639769,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7273#issuecomment-5544639769"
     }
   ]
 }
