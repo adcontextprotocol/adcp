@@ -162,9 +162,9 @@ test('default version carries the Latest tag', () => {
 });
 
 test('current llms index discovers and follows the default docs version', () => {
-  const aliasUrl = 'https://docs.adcontextprotocol.org/_llms/current.md';
+  const aliasUrl = 'https://docs.adcontextprotocol.org/llms-current.md';
   const aliases = docsConfig.redirects?.filter(
-    redirect => redirect.source === '/_llms/current.md'
+    redirect => redirect.source === '/llms-current.md'
   ) || [];
   const [alias] = aliases;
   const expectedDestination = `/_llms/${defaultVersion.replaceAll('.', '-')}.md`;
@@ -173,11 +173,14 @@ test('current llms index discovers and follows the default docs version', () => 
     throw new Error(`docs.json description must advertise ${aliasUrl} for /llms.txt clients`);
   }
   if (aliases.length !== 1) {
-    throw new Error('docs.json must define exactly one /_llms/current.md alias');
+    throw new Error('docs.json must define exactly one /llms-current.md alias');
+  }
+  if (docsConfig.redirects?.some(redirect => redirect.source === '/_llms/current.md')) {
+    throw new Error('docs.json must not define aliases inside Mintlify\'s reserved /_llms namespace');
   }
   if (alias.destination !== expectedDestination || alias.permanent !== false) {
     throw new Error(
-      `/_llms/current.md must temporarily redirect to ${expectedDestination}; ` +
+      `/llms-current.md must temporarily redirect to ${expectedDestination}; ` +
       `found ${alias.destination || '(missing destination)'}`
     );
   }
