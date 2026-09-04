@@ -26,6 +26,7 @@ const RELEASE_STORY_ALIASES = new Set([
   '/docs/reference/migration/3-1-to-3-2',
   '/docs/media-buy/product-discovery/proposal-negotiation',
 ]);
+const CURRENT_LLMS_INDEX_ALIAS = '/_llms/current.md';
 // Production builds fetch versioned navigation specs reliably from public URLs;
 // release tags keep each docs version tied to the spec shipped with that release.
 const RELEASE_OPENAPI_URL = (releaseVersion) =>
@@ -132,6 +133,31 @@ function snapshotPath(releaseVersion, value) {
 
 function versionLine(value) {
   return typeof value === 'string' ? VERSION_LINE_RE.exec(value)?.[1] : undefined;
+}
+
+function updateCurrentLlmsIndexAlias(config) {
+  const versions = config?.navigation?.versions;
+  if (!Array.isArray(versions) || versions.length === 0) return;
+
+  const currentVersion = versions.find((entry) => entry.default)?.version
+    ?? versions[0]?.version;
+  if (typeof currentVersion !== 'string') return;
+
+  if (!Array.isArray(config.redirects)) config.redirects = [];
+  const destination = `/_llms/${currentVersion.replaceAll('.', '-')}.md`;
+  const existing = config.redirects.find(
+    (redirect) => redirect?.source === CURRENT_LLMS_INDEX_ALIAS
+  );
+  if (existing) {
+    existing.destination = destination;
+    existing.permanent = false;
+  } else {
+    config.redirects.unshift({
+      source: CURRENT_LLMS_INDEX_ALIAS,
+      destination,
+      permanent: false,
+    });
+  }
 }
 
 function updateReleaseStoryAliases(config, releaseVersion) {
@@ -270,6 +296,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     }
     updatePrereleaseBanner(config, releaseVersion, majorMinor);
     updateReleaseStoryAliases(config, releaseVersion);
+    updateCurrentLlmsIndexAlias(config);
     return {
       config,
       action: 'updated',
@@ -305,6 +332,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   versions.splice(insertionIndex, 0, newEntry);
   updatePrereleaseBanner(config, releaseVersion, majorMinor);
   updateReleaseStoryAliases(config, releaseVersion);
+  updateCurrentLlmsIndexAlias(config);
   return {
     config,
     action: 'added',
