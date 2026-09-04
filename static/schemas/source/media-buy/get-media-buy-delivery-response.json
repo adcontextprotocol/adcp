@@ -98,6 +98,27 @@
       "type": "object",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Legacy combined metrics across all returned media buys. When this field is present, the deprecated response-wide currency is required and denominates its spend. Cross-buy totals are unsafe when currencies, metric qualifiers, measurement windows, finality, or deduplication semantics differ. Sellers SHOULD omit this field; buyers SHOULD aggregate media_buy_deliveries[] only when the relevant row semantics are compatible.",
       "deprecated": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reach_aggregation": {
+                "const": "sum_of_constituent_reach"
+              }
+            },
+            "required": [
+              "reach_aggregation"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "frequency"
+              ]
+            }
+          }
+        }
+      ],
       "properties": {
         "impressions": {
           "type": "number",
@@ -163,8 +184,16 @@
         },
         "reach": {
           "type": "number",
-          "description": "Deduplicated reach across all media buys (if the seller can deduplicate across buys; otherwise sum of per-buy reach). Only present when all media buys share the same reach_unit. Omitted when reach units are heterogeneous — use per-buy reach values instead.",
+          "description": "Reach across all media buys. Only present when all media buys share the same reach_unit. Omitted when reach units are heterogeneous — use per-buy reach values instead. The optional reach_aggregation field declares whether this value is deduplicated across buys or is a sum of constituent reach values.",
           "minimum": 0
+        },
+        "reach_aggregation": {
+          "allOf": [
+            {
+              "$ref": "/schemas/enums/reach-aggregation.json"
+            }
+          ],
+          "description": "How reach was combined across the media buys in this aggregate. When omitted, legacy reach semantics are unknown and consumers MUST NOT use reach as the denominator for frequency."
         },
         "reach_unit": {
           "allOf": [
@@ -176,7 +205,7 @@
         },
         "frequency": {
           "type": "number",
-          "description": "Average frequency per reach unit across all media buys (impressions / reach when cross-buy deduplication is available). Only present when reach is present.",
+          "description": "Average frequency per reach unit across all media buys (impressions / reach). In new payloads, only present when reach is present and reach_aggregation is deduplicated. MUST be omitted when reach_aggregation is sum_of_constituent_reach. Legacy payloads that omit reach_aggregation remain schema-valid, but consumers MUST NOT treat their reach as a safe frequency denominator.",
           "minimum": 0
         },
         "media_buy_count": {
