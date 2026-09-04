@@ -172,6 +172,7 @@ describe('Brandfetch DB caching', () => {
           brand_name: 'Save Corp',
           has_brand_manifest: true,
           source_type: 'enriched',
+          enrichment_provider: 'brandfetch',
           brand_manifest: expect.objectContaining({
             name: 'Save Corp',
             url: 'https://save.com',
@@ -217,7 +218,7 @@ describe('Brandfetch DB caching', () => {
   describe('research_brand quality validation', () => {
     const handler = () => handlers.get('research_brand')!;
 
-    it('saves low-quality Brandfetch results as community', async () => {
+    it('keeps low-quality Brandfetch results labeled as enrichment', async () => {
       mockGetDiscoveredBrandByDomain.mockResolvedValue(null);
 
       mockFetchBrandData.mockResolvedValue({
@@ -238,7 +239,8 @@ describe('Brandfetch DB caching', () => {
       expect(mockUpsertDiscoveredBrand).toHaveBeenCalledWith(
         expect.objectContaining({
           domain: 'lowquality.com',
-          source_type: 'community',
+          source_type: 'enriched',
+          enrichment_provider: 'brandfetch',
         })
       );
     });
@@ -265,6 +267,7 @@ describe('Brandfetch DB caching', () => {
         expect.objectContaining({
           domain: 'highquality.com',
           source_type: 'enriched',
+          enrichment_provider: 'brandfetch',
         })
       );
     });

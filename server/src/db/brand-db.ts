@@ -379,6 +379,8 @@ export interface UpsertDiscoveredBrandInput {
    */
   classification?: TrustedBrandClassification;
   source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
+  /** Provider that supplied this record when source_type is enriched. */
+  enrichment_provider?: string;
   expires_at?: Date;
   house_domain_audit?: BrandHouseDomainAuditContext;
 }
@@ -411,6 +413,27 @@ export interface ListBrandsOptions {
  */
 const OWNER_HOSTED_SQL =
   `(brands.workos_organization_id IS NOT NULL AND brands.domain_verified = true)`;
+/**
+ * Discovered-brand writes are monotonic: an unverified writer may refresh the
+ * same tier or promote a weaker row, but it may not replace owner-hosted or
+ * stronger-origin identity. This predicate is evaluated by PostgreSQL while
+ * holding the conflicting row lock, so a stale enrichment cannot race a
+ * canonical write and win afterward.
+ */
+const DISCOVERED_BRAND_WRITE_ALLOWED_SQL = `(
+  NOT ${OWNER_HOSTED_SQL}
+  AND CASE EXCLUDED.source_type
+    WHEN 'brand_json' THEN 2
+    WHEN 'community' THEN 3
+    WHEN 'enriched' THEN 4
+    ELSE 5
+  END <= CASE brands.source_type
+    WHEN 'brand_json' THEN 2
+    WHEN 'community' THEN 3
+    WHEN 'enriched' THEN 4
+    ELSE 5
+  END
+)`;
 /** Control of the domain was demonstrated, by owner verification or by serving a valid brand.json from it. */
 const DOMAIN_CONTROL_VERIFIED_SQL =
   `(${OWNER_HOSTED_SQL} OR brands.source_type = 'brand_json')`;
@@ -557,6 +580,7 @@ export class BrandDatabase {
     }
     if (input.origin_validated === true) {
       updates.push(`source_type = 'brand_json'`);
+      updates.push(`enrichment_provider = NULL`);
       updates.push(`last_validated = NOW()`);
     }
     if (input.verification_token !== undefined) {
@@ -855,12 +879,13 @@ export class BrandDatabase {
         `INSERT INTO brands (
           domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
           keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
-          has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
+          has_brand_manifest, brand_manifest, source_type, enrichment_provider,
+          last_validated, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15)
         ON CONFLICT (domain) DO UPDATE SET
           brand_id = COALESCE(EXCLUDED.brand_id, brands.brand_id),
           canonical_domain = EXCLUDED.canonical_domain,
-          house_domain = CASE WHEN $15::boolean THEN EXCLUDED.house_domain ELSE brands.house_domain END,
+          house_domain = CASE WHEN $16::boolean THEN EXCLUDED.house_domain ELSE brands.house_domain END,
           brand_name = EXCLUDED.brand_name,
           brand_names = EXCLUDED.brand_names,
           keller_type = EXCLUDED.keller_type,
@@ -870,8 +895,14 @@ export class BrandDatabase {
           has_brand_manifest = COALESCE(EXCLUDED.has_brand_manifest, brands.has_brand_manifest),
           brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
           source_type = EXCLUDED.source_type,
+          enrichment_provider = CASE
+            WHEN EXCLUDED.source_type = 'enriched'
+              THEN COALESCE(EXCLUDED.enrichment_provider, brands.enrichment_provider)
+            ELSE NULL
+          END,
           last_validated = NOW(),
           expires_at = EXCLUDED.expires_at
+        WHERE ${DISCOVERED_BRAND_WRITE_ALLOWED_SQL}
         RETURNING *`,
         [
           canonicalDomain,
@@ -887,16 +918,28 @@ export class BrandDatabase {
           input.has_brand_manifest != null ? input.has_brand_manifest : null,
           persistedManifest ? JSON.stringify(persistedManifest) : null,
           input.source_type,
+          input.source_type === 'enriched' ? input.enrichment_provider || null : null,
           input.expires_at || null,
           input.house_domain !== undefined,
         ],
       );
 
-      if (input.house_domain !== undefined) {
+      // ON CONFLICT intentionally performs no update when the incumbent has
+      // stronger provenance. Return that winner so callers cannot mistake a
+      // rejected lower-tier write for missing data.
+      const persistedBrand = result.rows[0] ?? (await client.query<DiscoveredBrand>(
+        'SELECT * FROM brands WHERE domain = $1',
+        [canonicalDomain],
+      )).rows[0];
+      if (!persistedBrand) {
+        throw new Error(`Brand upsert did not return a row: ${canonicalDomain}`);
+      }
+
+      if (result.rows[0] && input.house_domain !== undefined) {
         await recordBrandHouseDomainChange(client, {
           domain: canonicalDomain,
           prior_house_domain: priorHouseDomain,
-          new_house_domain: result.rows[0].house_domain ?? null,
+          new_house_domain: persistedBrand.house_domain ?? null,
           audit: input.house_domain_audit ?? {
             actor_user_id: 'system:brand-database',
             source: 'upsert_discovered_brand',
@@ -905,7 +948,7 @@ export class BrandDatabase {
       }
 
       await client.query('COMMIT');
-      return this.deserializeDiscoveredBrand(result.rows[0]);
+      return this.deserializeDiscoveredBrand(persistedBrand);
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
       throw error;
@@ -1761,6 +1804,7 @@ export class BrandDatabase {
       if (current.source_type === 'enriched' && promotesContent && !isSystemEditor) {
         updates.push(`source_type = $${paramIndex++}`);
         values.push('community');
+        updates.push(`enrichment_provider = NULL`);
       }
 
       if (updates.length === 0) {

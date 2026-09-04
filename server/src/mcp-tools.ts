@@ -1405,7 +1405,9 @@ export class MCPToolHandler {
                       cached: true,
                       manifest,
                       source_type: existingBrand.source_type,
-                      enrichment_provider: "brandfetch",
+                      ...(existingBrand.source_type === 'enriched' && existingBrand.enrichment_provider
+                        ? { enrichment_provider: existingBrand.enrichment_provider }
+                        : {}),
                     }, null, 2),
                   },
                 },
@@ -1447,7 +1449,7 @@ export class MCPToolHandler {
               ...(enrichment.company ? { company: enrichment.company } : {}),
             }
           : undefined;
-        const sourceType = enrichment.highQuality !== false ? 'enriched' : 'community';
+        const sourceType = 'enriched' as const;
 
         // Save enrichment to DB for future cache hits
         if (enrichment.success && enrichment.manifest) {
@@ -1457,6 +1459,7 @@ export class MCPToolHandler {
             brand_manifest: manifest,
             has_brand_manifest: true,
             source_type: sourceType,
+            enrichment_provider: 'brandfetch',
           }).catch((err) => {
             logger.warn({ err, domain: enrichDomain }, 'Failed to cache enrichment result');
           });
