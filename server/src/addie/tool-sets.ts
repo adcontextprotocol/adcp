@@ -101,24 +101,30 @@ export const ADMIN_BILLING_DOMAIN_TOOL_SETS = {
   ],
 } as const;
 
+export const ADMIN_PROSPECT_DOMAIN_TOOL_SETS = {
+  admin_prospect_pipeline: [
+    "add_prospect",
+    "update_prospect",
+    "query_prospects",
+    "claim_prospect",
+  ],
+  admin_prospect_research: [
+    "enrich_company",
+    "prospect_search_lusha",
+    "triage_prospect_domain",
+    "suggest_prospects",
+  ],
+} as const;
+
 export const ADMIN_DOMAIN_TOOL_SETS = {
   ...ADMIN_BILLING_DOMAIN_TOOL_SETS,
+  ...ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
   admin_events: [
     "create_event",
     "update_event",
     "manage_event_registrations",
     "check_person_event_status",
     "invite_to_event",
-  ],
-  admin_prospects: [
-    "add_prospect",
-    "update_prospect",
-    "enrich_company",
-    "query_prospects",
-    "prospect_search_lusha",
-    "claim_prospect",
-    "triage_prospect_domain",
-    "suggest_prospects",
   ],
   admin_feeds: [
     "search_industry_feeds",
@@ -232,6 +238,21 @@ export const ADMIN_BILLING_TOOLS = [
   "confirm_org_stripe_customer_update",
   "list_pending_invoices",
   "get_account",
+] as const;
+
+export const ADMIN_PROSPECT_PIPELINE_TOOLS = ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_pipeline;
+export const ADMIN_PROSPECT_RESEARCH_TOOLS = ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_research;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_PROSPECTS_TOOLS = [
+  "add_prospect",
+  "update_prospect",
+  "enrich_company",
+  "query_prospects",
+  "prospect_search_lusha",
+  "claim_prospect",
+  "triage_prospect_domain",
+  "suggest_prospects",
 ] as const;
 
 /** Bounded member-facing brand-registry domains for ordinary router plans. */
@@ -989,12 +1010,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
+  admin_prospect_pipeline: {
+    name: "admin_prospect_pipeline",
+    description:
+      "Add, update, query, or claim prospect records (admin only)",
+    tools: [...ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_pipeline],
+    adminOnly: true,
+  },
+
+  admin_prospect_research: {
+    name: "admin_prospect_research",
+    description:
+      "Research, enrich, triage, or suggest prospect organizations (admin only)",
+    tools: [...ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_research],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded prospect domains.
   admin_prospects: {
     name: "admin_prospects",
-    description:
-      "Manage the prospect pipeline: add, update, enrich, search, claim, triage, and suggest prospect organizations (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_prospects],
+    description: "Legacy combined admin-prospect compatibility surface",
+    tools: [...ADMIN_PROSPECTS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   admin_feeds: {

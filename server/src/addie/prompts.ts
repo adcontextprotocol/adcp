@@ -528,13 +528,18 @@ Publishing requires an active subscription; escalate payment errors to an admin.
     text: `### Community collaboration
 - send_member_dm: Send a direct message only when the user explicitly asks to contact another member. Forward only the context the user authorized.`,
   },
+  {
+    selectedToolSets: ['admin_prospect_pipeline', 'admin_prospect_research'],
+    text: `### Prospect operations
+- Use pipeline for records and research for enrichment or triage. Never invent inputs.`,
+  },
 ];
 
 const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
   admin_events: `### Admin event operations
 - Create or update events; review, approve, or export registrations; check a person's status before inviting them.`,
   admin_prospects: `### Admin prospect operations
-- Add, update, query, claim, triage, enrich, and suggest prospects. Do not fabricate missing research inputs.`,
+- Compatibility surface for add, update, query, claim, research, enrich, triage, and suggestions. Do not fabricate missing inputs.`,
   admin_feeds: `### Admin industry-feed operations
 - Search and maintain industry sources, review feed proposals, and add verified media contacts.`,
   admin_group_structure: `### Admin group-structure operations
@@ -704,6 +709,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
       && ['admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
+    // The system prospect channel may add the hidden compatibility alias to
+    // a profile that already contains both bounded prospect domains.
+    if (
+      name === 'admin_prospects'
+      && ['admin_prospect_pipeline', 'admin_prospect_research']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
     const set = TOOL_SETS[name];
     if (!set) continue;
     const visibleTools = set.tools.filter(toolName => available.has(toolName));
@@ -807,7 +819,9 @@ export function buildAddieToolReference(scope: AddieToolReferenceScope): string 
 export const ADDIE_TOOL_REFERENCE = [
   ADDIE_TOOL_REFERENCE_PREFIX,
   ...ROUTED_TOOL_REFERENCE_MODULES.map(module => module.text),
-  ...Object.values(ADMIN_TOOL_REFERENCE_MODULES),
+  ...Object.entries(ADMIN_TOOL_REFERENCE_MODULES)
+    .filter(([name]) => TOOL_SETS[name]?.routerVisible !== false)
+    .map(([, text]) => text),
   ADDIE_TOOL_REFERENCE_SUFFIX,
   ADDIE_TOOL_CATALOG,
 ].join('\n\n');

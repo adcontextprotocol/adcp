@@ -18,6 +18,10 @@ import {
   ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
+  ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
+  ADMIN_PROSPECT_PIPELINE_TOOLS,
+  ADMIN_PROSPECT_RESEARCH_TOOLS,
+  ADMIN_PROSPECTS_TOOLS,
   AGENT_PUBLISHER_DIRECTORY_TOOLS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
@@ -102,18 +106,24 @@ describe('getToolsForSets', () => {
       }
     });
 
-    it('loads only the selected admin domain and rejects it for non-admins', () => {
-      const adminTools = getToolsForSets(['admin_prospects'], true, false);
-      expect(adminTools).toContain('query_prospects');
-      expect(adminTools).not.toContain('merge_organizations');
-      expect(adminTools).not.toContain('create_event');
+    it('loads only the selected prospect domain and rejects it for non-admins', () => {
+      const pipelineTools = getToolsForSets(['admin_prospect_pipeline'], true, false);
+      expect(pipelineTools).toContain('query_prospects');
+      expect(pipelineTools).not.toContain('enrich_company');
+      expect(pipelineTools).not.toContain('merge_organizations');
 
-      const memberTools = getToolsForSets(['admin_prospects'], false, false);
+      const researchTools = getToolsForSets(['admin_prospect_research'], true, false);
+      expect(researchTools).toContain('enrich_company');
+      expect(researchTools).not.toContain('query_prospects');
+
+      const memberTools = getToolsForSets(['admin_prospect_pipeline'], false, false);
       expect(memberTools).not.toContain('query_prospects');
     });
 
     it('generates the compact catalog from router-visible domains only', () => {
-      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_pipeline**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_research**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_prospects**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_member_records**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_organizations**');
@@ -257,6 +267,36 @@ describe('getToolsForSets', () => {
       );
       expect(getToolsForSets(['billing'], true, false)).toEqual(
         expect.arrayContaining(ADMIN_BILLING_TOOLS),
+      );
+    });
+
+    it('keeps prospect records and research separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_PROSPECT_PIPELINE_TOOLS).toEqual([
+        'add_prospect', 'update_prospect', 'query_prospects', 'claim_prospect',
+      ]);
+      expect(ADMIN_PROSPECT_RESEARCH_TOOLS).toEqual([
+        'enrich_company', 'prospect_search_lusha', 'triage_prospect_domain', 'suggest_prospects',
+      ]);
+      expect(ADMIN_PROSPECTS_TOOLS).toEqual([
+        'add_prospect', 'update_prospect', 'enrich_company', 'query_prospects',
+        'prospect_search_lusha', 'claim_prospect', 'triage_prospect_domain', 'suggest_prospects',
+      ]);
+      expect(TOOL_SETS.admin_prospects.tools).toEqual(ADMIN_PROSPECTS_TOOLS);
+      expect(TOOL_SETS.admin_prospects.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_prospects')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_PROSPECT_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+      }
+      expect(getToolsForSets(['admin_prospect_pipeline'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_PROSPECT_RESEARCH_TOOLS),
+      );
+      expect(getToolsForSets(['admin_prospect_research'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_PROSPECT_PIPELINE_TOOLS),
+      );
+      expect(getToolsForSets(['admin_prospects'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_PROSPECTS_TOOLS),
       );
     });
   });

@@ -716,7 +716,9 @@ ${isAAOAdmin
 - Requests that need two meeting workflows may select the applicable two meeting domains; never exceed the global two-domain cap.
 - When "working group" only identifies which meeting or agenda the user means, select the applicable meeting domain and do NOT add a community-group domain. Add the applicable narrow group domain only when the user is asking about group membership, participation, group information, or documents.
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
-- Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
+- Adding, updating, querying, or claiming prospect records → ["admin_prospect_pipeline"]
+- Researching, enriching, triaging, or suggesting prospect organizations → ["admin_prospect_research"]
+- A request that genuinely needs both prospect workflows may select both bounded domains; do not select the hidden legacy alias.
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
 - Duplicate-organization investigation or merge, domain-health checks, and verified-domain reconciliation → ["admin_organization_integrity"]
 - Organization-member role changes, organization Slack rosters, paying-member records, or directory logo/profile changes → ["admin_organization_member_records"]
