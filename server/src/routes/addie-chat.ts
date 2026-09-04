@@ -1823,7 +1823,8 @@ export function createAddieChatRouter(options?: {
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
         : null;
-      const completionReserveEligible = hasThreadCertCtx
+      const certificationReserveEligible = hasThreadCertCtx;
+      const certificationCompletionTurn = hasThreadCertCtx
         && (retryRequested
           || preTurnCertification?.status === 'evidence_complete'
           || preTurnCertification?.checkpoint?.current_phase === 'assessment');
@@ -1860,7 +1861,7 @@ export function createAddieChatRouter(options?: {
 
       for await (const event of activeChatClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
-        ...(completionReserveEligible ? { maxIterations: 3, maxMessages: 12 } : {}),
+        ...(certificationCompletionTurn ? { maxIterations: 3, maxMessages: 12 } : {}),
         requestContext: [requestContext, routedWebTools?.unavailableHint].filter(Boolean).join('\n\n'),
         selectedToolSetNames: routedWebTools?.selectedToolSets,
         allowedToolNames: routedWebTools?.allowedToolNames,
@@ -1872,7 +1873,7 @@ export function createAddieChatRouter(options?: {
         ...(streamAuthedScope
           ? { costScope: {
               ...streamAuthedScope,
-              ...(completionReserveEligible ? { certificationReserveUsd: 1 } : {}),
+              ...(certificationReserveEligible ? { certificationReserveUsd: 3 } : {}),
             } }
           : externalId
             ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
