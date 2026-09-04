@@ -286,7 +286,7 @@ function sampleConfig() {
 
     assert.deepEqual(config.redirects, [
       {
-        source: '/_llms/current.md',
+        source: '/llms-current.md',
         destination: '/_llms/3-0.md',
         permanent: false,
       },
@@ -322,7 +322,7 @@ function sampleConfig() {
   test('keeps the current llms index alias on the default stable docs version', () => {
     const config = sampleConfig();
     config.redirects = [{
-      source: '/_llms/current.md',
+      source: '/llms-current.md',
       destination: '/_llms/2-5.md',
       permanent: true,
     }];
@@ -330,10 +330,56 @@ function sampleConfig() {
     updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
 
     assert.deepEqual(config.redirects[0], {
-      source: '/_llms/current.md',
+      source: '/llms-current.md',
       destination: '/_llms/3-0.md',
       permanent: false,
     });
+  });
+
+  test('migrates the legacy reserved current index alias to the root route', () => {
+    const config = sampleConfig();
+    config.redirects = [{
+      source: '/_llms/current.md',
+      destination: '/_llms/2-5.md',
+      permanent: false,
+    }];
+
+    updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
+
+    assert.deepEqual(config.redirects, [{
+      source: '/llms-current.md',
+      destination: '/_llms/3-0.md',
+      permanent: false,
+    }]);
+  });
+
+  test('deduplicates root aliases while removing the legacy reserved alias', () => {
+    const config = sampleConfig();
+    config.redirects = [
+      {
+        source: '/llms-current.md',
+        destination: '/_llms/2-5.md',
+        permanent: true,
+      },
+      {
+        source: '/_llms/current.md',
+        destination: '/_llms/2-5.md',
+        permanent: false,
+      },
+      {
+        source: '/llms-current.md',
+        destination: '/_llms/3-2-beta.md',
+        permanent: false,
+      },
+    ];
+
+    updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
+
+    assert.deepEqual(config.redirects, [{
+      source: '/llms-current.md',
+      destination: '/_llms/3-0.md',
+      permanent: false,
+    }]);
   });
 
   test('adds the current llms index alias once when redirects are absent', () => {
@@ -343,9 +389,9 @@ function sampleConfig() {
     updateDocsConfig(config, '3.1.0-rc.6', '3.1-rc');
 
     assert.deepEqual(
-      config.redirects.filter(redirect => redirect.source === '/_llms/current.md'),
+      config.redirects.filter(redirect => redirect.source === '/llms-current.md'),
       [{
-        source: '/_llms/current.md',
+        source: '/llms-current.md',
         destination: '/_llms/3-0.md',
         permanent: false,
       }]

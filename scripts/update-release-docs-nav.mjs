@@ -26,7 +26,11 @@ const RELEASE_STORY_ALIASES = new Set([
   '/docs/reference/migration/3-1-to-3-2',
   '/docs/media-buy/product-discovery/proposal-negotiation',
 ]);
-const CURRENT_LLMS_INDEX_ALIAS = '/_llms/current.md';
+// Mintlify Cloud reserves /_llms/* for generated version indexes and handles
+// those requests before docs.json redirects. Keep the stable alias at the root
+// so production applies the redirect as well as the local CLI.
+const CURRENT_LLMS_INDEX_ALIAS = '/llms-current.md';
+const LEGACY_RESERVED_LLMS_INDEX_ALIAS = '/_llms/current.md';
 // Production builds fetch versioned navigation specs reliably from public URLs;
 // release tags keep each docs version tied to the spec shipped with that release.
 const RELEASE_OPENAPI_URL = (releaseVersion) =>
@@ -144,10 +148,15 @@ function updateCurrentLlmsIndexAlias(config) {
   if (typeof currentVersion !== 'string') return;
 
   if (!Array.isArray(config.redirects)) config.redirects = [];
+  let existing;
+  config.redirects = config.redirects.filter((redirect) => {
+    if (redirect?.source === LEGACY_RESERVED_LLMS_INDEX_ALIAS) return false;
+    if (redirect?.source !== CURRENT_LLMS_INDEX_ALIAS) return true;
+    if (existing) return false;
+    existing = redirect;
+    return true;
+  });
   const destination = `/_llms/${currentVersion.replaceAll('.', '-')}.md`;
-  const existing = config.redirects.find(
-    (redirect) => redirect?.source === CURRENT_LLMS_INDEX_ALIAS
-  );
   if (existing) {
     existing.destination = destination;
     existing.permanent = false;

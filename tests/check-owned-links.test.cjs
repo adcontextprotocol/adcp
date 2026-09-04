@@ -5,19 +5,29 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-function mockResponse(status, location, onCancel = () => {}) {
+function mockResponse(
+  status,
+  location,
+  onCancel = () => {},
+  contentType = null,
+  bodyText = '',
+) {
   return {
     status,
     headers: {
       get(name) {
-        if (name.toLowerCase() !== 'location') return null;
-        return location ?? null;
+        if (name.toLowerCase() === 'location') return location ?? null;
+        if (name.toLowerCase() === 'content-type') return contentType;
+        return null;
       },
     },
     body: {
       async cancel() {
         onCancel();
       },
+    },
+    async text() {
+      return bodyText;
     },
   };
 }
@@ -51,6 +61,7 @@ function outputCollector() {
 (async () => {
   const {
     URL_CLASS,
+    checkCurrentLlmsIndexAlias,
     checkDirectUrl,
     checkStableDocsAlias,
     checkUrl,
@@ -138,6 +149,145 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
     );
 
     assert.deepEqual(result, { ok: true, status: 200, method: 'GET' });
+  });
+
+  test('checks the current llms alias redirect, target, content type, and propagation', async () => {
+    const source = 'https://docs.adcontextprotocol.org/llms-current.md';
+    const target = 'https://docs.adcontextprotocol.org/_llms/3-1.md';
+    const calls = [];
+    const waits = [];
+    let sourceAttempts = 0;
+    const result = await checkCurrentLlmsIndexAlias(source, {
+      expectedDestination: '/_llms/3-1.md',
+      propagationRetries: 1,
+      propagationDelayMs: 25,
+      sleep: async (ms) => waits.push(ms),
+      fetchImpl: async (url) => {
+        calls.push(url);
+        if (url === source && sourceAttempts++ === 0) return mockResponse(404);
+        if (url === source) return mockResponse(307, '/_llms/3-1.md');
+        if (url === target) {
+          return mockResponse(200, null, () => {}, 'text/markdown; charset=utf-8');
+        }
+        return mockResponse(
+          200,
+          null,
+          () => {},
+          'text/plain; charset=utf-8',
+          `Current stable documentation index: ${source}.\n`,
+        );
+      },
+    });
+
+    assert.deepEqual(result, {
+      ok: true,
+      status: 200,
+      method: 'GET',
+      location: target,
+      redirects: 1,
+    });
+    assert.deepEqual(calls, [source, source, target, 'https://docs.adcontextprotocol.org/llms.txt']);
+    assert.deepEqual(waits, [25]);
+  });
+
+  test('rejects current llms alias drift and non-Markdown targets', async () => {
+    const source = 'https://docs.adcontextprotocol.org/llms-current.md';
+    const drift = await checkCurrentLlmsIndexAlias(source, {
+      expectedDestination: '/_llms/3-1.md',
+      propagationRetries: 0,
+      fetchImpl: async () => mockResponse(307, '/_llms/3-2-beta.md'),
+    });
+    let calls = 0;
+    const html = await checkCurrentLlmsIndexAlias(source, {
+      expectedDestination: '/_llms/3-1.md',
+      propagationRetries: 0,
+      fetchImpl: async () => {
+        calls += 1;
+        return calls === 1
+          ? mockResponse(307, '/_llms/3-1.md')
+          : mockResponse(200, null, () => {}, 'text/html');
+      },
+    });
+
+    assert.equal(drift.ok, false);
+    assert.match(drift.error, /CURRENT LLMS INDEX DRIFT/);
+    assert.equal(html.ok, false);
+    assert.match(html.error, /Content-Type text\/html/);
+  });
+
+  test('rejects a current llms alias that is missing from the public hub', async () => {
+    const source = 'https://docs.adcontextprotocol.org/llms-current.md';
+    let calls = 0;
+    const result = await checkCurrentLlmsIndexAlias(source, {
+      expectedDestination: '/_llms/3-1.md',
+      propagationRetries: 0,
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return mockResponse(307, '/_llms/3-1.md');
+        if (calls === 2) {
+          return mockResponse(200, null, () => {}, 'text/markdown; charset=utf-8');
+        }
+        return mockResponse(
+          200,
+          null,
+          () => {},
+          'text/plain; charset=utf-8',
+          `Near match only: ${source}.old`,
+        );
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.error, /did not advertise/);
+  });
+
+  test('main discovers and policy-checks the current llms alias from docs.json', async () => {
+    const source = 'https://docs.adcontextprotocol.org/llms-current.md';
+    const target = 'https://docs.adcontextprotocol.org/_llms/3-1.md';
+    const root = makeCatalogRoot(`
+## Direct destinations — no redirects
+
+## Action entry points — redirects expected
+
+## Stable documentation aliases — keep unversioned
+`, {
+      'docs.json': JSON.stringify({
+        description: `Current stable documentation index: ${source}.`,
+        navigation: { versions: [{ version: '3.1', default: true }] },
+      }),
+    });
+    const calls = [];
+    const captured = outputCollector();
+
+    try {
+      const ok = await main({
+        root,
+        output: captured.output,
+        fetchImpl: async (url, options) => {
+          calls.push({ url, redirect: options.redirect });
+          if (url === source) return mockResponse(307, '/_llms/3-1.md');
+          if (url === target) {
+            return mockResponse(200, null, () => {}, 'text/markdown; charset=utf-8');
+          }
+          return mockResponse(
+            200,
+            null,
+            () => {},
+            'text/plain; charset=utf-8',
+            `Current stable documentation index: ${source}.\n`,
+          );
+        },
+      });
+
+      assert.equal(ok, true);
+      assert.deepEqual(calls, [
+        { url: source, redirect: 'manual' },
+        { url: target, redirect: 'manual' },
+        { url: 'https://docs.adcontextprotocol.org/llms.txt', redirect: 'follow' },
+      ]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('accepts an equivalent snapshot redirect at an arbitrary semver release', async () => {

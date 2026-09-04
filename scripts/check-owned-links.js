@@ -10,6 +10,9 @@ const FETCH_TIMEOUT_MS = 10_000;
 const CONCURRENCY = 8;
 const MANUAL_RETRIES = 2;
 const MAX_STABLE_DOC_REDIRECTS = 8;
+const CURRENT_LLMS_INDEX_URL = 'https://docs.adcontextprotocol.org/llms-current.md';
+const LLMS_PROPAGATION_RETRIES = 12;
+const LLMS_PROPAGATION_DELAY_MS = 30_000;
 const URLS_RULES_FILE = 'server/src/addie/rules/urls.md';
 
 export const URL_CLASS = Object.freeze({
@@ -42,6 +45,7 @@ export function getCandidateFiles(root = ROOT) {
     [
       'docs/**/*.{md,mdx}',
       'dist/docs/**/*.{md,mdx}',
+      'docs.json',
       'README.md',
       'server/src/addie/rules/*.md',
       'server/src/addie/**/*.ts',
@@ -270,6 +274,7 @@ export async function fetchManualGet(
       const result = {
         status: response.status,
         location: response.headers.get('location'),
+        contentType: response.headers.get('content-type'),
       };
       await cancelBody(response);
 
@@ -287,6 +292,44 @@ export async function fetchManualGet(
     }
   }
   throw new Error(`fetchManualGet exhausted retries without returning for ${url}`);
+}
+
+async function fetchTextGet(url, { fetchImpl = globalThis.fetch } = {}) {
+  const response = await fetchImpl(url, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      'User-Agent': 'adcp-owned-link-check/1.0',
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type'),
+    body: await response.text(),
+  };
+}
+
+function textAdvertisesUrl(text, url) {
+  let offset = 0;
+  while (offset < text.length) {
+    const index = text.indexOf(url, offset);
+    if (index === -1) return false;
+
+    const next = text[index + url.length];
+    const afterNext = text[index + url.length + 1];
+    if (
+      next === undefined ||
+      ' \t\r\n)]}>'.includes(next) ||
+      ('.,;:!?'.includes(next) && (
+        afterNext === undefined || ' \t\r\n'.includes(afterNext)
+      ))
+    ) {
+      return true;
+    }
+    offset = index + 1;
+  }
+  return false;
 }
 
 function resolveLocation(
@@ -480,6 +523,114 @@ export async function checkStableDocsAlias(
   }
 }
 
+export async function checkCurrentLlmsIndexAlias(
+  url,
+  {
+    expectedDestination,
+    fetchImpl = globalThis.fetch,
+    sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+    propagationRetries = LLMS_PROPAGATION_RETRIES,
+    propagationDelayMs = LLMS_PROPAGATION_DELAY_MS,
+  } = {},
+) {
+  const expectedUrl = new URL(expectedDestination, url).href;
+  const hubUrl = new URL('/llms.txt', url).href;
+  let lastFailure;
+
+  for (let attempt = 0; attempt <= propagationRetries; attempt += 1) {
+    let source;
+    try {
+      source = await fetchManualGet(url, 0, { fetchImpl, sleep });
+    } catch (error) {
+      lastFailure = `GET failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
+    if (source?.status >= 300 && source.status < 400) {
+      const location = resolveLocation(
+        url,
+        source.location,
+        source.status,
+        'CURRENT LLMS INDEX DRIFT',
+      );
+      if (!location.ok) return { ok: false, status: source.status, error: location.error };
+      if (location.url !== expectedUrl) {
+        return {
+          ok: false,
+          status: source.status,
+          location: location.url,
+          error: `CURRENT LLMS INDEX DRIFT: ${url} → ${location.url} (expected ${expectedUrl})`,
+        };
+      }
+
+      let target;
+      try {
+        target = await fetchManualGet(expectedUrl, 0, { fetchImpl, sleep });
+      } catch (error) {
+        lastFailure = `target GET failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      if (
+        target?.status >= 200 &&
+        target.status < 300 &&
+        /^text\/markdown(?:\s*;|$)/i.test(target.contentType ?? '')
+      ) {
+        let hub;
+        try {
+          hub = await fetchTextGet(hubUrl, { fetchImpl });
+        } catch (error) {
+          lastFailure = `hub GET failed: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        if (
+          hub?.status >= 200 &&
+          hub.status < 300 &&
+          /^text\/(?:markdown|plain)(?:\s*;|$)/i.test(hub.contentType ?? '') &&
+          textAdvertisesUrl(hub.body, url)
+        ) {
+          return {
+            ok: true,
+            status: target.status,
+            method: 'GET',
+            location: expectedUrl,
+            redirects: 1,
+          };
+        }
+        if (hub) {
+          lastFailure = `hub GET ${hub.status} with Content-Type ${hub.contentType || '(missing)'} did not advertise ${url}`;
+        }
+      }
+      if (
+        target &&
+        !(
+          target.status >= 200 &&
+          target.status < 300 &&
+          /^text\/markdown(?:\s*;|$)/i.test(target.contentType ?? '')
+        )
+      ) {
+        lastFailure = `target GET ${target.status} with Content-Type ${target.contentType || '(missing)'}`;
+      }
+    } else if (source) {
+      lastFailure = `alias GET ${source.status} (expected a redirect to ${expectedUrl})`;
+    }
+
+    if (attempt < propagationRetries) await sleep(propagationDelayMs);
+  }
+
+  return {
+    ok: false,
+    error: `Current documentation index did not become healthy after bounded propagation retries: ${lastFailure}`,
+  };
+}
+
+function currentLlmsIndexDestination(root) {
+  const docsConfig = JSON.parse(readFileSync(join(root, 'docs.json'), 'utf8'));
+  const versions = docsConfig?.navigation?.versions;
+  const currentVersion = versions?.find((entry) => entry.default)?.version
+    ?? versions?.[0]?.version;
+  if (typeof currentVersion !== 'string') {
+    throw new Error('docs.json does not define a current documentation version');
+  }
+  return `/_llms/${currentVersion.replaceAll('.', '-')}.md`;
+}
+
 export async function mapWithConcurrency(items, task, concurrency = CONCURRENCY) {
   const results = new Array(items.length);
   let cursor = 0;
@@ -535,11 +686,25 @@ export async function main({
 
   const catalogUrls = new Set(catalog.map(({ url }) => url));
   const urls = [...urlSources.keys()].sort();
+  let expectedCurrentLlmsDestination;
+  if (urls.includes(CURRENT_LLMS_INDEX_URL)) {
+    try {
+      expectedCurrentLlmsDestination = currentLlmsIndexDestination(root);
+    } catch (error) {
+      output.error(`Invalid current documentation index configuration: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
 
   // One shared pool bounds total network concurrency even though direct and
   // stable-alias entries receive an additional policy-specific GET.
   const checks = [
-    ...urls.map((url) => ({ kind: 'reachability', url })),
+    ...urls
+      .filter((url) => url !== CURRENT_LLMS_INDEX_URL)
+      .map((url) => ({ kind: 'reachability', url })),
+    ...(urls.includes(CURRENT_LLMS_INDEX_URL)
+      ? [{ kind: 'current-llms-index', url: CURRENT_LLMS_INDEX_URL }]
+      : []),
     ...catalog
       .filter(({ classification }) => classification === URL_CLASS.DIRECT)
       .map(({ url }) => ({ kind: URL_CLASS.DIRECT, url })),
@@ -550,8 +715,16 @@ export async function main({
   const results = await mapWithConcurrency(checks, ({ kind, url }) => {
     const options = { fetchImpl };
     if (sleep) options.sleep = sleep;
+    if (kind === 'current-llms-index') {
+      return checkCurrentLlmsIndexAlias(url, {
+        ...options,
+        expectedDestination: expectedCurrentLlmsDestination,
+      });
+    }
     if (kind === URL_CLASS.DIRECT) return checkDirectUrl(url, options);
-    if (kind === URL_CLASS.STABLE_DOCS) return checkStableDocsAlias(url, options);
+    if (kind === URL_CLASS.STABLE_DOCS) {
+      return checkStableDocsAlias(url, options);
+    }
     return checkUrl(url, {
       ...options,
       root,
