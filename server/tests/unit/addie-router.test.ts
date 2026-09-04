@@ -574,6 +574,9 @@ describe('getToolSetDescriptionsForRouter', () => {
     const descriptions = getToolSetDescriptionsForRouter(true);
 
     it('should include bounded admin domains and hide the legacy set', () => {
+      expect(descriptions).toMatch(/\*\*adcp_task_operations\*\*/);
+      expect(descriptions).toMatch(/\*\*adcp_agent_management\*\*/);
+      expect(descriptions).not.toMatch(/\*\*adcp_operations\*\*/);
       expect(descriptions).toMatch(/\*\*admin_conversation_review\*\*/);
       expect(descriptions).toMatch(/\*\*admin_followup_tasks\*\*/);
       expect(descriptions).not.toMatch(/\*\*admin_workflows\*\*/);

@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v24';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v25';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -417,6 +417,29 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 100,
     },
     answerRubric: ['Reports only the synthetic reciprocal-assertion result without changing registry or canonical-document state.'],
+  },
+  {
+    id: 'adcp-saved-agent-list',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'List the AdCP agents saved for my organization without changing them.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['adcp_agent_management'] },
+    toolFixtures: [
+      { name: 'list_saved_agents', effect: 'read', resultStatus: 'ok', result: 'Saved agent: Synthetic Seller Agent at https://seller.synthetic.invalid.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['list_saved_agents'],
+      allowedTools: ['list_saved_agents'],
+      forbiddenTools: [
+        'save_agent', 'remove_saved_agent', 'setup_test_agent',
+        'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['synthetic seller agent', 'seller.synthetic.invalid']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic saved agent without changing agent records or invoking protocol tasks.'],
   },
   {
     id: 'directory-agent-lookup',

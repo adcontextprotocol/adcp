@@ -689,7 +689,9 @@ ${
 - Resolving identifiers to stable property records, browsing the identifier catalog, or disputing a catalog entry → ["property_identifier_catalog"]
 - A request that audits a property list and adds legitimate identifiers to the catalog may select exactly ["property_list_enrichment", "property_identifier_catalog"]. Do not select the hidden legacy alias.
 - For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_registry", "property_registry_records"]
-- Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
+- AdCP task inspection/execution or live agent capabilities → ["adcp_task_operations"]
+- Saved-agent registration, listing, removal, or setup → ["adcp_agent_management"]
+- Requests needing both may select both; never use the hidden legacy alias.
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Committee documents and news-source proposals → ["content"]
 - Submitting or managing the current member's articles/perspectives, reading a Google Doc for publication, attaching an asset, or generating, regenerating, or checking a published cover illustration → ["publishing_author"]

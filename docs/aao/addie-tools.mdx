@@ -676,9 +676,9 @@ Run a compliance storyboard against the adopter MCP server connected to this Add
 
 *Source: `server/src/addie/mcp/conformance-tools.ts`*
 
-## adcp_operations
+## adcp_task_operations
 
-Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.
+Inspect or execute AdCP protocol tasks and check live agent capabilities.
 
 ### `ask_about_adcp_task`
 
@@ -704,6 +704,10 @@ Full buyer rules: ask_about_adcp_task with area="buyer".
 Discover an agent's AdCP protocol support and capabilities. Returns supported tasks, domains, features, and configuration.
 
 *Source: `server/src/addie/mcp/adcp-tools.ts`*
+
+## adcp_agent_management
+
+Register, list, remove, or set up saved AdCP agents.
 
 ### `save_agent`
 
