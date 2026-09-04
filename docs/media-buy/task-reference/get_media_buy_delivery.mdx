@@ -71,7 +71,7 @@ Returns delivery data as per-media-buy rows:
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | **Deprecated in 3.2; removed in 4.0.** Optional legacy response-wide currency for reports whose monetary values all share one denomination. Do not treat it as an aggregation currency. Prefer row or package currency. |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
-| `aggregated_totals` | **Deprecated in 3.2; removed in 4.0.** Legacy cross-buy aggregate. When present, the deprecated response-wide `currency` is required and denominates its spend. Sellers should omit it and buyers should calculate only aggregates whose row currencies and metric semantics are compatible. |
+| `aggregated_totals` | **Deprecated in 3.2; removed in 4.0.** Legacy cross-buy aggregate. When present, the deprecated response-wide `currency` is required and denominates its spend. Optional `reach_aggregation` distinguishes cross-buy deduplicated reach from a sum of constituent reach values. Sellers should omit this aggregate and buyers should calculate only aggregates whose row currencies and metric semantics are compatible. |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -132,6 +132,8 @@ if (!delivery.currency) {
 ```
 
 Buyers that need cross-buy totals calculate them from `media_buy_deliveries[]`. They MUST first verify that currencies, metric qualifiers, measurement windows, finality, and deduplication semantics are compatible. Counts such as impressions are not automatically safe to add merely because they are non-monetary; reach may be deduplicated differently, and rates require their component-weighted calculation rather than summing or averaging row values.
+
+For the deprecated `aggregated_totals.reach` field, sellers producing AdCP 3.2 payloads SHOULD include `reach_aggregation` whenever aggregate reach is present. `reach_aggregation: "deduplicated"` means the seller deduplicated uniques across every included media buy. `reach_aggregation: "sum_of_constituent_reach"` means the seller added the independently unique reach values from each buy, so the same reach unit may be counted more than once. Sellers MUST omit aggregate `frequency` for `sum_of_constituent_reach`. Legacy payloads without `reach_aggregation` remain valid, but their aggregation semantics are unknown; consumers MUST NOT use that reach as a frequency denominator.
 
 ## Common Scenarios
 

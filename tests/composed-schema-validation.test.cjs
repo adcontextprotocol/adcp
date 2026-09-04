@@ -1817,6 +1817,51 @@ async function runTests() {
     'Delivery response requires legacy response currency to denominate aggregated totals'
   );
 
+  const deduplicatedReachTotals = JSON.parse(JSON.stringify(ambiguousAggregatedTotals));
+  Object.assign(deduplicatedReachTotals.aggregated_totals, {
+    reach: 800000,
+    reach_unit: 'individuals',
+    reach_aggregation: 'deduplicated',
+    frequency: 1.25
+  });
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    deduplicatedReachTotals,
+    'Delivery response permits frequency with explicitly deduplicated aggregate reach'
+  );
+
+  const summedReachTotals = JSON.parse(JSON.stringify(ambiguousAggregatedTotals));
+  Object.assign(summedReachTotals.aggregated_totals, {
+    reach: 850000,
+    reach_unit: 'individuals',
+    reach_aggregation: 'sum_of_constituent_reach'
+  });
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    summedReachTotals,
+    'Delivery response permits summed constituent reach when aggregate frequency is omitted'
+  );
+
+  const invalidSummedReachFrequency = JSON.parse(JSON.stringify(summedReachTotals));
+  invalidSummedReachFrequency.aggregated_totals.frequency = 1.18;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    invalidSummedReachFrequency,
+    'Delivery response rejects aggregate frequency derived from summed constituent reach'
+  );
+
+  const legacyReachTotals = JSON.parse(JSON.stringify(ambiguousAggregatedTotals));
+  Object.assign(legacyReachTotals.aggregated_totals, {
+    reach: 800000,
+    reach_unit: 'individuals',
+    frequency: 1.25
+  });
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    legacyReachTotals,
+    'Delivery response preserves legacy aggregate reach and frequency without a discriminator'
+  );
+
   await testSchemaValidation(
     '/schemas/media-buy/media-buy-delivery-webhook-result.json',
     {
