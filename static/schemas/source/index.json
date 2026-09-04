@@ -1279,7 +1279,7 @@
         },
         "vast-version": {
           "$ref": "/schemas/enums/vast-version.json",
-          "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2, 4.3)"
+          "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2, 4.3, 4.4)"
         },
         "representation-selection-strategy": {
           "$ref": "/schemas/enums/representation-selection-strategy.json",

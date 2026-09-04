@@ -257,16 +257,16 @@ test('VAST selector enforces event, target, progress, and per-version constraint
   assert.equal(validate(vastSelector({ vast_event: 'impression' })), false,
     'VAST Impression is not a TrackingEvents selector');
 
-  const vastVersions = ['2.0', '3.0', '4.0', '4.1', '4.2', '4.3'];
+  const vastVersions = ['2.0', '3.0', '4.0', '4.1', '4.2', '4.3', '4.4'];
   const versionRules = [
-    { event: 'skip', allowed: ['3.0', '4.0', '4.1', '4.2', '4.3'] },
-    { event: 'progress', allowed: ['3.0', '4.0', '4.1', '4.2', '4.3'], offset: '25%' },
+    { event: 'skip', allowed: ['3.0', '4.0', '4.1', '4.2', '4.3', '4.4'] },
+    { event: 'progress', allowed: ['3.0', '4.0', '4.1', '4.2', '4.3', '4.4'], offset: '25%' },
     { event: 'fullscreen', allowed: ['2.0', '3.0'] },
     { event: 'exitFullscreen', allowed: ['3.0'] },
-    { event: 'playerExpand', allowed: ['4.0', '4.1', '4.2', '4.3'] },
-    { event: 'loaded', allowed: ['4.1', '4.2', '4.3'] },
-    { event: 'interactiveStart', allowed: ['4.2', '4.3'] },
-    { event: 'closeLinear', allowed: ['3.0', '4.1', '4.2', '4.3'] }
+    { event: 'playerExpand', allowed: ['4.0', '4.1', '4.2', '4.3', '4.4'] },
+    { event: 'loaded', allowed: ['4.1', '4.2', '4.3', '4.4'] },
+    { event: 'interactiveStart', allowed: ['4.2', '4.3', '4.4'] },
+    { event: 'closeLinear', allowed: ['3.0', '4.1', '4.2', '4.3', '4.4'] }
   ];
   for (const rule of versionRules) {
     for (const version of vastVersions) {
@@ -575,7 +575,7 @@ test('representation resolution carries exact tracker execution versions and dis
     execution_vast_version: '4.2'
   };
   assert.equal(destination(baseDestination), true, JSON.stringify(destination.errors));
-  assert.equal(destination({ ...baseDestination, execution_vast_version: '4.4' }), false);
+  assert.equal(destination({ ...baseDestination, execution_vast_version: '5.0' }), false);
 
   const selection = ajv.getSchema('/schemas/core/representation-selection.json');
   const lineage = {

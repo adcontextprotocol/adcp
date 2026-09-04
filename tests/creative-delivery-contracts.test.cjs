@@ -80,7 +80,8 @@ test('VAST assets stay singular while format and seller acceptance are plural en
   assert.equal(format({ vast_version: '4.0', vast_versions: ['4.0'] }), false,
     'singular and plural aliases are mutually exclusive so they cannot diverge');
   assert.equal(format({ vast_version: '4.0', vast_versions: ['3.0'] }), false);
-  assert.equal(format({ vast_versions: ['4.4'] }), false);
+  assert.equal(format({ vast_versions: ['4.4'] }), true);
+  assert.equal(format({ vast_versions: ['5.0'] }), false);
 
   const capabilities = JSON.parse(fs.readFileSync(
     path.join(SCHEMAS, 'protocol/get-adcp-capabilities-response.json'),
@@ -88,7 +89,7 @@ test('VAST assets stay singular while format and seller acceptance are plural en
   ));
   const vastSchema = capabilities.properties.media_buy.properties.execution.properties.creative_specs.properties.vast_versions;
   assert.equal(vastSchema.items.$ref, '/schemas/enums/vast-version.json');
-  assert.deepEqual(ajv.getSchema('/schemas/enums/vast-version.json').schema.enum.slice(-2), ['4.2', '4.3']);
+  assert.deepEqual(ajv.getSchema('/schemas/enums/vast-version.json').schema.enum.slice(-2), ['4.3', '4.4']);
 
   const resolution = capabilities.properties.creative.properties.representation_resolution;
   assert.equal(resolution.properties.supported.const, true);
