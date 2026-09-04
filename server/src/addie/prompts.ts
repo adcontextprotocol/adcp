@@ -535,8 +535,13 @@ Publishing requires an active subscription; escalate payment errors to an admin.
   },
   {
     selectedToolSets: ['admin_feed_monitoring', 'admin_feed_curation'],
-    text: `### Feed operations
-- Use monitoring for reads and curation for changes or contacts.`,
+    text: `### Feed tools
+- Reads use monitoring; changes use curation.`,
+  },
+  {
+    selectedToolSets: ['admin_conversation_review', 'admin_followup_tasks'],
+    text: `### Admin workflows
+- Review handles analytics/flags; follow-up handles tasks/logs.`,
   },
 ];
 
@@ -562,7 +567,7 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
 - List Slack or paying-member records only for the requested administrative purpose.
 - update_member_logo and update_member_profile change directory records; check subscription and publication state first.`,
   admin_workflows: `### Admin workflow operations
-- Query analytics, review flagged conversations, maintain reminders and tasks, and log member or prospect interactions.`,
+- Compatibility surface for analytics, flagged reviews, reminders, tasks, and interaction logs.`,
   admin_brand_registry_integrity: `### Admin brand-registry integrity
 - Review registry gaps, community mirrors, and orphaned brands before changing ownership.
 - transfer_brand_ownership changes registry authority; act only on the explicitly named brand and confirmed destination organization.`,
@@ -726,6 +731,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'admin_feeds'
       && ['admin_feed_monitoring', 'admin_feed_curation']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The error channel may add the hidden workflow union to a profile that
+    // already contains both bounded workflow domains.
+    if (
+      name === 'admin_workflows'
+      && ['admin_conversation_review', 'admin_followup_tasks']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

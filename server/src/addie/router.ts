@@ -725,7 +725,9 @@ ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage regis
 - Duplicate-organization investigation or merge, domain-health checks, and verified-domain reconciliation → ["admin_organization_integrity"]
 - Organization-member role changes, organization Slack rosters, paying-member records, or directory logo/profile changes → ["admin_organization_member_records"]
 - A request that genuinely needs both organization integrity and member-record workflows may select both bounded domains; do not select the hidden legacy alias or add a composite.
-- Task management, marking tasks done, checking tasks, reminders, logging conversations, flagged-conversation review, or community analytics → ["admin_workflows"]
+- Community analytics or listing/reviewing flagged conversations → ["admin_conversation_review"]
+- Task management, reminders, or logging member/prospect interactions → ["admin_followup_tasks"]
+- A request that genuinely needs analytics/review plus follow-up work may select both bounded domains; do not select the hidden legacy alias.
 - Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
 ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming a working group (admin action) → ["admin_group_structure"]
@@ -735,7 +737,7 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Pending or existing brand-logo queues, approvals, rejections, or deletions → ["admin_brand_logo_review"]
 - A request that genuinely needs both brand-registry integrity and logo-review workflows may select both bounded domains; do not select the hidden legacy alias.
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
-- Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
+- Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_conversation_review"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]
 - Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge
 - Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
@@ -1490,7 +1492,7 @@ export class AddieRouter {
       if (adminAnalyticsPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin_workflows"],
+          tool_sets: ["admin_conversation_review"],
           confidence: "high",
           reason: "Admin engagement/analytics query",
           decision_method: "quick_match",
@@ -1504,7 +1506,7 @@ export class AddieRouter {
       if (adminTaskPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin_workflows"],
+          tool_sets: ["admin_followup_tasks"],
           confidence: "high",
           reason: "Admin task management",
           decision_method: "quick_match",
@@ -1518,7 +1520,7 @@ export class AddieRouter {
       if (outreachLogPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin_workflows"],
+          tool_sets: ["admin_followup_tasks"],
           confidence: "high",
           reason: "Admin outreach logging",
           decision_method: "quick_match",

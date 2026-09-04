@@ -14,11 +14,13 @@ import {
   ADMIN_BRAND_LOGO_REVIEW_TOOLS,
   ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS,
   ADMIN_BRANDS_TOOLS,
+  ADMIN_CONVERSATION_REVIEW_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
   ADMIN_FEED_CURATION_TOOLS,
   ADMIN_FEED_DOMAIN_TOOL_SETS,
   ADMIN_FEED_MONITORING_TOOLS,
   ADMIN_FEEDS_TOOLS,
+  ADMIN_FOLLOWUP_TASK_TOOLS,
   ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
@@ -26,6 +28,8 @@ import {
   ADMIN_PROSPECT_PIPELINE_TOOLS,
   ADMIN_PROSPECT_RESEARCH_TOOLS,
   ADMIN_PROSPECTS_TOOLS,
+  ADMIN_WORKFLOW_DOMAIN_TOOL_SETS,
+  ADMIN_WORKFLOWS_TOOLS,
   AGENT_PUBLISHER_DIRECTORY_TOOLS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
@@ -131,6 +135,9 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_feed_monitoring**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_feed_curation**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_feeds**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_conversation_review**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_followup_tasks**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_workflows**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_member_records**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_organizations**');
@@ -337,6 +344,39 @@ describe('getToolsForSets', () => {
       );
       expect(getToolsForSets(['admin_feeds'], true, false)).toEqual(
         expect.arrayContaining(ADMIN_FEEDS_TOOLS),
+      );
+    });
+
+    it('keeps conversation review and follow-up work separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_CONVERSATION_REVIEW_TOOLS).toEqual([
+        'query_admin_analytics', 'list_flagged_conversations', 'review_flagged_conversation',
+      ]);
+      expect(ADMIN_FOLLOWUP_TASK_TOOLS).toEqual([
+        'set_reminder', 'my_upcoming_tasks', 'complete_task', 'log_conversation',
+      ]);
+      expect(ADMIN_WORKFLOWS_TOOLS).toEqual([
+        'query_admin_analytics', 'list_flagged_conversations', 'review_flagged_conversation',
+        'set_reminder', 'my_upcoming_tasks', 'complete_task', 'log_conversation',
+      ]);
+      expect(TOOL_SETS.admin_workflows.tools).toEqual(ADMIN_WORKFLOWS_TOOLS);
+      expect(TOOL_SETS.admin_workflows.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_workflows')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_WORKFLOW_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+        const customTools = getToolsForSets([name], true, false)
+          .filter((toolName) => toolName !== 'web_search');
+        expect(customTools.length, name).toBeLessThanOrEqual(12);
+      }
+      expect(getToolsForSets(['admin_conversation_review'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_FOLLOWUP_TASK_TOOLS),
+      );
+      expect(getToolsForSets(['admin_followup_tasks'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_CONVERSATION_REVIEW_TOOLS),
+      );
+      expect(getToolsForSets(['admin_workflows'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_WORKFLOWS_TOOLS),
       );
     });
   });

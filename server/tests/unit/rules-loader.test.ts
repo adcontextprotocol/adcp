@@ -306,16 +306,38 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['admin_feed_curation'],
     });
 
-    expect(monitoring).toContain('### Feed operations');
+    expect(monitoring).toContain('### Feed tools');
     expect(monitoring).toContain('- **admin_feed_monitoring** *(admin only)*');
     expect(monitoring).toContain('list_feed_proposals');
     expect(monitoring).not.toContain('- **admin_feed_curation**');
     expect(monitoring).not.toContain('approve_feed_proposal');
-    expect(curation).toContain('### Feed operations');
+    expect(curation).toContain('### Feed tools');
     expect(curation).toContain('- **admin_feed_curation** *(admin only)*');
     expect(curation).toContain('approve_feed_proposal');
     expect(curation).not.toContain('- **admin_feed_monitoring**');
     expect(curation).not.toContain('list_feed_proposals');
+  });
+
+  it('keeps admin review and follow-up guidance request-scoped', () => {
+    const review = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_conversation_review'], true, false),
+      selectedToolSetNames: ['admin_conversation_review'],
+    });
+    const followup = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_followup_tasks'], true, false),
+      selectedToolSetNames: ['admin_followup_tasks'],
+    });
+
+    expect(review).toContain('### Admin workflows');
+    expect(review).toContain('- **admin_conversation_review** *(admin only)*');
+    expect(review).toContain('query_admin_analytics');
+    expect(review).not.toContain('- **admin_followup_tasks**');
+    expect(review).not.toContain('set_reminder');
+    expect(followup).toContain('### Admin workflows');
+    expect(followup).toContain('- **admin_followup_tasks** *(admin only)*');
+    expect(followup).toContain('set_reminder');
+    expect(followup).not.toContain('- **admin_conversation_review**');
+    expect(followup).not.toContain('query_admin_analytics');
   });
 
   it('keeps organization-integrity and member-record guidance request-scoped', () => {
@@ -375,15 +397,15 @@ describe('Addie tool reference', () => {
   it('keeps the cacheable guidance stable while domain instructions vary', () => {
     const stable = buildAddieStableToolReference();
     const scoped = buildAddieScopedToolReference({
-      availableToolNames: getToolsForSets(['admin_workflows'], true, false),
-      selectedToolSetNames: ['admin_workflows'],
+      availableToolNames: getToolsForSets(['admin_followup_tasks'], true, false),
+      selectedToolSetNames: ['admin_followup_tasks'],
     });
 
     expect(stable).toContain('## Behavioral Guidelines');
-    expect(stable).not.toContain('### Admin workflow operations');
+    expect(stable).not.toContain('### Admin workflows');
     expect(stable).not.toContain('## Authoritative custom-tool catalog');
-    expect(scoped).toContain('### Admin workflow operations');
-    expect(scoped).toContain('- **admin_workflows** *(admin only)*');
+    expect(scoped).toContain('### Admin workflows');
+    expect(scoped).toContain('- **admin_followup_tasks** *(admin only)*');
   });
 
   it('loads knowledge guidance only for the routed knowledge domain', () => {
@@ -930,11 +952,11 @@ describe('Addie tool reference', () => {
   it('omits selected-domain guidance when no domain tool reached the wire', () => {
     const scoped = buildAddieScopedToolReference({
       availableToolNames: ['search_docs'],
-      selectedToolSetNames: ['admin_workflows'],
+      selectedToolSetNames: ['admin_conversation_review'],
     });
 
-    expect(scoped).not.toContain('### Admin workflow operations');
-    expect(scoped).not.toContain('- **admin_workflows**');
+    expect(scoped).not.toContain('### Admin workflows');
+    expect(scoped).not.toContain('- **admin_conversation_review**');
   });
 
   it('lists only tool names present on the request wire surface', () => {
