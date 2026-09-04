@@ -308,24 +308,24 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - Never register the public test agent or a buyer agent. Buyer agents are clients that call seller agents; direct their builders to the client SDKs and public test agent instead.`,
   },
   {
-    selectedToolSets: ['brand_registry'],
-    text: `### Brand-registry operations
+    selectedToolSets: ['brand_registry_records'],
+    text: `### Brand-registry records
 - research_brand: Research a brand by domain and save enrichment data.
 - resolve_brand: Resolve a domain to its canonical brand identity from brand.json.
 - save_brand: Add a community brand. It is not needed after research_brand, which auto-saves enrichment.
 - list_brands: Browse registry entries.
-- list_missing_brands: Show the most-requested brands not yet in the registry.
-- upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.`,
+- list_missing_brands: Show the most-requested brands not yet in the registry.`,
   },
   {
-    selectedToolSets: ['brand_registry'],
+    selectedToolSets: ['brand_registry_identity'],
     requiredToolNames: [
       'publish_brand_canonical_document',
       'add_to_brand_refs',
       'check_mutual_assertion',
       'notify_pending_verification',
     ],
-    text: `### Brand canonical-document operations
+    text: `### Brand identity and canonical-document operations
+- upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.
 - publish_brand_canonical_document: Generate and validate a leaf brand document for the operator to host; the tool does not upload it.
 - add_to_brand_refs: Add the reciprocal child pointer to a house portfolio.
 - check_mutual_assertion: Verify whether leaf and house documents reciprocally assert the relationship.

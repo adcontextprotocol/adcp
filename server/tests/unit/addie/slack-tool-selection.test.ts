@@ -15,6 +15,7 @@ import {
   AGENT_END_TO_END_TOOLS,
   ADMIN_BRANDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
+  BRAND_REGISTRY_TOOLS,
   COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
   COMMUNITY_GROUP_TOOLS,
   getToolsForSets,
@@ -142,7 +143,7 @@ describe('Slack tool-set selection policy', () => {
 
   it('uses the explicit audited read-only surface for public app mentions', () => {
     const publicMention = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'public brand lookup', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['brand_registry_records'], confidence: 'high', reason: 'public brand lookup', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'mention',
       isAdmin: true,
@@ -160,6 +161,22 @@ describe('Slack tool-set selection policy', () => {
       'escalate_to_admin', 'resolve_escalation', 'get_account_link',
       'create_payment_link', 'start_certification_module', 'set_my_name',
     ]));
+  });
+
+  it('filters every identity-domain tool from a public brand-verification mention', () => {
+    const publicMention = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['brand_registry_identity'], confidence: 'high', reason: 'public canonical check', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(publicMention.useSafeFallback).toBe(false);
+    expect(publicMention.allowedToolNames.filter((name) =>
+      (BRAND_REGISTRY_TOOLS as readonly string[]).includes(name),
+    )).toEqual([]);
   });
 
   it.each(['mention', 'channel'] as const)(
@@ -571,6 +588,7 @@ describe('Slack tool-set selection policy', () => {
     ['legacy agent-validation union', { action: 'respond', tool_sets: ['agent_validation'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy meetings union', { action: 'respond', tool_sets: ['meetings'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy community-groups union', { action: 'respond', tool_sets: ['community_groups'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy brand-registry union', { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],

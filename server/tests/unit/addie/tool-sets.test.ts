@@ -15,6 +15,9 @@ import {
   ADMIN_ORGANIZATIONS_TOOLS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
+  BRAND_REGISTRY_IDENTITY_TOOLS,
+  BRAND_REGISTRY_RECORDS_TOOLS,
+  BRAND_REGISTRY_TOOLS,
   CERTIFICATION_ASSESSMENT_TOOLS,
   CERTIFICATION_LEARNING_TOOLS,
   CERTIFICATION_OVERVIEW_TOOLS,
@@ -106,6 +109,9 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_registry_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_logo_review**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_brands**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_records**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_identity**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **brand_registry**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
@@ -394,15 +400,38 @@ describe('getToolsForSets', () => {
   });
 
   describe('brand canonical-document workflow', () => {
-    it('routes the complete publish, reciprocity, notification, and logo surface separately from directory lookup', () => {
+    it('keeps registry records and identity verification separate while retaining the exact hidden alias', () => {
+      expect(BRAND_REGISTRY_RECORDS_TOOLS).toEqual([
+        'research_brand', 'resolve_brand', 'save_brand', 'list_brands', 'list_missing_brands',
+      ]);
+      expect(BRAND_REGISTRY_IDENTITY_TOOLS).toEqual([
+        'upload_brand_logo', 'publish_brand_canonical_document', 'add_to_brand_refs',
+        'check_mutual_assertion', 'notify_pending_verification',
+      ]);
+      expect(BRAND_REGISTRY_TOOLS).toEqual([
+        'research_brand', 'resolve_brand', 'save_brand', 'list_brands', 'list_missing_brands',
+        'upload_brand_logo', 'publish_brand_canonical_document', 'add_to_brand_refs',
+        'check_mutual_assertion', 'notify_pending_verification',
+      ]);
+      expect(TOOL_SETS.brand_registry.tools).toEqual(BRAND_REGISTRY_TOOLS);
+      expect(TOOL_SETS.brand_registry.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('brand_registry')).toBe(false);
+      expect(getValidToolSetNames(false).has('brand_registry_records')).toBe(true);
+      expect(getValidToolSetNames(false).has('brand_registry_identity')).toBe(true);
+      expect(getToolsForSets(['brand_registry_records'], false, false)).toEqual(
+        expect.arrayContaining(BRAND_REGISTRY_RECORDS_TOOLS),
+      );
+      expect(getToolsForSets(['brand_registry_records'], false, false).filter((name) =>
+        (BRAND_REGISTRY_IDENTITY_TOOLS as readonly string[]).includes(name),
+      )).toEqual([]);
+      expect(getToolsForSets(['brand_registry_identity'], false, false)).toEqual(
+        expect.arrayContaining(BRAND_REGISTRY_IDENTITY_TOOLS),
+      );
+      expect(getToolsForSets(['brand_registry_identity'], false, false).filter((name) =>
+        (BRAND_REGISTRY_RECORDS_TOOLS as readonly string[]).includes(name),
+      )).toEqual([]);
       expect(getToolsForSets(['brand_registry'], false, false)).toEqual(
-        expect.arrayContaining([
-          'upload_brand_logo',
-          'publish_brand_canonical_document',
-          'add_to_brand_refs',
-          'check_mutual_assertion',
-          'notify_pending_verification',
-        ]),
+        expect.arrayContaining(BRAND_REGISTRY_TOOLS),
       );
       expect(getToolsForSets(['directory'], false, false)).not.toContain('save_brand');
       expect(getToolsForSets(['directory'], false, false)).not.toContain('publish_brand_canonical_document');
@@ -497,7 +526,8 @@ describe('getToolsForSets', () => {
       ['community_research', 6],
       ['schema_reference', 4],
       ['directory', 9],
-      ['brand_registry', 10],
+      ['brand_registry_records', 5],
+      ['brand_registry_identity', 5],
       ['agent_registry', 5],
       ['agent_quality', 3],
       ['agent_authentication', 2],

@@ -622,20 +622,31 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['directory'], false, false),
       selectedToolSetNames: ['directory'],
     });
-    const brandRegistry = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['brand_registry'], false, false),
-      selectedToolSetNames: ['brand_registry'],
+    const records = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['brand_registry_records'], false, false),
+      selectedToolSetNames: ['brand_registry_records'],
+    });
+    const identity = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['brand_registry_identity'], false, false),
+      selectedToolSetNames: ['brand_registry_identity'],
     });
     const property = buildAddieToolReference({
       availableToolNames: getToolsForSets(['property_catalog'], false, false),
       selectedToolSetNames: ['property_catalog'],
     });
 
-    expect(directory).not.toContain('### Brand-registry operations');
+    expect(directory).not.toContain('### Brand-registry records');
+    expect(directory).not.toContain('### Brand identity and canonical-document operations');
     expect(directory).not.toContain('### Property-registry operations');
-    expect(brandRegistry).toContain('### Brand-registry operations');
-    expect(brandRegistry).not.toContain('### Member-directory operations');
-    expect(property).not.toContain('### Brand-registry operations');
+    expect(records).toContain('### Brand-registry records');
+    expect(records).not.toContain('### Brand identity and canonical-document operations');
+    expect(records).not.toContain('upload_brand_logo');
+    expect(identity).toContain('### Brand identity and canonical-document operations');
+    expect(identity).not.toContain('### Brand-registry records');
+    expect(identity).toContain('upload_brand_logo');
+    expect(records).not.toContain('### Member-directory operations');
+    expect(property).not.toContain('### Brand-registry records');
+    expect(property).not.toContain('### Brand identity and canonical-document operations');
   });
 
   it('requires optional storyboard tools before advertising that workflow', () => {
@@ -787,19 +798,19 @@ describe('Addie tool reference', () => {
   });
 
   it('loads brand canonical guidance only with the complete routed workflow', () => {
-    const directoryTools = getToolsForSets(['brand_registry'], false, false);
+    const directoryTools = getToolsForSets(['brand_registry_identity'], false, false);
     const complete = buildAddieToolReference({
       availableToolNames: directoryTools,
-      selectedToolSetNames: ['brand_registry'],
+      selectedToolSetNames: ['brand_registry_identity'],
     });
     const missingCheck = buildAddieToolReference({
       availableToolNames: directoryTools.filter(name => name !== 'check_mutual_assertion'),
-      selectedToolSetNames: ['brand_registry'],
+      selectedToolSetNames: ['brand_registry_identity'],
     });
 
-    expect(complete).toContain('### Brand canonical-document operations');
+    expect(complete).toContain('### Brand identity and canonical-document operations');
     expect(complete).toContain('upload_brand_logo');
-    expect(missingCheck).not.toContain('### Brand canonical-document operations');
+    expect(missingCheck).not.toContain('### Brand identity and canonical-document operations');
   });
 
   it('keeps migrated protocol-domain prose out of the stable prompt', () => {
@@ -808,7 +819,8 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Publisher and agent testing');
     expect(stable).not.toContain('### AdCP protocol operations');
     expect(stable).not.toContain('### Seller-agent monitoring');
-    expect(stable).not.toContain('### Brand-registry operations');
+    expect(stable).not.toContain('### Brand-registry records');
+    expect(stable).not.toContain('### Brand identity and canonical-document operations');
     expect(stable).not.toContain('### Property-registry operations');
     expect(stable).not.toContain('### Building with AdCP');
     expect(stable).not.toContain('### Member account and organization self-service');
