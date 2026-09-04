@@ -147,4 +147,59 @@ describe('deferred certification badge membership gate', () => {
     expect(result).not.toContain('&certId=');
     expect(mocks.ensureCertifierCredential).not.toHaveBeenCalled();
   });
+
+  it('renders links for an older credential with no Certifier group', async () => {
+    const awardedAt = '2026-08-01T00:00:00.000Z';
+    mocks.getCredentials.mockResolvedValue([{
+      id: 'decision_makers',
+      name: 'AdCP for Decision-Makers',
+      tier: 1,
+      certifier_group_id: null,
+    }]);
+    mocks.getUserCredentials.mockResolvedValue([{
+      credential_id: 'decision_makers',
+      certifier_credential_id: null,
+      certifier_public_id: null,
+      awarded_at: awardedAt,
+    }]);
+
+    const handlers = createCertificationToolHandlers({
+      is_member: false,
+      workos_user: {
+        workos_user_id: 'user_decision_maker',
+        email: 'learner@example.test',
+      },
+    } as any);
+
+    const result = await handlers.get('check_credentials')?.({});
+
+    expect(result).toContain('Credential earned: AdCP for Decision-Makers!');
+    expect(result).toContain('[Add to LinkedIn profile](https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME');
+    expect(result).toContain('&issueYear=2026&issueMonth=8');
+    expect(mocks.ensureCertifierCredential).not.toHaveBeenCalled();
+  });
+
+  it('does not retry an older configured credential while still rendering its links', async () => {
+    mocks.hasEffectiveMembershipForUser.mockResolvedValue(true);
+    mocks.getUserCredentials.mockResolvedValue([{
+      credential_id: 'practitioner',
+      certifier_credential_id: null,
+      certifier_public_id: null,
+      awarded_at: '2026-08-01T00:00:00.000Z',
+    }]);
+
+    const handlers = createCertificationToolHandlers({
+      is_member: true,
+      workos_user: {
+        workos_user_id: 'user_lapsed',
+        email: 'learner@example.test',
+      },
+    } as any);
+
+    const result = await handlers.get('check_credentials')?.({});
+
+    expect(result).toContain('Credential earned: AdCP Practitioner!');
+    expect(result).toContain('[Add to LinkedIn profile]');
+    expect(mocks.ensureCertifierCredential).not.toHaveBeenCalled();
+  });
 });
