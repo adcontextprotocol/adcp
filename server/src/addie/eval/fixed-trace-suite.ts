@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v22';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v23';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -558,6 +558,29 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 100,
     },
     answerRubric: ['Reports only the synthetic unclaimed record without changing the pipeline or invoking prospect research.'],
+  },
+  {
+    id: 'admin-feed-monitoring-proposals',
+    category: 'admin_read',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Show pending industry feed proposals before I take any curation action.', nowUtc: NOW, isAdmin: true },
+    routing: { action: 'respond', toolSets: ['admin_feed_monitoring'] },
+    toolFixtures: [
+      { name: 'list_feed_proposals', effect: 'read', resultStatus: 'ok', result: 'Synthetic pending feed proposal: fp-synthetic-alpha for Synthetic Industry Dispatch.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['list_feed_proposals'],
+      allowedTools: ['list_feed_proposals'],
+      forbiddenTools: [
+        'search_industry_feeds', 'get_feed_stats', 'add_industry_feed',
+        'approve_feed_proposal', 'reject_feed_proposal', 'add_media_contact',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['fp-synthetic-alpha', 'synthetic industry dispatch']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic pending proposal without changing feed, proposal, or media-contact state.'],
   },
   {
     id: 'meeting-full-administration-confirmed',

@@ -15,6 +15,10 @@ import {
   ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS,
   ADMIN_BRANDS_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
+  ADMIN_FEED_CURATION_TOOLS,
+  ADMIN_FEED_DOMAIN_TOOL_SETS,
+  ADMIN_FEED_MONITORING_TOOLS,
+  ADMIN_FEEDS_TOOLS,
   ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
@@ -124,6 +128,9 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_pipeline**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_research**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_prospects**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_feed_monitoring**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_feed_curation**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_feeds**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_member_records**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_organizations**');
@@ -297,6 +304,39 @@ describe('getToolsForSets', () => {
       );
       expect(getToolsForSets(['admin_prospects'], true, false)).toEqual(
         expect.arrayContaining(ADMIN_PROSPECTS_TOOLS),
+      );
+    });
+
+    it('keeps feed monitoring and curation separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_FEED_MONITORING_TOOLS).toEqual([
+        'search_industry_feeds', 'get_feed_stats', 'list_feed_proposals',
+      ]);
+      expect(ADMIN_FEED_CURATION_TOOLS).toEqual([
+        'add_industry_feed', 'approve_feed_proposal', 'reject_feed_proposal', 'add_media_contact',
+      ]);
+      expect(ADMIN_FEEDS_TOOLS).toEqual([
+        'search_industry_feeds', 'add_industry_feed', 'get_feed_stats', 'list_feed_proposals',
+        'approve_feed_proposal', 'reject_feed_proposal', 'add_media_contact',
+      ]);
+      expect(TOOL_SETS.admin_feeds.tools).toEqual(ADMIN_FEEDS_TOOLS);
+      expect(TOOL_SETS.admin_feeds.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_feeds')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_FEED_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+        const customTools = getToolsForSets([name], true, false)
+          .filter((toolName) => toolName !== 'web_search');
+        expect(customTools.length, name).toBeLessThanOrEqual(12);
+      }
+      expect(getToolsForSets(['admin_feed_monitoring'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_FEED_CURATION_TOOLS),
+      );
+      expect(getToolsForSets(['admin_feed_curation'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_FEED_MONITORING_TOOLS),
+      );
+      expect(getToolsForSets(['admin_feeds'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_FEEDS_TOOLS),
       );
     });
   });

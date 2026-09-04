@@ -719,7 +719,9 @@ ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage regis
 - Adding, updating, querying, or claiming prospect records → ["admin_prospect_pipeline"]
 - Researching, enriching, triaging, or suggesting prospect organizations → ["admin_prospect_research"]
 - A request that genuinely needs both prospect workflows may select both bounded domains; do not select the hidden legacy alias.
-- Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
+- Searching industry feeds, inspecting feed statistics, or listing feed proposals → ["admin_feed_monitoring"]
+- Adding an industry feed, approving or rejecting a feed proposal, or adding a verified media contact → ["admin_feed_curation"]
+- A request that genuinely needs feed inspection plus a curation action may select both bounded domains; do not select the hidden legacy alias.
 - Duplicate-organization investigation or merge, domain-health checks, and verified-domain reconciliation → ["admin_organization_integrity"]
 - Organization-member role changes, organization Slack rosters, paying-member records, or directory logo/profile changes → ["admin_organization_member_records"]
 - A request that genuinely needs both organization integrity and member-record workflows may select both bounded domains; do not select the hidden legacy alias or add a composite.
