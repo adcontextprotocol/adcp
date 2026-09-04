@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v17');
-    expect(FIXED_TRACE_SUITE).toHaveLength(16);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v18');
+    expect(FIXED_TRACE_SUITE).toHaveLength(17);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -244,6 +244,23 @@ describe('fixed cross-provider trace suite', () => {
       'review_brand_logo',
       'transfer_brand_ownership',
       'list_orphaned_brands',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
+  it('keeps the brand-identity fixed trace provider-neutral, read-only, and bounded', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'brand-mutual-assertion')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['brand_registry_identity'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['check_mutual_assertion']);
+    expect(trace.expectation.requiredTools).toEqual(['check_mutual_assertion']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'research_brand',
+      'save_brand',
+      'upload_brand_logo',
+      'publish_brand_canonical_document',
+      'add_to_brand_refs',
+      'notify_pending_verification',
     ]);
     expect(trace.expectation.mutationAuthorization).toBe('none');
   });
@@ -357,8 +374,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 16,
-      observed: 16,
+      expected: 17,
+      observed: 17,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -369,11 +386,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 16);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.013);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 17);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.0135);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 13,
+      complete: 14,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -522,7 +539,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 16, observed: 3, omitted: 13, complete: false });
+    expect(summary).toMatchObject({ expected: 17, observed: 3, omitted: 14, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

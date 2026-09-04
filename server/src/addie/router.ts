@@ -675,7 +675,9 @@ ${
 - Creating a post in one of the current member's working groups, or saving/bookmarking a community resource → ["community_group_contribution"]
 - A single long request that explicitly spans at least three group workflows (discovery, membership, council interest, or contribution) → exactly ["community_group_full_participation"]. Use one or two narrow group domains for ordinary requests; genuine two-workflow requests remain under the global two-domain cap.
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"], ["agent_registry"], or ["property_catalog"]
+- Researching, resolving, saving, or browsing brand-registry records, or finding missing brands → ["brand_registry_records"], not ["directory"], ["agent_registry"], or ["property_catalog"]
+- Managing brand logos or canonical documents, checking reciprocal brand.json assertions, or notifying pending verification → ["brand_registry_identity"], not ["directory"], ["agent_registry"], or ["property_catalog"]
+- A request that genuinely needs both registry-record and identity-verification workflows may select both bounded domains; do not select the hidden legacy alias.
 - Validating adagents.json, brand resolution, registry status, or publisher authorization → ["agent_registry"]
 - Testing an agent's live quality, RFP response, or IO execution → ["agent_quality"]
 - Diagnosing OAuth or grading RFC 9421 request signing → ["agent_authentication"]
