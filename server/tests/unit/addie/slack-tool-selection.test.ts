@@ -12,6 +12,8 @@ import {
   type SystemChannelRole,
 } from '../../../src/addie/slack-tool-selection.js';
 import {
+  ADCP_AGENT_MANAGEMENT_TOOLS,
+  ADCP_TASK_OPERATION_TOOLS,
   AGENT_END_TO_END_TOOLS,
   ADMIN_BRANDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
@@ -388,6 +390,54 @@ describe('Slack tool-set selection policy', () => {
     expect(selection.allowedToolNames).toEqual(expect.arrayContaining(expectedTools));
     expect(selection.allowedToolNames).not.toContain('test_adcp_agent');
     expect(selection.allowedToolNames).not.toContain('compare_media_kit');
+  });
+
+  it('keeps AdCP task and saved-agent reaction surfaces separate', () => {
+    const taskSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_task_operations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+      isToolAvailable: () => true,
+    });
+    const managementSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_agent_management'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(taskSelection.allowedToolNames).toEqual(expect.arrayContaining(ADCP_TASK_OPERATION_TOOLS));
+    expect(taskSelection.allowedToolNames).not.toEqual(expect.arrayContaining(ADCP_AGENT_MANAGEMENT_TOOLS));
+    expect(managementSelection.allowedToolNames).toEqual(expect.arrayContaining(ADCP_AGENT_MANAGEMENT_TOOLS));
+    expect(managementSelection.allowedToolNames).not.toEqual(expect.arrayContaining(ADCP_TASK_OPERATION_TOOLS));
+  });
+
+  it('keeps public AdCP mentions read-only and strips saved-agent management', () => {
+    const taskSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_task_operations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+    const managementSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_agent_management'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(taskSelection.allowedToolNames).toEqual([
+      'web_search', 'ask_about_adcp_task', 'get_adcp_capabilities',
+    ]);
+    expect(managementSelection.allowedToolNames).toEqual(['web_search']);
   });
 
   it('retains a long end-to-end agent request as one domain under the direct cap', () => {

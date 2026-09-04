@@ -620,6 +620,35 @@ export const PROPERTY_CATALOG_TOOLS = [
   "dispute_catalog_entry",
 ] as const;
 
+/** Bounded AdCP protocol-operation domains for ordinary router plans. */
+export const ADCP_OPERATION_DOMAIN_TOOL_SETS = {
+  adcp_task_operations: [
+    "ask_about_adcp_task",
+    "call_adcp_task",
+    "get_adcp_capabilities",
+  ],
+  adcp_agent_management: [
+    "save_agent",
+    "list_saved_agents",
+    "remove_saved_agent",
+    "setup_test_agent",
+  ],
+} as const;
+
+export const ADCP_TASK_OPERATION_TOOLS = ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_task_operations;
+export const ADCP_AGENT_MANAGEMENT_TOOLS = ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_agent_management;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADCP_OPERATIONS_TOOLS = [
+  "ask_about_adcp_task",
+  "call_adcp_task",
+  "get_adcp_capabilities",
+  "save_agent",
+  "list_saved_agents",
+  "remove_saved_agent",
+  "setup_test_agent",
+] as const;
+
 /**
  * Tool set definitions
  */
@@ -839,21 +868,26 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: ["issue_conformance_token", "run_conformance_against_my_agent"],
   },
 
+  adcp_task_operations: {
+    name: "adcp_task_operations",
+    description:
+      "Inspect or execute AdCP protocol tasks and check live agent capabilities.",
+    tools: [...ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_task_operations],
+  },
+
+  adcp_agent_management: {
+    name: "adcp_agent_management",
+    description:
+      "Register, list, remove, or set up saved AdCP agents.",
+    tools: [...ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_agent_management],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   adcp_operations: {
     name: "adcp_operations",
-    description:
-      "Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.",
-    tools: [
-      // Meta-tools (replace 43 individual AdCP tools)
-      "ask_about_adcp_task",
-      "call_adcp_task",
-      "get_adcp_capabilities",
-      // Agent management (unchanged, from member-tools.ts)
-      "save_agent",
-      "list_saved_agents",
-      "remove_saved_agent",
-      "setup_test_agent",
-    ],
+    description: "Legacy combined AdCP task and saved-agent compatibility surface.",
+    tools: [...ADCP_OPERATIONS_TOOLS],
+    routerVisible: false,
   },
 
   sponsored_intelligence: {

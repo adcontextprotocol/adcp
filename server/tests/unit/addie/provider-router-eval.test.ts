@@ -141,12 +141,12 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(106);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(106);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(108);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(108);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
-      'adcp_operations', 'sponsored_intelligence', 'content',
+      'adcp_task_operations', 'adcp_agent_management', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
       'member_billing', 'admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account',
@@ -159,7 +159,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(105);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(107);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -175,6 +175,7 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('admin_prospects');
     expect(expectedSets).not.toContain('admin_feeds');
     expect(expectedSets).not.toContain('admin_workflows');
+    expect(expectedSets).not.toContain('adcp_operations');
   });
 
   it('selects only the bounded directory domain needed by an ordinary request', async () => {
@@ -229,6 +230,33 @@ describe('strict router eval', () => {
     ), 'router-model', 'prompt_parity', testCase);
 
     expect(testCase.expected.toolSets).toEqual(['brand_registry_records', 'brand_registry_identity']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded AdCP operation domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['adcp-task-operation', 'adcp_task_operations'],
+      ['adcp-agent-management', 'adcp_agent_management'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded AdCP operation"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the bounded dual-domain AdCP operation case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'adcp-task-and-agent-management')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["adcp_task_operations","adcp_agent_management"],"confidence":"high","requires_depth":true,"reason":"register and inspect"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["adcp_agent_management"],"confidence":"high","requires_depth":true,"reason":"register only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['adcp_agent_management', 'adcp_task_operations']);
     expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
     expect(incompleteResult.scores.toolsExact).toBe(false);
   });

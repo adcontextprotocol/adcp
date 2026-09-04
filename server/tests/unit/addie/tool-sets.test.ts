@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { ADDIE_TOOL_CATALOG } from '../../../src/addie/generated/tool-catalog.generated.js';
 import {
+  ADCP_AGENT_MANAGEMENT_TOOLS,
+  ADCP_OPERATION_DOMAIN_TOOL_SETS,
+  ADCP_OPERATIONS_TOOLS,
+  ADCP_TASK_OPERATION_TOOLS,
   AGENT_AUTHENTICATION_TOOLS,
   AGENT_END_TO_END_TOOLS,
   AGENT_QUALITY_TOOLS,
@@ -68,6 +72,38 @@ import {
 } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
+  it('keeps AdCP task operations and saved-agent management separate with an exact hidden alias', () => {
+    expect(ADCP_TASK_OPERATION_TOOLS).toEqual([
+      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+    ]);
+    expect(ADCP_AGENT_MANAGEMENT_TOOLS).toEqual([
+      'save_agent', 'list_saved_agents', 'remove_saved_agent', 'setup_test_agent',
+    ]);
+    expect(ADCP_OPERATIONS_TOOLS).toEqual([
+      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+      'save_agent', 'list_saved_agents', 'remove_saved_agent', 'setup_test_agent',
+    ]);
+    expect(TOOL_SETS.adcp_operations.tools).toEqual(ADCP_OPERATIONS_TOOLS);
+    expect(TOOL_SETS.adcp_operations.routerVisible).toBe(false);
+    expect(getValidToolSetNames(false).has('adcp_operations')).toBe(false);
+    for (const [name, domainTools] of Object.entries(ADCP_OPERATION_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+      const customTools = getToolsForSets([name], false, false)
+        .filter((toolName) => toolName !== 'web_search');
+      expect(customTools.length, name).toBeLessThanOrEqual(12);
+    }
+    expect(getToolsForSets(['adcp_task_operations'], false, false)).not.toEqual(
+      expect.arrayContaining(ADCP_AGENT_MANAGEMENT_TOOLS),
+    );
+    expect(getToolsForSets(['adcp_agent_management'], false, false)).not.toEqual(
+      expect.arrayContaining(ADCP_TASK_OPERATION_TOOLS),
+    );
+    expect(getToolsForSets(['adcp_operations'], false, false)).toEqual(
+      expect.arrayContaining(ADCP_OPERATIONS_TOOLS),
+    );
+  });
+
   describe('admin always-available tools', () => {
     it('includes resolve_escalation for admins without admin set routed', () => {
       const tools = getToolsForSets(['knowledge'], true, false);
@@ -129,6 +165,9 @@ describe('getToolsForSets', () => {
     });
 
     it('generates the compact catalog from router-visible domains only', () => {
+      expect(ADDIE_TOOL_CATALOG).toContain('- **adcp_task_operations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **adcp_agent_management**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **adcp_operations**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_pipeline**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_research**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_prospects**');

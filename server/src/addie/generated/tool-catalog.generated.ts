@@ -38,7 +38,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **property_list_enrichment** — check_property_list, enhance_property
 - **property_identifier_catalog** — resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
-- **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
+- **adcp_task_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities
+- **adcp_agent_management** — save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
 - **publishing_author** — propose_content, get_my_content, read_google_doc, check_illustration_status, generate_perspective_illustration, attach_content_asset

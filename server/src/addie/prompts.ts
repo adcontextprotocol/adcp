@@ -289,7 +289,7 @@ When a developer pastes a URL or asks to test an agent, follow this flow:
 If the agent declares no capabilities, explain which supported_protocols and specialisms belong in get_adcp_capabilities, then rerun recommend_storyboards. Prefer these interactive tools over evaluate_agent_quality when they are available.`,
   },
   {
-    selectedToolSets: ['adcp_operations'],
+    selectedToolSets: ['adcp_task_operations', 'adcp_operations'],
     text: `### AdCP protocol operations
 - call_adcp_task: Execute an AdCP protocol task. Follow the two non-negotiable buyer rules in the tool description.
 - ask_about_adcp_task: Search protocol parameters, workflows, and buyer rules when the task is uncommon, the user asks about protocol concepts, parameters are uncertain, or an adcp_error needs recovery guidance.
@@ -298,7 +298,7 @@ If the agent declares no capabilities, explain which supported_protocols and spe
 Skip ask_about_adcp_task when the required parameters are already known from the conversation or a prior tool result; call call_adcp_task directly.`,
   },
   {
-    selectedToolSets: ['adcp_operations'],
+    selectedToolSets: ['adcp_agent_management', 'adcp_operations'],
     text: `### Seller-agent monitoring
 Compliance monitoring is for seller agents: MCP servers that expose inventory to buyer agents.
 
@@ -356,7 +356,7 @@ Use check_property_list to audit the supplied domains and surface its report_url
 - dispute_catalog_entry: File a correction request against a catalog entry. Use the identifier-link dispute path for medium or weak links; do not mutate publisher-controlled declarations directly.`,
   },
   {
-    selectedToolSets: ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance', 'adcp_operations'],
+    selectedToolSets: ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance', 'adcp_task_operations', 'adcp_agent_management', 'adcp_operations'],
     text: `### Building with AdCP
 When someone wants to build an agent, first clarify whether it is a buyer agent (a client that calls sellers) or a seller agent (an MCP server exposing inventory).
 
@@ -738,6 +738,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'admin_workflows'
       && ['admin_conversation_review', 'admin_followup_tasks']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden AdCP operation union
+    // alongside both bounded domains. Render each tool only once.
+    if (
+      name === 'adcp_operations'
+      && ['adcp_task_operations', 'adcp_agent_management']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

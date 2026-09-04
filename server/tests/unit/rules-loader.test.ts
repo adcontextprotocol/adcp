@@ -636,10 +636,14 @@ describe('Addie tool reference', () => {
     expect(events).not.toContain('### Slack file handling');
   });
 
-  it('scopes protocol, agent-validation, and property guidance to their routed domains', () => {
+  it('scopes protocol, saved-agent, agent-validation, and property guidance to their routed domains', () => {
     const protocol = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['adcp_operations'], false, false),
-      selectedToolSetNames: ['adcp_operations'],
+      availableToolNames: getToolsForSets(['adcp_task_operations'], false, false),
+      selectedToolSetNames: ['adcp_task_operations'],
+    });
+    const agentManagement = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['adcp_agent_management'], false, false),
+      selectedToolSetNames: ['adcp_agent_management'],
     });
     const registry = buildAddieToolReference({
       availableToolNames: getToolsForSets(['agent_registry'], false, false),
@@ -670,10 +674,13 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['property_identifier_catalog'],
     });
     expect(protocol).toContain('### AdCP protocol operations');
-    expect(protocol).toContain('### Seller-agent monitoring');
+    expect(protocol).not.toContain('### Seller-agent monitoring');
     expect(protocol).toContain('### Building with AdCP');
     expect(protocol).not.toContain('### Publisher and agent testing');
     expect(protocol).not.toContain('### Property-registry operations');
+    expect(agentManagement).toContain('### Seller-agent monitoring');
+    expect(agentManagement).not.toContain('### AdCP protocol operations');
+    expect(agentManagement).toContain('### Building with AdCP');
     expect(registry).toContain('### Publisher and agent registry checks');
     expect(registry).toContain('### Building with AdCP');
     expect(registry).not.toContain('### Agent quality and behavior testing');
