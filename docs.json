@@ -2882,11 +2882,6 @@
   },
   "redirects": [
     {
-      "source": "/llms-current.md",
-      "destination": "/_llms/3-1.md",
-      "permanent": false
-    },
-    {
       "source": "/extensions/adcp/v3",
       "destination": "/docs/building/by-layer/L0/a2a-profile-extension"
     },

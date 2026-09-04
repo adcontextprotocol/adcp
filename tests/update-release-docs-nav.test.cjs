@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 function collectStrings(value) {
   if (typeof value === 'string') return [value];
@@ -65,7 +69,12 @@ function sampleConfig() {
 }
 
 (async () => {
-  const { updateDocsConfig, updateDockerignore, updateSchemaTools } = await import('../scripts/update-release-docs-nav.mjs');
+  const {
+    renderCurrentLlmsIndex,
+    updateDocsConfig,
+    updateDockerignore,
+    updateSchemaTools,
+  } = await import('../scripts/update-release-docs-nav.mjs');
 
   test('adds a released snapshot to the Docker build context exactly once', () => {
     const initial = [
@@ -286,11 +295,6 @@ function sampleConfig() {
 
     assert.deepEqual(config.redirects, [
       {
-        source: '/llms-current.md',
-        destination: '/_llms/3-0.md',
-        permanent: false,
-      },
-      {
         source: '/docs/intro',
         destination: '/dist/docs/3.0.1/intro',
         permanent: false,
@@ -319,41 +323,35 @@ function sampleConfig() {
     assert.equal(config.navigation.versions[1].groups[0].pages[0], 'dist/docs/3.1.0-rc.5/intro');
   });
 
-  test('keeps the current llms index alias on the default stable docs version', () => {
+  test('renders the current llms index from the default stable docs version and build', () => {
     const config = sampleConfig();
-    config.redirects = [{
-      source: '/llms-current.md',
-      destination: '/_llms/2-5.md',
-      permanent: true,
+    config.navigation.versions[0].groups = [{
+      group: 'Getting Started',
+      pages: [
+        'dist/docs/3.0.26/intro',
+        'dist/docs/3.0.26/quickstart',
+      ],
     }];
 
     updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
 
-    assert.deepEqual(config.redirects[0], {
-      source: '/llms-current.md',
-      destination: '/_llms/3-0.md',
-      permanent: false,
-    });
+    assert.equal(
+      renderCurrentLlmsIndex(config),
+      [
+        '# AdCP Current Documentation: 3.0',
+        '',
+        '> Current stable AdCP documentation. Version: 3.0. Build: 3.0.26.',
+        '',
+        '## Indexes',
+        '',
+        '- [AdCP 3.0 full index](https://docs.adcontextprotocol.org/_llms/3-0.md): Complete current documentation index for build 3.0.26.',
+        '- [AdCP 3.0 protocol index](https://docs.adcontextprotocol.org/_llms/3-0/protocol.md): Complete current protocol documentation for build 3.0.26.',
+        '',
+      ].join('\n')
+    );
   });
 
-  test('migrates the legacy reserved current index alias to the root route', () => {
-    const config = sampleConfig();
-    config.redirects = [{
-      source: '/_llms/current.md',
-      destination: '/_llms/2-5.md',
-      permanent: false,
-    }];
-
-    updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
-
-    assert.deepEqual(config.redirects, [{
-      source: '/llms-current.md',
-      destination: '/_llms/3-0.md',
-      permanent: false,
-    }]);
-  });
-
-  test('deduplicates root aliases while removing the legacy reserved alias', () => {
+  test('removes obsolete Markdown redirects in favor of the source page', () => {
     const config = sampleConfig();
     config.redirects = [
       {
@@ -371,31 +369,69 @@ function sampleConfig() {
         destination: '/_llms/3-2-beta.md',
         permanent: false,
       },
+      {
+        source: '/unrelated',
+        destination: '/docs/faq',
+      },
     ];
 
     updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
 
     assert.deepEqual(config.redirects, [{
-      source: '/llms-current.md',
-      destination: '/_llms/3-0.md',
-      permanent: false,
+      source: '/unrelated',
+      destination: '/docs/faq',
     }]);
   });
 
-  test('adds the current llms index alias once when redirects are absent', () => {
+  test('does not add a Markdown redirect when redirects are absent', () => {
     const config = sampleConfig();
 
     updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
     updateDocsConfig(config, '3.1.0-rc.6', '3.1-rc');
 
-    assert.deepEqual(
-      config.redirects.filter(redirect => redirect.source === '/llms-current.md'),
-      [{
-        source: '/llms-current.md',
-        destination: '/_llms/3-0.md',
-        permanent: false,
-      }]
-    );
+    assert.deepEqual(config.redirects, undefined);
+  });
+
+  test('CLI writes the current llms source alongside release navigation updates', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-docs-nav-'));
+    const docsJson = path.join(root, 'docs.json');
+    const dockerignore = path.join(root, '.dockerignore');
+    const schemaTools = path.join(root, 'schema-tools.ts');
+    const currentIndex = path.join(root, 'llms-current.md');
+    const config = sampleConfig();
+    config.navigation.versions[0].groups = [{
+      group: 'Getting Started',
+      pages: ['dist/docs/3.0.0/intro'],
+    }];
+
+    try {
+      fs.writeFileSync(docsJson, `${JSON.stringify(config)}\n`);
+      fs.writeFileSync(dockerignore, 'dist/docs/*\n!dist/schemas\n');
+      fs.writeFileSync(
+        schemaTools,
+        "export const DOCS_SCHEMA_RELEASES = Object.freeze({\n  '3.0': '3.0.0',\n});\n"
+      );
+
+      execFileSync(process.execPath, [
+        path.join(__dirname, '../scripts/update-release-docs-nav.mjs'),
+        '3.0.1',
+        '3.0',
+        docsJson,
+        dockerignore,
+        schemaTools,
+        currentIndex,
+      ]);
+
+      const rendered = fs.readFileSync(currentIndex, 'utf8');
+      assert.match(rendered, /Version: 3\.0\. Build: 3\.0\.1\./);
+      assert.match(rendered, /https:\/\/docs\.adcontextprotocol\.org\/_llms\/3-0\.md/);
+      assert.equal(
+        JSON.parse(fs.readFileSync(docsJson, 'utf8')).navigation.versions[0].groups[0].pages[0],
+        'dist/docs/3.0.1/intro'
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('carries the 3.2 story from beta to RC and retargets its public aliases', () => {
@@ -453,7 +489,6 @@ function sampleConfig() {
     assert.deepEqual(
       config.redirects.map((redirect) => redirect.destination),
       [
-        '/_llms/3-0.md',
         '/dist/docs/3.2.0-rc.0/reference/whats-new-in-3-2',
         '/dist/docs/3.2.0-rc.0/media-buy/product-discovery/proposal-negotiation',
       ]

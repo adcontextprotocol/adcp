@@ -294,10 +294,13 @@ export async function fetchManualGet(
   throw new Error(`fetchManualGet exhausted retries without returning for ${url}`);
 }
 
-async function fetchTextGet(url, { fetchImpl = globalThis.fetch } = {}) {
+async function fetchTextGet(
+  url,
+  { fetchImpl = globalThis.fetch, redirect = 'follow' } = {},
+) {
   const response = await fetchImpl(url, {
     method: 'GET',
-    redirect: 'follow',
+    redirect,
     headers: {
       'User-Agent': 'adcp-owned-link-check/1.0',
     },
@@ -540,28 +543,17 @@ export async function checkCurrentLlmsIndexAlias(
   for (let attempt = 0; attempt <= propagationRetries; attempt += 1) {
     let source;
     try {
-      source = await fetchManualGet(url, 0, { fetchImpl, sleep });
+      source = await fetchTextGet(url, { fetchImpl, redirect: 'manual' });
     } catch (error) {
       lastFailure = `GET failed: ${error instanceof Error ? error.message : String(error)}`;
     }
 
-    if (source?.status >= 300 && source.status < 400) {
-      const location = resolveLocation(
-        url,
-        source.location,
-        source.status,
-        'CURRENT LLMS INDEX DRIFT',
-      );
-      if (!location.ok) return { ok: false, status: source.status, error: location.error };
-      if (location.url !== expectedUrl) {
-        return {
-          ok: false,
-          status: source.status,
-          location: location.url,
-          error: `CURRENT LLMS INDEX DRIFT: ${url} → ${location.url} (expected ${expectedUrl})`,
-        };
-      }
-
+    if (
+      source?.status >= 200 &&
+      source.status < 300 &&
+      /^text\/markdown(?:\s*;|$)/i.test(source.contentType ?? '') &&
+      textAdvertisesUrl(source.body, expectedUrl)
+    ) {
       let target;
       try {
         target = await fetchManualGet(expectedUrl, 0, { fetchImpl, sleep });
@@ -587,10 +579,10 @@ export async function checkCurrentLlmsIndexAlias(
         ) {
           return {
             ok: true,
-            status: target.status,
+            status: source.status,
             method: 'GET',
             location: expectedUrl,
-            redirects: 1,
+            redirects: 0,
           };
         }
         if (hub) {
@@ -608,7 +600,7 @@ export async function checkCurrentLlmsIndexAlias(
         lastFailure = `target GET ${target.status} with Content-Type ${target.contentType || '(missing)'}`;
       }
     } else if (source) {
-      lastFailure = `alias GET ${source.status} (expected a redirect to ${expectedUrl})`;
+      lastFailure = `alias GET ${source.status} with Content-Type ${source.contentType || '(missing)'} did not advertise ${expectedUrl}`;
     }
 
     if (attempt < propagationRetries) await sleep(propagationDelayMs);
