@@ -20,7 +20,7 @@
     },
     "observed_canonical_content_digest": { "$ref": "/schemas/core/reporting-canonical-content-digest.json" },
     "observed_manifest_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-    "observed_native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json", "description": "Immutable provider-native version observed by the consumer for native_commit verification." },
+    "observed_native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json" },
     "consumer_commit_ref": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Optional non-secret consumer checkpoint, transaction, or load identifier. It is evidence for operations, not authorization or a credential." },
     "rejection_codes": {
       "type": "array",

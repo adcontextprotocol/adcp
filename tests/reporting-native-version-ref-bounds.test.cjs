@@ -4,6 +4,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const { resolveRefs } = require('../scripts/build-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const NATIVE_VERSION_REF = '/schemas/core/reporting-native-version-ref.json';
@@ -20,26 +21,70 @@ async function compile(uri) {
   return ajv.compileAsync(readSchema(uri));
 }
 
+function resolveSchema(uri) {
+  const schemaPath = path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length));
+  return resolveRefs(structuredClone(readSchema(uri)), SCHEMA_ROOT, new Set([schemaPath]));
+}
+
 // These fixtures use every character in the +/= cycle. Each one is exactly
 // 1,024 UTF-8 bytes and expands to 3,072 characters when URI encoded.
 const MAX_S3_KEY = '+/='.repeat(341) + '+';
 const MAX_S3_VERSION_ID = '+/='.repeat(341) + '/';
 
 describe('reporting native version and object references', () => {
-  it('uses one shared schema for each repeated reporting reference surface', () => {
+  it('uses unadorned shared schemas for each repeated reporting reference surface', () => {
     const fileEntry = readSchema('/schemas/core/reporting-file-entry.json');
     const resource = readSchema('/schemas/core/reporting-resource.json');
     const verification = readSchema('/schemas/core/reporting-verification.json');
     const receipt = readSchema('/schemas/core/reporting-receipt.json');
 
-    assert.equal(fileEntry.properties.native_version_ref.$ref, NATIVE_VERSION_REF);
-    assert.equal(resource.properties.native_version_ref.$ref, NATIVE_VERSION_REF);
-    assert.equal(verification.properties.native_commit_evidence.properties.native_version_ref.$ref, NATIVE_VERSION_REF);
-    assert.equal(receipt.properties.observed_native_version_ref.$ref, NATIVE_VERSION_REF);
+    const nativeVersionReferences = [
+      fileEntry.properties.native_version_ref,
+      resource.properties.native_version_ref,
+      verification.properties.native_commit_evidence.properties.native_version_ref,
+      receipt.properties.observed_native_version_ref,
+    ];
+    for (const reference of nativeVersionReferences) {
+      assert.deepEqual(reference, { $ref: NATIVE_VERSION_REF });
+    }
 
-    assert.equal(fileEntry.properties.object_ref.$ref, FILE_OBJECT_REF);
+    assert.deepEqual(fileEntry.properties.object_ref, { $ref: FILE_OBJECT_REF });
     for (const physicalCheck of verification.properties.physical_checksums.items.oneOf) {
-      assert.equal(physicalCheck.properties.object_ref.$ref, FILE_OBJECT_REF);
+      assert.deepEqual(physicalCheck.properties.object_ref, { $ref: FILE_OBJECT_REF });
+    }
+  });
+
+  it('keeps canonical shared descriptions and constraints after bundler reference resolution', () => {
+    const nativeVersion = readSchema(NATIVE_VERSION_REF);
+    const fileObject = readSchema(FILE_OBJECT_REF);
+    const resolvedFileEntry = resolveSchema('/schemas/core/reporting-file-entry.json');
+    const resolvedResource = resolveSchema('/schemas/core/reporting-resource.json');
+    const resolvedVerification = resolveSchema('/schemas/core/reporting-verification.json');
+    const resolvedReceipt = resolveSchema('/schemas/core/reporting-receipt.json');
+
+    const resolvedNativeVersions = [
+      resolvedFileEntry.properties.native_version_ref,
+      resolvedResource.properties.native_version_ref,
+      resolvedVerification.properties.native_commit_evidence.properties.native_version_ref,
+      resolvedReceipt.properties.observed_native_version_ref,
+    ];
+    for (const resolved of resolvedNativeVersions) {
+      assert.equal(resolved.description, nativeVersion.description);
+      assert.equal(resolved.type, nativeVersion.type);
+      assert.equal(resolved.minLength, nativeVersion.minLength);
+      assert.equal(resolved.maxLength, nativeVersion.maxLength);
+    }
+
+    const resolvedObjectReferences = [
+      resolvedFileEntry.properties.object_ref,
+      ...resolvedVerification.properties.physical_checksums.items.oneOf
+        .map(physicalCheck => physicalCheck.properties.object_ref),
+    ];
+    for (const resolved of resolvedObjectReferences) {
+      assert.equal(resolved.description, fileObject.description);
+      assert.equal(resolved.type, fileObject.type);
+      assert.equal(resolved.minLength, fileObject.minLength);
+      assert.equal(resolved.maxLength, fileObject.maxLength);
     }
   });
 

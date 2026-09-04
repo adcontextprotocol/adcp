@@ -7,7 +7,7 @@
   "type": "object",
   "properties": {
     "object_ref": { "$ref": "/schemas/core/reporting-file-object-ref.json" },
-    "native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json", "description": "Optional immutable provider-native version selecting this object. It supplements object_ref and sha256; it never belongs in object_ref." },
+    "native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json" },
     "size_bytes": { "type": "integer", "minimum": 0 },
     "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
     "row_count": { "type": "integer", "minimum": 0 },

@@ -270,6 +270,8 @@ only while constructing the provider request. The same destination-relative
 `object_ref` is used by `physical_checksums[]`, so it identifies the same
 object without carrying credentials, signed URLs, or query parameters.
 
+`reporting-file-manifest.json` contains the `files[]` entries:
+
 ```json
 {
   "files": [
@@ -280,7 +282,14 @@ object without carrying credentials, signed URLs, or query parameters.
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "row_count": 0
     }
-  ],
+  ]
+}
+```
+
+`reporting-verification.json` contains the `physical_checksums[]` entries:
+
+```json
+{
   "physical_checksums": [
     {
       "object_ref": "reports/2026-08-26/part-000.parquet",
