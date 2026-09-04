@@ -696,14 +696,16 @@ ${
 - Requests needing both may select both; never use the hidden legacy alias.
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Committee documents and news-source proposals → ["content"]
-- Submitting or managing the current member's articles/perspectives, reading a Google Doc for publication, attaching an asset, or generating, regenerating, or checking a published cover illustration → ["publishing_author"]
+- Submitting or inspecting the current member's articles/perspectives, or reading a Google Doc for publication → ["publishing_submission"]
+- Attaching an asset to published member content, or generating, regenerating, or checking its cover illustration → ["publishing_assets"]
+- Requests needing both submission and published-asset work may select both; never use the hidden legacy alias.
 - Reviewing the editorial queue or approving, rejecting, or requesting revisions to a specific submission → ["publishing_review"]
 - Browsing published perspectives or drafting social posts that promote published content → ["publishing_promotion"]
 - Certification track/module previews, learner progress, certificates, badges, or credential checks → ["certification_overview"]
 - Starting or continuing a standard AdCP Academy module, lesson, or build project → ["certification_learning"]
 - Placement assessment, testing out modules, or starting/continuing a specialist capstone or exam → ["certification_assessment"]
 - Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
-- Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those always use ["publishing_author"]
+- Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those use ["publishing_assets"]
 - Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_company_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin

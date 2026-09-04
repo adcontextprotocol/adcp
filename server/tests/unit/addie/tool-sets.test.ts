@@ -64,9 +64,12 @@ import {
   OUTREACH_REPORTING_TOOLS,
   OUTREACH_TOOLS,
   PARTNER_DIRECTORY_TOOLS,
+  PUBLISHING_ASSET_TOOLS,
+  PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS,
   PUBLISHING_AUTHOR_TOOLS,
   PUBLISHING_PROMOTION_TOOLS,
   PUBLISHING_REVIEW_TOOLS,
+  PUBLISHING_SUBMISSION_TOOLS,
   PROPERTY_CATALOG_TOOLS,
   PROPERTY_IDENTIFIER_CATALOG_TOOLS,
   PROPERTY_LIST_ENRICHMENT_TOOLS,
@@ -79,6 +82,36 @@ import {
 } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
+  it('keeps submissions and published assets separate with an exact hidden alias', () => {
+    expect(PUBLISHING_SUBMISSION_TOOLS).toEqual([
+      'propose_content', 'get_my_content', 'read_google_doc',
+    ]);
+    expect(PUBLISHING_ASSET_TOOLS).toEqual([
+      'get_my_content', 'check_illustration_status',
+      'generate_perspective_illustration', 'attach_content_asset',
+    ]);
+    expect(PUBLISHING_AUTHOR_TOOLS).toEqual([
+      'propose_content', 'get_my_content', 'read_google_doc', 'check_illustration_status',
+      'generate_perspective_illustration', 'attach_content_asset',
+    ]);
+    expect(TOOL_SETS.publishing_author.tools).toEqual(PUBLISHING_AUTHOR_TOOLS);
+    expect(TOOL_SETS.publishing_author.routerVisible).toBe(false);
+    expect(getValidToolSetNames(false).has('publishing_author')).toBe(false);
+    for (const [name, domainTools] of Object.entries(PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+    }
+    expect(getToolsForSets(['publishing_submission'], false, false)).not.toEqual(
+      expect.arrayContaining(['check_illustration_status', 'generate_perspective_illustration', 'attach_content_asset']),
+    );
+    expect(getToolsForSets(['publishing_assets'], false, false)).not.toEqual(
+      expect.arrayContaining(['propose_content', 'read_google_doc']),
+    );
+    expect(getToolsForSets(['publishing_author'], false, false)).toEqual(
+      expect.arrayContaining(PUBLISHING_AUTHOR_TOOLS),
+    );
+  });
+
   it('keeps personal and company profiles separate with an exact hidden alias', () => {
     expect(MEMBER_PERSONAL_PROFILE_TOOLS).toEqual([
       'get_my_profile', 'update_my_profile',
@@ -272,7 +305,9 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_author**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_submission**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_assets**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **publishing_author**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_review**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_promotion**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_overview**');
@@ -887,7 +922,8 @@ describe('getToolsForSets', () => {
       ['council_interest', 4],
       ['community_group_contribution', 3],
       ['community_group_full_participation', 11],
-      ['publishing_author', 6],
+      ['publishing_submission', 3],
+      ['publishing_assets', 4],
       ['publishing_review', 4],
       ['publishing_promotion', 2],
       ['certification_overview', 5],
@@ -951,7 +987,8 @@ describe('getToolsForSets', () => {
       const membership = getToolsForSets(['community_group_membership'], false, false);
       const councilInterest = getToolsForSets(['council_interest'], false, false);
       const contribution = getToolsForSets(['community_group_contribution'], false, false);
-      const author = getToolsForSets(['publishing_author'], false, false);
+      const submission = getToolsForSets(['publishing_submission'], false, false);
+      const assets = getToolsForSets(['publishing_assets'], false, false);
       const review = getToolsForSets(['publishing_review'], false, false);
       const promotion = getToolsForSets(['publishing_promotion'], false, false);
 
@@ -969,24 +1006,31 @@ describe('getToolsForSets', () => {
       expect(contribution).toContain('bookmark_resource');
       expect(contribution).not.toContain('get_my_profile');
       expect(contribution).not.toContain('attach_content_asset');
-      expect(author).toContain('propose_content');
-      expect(author).toContain('attach_content_asset');
-      expect(author).not.toContain('approve_content');
-      expect(author).not.toContain('draft_social_posts');
+      expect(submission).toContain('propose_content');
+      expect(submission).toContain('read_google_doc');
+      expect(submission).not.toContain('attach_content_asset');
+      expect(assets).toContain('get_my_content');
+      expect(assets).toContain('attach_content_asset');
+      expect(assets).not.toContain('propose_content');
+      expect(assets).not.toContain('read_google_doc');
       expect(review).toContain('approve_content');
       expect(review).not.toContain('propose_content');
       expect(promotion).toContain('list_perspectives');
       expect(promotion).toContain('draft_social_posts');
       expect(promotion).not.toContain('attach_content_asset');
-      expect(author).not.toContain('get_my_profile');
-      expect(author).not.toContain('join_working_group');
+      expect(submission).not.toContain('get_my_profile');
+      expect(assets).not.toContain('join_working_group');
     });
 
-    it('keeps publishing routes visible', () => {
+    it('keeps bounded publishing routes visible and the exact alias hidden', () => {
       expect(PUBLISHING_AUTHOR_TOOLS).toHaveLength(6);
+      expect(PUBLISHING_SUBMISSION_TOOLS).toHaveLength(3);
+      expect(PUBLISHING_ASSET_TOOLS).toHaveLength(4);
       expect(PUBLISHING_REVIEW_TOOLS).toHaveLength(4);
       expect(PUBLISHING_PROMOTION_TOOLS).toHaveLength(2);
-      expect(getValidToolSetNames(false).has('publishing_author')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_submission')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_assets')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_author')).toBe(false);
       expect(getValidToolSetNames(false).has('publishing_review')).toBe(true);
       expect(getValidToolSetNames(false).has('publishing_promotion')).toBe(true);
     });

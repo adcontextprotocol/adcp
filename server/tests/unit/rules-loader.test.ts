@@ -567,9 +567,13 @@ describe('Addie tool reference', () => {
   });
 
   it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
-    const author = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['publishing_author'], false, false),
-      selectedToolSetNames: ['publishing_author'],
+    const submission = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['publishing_submission'], false, false),
+      selectedToolSetNames: ['publishing_submission'],
+    });
+    const assets = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['publishing_assets'], false, false),
+      selectedToolSetNames: ['publishing_assets'],
     });
     const review = buildAddieToolReference({
       availableToolNames: getToolsForSets(['publishing_review'], false, false),
@@ -588,9 +592,13 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['knowledge'],
     });
 
-    expect(author).toContain('### Content submission and author safety');
-    expect(author).toContain('### Google Docs publishing chain');
-    expect(author).not.toContain('### Editorial review safety');
+    expect(submission).toContain('### Content submission and author safety');
+    expect(submission).toContain('### Google Docs publishing chain');
+    expect(submission).not.toContain('### Member content assets');
+    expect(submission).not.toContain('### Editorial review safety');
+    expect(assets).toContain('### Member content assets');
+    expect(assets).not.toContain('### Content submission and author safety');
+    expect(assets).not.toContain('### Google Docs publishing chain');
     expect(review).toContain('### Editorial review safety');
     expect(review).not.toContain('### Content submission and author safety');
     expect(github).toContain('### GitHub issue workflows');
@@ -603,10 +611,10 @@ describe('Addie tool reference', () => {
   });
 
   it('omits the Google Docs publishing chain when its conditional reader is unavailable', () => {
-    const tools = getToolsForSets(['publishing_author'], false, false);
+    const tools = getToolsForSets(['publishing_submission'], false, false);
     const reference = buildAddieToolReference({
       availableToolNames: tools.filter(name => name !== 'read_google_doc'),
-      selectedToolSetNames: ['publishing_author'],
+      selectedToolSetNames: ['publishing_submission'],
     });
 
     expect(reference).toContain('### Content submission and author safety');

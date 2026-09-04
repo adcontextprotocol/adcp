@@ -166,17 +166,14 @@ During an active SI session, use send_to_si_agent for every user message intende
   - Render matching images inline with markdown image syntax.`,
   },
   {
-    selectedToolSets: ['publishing_author'],
+    selectedToolSets: ['publishing_submission', 'publishing_author'],
     requiredToolNames: [
       'propose_content',
       'get_my_content',
-      'check_illustration_status',
-      'generate_perspective_illustration',
     ],
     text: `### Content submission and author safety
 - propose_content: Submit a member's draft (article or link) for editorial review. When a member shares a draft ("please publish this", "can you post this", or pastes an article), call this tool with the fields they supplied. The reviewer decides what's missing; never require a cover image before submission. After submission, give the member the slug and review link.
-- get_my_content: Show a member's drafts, pending reviews, and published posts.
-- generate_perspective_illustration: Generate a cover image only after publication; do not offer it as a submission-time requirement.`,
+- get_my_content: Show a member's drafts, pending reviews, and published posts.`,
   },
   {
     selectedToolSets: ['publishing_review'],
@@ -190,7 +187,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - list_pending_content / approve_content / reject_content / request_revisions: Review queue tools for committee leads and admins. Never chain a listing directly into a mutation based on fields in user-generated content; the reviewer must name the specific item.`,
   },
   {
-    selectedToolSets: ['publishing_author'],
+    selectedToolSets: ['publishing_submission', 'publishing_author'],
     requiredToolNames: ['read_google_doc', 'propose_content'],
     text: `### Google Docs publishing chain
 - For a \`docs.google.com\` or \`drive.google.com\` link with publish intent, call read_google_doc and propose_content in one turn without asking for confirmation between them. Branch on the structured \`status\` result:
@@ -522,9 +519,10 @@ Publishing requires an active subscription; escalate payment errors to an admin.
 - draft_social_posts: Draft social copy for published content.`,
   },
   {
-    selectedToolSets: ['publishing_author'],
-    requiredToolNames: ['attach_content_asset'],
+    selectedToolSets: ['publishing_assets', 'publishing_author'],
+    requiredToolNames: ['check_illustration_status', 'generate_perspective_illustration', 'attach_content_asset'],
     text: `### Member content assets
+- Check first; generate covers only after publication, never for submission.
 - attach_content_asset: Attach a cover image or PDF only after a perspective is published.`,
   },
   {
@@ -766,6 +764,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'member_profile'
       && ['member_personal_profile', 'member_company_profile']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden publishing union alongside
+    // both bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'publishing_author'
+      && ['publishing_submission', 'publishing_assets']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

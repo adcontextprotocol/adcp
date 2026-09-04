@@ -541,6 +541,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('member_personal_profile');
       expect(descriptions).toContain('member_company_profile');
       expect(descriptions).not.toMatch(/\*\*member_profile\*\*/);
+      expect(descriptions).toContain('publishing_submission');
+      expect(descriptions).toContain('publishing_assets');
+      expect(descriptions).not.toMatch(/\*\*publishing_author\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
@@ -620,6 +623,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('member_personal_profile');
       expect(descriptions).toContain('member_company_profile');
       expect(descriptions).not.toMatch(/\*\*member_profile\*\*/);
+      expect(descriptions).toContain('publishing_submission');
+      expect(descriptions).toContain('publishing_assets');
+      expect(descriptions).not.toMatch(/\*\*publishing_author\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
@@ -644,12 +650,16 @@ describe('getToolsForSets', () => {
   });
 
   it('should expose only the selected bounded publishing workflow', () => {
-    const authorTools = getToolsForSets(['publishing_author'], false);
+    const submissionTools = getToolsForSets(['publishing_submission'], false);
+    const assetTools = getToolsForSets(['publishing_assets'], false);
     const reviewTools = getToolsForSets(['publishing_review'], false);
     const promotionTools = getToolsForSets(['publishing_promotion'], false);
-    expect(authorTools).toContain('propose_content');
-    expect(authorTools).toContain('get_my_content');
-    expect(authorTools).not.toContain('approve_content');
+    expect(submissionTools).toContain('propose_content');
+    expect(submissionTools).toContain('get_my_content');
+    expect(submissionTools).not.toContain('attach_content_asset');
+    expect(assetTools).toContain('get_my_content');
+    expect(assetTools).toContain('attach_content_asset');
+    expect(assetTools).not.toContain('propose_content');
     expect(reviewTools).toContain('list_pending_content');
     expect(reviewTools).toContain('approve_content');
     expect(reviewTools).toContain('reject_content');
@@ -660,12 +670,12 @@ describe('getToolsForSets', () => {
   });
 
   it('should keep read_google_doc with propose_content on the author surface', () => {
-    const tools = getToolsForSets(['publishing_author'], false);
+    const tools = getToolsForSets(['publishing_submission'], false);
     expect(tools).toContain('read_google_doc');
   });
 
   it('should keep published-cover operations on the author surface', () => {
-    const tools = getToolsForSets(['publishing_author'], false);
+    const tools = getToolsForSets(['publishing_assets'], false);
     expect(tools).toContain('check_illustration_status');
     expect(tools).toContain('generate_perspective_illustration');
   });

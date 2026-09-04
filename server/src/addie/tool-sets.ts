@@ -472,7 +472,25 @@ export const COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS = [
 /** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const COMMUNITY_GROUP_TOOLS = COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS;
 
-/** Author-owned submission, document import, asset, and cover-image workflow. */
+/** Bounded member publishing domains for ordinary router plans. */
+export const PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS = {
+  publishing_submission: [
+    "propose_content",
+    "get_my_content",
+    "read_google_doc",
+  ],
+  publishing_assets: [
+    "get_my_content",
+    "check_illustration_status",
+    "generate_perspective_illustration",
+    "attach_content_asset",
+  ],
+} as const;
+
+export const PUBLISHING_SUBMISSION_TOOLS = PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_submission;
+export const PUBLISHING_ASSET_TOOLS = PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_assets;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const PUBLISHING_AUTHOR_TOOLS = [
   "propose_content",
   "get_my_content",
@@ -978,11 +996,26 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  publishing_submission: {
+    name: "publishing_submission",
+    description:
+      "Submit or inspect member perspectives, including Google Doc import",
+    tools: [...PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_submission],
+  },
+
+  publishing_assets: {
+    name: "publishing_assets",
+    description:
+      "Manage published-content assets and cover illustrations",
+    tools: [...PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_assets],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   publishing_author: {
     name: "publishing_author",
-    description:
-      "Submit and manage the current member's articles or perspectives, import Google Docs for publication, attach assets, and generate or check published cover illustrations",
+    description: "Legacy combined member-publishing compatibility surface",
     tools: [...PUBLISHING_AUTHOR_TOOLS],
+    routerVisible: false,
   },
 
   publishing_review: {
