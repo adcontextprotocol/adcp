@@ -27,7 +27,7 @@ import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import type { MediaBuyState } from '../../src/training-agent/types.js';
 
 const PUBLIC_TEST_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
-const ADCP_VERSION = '3.2-rc.0';
+const ADCP_VERSION = '3.2-rc.1';
 
 async function boot(): Promise<{ url: string; close(): Promise<void> }> {
   const app = express();
@@ -142,6 +142,7 @@ describe('sales training-agent reporting Core exercise', () => {
         'media-buy/get-reporting-status-response.json',
         unknownStatus.result?.structuredContent,
       ).valid).toBe(true);
+      expect(unknownStatus.result?.structuredContent).not.toHaveProperty('adcp_error');
       const unknownController = await call(url, 22, 'comply_test_controller', {
         account: {
           brand: { domain: 'unknown-reporting.example' },

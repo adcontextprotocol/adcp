@@ -34,6 +34,7 @@ export type TrainingGetReportingStatusResponse = GetReportingStatusResponse & {
   changes_checkpoint?: string;
   adjustments?: unknown[];
   adjustment_receipts?: unknown[];
+  next_expected_at?: string;
 };
 
 export interface TrainingReportingAdjustment {
@@ -85,6 +86,13 @@ export function syncReliableReportingReceiptsForAccount(
     delete stored.received_at;
     return canonicalize(stored) === canonicalize(submitted);
   };
+  const currentLeaf = <T extends Record<string, unknown>>(history: T[], matches: (receipt: T) => boolean): T | undefined => {
+    const matching = history.filter(matches);
+    const superseded = new Set(matching.map(receipt => receipt.supersedes_reporting_receipt_id).filter(
+      (id): id is string => typeof id === 'string',
+    ));
+    return matching.find(receipt => !superseded.has(String(receipt.reporting_receipt_id)));
+  };
   for (const submitted of params.receipts ?? []) {
     const id = submitted.reporting_receipt_id;
     const existing = ledger.receipts.find(receipt => receipt.reporting_receipt_id === id);
@@ -111,6 +119,23 @@ export function syncReliableReportingReceiptsForAccount(
     const verification = materialization?.verification as Record<string, unknown> | undefined;
     if (!record || !materialization || record.obligation.reconciliation_mode !== 'consumer_receipt') {
       results.push(failed(submitted, 'The referenced reporting evidence is unavailable for this account and caller.'));
+      continue;
+    }
+    const current = currentLeaf(ledger.receipts, receipt => (
+      receipt.reporting_obligation_id === submitted.reporting_obligation_id
+      && receipt.reporting_revision_id === submitted.reporting_revision_id
+    ));
+    const supersedes = submitted.supersedes_reporting_receipt_id;
+    if (current?.status === 'accepted') {
+      results.push(failed(submitted, 'The current accepted receipt is terminal.'));
+      continue;
+    }
+    if (current && (current.status !== 'rejected' || supersedes !== current.reporting_receipt_id)) {
+      results.push(failed(submitted, 'A replacement must name the current rejected receipt.'));
+      continue;
+    }
+    if (!current && supersedes !== undefined) {
+      results.push(failed(submitted, 'A replacement may supersede only a current rejected receipt.'));
       continue;
     }
     if (submitted.status === 'accepted') {
@@ -158,6 +183,22 @@ export function syncReliableReportingReceiptsForAccount(
       results.push(failed(submitted, 'The referenced reporting evidence is unavailable for this account and caller.'));
       continue;
     }
+    const current = currentLeaf(ledger.adjustmentReceipts, receipt => (
+      receipt.reporting_adjustment_id === submitted.reporting_adjustment_id
+    ));
+    const supersedes = submitted.supersedes_reporting_receipt_id;
+    if (current?.status === 'accepted') {
+      results.push(failed(submitted, 'The current accepted adjustment receipt is terminal.'));
+      continue;
+    }
+    if (current && (current.status !== 'rejected' || supersedes !== current.reporting_receipt_id)) {
+      results.push(failed(submitted, 'A replacement must name the current rejected adjustment receipt.'));
+      continue;
+    }
+    if (!current && supersedes !== undefined) {
+      results.push(failed(submitted, 'A replacement may supersede only a current rejected adjustment receipt.'));
+      continue;
+    }
     if (submitted.status === 'accepted'
       && submitted.observed_adjustment_sha256 !== adjustment.canonical_adjustment_sha256) {
       results.push(failed(submitted, 'An accepted adjustment receipt must match the canonical adjustment digest.'));
@@ -169,34 +210,7 @@ export function syncReliableReportingReceiptsForAccount(
     results.push({ result: 'recorded', adjustment_receipt: receipt });
   }
   if (results.length === 0) throw new Error('At least one reporting receipt is required.');
-  const record = ledger.integrityRecords?.[0];
-  if (record) {
-    const accepted = ledger.receipts.filter(receipt => receipt.status === 'accepted').length;
-    const revisionId = record.revision?.reporting_revision_id;
-    const adjustmentReceipts = ledger.adjustmentReceipts.filter(
-      receipt => receipt.adjusts_reporting_revision_id === revisionId,
-    );
-    const adjustmentAccepted = adjustmentReceipts.filter(receipt => receipt.status === 'accepted').length;
-    const hasOutstandingAdjustments = [...ledger.adjustments.values()].some(
-      adjustment => adjustment.adjusts_reporting_revision_id === revisionId,
-    );
-    const isReconciled = record.obligation.reconciliation_mode === 'consumer_receipt';
-    // Post-official adjustments only become a reconciliation precondition once
-    // they exist. A clean official close needs its accepted revision receipt,
-    // not a hypothetical adjustment receipt.
-    const healthComplete = isReconciled
-      ? accepted > 0 && (!hasOutstandingAdjustments || adjustmentAccepted > 0)
-      : accepted > 0;
-    record.obligation = {
-      ...record.obligation,
-      receipt_count: ledger.receipts.length,
-      accepted_receipt_count: accepted,
-      adjustment_receipt_count: adjustmentReceipts.length,
-      accepted_adjustment_receipt_count: adjustmentAccepted,
-      reconciliation_status: accepted > 0 ? 'accepted' : record.obligation.reconciliation_status,
-      health: healthComplete ? 'complete' : record.obligation.health,
-    } as ReportingObligation;
-  }
+  refreshReconciledIntegrityState(ledger);
   if (mutated) ledger.version += 1;
   const response = { status: 'completed', results };
   const validation = validateSourceSchema('media-buy/sync-reporting-receipts-response.json', response);
@@ -206,7 +220,83 @@ export function syncReliableReportingReceiptsForAccount(
   return response;
 }
 
+/**
+ * Recompute consumer-receipt state per obligation and its current revision.
+ * A ledger can contain many obligations; no account-global receipt may make a
+ * different obligation complete. Rejected adjustment evidence is terminal in
+ * this fixture, so a later receipt cannot silently erase a disputed state.
+ */
+function refreshReconciledIntegrityState(ledger: ReportingLedger): void {
+  for (const record of ledger.integrityRecords ?? []) {
+    const revisionIdValue = record.revision?.reporting_revision_id;
+    if (record.obligation.reconciliation_mode !== 'consumer_receipt' || !revisionIdValue) continue;
+    const revisionReceipts = ledger.receipts.filter(receipt => (
+      receipt.reporting_obligation_id === record.obligation.reporting_obligation_id
+      && receipt.reporting_revision_id === revisionIdValue
+    ));
+    const currentLeaf = (history: Array<Record<string, unknown>>, matches: (receipt: Record<string, unknown>) => boolean) => {
+      const candidates = history.filter(matches);
+      const superseded = new Set(candidates.map(receipt => receipt.supersedes_reporting_receipt_id)
+        .filter((id): id is string => typeof id === 'string'));
+      return candidates.find(receipt => !superseded.has(String(receipt.reporting_receipt_id)));
+    };
+    const currentRevision = currentLeaf(revisionReceipts, () => true);
+    const adjustments = [...ledger.adjustments.values()].filter(
+      adjustment => adjustment.adjusts_reporting_revision_id === revisionIdValue,
+    );
+    const adjustmentReceipts = ledger.adjustmentReceipts.filter(receipt => (
+      adjustments.some(adjustment => adjustment.reporting_adjustment_id === receipt.reporting_adjustment_id)
+      && receipt.adjusts_reporting_revision_id === revisionIdValue
+    ));
+    const currentAdjustmentReceipts = adjustments.flatMap(adjustment => {
+      const current = currentLeaf(adjustmentReceipts, receipt => (
+        receipt.reporting_adjustment_id === adjustment.reporting_adjustment_id
+      ));
+      return current ? [current] : [];
+    });
+    const acceptedAdjustmentIds = new Set(currentAdjustmentReceipts
+      .filter(receipt => receipt.status === 'accepted').map(receipt => receipt.reporting_adjustment_id));
+    const rejectedAdjustment = currentAdjustmentReceipts.find(receipt => receipt.status === 'rejected');
+    const allApplicableAdjustmentsAccepted = adjustments.every(
+      adjustment => acceptedAdjustmentIds.has(adjustment.reporting_adjustment_id),
+    );
+    const acceptedRevision = currentRevision?.status === 'accepted';
+    const rejectedRevision = currentRevision?.status === 'rejected';
+    const complete = acceptedRevision && allApplicableAdjustmentsAccepted && !rejectedAdjustment;
+    const issue = (code: 'RECEIPT_REQUIRED' | 'RECEIPT_REJECTED' | 'ADJUSTMENT_RECEIPT_REQUIRED' | 'ADJUSTMENT_RECEIPT_REJECTED', responsible_party: 'buyer' | 'seller') => ({
+      issue_id: stableId('reporting-issue', [record.obligation.reporting_obligation_id, code]),
+      code,
+      severity: 'action_required',
+      responsible_party,
+      recommended_action: responsible_party === 'buyer' ? 'contact_buyer' : 'contact_seller',
+      reporting_obligation_id: record.obligation.reporting_obligation_id,
+    });
+    const issues = rejectedRevision ? [issue('RECEIPT_REJECTED', 'seller')]
+      : rejectedAdjustment ? [issue('ADJUSTMENT_RECEIPT_REJECTED', 'seller')]
+        : !acceptedRevision ? [issue('RECEIPT_REQUIRED', 'buyer')]
+          : !allApplicableAdjustmentsAccepted ? [issue('ADJUSTMENT_RECEIPT_REQUIRED', 'buyer')]
+            : [];
+    record.obligation = {
+      ...record.obligation,
+      receipt_count: revisionReceipts.length,
+      accepted_receipt_count: revisionReceipts.filter(receipt => receipt.status === 'accepted').length,
+      adjustment_count: adjustments.length,
+      adjustment_receipt_count: adjustmentReceipts.length,
+      accepted_adjustment_receipt_count: acceptedAdjustmentIds.size,
+      pending_adjustment_count: adjustments.filter(
+        adjustment => !acceptedAdjustmentIds.has(adjustment.reporting_adjustment_id),
+      ).length,
+      reconciliation_status: (rejectedRevision || rejectedAdjustment) ? 'rejected' : complete ? 'accepted' : 'pending',
+      // Once evidence is readable, reconciliation is immediately due: it is
+      // never represented as a harmless waiting production obligation.
+      health: complete ? 'complete' : 'action_required',
+      issues,
+    } as unknown as ReportingObligation;
+  }
+}
+
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const RETENTION_DAYS = 31;
 const RECOVERY_WINDOW_MS = 2 * HOUR_MS;
 const TRAINING_SCHEMA_URI = 'https://test-agent.adcontextprotocol.org/reporting/schemas/delivery-summary-v1.json';
@@ -347,6 +437,8 @@ interface ReportingLedger {
   history: StoredConfig[];
   virtualNow?: string;
   publishedRevisions: Map<string, ReportingRevision>;
+  /** Immutable canonical rows and their revision-bound JCS digest. */
+  revisionContents: Map<string, RevisionContent>;
   /** Controller-only records for the daily source-calendar integrity probe. */
   integrityRecords?: LedgerRecord[];
   adjustments: Map<string, TrainingReportingAdjustment>;
@@ -364,6 +456,33 @@ interface ReportingLedger {
   pageSnapshots: Map<string, StoredPageSnapshot>;
   /** Lightweight offsets into pageSnapshots. */
   pageCursors: Map<string, StoredPageCursor>;
+  /** Natural account references retained with the ledger for cache-loss recovery. */
+  accountRefs: AccountRef[];
+}
+
+/** Immutable record committed at revision publication, never recomputed on read. */
+interface RevisionContent {
+  revision: ReportingRevision;
+  rows: Array<Record<string, unknown>>;
+  bindingSha256: string;
+}
+
+/**
+ * Test-only observability for the exact-read durability boundary. It is
+ * deliberately opt-in: production never allocates this trace, while unit
+ * tests can prove an omitted-account search does not turn every candidate
+ * into a write-locked ledger read.
+ */
+let reportingRevisionReadTraceStorageForTesting: Array<{
+  kind: 'existence_probe' | 'persisting_page_read';
+  accountId: string;
+}> | undefined;
+
+function recordReportingRevisionReadForTesting(
+  kind: 'existence_probe' | 'persisting_page_read',
+  accountId: string,
+): void {
+  reportingRevisionReadTraceStorageForTesting?.push({ kind, accountId });
 }
 
 const ledgers = new Map<string, ReportingLedger>();
@@ -406,6 +525,7 @@ interface SerializedReportingLedger {
   history: StoredConfig[];
   virtual_now?: string;
   published_revisions: Array<[string, ReportingRevision]>;
+  revision_contents?: Array<[string, RevisionContent]>;
   integrity_records?: LedgerRecord[];
   adjustments?: Array<[string, TrainingReportingAdjustment]>;
   materializations?: Array<Record<string, unknown>>;
@@ -419,6 +539,7 @@ interface SerializedReportingLedger {
   obligation_coverage: Array<[string, ReturnType<typeof emptyCoverage>]>;
   page_snapshots?: Array<[string, StoredPageSnapshot]>;
   page_cursors: Array<[string, StoredPageCursor]>;
+  account_refs?: AccountRef[];
 }
 
 function emptyLedger(): ReportingLedger {
@@ -427,6 +548,7 @@ function emptyLedger(): ReportingLedger {
     configs: new Map(),
     history: [],
     publishedRevisions: new Map(),
+    revisionContents: new Map(),
     adjustments: new Map(),
     materializations: [],
     receipts: [],
@@ -437,6 +559,7 @@ function emptyLedger(): ReportingLedger {
     obligationCoverage: new Map(),
     pageSnapshots: new Map(),
     pageCursors: new Map(),
+    accountRefs: [],
   };
 }
 
@@ -447,6 +570,7 @@ function serializeLedger(ledger: ReportingLedger): SerializedReportingLedger {
     history: structuredClone(ledger.history),
     ...(ledger.virtualNow && { virtual_now: ledger.virtualNow }),
     published_revisions: [...ledger.publishedRevisions].map(([id, revision]) => [id, structuredClone(revision)]),
+    revision_contents: [...ledger.revisionContents].map(([id, content]) => [id, structuredClone(content)]),
     ...(ledger.integrityRecords && { integrity_records: structuredClone(ledger.integrityRecords) }),
     adjustments: [...ledger.adjustments].map(([id, adjustment]) => [id, structuredClone(adjustment)]),
     materializations: structuredClone(ledger.materializations),
@@ -460,6 +584,7 @@ function serializeLedger(ledger: ReportingLedger): SerializedReportingLedger {
     obligation_coverage: [...ledger.obligationCoverage].map(([id, coverage]) => [id, structuredClone(coverage)]),
     page_snapshots: [...ledger.pageSnapshots].map(([id, snapshot]) => [id, structuredClone(snapshot)]),
     page_cursors: [...ledger.pageCursors].map(([token, cursor]) => [token, structuredClone(cursor)]),
+    account_refs: structuredClone(ledger.accountRefs),
   };
 }
 
@@ -475,6 +600,7 @@ function deserializeLedger(value: SerializedReportingLedger): ReportingLedger {
     history,
     ...(value.virtual_now && { virtualNow: value.virtual_now }),
     publishedRevisions: new Map(value.published_revisions ?? []),
+    revisionContents: new Map(value.revision_contents ?? []),
     ...(value.integrity_records && { integrityRecords: structuredClone(value.integrity_records) }),
     adjustments: new Map(value.adjustments ?? []),
     materializations: structuredClone(value.materializations ?? []),
@@ -496,6 +622,7 @@ function deserializeLedger(value: SerializedReportingLedger): ReportingLedger {
     pageCursors: new Map((value.page_cursors ?? []).filter((entry): entry is [string, StoredPageCursor] => (
       typeof entry[1]?.snapshotId === 'string'
     ))),
+    accountRefs: structuredClone(value.account_refs ?? []),
   };
 }
 
@@ -515,6 +642,12 @@ export async function withDurableReportingLedger<T>(
   const principalScope = principal && principal.length > 0 ? principal : 'anonymous';
   if (!isDatabaseInitialized()) {
     const result = await operation();
+    if (account) {
+      const ledger = ledgerFor(principal, accountId);
+      if (!ledger.accountRefs.some(reference => accountScopeFromRef(reference) === accountScopeFromRef(account))) {
+        ledger.accountRefs.push(structuredClone(account));
+      }
+    }
     if (persist && account) cacheReportingAccountBinding(principalScope, accountId, account, accountState);
     return result;
   }
@@ -545,6 +678,12 @@ export async function withDurableReportingLedger<T>(
       ? deserializeLedger(typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored)
       : emptyLedger());
     const result = await operation();
+    if (account) {
+      const ledger = ledgerFor(principal, accountId);
+      if (!ledger.accountRefs.some(reference => accountScopeFromRef(reference) === accountScopeFromRef(account))) {
+        ledger.accountRefs.push(structuredClone(account));
+      }
+    }
     if (persist) {
       await client.query(
         `INSERT INTO training_reporting_ledgers (
@@ -589,6 +728,15 @@ export async function resolveReportingAccountDurably(
   const scope = accountScopeFromRef(account);
   const cached = reportingAccountBindings.get(`${principalScope}\u001f${scope}`);
   if (cached) return structuredClone(cached);
+  // The ledger serializes natural references with the account state. This
+  // in-process scan is also the deterministic cache-loss path used by direct
+  // tests; deployed callers take the identical durable DB lookup below.
+  for (const [key, ledger] of ledgers) {
+    const [storedPrincipal, accountId] = key.split('\u001f');
+    if (storedPrincipal !== principalScope || !accountId) continue;
+    const storedAccount = ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope);
+    if (storedAccount) return { accountId, account: structuredClone(storedAccount) };
+  }
   if (!isDatabaseInitialized()) return undefined;
   const lookupById = account.account_id !== undefined;
   const { rows } = await getPool().query<{
@@ -649,6 +797,14 @@ export async function listReportingAccountsDurably(
   for (const [key, binding] of reportingAccountBindings) {
     if (key.startsWith(`${principalScope}\u001f`)) unique.set(binding.accountId, binding);
   }
+  // Cache loss must not turn an omitted-account exact read into a synthetic
+  // context lookup. The ledger itself retains every natural account reference.
+  for (const [key, ledger] of ledgers) {
+    const [storedPrincipal, accountId] = key.split('\u001f');
+    if (storedPrincipal !== principalScope || !accountId || unique.has(accountId)) continue;
+    const account = ledger.accountRefs[0];
+    if (account) unique.set(accountId, { accountId, account: structuredClone(account) });
+  }
   return structuredClone([...unique.values()]);
 }
 
@@ -695,6 +851,7 @@ function canonicalCoreConfig(value: unknown): CoreConfig {
   const offerings = [
     TRAINING_REPORTING_CORE_OFFERING,
     TRAINING_REPORTING_MANAGED_OFFERING,
+    TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING,
     TRAINING_REPORTING_RECONCILED_OFFERING,
   ];
   const offering = offerings.find(candidate => candidate.offering_id === config.offering_id);
@@ -711,6 +868,16 @@ function canonicalCoreConfig(value: unknown): CoreConfig {
       && (configuredDestination.mode !== 'provision'
         || ((configuredDestination.provider as Record<string, unknown> | undefined)?.domain === expectedMethod.provider.domain
           && configuredDestination.access_mode === expectedMethod.access_mode));
+  if (schedule?.alignment === 'source_timezone' && typeof schedule.period_timezone === 'string') {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: schedule.period_timezone });
+    } catch {
+      throw new Error(`Invalid IANA timezone in schedule.period_timezone: ${schedule.period_timezone}`);
+    }
+  }
+  const offeringTimezone = offering
+    ? (offering.schedule as { period_timezone?: string }).period_timezone
+    : undefined;
   const supported = offering !== undefined
     && config.feed_purpose === offering.feed_purpose
     && config.report_definition_id === offering.report_definition_id
@@ -720,7 +887,8 @@ function canonicalCoreConfig(value: unknown): CoreConfig {
     && methodMatches
     && schedule?.period_duration === offering.schedule.period_duration
     && schedule?.alignment === offering.schedule.alignment
-    && schedule?.delivery_sla === offering.schedule.delivery_sla;
+    && schedule?.delivery_sla === offering.schedule.delivery_sla
+    && (offeringTimezone === undefined || schedule?.period_timezone === offeringTimezone);
   if (!supported) {
     throw new Error('The reporting configuration must exactly select one advertised Reliable Reporting offering.');
   }
@@ -889,6 +1057,7 @@ export function prepareReportingCoreLifecycleProbe(principal: string | undefined
     configs: new Map(),
     history: [],
     publishedRevisions: new Map(),
+    revisionContents: new Map(),
     adjustments: new Map(),
     materializations: [],
     receipts: [],
@@ -899,6 +1068,7 @@ export function prepareReportingCoreLifecycleProbe(principal: string | undefined
     obligationCoverage: new Map(),
     pageSnapshots: new Map(),
     pageCursors: new Map(),
+    accountRefs: [],
   });
   replaceReportingConfigurations(principal, accountId, [TRAINING_REPORTING_CORE_CONFIGURATION], activatedAt);
   const ledger = ledgerFor(principal, accountId);
@@ -1013,7 +1183,7 @@ export function publishZeroRowReportingCoreLifecycleProbe(
   const record = recordsFor(principal, accountId, [first], publishedAtMs)
     .find(candidate => candidate.obligation.reporting_obligation_id === obligation);
   if (!record) throw new Error('The reporting obligation is not yet available at the current fixture time.');
-  const revision = zeroRowRevision(record.obligation, publishedAtMs);
+  const revision = commitRevisionContent(ledger, zeroRowRevision(record.obligation, publishedAtMs), []);
   const priorRevision = ledger.publishedRevisions.get(obligation);
   if (JSON.stringify(priorRevision) !== JSON.stringify(revision)) ledger.version += 1;
   ledger.publishedRevisions.set(obligation, revision);
@@ -1026,6 +1196,39 @@ export function publishZeroRowReportingCoreLifecycleProbe(
     row_count: 0,
     simulated_now: ledger.virtualNow ?? iso(Date.now()),
   };
+}
+
+/** Publish deterministic non-empty Core rows for exact-revision conformance. */
+export function publishReportingCoreLifecycleProbeRows(
+  principal: string | undefined,
+  accountId: string,
+  rows: Array<{
+    period_start: string;
+    period_end: string;
+    impressions: number;
+    dimensions?: Record<string, string | number | boolean | null>;
+    metrics?: Record<string, string | number | boolean | null>;
+  }>,
+  revisionMetadata: Partial<Pick<ReportingRevision, 'created_at' | 'observed_at' | 'control_totals'>> = {},
+): { reporting_revision_id: string; row_count: number; revision_content_sha256: string } {
+  const ledger = ledgerFor(principal, accountId);
+  const first = [...ledger.configs.values()][0];
+  if (!first) throw new Error('Prepare the reporting_core_lifecycle_probe before publishing a revision.');
+  const obligation = obligationId(accountId, first.config, '2026-08-01T01:00:00.000Z');
+  const record = recordsFor(principal, accountId, [first], ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now())
+    .find(candidate => candidate.obligation.reporting_obligation_id === obligation);
+  if (!record) throw new Error('The reporting obligation is not yet available at the current fixture time.');
+  const impressions = rows.reduce((total, row) => total + row.impressions, 0);
+  const revision = commitRevisionContent(ledger, {
+    ...zeroRowRevision(record.obligation, ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now()),
+    ...revisionMetadata,
+    row_count: rows.length,
+    control_totals: revisionMetadata.control_totals
+      ?? [{ name: 'impressions', value: String(impressions), value_type: 'integer', unit: 'impressions' }],
+  } as ReportingRevision, rows);
+  ledger.publishedRevisions.set(obligation, revision);
+  ledger.version += 1;
+  return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: (revision as unknown as { revision_content_sha256: string }).revision_content_sha256 };
 }
 
 /**
@@ -1114,6 +1317,57 @@ export function prepareReliableReportingCoreIntegrityProbe(
   };
 }
 
+/**
+ * Run the real source-timezone scheduler on both 2026 DST transitions. This
+ * intentionally does not reuse the hand-authored integrity record below: the
+ * returned boundaries come from recordsFor's installed configuration path.
+ */
+export function probeReportingSourceCalendarDst(
+  principal: string | undefined,
+  accountId: string,
+): {
+  fall_back: { start: string; end: string; expected_at: string };
+  spring_forward: { start: string; end: string; expected_at: string };
+} {
+  const configFor = (id: string): CoreConfig => ({
+    delivery_config_id: id,
+    delivery_config_version: 1,
+    offering_id: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.offering_id,
+    active: true,
+    feed_purpose: 'analytics',
+    report_definition_id: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.report_definition_id,
+    reporting_profile: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.reporting_profile.id,
+    scope: { all_media_buys: true },
+    coverage_requirement: 'full',
+    required_finality: 'official',
+    reconciliation_mode: 'delivery_only',
+    schedule: structuredClone(TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.schedule),
+    method: {
+      pattern: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.pattern,
+      transport: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.transport,
+      orchestration: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.orchestration,
+      destination: {
+        mode: 'provision',
+        provider: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.provider,
+        access_mode: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.access_mode,
+        recipient: { identity: 'source-calendar-dst-probe' },
+      },
+    },
+  });
+  const read = (probeAccountId: string, config: CoreConfig, activatedAt: string, now: string, start: string) => {
+    replaceReportingConfigurations(principal, probeAccountId, [config], activatedAt);
+    setReportingCoreLifecycleProbeClock(principal, probeAccountId, now);
+    const response = getReportingStatusForAccount({ view: 'periods' } as TrainingGetReportingStatusRequest, principal, probeAccountId);
+    const period = response.periods?.find(candidate => candidate.period.start === start);
+    if (!period) throw new Error(`Source-calendar scheduler did not generate ${start}.`);
+    return { start: period.period.start, end: period.period.end, expected_at: period.expected_at };
+  };
+  return {
+    fall_back: read(`${accountId}:dst-fall`, configFor('dst-fall'), '2026-10-30T04:00:00.000Z', '2026-11-03T12:00:00.000Z', '2026-11-01T04:00:00.000Z'),
+    spring_forward: read(`${accountId}:dst-spring`, configFor('dst-spring'), '2026-03-06T05:00:00.000Z', '2026-03-10T12:00:00.000Z', '2026-03-08T05:00:00.000Z'),
+  };
+}
+
 export function publishReliableReportingCoreIntegrityCorrection(
   principal: string | undefined,
   accountId: string,
@@ -1167,7 +1421,8 @@ export function publishReliableReportingCoreIntegrityCorrection(
     correction_observed_at: '2026-11-02T10:00:00.000Z',
     created_at: '2026-11-02T10:00:01.000Z',
   };
-  record.revision = revision;
+  const committedRevision = commitRevisionContent(ledger, revision, []);
+  record.revision = committedRevision;
   record.obligation = {
     ...record.obligation,
     health: 'complete',
@@ -1176,7 +1431,7 @@ export function publishReliableReportingCoreIntegrityCorrection(
     adjustment_count: 1,
     issues: [],
   } as ReportingObligation;
-  ledger.publishedRevisions.set(record.obligation.reporting_obligation_id, revision);
+  ledger.publishedRevisions.set(record.obligation.reporting_obligation_id, committedRevision);
   ledger.adjustments.set(adjustment.reporting_adjustment_id, adjustment);
   ledger.virtualNow = '2026-11-02T10:01:00.000Z';
   ledger.version += 1;
@@ -1352,10 +1607,16 @@ function prepareReliableReportingOptionalTierProbe(
   ledger.history.push(stored);
   ledger.virtualNow = '2026-08-27T04:01:00.000Z';
   ledger.integrityRecords = [record];
-  ledger.publishedRevisions.set(obligationIdValue, revision);
+  const committedRevision = commitRevisionContent(ledger, revision, reconciled ? [
+    { period_start: period.start, period_end: period.end, impressions: 2 },
+    { period_start: period.start, period_end: period.end, impressions: 3 },
+  ] : []);
+  record.revision = committedRevision;
+  ledger.publishedRevisions.set(obligationIdValue, committedRevision);
   ledger.materializations = [materialization];
   ledger.managedResourceReadable = true;
   ledger.managedAccessRevoked = false;
+  if (reconciled) refreshReconciledIntegrityState(ledger);
   ledgers.set(callerScope(principal, accountId), ledger);
   return {
     account_id: accountId,
@@ -1432,13 +1693,7 @@ export function publishReliableReportingReconciledAdjustments(
     canonical_adjustment_sha256: createHash('sha256').update(canonicalize(definition)).digest('hex'),
   }));
   for (const adjustment of adjustments) ledger.adjustments.set(adjustment.reporting_adjustment_id, adjustment);
-  record.obligation = {
-    ...record.obligation,
-    adjustment_count: adjustments.length,
-    // A newly published correction needs its own consumer acknowledgement;
-    // it therefore reopens an otherwise completed reconciled obligation.
-    health: record.obligation.reconciliation_mode === 'consumer_receipt' ? 'waiting' : record.obligation.health,
-  } as ReportingObligation;
+  refreshReconciledIntegrityState(ledger);
   ledger.virtualNow = '2026-08-29T10:00:03.000Z';
   ledger.version += 1;
   return { adjustments, disputed_observed_adjustment_sha256: '0'.repeat(64) };
@@ -1747,6 +2002,112 @@ function healthFor(expectedAtMs: number, nowMs: number): 'waiting' | 'delayed' |
   return nowMs > expectedAtMs + RECOVERY_WINDOW_MS ? 'action_required' : 'delayed';
 }
 
+function scheduleTiming(schedule: CoreConfig['schedule']): { periodMs: number; slaMs: number } {
+  return {
+    periodMs: schedule.period_duration === 'P1D' ? DAY_MS : HOUR_MS,
+    slaMs: schedule.delivery_sla === 'PT4H' ? 4 * HOUR_MS : HOUR_MS,
+  };
+}
+
+function nextExpectedAt(configs: StoredConfig[], nowMs: number): string | undefined {
+  const due = configs.flatMap(config => {
+    if (!activeWindowAt(config, nowMs)) return [];
+    const { slaMs } = scheduleTiming(config.config.schedule);
+    if (config.config.schedule.period_duration === 'PT1H') {
+      // The just-closed hourly period is due at this hour boundary + SLA.
+      return [Math.floor(nowMs / HOUR_MS) * HOUR_MS + slaMs];
+    }
+    const zone = config.config.schedule.alignment === 'source_timezone'
+      ? config.config.schedule.period_timezone ?? 'UTC'
+      : 'UTC';
+    const local = zonedParts(nowMs, zone);
+    const slaHours = slaMs / HOUR_MS;
+    let candidate = zonedToUtc({ ...local, hour: slaHours, minute: 0, second: 0 }, zone);
+    if (nowMs > candidate) {
+      const tomorrow = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
+      candidate = zonedToUtc({
+        year: tomorrow.getUTCFullYear(), month: tomorrow.getUTCMonth() + 1,
+        day: tomorrow.getUTCDate(), hour: slaHours, minute: 0, second: 0,
+      }, zone);
+    }
+    return [candidate];
+  });
+  return due.length === 0 ? undefined : iso(Math.min(...due));
+}
+
+/** Shared schedule calculation used by the deterministic conformance harness. */
+export function nextExpectedAtForSchedule(
+  schedule: CoreConfig['schedule'],
+  now: string,
+): string {
+  const nowMs = parseInstant(now);
+  const result = nextExpectedAt([{
+    config: {
+      schedule,
+      delivery_config_id: 'schedule-probe', delivery_config_version: 1,
+      offering_id: 'schedule-probe', active: true, feed_purpose: 'analytics',
+      report_definition_id: 'schedule-probe', reporting_profile: 'schedule-probe',
+      scope: { all_media_buys: true }, coverage_requirement: 'full',
+      required_finality: 'official', reconciliation_mode: 'delivery_only',
+    },
+    activatedAt: iso(nowMs - DAY_MS), activeWindows: [{ start: iso(nowMs - DAY_MS) }],
+  }], nowMs);
+  if (!result) throw new Error('Schedule probe must have a next expected time.');
+  return result;
+}
+
+type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
+
+function zonedParts(ms: number, timeZone: string): ZonedParts {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  });
+  const values = Object.fromEntries(formatter.formatToParts(new Date(ms))
+    .filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]));
+  return values as ZonedParts;
+}
+
+/** Convert an unambiguous civil reporting deadline into UTC without 24h math. */
+function zonedToUtc(target: ZonedParts, timeZone: string): number {
+  let candidate = Date.UTC(target.year, target.month - 1, target.day, target.hour, target.minute, target.second);
+  const targetMs = Date.UTC(target.year, target.month - 1, target.day, target.hour, target.minute, target.second);
+  // A due time is one or four hours after midnight, outside the ambiguous
+  // fall-back hour. Two iterations handles both DST offset changes.
+  for (let index = 0; index < 2; index += 1) {
+    const actual = zonedParts(candidate, timeZone);
+    candidate += targetMs - Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second);
+  }
+  return candidate;
+}
+
+function civilDayStart(ms: number, timeZone: string): number {
+  const local = zonedParts(ms, timeZone);
+  return zonedToUtc({ ...local, hour: 0, minute: 0, second: 0 }, timeZone);
+}
+
+function nextCivilDayStart(ms: number, timeZone: string): number {
+  const local = zonedParts(ms, timeZone);
+  const tomorrow = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
+  return zonedToUtc({
+    year: tomorrow.getUTCFullYear(), month: tomorrow.getUTCMonth() + 1,
+    day: tomorrow.getUTCDate(), hour: 0, minute: 0, second: 0,
+  }, timeZone);
+}
+
+/** First complete IANA civil day beginning at or after an instant. */
+function firstCivilDayStartAtOrAfter(ms: number, timeZone: string): number {
+  const start = civilDayStart(ms, timeZone);
+  return start === ms ? start : nextCivilDayStart(start, timeZone);
+}
+
+function dailyDeadline(periodEndMs: number, schedule: CoreConfig['schedule']): number {
+  const timeZone = schedule.alignment === 'source_timezone' ? schedule.period_timezone ?? 'UTC' : 'UTC';
+  const local = zonedParts(periodEndMs, timeZone);
+  const slaHours = schedule.delivery_sla === 'PT4H' ? 4 : 1;
+  return zonedToUtc({ ...local, hour: slaHours, minute: 0, second: 0 }, timeZone);
+}
+
 interface LedgerRecord {
   obligation: ReportingObligation;
   revision?: ReportingRevision;
@@ -1770,34 +2131,44 @@ function recordsFor(
   for (const stored of configs) {
     for (const window of stored.activeWindows) {
       const activatedMs = parseInstant(window.start);
-      const periodMs = stored.config.schedule.period_duration === 'P1D' ? 24 * HOUR_MS : HOUR_MS;
-      const slaMs = stored.config.schedule.delivery_sla === 'PT4H' ? 4 * HOUR_MS : HOUR_MS;
+      const { periodMs, slaMs } = scheduleTiming(stored.config.schedule);
+      const daily = stored.config.schedule.period_duration === 'P1D';
+      const timeZone = stored.config.schedule.alignment === 'source_timezone'
+        ? stored.config.schedule.period_timezone ?? 'UTC'
+        : 'UTC';
       const floorPeriod = (ms: number): number => Math.floor(ms / periodMs) * periodMs;
       // floorPeriod aligns the retention boundary to the period grid so that
       // daily configs older than RETENTION_DAYS always start at midnight, not
       // at an arbitrary hour inherited from floorHour(nowMs).
-      const firstStart = Math.max(floorPeriod(activatedMs + periodMs - 1), floorPeriod(retentionStartMs));
-      const finalEnd = Math.min(
-        floorPeriod(nowMs),
-        window.end ? floorPeriod(parseInstant(window.end) + periodMs - 1) : floorPeriod(nowMs),
-      );
-      for (let startMs = firstStart; startMs < finalEnd; startMs += periodMs) {
-      const endMs = startMs + periodMs;
-      // The obligation is committed only for snapshots strictly after its
-      // boundary, never for a snapshot taken at the exact boundary.
-      if (endMs >= nowMs) continue;
-      const periodEnd = iso(endMs);
-      const id = obligationId(accountId, stored.config, periodEnd);
-      if (ledger.suppressedObligationIds.has(id)) continue;
-      const coverage = frozenCoverage(ledger, stored.config, id, startMs, endMs);
-      const ids = coverage.media_buy_ids;
-      const revision = ledger.publishedRevisions.get(id);
-      const published = revision !== undefined;
-      const incompleteFullCoverage = stored.config.coverage_requirement === 'full'
-        && coverage.status !== 'full';
-      const health = incompleteFullCoverage
+      const firstStart = daily
+        ? Math.max(firstCivilDayStartAtOrAfter(activatedMs, timeZone), firstCivilDayStartAtOrAfter(retentionStartMs, timeZone))
+        : Math.max(floorPeriod(activatedMs + periodMs - 1), floorPeriod(retentionStartMs));
+      const finalEnd = daily
+        ? Math.min(civilDayStart(nowMs, timeZone), window.end ? firstCivilDayStartAtOrAfter(parseInstant(window.end), timeZone) : civilDayStart(nowMs, timeZone))
+        : Math.min(
+          floorPeriod(nowMs),
+          window.end ? floorPeriod(parseInstant(window.end) + periodMs - 1) : floorPeriod(nowMs),
+        );
+      for (let startMs = firstStart; startMs < finalEnd;) {
+        const endMs = daily ? nextCivilDayStart(startMs, timeZone) : startMs + periodMs;
+        // The obligation is committed only for snapshots strictly after its
+        // boundary, never for a snapshot taken at the exact boundary.
+        if (endMs >= nowMs) break;
+        const periodEnd = iso(endMs);
+        const id = obligationId(accountId, stored.config, periodEnd);
+        if (ledger.suppressedObligationIds.has(id)) {
+          startMs = endMs;
+          continue;
+        }
+        const coverage = frozenCoverage(ledger, stored.config, id, startMs, endMs);
+        const ids = coverage.media_buy_ids;
+        const revision = ledger.publishedRevisions.get(id);
+        const published = revision !== undefined;
+        const incompleteFullCoverage = stored.config.coverage_requirement === 'full'
+          && coverage.status !== 'full';
+        const health = incompleteFullCoverage
         ? 'action_required'
-        : published ? 'complete' : healthFor(endMs + slaMs, nowMs);
+        : published ? 'complete' : healthFor(daily ? dailyDeadline(endMs, stored.config.schedule) : endMs + slaMs, nowMs);
       const issues = incompleteFullCoverage ? [{
         issue_id: stableId('reporting-issue', [id, 'coverage-incomplete']),
         code: 'REPORTING_COVERAGE_INCOMPLETE' as const,
@@ -1814,7 +2185,7 @@ function recordsFor(
         }),
         period_start: iso(startMs),
         period_end: periodEnd,
-        expected_at: iso(endMs + slaMs),
+        expected_at: iso(daily ? dailyDeadline(endMs, stored.config.schedule) : endMs + slaMs),
       }] : health === 'waiting' ? [] : published ? [] : [{
         issue_id: stableId('reporting-issue', [id, health]),
         code: 'REPORT_OVERDUE' as const,
@@ -1827,7 +2198,7 @@ function recordsFor(
         feed_purpose: stored.config.feed_purpose,
         period_start: iso(startMs),
         period_end: periodEnd,
-        expected_at: iso(endMs + slaMs),
+        expected_at: iso(daily ? dailyDeadline(endMs, stored.config.schedule) : endMs + slaMs),
       }];
       const obligation = {
         reporting_obligation_id: id,
@@ -1840,8 +2211,8 @@ function recordsFor(
         media_buy_ids: ids,
         scope_resolved_at: periodEnd,
         coverage,
-        period: { start: iso(startMs), end: periodEnd, source_timezone: 'UTC' },
-        expected_at: iso(endMs + slaMs),
+        period: { start: iso(startMs), end: periodEnd, source_timezone: timeZone },
+        expected_at: iso(daily ? dailyDeadline(endMs, stored.config.schedule) : endMs + slaMs),
         schedule: stored.config.schedule,
         required_finality: stored.config.required_finality,
         reconciliation_mode: stored.config.reconciliation_mode,
@@ -1853,6 +2224,7 @@ function recordsFor(
         issues,
       } as ReportingObligation;
       records.push({ obligation, ...(revision && { revision: structuredClone(revision) }) });
+      startMs = endMs;
       }
     }
   }
@@ -1883,6 +2255,37 @@ function zeroRowRevision(obligation: ReportingObligation, nowMs: number): Report
     control_totals: [],
     created_at: iso(nowMs),
   };
+}
+
+function commitRevisionContent(
+  ledger: ReportingLedger,
+  revision: ReportingRevision,
+  rows: Array<Record<string, unknown>>,
+): ReportingRevision {
+  const bindingSha256 = createHash('sha256').update(canonicalize({
+    reporting_revision_id: revision.reporting_revision_id,
+    row_count: revision.row_count,
+    control_totals: revision.control_totals,
+    reporting_rows: rows,
+  })).digest('hex');
+  const existing = ledger.revisionContents.get(revision.reporting_revision_id);
+  const committed = { ...structuredClone(revision), revision_content_sha256: bindingSha256 } as ReportingRevision;
+  if (existing) {
+    // Identity binds the complete metadata, authoritative rows, and binding
+    // digest. Exact retries return the originally committed revision bytes.
+    if (existing.bindingSha256 !== bindingSha256
+      || canonicalize(existing.revision) !== canonicalize(committed)
+      || canonicalize(existing.rows) !== canonicalize(rows)) {
+      throw new Error(`Immutable reporting revision ${revision.reporting_revision_id} already has different committed metadata or content.`);
+    }
+    return structuredClone(existing.revision);
+  }
+  ledger.revisionContents.set(committed.reporting_revision_id, {
+    revision: structuredClone(committed),
+    rows: structuredClone(rows),
+    bindingSha256,
+  });
+  return committed;
 }
 
 function unavailable(view: GetReportingStatusRequest['view']): TrainingGetReportingStatusResponse {
@@ -1929,6 +2332,10 @@ interface StoredPageSnapshot {
   expiresAtMs: number;
   resources: PageResource[];
   common: Record<string, unknown>;
+  /** Exact-read snapshots pin rows as well as metadata across cursor pages. */
+  exactRows?: Array<Record<string, unknown>>;
+  exactRevisionId?: string;
+  exactBindingSha256?: string;
 }
 interface StoredPageCursor {
   snapshotId: string;
@@ -1968,6 +2375,9 @@ function cursorFor(
       ...snapshot,
       resources: structuredClone(snapshot.resources),
       common: structuredClone(snapshot.common),
+      ...(snapshot.exactRows && { exactRows: structuredClone(snapshot.exactRows) }),
+      ...(snapshot.exactRevisionId && { exactRevisionId: snapshot.exactRevisionId }),
+      ...(snapshot.exactBindingSha256 && { exactBindingSha256: snapshot.exactBindingSha256 }),
       expiresAtMs,
     });
   } else {
@@ -2015,7 +2425,7 @@ export function getReportingStatusForAccount(
       media_buy_ids: params.media_buy_ids ? [...params.media_buy_ids].sort() : params.media_buy_ids,
       feed_purposes: params.feed_purposes ? [...params.feed_purposes].sort() : params.feed_purposes,
       period: params.period,
-      health: params.health,
+      health: params.health ? [...params.health].sort() : params.health,
       finality: params.finality ? [...params.finality].sort() : params.finality,
     }),
   ]);
@@ -2033,7 +2443,8 @@ export function getReportingStatusForAccount(
   const nowMs = snapshot?.nowMs ?? (ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now());
   if (params.period && !(parseInstant(params.period.start) < parseInstant(params.period.end))) return unavailable(params.view);
   const retainedFromMs = floorHour(nowMs) - RETENTION_DAYS * 24 * HOUR_MS;
-  if (params.period && parseInstant(params.period.start) < retainedFromMs) return unavailable(params.view);
+  // A fully expired query has no retained ledger material.
+  if (params.period && parseInstant(params.period.end) <= retainedFromMs) return unavailable(params.view);
   const horizonStartMs = params.period ? parseInstant(params.period.start) : retainedFromMs;
   const horizonEndMs = params.period ? parseInstant(params.period.end) : nowMs;
   const intersectsHorizon = (entry: StoredConfig) => entry.activeWindows.some(window => (
@@ -2049,6 +2460,18 @@ export function getReportingStatusForAccount(
   const configs = requestedConfigIds
     ? ledger.history.filter(entry => requestedConfigIds.includes(entry.config.delivery_config_id) && intersectsHorizon(entry))
     : active;
+  // Never return an apparently complete partial period. A daily source-time
+  // zone uses its own IANA civil-day boundary (including DST), not 24-hour
+  // arithmetic; mixed selected configurations use the most conservative
+  // complete boundary.
+  const retainedPeriodBoundaryMs = configs.length === 0 ? retainedFromMs : Math.max(...configs.map(config => {
+    if (config.config.schedule.period_duration !== 'P1D') return retainedFromMs;
+    const zone = config.config.schedule.alignment === 'source_timezone'
+      ? config.config.schedule.period_timezone ?? 'UTC'
+      : 'UTC';
+    return firstCivilDayStartAtOrAfter(retainedFromMs, zone);
+  }));
+  if (params.period && parseInstant(params.period.start) < retainedPeriodBoundaryMs) return unavailable(params.view);
   const knownMediaBuyIds = new Set([
     ...ledger.mediaBuyCandidates.keys(),
     ...[...ledger.obligationCoverage.values()].flatMap(coverage => coverage.media_buy_ids),
@@ -2076,26 +2499,39 @@ export function getReportingStatusForAccount(
     const revision = recordsFor(principal, accountId, ledger.history, nowMs).map(record => record.revision)
       .find((candidate): candidate is ReportingRevision => candidate?.reporting_revision_id === params.reporting_revision_id);
     if (!revision) return unavailable(params.view);
-    return {
+    const revisionResources: PageResource[] = [
+      ...[...ledger.adjustments.values()].filter(adjustment => adjustment.adjusts_reporting_revision_id === revision.reporting_revision_id)
+        .map(adjustment => ({ kind: 'adjustment' as const, adjustment })),
+      ...ledger.adjustmentReceipts.filter(receipt => receipt.adjusts_reporting_revision_id === revision.reporting_revision_id)
+        .map(adjustmentReceipt => ({ kind: 'adjustment_receipt' as const, adjustmentReceipt })),
+      ...ledger.materializations.filter(materialization => materialization.reporting_revision_id === revision.reporting_revision_id)
+        .map(materialization => ({ kind: 'materialization' as const, materialization })),
+      ...ledger.receipts.filter(receipt => receipt.reporting_revision_id === revision.reporting_revision_id)
+        .map(receipt => ({ kind: 'receipt' as const, receipt })),
+    ];
+    const revisionCommon = snapshot?.common ?? {
       status: 'completed',
       view: 'revision',
       ledger_snapshot_id: stableId('reporting-ledger', [callerScope(principal, accountId), iso(nowMs), String(ledger.version)]),
       ledger_as_of: iso(nowMs),
       account_id: accountId,
       revision,
-      adjustments: [...ledger.adjustments.values()].filter(
-        adjustment => adjustment.adjusts_reporting_revision_id === revision.reporting_revision_id,
-      ),
-      adjustment_receipts: ledger.adjustmentReceipts.filter(
-        receipt => receipt.adjusts_reporting_revision_id === revision.reporting_revision_id,
-      ),
-      materializations: ledger.materializations.filter(
-        materialization => materialization.reporting_revision_id === revision.reporting_revision_id,
-      ),
-      receipts: ledger.receipts.filter(
-        receipt => receipt.reporting_revision_id === revision.reporting_revision_id,
-      ),
-      pagination: { has_more: false, total_count: 1 },
+    };
+    const revisionSnapshot = snapshot?.resources ?? revisionResources;
+    const offset = snapshot?.offset ?? 0;
+    const page = revisionSnapshot.slice(offset, offset + (params.pagination?.max_results ?? 100));
+    const hasMore = offset + page.length < revisionSnapshot.length;
+    return {
+      ...revisionCommon,
+      adjustments: page.filter((item): item is Extract<PageResource, { kind: 'adjustment' }> => item.kind === 'adjustment').map(item => item.adjustment),
+      adjustment_receipts: page.filter((item): item is Extract<PageResource, { kind: 'adjustment_receipt' }> => item.kind === 'adjustment_receipt').map(item => item.adjustmentReceipt),
+      materializations: page.filter((item): item is Extract<PageResource, { kind: 'materialization' }> => item.kind === 'materialization').map(item => item.materialization),
+      receipts: page.filter((item): item is Extract<PageResource, { kind: 'receipt' }> => item.kind === 'receipt').map(item => item.receipt),
+      pagination: {
+        has_more: hasMore,
+        ...(hasMore && { cursor: cursorFor(ledger, { scope: cursorScope, nowMs, resources: revisionResources, common: revisionCommon }, offset + page.length, snapshot?.snapshotId) }),
+        total_count: revisionSnapshot.length,
+      },
     } as TrainingGetReportingStatusResponse;
   }
   const issues = records.flatMap(record => record.obligation.issues);
@@ -2103,10 +2539,13 @@ export function getReportingStatusForAccount(
   const periodStart = params.period
     ? parseInstant(params.period.start)
     : configs.length > 0
-      ? Math.max(retainedFromMs, Math.min(...configs.map(config => floorHour(parseInstant(config.activatedAt) + HOUR_MS - 1))))
+      ? Math.max(retainedPeriodBoundaryMs, Math.min(...configs.map(config => floorHour(parseInstant(config.activatedAt) + HOUR_MS - 1))))
       : floorHour(nowMs) - HOUR_MS;
   const scopeClosed = configs.length === 0 || periodEnd < nowMs;
-  const health = records.length === 0 && !scopeClosed ? 'waiting' : worstHealth(records);
+  const recordHealth = records.length === 0 && !scopeClosed ? 'waiting' : worstHealth(records);
+  // An open scope with all current obligations reconciled is healthy, not
+  // complete; complete is reserved for a closed scope.
+  const health = recordHealth === 'complete' && !scopeClosed ? 'healthy' : recordHealth;
   const scope = {
     period_start: iso(periodStart),
     period_end: iso(periodEnd),
@@ -2123,7 +2562,7 @@ export function getReportingStatusForAccount(
     feed_purposes: [...new Set(configs.map(entry => entry.config.feed_purpose))],
     finality: [...new Set(configs.map(entry => entry.config.required_finality))],
     ledger_retained_from: iso(retainedFromMs),
-    coverage_complete: periodStart >= retainedFromMs,
+    coverage_complete: periodStart >= retainedPeriodBoundaryMs,
   };
   const coverage = aggregateCoverage(records, iso(nowMs));
   const counts = {
@@ -2144,7 +2583,7 @@ export function getReportingStatusForAccount(
     health,
     coverage,
     data_through: records.filter(record => record.revision).at(-1)?.obligation.period.end ?? null,
-    ...(!scopeClosed && { next_expected_at: iso(periodEnd + HOUR_MS) }),
+    ...(!scopeClosed && nextExpectedAt(configs, nowMs) && { next_expected_at: nextExpectedAt(configs, nowMs) }),
     obligation_counts: counts,
     issues,
   };
@@ -2216,6 +2655,22 @@ export function clearReportingReliabilityStore(): void {
 /** Test-only process-cache loss without discarding the in-memory ledger. */
 export function clearReportingAccountBindingCacheForTesting(): void {
   reportingAccountBindings.clear();
+}
+
+/**
+ * Deterministically exercise the same JSON serialization boundary used by the
+ * durable ledger store. This is intentionally test-only: production reloads
+ * through `withDurableReportingLedger`, which deserializes this exact shape
+ * after taking the account transaction lock.
+ */
+export function rehydrateReportingLedgerForTesting(
+  principal: string | undefined,
+  accountId: string,
+): void {
+  const key = callerScope(principal, accountId);
+  const ledger = ledgers.get(key);
+  if (!ledger) throw new Error('Cannot rehydrate an absent reporting ledger.');
+  ledgers.set(key, deserializeLedger(serializeLedger(ledger)));
 }
 
 /** Test-only visibility into the accepted-buy history behind frozen coverage. */
@@ -2307,6 +2762,171 @@ export async function getReportingStatusForAccountDurably(
   return await withDurableReportingLedger(principal, accountId, true, () => {
     setReportingMediaBuyCandidates(principal, accountId, mediaBuyCandidates);
     return getReportingStatusForAccount(params, principal, accountId);
+  });
+}
+
+/**
+ * Resolve immutable Core content by revision identity. Every retained Core
+ * revision has committed authoritative rows, including explicit zero-row
+ * revisions; Managed Delivery materialization is neither required nor used.
+ */
+export function getCoreRevisionContentForAccount(
+  principal: string | undefined,
+  accountId: string,
+  reportingRevisionId: string,
+): { revision: ReportingRevision; rows: Array<Record<string, unknown>>; bindingSha256: string } | undefined {
+  const ledger = ledgers.get(callerScope(principal, accountId));
+  const content = ledger?.revisionContents.get(reportingRevisionId);
+  if (!content) return undefined;
+  return {
+    revision: structuredClone(content.revision),
+    rows: structuredClone(content.rows),
+    bindingSha256: content.bindingSha256,
+  };
+}
+
+/**
+ * Read-only ownership probe for an omitted-account exact revision request.
+ *
+ * This must stay separate from `withDurableReportingLedger`: that helper is
+ * intentionally transactional and locks a ledger so it can persist a cursor
+ * snapshot. Searching every accessible account through it would lock and
+ * rewrite unrelated ledgers. The probe performs one ordinary SELECT (or one
+ * in-memory map read), deserializes only the queried ledger, and never writes
+ * a cache, ledger, account binding, or database row.
+ */
+export async function hasCoreRevisionContentForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+  reportingRevisionId: string,
+): Promise<boolean> {
+  recordReportingRevisionReadForTesting('existence_probe', accountId);
+  if (!isDatabaseInitialized()) {
+    return getCoreRevisionContentForAccount(principal, accountId, reportingRevisionId) !== undefined;
+  }
+  const principalScope = principal && principal.length > 0 ? principal : 'anonymous';
+  const { rows } = await getPool().query<{ ledger: SerializedReportingLedger | string }>(
+    `SELECT ledger
+       FROM training_reporting_ledgers
+      WHERE principal_scope = $1 AND account_id = $2`,
+    [principalScope, accountId],
+  );
+  const stored = rows[0]?.ledger;
+  if (!stored) return false;
+  const ledger = deserializeLedger(
+    typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored,
+  );
+  return ledger.revisionContents.has(reportingRevisionId);
+}
+
+/** Hydrate the durable ledger before resolving an exact revision read. */
+export async function getCoreRevisionContentForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+  reportingRevisionId: string,
+  account?: AccountRef,
+  accountState?: Record<string, unknown>,
+): Promise<{ revision: ReportingRevision; rows: Array<Record<string, unknown>>; bindingSha256: string } | undefined> {
+  return await withDurableReportingLedger(
+    principal,
+    accountId,
+    false,
+    () => getCoreRevisionContentForAccount(principal, accountId, reportingRevisionId),
+    account,
+    accountState,
+  );
+}
+
+/**
+ * Return a frozen, cursor-walkable page of an exact Core revision. Cursors
+ * are transactionally persisted with the ledger and bound to caller/account,
+ * revision ID, committed digest, and next row ordinal, so cache loss or
+ * concurrent mutations cannot change metadata or row order during a walk.
+ */
+export async function getCoreRevisionContentPageForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+  reportingRevisionId: string,
+  pagination: { max_results?: number; cursor?: string } | undefined,
+  account?: AccountRef,
+  accountState?: Record<string, unknown>,
+): Promise<{
+  revision: ReportingRevision;
+  rows: Array<Record<string, unknown>>;
+  bindingSha256: string;
+  pagination: { has_more: boolean; cursor?: string; total_count: number };
+} | undefined> {
+  recordReportingRevisionReadForTesting('persisting_page_read', accountId);
+  return await withDurableReportingLedger(principal, accountId, true, () => {
+    const ledger = ledgerFor(principal, accountId);
+    const initial = getCoreRevisionContentForAccount(principal, accountId, reportingRevisionId);
+    const initialScope = initial && stableId('reporting-exact-read', [
+      callerScope(principal, accountId), reportingRevisionId, initial.bindingSha256,
+    ]);
+    const snapshot = snapshotFromCursor(ledger, pagination?.cursor, initialScope ?? 'unavailable');
+    if (snapshot === null) return undefined;
+    const revision = snapshot
+      ? snapshot.common.reporting_revision as ReportingRevision
+      : initial?.revision;
+    const bindingSha256 = snapshot?.exactBindingSha256 ?? initial?.bindingSha256;
+    const allRows = snapshot?.exactRows ?? initial?.rows;
+    if (!revision || !bindingSha256 || !allRows) return undefined;
+    const scope = stableId('reporting-exact-read', [callerScope(principal, accountId), reportingRevisionId, bindingSha256]);
+    if (snapshot && (snapshot.scope !== scope || snapshot.exactRevisionId !== reportingRevisionId)) return undefined;
+    const offset = snapshot?.offset ?? 0;
+    const totalCount = allRows.length;
+    const limit = Math.max(1, Math.min(100, pagination?.max_results ?? 100));
+    const rows = allRows.slice(offset, offset + limit);
+    const hasMore = offset + rows.length < totalCount;
+    const common = { reporting_revision: structuredClone(revision) };
+    return {
+      revision: structuredClone(revision),
+      rows: structuredClone(rows),
+      bindingSha256,
+      pagination: {
+        has_more: hasMore,
+        ...(hasMore && { cursor: cursorFor(ledger, {
+          scope,
+          nowMs: ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now(),
+          resources: [],
+          common,
+          exactRows: allRows,
+          exactRevisionId: reportingRevisionId,
+          exactBindingSha256: bindingSha256,
+        }, offset + rows.length, snapshot?.snapshotId) }),
+        total_count: totalCount,
+      },
+    };
+  }, account, accountState);
+}
+
+/** Enable deterministic assertions about exact-read probe/write boundaries. */
+export function beginReportingRevisionReadTraceForTesting(): void {
+  reportingRevisionReadTraceStorageForTesting = [];
+}
+
+/** Return the trace without disabling it, so page-two assertions can append. */
+export function reportingRevisionReadTraceForTesting(): Array<{
+  kind: 'existence_probe' | 'persisting_page_read';
+  accountId: string;
+}> {
+  return structuredClone(reportingRevisionReadTraceStorageForTesting ?? []);
+}
+
+/** Seed a deliberately corrupt duplicate only for nondisclosure regression tests. */
+export function duplicateCoreRevisionContentForTesting(
+  principal: string | undefined,
+  sourceAccountId: string,
+  targetAccountId: string,
+  reportingRevisionId: string,
+): void {
+  const source = getCoreRevisionContentForAccount(principal, sourceAccountId, reportingRevisionId);
+  if (!source) throw new Error('Cannot duplicate an absent reporting revision.');
+  const target = ledgerFor(principal, targetAccountId);
+  target.revisionContents.set(reportingRevisionId, {
+    revision: structuredClone(source.revision),
+    rows: structuredClone(source.rows),
+    bindingSha256: source.bindingSha256,
   });
 }
 
@@ -2425,6 +3045,18 @@ export const TRAINING_REPORTING_MANAGED_OFFERING = {
     destination_modes: ['provision'] as ['provision'],
     provider: { domain: 'test-agent.adcontextprotocol.org' },
     access_mode: 'read_only',
+  },
+};
+
+/** A real source-calendar offering used to exercise IANA civil-day generation. */
+export const TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING = {
+  ...TRAINING_REPORTING_MANAGED_OFFERING,
+  offering_id: 'analytics-daily-source-calendar-managed',
+  schedule: {
+    period_duration: 'P1D' as const,
+    alignment: 'source_timezone' as const,
+    period_timezone: 'America/New_York',
+    delivery_sla: 'PT4H' as const,
   },
 };
 

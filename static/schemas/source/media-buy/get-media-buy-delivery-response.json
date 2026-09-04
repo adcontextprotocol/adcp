@@ -30,6 +30,19 @@
           "currency"
         ]
       }
+    },
+    {
+      "if": {
+        "anyOf": [
+          { "required": ["reporting_revision"] },
+          { "required": ["reporting_revision_binding"] },
+          { "required": ["reporting_rows"] }
+        ]
+      },
+      "then": {
+        "required": ["reporting_revision", "reporting_revision_binding", "reporting_rows", "pagination"],
+        "properties": { "pagination": { "required": ["total_count"] } }
+      }
     }
   ],
   "properties": {
@@ -84,6 +97,21 @@
       ],
       "additionalProperties": true
     },
+    "reporting_revision_binding": {
+      "type": "object",
+      "description": "Present only for a reporting_revision_id selector. Binds the complete ordered reporting_rows sequence obtained by concatenating every cursor page to one immutable Reliable Reporting revision; consumers verify content_sha256 over RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows} before using it as revision evidence.",
+      "properties": {
+        "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_revision" },
+        "row_count": { "type": "integer", "minimum": 0 },
+        "control_totals": { "type": "array", "items": { "$ref": "/schemas/core/reporting-control-total.json" } },
+        "content_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
+      },
+      "required": ["reporting_revision_id", "row_count", "control_totals", "content_sha256"],
+      "additionalProperties": false
+    },
+    "reporting_revision": { "$ref": "/schemas/core/reporting-revision.json", "description": "Full immutable revision metadata, identical to the get_reporting_status revision record." },
+    "reporting_rows": { "type": "array", "items": { "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },
+    "pagination": { "$ref": "/schemas/core/pagination-response.json", "description": "Exact revision pages are frozen for the cursor walk. total_count is mandatory for reporting_revision_id and equals reporting_revision.row_count and reporting_revision_binding.row_count; it counts the complete ordered row sequence, not this page." },
     "currency": {
       "type": "string",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy response-wide ISO 4217 currency code. It may be used only when every monetary value in the response has that denomination. A delivery response can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",

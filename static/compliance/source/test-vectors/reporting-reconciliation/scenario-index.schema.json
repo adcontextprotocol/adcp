@@ -290,13 +290,13 @@
     "post_official_adjustment": {
       "type": "object",
       "properties": {
-        "invoice_anchor_revision_id": { "type": "string", "const": "revision-august-official" },
+        "supporting_evidence_revision_id": { "type": "string", "const": "revision-august-official" },
         "adjustment_asset": { "type": "string", "const": "adjustment.json" },
         "accepted_receipt_request_asset": { "type": "string", "const": "receipts/adjustment-accepted-request.json" },
         "accepted_receipt_response_asset": { "type": "string", "const": "receipts/adjustment-accepted-recorded-response.json" },
         "original_revision_and_receipt_immutable": { "type": "boolean", "const": true }
       },
-      "required": ["invoice_anchor_revision_id", "adjustment_asset", "accepted_receipt_request_asset", "accepted_receipt_response_asset", "original_revision_and_receipt_immutable"],
+      "required": ["supporting_evidence_revision_id", "adjustment_asset", "accepted_receipt_request_asset", "accepted_receipt_response_asset", "original_revision_and_receipt_immutable"],
       "additionalProperties": false
     },
     "scenarios": {

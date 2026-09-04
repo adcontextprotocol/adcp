@@ -29,7 +29,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { atLeastAdcpVersion, supportsAccountChangeFeed, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, REPORTING_STATUS_ADCP_VERSION, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -198,7 +198,7 @@ function salesComplyScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
-  const current = atLeastAdcpVersion(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
+  const current = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...SALES_CURRENT_SCENARIOS]
     : SALES_CURRENT_SCENARIOS.filter(scenario => (
       scenario !== 'reporting_core_lifecycle_probe'
@@ -549,7 +549,7 @@ async function tryHandleLocalComplyScenario(
     });
     return true;
   }
-  if (isReportingLifecycleProbe && !atLeastAdcpVersion(versionResolution.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+  if (isReportingLifecycleProbe && !supportsReliableReporting(versionResolution.servedVersion)) {
     return false;
   }
 
@@ -919,10 +919,6 @@ function projectTenantCapabilities(
       const experimentalFeatures = Array.isArray(structured.experimental_features)
         ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
         : [];
-      if (!atLeastAdcpVersion(servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
-        const reportFeature = experimentalFeatures.indexOf('media_buy.reporting_delivery');
-        if (reportFeature >= 0) experimentalFeatures.splice(reportFeature, 1);
-      }
       if (!experimentalFeatures.includes('measurement.core')) {
         experimentalFeatures.push('measurement.core');
       }
@@ -1000,8 +996,11 @@ function projectTenantCapabilities(
           },
         }),
       };
-      if (!atLeastAdcpVersion(servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
-        delete structured.media_buy.reporting_delivery;
+      if (!supportsReportingStatus(servedVersion)) delete structured.media_buy.reporting_delivery;
+      else if (!supportsReliableReporting(servedVersion) && structured.media_buy.reporting_delivery) {
+        const legacyReporting = structured.media_buy.reporting_delivery as Record<string, unknown>;
+        for (const field of ['reliable_reporting_version', 'revision_content_task', 'managed_delivery', 'reconciled_billing', 'receipt_task', 'resource_retention_days', 'authorization_revocation_seconds']) delete legacyReporting[field];
+        if (Array.isArray(legacyReporting.offerings)) legacyReporting.offerings = legacyReporting.offerings.filter(offering => !('method' in (offering as Record<string, unknown>)));
       }
       if (!supportsGetProductsRejected(servedVersion)) {
         delete structured.media_buy.lifecycle_tools;

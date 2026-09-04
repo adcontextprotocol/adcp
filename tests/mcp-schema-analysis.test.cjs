@@ -34,9 +34,10 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const report = analyzeInputSchemaWeights(schemas);
 
   assert.equal(report.tool_count, 18);
-  // Exact inventory pins: the shared reporting native-version reference adds
-  // one transitive instance and one unique definition to this runtime graph.
-  assert.equal(report.definition_instances, 614);
+  // Main's shared reporting native-version reference adds one instance and
+  // one unique definition; exact Reliable Reporting reads add the shared
+  // pagination-request closure as a second transitive instance.
+  assert.equal(report.definition_instances, 615);
   assert.equal(report.unique_definitions, 167);
   assert.equal(report.repeated_definitions, 117);
   assert.ok(report.repeated_definition_bytes > 180_000);

@@ -23,11 +23,12 @@ async function compile(uri) {
   return ajv.compileAsync(readSchema(uri));
 }
 
-// The reporting.core tier boundary, stated as code: everything a
-// polling-only seller needs is expressible without any of these words.
-const FORBIDDEN_KNOWLEDGE = /destination|manifest|canonical|digest|receipt|readiness|webhook/i;
+// Core keeps a fixed revision-binding JCS/SHA-256 digest, but does not carry
+// Managed external materialization, destination, receipt, or push machinery.
+const FORBIDDEN_KNOWLEDGE = /destination|manifest|receipt|readiness|webhook/i;
 
-// A complete Core offering: API-delivered (no method), no canonicalization.
+// A complete Core offering: API-delivered (no method), no external
+// materialization canonicalization contract.
 const coreOffering = {
   offering_id: 'analytics-daily-core',
   feed_purpose: 'analytics',
@@ -87,6 +88,7 @@ const coreCapabilities = {
   reliable_reporting_version: '1.0',
   configuration_task: 'sync_accounts',
   status_task: 'get_reporting_status',
+  revision_content_task: 'get_media_buy_delivery',
   offerings: [coreOffering],
   automated_recovery_window_seconds: 21600,
   status_retention_days: 35,
@@ -236,7 +238,7 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
       offerings: [reconciledOffering],
       reconciled_billing: true,
       receipt_task: 'sync_reporting_receipts',
-    }), true, JSON.stringify(validateCapabilities.errors));
+    }), false, 'consumer_receipt offerings require a managed materialization method');
 
     assert.equal(validateCapabilities({
       ...coreCapabilities,
@@ -262,7 +264,7 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     }), false, 'materialization readiness requires managed_delivery');
   });
 
-  it('accepts an API-delivered Core offering with no method and no canonicalization contract', () => {
+  it('accepts an API-delivered Core offering with no method or external canonicalization contract', () => {
     assert.equal(validateOffering(coreOffering), true, JSON.stringify(validateOffering.errors));
     assert.equal('method' in coreOffering, false);
     for (const key of Object.keys(coreOffering.reporting_profile)) {
@@ -402,7 +404,7 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     assert.doesNotMatch(JSON.stringify(readSchema('/schemas/core/reporting-status-changed-webhook.json').required), /destination|materialization|receipt/);
   });
 
-  it('needs no destination, manifest, canonicalization, digest, receipt, or push knowledge', () => {
+  it('needs no Managed destination, manifest, receipt, or push knowledge', () => {
     assert.doesNotMatch(coreSeller.toString(), FORBIDDEN_KNOWLEDGE,
       'the Core seller implementation must not reference any managed-delivery or billing concept');
     assert.doesNotMatch(JSON.stringify(coreCapabilities), FORBIDDEN_KNOWLEDGE);

@@ -53,7 +53,7 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
+import { supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -62,8 +62,12 @@ import {
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import {
   captureReportingMediaBuyCandidateDurably,
+  getCoreRevisionContentPageForAccountDurably,
+  hasCoreRevisionContentForAccountDurably,
+  listReportingAccountsDurably,
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
+import { validateSourceSchema } from './source-schema.js';
 import {
   getSharedAccountCreative,
   listSharedAccountCreatives,
@@ -3230,7 +3234,12 @@ export function resolveServedAdcpVersion(
       };
     }
 
-    if (supportedVersions.includes(requestedRelease.raw)) {
+    // RC.1 source schemas are exercised only by the test runner until the
+    // Version Packages RC.1 cut supplies the matching SDK. This bypass is
+    // deliberately impossible in a deployed process: it neither changes the
+    // advertised supported list nor accepts the candidate outside NODE_ENV=test.
+    const testOnlyCandidate = process.env.NODE_ENV === 'test' && requestedRelease.raw === '3.2-rc.1';
+    if (supportedVersions.includes(requestedRelease.raw) || testOnlyCandidate) {
       return { ok: true, servedVersion: requestedRelease.raw };
     }
 
@@ -14833,12 +14842,113 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   };
 }
 
-export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & {
     media_buy_id?: string;
+    reporting_revision_id?: string;
     requested_metrics?: unknown;
     reporting_dimensions?: Record<string, unknown>;
+    pagination?: { max_results?: number; cursor?: string };
   };
+  if (typeof req.reporting_revision_id === 'string') {
+    if (!supportsReliableReporting(ctx.servedAdcpVersion)) {
+      return { errors: [{ code: 'VERSION_UNSUPPORTED', message: 'Exact reporting revision content is available only in AdCP 3.2 RC.1 and later.', field: 'adcp_version' }] };
+    }
+    const incompatible = ['media_buy_id', 'media_buy_ids', 'start_date', 'end_date', 'status_filter', 'requested_metrics', 'reporting_dimensions', 'attribution_window', 'include_package_daily_breakdown', 'time_granularity', 'include_window_breakdown']
+      .find(key => (req as Record<string, unknown>)[key] !== undefined);
+    if (incompatible) return { errors: [{ code: 'VALIDATION_ERROR', message: `reporting_revision_id cannot be combined with ${incompatible}`, field: incompatible }] };
+    // An exact ID is intentionally nondisclosing: an omitted, unknown, or
+    // unauthorized account yields the same result as an unknown revision.
+    const accountRef = isRecord(req.account) ? req.account as AccountRef : undefined;
+    // A natural AccountRef is authoritative over framework/session context.
+    // With no account, search the caller's complete accessible set; an exact
+    // revision match still has the same nondisclosing miss result.
+    const candidates = accountRef
+      ? [await resolveReportingAccountDurably(ctx.principal, accountRef)].filter(
+        (value): value is NonNullable<typeof value> => value !== undefined,
+      )
+      : await listReportingAccountsDurably(ctx.principal);
+    // Direct SDK calls may already have resolved the exact opaque account but
+    // have not yet persisted a natural binding. This fallback is deliberately
+    // limited to an identical opaque ID; it never overrides a natural ref.
+    if (accountRef?.account_id
+      && candidates.length === 0
+      && ctx.resolvedAccountId === accountRef.account_id
+      && !ctx.resolvedAccountId.startsWith('synthetic_')) {
+      candidates.push({ accountId: ctx.resolvedAccountId, account: accountRef });
+    }
+    if (!accountRef && candidates.length === 0 && ctx.resolvedAccountId && !ctx.resolvedAccountId.startsWith('synthetic_')) {
+      candidates.push({ accountId: ctx.resolvedAccountId, account: { account_id: ctx.resolvedAccountId } });
+    }
+    let content: Awaited<ReturnType<typeof getCoreRevisionContentPageForAccountDurably>>;
+    if (accountRef) {
+      // An explicit account already names the sole authorized search scope.
+      // Preserve its existing cursor-persisting path unchanged.
+      const candidate = candidates[0];
+      if (candidate) {
+        content = await getCoreRevisionContentPageForAccountDurably(
+          ctx.principal,
+          candidate.accountId,
+          req.reporting_revision_id,
+          req.pagination,
+          candidate.account,
+          candidate.accountState,
+        );
+      }
+    } else {
+      // Find the owner without taking a transaction lock or updating every
+      // accessible ledger. Probe the complete set so a corrupted duplicate
+      // cannot select an arbitrary account; zero or multiple matches retain
+      // the same nondisclosing not-found result.
+      const matches = [];
+      for (const candidate of candidates) {
+        if (await hasCoreRevisionContentForAccountDurably(
+          ctx.principal,
+          candidate.accountId,
+          req.reporting_revision_id,
+        )) matches.push(candidate);
+      }
+      if (matches.length === 1) {
+        const candidate = matches[0];
+        content = await getCoreRevisionContentPageForAccountDurably(
+          ctx.principal,
+          candidate.accountId,
+          req.reporting_revision_id,
+          req.pagination,
+          candidate.account,
+          candidate.accountState,
+        );
+      }
+    }
+    if (!content) return { errors: [{ code: 'REPORTING_REVISION_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
+    const exactResponse = {
+      reporting_period: content.revision.period,
+      media_buy_deliveries: [],
+      reporting_revision: content.revision,
+      reporting_rows: content.rows,
+      reporting_revision_binding: {
+        reporting_revision_id: content.revision.reporting_revision_id,
+        row_count: content.revision.row_count,
+        control_totals: content.revision.control_totals,
+        content_sha256: content.bindingSha256,
+      },
+      pagination: content.pagination,
+    };
+    // Exact mode is a different response contract from legacy delivery. Keep
+    // the quartet fail-closed at the handler seam as well as in the source
+    // schema so a future projection cannot silently omit one member.
+    const exactValidation = validateSourceSchema('media-buy/get-media-buy-delivery-response.json', {
+      status: 'completed',
+      ...exactResponse,
+    });
+    if (!exactValidation.valid) {
+      throw new Error(`Invalid exact reporting revision response: ${exactValidation.errors[0]?.message ?? 'missing exact response quartet'}`);
+    }
+    return exactResponse;
+  }
+  if (req.pagination !== undefined) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'pagination is available only with reporting_revision_id.', field: 'pagination' }] };
+  }
   let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req, ctx),

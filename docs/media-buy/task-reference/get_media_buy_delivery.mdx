@@ -8,11 +8,42 @@ testable: true
 
 Retrieve comprehensive delivery metrics and performance data for media buy reporting.
 
+{/* The released task endpoint remains /schemas/v3. RC1-only exact-revision
+    fields below are unreleased source in static/schemas/source/media-buy/
+    get-media-buy-delivery-{request,response}.json. */}
+**Request schema:** [`get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
+
+**Response schema:** [`get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
+
 **Response Time**: ~60 seconds (reporting query)
 
 ## Scope
 
 `get_media_buy_delivery` works on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), regardless of how the underlying campaign was created. Sales agents MUST NOT refuse delivery reporting — or narrow its coverage — on the basis that the buy originated outside AdCP. If delivery data for a buy is genuinely unavailable (e.g., the ad server has not yet reported a flight), the seller returns the buy in `media_buy_deliveries` with zero or partial metrics; the seller does not omit it and does not return [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) for an account-owned buy.
+
+## Exact Reliable Reporting revision read
+
+Reliable Reporting adds the mutually exclusive `reporting_revision_id` selector
+in the next RC schema. It returns the immutable content for exactly that revision,
+not a newly calculated date-range result. The response carries the full
+`reporting_revision` metadata, authoritative `reporting_rows`, and
+`reporting_revision_binding` with the same revision ID, row count, control totals,
+and the committed `revision_content_sha256` over the JCS binding object. Consumers verify those fields before
+using the content as reporting evidence. Existing `media_buy_ids` and date-range
+calls remain unchanged. A zero-row revision returns an empty `media_buy_deliveries`
+array with `row_count: 0`, proving that no rows is a published result rather than a
+missing report.
+
+Exact reads are cursor-paginated: every page repeats identical `reporting_revision`,
+`reporting_revision_binding`, and `pagination.total_count`, which equals the
+revision row count. Consumers MUST exhaust the cursor, concatenate `reporting_rows`
+in returned order, then compute SHA-256 of RFC 8785/JCS
+`{ reporting_revision_id, row_count, control_totals, reporting_rows }`. Hashing one
+page is not verification. `pagination` is available only with
+`reporting_revision_id`; exact mode rejects every other delivery/filter selector.
+When `account` is omitted, the seller searches all accounts accessible to the
+authenticated caller. Unknown and unauthorized revision/account combinations return
+the same nondisclosing `REPORTING_REVISION_NOT_FOUND` result.
 
 **Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
 **Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
@@ -89,7 +120,7 @@ Returns delivery data as per-media-buy rows:
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery for single-currency rows. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
 
-See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for the complete field list.
+See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for the released field list. RC1-only exact-revision fields are documented in the unreleased source noted above.
 
 ### Final vs provisional numbers
 

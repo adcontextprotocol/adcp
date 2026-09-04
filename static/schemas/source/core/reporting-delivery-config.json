@@ -40,10 +40,14 @@
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
       "then": { "properties": { "required_finality": { "const": "official" } } }
+    },
+    {
+      "if": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } }, "required": ["reconciliation_mode"] },
+      "then": { "required": ["method"] }
     }
   ],
   "x-adcp-validation": {
-    "tier_boundaries": "method is present when and only when the selected offering declares one. A configuration selecting a Core (API-delivered) offering involves no destination, manifest, canonicalization, or receipt machinery.",
+    "tier_boundaries": "method is present when and only when the selected offering declares one. A configuration selecting a Core (API-delivered) offering involves no destination, manifest, receipt machinery, or Managed external-materialization canonicalization code or contract. Every Core revision still carries the fixed RFC 8785/JCS revision-binding canonicalization and digest defined by reporting-revision.json.",
     "offering_applicability": "Resolve the seller-wide offering through every selected product's reporting_capabilities.reporting_delivery_offering_ids, then apply account, seat, credential, provider, API, and upstream reporting-calendar constraints. Seller-wide advertisement alone is not proof that an individual package is eligible. A configuration MUST NOT become ready unless every covered source can produce the exact schedule periods natively or by lossless re-bucketing.",
     "coverage_requirement": "A full configuration MUST NOT become ready for a current nonempty partial, none, or unknown scope and any later incomplete period becomes action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial MAY become ready when some scope is covered, but every obligation and revision freezes exact coverage and aggregate consumers keep the partial label."
   },

@@ -53,22 +53,89 @@ const GET_REPORTING_STATUS_SCHEMA = {
   health: z.array(z.string()).min(1).optional(),
   finality: z.array(z.string()).min(1).optional(),
   reporting_revision_id: z.string().min(1).max(255).optional(),
-  changes_after: z.string().min(1).max(2048).optional(),
   pagination: z.any().optional(),
   context: z.any().optional(),
   ext: z.any().optional(),
 };
-
-const SYNC_REPORTING_RECEIPTS_SCHEMA = {
-  account: ACCOUNT_REF,
-  idempotency_key: z.string().min(16).max(255),
-  adcp_version: z.string().optional(),
-  adcp_major_version: z.number().int().optional(),
-  receipts: z.array(z.object({}).passthrough()).min(1).max(100).optional(),
-  adjustment_receipts: z.array(z.object({}).passthrough()).min(1).max(100).optional(),
-  context: z.any().optional(),
-  ext: z.any().optional(),
+// `tools/list` cannot see an individual request's negotiated wire version.
+// The deployed RC0 list therefore exposes only its frozen input. Test-only
+// direct construction can exercise the pending RC1 delta selector.
+const RELIABLE_GET_REPORTING_STATUS_SCHEMA = {
+  ...GET_REPORTING_STATUS_SCHEMA,
+  changes_after: z.string().min(1).max(2048).optional(),
 };
+
+// These primitives deliberately mirror the source schemas rather than the
+// looser legacy SDK Zod shapes: the direct/test-only MCP projection must not
+// accept a receipt the pending RC1 source contract rejects.
+const RECEIPT_ID = z.string().min(16).max(255).regex(/^[A-Za-z0-9_.:-]{16,255}$/);
+const REFERENCE_ID = z.string().min(1).max(255).regex(/^[A-Za-z0-9_.:-]{1,255}$/);
+const CONTROL_TOTAL_NAME = z.string().min(1).max(128).regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/);
+const CONTROL_TOTAL_UNIT = z.string().min(1).max(32);
+const INTEGER_CONTROL_VALUE = z.string().regex(/^-?(?:0|[1-9][0-9]*)$/);
+const DECIMAL_CONTROL_VALUE = z.string().regex(/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/);
+const CONTROL_TOTAL = z.union([
+  z.object({ name: CONTROL_TOTAL_NAME, value: INTEGER_CONTROL_VALUE, value_type: z.literal('integer'), unit: CONTROL_TOTAL_UNIT.optional() }).strict(),
+  z.object({ name: CONTROL_TOTAL_NAME, value: DECIMAL_CONTROL_VALUE, value_type: z.literal('decimal'), unit: CONTROL_TOTAL_UNIT.optional() }).strict(),
+]);
+const UNIQUE_CONTROL_TOTALS = z.array(CONTROL_TOTAL).refine(
+  values => new Set(values.map(value => JSON.stringify(value))).size === values.length,
+  'observed_control_totals must be unique',
+);
+const REJECTION_CODES = z.array(z.string().min(1).max(128).regex(/^[A-Z][A-Z0-9_]*$/)).min(1)
+  .refine(values => new Set(values).size === values.length, 'rejection_codes must be unique');
+const SHA256 = z.string().regex(/^[A-Fa-f0-9]{64}$/);
+const CANONICALIZATION_URI = z.string().url().regex(
+  /^https:\/\/(?![^/]*@)(?!localhost(?:[:/]|$))(?!\[)(?!\d+(?:\.\d+){3}(?::|\/|$))(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:\/|$)/,
+);
+const REPORTING_RECEIPT = z.object({
+  reporting_receipt_id: RECEIPT_ID, reporting_obligation_id: REFERENCE_ID,
+  reporting_revision_id: REFERENCE_ID, reporting_materialization_id: REFERENCE_ID,
+  status: z.enum(['accepted', 'rejected']), verification_profile: z.enum(['canonical_digest', 'manifest_checksums', 'native_commit']),
+  observed_row_count: z.number().int().min(0), observed_control_totals: UNIQUE_CONTROL_TOTALS, observed_at: z.string().datetime({ offset: true }),
+  consumer_commit_ref: z.string().min(1).max(512).optional(), supersedes_reporting_receipt_id: RECEIPT_ID.optional(), rejection_codes: REJECTION_CODES.optional(),
+  observed_canonical_content_digest: z.object({ algorithm: z.literal('sha256'), value: SHA256, canonicalization_id: z.string().min(1).max(128), canonicalization_uri: CANONICALIZATION_URI, canonicalization_sha256: SHA256 }).strict().optional(),
+  observed_manifest_sha256: SHA256.optional(), observed_native_version_ref: z.string().min(1).max(512).optional(),
+}).strict();
+const ADJUSTMENT_RECEIPT = z.object({
+  reporting_receipt_id: RECEIPT_ID, reporting_adjustment_id: REFERENCE_ID,
+  adjusts_reporting_revision_id: REFERENCE_ID, status: z.enum(['accepted', 'rejected']),
+  observed_adjustment_sha256: SHA256, observed_at: z.string().datetime({ offset: true }),
+  supersedes_reporting_receipt_id: RECEIPT_ID.optional(), rejection_codes: REJECTION_CODES.optional(),
+}).strict();
+export const SYNC_REPORTING_RECEIPTS_SCHEMA = z.object({
+  account: ACCOUNT_REF, idempotency_key: z.string().min(16).max(255), adcp_version: z.string().optional(), adcp_major_version: z.number().int().optional(),
+  receipts: z.array(REPORTING_RECEIPT).min(1).max(100).optional(), adjustment_receipts: z.array(ADJUSTMENT_RECEIPT).min(1).max(100).optional(),
+  context: z.any().optional(), ext: z.any().optional(),
+}).superRefine((value, context) => {
+  if ((value.receipts?.length ?? 0) + (value.adjustment_receipts?.length ?? 0) === 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'At least one receipt is required.' });
+  }
+  if ((value.receipts?.length ?? 0) + (value.adjustment_receipts?.length ?? 0) > 100) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'receipts and adjustment_receipts combined may contain at most 100 items.' });
+  }
+  for (const [index, receipt] of (value.receipts ?? []).entries()) if (receipt.status === 'rejected' && !receipt.rejection_codes?.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['receipts', index, 'rejection_codes'], message: 'rejected receipts require rejection_codes.' });
+  }
+  for (const [index, receipt] of (value.receipts ?? []).entries()) {
+    if (receipt.status !== 'accepted') continue;
+    if (receipt.verification_profile === 'canonical_digest' && !receipt.observed_canonical_content_digest) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['receipts', index, 'observed_canonical_content_digest'], message: 'accepted canonical_digest receipts require observed_canonical_content_digest.' });
+    }
+    if (receipt.verification_profile === 'manifest_checksums' && !receipt.observed_manifest_sha256) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['receipts', index, 'observed_manifest_sha256'], message: 'accepted manifest_checksums receipts require observed_manifest_sha256.' });
+    }
+    if (receipt.verification_profile === 'native_commit' && !receipt.observed_native_version_ref) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['receipts', index, 'observed_native_version_ref'], message: 'accepted native_commit receipts require observed_native_version_ref.' });
+    }
+  }
+  for (const [index, receipt] of (value.adjustment_receipts ?? []).entries()) if (receipt.status === 'rejected' && !receipt.rejection_codes?.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['adjustment_receipts', index, 'rejection_codes'], message: 'rejected adjustment receipts require rejection_codes.' });
+  }
+  for (const [index, receipt] of (value.adjustment_receipts ?? []).entries()) if (receipt.status === 'accepted' && receipt.rejection_codes !== undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['adjustment_receipts', index, 'rejection_codes'], message: 'accepted adjustment receipts must not carry rejection_codes.' });
+  }
+});
 
 const SYNC_CATALOGS_SCHEMA = {
   idempotency_key: z.string().min(16).max(255),
@@ -100,6 +167,11 @@ export function buildSalesTenantConfig(
   tenantId: string;
   config: TenantConfig;
 } {
+  // MCP tools/list has no negotiated-version input. Until the RC.1 SDK is
+  // published, mounting these source-schema tools in a deployed RC.0 process
+  // would advertise an unreachable wire surface. Direct/unit construction is
+  // deliberately enabled only by the test runtime.
+  const enableReliableReportingTools = process.env.NODE_ENV === 'test';
   const material = getTenantSigningMaterial(TENANT_ID);
   const platform = new TrainingSalesPlatform(
     options.storyboardCompat,
@@ -145,16 +217,18 @@ export function buildSalesTenantConfig(
             get_reporting_status: customToolFor(
               'get_reporting_status',
               'Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.',
-              GET_REPORTING_STATUS_SCHEMA,
+              enableReliableReportingTools ? RELIABLE_GET_REPORTING_STATUS_SCHEMA : GET_REPORTING_STATUS_SCHEMA,
               reportingStatusForCustomTool,
+              // A reporting lookup can validly return the protocol's
+              // `status: "failed"` payload with resource-level errors. Keep
+              // that result intact instead of turning it into an MCP error
+              // envelope solely because it has an `errors` array.
               {
                 annotations: { readOnlyHint: true, idempotentHint: true },
-                // A failed lookup is a valid get_reporting_status result. Keep
-                // its status/failure_kind/errors envelope intact rather than
-                // recasting it as an MCP transport error.
                 payloadErrorsAsSuccess: true,
               },
             ),
+            ...(enableReliableReportingTools && {
             sync_reporting_receipts: customToolFor(
               'sync_reporting_receipts',
               "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
@@ -165,6 +239,7 @@ export function buildSalesTenantConfig(
                 enforceIdempotency: true,
               },
             ),
+            }),
           }),
           sync_catalogs: customToolFor(
             'sync_catalogs',

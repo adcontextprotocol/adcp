@@ -8,6 +8,22 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": { "required": ["reporting_revision_id"] },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["media_buy_ids"] }, { "required": ["start_date"] }, { "required": ["end_date"] },
+            { "required": ["status_filter"] }, { "required": ["requested_metrics"] }, { "required": ["reporting_dimensions"] },
+            { "required": ["attribution_window"] }, { "required": ["include_package_daily_breakdown"] }, { "required": ["time_granularity"] }, { "required": ["include_window_breakdown"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "required": ["pagination"] },
+      "then": { "required": ["reporting_revision_id"] }
     }
   ],
   "properties": {
@@ -23,6 +39,18 @@
         "x-entity": "media_buy"
       },
       "minItems": 1
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Exact immutable reporting revision to retrieve. This additive Reliable Reporting selector returns content bound to that revision, including its immutable row count, control totals, and content SHA-256. It is mutually exclusive with media-buy, date, metric, and breakdown selectors."
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Cursor pagination. With reporting_revision_id, pages immutable authoritative rows while all revision metadata repeats on every page."
     },
     "status_filter": {
       "oneOf": [
