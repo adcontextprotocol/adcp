@@ -61,6 +61,7 @@ interface Profile {
   ordered_tool_names: string[];
   ordered_tool_names_sha256: string;
   wire_schema_sha256: string;
+  target_exception_category?: TargetExceptionCategory;
 }
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -104,6 +105,130 @@ const METRIC_NAMES = [
   'web_anonymous_tools',
   'web_authenticated_admin_tools',
 ] as const;
+
+const TYPICAL_CUSTOM_TOOL_MAXIMUM = 12;
+const ANONYMOUS_DISCOVERY_PROFILE_IDS = new Set([
+  'email_chat:anonymous:exact',
+  'mcp_chat:anonymous:exact',
+  'web_chat:anonymous:maximum',
+]);
+const EXPLICIT_MULTI_STEP_TOOL_SETS = new Set([
+  'agent_end_to_end',
+  'certification_assessment',
+  'certification_learning',
+  'committee_full_leadership',
+  'community_group_full_participation',
+  'meeting_full_administration',
+]);
+const TARGET_EXCEPTION_DEFINITIONS = {
+  anonymous_discovery_baseline: {
+    disposition: 'documented_exception',
+    rationale: 'The anonymous web, email, and MCP surfaces share a fixed 13-tool read-only directory and knowledge discovery baseline; mutation tools are absent.',
+  },
+  bounded_multi_domain_plan: {
+    disposition: 'documented_exception',
+    rationale: 'Generated extrema cover reachable plans that explicitly select up to two bounded domains and may add trusted Sponsored Intelligence session context; they are not typical single-domain turns.',
+  },
+  direct_router_failure_fallback: {
+    disposition: 'documented_exception',
+    rationale: 'A degraded direct-response or reaction path exposes the fixed 13-tool read-only knowledge, schema, and community fallback instead of an ordinary routed domain.',
+  },
+  explicit_multi_step_workflow: {
+    disposition: 'documented_exception',
+    rationale: 'A named long-request composite or stateful certification domain intentionally spans multiple atomic operations and must be explicitly selected.',
+  },
+  legacy_channel_router_continuity: {
+    disposition: 'documented_exception',
+    rationale: 'A channel-only router outage preserves pre-existing baseline self-service and escalation tools plus bounded knowledge fallback, without attaching arbitrary routed mutation domains.',
+  },
+  synthetic_all_sets_maximum: {
+    disposition: 'measurement_only',
+    rationale: 'This adversarial capacity profile injects every valid router set to measure the absolute legacy channel ceiling; it is not a typical request.',
+  },
+  trusted_certification_session: {
+    disposition: 'documented_exception',
+    rationale: 'Server-verified active certification state adds recovery, teaching, assessment, research, and illustration capabilities required to continue the trusted session.',
+  },
+} as const;
+
+type TargetExceptionCategory = keyof typeof TARGET_EXCEPTION_DEFINITIONS;
+
+function classifyTargetException(input: Pick<Profile,
+  'id' | 'route' | 'selected_tool_sets' | 'conditional_maximums' | 'custom_tool_count'
+>): TargetExceptionCategory | null {
+  if (input.custom_tool_count <= TYPICAL_CUSTOM_TOOL_MAXIMUM) return null;
+  if (input.conditional_maximums.includes('router_returns_all_valid_tool_sets')) {
+    return 'synthetic_all_sets_maximum';
+  }
+  if (ANONYMOUS_DISCOVERY_PROFILE_IDS.has(input.id)) {
+    return 'anonymous_discovery_baseline';
+  }
+  if (input.conditional_maximums.includes('router_unavailable')) {
+    if (input.route === 'safe_fallback') return 'direct_router_failure_fallback';
+    if (input.route === 'router_unavailable') return 'legacy_channel_router_continuity';
+  }
+  if (input.conditional_maximums.some((condition) => condition.startsWith('active_certification'))) {
+    return 'trusted_certification_session';
+  }
+  if (
+    input.selected_tool_sets?.length === 1
+    && EXPLICIT_MULTI_STEP_TOOL_SETS.has(input.selected_tool_sets[0])
+  ) {
+    return 'explicit_multi_step_workflow';
+  }
+  if (input.conditional_maximums.includes('router_selected_up_to_two_bounded_domains')) {
+    return 'bounded_multi_domain_plan';
+  }
+  throw new Error(
+    `Undocumented Addie profile above the ${TYPICAL_CUSTOM_TOOL_MAXIMUM}-tool target: ${input.id} (${input.custom_tool_count})`,
+  );
+}
+
+function buildTypicalToolTargetAudit(profiles: Profile[]) {
+  const exceptionProfileCounts = Object.fromEntries(
+    Object.keys(TARGET_EXCEPTION_DEFINITIONS).map((category) => [category, 0]),
+  ) as Record<TargetExceptionCategory, number>;
+  let withinTargetProfileCount = 0;
+  for (const entry of profiles) {
+    if (entry.custom_tool_count <= TYPICAL_CUSTOM_TOOL_MAXIMUM) {
+      withinTargetProfileCount += 1;
+      continue;
+    }
+    if (!entry.target_exception_category) {
+      throw new Error(`Missing target exception classification for Addie profile: ${entry.id}`);
+    }
+    exceptionProfileCounts[entry.target_exception_category] += 1;
+  }
+  const documentedExceptionProfileCount = Object.entries(exceptionProfileCounts)
+    .filter(([category]) => TARGET_EXCEPTION_DEFINITIONS[
+      category as TargetExceptionCategory
+    ].disposition === 'documented_exception')
+    .reduce((total, [, count]) => total + count, 0);
+  const measurementOnlyProfileCount = Object.entries(exceptionProfileCounts)
+    .filter(([category]) => TARGET_EXCEPTION_DEFINITIONS[
+      category as TargetExceptionCategory
+    ].disposition === 'measurement_only')
+    .reduce((total, [, count]) => total + count, 0);
+  return {
+    maximum_custom_tool_count: TYPICAL_CUSTOM_TOOL_MAXIMUM,
+    scope: 'Normal user-visible response plans selecting one bounded domain. Smaller surfaces comply; every measured profile above the maximum is classified below.',
+    enforcement: 'Inventory generation fails when any profile exceeds the maximum without matching a documented exception category.',
+    profile_annotation: 'Profiles above the maximum carry target_exception_category; its absence means the profile is at or below the maximum.',
+    summary: {
+      measured_profile_count: profiles.length,
+      within_target_profile_count: withinTargetProfileCount,
+      documented_exception_profile_count: documentedExceptionProfileCount,
+      measurement_only_profile_count: measurementOnlyProfileCount,
+      unclassified_over_target_profile_count: 0,
+    },
+    exception_categories: Object.fromEntries(
+      Object.entries(TARGET_EXCEPTION_DEFINITIONS).map(([category, definition]) => [
+        category,
+        { ...definition, profile_count: exceptionProfileCounts[category as TargetExceptionCategory] },
+      ]),
+    ),
+  };
+}
 
 function sha256(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -154,7 +279,7 @@ function profile(input: {
   });
   const providerTools = buildAddieProviderTools((input.providerToolCount ?? 0) > 0);
   const renderedProviderTools = JSON.stringify(providerTools);
-  return {
+  const baseProfile: Omit<Profile, 'target_exception_category'> = {
     id: input.id,
     runtime: input.runtime,
     audience: input.audience,
@@ -175,6 +300,13 @@ function profile(input: {
     ordered_tool_names: orderedNames,
     ordered_tool_names_sha256: sha256(JSON.stringify(orderedNames)),
     wire_schema_sha256: sha256(renderedWire),
+  };
+  const targetExceptionCategory = classifyTargetException(baseProfile);
+  return {
+    ...baseProfile,
+    ...(targetExceptionCategory
+      ? { target_exception_category: targetExceptionCategory }
+      : {}),
   };
 }
 
@@ -1408,7 +1540,7 @@ async function buildSnapshot() {
     .sort();
 
   const snapshot = {
-    schema_version: 2,
+    schema_version: 3,
     measurement: {
       scope: 'Declared maximum runtime profiles. Conditional integrations and permissions are treated as enabled; actual requests can be smaller.',
       wire_shape: 'Exact ordered Anthropic custom-tool JSON after global/request last-value deduplication and final ephemeral cache breakpoint.',
@@ -1416,10 +1548,7 @@ async function buildSnapshot() {
       provider_tools: 'Provider-native web search is counted separately and is unavailable on the streaming path.',
       registration_guard: 'Registration-source hashes force review when runtime assembly changes; the shared wire projector prevents measurement drift.',
     },
-    nonblocking_targets: {
-      typical_conversation_custom_tools: '8-12',
-      note: 'Directional consolidation target; current exact baselines remain the enforced no-growth ceilings.',
-    },
+    typical_tool_target: buildTypicalToolTargetAudit(profiles),
     registration_source_sha256: Object.fromEntries(REGISTRATION_SOURCES.map((relativePath) => [
       relativePath,
       sha256(fs.readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')),

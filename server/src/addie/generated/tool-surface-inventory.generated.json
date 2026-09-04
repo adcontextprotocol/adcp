@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "measurement": {
     "scope": "Declared maximum runtime profiles. Conditional integrations and permissions are treated as enabled; actual requests can be smaller.",
     "wire_shape": "Exact ordered Anthropic custom-tool JSON after global/request last-value deduplication and final ephemeral cache breakpoint.",
@@ -7,9 +7,55 @@
     "provider_tools": "Provider-native web search is counted separately and is unavailable on the streaming path.",
     "registration_guard": "Registration-source hashes force review when runtime assembly changes; the shared wire projector prevents measurement drift."
   },
-  "nonblocking_targets": {
-    "typical_conversation_custom_tools": "8-12",
-    "note": "Directional consolidation target; current exact baselines remain the enforced no-growth ceilings."
+  "typical_tool_target": {
+    "maximum_custom_tool_count": 12,
+    "scope": "Normal user-visible response plans selecting one bounded domain. Smaller surfaces comply; every measured profile above the maximum is classified below.",
+    "enforcement": "Inventory generation fails when any profile exceeds the maximum without matching a documented exception category.",
+    "profile_annotation": "Profiles above the maximum carry target_exception_category; its absence means the profile is at or below the maximum.",
+    "summary": {
+      "measured_profile_count": 849,
+      "within_target_profile_count": 706,
+      "documented_exception_profile_count": 133,
+      "measurement_only_profile_count": 10,
+      "unclassified_over_target_profile_count": 0
+    },
+    "exception_categories": {
+      "anonymous_discovery_baseline": {
+        "disposition": "documented_exception",
+        "rationale": "The anonymous web, email, and MCP surfaces share a fixed 13-tool read-only directory and knowledge discovery baseline; mutation tools are absent.",
+        "profile_count": 3
+      },
+      "bounded_multi_domain_plan": {
+        "disposition": "documented_exception",
+        "rationale": "Generated extrema cover reachable plans that explicitly select up to two bounded domains and may add trusted Sponsored Intelligence session context; they are not typical single-domain turns.",
+        "profile_count": 39
+      },
+      "direct_router_failure_fallback": {
+        "disposition": "documented_exception",
+        "rationale": "A degraded direct-response or reaction path exposes the fixed 13-tool read-only knowledge, schema, and community fallback instead of an ordinary routed domain.",
+        "profile_count": 8
+      },
+      "explicit_multi_step_workflow": {
+        "disposition": "documented_exception",
+        "rationale": "A named long-request composite or stateful certification domain intentionally spans multiple atomic operations and must be explicitly selected.",
+        "profile_count": 66
+      },
+      "legacy_channel_router_continuity": {
+        "disposition": "documented_exception",
+        "rationale": "A channel-only router outage preserves pre-existing baseline self-service and escalation tools plus bounded knowledge fallback, without attaching arbitrary routed mutation domains.",
+        "profile_count": 5
+      },
+      "synthetic_all_sets_maximum": {
+        "disposition": "measurement_only",
+        "rationale": "This adversarial capacity profile injects every valid router set to measure the absolute legacy channel ceiling; it is not a typical request.",
+        "profile_count": 10
+      },
+      "trusted_certification_session": {
+        "disposition": "documented_exception",
+        "rationale": "Server-verified active certification state adds recovery, teaching, assessment, research, and illustration capabilities required to continue the trusted session.",
+        "profile_count": 12
+      }
+    }
   },
   "registration_source_sha256": {
     "server/src/addie/claude-client.ts": "59c7837d61651012d7c4362c962c527aaf4ae186ec4d55b9d6f7817a2d70d632",
@@ -91,7 +137,8 @@
         "get_recent_news"
       ],
       "ordered_tool_names_sha256": "55fe1d742f1975bd4461e73e00beac211c7fccb9fdd82e72e73964d81441d9c0",
-      "wire_schema_sha256": "f765de939c2d8a0159f5cd088b7377de17c04c113f6e1d5e4d6520f76e677c9f"
+      "wire_schema_sha256": "f765de939c2d8a0159f5cd088b7377de17c04c113f6e1d5e4d6520f76e677c9f",
+      "target_exception_category": "anonymous_discovery_baseline"
     },
     {
       "id": "mcp_chat:anonymous:exact",
@@ -129,7 +176,8 @@
         "search_members"
       ],
       "ordered_tool_names_sha256": "95e567567b8e6b741f211f7589ee4898e87663abc5530869514da64ac1d52daa",
-      "wire_schema_sha256": "644ceccf61ac885d6e0926fd9bf44aef62b93ef948c7b4a42fc7941c861970cc"
+      "wire_schema_sha256": "644ceccf61ac885d6e0926fd9bf44aef62b93ef948c7b4a42fc7941c861970cc",
+      "target_exception_category": "anonymous_discovery_baseline"
     },
     {
       "id": "official_docs_replay:read_only:exact",
@@ -223,7 +271,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "72797edb266c5688d07bd08f242c17bcc62e317351ab2324d94919dd21ce2268",
-      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6"
+      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:admin:maximum_tool_reference_bytes",
@@ -282,7 +331,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "6a797b29e5de0a1f10dc1c3c4fcdac226883b6fe9dfcdfa6e2a3009713df8080",
-      "wire_schema_sha256": "c8c8f4eda625999f45dd6f4fd463d2ab091cfa7570db72dc698eea5e26039ae2"
+      "wire_schema_sha256": "c8c8f4eda625999f45dd6f4fd463d2ab091cfa7570db72dc698eea5e26039ae2",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:admin:maximum_wire_schema_bytes",
@@ -346,7 +396,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7d36f54196c7f9797937fd307a1b6d6365af061a473f90a2f34735a168584e64",
-      "wire_schema_sha256": "a58fbf70267239c52565dddd7e50cdd6841e32e67328ee2b506204272319add1"
+      "wire_schema_sha256": "a58fbf70267239c52565dddd7e50cdd6841e32e67328ee2b506204272319add1",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:admin:safe_fallback",
@@ -391,7 +442,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt_reaction:member:maximum",
@@ -455,7 +507,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "a9e974b90b45f7a06c5f20a790efe7b1b48c32b69e1a546e1d30531a3a617a1a",
-      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792"
+      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:member:maximum_tool_reference_bytes",
@@ -512,7 +565,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "bc9f123436d9760c4603abb2386e0a63c7a9f53e4c0d65adbb0041de8bf1177f",
-      "wire_schema_sha256": "7289863f271c2017a3f62f0b98b9a8d54c99fcd9a3692f0e5b6b88a842526c95"
+      "wire_schema_sha256": "7289863f271c2017a3f62f0b98b9a8d54c99fcd9a3692f0e5b6b88a842526c95",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:member:maximum_wire_schema_bytes",
@@ -574,7 +628,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "9e5d653068e798450e6ec1d154f075d580807f8ca567abb56644ecefe15c3ba3",
-      "wire_schema_sha256": "56e2399081e01b8176ecba4966476a9c75b86f67b815894fe7cd25eb0c32631a"
+      "wire_schema_sha256": "56e2399081e01b8176ecba4966476a9c75b86f67b815894fe7cd25eb0c32631a",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:member:safe_fallback",
@@ -619,7 +674,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt_reaction:public_channel_admin:maximum",
@@ -682,7 +738,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "eed0a10dcfdbee85651bda5b9b62b053f900f289f076d804758e827d1c6f37fc",
-      "wire_schema_sha256": "2cb796aff2c61a0b56fe61a5faedd5daa425e75da07a08339361920f37d14ded"
+      "wire_schema_sha256": "2cb796aff2c61a0b56fe61a5faedd5daa425e75da07a08339361920f37d14ded",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:public_channel_admin:maximum_tool_reference_bytes",
@@ -738,7 +795,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "38d30f79339ad15a17e2391466ada38f3ca0b7625d7f9a86ff778a94526a01cd",
-      "wire_schema_sha256": "b43f590a47c460c3b1bacd4fc471723e61b61a3e21bc385ebfb2a5ef33032b99"
+      "wire_schema_sha256": "b43f590a47c460c3b1bacd4fc471723e61b61a3e21bc385ebfb2a5ef33032b99",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:public_channel_admin:maximum_wire_schema_bytes",
@@ -799,7 +857,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "394038825f34d36a9462cdac8b23bb6e2fba0549ef90c1f8edd16a55d4b2f671",
-      "wire_schema_sha256": "2d9672994e09db2950fb3bbaef5aaad5c8aa96ee4972e3ec48cbc02402f17875"
+      "wire_schema_sha256": "2d9672994e09db2950fb3bbaef5aaad5c8aa96ee4972e3ec48cbc02402f17875",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:public_channel_admin:safe_fallback",
@@ -844,7 +903,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt_reaction:public_channel:maximum",
@@ -907,7 +967,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "eed0a10dcfdbee85651bda5b9b62b053f900f289f076d804758e827d1c6f37fc",
-      "wire_schema_sha256": "2cb796aff2c61a0b56fe61a5faedd5daa425e75da07a08339361920f37d14ded"
+      "wire_schema_sha256": "2cb796aff2c61a0b56fe61a5faedd5daa425e75da07a08339361920f37d14ded",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:public_channel:maximum_tool_reference_bytes",
@@ -963,7 +1024,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "38d30f79339ad15a17e2391466ada38f3ca0b7625d7f9a86ff778a94526a01cd",
-      "wire_schema_sha256": "b43f590a47c460c3b1bacd4fc471723e61b61a3e21bc385ebfb2a5ef33032b99"
+      "wire_schema_sha256": "b43f590a47c460c3b1bacd4fc471723e61b61a3e21bc385ebfb2a5ef33032b99",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:public_channel:maximum_wire_schema_bytes",
@@ -1024,7 +1086,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "394038825f34d36a9462cdac8b23bb6e2fba0549ef90c1f8edd16a55d4b2f671",
-      "wire_schema_sha256": "2d9672994e09db2950fb3bbaef5aaad5c8aa96ee4972e3ec48cbc02402f17875"
+      "wire_schema_sha256": "2d9672994e09db2950fb3bbaef5aaad5c8aa96ee4972e3ec48cbc02402f17875",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt_reaction:public_channel:safe_fallback",
@@ -1069,7 +1132,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt:admin_dm:certification_assessment_session",
@@ -1134,7 +1198,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "21e70235e9926708cae72c4a9dc96ce633dfce1a5da5fa3afed7c9689d1994c0",
-      "wire_schema_sha256": "04edc9c62b35af5cac3e3668abdc34038616b0e865ff482f1ca9efac1f387c13"
+      "wire_schema_sha256": "04edc9c62b35af5cac3e3668abdc34038616b0e865ff482f1ca9efac1f387c13",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "slack_bolt:admin_dm:certification_learning_session",
@@ -1200,7 +1265,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "c3aea0dcbab6e98c77df077d96b724466d2c6987bc8bf0e5ba75fb5d286eddde",
-      "wire_schema_sha256": "fd3eadfca5fcef651eef7097748aeaff49c49487d96dd28b6b70888131753a8b"
+      "wire_schema_sha256": "fd3eadfca5fcef651eef7097748aeaff49c49487d96dd28b6b70888131753a8b",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "slack_bolt:admin_dm:certification_mixed_session",
@@ -1270,7 +1336,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "2188ff25e360a838ca7f609753e1fa05b04925711d41dffa10d1b2c2c463af6c",
-      "wire_schema_sha256": "dd7160b51597d9a07b785bc25416528a495f6261e7c3a35ab9bc08294ff5856f"
+      "wire_schema_sha256": "dd7160b51597d9a07b785bc25416528a495f6261e7c3a35ab9bc08294ff5856f",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "slack_bolt:admin_dm:maximum",
@@ -1338,7 +1405,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "72797edb266c5688d07bd08f242c17bcc62e317351ab2324d94919dd21ce2268",
-      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6"
+      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:admin_dm:maximum_tool_reference_bytes",
@@ -1399,7 +1467,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "6a797b29e5de0a1f10dc1c3c4fcdac226883b6fe9dfcdfa6e2a3009713df8080",
-      "wire_schema_sha256": "c8c8f4eda625999f45dd6f4fd463d2ab091cfa7570db72dc698eea5e26039ae2"
+      "wire_schema_sha256": "c8c8f4eda625999f45dd6f4fd463d2ab091cfa7570db72dc698eea5e26039ae2",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:admin_dm:maximum_wire_schema_bytes",
@@ -1465,7 +1534,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7d36f54196c7f9797937fd307a1b6d6365af061a473f90a2f34735a168584e64",
-      "wire_schema_sha256": "a58fbf70267239c52565dddd7e50cdd6841e32e67328ee2b506204272319add1"
+      "wire_schema_sha256": "a58fbf70267239c52565dddd7e50cdd6841e32e67328ee2b506204272319add1",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:admin_dm:routed:adcp_agent_management",
@@ -2435,7 +2505,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2"
+      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_dm:routed:agent_publisher_directory",
@@ -2706,7 +2777,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0"
+      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_dm:routed:certification_learning",
@@ -2756,7 +2828,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091"
+      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_dm:routed:certification_overview",
@@ -3022,7 +3095,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "04ec5e8b84cc7c87cf26efc8cd7c37398baefb992eb687800a7c461a0f74b752",
-      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478"
+      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_dm:routed:community_discussions",
@@ -3203,7 +3277,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "1761c6fb6a24457352ea873f301ed6c24757cb0a4fed773919c1371fb343d70c",
-      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269"
+      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_dm:routed:community_group_membership",
@@ -3646,7 +3721,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "582f87a23ce4af178918f9bb042c999466b46904c3c9f7cbfed3dd27ab8dead2",
-      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521"
+      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_dm:routed:meeting_scheduling",
@@ -4475,7 +4551,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt:admin_working_group:adcp_agent_management",
@@ -5445,7 +5522,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2"
+      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_working_group:agent_publisher_directory",
@@ -5893,7 +5971,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:admin_working_group:brand_registry_identity",
@@ -6032,7 +6111,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0"
+      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_working_group:certification_learning",
@@ -6082,7 +6162,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091"
+      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_working_group:certification_overview",
@@ -6348,7 +6429,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "04ec5e8b84cc7c87cf26efc8cd7c37398baefb992eb687800a7c461a0f74b752",
-      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478"
+      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_working_group:community_discussions",
@@ -6529,7 +6611,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "1761c6fb6a24457352ea873f301ed6c24757cb0a4fed773919c1371fb343d70c",
-      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269"
+      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_working_group:community_group_membership",
@@ -6972,7 +7055,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "582f87a23ce4af178918f9bb042c999466b46904c3c9f7cbfed3dd27ab8dead2",
-      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521"
+      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:admin_working_group:meeting_scheduling",
@@ -7679,7 +7763,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "be35c37cdf3779929cd70ee957c150514f115ff0796c9a44eeb2a326a5b1d862",
-      "wire_schema_sha256": "868d8863be91474176cbcfd36d94f2979be7e745dd75ec1f747bf5ac0a3c9790"
+      "wire_schema_sha256": "868d8863be91474176cbcfd36d94f2979be7e745dd75ec1f747bf5ac0a3c9790",
+      "target_exception_category": "legacy_channel_router_continuity"
     },
     {
       "id": "slack_bolt:admin_working_group:schema_reference",
@@ -7872,7 +7957,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "26b6cc3a42587a710c7baa1a374ce45cfe41c97040fffeebc1c464c7a8e2f415",
-      "wire_schema_sha256": "bb5f472a4e6a6f4883b2e93c987d974865339b4dae801ec3bbbde24b5f2d39af"
+      "wire_schema_sha256": "bb5f472a4e6a6f4883b2e93c987d974865339b4dae801ec3bbbde24b5f2d39af",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "slack_bolt:member_dm:certification_learning_session",
@@ -7936,7 +8022,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "3fea176c7247ff2d3f96cfbc3bb1d8586d83c37c1dc090253111c1fa67c78d06",
-      "wire_schema_sha256": "035bf0bd619942bca6a57b3e50cc98351297014f96d70d9516138a84ff45c0b7"
+      "wire_schema_sha256": "035bf0bd619942bca6a57b3e50cc98351297014f96d70d9516138a84ff45c0b7",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "slack_bolt:member_dm:certification_mixed_session",
@@ -8004,7 +8091,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "ecb4a361ac31c3fdca960be469fd56589b0538d5c5e135811326b45943f17cf2",
-      "wire_schema_sha256": "01a851132a69873e5c0588ccca567f628b1a1fe2ef816fbd3cececd8e699d850"
+      "wire_schema_sha256": "01a851132a69873e5c0588ccca567f628b1a1fe2ef816fbd3cececd8e699d850",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "slack_bolt:member_dm:maximum",
@@ -8070,7 +8158,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "a9e974b90b45f7a06c5f20a790efe7b1b48c32b69e1a546e1d30531a3a617a1a",
-      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792"
+      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:member_dm:maximum_tool_reference_bytes",
@@ -8129,7 +8218,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "bc9f123436d9760c4603abb2386e0a63c7a9f53e4c0d65adbb0041de8bf1177f",
-      "wire_schema_sha256": "7289863f271c2017a3f62f0b98b9a8d54c99fcd9a3692f0e5b6b88a842526c95"
+      "wire_schema_sha256": "7289863f271c2017a3f62f0b98b9a8d54c99fcd9a3692f0e5b6b88a842526c95",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:member_dm:maximum_wire_schema_bytes",
@@ -8193,7 +8283,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "9e5d653068e798450e6ec1d154f075d580807f8ca567abb56644ecefe15c3ba3",
-      "wire_schema_sha256": "56e2399081e01b8176ecba4966476a9c75b86f67b815894fe7cd25eb0c32631a"
+      "wire_schema_sha256": "56e2399081e01b8176ecba4966476a9c75b86f67b815894fe7cd25eb0c32631a",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:member_dm:routed:adcp_agent_management",
@@ -8404,7 +8495,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "01a4e47a1d56a06a49d88c67cef7541d40b7a79d196a034be57130c9182aec3a",
-      "wire_schema_sha256": "ae3d112fe6f349ce16eb5ff5bf6b45ddd72f909646f9c8ecefcaf5d21ac4e7f4"
+      "wire_schema_sha256": "ae3d112fe6f349ce16eb5ff5bf6b45ddd72f909646f9c8ecefcaf5d21ac4e7f4",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:member_dm:routed:agent_publisher_directory",
@@ -8663,7 +8755,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "790df4634084e2fb5c430ea95d47b4aad105e5cad065f2ab1b3694405e550c02",
-      "wire_schema_sha256": "7fe9a986cef51874ba191843beabca61d9be8169bcf4c1661776f50e4627bdf5"
+      "wire_schema_sha256": "7fe9a986cef51874ba191843beabca61d9be8169bcf4c1661776f50e4627bdf5",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:member_dm:routed:certification_learning",
@@ -8711,7 +8804,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "463fa4659a702b7f1c65e0598b3c1d0340c915ba31ad3efd626031cc85c502ab",
-      "wire_schema_sha256": "224579a89b00e02213dadd0c0ee850514160d0b1de2ff70d6051fc62971c5bb2"
+      "wire_schema_sha256": "224579a89b00e02213dadd0c0ee850514160d0b1de2ff70d6051fc62971c5bb2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:member_dm:routed:certification_overview",
@@ -8965,7 +9059,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "3ef51ef6c23dc0bb939300d94c013762dcc27966aecdaaa1260aa3786c167cdc",
-      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731"
+      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:member_dm:routed:community_discussions",
@@ -9138,7 +9233,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "d84555d6b82afdd6959fa75186599e3cb0eb59ba7ef4fc9bdc342620712cf0f9",
-      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a"
+      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:member_dm:routed:community_group_membership",
@@ -9561,7 +9657,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "8bcb247100605d8c2354b2fa7a9f1a2b5c349fa2aab59266996b5bcdf634fa51",
-      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86"
+      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:member_dm:routed:meeting_scheduling",
@@ -10271,7 +10368,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt:private_channel_admin:adcp_agent_management",
@@ -11241,7 +11339,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2"
+      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_admin:agent_publisher_directory",
@@ -11689,7 +11788,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:private_channel_admin:brand_registry_identity",
@@ -11828,7 +11928,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0"
+      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_admin:certification_learning",
@@ -11878,7 +11979,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091"
+      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_admin:certification_overview",
@@ -12144,7 +12246,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "04ec5e8b84cc7c87cf26efc8cd7c37398baefb992eb687800a7c461a0f74b752",
-      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478"
+      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_admin:community_discussions",
@@ -12325,7 +12428,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "1761c6fb6a24457352ea873f301ed6c24757cb0a4fed773919c1371fb343d70c",
-      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269"
+      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_admin:community_group_membership",
@@ -12768,7 +12872,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "582f87a23ce4af178918f9bb042c999466b46904c3c9f7cbfed3dd27ab8dead2",
-      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521"
+      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_admin:meeting_scheduling",
@@ -13475,7 +13580,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "be35c37cdf3779929cd70ee957c150514f115ff0796c9a44eeb2a326a5b1d862",
-      "wire_schema_sha256": "868d8863be91474176cbcfd36d94f2979be7e745dd75ec1f747bf5ac0a3c9790"
+      "wire_schema_sha256": "868d8863be91474176cbcfd36d94f2979be7e745dd75ec1f747bf5ac0a3c9790",
+      "target_exception_category": "legacy_channel_router_continuity"
     },
     {
       "id": "slack_bolt:private_channel_admin:schema_reference",
@@ -13816,7 +13922,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "01a4e47a1d56a06a49d88c67cef7541d40b7a79d196a034be57130c9182aec3a",
-      "wire_schema_sha256": "ae3d112fe6f349ce16eb5ff5bf6b45ddd72f909646f9c8ecefcaf5d21ac4e7f4"
+      "wire_schema_sha256": "ae3d112fe6f349ce16eb5ff5bf6b45ddd72f909646f9c8ecefcaf5d21ac4e7f4",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_member:agent_publisher_directory",
@@ -14173,7 +14280,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "c6682221c1906cd860a8f531bc24d25e520ac556a05f70976ca3d7b839740866",
-      "wire_schema_sha256": "67c4bcd82497b8de8a348e43238f4a00b05b99465bc945b08e4f1a2b09c54a0c"
+      "wire_schema_sha256": "67c4bcd82497b8de8a348e43238f4a00b05b99465bc945b08e4f1a2b09c54a0c",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:private_channel_member:brand_registry_identity",
@@ -14306,7 +14414,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "790df4634084e2fb5c430ea95d47b4aad105e5cad065f2ab1b3694405e550c02",
-      "wire_schema_sha256": "7fe9a986cef51874ba191843beabca61d9be8169bcf4c1661776f50e4627bdf5"
+      "wire_schema_sha256": "7fe9a986cef51874ba191843beabca61d9be8169bcf4c1661776f50e4627bdf5",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_member:certification_learning",
@@ -14354,7 +14463,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "463fa4659a702b7f1c65e0598b3c1d0340c915ba31ad3efd626031cc85c502ab",
-      "wire_schema_sha256": "224579a89b00e02213dadd0c0ee850514160d0b1de2ff70d6051fc62971c5bb2"
+      "wire_schema_sha256": "224579a89b00e02213dadd0c0ee850514160d0b1de2ff70d6051fc62971c5bb2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_member:certification_overview",
@@ -14608,7 +14718,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "3ef51ef6c23dc0bb939300d94c013762dcc27966aecdaaa1260aa3786c167cdc",
-      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731"
+      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_member:community_discussions",
@@ -14781,7 +14892,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "d84555d6b82afdd6959fa75186599e3cb0eb59ba7ef4fc9bdc342620712cf0f9",
-      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a"
+      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_member:community_group_membership",
@@ -15204,7 +15316,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "8bcb247100605d8c2354b2fa7a9f1a2b5c349fa2aab59266996b5bcdf634fa51",
-      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86"
+      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_channel_member:meeting_scheduling",
@@ -15796,7 +15909,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "7771bc4ccaf1f93b1c16b3e86054c10b50ce447dd631c5e161eb035c1462741a",
-      "wire_schema_sha256": "5697462203306cef0764272c5fb0bb53718b506ab5d81b9b465466323b0f5cc6"
+      "wire_schema_sha256": "5697462203306cef0764272c5fb0bb53718b506ab5d81b9b465466323b0f5cc6",
+      "target_exception_category": "legacy_channel_router_continuity"
     },
     {
       "id": "slack_bolt:private_channel_member:schema_reference",
@@ -15988,7 +16102,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "72797edb266c5688d07bd08f242c17bcc62e317351ab2324d94919dd21ce2268",
-      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6"
+      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:private_mention_admin:maximum_tool_reference_bytes",
@@ -16049,7 +16164,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "6a797b29e5de0a1f10dc1c3c4fcdac226883b6fe9dfcdfa6e2a3009713df8080",
-      "wire_schema_sha256": "c8c8f4eda625999f45dd6f4fd463d2ab091cfa7570db72dc698eea5e26039ae2"
+      "wire_schema_sha256": "c8c8f4eda625999f45dd6f4fd463d2ab091cfa7570db72dc698eea5e26039ae2",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:private_mention_admin:maximum_wire_schema_bytes",
@@ -16115,7 +16231,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7d36f54196c7f9797937fd307a1b6d6365af061a473f90a2f34735a168584e64",
-      "wire_schema_sha256": "a58fbf70267239c52565dddd7e50cdd6841e32e67328ee2b506204272319add1"
+      "wire_schema_sha256": "a58fbf70267239c52565dddd7e50cdd6841e32e67328ee2b506204272319add1",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:adcp_agent_management",
@@ -17085,7 +17202,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "85c84ea52a5aa43067389e7e17605be6a93ddcf1ba596f619729779fccbe10bc",
-      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2"
+      "wire_schema_sha256": "4ac2625af42caf603e34700d6d4e8b1c6392a9a55f30cea92053e70ebe28a5b2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:agent_publisher_directory",
@@ -17356,7 +17474,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "b8820aebc73fe700321e75a7bafc7ff346e38040ea64c833f6e87f88609e9ff2",
-      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0"
+      "wire_schema_sha256": "d8435d8f452b30eb17516ff8b8f2e5138a2024bd4061f07a5745c600ab834ce0",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:certification_learning",
@@ -17406,7 +17525,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "8df8d830c1370944e4768efb235cad21d4c923181157a047b167d528e599800c",
-      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091"
+      "wire_schema_sha256": "2de1a6ed6cd13c7c445b70447771293300a1d32460a03f3b361c108d2b930091",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:certification_overview",
@@ -17672,7 +17792,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "04ec5e8b84cc7c87cf26efc8cd7c37398baefb992eb687800a7c461a0f74b752",
-      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478"
+      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:community_discussions",
@@ -17853,7 +17974,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "1761c6fb6a24457352ea873f301ed6c24757cb0a4fed773919c1371fb343d70c",
-      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269"
+      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:community_group_membership",
@@ -18296,7 +18418,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "582f87a23ce4af178918f9bb042c999466b46904c3c9f7cbfed3dd27ab8dead2",
-      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521"
+      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:meeting_scheduling",
@@ -19125,7 +19248,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt:private_mention_member:maximum",
@@ -19191,7 +19315,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "a9e974b90b45f7a06c5f20a790efe7b1b48c32b69e1a546e1d30531a3a617a1a",
-      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792"
+      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:private_mention_member:maximum_tool_reference_bytes",
@@ -19250,7 +19375,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "bc9f123436d9760c4603abb2386e0a63c7a9f53e4c0d65adbb0041de8bf1177f",
-      "wire_schema_sha256": "7289863f271c2017a3f62f0b98b9a8d54c99fcd9a3692f0e5b6b88a842526c95"
+      "wire_schema_sha256": "7289863f271c2017a3f62f0b98b9a8d54c99fcd9a3692f0e5b6b88a842526c95",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:private_mention_member:maximum_wire_schema_bytes",
@@ -19314,7 +19440,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "9e5d653068e798450e6ec1d154f075d580807f8ca567abb56644ecefe15c3ba3",
-      "wire_schema_sha256": "56e2399081e01b8176ecba4966476a9c75b86f67b815894fe7cd25eb0c32631a"
+      "wire_schema_sha256": "56e2399081e01b8176ecba4966476a9c75b86f67b815894fe7cd25eb0c32631a",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:adcp_agent_management",
@@ -19525,7 +19652,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "01a4e47a1d56a06a49d88c67cef7541d40b7a79d196a034be57130c9182aec3a",
-      "wire_schema_sha256": "ae3d112fe6f349ce16eb5ff5bf6b45ddd72f909646f9c8ecefcaf5d21ac4e7f4"
+      "wire_schema_sha256": "ae3d112fe6f349ce16eb5ff5bf6b45ddd72f909646f9c8ecefcaf5d21ac4e7f4",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:agent_publisher_directory",
@@ -19784,7 +19912,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "790df4634084e2fb5c430ea95d47b4aad105e5cad065f2ab1b3694405e550c02",
-      "wire_schema_sha256": "7fe9a986cef51874ba191843beabca61d9be8169bcf4c1661776f50e4627bdf5"
+      "wire_schema_sha256": "7fe9a986cef51874ba191843beabca61d9be8169bcf4c1661776f50e4627bdf5",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:certification_learning",
@@ -19832,7 +19961,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "463fa4659a702b7f1c65e0598b3c1d0340c915ba31ad3efd626031cc85c502ab",
-      "wire_schema_sha256": "224579a89b00e02213dadd0c0ee850514160d0b1de2ff70d6051fc62971c5bb2"
+      "wire_schema_sha256": "224579a89b00e02213dadd0c0ee850514160d0b1de2ff70d6051fc62971c5bb2",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:certification_overview",
@@ -20086,7 +20216,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "3ef51ef6c23dc0bb939300d94c013762dcc27966aecdaaa1260aa3786c167cdc",
-      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731"
+      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:community_discussions",
@@ -20259,7 +20390,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "d84555d6b82afdd6959fa75186599e3cb0eb59ba7ef4fc9bdc342620712cf0f9",
-      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a"
+      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:community_group_membership",
@@ -20682,7 +20814,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "8bcb247100605d8c2354b2fa7a9f1a2b5c349fa2aab59266996b5bcdf634fa51",
-      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86"
+      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:private_mention_member:routed:meeting_scheduling",
@@ -21392,7 +21525,8 @@
         "get_channel_activity"
       ],
       "ordered_tool_names_sha256": "d9cf1712c934eae3f991c8005a614f4360cc4bcbb0cb38a3e120595ca5437ec0",
-      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7"
+      "wire_schema_sha256": "a4b0061ee808963a2858a6f7c7e86b5fc24fc4195932b54392c613579ec327a7",
+      "target_exception_category": "direct_router_failure_fallback"
     },
     {
       "id": "slack_bolt:public_channel_admin:adcp_agent_management",
@@ -22285,7 +22419,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "0e5db57c4d45f9244087dbefbe8cbdc0427aa9c4367b7f64d7bef050db0f61de",
-      "wire_schema_sha256": "a113b87298a3ae4780b9a34ca869515a0d103c21f3ff44537d860e3c0f235d1a"
+      "wire_schema_sha256": "a113b87298a3ae4780b9a34ca869515a0d103c21f3ff44537d860e3c0f235d1a",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_admin:agent_publisher_directory",
@@ -22707,7 +22842,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "a60d9e15a94a1f70f8fe7cab849a938a387c52e4f1253183f5ae640e40ccc4f5",
-      "wire_schema_sha256": "690a7455f267fc8073ab566aa75561edd92d3f7d72bb0087aab5e8289aa4dff6"
+      "wire_schema_sha256": "690a7455f267fc8073ab566aa75561edd92d3f7d72bb0087aab5e8289aa4dff6",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:public_channel_admin:brand_registry_identity",
@@ -22837,7 +22973,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "8ac4c56c1525cdc7dc33c1dce45e8192c4e2ef35a3534be78ea1e573a45b7a51",
-      "wire_schema_sha256": "1e4390b1fea96985281ca194a8c65486f319c2e4afbcd4da57388f475acea9cc"
+      "wire_schema_sha256": "1e4390b1fea96985281ca194a8c65486f319c2e4afbcd4da57388f475acea9cc",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_admin:certification_learning",
@@ -22884,7 +23021,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "c48ea42b9e2155bd3f7e2071d4b9e0a73a62009e45239a0a93d2b1b1ad3fb904",
-      "wire_schema_sha256": "9322e31737e513b306f554a5600dff665dd30a7266779354451076d8eb83911f"
+      "wire_schema_sha256": "9322e31737e513b306f554a5600dff665dd30a7266779354451076d8eb83911f",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_admin:certification_overview",
@@ -23132,7 +23270,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "63d3d934436b7b22c32804baf79a34407d7c63fd8b26eeae139925b4ef4cce40",
-      "wire_schema_sha256": "acc7dd198a71fc4f9816c15ba44b7a24fae583775deebb956796fe39fc13865c"
+      "wire_schema_sha256": "acc7dd198a71fc4f9816c15ba44b7a24fae583775deebb956796fe39fc13865c",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_admin:community_discussions",
@@ -23301,7 +23440,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "91bf1372e425f64e3d7e018308e3e3e3c2fb10bc4e878920e102732ac79d3568",
-      "wire_schema_sha256": "8caa72c0c231415a0eb457ea33ac659606533b6af03338247dc2300c60796cbf"
+      "wire_schema_sha256": "8caa72c0c231415a0eb457ea33ac659606533b6af03338247dc2300c60796cbf",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_admin:community_group_membership",
@@ -23714,7 +23854,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "6a688c893300b6c9e954316fccf089ad30c48b7b26192b13ca3edfd28e90846c",
-      "wire_schema_sha256": "8bb4f6262591577fb3bfcbc96d9fbcc0cf3790393b75ff92f7145db4f5d65bf3"
+      "wire_schema_sha256": "8bb4f6262591577fb3bfcbc96d9fbcc0cf3790393b75ff92f7145db4f5d65bf3",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_admin:meeting_scheduling",
@@ -24368,7 +24509,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "a3e0336f18c95c4cc7d2d6790b7bb6464703b8fef7b0c33220180ce40956e1fc",
-      "wire_schema_sha256": "10f56cf068ce89b5bc33fbac5933084694747027861800ae0669c7753a0bece5"
+      "wire_schema_sha256": "10f56cf068ce89b5bc33fbac5933084694747027861800ae0669c7753a0bece5",
+      "target_exception_category": "legacy_channel_router_continuity"
     },
     {
       "id": "slack_bolt:public_channel_admin:schema_reference",
@@ -24695,7 +24837,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "0e5db57c4d45f9244087dbefbe8cbdc0427aa9c4367b7f64d7bef050db0f61de",
-      "wire_schema_sha256": "a113b87298a3ae4780b9a34ca869515a0d103c21f3ff44537d860e3c0f235d1a"
+      "wire_schema_sha256": "a113b87298a3ae4780b9a34ca869515a0d103c21f3ff44537d860e3c0f235d1a",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_member:agent_publisher_directory",
@@ -25044,7 +25187,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "b79441af450553b02c114d59697db1c4f78fae557e69dd4e0760f6927298607a",
-      "wire_schema_sha256": "8f18467a7738437316ac94a9a8105a7e5a347cdcc6e089db10190b8d2ea12b9a"
+      "wire_schema_sha256": "8f18467a7738437316ac94a9a8105a7e5a347cdcc6e089db10190b8d2ea12b9a",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:public_channel_member:brand_registry_identity",
@@ -25174,7 +25318,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "8ac4c56c1525cdc7dc33c1dce45e8192c4e2ef35a3534be78ea1e573a45b7a51",
-      "wire_schema_sha256": "1e4390b1fea96985281ca194a8c65486f319c2e4afbcd4da57388f475acea9cc"
+      "wire_schema_sha256": "1e4390b1fea96985281ca194a8c65486f319c2e4afbcd4da57388f475acea9cc",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_member:certification_learning",
@@ -25221,7 +25366,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "c48ea42b9e2155bd3f7e2071d4b9e0a73a62009e45239a0a93d2b1b1ad3fb904",
-      "wire_schema_sha256": "9322e31737e513b306f554a5600dff665dd30a7266779354451076d8eb83911f"
+      "wire_schema_sha256": "9322e31737e513b306f554a5600dff665dd30a7266779354451076d8eb83911f",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_member:certification_overview",
@@ -25469,7 +25615,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "63d3d934436b7b22c32804baf79a34407d7c63fd8b26eeae139925b4ef4cce40",
-      "wire_schema_sha256": "acc7dd198a71fc4f9816c15ba44b7a24fae583775deebb956796fe39fc13865c"
+      "wire_schema_sha256": "acc7dd198a71fc4f9816c15ba44b7a24fae583775deebb956796fe39fc13865c",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_member:community_discussions",
@@ -25638,7 +25785,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "91bf1372e425f64e3d7e018308e3e3e3c2fb10bc4e878920e102732ac79d3568",
-      "wire_schema_sha256": "8caa72c0c231415a0eb457ea33ac659606533b6af03338247dc2300c60796cbf"
+      "wire_schema_sha256": "8caa72c0c231415a0eb457ea33ac659606533b6af03338247dc2300c60796cbf",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_member:community_group_membership",
@@ -26051,7 +26199,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "6a688c893300b6c9e954316fccf089ad30c48b7b26192b13ca3edfd28e90846c",
-      "wire_schema_sha256": "8bb4f6262591577fb3bfcbc96d9fbcc0cf3790393b75ff92f7145db4f5d65bf3"
+      "wire_schema_sha256": "8bb4f6262591577fb3bfcbc96d9fbcc0cf3790393b75ff92f7145db4f5d65bf3",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "slack_bolt:public_channel_member:meeting_scheduling",
@@ -26624,7 +26773,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "a3e0336f18c95c4cc7d2d6790b7bb6464703b8fef7b0c33220180ce40956e1fc",
-      "wire_schema_sha256": "10f56cf068ce89b5bc33fbac5933084694747027861800ae0669c7753a0bece5"
+      "wire_schema_sha256": "10f56cf068ce89b5bc33fbac5933084694747027861800ae0669c7753a0bece5",
+      "target_exception_category": "legacy_channel_router_continuity"
     },
     {
       "id": "slack_bolt:public_channel_member:schema_reference",
@@ -31114,7 +31264,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:system_channel_admin:billing:all_valid_sets_maximum",
@@ -31430,7 +31581,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:system_channel_admin:error:all_valid_sets_maximum",
@@ -31746,7 +31898,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:system_channel_admin:escalation:all_valid_sets_maximum",
@@ -32061,7 +32214,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "slack_bolt:system_channel_admin:prospect:all_valid_sets_maximum",
@@ -32378,7 +32532,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2"
+      "wire_schema_sha256": "1a8f0d288710825ab225093df224f4d79028f8a0bbe29274c61b8d2c759f09e2",
+      "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
       "id": "tavus_voice:admin:maximum",
@@ -32437,7 +32592,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "406479222ce57005fb81249d4095ed0217de2f9a43d21462cdb722b385d6b948",
-      "wire_schema_sha256": "b3a27fe7f332554aa9b0be47956f20bc6de5010bdd7749b52110c0c82129917a"
+      "wire_schema_sha256": "b3a27fe7f332554aa9b0be47956f20bc6de5010bdd7749b52110c0c82129917a",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:admin:maximum_tool_reference_bytes",
@@ -32484,7 +32640,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "bf77e7db8c07c504355a9e3f11c3dcb19fb9e648836f0b11fe3e4be18276b768",
-      "wire_schema_sha256": "e1163ad14f5c7d434ec3318f10c516f061f02ed58a6f58a8862b40995793a932"
+      "wire_schema_sha256": "e1163ad14f5c7d434ec3318f10c516f061f02ed58a6f58a8862b40995793a932",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:admin:maximum_wire_schema_bytes",
@@ -32541,7 +32698,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "65b4d81ef37ff23853d42ffd1095a16982d137003ef2fc40c033161edc2b40cc",
-      "wire_schema_sha256": "591663e8606f5277c242418bd7c80386af65aef2a8256bfe5c6de4757b5af31a"
+      "wire_schema_sha256": "591663e8606f5277c242418bd7c80386af65aef2a8256bfe5c6de4757b5af31a",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:admin:router_unavailable",
@@ -32640,7 +32798,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "4c6e5ff8e0162e9c70d85f6198820b878495c2d33fead84c657fbb96b3cc3906",
-      "wire_schema_sha256": "08ed4c7649728abe9b1e605104ffd22ac70653e1f01f6c8c220d94ab360e7eb4"
+      "wire_schema_sha256": "08ed4c7649728abe9b1e605104ffd22ac70653e1f01f6c8c220d94ab360e7eb4",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:committee_leader:maximum_tool_reference_bytes",
@@ -32685,7 +32844,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "62671b1d88ed4c35de57283c8ca2e01037dfd647c8d9ff3fdf08864d3cdf7db4",
-      "wire_schema_sha256": "19056caedea5ced001ab23f98dec2220bc52e3dd9f8ce5671b4b19a4a40295e3"
+      "wire_schema_sha256": "19056caedea5ced001ab23f98dec2220bc52e3dd9f8ce5671b4b19a4a40295e3",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:committee_leader:maximum_wire_schema_bytes",
@@ -32735,7 +32895,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "222164e32e7a6b1aa2716bd843776345d05afafa44563c3673b982d9d43354ef",
-      "wire_schema_sha256": "e9e349eda996adef0370588f5c709d70fa05238c66eceef449a139ca44f31208"
+      "wire_schema_sha256": "e9e349eda996adef0370588f5c709d70fa05238c66eceef449a139ca44f31208",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:committee_leader:router_unavailable",
@@ -32827,7 +32988,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "a9c96a273b3ad8d2497f18e39a7f0fd7888610e9a420fa76634d559a25654117",
-      "wire_schema_sha256": "b8c560cae8cc1aed77c896e89b9fbc7b94d08d9e027c274756cd511d62ab1b42"
+      "wire_schema_sha256": "b8c560cae8cc1aed77c896e89b9fbc7b94d08d9e027c274756cd511d62ab1b42",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:member:maximum_tool_reference_bytes",
@@ -32871,7 +33033,8 @@
         "validate_adagents"
       ],
       "ordered_tool_names_sha256": "62671b1d88ed4c35de57283c8ca2e01037dfd647c8d9ff3fdf08864d3cdf7db4",
-      "wire_schema_sha256": "19056caedea5ced001ab23f98dec2220bc52e3dd9f8ce5671b4b19a4a40295e3"
+      "wire_schema_sha256": "19056caedea5ced001ab23f98dec2220bc52e3dd9f8ce5671b4b19a4a40295e3",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:member:maximum_wire_schema_bytes",
@@ -32914,7 +33077,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "db378d93a19c58579e5f63a382d5ffe24b0d12be939adb55dca8a41568f197ec",
-      "wire_schema_sha256": "d7228e7e9dcaab92ec6949b0b2e029d451849177ad7723288efee8cf71123272"
+      "wire_schema_sha256": "d7228e7e9dcaab92ec6949b0b2e029d451849177ad7723288efee8cf71123272",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "tavus_voice:member:router_unavailable",
@@ -33027,7 +33191,8 @@
         "get_recent_news"
       ],
       "ordered_tool_names_sha256": "55fe1d742f1975bd4461e73e00beac211c7fccb9fdd82e72e73964d81441d9c0",
-      "wire_schema_sha256": "f765de939c2d8a0159f5cd088b7377de17c04c113f6e1d5e4d6520f76e677c9f"
+      "wire_schema_sha256": "f765de939c2d8a0159f5cd088b7377de17c04c113f6e1d5e4d6520f76e677c9f",
+      "target_exception_category": "anonymous_discovery_baseline"
     },
     {
       "id": "web_chat:authenticated_admin:active_certification_assessment",
@@ -33088,7 +33253,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "bd72ada800be89b75c9934f22d39da2716d408cfd7082d78250a5d8ba518170c",
-      "wire_schema_sha256": "98bd0d494db54cfae97716ee919ad986266a4bb02ef44cd75b5d25b7c75a869a"
+      "wire_schema_sha256": "98bd0d494db54cfae97716ee919ad986266a4bb02ef44cd75b5d25b7c75a869a",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "web_chat:authenticated_admin:active_certification_learning",
@@ -33150,7 +33316,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "35d65076ecee4d988204088ee64422da183fe75da2c59e606217e62e228e1024",
-      "wire_schema_sha256": "b20da638d0c91f535bd07bd22095869530eff24f780f410f62e25f79f28161ad"
+      "wire_schema_sha256": "b20da638d0c91f535bd07bd22095869530eff24f780f410f62e25f79f28161ad",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "web_chat:authenticated_admin:active_certification_mixed",
@@ -33216,7 +33383,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "6c5ec13ab1e04229284b2416d75b4b9ad7f06ff570821cea95cffa4c972ff8c6",
-      "wire_schema_sha256": "1e9335e86f5d85d9b937feb00d160ab842f6982200734fb6ccfac8bbc381bea3"
+      "wire_schema_sha256": "1e9335e86f5d85d9b937feb00d160ab842f6982200734fb6ccfac8bbc381bea3",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "web_chat:authenticated_admin:routed_combination:agent_end_to_end+certification_learning:si_context",
@@ -33278,7 +33446,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "149c1f71cfc348258d03be4fc30163baeb808ea9370dd73a34c04d8e7a27e49d",
-      "wire_schema_sha256": "ab5ff1c1ec241d9c2f37467999be9b52ddbb70de3eac8ba1c05d165fe2bc9582"
+      "wire_schema_sha256": "ab5ff1c1ec241d9c2f37467999be9b52ddbb70de3eac8ba1c05d165fe2bc9582",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "web_chat:authenticated_admin:routed_combination:community_group_full_participation+meeting_full_administration:si_context",
@@ -33342,7 +33511,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "72797edb266c5688d07bd08f242c17bcc62e317351ab2324d94919dd21ce2268",
-      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6"
+      "wire_schema_sha256": "182a994c3a992e01089e82f5abc857061a7aa24a27cef740274507304fb2e9c6",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "web_chat:authenticated_admin:routed_combination:member_company_profile+certification_learning:si_context",
@@ -33399,7 +33569,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "158c453937b60e693b2cfbd41179126ca0ef97f4c9507f25ef4cbbb26fb520f3",
-      "wire_schema_sha256": "5c9f0f0e7ae692bf3e181e40e88afa84d90215eb3071025f269e8e7a55a08874"
+      "wire_schema_sha256": "5c9f0f0e7ae692bf3e181e40e88afa84d90215eb3071025f269e8e7a55a08874",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "web_chat:authenticated_admin:routed:adcp_agent_management",
@@ -34285,7 +34456,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "38cc0a34bdeb0b27e32fc731aab76c06cd76603a03930b877377db96c6605530",
-      "wire_schema_sha256": "250d6dbdc9d8664c11712fb804985dd399aa86e058858d610282c78f5d72028e"
+      "wire_schema_sha256": "250d6dbdc9d8664c11712fb804985dd399aa86e058858d610282c78f5d72028e",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_admin:routed:agent_publisher_directory",
@@ -34533,7 +34705,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "67f49b83d4e4b07b7f7910ff2f50557ab03f385f30eeb8fe41232923a99894f8",
-      "wire_schema_sha256": "b6f423f18f5733ba77f3d0096debf96a0c1443cca36508ad3a3ef1551070d8d3"
+      "wire_schema_sha256": "b6f423f18f5733ba77f3d0096debf96a0c1443cca36508ad3a3ef1551070d8d3",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_admin:routed:certification_learning",
@@ -34579,7 +34752,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "bd3ab369c155ab0c39e4eb0daa1a025adb8543612053db25490c4704861b54f6",
-      "wire_schema_sha256": "82894322c112e5a176b354bd9ed7ada2f1203f815e73a7485673f0e077568c3e"
+      "wire_schema_sha256": "82894322c112e5a176b354bd9ed7ada2f1203f815e73a7485673f0e077568c3e",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_admin:routed:certification_overview",
@@ -34821,7 +34995,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "04ec5e8b84cc7c87cf26efc8cd7c37398baefb992eb687800a7c461a0f74b752",
-      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478"
+      "wire_schema_sha256": "986037ea14111776d73dad81f6c8abd2bc4ccc0b7d121343f3cb53274d06e478",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_admin:routed:community_discussions",
@@ -34989,7 +35164,8 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "1761c6fb6a24457352ea873f301ed6c24757cb0a4fed773919c1371fb343d70c",
-      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269"
+      "wire_schema_sha256": "a0cc93bef80d9523deb66aad071350b6ad2cc093fed8ff770c5cf2ce7940b269",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_admin:routed:community_group_membership",
@@ -35395,7 +35571,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "582f87a23ce4af178918f9bb042c999466b46904c3c9f7cbfed3dd27ab8dead2",
-      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521"
+      "wire_schema_sha256": "59170ff943f740317737157d7a781bb80349d107c7f6f69508f9b389329e2521",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_admin:routed:meeting_scheduling",
@@ -36217,7 +36394,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "d5fede9abe22dc9e9881c02a0273f7c97d12f14b898f6a95124633edf174fb03",
-      "wire_schema_sha256": "857157207243c92d3f4297ae7a27aa0f11aa478f32d05ffa5d8662732db3ea30"
+      "wire_schema_sha256": "857157207243c92d3f4297ae7a27aa0f11aa478f32d05ffa5d8662732db3ea30",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "web_chat:authenticated_member:active_certification_learning",
@@ -36277,7 +36455,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "bab8226b2b5de31430f15b50111a74fb4c48b6c740a6acb7cd827244d1f65c6e",
-      "wire_schema_sha256": "1dfaab2b31988afc03b8fc0e951d25a8e865c7dd3ad4adecf2712f0d6998ed73"
+      "wire_schema_sha256": "1dfaab2b31988afc03b8fc0e951d25a8e865c7dd3ad4adecf2712f0d6998ed73",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "web_chat:authenticated_member:active_certification_mixed",
@@ -36341,7 +36520,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "409043ee299e0fb5f20b8a94de341fc6e92f1dc0c6f010a74777841984b8542b",
-      "wire_schema_sha256": "03cbe6addbeb7a4de7a1fb694be6a07d201f141c93d73c444437be5af48257b0"
+      "wire_schema_sha256": "03cbe6addbeb7a4de7a1fb694be6a07d201f141c93d73c444437be5af48257b0",
+      "target_exception_category": "trusted_certification_session"
     },
     {
       "id": "web_chat:authenticated_member:routed_combination:agent_end_to_end+certification_learning:si_context",
@@ -36401,7 +36581,8 @@
         "diagnose_agent_auth"
       ],
       "ordered_tool_names_sha256": "239aa781dc2bbad4cafae408369b09c33c17594e28af7dccd89b8c7e335f6ad4",
-      "wire_schema_sha256": "3d1b029cd872df8c55d9cc0288f9dd22b87eb86d97371e280050b3778d4d8d56"
+      "wire_schema_sha256": "3d1b029cd872df8c55d9cc0288f9dd22b87eb86d97371e280050b3778d4d8d56",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "web_chat:authenticated_member:routed_combination:community_group_full_participation+meeting_full_administration:si_context",
@@ -36463,7 +36644,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "a9e974b90b45f7a06c5f20a790efe7b1b48c32b69e1a546e1d30531a3a617a1a",
-      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792"
+      "wire_schema_sha256": "772e82bf18df11171a0929159b29a564160f9e30c383416a49a2ea4bbae32792",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "web_chat:authenticated_member:routed_combination:member_company_profile+certification_learning:si_context",
@@ -36518,7 +36700,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "55dda212adc074b6c5ce79b60bee4cfc91f773942e3195ccd82a12710479a121",
-      "wire_schema_sha256": "ed64942bdc69fd11d793b26c9711079071894012aa804f7733555da33376d672"
+      "wire_schema_sha256": "ed64942bdc69fd11d793b26c9711079071894012aa804f7733555da33376d672",
+      "target_exception_category": "bounded_multi_domain_plan"
     },
     {
       "id": "web_chat:authenticated_member:routed:adcp_agent_management",
@@ -36715,7 +36898,8 @@
         "diagnose_agent_auth"
       ],
       "ordered_tool_names_sha256": "fca82ce62ad0b9e6ae281a723c4fde4a64f62054db1fed015fedbd24cccf44c4",
-      "wire_schema_sha256": "4c2dc85ac3818f6d50b6ea0349539ab60f631b73203709438376ba23a0213a89"
+      "wire_schema_sha256": "4c2dc85ac3818f6d50b6ea0349539ab60f631b73203709438376ba23a0213a89",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_member:routed:agent_publisher_directory",
@@ -36953,7 +37137,8 @@
         "checkpoint_teaching_progress"
       ],
       "ordered_tool_names_sha256": "2f5d84296b8040bca96f4c1ca4c53d58e97027ea93c417b146adbf080e05f05d",
-      "wire_schema_sha256": "5a4d4b5841fc41c5c9478994f002e0549d38d43f52ce61137d79dfe13b14cecf"
+      "wire_schema_sha256": "5a4d4b5841fc41c5c9478994f002e0549d38d43f52ce61137d79dfe13b14cecf",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_member:routed:certification_learning",
@@ -36997,7 +37182,8 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "05e6751604e0664016472e3f20c46d2e22ba5dffd0a557e34418a0b88daccb29",
-      "wire_schema_sha256": "dc9feb86d4ee84029366ae1b7e490f22d286384bda28836f9701b4b27fcefa57"
+      "wire_schema_sha256": "dc9feb86d4ee84029366ae1b7e490f22d286384bda28836f9701b4b27fcefa57",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_member:routed:certification_overview",
@@ -37227,7 +37413,8 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "3ef51ef6c23dc0bb939300d94c013762dcc27966aecdaaa1260aa3786c167cdc",
-      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731"
+      "wire_schema_sha256": "904072f3004a6f52d211601a328088912734622ae51622caaaebcde80b08f731",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_member:routed:community_discussions",
@@ -37389,7 +37576,8 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "d84555d6b82afdd6959fa75186599e3cb0eb59ba7ef4fc9bdc342620712cf0f9",
-      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a"
+      "wire_schema_sha256": "dec4c8306907826d97cb014172aaabc8a1813780abe21071bda8d0c09f56a48a",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_member:routed:community_group_membership",
@@ -37777,7 +37965,8 @@
         "manage_committee_topics"
       ],
       "ordered_tool_names_sha256": "8bcb247100605d8c2354b2fa7a9f1a2b5c349fa2aab59266996b5bcdf634fa51",
-      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86"
+      "wire_schema_sha256": "e9986416e30b85a45f5732568173f1a5f8b8653e4e43e9de3dbe18457134ed86",
+      "target_exception_category": "explicit_multi_step_workflow"
     },
     {
       "id": "web_chat:authenticated_member:routed:meeting_scheduling",
@@ -38661,11 +38850,11 @@
       }
     },
     "profile_ids_sha256": "489a9fbc82dd87bf3109b7c5e164cdc99ed94224db56f13535bf1a12e6fd73de",
-    "profile_contract_sha256": "bc6e93bafa070d5771a3bf1cd0b27ef94f87516aeb5e347e7dfc6d14fa9b6a32",
+    "profile_contract_sha256": "1058d1fceab859aa4eda12abc8d0623347df2c510d4d8bd9e0bf7b0f7a2cb082",
     "status": "within_budget"
   },
   "profile_contract": {
     "profile_ids_sha256": "489a9fbc82dd87bf3109b7c5e164cdc99ed94224db56f13535bf1a12e6fd73de",
-    "profile_contract_sha256": "bc6e93bafa070d5771a3bf1cd0b27ef94f87516aeb5e347e7dfc6d14fa9b6a32"
+    "profile_contract_sha256": "1058d1fceab859aa4eda12abc8d0623347df2c510d4d8bd9e0bf7b0f7a2cb082"
   }
 }
