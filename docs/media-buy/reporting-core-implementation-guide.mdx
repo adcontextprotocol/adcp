@@ -251,3 +251,42 @@ advertised:
   bilateral agreement on exact logical content, for billing.
 
 Start with Core. It solves the problem everyone actually has.
+
+## File-transfer object and version references
+
+For Managed Delivery file transfers, every manifest `files[]` entry carries a
+credential-free, destination-relative `object_ref`. For an S3 destination,
+that means the decoded object key relative to the configured destination — not
+an `s3://` URI and not a key with `?versionId=` appended. The object key has a
+1,024-character schema bound, which accommodates S3's 1,024-UTF-8-byte key
+limit; JSON Schema measures characters, not bytes.
+
+When a provider has an immutable object version, place its decoded native
+value in the entry's optional `native_version_ref`, separately from the key.
+This covers S3 VersionIds as well as GCS generations and provider-native
+snapshots. A VersionId can include characters such as `+`, `/`, and `=` that
+expand when URI encoded. Keep the decoded value in the manifest and encode it
+only while constructing the provider request. The same destination-relative
+`object_ref` is used by `physical_checksums[]`, so it identifies the same
+object without carrying credentials, signed URLs, or query parameters.
+
+```json
+{
+  "files": [
+    {
+      "object_ref": "reports/2026-08-26/part-000.parquet",
+      "native_version_ref": "3/L4kqtJlcpXroDTDmJ+rmSpXd3aIbrHY+",
+      "size_bytes": 128,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "row_count": 0
+    }
+  ],
+  "physical_checksums": [
+    {
+      "object_ref": "reports/2026-08-26/part-000.parquet",
+      "algorithm": "sha256",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
+```
