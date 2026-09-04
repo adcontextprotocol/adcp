@@ -1334,9 +1334,116 @@ Manage topics for a working group/committee. Topics help organize meetings and f
 
 *Source: `server/src/addie/mcp/meeting-tools.ts`*
 
-## committee_leadership
+## committee_co_leaders
 
-Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings
+List, add, or remove co-leaders for a committee led by the current member
+
+### `add_committee_co_leader`
+
+Add a co-leader to a committee you lead. Use this when a committee leader wants to add another person to help lead their committee.
+
+Works for working groups, councils, chapters, and industry gatherings.
+
+IMPORTANT: You can only add co-leaders to committees where you are already a leader.
+
+Example uses:
+- "Add Sarah as a co-leader for the India Chapter"
+- "I want to add John to help lead the Creative Working Group"
+- "Add Maria to the CTV Council leadership"
+
+*Source: `server/src/addie/mcp/committee-leader-tools.ts`*
+
+### `remove_committee_co_leader`
+
+Remove a co-leader from a committee you lead. The person will remain a member but lose leadership access.
+
+Works for working groups, councils, chapters, and industry gatherings.
+
+IMPORTANT: You can only remove co-leaders from committees where you are a leader.
+You cannot remove yourself as a leader (contact admin for that).
+
+*Source: `server/src/addie/mcp/committee-leader-tools.ts`*
+
+### `list_committee_co_leaders`
+
+List all current leaders of a committee you lead. Shows who has leadership access.
+
+Works for working groups, councils, chapters, and industry gatherings.
+
+*Source: `server/src/addie/mcp/committee-leader-tools.ts`*
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## committee_event_planning
+
+Create or update an event for a committee led by the current member
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `create_event`
+
+Create a new AAO event. Use this when someone asks to create a meetup, webinar, summit, or workshop.
+The event will be created in both Luma (for registration) and the AAO website.
+Returns the Luma URL for sharing and the AAO event page URL.
+
+Required: title, start_time (RFC 3339 with an explicit offset), event_type
+Optional: description, end_time, timezone, location details, virtual_url, max_attendees
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `update_event`
+
+Update an existing event. Use this to change event details like description, capacity, or timing.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+## committee_event_registrations
+
+Review or manage registrations, check attendance status, and invite people to a committee event
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `manage_event_registrations`
+
+Manage event registrations - view registrations, approve waitlisted attendees, or export attendee list.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `check_person_event_status`
+
+Look up a specific person's status at an event. Use when someone asks "Is [person] invited to [event]?", "Did [person] attend [event]?", "What's [person]'s RSVP status?", etc.
+
+Searches by name or email across invite list, registrations, and attendance records.
+Returns their invite status, registration status, and whether they attended.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `invite_to_event`
+
+Invite a person to an event. Adds them to the invite list and creates a registration record.
+
+Use when someone says "Invite [person] to [event]", "Add [person] to the Foundry guest list", etc.
+
+If draft_message is true, returns a suggested outreach message that can be sent via Slack or email.
+The invitation is recorded immediately; the outreach message is a draft for the admin to review.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+## committee_full_leadership
+
+Handle one long request spanning committee co-leaders, event planning, and registration or invitation management
 
 ### `add_committee_co_leader`
 

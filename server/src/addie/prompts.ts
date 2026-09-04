@@ -436,13 +436,22 @@ Use these tools instead of recalling schema details from memory. Never invent a 
 Use this complete atomic-tool surface only for one long request that explicitly spans at least three group workflows: discovery, membership, council-interest, and/or contribution. Keep genuine one- and two-workflow requests on their narrow domains.`,
   },
   {
-    selectedToolSets: ['committee_leadership'],
-    text: `### Committee-leadership operations
-- list_working_groups: Find the group being managed.
-- create_event: Create an event (meetup, webinar, summit, etc.)
-- manage_event_registrations: List, approve, or export registrations
-- update_event: Modify event details
-- Check a person's registration status before inviting them.`,
+    selectedToolSets: ['committee_co_leaders', 'committee_full_leadership', 'committee_leadership'],
+    requiredToolNames: ['add_committee_co_leader', 'remove_committee_co_leader', 'list_committee_co_leaders', 'list_working_groups'],
+    text: `### Committee co-leaders
+Ground the committee; change co-leaders only as requested.`,
+  },
+  {
+    selectedToolSets: ['committee_event_planning', 'committee_full_leadership', 'committee_leadership'],
+    requiredToolNames: ['list_working_groups', 'create_event', 'update_event'],
+    text: `### Committee event planning
+Ground the committee; change only requested event details.`,
+  },
+  {
+    selectedToolSets: ['committee_event_registrations', 'committee_full_leadership', 'committee_leadership'],
+    requiredToolNames: ['list_working_groups', 'manage_event_registrations', 'check_person_event_status', 'invite_to_event'],
+    text: `### Committee event registrations
+Manage registrations; check status before an explicit invite.`,
   },
   {
     selectedToolSets: ['events'],
@@ -721,6 +730,11 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
       && ['community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
+    if (
+      name === 'committee_full_leadership'
+      && ['committee_co_leaders', 'committee_event_planning', 'committee_event_registrations']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
     // The system billing channel may add the hidden compatibility alias to a
     // profile that already contains every bounded billing domain. List the
     // exact tool union once through the visible domains.
@@ -785,9 +799,19 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
       && ['sponsored_intelligence_discovery', 'sponsored_intelligence_session']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
+    if (
+      name === 'committee_leadership'
+      && ['committee_co_leaders', 'committee_event_planning', 'committee_event_registrations']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
     const set = TOOL_SETS[name];
     if (!set) continue;
-    const visibleTools = set.tools.filter(toolName => available.has(toolName));
+    // Shared group discovery needs to appear only once in a multi-domain
+    // catalog; single-domain catalogs still show it with that workflow.
+    const visibleTools = set.tools.filter(toolName => (
+      available.has(toolName)
+      && (toolName !== 'list_working_groups' || !displayed.has(toolName))
+    ));
     if (visibleTools.length === 0) continue;
     visibleTools.forEach(toolName => displayed.add(toolName));
     const adminBadge = set.adminOnly ? ' *(admin only)*' : '';

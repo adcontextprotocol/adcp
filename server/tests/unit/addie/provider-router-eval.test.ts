@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(114);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(114);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(117);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(117);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_personal_profile', 'member_company_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
@@ -151,7 +151,7 @@ describe('strict router eval', () => {
       'community_research', 'schema_reference',
       'member_billing', 'admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account',
       'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
-      'committee_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feed_monitoring', 'admin_feed_curation',
+      'committee_co_leaders', 'committee_event_planning', 'committee_event_registrations', 'committee_full_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feed_monitoring', 'admin_feed_curation',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
       'admin_organization_integrity', 'admin_organization_member_records', 'admin_conversation_review', 'admin_followup_tasks',
       'admin_brand_registry_integrity', 'admin_brand_logo_review',
@@ -159,13 +159,14 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(113);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(116);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
     expect(expectedSets).not.toContain('property_catalog');
     expect(expectedSets).not.toContain('meetings');
+    expect(expectedSets).not.toContain('committee_leadership');
     expect(expectedSets).not.toContain('community_groups');
     expect(expectedSets).not.toContain('directory');
     expect(expectedSets).not.toContain('brand_registry');

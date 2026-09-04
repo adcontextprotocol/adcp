@@ -625,6 +625,53 @@ export const MEETING_FULL_ADMINISTRATION_TOOLS = [
 /** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const MEETING_TOOLS = MEETING_FULL_ADMINISTRATION_TOOLS;
 
+/** Bounded committee-leadership domains for ordinary router plans. */
+export const COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS = {
+  committee_co_leaders: [
+    "add_committee_co_leader",
+    "remove_committee_co_leader",
+    "list_committee_co_leaders",
+    "list_working_groups",
+  ],
+  committee_event_planning: [
+    "list_working_groups",
+    "create_event",
+    "update_event",
+  ],
+  committee_event_registrations: [
+    "list_working_groups",
+    "manage_event_registrations",
+    "check_person_event_status",
+    "invite_to_event",
+  ],
+} as const;
+
+export const COMMITTEE_CO_LEADER_TOOLS =
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_co_leaders;
+export const COMMITTEE_EVENT_PLANNING_TOOLS =
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_planning;
+export const COMMITTEE_EVENT_REGISTRATION_TOOLS =
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_registrations;
+
+/**
+ * One long committee-leadership request spanning every bounded workflow.
+ * Kept literal so the router-visible composite and hidden alias are cataloged.
+ */
+export const COMMITTEE_FULL_LEADERSHIP_TOOLS = [
+  "add_committee_co_leader",
+  "remove_committee_co_leader",
+  "list_committee_co_leaders",
+  "list_working_groups",
+  "create_event",
+  "update_event",
+  "manage_event_registrations",
+  "check_person_event_status",
+  "invite_to_event",
+] as const;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const COMMITTEE_LEADERSHIP_TOOLS = COMMITTEE_FULL_LEADERSHIP_TOOLS;
+
 /** Publisher registry, configuration, authorization, and cached-status checks. */
 export const AGENT_REGISTRY_TOOLS = [
   "validate_adagents",
@@ -1191,21 +1238,39 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  committee_co_leaders: {
+    name: "committee_co_leaders",
+    description: "List, add, or remove co-leaders for a committee led by the current member",
+    tools: [...COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_co_leaders],
+  },
+
+  committee_event_planning: {
+    name: "committee_event_planning",
+    description: "Create or update an event for a committee led by the current member",
+    tools: [...COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_planning],
+  },
+
+  committee_event_registrations: {
+    name: "committee_event_registrations",
+    description:
+      "Review or manage registrations, check attendance status, and invite people to a committee event",
+    tools: [...COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_registrations],
+  },
+
+  // Explicit exception for one request spanning all three leadership workflows.
+  committee_full_leadership: {
+    name: "committee_full_leadership",
+    description:
+      "Handle one long request spanning committee co-leaders, event planning, and registration or invitation management",
+    tools: [...COMMITTEE_FULL_LEADERSHIP_TOOLS],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   committee_leadership: {
     name: "committee_leadership",
-    description:
-      "Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings",
-    tools: [
-      "add_committee_co_leader",
-      "remove_committee_co_leader",
-      "list_committee_co_leaders",
-      "list_working_groups",
-      "create_event",
-      "update_event",
-      "manage_event_registrations",
-      "check_person_event_status",
-      "invite_to_event",
-    ],
+    description: "Legacy combined committee-leadership compatibility surface",
+    tools: [...COMMITTEE_LEADERSHIP_TOOLS],
+    routerVisible: false,
   },
 
   admin_events: {

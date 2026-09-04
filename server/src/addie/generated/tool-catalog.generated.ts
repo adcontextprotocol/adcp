@@ -59,7 +59,10 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **meeting_scheduling** — schedule_meeting, list_upcoming_meetings, cancel_meeting, update_meeting
 - **meeting_series_topics** — list_upcoming_meetings, cancel_meeting_series, update_topic_subscriptions, manage_committee_topics
 - **meeting_full_administration** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
-- **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
+- **committee_co_leaders** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups
+- **committee_event_planning** — list_working_groups, create_event, update_event
+- **committee_event_registrations** — list_working_groups, manage_event_registrations, check_person_event_status, invite_to_event
+- **committee_full_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_prospect_pipeline** *(admin only)* — add_prospect, update_prospect, query_prospects, claim_prospect
 - **admin_prospect_research** *(admin only)* — enrich_company, prospect_search_lusha, triage_prospect_domain, suggest_prospects

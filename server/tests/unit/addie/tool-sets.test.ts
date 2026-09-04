@@ -43,6 +43,12 @@ import {
   CERTIFICATION_ASSESSMENT_TOOLS,
   CERTIFICATION_LEARNING_TOOLS,
   CERTIFICATION_OVERVIEW_TOOLS,
+  COMMITTEE_CO_LEADER_TOOLS,
+  COMMITTEE_EVENT_PLANNING_TOOLS,
+  COMMITTEE_EVENT_REGISTRATION_TOOLS,
+  COMMITTEE_FULL_LEADERSHIP_TOOLS,
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS,
+  COMMITTEE_LEADERSHIP_TOOLS,
   COMMUNITY_GROUP_CONTRIBUTION_TOOLS,
   COMMUNITY_GROUP_DISCOVERY_TOOLS,
   COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
@@ -309,6 +315,11 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **sponsored_intelligence_discovery**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **sponsored_intelligence_session**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **sponsored_intelligence**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_co_leaders**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_event_planning**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_event_registrations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_full_leadership**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **committee_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
@@ -599,6 +610,46 @@ describe('getToolsForSets', () => {
       expect(getToolsForSets(['knowledge'], false, false)).not.toEqual(
         expect.arrayContaining(SPONSORED_INTELLIGENCE_TOOLS),
       );
+    });
+  });
+
+  describe('committee leadership workflows', () => {
+    it('separates co-leaders, event planning, and registrations with exact compatibility surfaces', () => {
+      expect(COMMITTEE_CO_LEADER_TOOLS).toEqual([
+        'add_committee_co_leader', 'remove_committee_co_leader',
+        'list_committee_co_leaders', 'list_working_groups',
+      ]);
+      expect(COMMITTEE_EVENT_PLANNING_TOOLS).toEqual([
+        'list_working_groups', 'create_event', 'update_event',
+      ]);
+      expect(COMMITTEE_EVENT_REGISTRATION_TOOLS).toEqual([
+        'list_working_groups', 'manage_event_registrations',
+        'check_person_event_status', 'invite_to_event',
+      ]);
+      expect(COMMITTEE_FULL_LEADERSHIP_TOOLS).toEqual(COMMITTEE_LEADERSHIP_TOOLS);
+      expect(COMMITTEE_LEADERSHIP_TOOLS).toEqual([
+        'add_committee_co_leader', 'remove_committee_co_leader',
+        'list_committee_co_leaders', 'list_working_groups',
+        'create_event', 'update_event', 'manage_event_registrations',
+        'check_person_event_status', 'invite_to_event',
+      ]);
+      expect(TOOL_SETS.committee_leadership.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('committee_leadership')).toBe(false);
+
+      for (const [name, domainTools] of Object.entries(COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(false).has(name), name).toBe(true);
+        expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+      }
+      expect(getValidToolSetNames(false).has('committee_full_leadership')).toBe(true);
+      expect(getToolsForSets(['committee_full_leadership'], false, false)).toEqual(
+        expect.arrayContaining(COMMITTEE_FULL_LEADERSHIP_TOOLS),
+      );
+      expect(getToolsForSets(['committee_leadership'], false, false)).toEqual(
+        expect.arrayContaining(COMMITTEE_LEADERSHIP_TOOLS),
+      );
+      expect(getToolsForSets(['committee_co_leaders'], false, false)).not.toContain('create_event');
+      expect(getToolsForSets(['committee_event_planning'], false, false)).not.toContain('invite_to_event');
+      expect(getToolsForSets(['committee_event_registrations'], false, false)).not.toContain('update_event');
     });
   });
 
