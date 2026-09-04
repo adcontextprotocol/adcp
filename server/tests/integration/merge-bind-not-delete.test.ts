@@ -73,6 +73,14 @@ describe('mergeUsers (bind, don\'t delete)', () => {
       [PRIMARY_ID, SECONDARY_ID]
     );
     await pool.query(
+      `DELETE FROM admin_module_completions WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `DELETE FROM learner_progress WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
       `DELETE FROM organization_memberships WHERE workos_user_id IN ($1, $2)`,
       [PRIMARY_ID, SECONDARY_ID]
     );
@@ -144,6 +152,99 @@ describe('mergeUsers (bind, don\'t delete)', () => {
     );
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].workos_user_id).toBe(PRIMARY_ID);
+  });
+
+  it('preserves completed certification progress when the primary has a lower-state duplicate', async () => {
+    const primaryProgress = await pool.query<{ id: string }>(
+      `INSERT INTO learner_progress
+         (workos_user_id, module_id, status, started_at, attempts, addie_thread_id)
+       VALUES ($1, 'B1', 'in_progress', NOW() - INTERVAL '1 day', 1, 'primary-thread')
+       RETURNING id`,
+      [PRIMARY_ID]
+    );
+    const secondaryProgress = await pool.query<{ id: string }>(
+      `INSERT INTO learner_progress
+         (workos_user_id, module_id, status, started_at, completed_at, score,
+          attempts, addie_thread_id)
+       VALUES ($1, 'B1', 'completed', NOW() - INTERVAL '2 days',
+               NOW() - INTERVAL '1 hour', '{"knowledge": 92}', 2,
+               'secondary-thread')
+       RETURNING id`,
+      [SECONDARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO learner_progress
+         (workos_user_id, module_id, status, started_at, attempts)
+       VALUES ($1, 'B2', 'in_progress', NOW(), 1)`,
+      [SECONDARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO learner_progress (workos_user_id, module_id, status)
+       VALUES ($1, 'B3', 'not_started'), ($2, 'B3', 'failed')`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO admin_module_completions
+         (workos_user_id, module_id, admin_user_id, addie_thread_id, score,
+          learner_progress_id)
+       VALUES ($1, 'B1', 'admin_test', 'secondary-thread',
+               '{"knowledge": 92}', $2)`,
+      [SECONDARY_ID, secondaryProgress.rows[0].id]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const progress = await pool.query<{
+      id: string;
+      module_id: string;
+      status: string;
+      score: Record<string, number> | null;
+      attempts: number;
+      addie_thread_id: string | null;
+    }>(
+      `SELECT id, module_id, status, score, attempts, addie_thread_id
+         FROM learner_progress
+        WHERE workos_user_id = $1
+        ORDER BY module_id`,
+      [PRIMARY_ID]
+    );
+    expect(progress.rows).toHaveLength(3);
+    expect(progress.rows[0]).toMatchObject({
+      id: primaryProgress.rows[0].id,
+      module_id: 'B1',
+      status: 'completed',
+      score: { knowledge: 92 },
+      attempts: 3,
+      addie_thread_id: 'secondary-thread',
+    });
+    expect(progress.rows[1]).toMatchObject({
+      module_id: 'B2',
+      status: 'in_progress',
+    });
+    expect(progress.rows[2]).toMatchObject({
+      module_id: 'B3',
+      status: 'failed',
+    });
+
+    const secondaryRows = await pool.query(
+      `SELECT 1 FROM learner_progress WHERE workos_user_id = $1`,
+      [SECONDARY_ID]
+    );
+    expect(secondaryRows.rows).toHaveLength(0);
+
+    const audit = await pool.query<{
+      workos_user_id: string;
+      learner_progress_id: string;
+    }>(
+      `SELECT workos_user_id, learner_progress_id
+         FROM admin_module_completions
+        WHERE module_id = 'B1' AND workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(audit.rows).toEqual([{
+      workos_user_id: PRIMARY_ID,
+      learner_progress_id: primaryProgress.rows[0].id,
+    }]);
   });
 
   it('records a merge_user audit row', async () => {
