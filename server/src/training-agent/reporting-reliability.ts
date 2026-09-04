@@ -868,6 +868,16 @@ function canonicalCoreConfig(value: unknown): CoreConfig {
       && (configuredDestination.mode !== 'provision'
         || ((configuredDestination.provider as Record<string, unknown> | undefined)?.domain === expectedMethod.provider.domain
           && configuredDestination.access_mode === expectedMethod.access_mode));
+  if (schedule?.alignment === 'source_timezone' && typeof schedule.period_timezone === 'string') {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: schedule.period_timezone });
+    } catch {
+      throw new Error(`Invalid IANA timezone in schedule.period_timezone: ${schedule.period_timezone}`);
+    }
+  }
+  const offeringTimezone = offering
+    ? (offering.schedule as { period_timezone?: string }).period_timezone
+    : undefined;
   const supported = offering !== undefined
     && config.feed_purpose === offering.feed_purpose
     && config.report_definition_id === offering.report_definition_id
@@ -877,7 +887,8 @@ function canonicalCoreConfig(value: unknown): CoreConfig {
     && methodMatches
     && schedule?.period_duration === offering.schedule.period_duration
     && schedule?.alignment === offering.schedule.alignment
-    && schedule?.delivery_sla === offering.schedule.delivery_sla;
+    && schedule?.delivery_sla === offering.schedule.delivery_sla
+    && (offeringTimezone === undefined || schedule?.period_timezone === offeringTimezone);
   if (!supported) {
     throw new Error('The reporting configuration must exactly select one advertised Reliable Reporting offering.');
   }
@@ -2133,7 +2144,7 @@ function recordsFor(
         ? Math.max(firstCivilDayStartAtOrAfter(activatedMs, timeZone), firstCivilDayStartAtOrAfter(retentionStartMs, timeZone))
         : Math.max(floorPeriod(activatedMs + periodMs - 1), floorPeriod(retentionStartMs));
       const finalEnd = daily
-        ? Math.min(civilDayStart(nowMs, timeZone), window.end ? civilDayStart(parseInstant(window.end), timeZone) : civilDayStart(nowMs, timeZone))
+        ? Math.min(civilDayStart(nowMs, timeZone), window.end ? firstCivilDayStartAtOrAfter(parseInstant(window.end), timeZone) : civilDayStart(nowMs, timeZone))
         : Math.min(
           floorPeriod(nowMs),
           window.end ? floorPeriod(parseInstant(window.end) + periodMs - 1) : floorPeriod(nowMs),

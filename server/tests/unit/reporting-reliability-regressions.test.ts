@@ -754,4 +754,97 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     const oldest = periods[0]!.period;
     expect(getReportingStatusForAccount({ view: 'periods', period: oldest } as TrainingGetReportingStatusRequest, principal, accountId).status).toBe('completed');
   });
+
+  // PR #7254 regression: deactivating a daily config mid-day must not drop the
+  // in-progress day's obligation. The cutoff boundary must be the NEXT civil day
+  // start (firstCivilDayStartAtOrAfter), not the current day start.
+  it('deactivating a daily source-calendar config mid-day still owes that day\'s period', () => {
+    const principal = 'test-pr7254-midday-deactivation';
+    const accountId = 'acct-midday-deactivation';
+    const baseConfig = {
+      delivery_config_id: 'midday-deactivation-cfg',
+      delivery_config_version: 1,
+      offering_id: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.offering_id,
+      active: true,
+      feed_purpose: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.feed_purpose,
+      report_definition_id: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.report_definition_id,
+      reporting_profile: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.reporting_profile.id,
+      scope: { all_media_buys: true },
+      coverage_requirement: 'full',
+      required_finality: 'official',
+      reconciliation_mode: 'delivery_only',
+      schedule: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.schedule,
+      method: {
+        pattern: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.pattern,
+        transport: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.transport,
+        orchestration: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.orchestration,
+        destination: { mode: 'provision', provider: { domain: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.provider.domain }, access_mode: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.access_mode, recipient: { identity: 'midday-deactivation-recipient' } },
+      },
+    };
+
+    // Activate at the start of 2026-09-01 (America/New_York = UTC-4, so 04:00Z).
+    replaceReportingConfigurations(principal, accountId, [baseConfig], '2026-09-01T04:00:00.000Z');
+
+    // Deactivate mid-day on 2026-09-03 at 14:00 New York time (18:00Z).
+    replaceReportingConfigurations(principal, accountId, [{ ...baseConfig, active: false, revocation_effective_at: '2026-09-03T18:00:00.000Z' }], '2026-09-03T18:00:00.000Z');
+
+    // Advance clock to end of 2026-09-03 (just before midnight New York = 03:59Z on Sep 4).
+    setReportingCoreLifecycleProbeClock(principal, accountId, '2026-09-04T03:59:00.000Z');
+
+    const response = getReportingStatusForAccount({ view: 'periods' } as TrainingGetReportingStatusRequest, principal, accountId);
+    const periods = response.periods ?? [];
+
+    // 2026-09-03 in America/New_York runs from 2026-09-03T04:00:00.000Z to 2026-09-04T04:00:00.000Z.
+    // Deactivating at 18:00Z must not erase this period — the day was already in progress.
+    const sep3Period = periods.find(p => p.period.start === '2026-09-03T04:00:00.000Z');
+    expect(sep3Period).toBeDefined();
+    expect(sep3Period?.period.end).toBe('2026-09-04T04:00:00.000Z');
+
+    // 2026-09-04 must NOT appear — deactivation was before that day's start.
+    const sep4Period = periods.find(p => p.period.start === '2026-09-04T04:00:00.000Z');
+    expect(sep4Period).toBeUndefined();
+  });
+
+  // PR #7254 regression: canonicalCoreConfig must (a) reject invalid IANA timezone
+  // strings before they crash downstream status reads, and (b) reject a valid IANA
+  // timezone that does not match the offering's pinned period_timezone.
+  it('source-calendar offering rejects invalid and mismatched period_timezone values', () => {
+    const principal = 'test-pr7254-tz-validation';
+    const accountId = 'acct-tz-validation';
+    const baseConfig = {
+      delivery_config_id: 'tz-validation-cfg',
+      delivery_config_version: 1,
+      offering_id: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.offering_id,
+      active: true,
+      feed_purpose: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.feed_purpose,
+      report_definition_id: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.report_definition_id,
+      reporting_profile: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.reporting_profile.id,
+      scope: { all_media_buys: true },
+      coverage_requirement: 'full',
+      required_finality: 'official',
+      reconciliation_mode: 'delivery_only',
+      schedule: {
+        ...TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.schedule,
+        period_timezone: 'Not/A_Zone',
+      },
+      method: {
+        pattern: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.pattern,
+        transport: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.transport,
+        orchestration: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.orchestration,
+        destination: { mode: 'provision', provider: { domain: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.provider.domain }, access_mode: TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING.method.access_mode, recipient: { identity: 'tz-validation-recipient' } },
+      },
+    };
+
+    // Invalid IANA timezone must be caught early with a descriptive error.
+    expect(() => replaceReportingConfigurations(principal, accountId, [baseConfig], '2026-09-01T04:00:00.000Z'))
+      .toThrow(/Invalid IANA timezone/);
+
+    // A valid IANA timezone that doesn't match the offering's pinned zone must also be rejected.
+    expect(() => replaceReportingConfigurations(principal, accountId, [{ ...baseConfig, schedule: { ...baseConfig.schedule, period_timezone: 'Asia/Tokyo' } }], '2026-09-01T04:00:00.000Z'))
+      .toThrow(/advertised Reliable Reporting offering/);
+
+    // The correct timezone must succeed.
+    expect(() => replaceReportingConfigurations(principal, accountId, [{ ...baseConfig, schedule: { ...baseConfig.schedule, period_timezone: 'America/New_York' } }], '2026-09-01T04:00:00.000Z'))
+      .not.toThrow();
+  });
 });
