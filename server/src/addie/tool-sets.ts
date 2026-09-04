@@ -69,6 +69,30 @@ export const SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS = [
  */
 export const MAX_DIRECT_ROUTED_TOOL_SET_COUNT = 2;
 
+/** Bounded community-history tools for ordinary routed research requests. */
+export const COMMUNITY_DISCUSSION_TOOLS = [
+  "search_slack",
+  "get_channel_activity",
+  "read_slack_file",
+] as const;
+
+/** Bounded external-resource tools for ordinary routed research requests. */
+export const INDUSTRY_RESEARCH_TOOLS = [
+  "search_resources",
+  "get_recent_news",
+  "fetch_url",
+] as const;
+
+/** Exact compatibility union used by the audited read-only router fallback. */
+export const COMMUNITY_RESEARCH_TOOLS = [
+  "search_slack",
+  "get_channel_activity",
+  "search_resources",
+  "get_recent_news",
+  "fetch_url",
+  "read_slack_file",
+] as const;
+
 /**
  * Tools excluded from ALWAYS_AVAILABLE in public channels
  * to prevent enrollment pitching where it doesn't belong
@@ -804,18 +828,27 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  community_discussions: {
+    name: "community_discussions",
+    description:
+      "Search Slack history and channel activity or read files shared in Slack when the user explicitly requests community discussion research",
+    tools: [...COMMUNITY_DISCUSSION_TOOLS],
+  },
+
+  industry_research: {
+    name: "industry_research",
+    description:
+      "Search curated industry resources and recent news or read supplied public web pages",
+    tools: [...INDUSTRY_RESEARCH_TOOLS],
+  },
+
+  // Compatibility only for the exact pre-split surface and the deliberate
+  // read-only fallback used when routing is unavailable or untrusted.
   community_research: {
     name: "community_research",
-    description:
-      "When requested, search Slack history, channel activity, curated industry resources, recent news, supplied web pages, and files shared in Slack",
-    tools: [
-      "search_slack",
-      "get_channel_activity",
-      "search_resources",
-      "get_recent_news",
-      "fetch_url",
-      "read_slack_file",
-    ],
+    description: "Legacy combined community and industry research surface",
+    tools: [...COMMUNITY_RESEARCH_TOOLS],
+    routerVisible: false,
   },
 
   schema_reference: {

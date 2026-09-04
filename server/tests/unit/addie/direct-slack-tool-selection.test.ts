@@ -196,7 +196,7 @@ describe('direct Slack Addie response tool routing', () => {
   it('fails closed to the audited public surface when mention privacy is unknown', async () => {
     const selected = await select({
       source: 'mention',
-      toolSets: ['community_research'],
+      toolSets: ['community_discussions'],
     });
 
     expect(selected.allowedToolNames.every((name) =>

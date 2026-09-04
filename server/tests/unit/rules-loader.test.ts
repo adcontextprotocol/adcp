@@ -707,8 +707,8 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['github'],
     });
     const community = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['community_research'], false, false),
-      selectedToolSetNames: ['community_research'],
+      availableToolNames: getToolsForSets(['community_discussions'], false, false),
+      selectedToolSetNames: ['community_discussions'],
     });
     const events = buildAddieToolReference({
       availableToolNames: getToolsForSets(['events'], false, false),
@@ -857,11 +857,11 @@ describe('Addie tool reference', () => {
   });
 
   it('requires exact routed research tools before advertising conditional guidance', () => {
-    const communityTools = getToolsForSets(['community_research'], false, false);
+    const communityTools = getToolsForSets(['community_discussions'], false, false);
     const githubTools = getToolsForSets(['github'], false, false);
     const withoutSlackFile = buildAddieToolReference({
       availableToolNames: communityTools.filter(name => name !== 'read_slack_file'),
-      selectedToolSetNames: ['community_research'],
+      selectedToolSetNames: ['community_discussions'],
     });
     const withoutGithubList = buildAddieToolReference({
       availableToolNames: githubTools.filter(name => name !== 'list_github_issues'),
@@ -872,14 +872,18 @@ describe('Addie tool reference', () => {
     expect(withoutGithubList).not.toContain('### GitHub roadmap research');
   });
 
-  it('scopes protocol, community, and schema guidance to separate domains', () => {
+  it('scopes protocol, discussion, industry, and schema guidance to separate domains', () => {
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
       selectedToolSetNames: ['knowledge'],
     });
-    const community = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['community_research'], false, false),
-      selectedToolSetNames: ['community_research'],
+    const discussions = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['community_discussions'], false, false),
+      selectedToolSetNames: ['community_discussions'],
+    });
+    const industry = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['industry_research'], false, false),
+      selectedToolSetNames: ['industry_research'],
     });
     const schemas = buildAddieToolReference({
       availableToolNames: getToolsForSets(['schema_reference'], false, false),
@@ -887,10 +891,15 @@ describe('Addie tool reference', () => {
     });
 
     expect(knowledge).toContain('### Knowledge search operations');
-    expect(knowledge).not.toContain('### Community and industry research');
+    expect(knowledge).not.toContain('### Community discussion research');
+    expect(knowledge).not.toContain('### Industry resource research');
     expect(knowledge).not.toContain('### Versioned schema operations');
-    expect(community).toContain('### Community and industry research');
-    expect(community).not.toContain('### Knowledge search operations');
+    expect(discussions).toContain('### Community discussion research');
+    expect(discussions).not.toContain('### Industry resource research');
+    expect(discussions).not.toContain('### Knowledge search operations');
+    expect(industry).toContain('### Industry resource research');
+    expect(industry).not.toContain('### Community discussion research');
+    expect(industry).not.toContain('### Knowledge search operations');
     expect(schemas).toContain('### Versioned schema operations');
     expect(schemas).not.toContain('### Knowledge search operations');
   });

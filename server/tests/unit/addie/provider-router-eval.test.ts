@@ -141,14 +141,14 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(117);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(117);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(119);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(119);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_personal_profile', 'member_company_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
       'adcp_task_operations', 'adcp_agent_management', 'sponsored_intelligence_discovery', 'sponsored_intelligence_session', 'content',
       'publishing_submission', 'publishing_assets', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
-      'community_research', 'schema_reference',
+      'community_discussions', 'industry_research', 'schema_reference',
       'member_billing', 'admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account',
       'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
       'committee_co_leaders', 'committee_event_planning', 'committee_event_registrations', 'committee_full_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feed_monitoring', 'admin_feed_curation',
@@ -159,7 +159,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(116);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(118);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -178,6 +178,7 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('admin_workflows');
     expect(expectedSets).not.toContain('adcp_operations');
     expect(expectedSets).not.toContain('outreach');
+    expect(expectedSets).not.toContain('community_research');
     expect(expectedSets).not.toContain('member_profile');
     expect(expectedSets).not.toContain('publishing_author');
     expect(expectedSets).not.toContain('sponsored_intelligence');

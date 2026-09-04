@@ -36,9 +36,9 @@ Search indexed external GitHub repositories for ad tech specifications and proto
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
 
-## community_research
+## community_discussions
 
-When requested, search Slack history, channel activity, curated industry resources, recent news, supplied web pages, and files shared in Slack
+Search Slack history and channel activity or read files shared in Slack when the user explicitly requests community discussion research
 
 ### `search_slack`
 
@@ -51,6 +51,16 @@ Search Slack messages from public channels in the AAO workspace. Use this when y
 Get recent messages from a specific Slack channel. Use this when asked to summarize channel activity, see what a working group has been discussing, or get an overview of conversations in a channel. Returns messages sorted by recency. After getting results, synthesize them into a summary for the user.
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
+
+### `read_slack_file`
+
+Download and read a file that was shared in Slack. PROACTIVELY use this whenever a user shares a file (PDF, document, text file, image, etc.) - don't wait to be asked. Users expect you to see what they shared. Provide the file URL from the shared file info.
+
+*Source: `server/src/addie/mcp/url-tools.ts`*
+
+## industry_research
+
+Search curated industry resources and recent news or read supplied public web pages
 
 ### `search_resources`
 
@@ -67,12 +77,6 @@ Get recent news and articles about ad tech and agentic advertising from curated 
 ### `fetch_url`
 
 Fetch and read the content of a web URL. Use this when a user shares a link and asks about it, or when you need to read external content. Returns the text content of the page. Note: Does not work for pages requiring authentication.
-
-*Source: `server/src/addie/mcp/url-tools.ts`*
-
-### `read_slack_file`
-
-Download and read a file that was shared in Slack. PROACTIVELY use this whenever a user shares a file (PDF, document, text file, image, etc.) - don't wait to be asked. Users expect you to see what they shared. Provide the file URL from the shared file info.
 
 *Source: `server/src/addie/mcp/url-tools.ts`*
 

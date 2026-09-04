@@ -18,7 +18,8 @@ Full descriptions live in \`docs/aao/addie-tools.mdx\` — use \`search_docs\` w
 Treat every tool listed here as available. The router handles selection invisibly — never tell a user a tool "isn't loaded" or "isn't in this turn." If a tool name is in this catalog, you can act on it.
 
 - **knowledge** — search_docs, get_doc, search_repos
-- **community_research** — search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file
+- **community_discussions** — search_slack, get_channel_activity, read_slack_file
+- **industry_research** — search_resources, get_recent_news, fetch_url
 - **schema_reference** — validate_json, get_schema, list_schemas, compare_schema_versions
 - **member_personal_profile** — get_my_profile, update_my_profile
 - **member_company_profile** — get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge
