@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v26';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v27';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -390,13 +390,34 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     category: 'member_context',
     privacy: 'synthetic',
     request: { source: 'dm', message: 'Show me my member profile.', nowUtc: NOW, isAdmin: false },
-    routing: { action: 'respond', toolSets: ['member_profile'] },
+    routing: { action: 'respond', toolSets: ['member_personal_profile'] },
     toolFixtures: [{ name: 'get_my_profile', effect: 'read', resultStatus: 'ok', result: 'Synthetic member profile: display name is Sample Member; profile is complete.' }],
     expectation: {
       terminalStatuses: ['complete'], requiredTools: ['get_my_profile'], allowedTools: ['get_my_profile'], forbiddenTools: ['search_members'], mutationAuthorization: 'none',
       requiredTextAny: [['sample member', 'profile']], maxWords: 120,
     },
     answerRubric: ['Clearly presents only the authenticated synthetic member profile.'],
+  },
+  {
+    id: 'member-company-listing',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Show our company directory listing without changing it.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['member_company_profile'] },
+    toolFixtures: [{ name: 'get_company_listing', effect: 'read', resultStatus: 'ok', result: 'Synthetic company listing: Sample Company; visibility is Public.' }],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['get_company_listing'],
+      allowedTools: ['get_company_listing'],
+      forbiddenTools: [
+        'get_my_profile', 'update_my_profile', 'update_company_listing', 'update_company_logo',
+        'request_brand_domain_challenge', 'verify_brand_domain_challenge',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['sample company', 'company listing'], ['public']],
+      maxWords: 120,
+    },
+    answerRubric: ['Clearly presents only the synthetic company listing without changing profile or brand-domain state.'],
   },
   {
     id: 'brand-mutual-assertion',

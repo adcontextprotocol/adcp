@@ -104,9 +104,9 @@ Compare two schema versions to show what changed. Use this when users ask about 
 
 *Source: `server/src/addie/mcp/schema-tools.ts`*
 
-## member_profile
+## member_personal_profile
 
-Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim
+Show or update the current member's personal profile and account details
 
 ### `get_my_profile`
 
@@ -119,6 +119,10 @@ Get the current user's personal profile — who they are as a person. Shows head
 Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided. Does NOT update first/last name — use set_my_name for that.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+## member_company_profile
+
+Manage the current member's company directory listing, logo, brand color, and organization brand-domain claim
 
 ### `get_company_listing`
 

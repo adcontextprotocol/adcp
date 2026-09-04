@@ -391,7 +391,25 @@ export const DIRECTORY_COMPATIBILITY_TOOLS = [
   "lookup_domain",
 ] as const;
 
-/** Bounded member account/profile surface for new router plans. */
+/** Bounded member profile domains for ordinary router plans. */
+export const MEMBER_PROFILE_DOMAIN_TOOL_SETS = {
+  member_personal_profile: [
+    "get_my_profile",
+    "update_my_profile",
+  ],
+  member_company_profile: [
+    "get_company_listing",
+    "update_company_listing",
+    "update_company_logo",
+    "request_brand_domain_challenge",
+    "verify_brand_domain_challenge",
+  ],
+} as const;
+
+export const MEMBER_PERSONAL_PROFILE_TOOLS = MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_personal_profile;
+export const MEMBER_COMPANY_PROFILE_TOOLS = MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_company_profile;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const MEMBER_PROFILE_TOOLS = [
   "get_my_profile",
   "update_my_profile",
@@ -718,11 +736,27 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  member_personal_profile: {
+    name: "member_personal_profile",
+    description:
+      "Show or update the current member's personal profile and account details",
+    tools: [...MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_personal_profile],
+  },
+
+  member_company_profile: {
+    name: "member_company_profile",
+    description:
+      "Manage the current member's company directory listing, logo, brand color, and organization brand-domain claim",
+    tools: [...MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_company_profile],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   member_profile: {
     name: "member_profile",
     description:
-      "Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim",
+      "Legacy combined member-profile compatibility surface",
     tools: [...MEMBER_PROFILE_TOOLS],
+    routerVisible: false,
   },
 
   community_group_discovery: {

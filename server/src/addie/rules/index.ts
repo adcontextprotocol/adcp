@@ -52,6 +52,8 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
     'certification_learning',
     'certification_assessment',
     'member_billing',
+    'member_personal_profile',
+    'member_company_profile',
     'member_profile',
     'community_group_discovery',
     'community_group_membership',

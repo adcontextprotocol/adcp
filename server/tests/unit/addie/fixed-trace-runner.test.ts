@@ -192,6 +192,7 @@ const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
   'get_my_profile',
+  'get_company_listing',
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',

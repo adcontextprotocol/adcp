@@ -159,7 +159,7 @@ describe('Rules Loader', () => {
     const seriesTopicRules = loadRules({ selectedToolSetNames: ['meeting_series_topics'] });
     const partnerDirectoryRules = loadRules({ selectedToolSetNames: ['partner_directory'] });
     const agentDirectoryRules = loadRules({ selectedToolSetNames: ['agent_publisher_directory'] });
-    const memberRules = loadRules({ selectedToolSetNames: ['member_profile'] });
+    const memberRules = loadRules({ selectedToolSetNames: ['member_personal_profile'] });
     const schemaRules = loadRules({ selectedToolSetNames: ['schema_reference'] });
 
     expect(knowledgeRules).toContain('# Knowledge');
@@ -465,9 +465,13 @@ describe('Addie tool reference', () => {
   });
 
   it('scopes community and content guidance to their selected sets', () => {
-    const profile = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member_profile'], false, false),
-      selectedToolSetNames: ['member_profile'],
+    const personalProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_personal_profile'], false, false),
+      selectedToolSetNames: ['member_personal_profile'],
+    });
+    const companyProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_company_profile'], false, false),
+      selectedToolSetNames: ['member_company_profile'],
     });
     const groups = buildAddieToolReference({
       availableToolNames: getToolsForSets(['community_group_discovery'], false, false),
@@ -494,18 +498,22 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['meeting_full_administration'],
     });
 
-    expect(profile).toContain('### Member profile and company-listing operations');
-    expect(profile).not.toContain('### Working-group operations');
-    expect(profile).not.toContain('### Member content operations');
+    expect(personalProfile).toContain('### Personal profile');
+    expect(personalProfile).not.toContain('### Company listing');
+    expect(personalProfile).not.toContain('### Working-group operations');
+    expect(personalProfile).not.toContain('### Member content operations');
+    expect(companyProfile).toContain('### Company listing');
+    expect(companyProfile).not.toContain('### Personal profile');
     expect(groups).toContain('### Working-group discovery');
-    expect(groups).not.toContain('### Member profile and company-listing operations');
+    expect(groups).not.toContain('### Personal profile');
+    expect(groups).not.toContain('### Company listing');
     expect(groups).not.toContain('### Member content operations');
     expect(contribution).toContain('### Working-group contribution');
     expect(contribution).toContain('bookmark_resource: Save only a community resource whose URL, title, and reason are explicitly supplied or grounded by an earlier tool result. Never invent a required scalar.');
     expect(contribution).toContain('- **community_group_contribution** — get_my_working_groups, create_working_group_post, bookmark_resource');
     expect(promotion).toContain('### Member content operations');
     expect(promotion).not.toContain('### Working-group operations');
-    expect(profile).not.toContain('### Meeting operations');
+    expect(personalProfile).not.toContain('### Meeting operations');
     expect(attendance).toContain('### Meeting attendance');
     expect(attendance).not.toContain('### Meeting scheduling');
     expect(scheduling).toContain('### Meeting scheduling');
@@ -520,7 +528,8 @@ describe('Addie tool reference', () => {
     expect(fullAdministration).toContain(
       `- **meeting_full_administration** — ${fullMeetingTools.join(', ')}`,
     );
-    expect(attendance).not.toContain('### Member profile and company-listing operations');
+    expect(attendance).not.toContain('### Personal profile');
+    expect(attendance).not.toContain('### Company listing');
   });
 
   it('omits duplicate full-meeting guidance only from the synthetic all-domain profile', () => {
@@ -606,8 +615,8 @@ describe('Addie tool reference', () => {
 
   it('scopes account self-service guidance to member requests', () => {
     const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member_profile'], false, false),
-      selectedToolSetNames: ['member_profile'],
+      availableToolNames: getToolsForSets(['member_personal_profile'], false, false),
+      selectedToolSetNames: ['member_personal_profile'],
     });
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
@@ -955,9 +964,13 @@ describe('Addie tool reference', () => {
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {
-    const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member_profile'], false, false),
-      selectedToolSetNames: ['member_profile'],
+    const personalProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_personal_profile'], false, false),
+      selectedToolSetNames: ['member_personal_profile'],
+    });
+    const companyProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_company_profile'], false, false),
+      selectedToolSetNames: ['member_company_profile'],
     });
     const events = buildAddieToolReference({
       availableToolNames: getToolsForSets(['events'], false, false),
@@ -968,8 +981,11 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['content'],
     });
 
-    expect(member).not.toContain('add_committee_document:');
-    expect(member).not.toContain('get_member_engagement:');
+    expect(personalProfile).not.toContain('update_company_listing');
+    expect(personalProfile).not.toContain('request_brand_domain_challenge');
+    expect(companyProfile).not.toContain('update_my_profile');
+    expect(personalProfile).not.toContain('add_committee_document:');
+    expect(personalProfile).not.toContain('get_member_engagement:');
     expect(events).not.toContain('create_event:');
     expect(events).not.toContain('manage_event_registrations:');
     expect(content).not.toContain('attach_content_asset:');
