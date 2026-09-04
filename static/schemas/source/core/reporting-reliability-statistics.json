@@ -14,11 +14,8 @@
       },
       "required": ["p50", "p95"],
       "additionalProperties": false
-    }
-  },
-  "properties": {
-    "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
-    "measurement_period": {
+    },
+    "ReportingReliabilityMeasurementPeriod": {
       "type": "object",
       "properties": {
         "start": { "type": "string", "format": "date-time" },
@@ -26,7 +23,11 @@
       },
       "required": ["start", "end"],
       "additionalProperties": false
-    },
+    }
+  },
+  "properties": {
+    "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
+    "measurement_period": { "$ref": "#/definitions/ReportingReliabilityMeasurementPeriod" },
     "obligations_due": { "type": "integer", "minimum": 1, "description": "Denominator for on-time performance." },
     "obligations_on_time": { "type": "integer", "minimum": 0, "description": "Obligations whose required revision was published by expected_at. Divide by obligations_due for the on-time rate." },
     "official_revisions_published": { "type": "integer", "minimum": 0, "description": "Denominator for the official-adjustment rate." },

@@ -5,13 +5,21 @@
   "x-status": "experimental",
   "description": "Authenticated consumer acceptance or rejection of one exact post-official adjustment. It does not alter the original official revision or its receipt.",
   "type": "object",
+  "definitions": {
+    "ReportingAdjustmentRejectionCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    }
+  },
   "properties": {
     "reporting_receipt_id": { "type": "string", "minLength": 16, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{16,255}$", "x-entity": "reporting_receipt" },
     "reporting_adjustment_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_adjustment" },
     "adjusts_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
     "status": { "type": "string", "enum": ["accepted", "rejected"] },
     "observed_adjustment_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest recomputed from the adjustment using its canonical evidence rule." },
-    "rejection_codes": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z][A-Z0-9_]*$" }, "minItems": 1, "uniqueItems": true },
+    "rejection_codes": { "type": "array", "items": { "$ref": "#/definitions/ReportingAdjustmentRejectionCode" }, "minItems": 1, "uniqueItems": true },
     "observed_at": { "type": "string", "format": "date-time" },
     "received_at": { "type": "string", "format": "date-time", "readOnly": true }
   },

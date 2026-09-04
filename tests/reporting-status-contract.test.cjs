@@ -1120,6 +1120,22 @@ describe('managed reporting status contract', () => {
     assert.equal(validateReliabilityStatistics(statistics), false);
   });
 
+  it('gives reporting helper types globally distinct SDK names', () => {
+    const reliabilitySchema = readSchema('/schemas/core/reporting-reliability-statistics.json');
+    assert.equal(
+      reliabilitySchema.properties.measurement_period.$ref,
+      '#/definitions/ReportingReliabilityMeasurementPeriod',
+    );
+    assert.ok(reliabilitySchema.definitions.ReportingReliabilityMeasurementPeriod);
+
+    const adjustmentReceiptSchema = readSchema('/schemas/core/reporting-adjustment-receipt.json');
+    assert.equal(
+      adjustmentReceiptSchema.properties.rejection_codes.items.$ref,
+      '#/definitions/ReportingAdjustmentRejectionCode',
+    );
+    assert.ok(adjustmentReceiptSchema.definitions.ReportingAdjustmentRejectionCode);
+  });
+
   it('announces ledger changes independently of health and repairs from a checkpoint', () => {
     assert.equal(validateNotificationConfig({
       subscriber_id: 'reporting-ledger',
