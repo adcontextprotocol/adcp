@@ -1447,12 +1447,36 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       }
     }, 15000);
 
-    it('should route committee leadership to committee_leadership for non-admin', async () => {
+    it('should route committee co-leadership to its bounded set for non-admin', async () => {
       const plan = await routeAsMember('make <@U88888|Bob> a co-leader of my chapter');
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
-        expect(plan.tool_sets).toContain('committee_leadership');
+        expect(plan.tool_sets).toEqual(['committee_co_leaders']);
         expect(plan.tool_sets).not.toContain('admin');
+      }
+    }, 15000);
+
+    it('should route committee event planning and registrations independently', async () => {
+      const planning = await routeAsMember('create a webinar for the committee I lead');
+      const registrations = await routeAsMember('check whether Bob is registered before inviting him to my committee event');
+      expect(planning.action).toBe('respond');
+      expect(registrations.action).toBe('respond');
+      if (planning.action === 'respond') {
+        expect(planning.tool_sets).toEqual(['committee_event_planning']);
+      }
+      if (registrations.action === 'respond') {
+        expect(registrations.tool_sets).toEqual(['committee_event_registrations']);
+      }
+    }, 30000);
+
+    it('should reserve the full committee-leadership composite for all three workflows', async () => {
+      const plan = await routeAsMember(
+        'add Bob as co-leader, create our supplied webinar, and invite the named registered participants',
+      );
+      expect(plan.action).toBe('respond');
+      if (plan.action === 'respond') {
+        expect(plan.tool_sets).toEqual(['committee_full_leadership']);
+        expect(plan.tool_sets).not.toContain('committee_leadership');
       }
     }, 15000);
 

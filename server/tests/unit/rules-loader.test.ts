@@ -548,6 +548,54 @@ describe('Addie tool reference', () => {
     expect(reference).not.toContain('- **meeting_full_administration**');
   });
 
+  it('scopes committee leadership guidance to co-leader, planning, and registration workflows', () => {
+    const coLeaders = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_co_leaders'], false, false),
+      selectedToolSetNames: ['committee_co_leaders'],
+    });
+    const planning = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_event_planning'], false, false),
+      selectedToolSetNames: ['committee_event_planning'],
+    });
+    const registrations = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_event_registrations'], false, false),
+      selectedToolSetNames: ['committee_event_registrations'],
+    });
+    const full = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_full_leadership'], false, false),
+      selectedToolSetNames: ['committee_full_leadership'],
+    });
+
+    expect(coLeaders).toContain('### Committee co-leaders');
+    expect(coLeaders).not.toContain('### Committee event planning');
+    expect(coLeaders).not.toContain('### Committee event registrations');
+    expect(planning).toContain('### Committee event planning');
+    expect(planning).not.toContain('### Committee co-leaders');
+    expect(planning).not.toContain('### Committee event registrations');
+    expect(registrations).toContain('### Committee event registrations');
+    expect(registrations).not.toContain('### Committee co-leaders');
+    expect(registrations).not.toContain('### Committee event planning');
+    expect(full).toContain('### Committee co-leaders');
+    expect(full).toContain('### Committee event planning');
+    expect(full).toContain('### Committee event registrations');
+  });
+
+  it('omits the hidden committee alias catalog entry when all bounded domains are selected', () => {
+    const selectedToolSetNames = [
+      'committee_co_leaders', 'committee_event_planning',
+      'committee_event_registrations', 'committee_leadership',
+    ];
+    const reference = buildAddieToolReference({
+      availableToolNames: getToolsForSets(selectedToolSetNames, false, false),
+      selectedToolSetNames,
+    });
+
+    expect(reference).toContain('- **committee_co_leaders**');
+    expect(reference).toContain('- **committee_event_planning**');
+    expect(reference).toContain('- **committee_event_registrations**');
+    expect(reference).not.toContain('- **committee_leadership**');
+  });
+
   it('omits duplicate full-community-group guidance only from the synthetic all-domain profile', () => {
     const selectedToolSetNames = [
       'community_group_discovery', 'community_group_membership', 'council_interest',
@@ -975,6 +1023,9 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
     expect(stable).not.toContain('### Sponsored Intelligence discovery');
     expect(stable).not.toContain('### Sponsored Intelligence active sessions');
+    expect(stable).not.toContain('### Committee co-leaders');
+    expect(stable).not.toContain('### Committee event planning');
+    expect(stable).not.toContain('### Committee event registrations');
     expect(stable).not.toContain('send_to_si_agent for EVERY user message');
     expect(stable).not.toContain('### Content submission and author safety');
     expect(stable).not.toContain('### Editorial review safety');

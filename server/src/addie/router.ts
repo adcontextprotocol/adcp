@@ -737,7 +737,11 @@ ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage regis
 - Task management, reminders, or logging member/prospect interactions → ["admin_followup_tasks"]
 - A request that genuinely needs analytics/review plus follow-up work may select both bounded domains; do not select the hidden legacy alias.
 - Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
-- Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
+- Listing, adding, or removing co-leaders for your own committee (non-admin) → ["committee_co_leaders"]
+- Creating or updating an event for your own committee (non-admin) → ["committee_event_planning"]
+- Managing event registrations, checking attendance status, or inviting people to your own committee event (non-admin) → ["committee_event_registrations"]
+- One explicit request spanning co-leaders, event planning, and registration/invitation management → ["committee_full_leadership"]
+- Never use the hidden legacy committee-leadership alias.
 ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming a working group (admin action) → ["admin_group_structure"]
 - Adding/removing/listing committee or working-group leaders (admin action) → ["admin_group_leadership"]
 - Adding/removing working-group members (admin action) → ["admin_group_membership"]

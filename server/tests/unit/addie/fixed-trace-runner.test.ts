@@ -197,6 +197,7 @@ const TOOL_DEFINITIONS = [
   'check_illustration_status',
   'list_si_agents',
   'get_si_session_status',
+  'list_committee_co_leaders',
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',
