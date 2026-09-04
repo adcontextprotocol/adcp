@@ -21,6 +21,8 @@ import {
   getToolsForSets,
   MEETING_FULL_ADMINISTRATION_TOOLS,
   MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
+  PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+  PROPERTY_LIST_ENRICHMENT_TOOLS,
 } from '../../../src/addie/tool-sets.js';
 
 const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
@@ -458,6 +460,27 @@ describe('Slack tool-set selection policy', () => {
     expect(selection.allowedToolNames).not.toContain('search_docs');
   });
 
+  it('accepts the bounded two-domain property-list-to-catalog workflow', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['property_list_enrichment', 'property_identifier_catalog'], confidence: 'high', reason: 'audit and resolve property list', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['property_list_enrichment', 'property_identifier_catalog']);
+    const propertyTools = new Set<string>([
+      ...PROPERTY_LIST_ENRICHMENT_TOOLS,
+      ...PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+    ]);
+    expect(selection.allowedToolNames.filter((name) =>
+      propertyTools.has(name),
+    )).toEqual([...PROPERTY_LIST_ENRICHMENT_TOOLS, ...PROPERTY_IDENTIFIER_CATALOG_TOOLS]);
+    expect(selection.allowedToolNames).not.toContain('resolve_property');
+  });
+
   it('allows only the explicit full meeting composite and preserves its exact legacy union', () => {
     const selection = selectBoundedRoutedToolSets({
       plan: { action: 'respond', tool_sets: ['meeting_full_administration'], confidence: 'high', reason: 'long meeting administration', decision_method: 'quick_match' },
@@ -590,6 +613,7 @@ describe('Slack tool-set selection policy', () => {
     ['legacy community-groups union', { action: 'respond', tool_sets: ['community_groups'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy directory union', { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-registry union', { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy property-catalog union', { action: 'respond', tool_sets: ['property_catalog'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],

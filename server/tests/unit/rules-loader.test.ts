@@ -272,7 +272,10 @@ describe('Addie tool reference', () => {
     expect(ADDIE_TOOL_REFERENCE).toContain('**agent_quality**');
     expect(ADDIE_TOOL_REFERENCE).toContain('**agent_authentication**');
     expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_validation**');
-    expect(ADDIE_TOOL_REFERENCE).toContain('**property_catalog**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_registry_records**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_list_enrichment**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_identifier_catalog**');
+    expect(ADDIE_TOOL_REFERENCE).not.toContain('**property_catalog**');
     expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_testing**');
     expect(ADDIE_TOOL_REFERENCE).toContain('evaluate_agent_quality');
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
@@ -610,9 +613,17 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['agent_end_to_end'], false, false),
       selectedToolSetNames: ['agent_end_to_end'],
     });
-    const property = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['property_catalog'], false, false),
-      selectedToolSetNames: ['property_catalog'],
+    const propertyRecords = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_registry_records'], false, false),
+      selectedToolSetNames: ['property_registry_records'],
+    });
+    const propertyList = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_list_enrichment'], false, false),
+      selectedToolSetNames: ['property_list_enrichment'],
+    });
+    const propertyCatalog = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_identifier_catalog'], false, false),
+      selectedToolSetNames: ['property_identifier_catalog'],
     });
     expect(protocol).toContain('### AdCP protocol operations');
     expect(protocol).toContain('### Seller-agent monitoring');
@@ -636,10 +647,16 @@ describe('Addie tool reference', () => {
     expect(endToEnd).toContain('validate_adagents');
     expect(endToEnd).toContain('diagnose_agent_auth');
     expect(endToEnd).toContain('test_io_execution');
-    expect(property).toContain('### Property-registry operations');
-    expect(property).toContain('### Property-list enrichment');
-    expect(property).not.toContain('### Publisher and agent testing');
-    expect(property).not.toContain('### Building with AdCP');
+    expect(propertyRecords).toContain('### Property-registry operations');
+    expect(propertyRecords).not.toContain('### Property-list enrichment');
+    expect(propertyRecords).not.toContain('### Property catalog operations');
+    expect(propertyList).toContain('### Property-list enrichment');
+    expect(propertyList).not.toContain('### Property-registry operations');
+    expect(propertyList).not.toContain('### Property catalog operations');
+    expect(propertyCatalog).toContain('### Property catalog operations');
+    expect(propertyCatalog).not.toContain('### Property-registry operations');
+    expect(propertyCatalog).not.toContain('### Property-list enrichment');
+    expect(propertyCatalog).not.toContain('### Building with AdCP');
   });
 
   it('scopes brand guidance to brand-registry requests', () => {
@@ -656,8 +673,8 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['brand_registry_identity'],
     });
     const property = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['property_catalog'], false, false),
-      selectedToolSetNames: ['property_catalog'],
+      availableToolNames: getToolsForSets(['property_registry_records'], false, false),
+      selectedToolSetNames: ['property_registry_records'],
     });
 
     expect(directory).not.toContain('### Brand-registry records');
@@ -806,20 +823,25 @@ describe('Addie tool reference', () => {
     expect(knowledge).not.toContain('### Sponsored Intelligence conversations');
   });
 
-  it('loads property catalog guidance only with the complete routed workflow', () => {
-    const propertyTools = getToolsForSets(['property_catalog'], false, false);
+  it('loads each property guidance module only with its bounded routed workflow', () => {
+    const propertyTools = getToolsForSets(['property_identifier_catalog'], false, false);
     const complete = buildAddieToolReference({
       availableToolNames: propertyTools,
-      selectedToolSetNames: ['property_catalog'],
+      selectedToolSetNames: ['property_identifier_catalog'],
     });
     const missingDispute = buildAddieToolReference({
       availableToolNames: propertyTools.filter(name => name !== 'dispute_catalog_entry'),
-      selectedToolSetNames: ['property_catalog'],
+      selectedToolSetNames: ['property_identifier_catalog'],
+    });
+    const propertyList = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_list_enrichment'], false, false),
+      selectedToolSetNames: ['property_list_enrichment'],
     });
 
-    expect(complete).toContain('### Property-list enrichment');
     expect(complete).toContain('### Property catalog operations');
     expect(missingDispute).not.toContain('### Property catalog operations');
+    expect(propertyList).toContain('### Property-list enrichment');
+    expect(propertyList).not.toContain('### Property catalog operations');
   });
 
   it('loads brand canonical guidance only with the complete routed workflow', () => {

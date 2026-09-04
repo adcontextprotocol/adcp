@@ -24,6 +24,7 @@ import { DIRECTORY_TOOLS } from '../../../src/addie/mcp/directory-tools.js';
 import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../../../src/addie/mcp/member-tools.js';
 import { KNOWLEDGE_TOOLS } from '../../../src/addie/mcp/knowledge-search.js';
+import { PROPERTY_TOOLS } from '../../../src/addie/mcp/property-tools.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -159,6 +160,10 @@ const CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS = DIRECTORY_TOOLS.filter((defini
   'list_agents',
 ].includes(definition.name));
 
+const CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS = PROPERTY_TOOLS.filter((definition) => [
+  'browse_catalog',
+].includes(definition.name));
+
 const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
@@ -173,6 +178,7 @@ const TOOL_DEFINITIONS = [
   CANONICAL_ADMIN_BRAND_LOGO_TOOLS,
   CANONICAL_BRAND_IDENTITY_TOOLS,
   CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS,
+  CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS,
 );
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {

@@ -40,6 +40,9 @@ import {
   PUBLISHING_PROMOTION_TOOLS,
   PUBLISHING_REVIEW_TOOLS,
   PROPERTY_CATALOG_TOOLS,
+  PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+  PROPERTY_LIST_ENRICHMENT_TOOLS,
+  PROPERTY_REGISTRY_RECORD_TOOLS,
   SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
   TOOL_SETS,
   buildUnavailableSetsHint,
@@ -259,16 +262,24 @@ describe('getToolsForSets', () => {
   });
 
   describe('bounded agent and property domains', () => {
-    it('routes the complete property audit, enrichment, catalog, and dispute surface', () => {
-      expect(getToolsForSets(['property_catalog'], false, false)).toEqual(
-        expect.arrayContaining([
-          'check_property_list',
-          'enhance_property',
-          'resolve_catalog',
-          'browse_catalog',
-          'dispute_catalog_entry',
-        ]),
-      );
+    it('keeps property registry, list enrichment, and identifier catalog workflows isolated', () => {
+      expect(PROPERTY_REGISTRY_RECORD_TOOLS).toEqual([
+        'resolve_property', 'save_property', 'list_properties', 'list_missing_properties',
+      ]);
+      expect(PROPERTY_LIST_ENRICHMENT_TOOLS).toEqual([
+        'check_property_list', 'enhance_property',
+      ]);
+      expect(PROPERTY_IDENTIFIER_CATALOG_TOOLS).toEqual([
+        'resolve_catalog', 'browse_catalog', 'dispute_catalog_entry',
+      ]);
+      expect(PROPERTY_CATALOG_TOOLS).toEqual([
+        ...PROPERTY_REGISTRY_RECORD_TOOLS,
+        ...PROPERTY_LIST_ENRICHMENT_TOOLS,
+        ...PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+      ]);
+      expect(PROPERTY_REGISTRY_RECORD_TOOLS.filter((tool) => new Set<string>(PROPERTY_LIST_ENRICHMENT_TOOLS).has(tool))).toEqual([]);
+      expect(PROPERTY_REGISTRY_RECORD_TOOLS.filter((tool) => new Set<string>(PROPERTY_IDENTIFIER_CATALOG_TOOLS).has(tool))).toEqual([]);
+      expect(PROPERTY_LIST_ENRICHMENT_TOOLS.filter((tool) => new Set<string>(PROPERTY_IDENTIFIER_CATALOG_TOOLS).has(tool))).toEqual([]);
     });
 
     it('keeps registry, quality, authentication, and property workflows isolated', () => {
@@ -276,7 +287,9 @@ describe('getToolsForSets', () => {
       const quality = getToolsForSets(['agent_quality'], false, false);
       const authentication = getToolsForSets(['agent_authentication'], false, false);
       const endToEnd = getToolsForSets(['agent_end_to_end'], false, false);
-      const property = getToolsForSets(['property_catalog'], false, false);
+      const propertyRecords = getToolsForSets(['property_registry_records'], false, false);
+      const propertyList = getToolsForSets(['property_list_enrichment'], false, false);
+      const propertyCatalog = getToolsForSets(['property_identifier_catalog'], false, false);
 
       expect(registry).toEqual(expect.arrayContaining([
         'validate_adagents',
@@ -304,10 +317,16 @@ describe('getToolsForSets', () => {
       ]));
       expect(endToEnd).not.toContain('test_adcp_agent');
       expect(endToEnd).not.toContain('compare_media_kit');
-      expect(property).toContain('resolve_property');
-      expect(property).toContain('dispute_catalog_entry');
-      expect(property).not.toContain('evaluate_agent_quality');
-      expect(property).not.toContain('diagnose_agent_auth');
+      expect(propertyRecords).toContain('resolve_property');
+      expect(propertyRecords).not.toContain('check_property_list');
+      expect(propertyList).toContain('enhance_property');
+      expect(propertyList).not.toContain('browse_catalog');
+      expect(propertyCatalog).toContain('dispute_catalog_entry');
+      expect(propertyCatalog).not.toContain('resolve_property');
+      for (const propertyTools of [propertyRecords, propertyList, propertyCatalog]) {
+        expect(propertyTools).not.toContain('evaluate_agent_quality');
+        expect(propertyTools).not.toContain('diagnose_agent_auth');
+      }
     });
 
     it('keeps narrow agent routes visible and the exact legacy union hidden', () => {
@@ -332,7 +351,8 @@ describe('getToolsForSets', () => {
         'evaluate_agent_quality', 'grade_agent_signing', 'diagnose_agent_auth',
         'compare_media_kit', 'test_rfp_response', 'test_io_execution', 'validate_agent',
       ]);
-      expect(PROPERTY_CATALOG_TOOLS).toHaveLength(9);
+      expect(TOOL_SETS.property_catalog.tools).toEqual(PROPERTY_CATALOG_TOOLS);
+      expect(TOOL_SETS.property_catalog.routerVisible).toBe(false);
       expect(TOOL_SETS.agent_validation.tools).toEqual(AGENT_VALIDATION_TOOLS);
       expect(TOOL_SETS.agent_validation.routerVisible).toBe(false);
       expect(getValidToolSetNames(false).has('agent_validation')).toBe(false);
@@ -340,7 +360,17 @@ describe('getToolsForSets', () => {
       expect(getValidToolSetNames(false).has('agent_quality')).toBe(true);
       expect(getValidToolSetNames(false).has('agent_authentication')).toBe(true);
       expect(getValidToolSetNames(false).has('agent_end_to_end')).toBe(true);
-      expect(getValidToolSetNames(false).has('property_catalog')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_catalog')).toBe(false);
+      expect(getValidToolSetNames(false).has('property_registry_records')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_list_enrichment')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_identifier_catalog')).toBe(true);
+
+      expect(getToolsForSets(['property_registry_records'], false, false)).toHaveLength(10);
+      expect(getToolsForSets(['property_list_enrichment'], false, false)).toHaveLength(8);
+      expect(getToolsForSets(['property_identifier_catalog'], false, false)).toHaveLength(9);
+      expect(getToolsForSets(['property_registry_records'], true, false)).toHaveLength(12);
+      expect(getToolsForSets(['property_list_enrichment'], true, false)).toHaveLength(10);
+      expect(getToolsForSets(['property_identifier_catalog'], true, false)).toHaveLength(11);
     });
 
     it.each(['agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end'] as const)(
@@ -583,7 +613,9 @@ describe('getToolsForSets', () => {
       ['agent_quality', 3],
       ['agent_authentication', 2],
       ['agent_end_to_end', 10],
-      ['property_catalog', 9],
+      ['property_registry_records', 4],
+      ['property_list_enrichment', 2],
+      ['property_identifier_catalog', 3],
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
