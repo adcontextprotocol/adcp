@@ -9,6 +9,44 @@ Common questions from teams building AdCP sales agents and integrations, with di
 
 ## Reliable reporting (3.2 experimental)
 
+### Q: What if the ad server reports in a different timezone from the AdCP account?
+
+**A:** Use `source_timezone` and resolve the upstream IANA timezone into the
+installed schedule. For example, a network-timezone daily export must not be
+advertised as UTC or `account_timezone` unless the clocks genuinely match or
+the seller can losslessly re-bucket finer-grained source data. The seller
+validates this before the configuration becomes ready. A source that cannot
+produce the promised periods is a configuration failure; after acceptance it
+is seller-owned `action_required`, not an excuse to leave reporting `waiting`.
+
+### Q: Can an official report change after a buyer invoices it?
+
+**A:** The official revision itself cannot. `reporting_revision_id` is the
+invoice-addressable immutable close, and no later revision may supersede it.
+A later source correction is a `reporting-adjustment` with a reason, signed
+control-total deltas, and the open accounting period in which to apply them.
+The buyer retains the original invoice-to-revision binding and posts the
+adjustment separately.
+
+### Q: How does a buyer learn about a correction that does not change health?
+
+**A:** `reporting.ledger_changed` is the optional doorbell for every new
+revision or adjustment. It is separate from `reporting.status_changed`, which
+only reports health transitions. Push remains optional and non-authoritative:
+after fully consuming a periods read, persist `changes_checkpoint` and pass it
+as `changes_after` to repair missed, duplicate, or out-of-order events without
+re-reading the entire retained history.
+
+### Q: Can a seller hide poor performance behind a long delivery SLA?
+
+**A:** A long SLA remains part of the atomic offering, but capability
+`reliability_statistics` can make actual behavior comparable: due/on-time
+counts, p50/p95 publication latency, official adjustment frequency, adjustment
+latency and magnitude, measurement window, sample size, and evidence basis.
+Statistics cannot omit late or corrected obligations or combine unlike
+offerings. Buyers should compare both the contractual SLA and observed
+performance.
+
 ### Q: Does accepting a media buy create its reporting obligations?
 
 **A:** No. The applicable account reporting configuration generation supplies

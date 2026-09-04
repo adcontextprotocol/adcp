@@ -45,6 +45,7 @@
     "view": { "$ref": "/schemas/media-buy/get-reporting-status-request.json#/definitions/ReportingStatusView" },
     "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
     "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
+    "changes_checkpoint": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Opaque durable incremental-repair checkpoint for this periods snapshot. Consumers persist it only after consuming every page, then send it as changes_after. It is bound to authenticated caller, account, and filters and MUST order every committed obligation, revision, adjustment, materialization, revision receipt, and adjustment receipt without gaps." },
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account", "description": "Resolved seller/storefront account identifier." },
     "scope": {
       "type": "object",
@@ -103,7 +104,9 @@
     },
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "periods": { "type": "array", "items": { "$ref": "/schemas/core/reporting-obligation.json" } },
-    "revisions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-revision.json" }, "description": "Revision ledger records on this page. Pagination is over the flat union of obligations, revisions, materializations, and receipts, avoiding unbounded nested history." },
+    "revisions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-revision.json" }, "description": "Revision ledger records on this page. Pagination is over the flat union of obligations, revisions, adjustments, materializations, revision receipts, and adjustment receipts, avoiding unbounded nested history." },
+    "adjustments": { "type": "array", "items": { "$ref": "/schemas/core/reporting-adjustment.json" }, "description": "Immutable post-official accounting corrections on this page. They preserve the original invoice-to-revision binding and are included in flat ledger pagination." },
+    "adjustment_receipts": { "type": "array", "items": { "$ref": "/schemas/core/reporting-adjustment-receipt.json" }, "description": "Authenticated Reconciled Billing outcomes for adjustments on this page." },
     "pagination": { "$ref": "/schemas/core/pagination-response.json" },
     "revision": { "$ref": "/schemas/core/reporting-revision.json" },
     "materializations": { "type": "array", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
@@ -122,7 +125,7 @@
       "title": "Summary view",
       "properties": { "view": { "type": "string", "const": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
-      "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }] }
+      "not": { "anyOf": [{ "required": ["changes_checkpoint"] }, { "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["adjustments"] }, { "required": ["adjustment_receipts"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }] }
     },
     {
       "title": "Periods view",
@@ -134,7 +137,7 @@
       "title": "Revision view",
       "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
-      "not": { "anyOf": [{ "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["revisions"] }] }
+      "not": { "anyOf": [{ "required": ["changes_checkpoint"] }, { "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["revisions"] }] }
         }
       ]
     },
@@ -208,9 +211,11 @@
     }
   ],
   "x-adcp-validation": {
-    "caller_isolation": "Derive caller identity only from authenticated transport. Every account, configuration generation, cursor, ledger snapshot, revision, materialization, resource, and destination must belong to that caller/account; unknown and unauthorized identifiers must use the identical lookup_unavailable shape. operational failures MUST NOT be used for identifier resolution or authorization failures.",
+    "caller_isolation": "Derive caller identity only from authenticated transport. Every account, configuration generation, cursor, changes checkpoint, ledger snapshot, revision, adjustment, materialization, resource, and destination must belong to that caller/account; unknown and unauthorized identifiers must use the identical lookup_unavailable shape. operational failures MUST NOT be used for identifier resolution or authorization failures.",
     "empty_scope": "After the caller intentionally applies reporting_delivery_configs: [], or before it creates any configuration, an unfiltered account has no caller-owned reporting configuration generations. delivery_config_generations, feed_purposes, and finality MUST all be empty; obligation counts and every periods-view record array MUST be empty; data_through MUST be null. This is a valid vacuously complete closed scope, not an inaccessible-identifier signal. A request naming an unknown or unauthorized delivery_config_id still uses lookup_unavailable.",
-    "snapshot_consistency": "All pages reached from a cursor MUST preserve ledger_snapshot_id and ledger_as_of. A cursor is unusable by another caller or account.",
+    "snapshot_consistency": "All pages reached from a cursor MUST preserve ledger_snapshot_id, ledger_as_of, and changes_checkpoint. A cursor or changes checkpoint is unusable by another caller, account, or filter set. Consumers MUST persist changes_checkpoint only after has_more is false.",
+    "incremental_repair": "Reliable Reporting 1.0 periods responses require changes_checkpoint and adjustments, and its revision responses require adjustments; those fields remain optional only for the preceding experimental managed-reporting shape. adjustment_receipts is additionally required in both views when the seller advertises reconciled_billing: true and is otherwise optional. When changes_after is present, periods pagination MUST include every immutable ledger record committed strictly after that checkpoint through ledger_as_of and the current obligation projection for every affected obligation. It MAY safely replay older immutable records, which consumers deduplicate by record identity. Records committed during pagination appear after changes_checkpoint on the next read, never in the current snapshot. The returned changes_checkpoint advances across every supported record kind, including corrections and adjustment receipts that do not change health. reporting.status_changed is repaired with a non-incremental current summary or periods read because clock/configuration health transitions need not commit an immutable record.",
+    "revision_adjustments": "In revision view, every adjustments item MUST name the requested revision in adjusts_reporting_revision_id; every adjustment_receipt, when supported, MUST name one of those adjustments. No unrelated correction may appear.",
     "resource_retention": "A complete obligation must retain at least one readable verified exact materialization through its resource_retained_until. Metadata retention does not imply resource readability after that boundary.",
     "coverage_aggregation": "Summary coverage is full only when every selected obligation is full. It is partial when the selected scope contains both covered and unsupported/unknown packages, none when nothing is covered and support is known absent, and unknown when nothing is covered and any applicability remains unknown. Delivery health is computed separately. Covered-subset metrics MUST NOT be presented as complete totals for the selected media-buy scope."
   },

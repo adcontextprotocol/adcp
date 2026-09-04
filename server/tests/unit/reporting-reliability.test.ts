@@ -5,14 +5,25 @@ import {
   clearReportingReliabilityStore,
   getReportingStatusForAccount,
   prepareReportingCoreLifecycleProbe,
+  prepareReliableReportingCoreIntegrityProbe,
+  prepareReliableReportingManagedDeliveryProbe,
+  prepareReliableReportingReconciledBillingProbe,
   projectedReportingConfigurationStates,
   publishZeroRowReportingCoreLifecycleProbe,
+  publishReliableReportingCoreIntegrityCorrection,
+  publishReliableReportingReconciledAdjustments,
   reportingConfigurationStatesForAccount,
   replaceReportingConfigurations,
   setReportingCoreLifecycleProbeClock,
   setReportingMediaBuyCandidates,
+  syncReliableReportingReceiptsForAccount,
   TRAINING_REPORTING_CORE_CONFIGURATION,
+  TRAINING_REPORTING_MANAGED_OFFERING,
+  TRAINING_REPORTING_RECONCILED_OFFERING,
+  validateReportingConfigurations,
+  validateReliableReportingResponse,
   validateReportingConfigurationScopes,
+  updateReliableReportingManagedDeliveryProbe,
 } from '../../src/training-agent/reporting-reliability.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 
@@ -95,6 +106,314 @@ describe('training-agent Core reporting reliability ledger', () => {
     }, 'buyer:alpha', ACCOUNT_ID);
     expect(reread.view === 'revision' && revision.view === 'revision' ? reread.revision : undefined)
       .toEqual(revision.view === 'revision' ? revision.revision : undefined);
+  });
+
+  it('repairs content changes from a durable checkpoint independently of health transitions', () => {
+    prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const baseline = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    expect(baseline.changes_checkpoint).toMatch(/^reporting_change_/);
+
+    publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const delta = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      changes_after: baseline.changes_checkpoint,
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(delta.periods).toHaveLength(1);
+    expect(delta.revisions).toHaveLength(1);
+    expect(delta.changes_checkpoint).not.toBe(baseline.changes_checkpoint);
+
+    const unchanged = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      changes_after: delta.changes_checkpoint,
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(unchanged.periods).toEqual([]);
+    expect(unchanged.revisions).toEqual([]);
+    expect(unchanged.health).toBe(delta.health);
+    expect(unchanged.obligation_counts).toEqual(delta.obligation_counts);
+    expect(unchanged.coverage).toEqual(delta.coverage);
+
+    const firstPage = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      changes_after: baseline.changes_checkpoint,
+      pagination: { max_results: 1 },
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(firstPage.pagination?.has_more).toBe(true);
+    const mismatchedCheckpoint = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      changes_after: firstPage.changes_checkpoint,
+      pagination: { max_results: 1, cursor: firstPage.pagination?.cursor },
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(mismatchedCheckpoint).toMatchObject({ failure_kind: 'lookup_unavailable' });
+  });
+
+  it('repairs a source-timezone official close and Core adjustment through the handler runtime validator', () => {
+    const prepared = prepareReliableReportingCoreIntegrityProbe('buyer:alpha', ACCOUNT_ID);
+    const baseline = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    expect(baseline).toMatchObject({
+      status: 'completed',
+      periods: [{
+        reporting_obligation_id: prepared.reporting_obligation_id,
+        period: { source_timezone: 'America/New_York' },
+        schedule: { period_duration: 'P1D', alignment: 'source_timezone' },
+        revision_count: 0,
+        adjustment_count: 0,
+      }],
+      adjustments: [],
+    });
+    expect(Date.parse(baseline.periods?.[0]?.period.end ?? '') - Date.parse(baseline.periods?.[0]?.period.start ?? ''))
+      .toBe(25 * 60 * 60 * 1000);
+    expect(validateReliableReportingResponse(baseline)).toBe(baseline);
+
+    const published = publishReliableReportingCoreIntegrityCorrection('buyer:alpha', ACCOUNT_ID);
+    const repaired = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      changes_after: baseline.changes_checkpoint,
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(published.notification_order).toEqual(['adjustment', 'revision', 'adjustment']);
+    expect(repaired).toMatchObject({
+      periods: [{ revision_count: 1, adjustment_count: 1, health: 'complete' }],
+      revisions: [{
+        reporting_revision_id: published.reporting_revision_id,
+        report_definition_id: 'training_source_calendar_billing_v1',
+        report_definition_uri: 'https://test-agent.adcontextprotocol.org/reporting/definitions/source-calendar-billing-v1.json',
+        finality: 'official',
+        finality_policy_id: 'training_source_cutoff',
+      }],
+      adjustments: [{
+        reporting_adjustment_id: published.reporting_adjustment_id,
+        adjusts_reporting_revision_id: published.reporting_revision_id,
+      }],
+    });
+    expect(repaired.adjustments?.[0]).not.toHaveProperty('canonical_adjustment_sha256');
+    expect(validateSourceSchema('media-buy/get-reporting-status-response.json', repaired).valid).toBe(true);
+    expect(validateReliableReportingResponse(repaired)).toBe(repaired);
+  });
+
+  it('executes the Managed Delivery and Reconciled Billing controller fixtures end to end', () => {
+    const managed = prepareReliableReportingManagedDeliveryProbe('buyer:alpha', ACCOUNT_ID);
+    expect(updateReliableReportingManagedDeliveryProbe('buyer:alpha', ACCOUNT_ID, 'suppress_readiness'))
+      .toMatchObject({ readiness_notification_suppressed: true });
+    const managedStatus = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'revision',
+      reporting_revision_id: managed.reporting_revision_id,
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(managedStatus).toMatchObject({
+      materializations: [{ reporting_materialization_id: managed.reporting_materialization_id, status: 'available' }],
+    });
+    expect(validateReliableReportingResponse(managedStatus)).toBe(managedStatus);
+    expect(updateReliableReportingManagedDeliveryProbe('buyer:alpha', ACCOUNT_ID, 'advance_within_retention'))
+      .toMatchObject({ resource_readable: true, reporting_materialization_id: managed.reporting_materialization_id });
+    expect(updateReliableReportingManagedDeliveryProbe('buyer:alpha', ACCOUNT_ID, 'revoke_access'))
+      .toMatchObject({ access_revoked: true, historical_metadata_retained: true, revocation_elapsed_seconds: 30 });
+
+    const billing = prepareReliableReportingReconciledBillingProbe('buyer:alpha', ACCOUNT_ID);
+    const baseline = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    const revisionReceipt = syncReliableReportingReceiptsForAccount({ receipts: [{
+      reporting_receipt_id: 'rr-billing-official-receipt-0001',
+      reporting_obligation_id: billing.reporting_obligation_id,
+      reporting_revision_id: billing.reporting_revision_id,
+      reporting_materialization_id: billing.reporting_materialization_id,
+      status: 'accepted',
+      verification_profile: 'canonical_digest',
+      observed_row_count: 2,
+      observed_control_totals: [
+        { name: 'impressions', value: '5', value_type: 'integer', unit: 'impressions' },
+        { name: 'spend', value: '8.00', value_type: 'decimal', unit: 'USD' },
+      ],
+      observed_canonical_content_digest: billing.canonical_content_digest,
+      observed_at: '2026-08-27T04:01:00.000Z',
+    }] }, 'buyer:alpha', ACCOUNT_ID);
+    expect(revisionReceipt).toMatchObject({ results: [{ result: 'recorded', receipt: { status: 'accepted' } }] });
+    const published = publishReliableReportingReconciledAdjustments('buyer:alpha', ACCOUNT_ID);
+    const adjustmentResponse = syncReliableReportingReceiptsForAccount({ adjustment_receipts: published.adjustments.map((adjustment, index) => ({
+      reporting_receipt_id: `rr-adjustment-${index === 0 ? 'accepted' : 'rejected'}-receipt-01`,
+      reporting_adjustment_id: adjustment.reporting_adjustment_id,
+      adjusts_reporting_revision_id: billing.reporting_revision_id,
+      status: index === 0 ? 'accepted' : 'rejected',
+      observed_adjustment_sha256: index === 0 ? adjustment.canonical_adjustment_sha256 : published.disputed_observed_adjustment_sha256,
+      ...(index === 1 && { rejection_codes: ['CANONICAL_DIGEST_MISMATCH'] }),
+      observed_at: `2026-08-29T10:01:0${index}.000Z`,
+    })) }, 'buyer:alpha', ACCOUNT_ID);
+    expect(adjustmentResponse).toMatchObject({ results: [
+      { adjustment_receipt: { status: 'accepted' } },
+      { adjustment_receipt: { status: 'rejected' } },
+    ] });
+    const repaired = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'periods',
+      changes_after: baseline.changes_checkpoint,
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(repaired).toMatchObject({
+      periods: [{ adjustment_count: 2 }],
+      adjustments: [{}, {}],
+      adjustment_receipts: [{ status: 'accepted' }, { status: 'rejected' }],
+    });
+    expect(validateReliableReportingResponse(repaired)).toBe(repaired);
+  });
+
+  it('accepts account configurations for each advertised optional Reliable Reporting tier', () => {
+    for (const [index, offering] of [
+      TRAINING_REPORTING_MANAGED_OFFERING,
+      TRAINING_REPORTING_RECONCILED_OFFERING,
+    ].entries()) {
+      expect(() => validateReportingConfigurations([{
+        delivery_config_id: `optional-tier-${index}`,
+        delivery_config_version: 1,
+        offering_id: offering.offering_id,
+        active: true,
+        feed_purpose: offering.feed_purpose,
+        report_definition_id: offering.report_definition_id,
+        reporting_profile: offering.reporting_profile.id,
+        scope: { all_media_buys: true },
+        coverage_requirement: 'full',
+        required_finality: 'official',
+        reconciliation_mode: offering.reconciliation_mode,
+        schedule: offering.schedule,
+        method: {
+          pattern: offering.method.pattern,
+          transport: offering.method.transport,
+          orchestration: offering.method.orchestration,
+          destination: {
+            mode: 'provision',
+            provider: offering.method.provider,
+            access_mode: offering.method.access_mode,
+            recipient: { identity: `optional-tier-recipient-${index}` },
+          },
+        },
+      }])).not.toThrow();
+    }
+  });
+
+  it('rejects forged, mismatched, and changed-ID receipts without mutating reconciliation state', () => {
+    const billing = prepareReliableReportingReconciledBillingProbe('buyer:alpha', ACCOUNT_ID);
+    const validReceipt = {
+      reporting_receipt_id: 'rr-billing-negative-receipt-0001',
+      reporting_obligation_id: billing.reporting_obligation_id,
+      reporting_revision_id: billing.reporting_revision_id,
+      reporting_materialization_id: billing.reporting_materialization_id,
+      status: 'accepted',
+      verification_profile: 'canonical_digest',
+      observed_row_count: 2,
+      observed_control_totals: [
+        { name: 'impressions', value: '5', value_type: 'integer', unit: 'impressions' },
+        { name: 'spend', value: '8.00', value_type: 'decimal', unit: 'USD' },
+      ],
+      observed_canonical_content_digest: billing.canonical_content_digest,
+      observed_at: '2026-08-27T04:01:00.000Z',
+    };
+    const forged = syncReliableReportingReceiptsForAccount({ receipts: [{
+      ...validReceipt,
+      reporting_receipt_id: 'rr-billing-forged-receipt-00001',
+      reporting_obligation_id: 'foreign-obligation',
+    }] }, 'buyer:alpha', ACCOUNT_ID);
+    expect(forged).toMatchObject({ results: [{ result: 'failed' }] });
+    expect(getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID).receipts).toEqual([]);
+
+    expect(syncReliableReportingReceiptsForAccount({ receipts: [validReceipt] }, 'buyer:alpha', ACCOUNT_ID))
+      .toMatchObject({ results: [{ result: 'recorded' }] });
+    const changedRetry = syncReliableReportingReceiptsForAccount({ receipts: [{
+      ...validReceipt,
+      observed_at: '2026-08-27T04:02:00.000Z',
+    }] }, 'buyer:alpha', ACCOUNT_ID);
+    expect(changedRetry).toMatchObject({ results: [{ result: 'failed' }] });
+
+    const published = publishReliableReportingReconciledAdjustments('buyer:alpha', ACCOUNT_ID);
+    const mismatch = syncReliableReportingReceiptsForAccount({ adjustment_receipts: [{
+      reporting_receipt_id: 'rr-adjustment-mismatch-receipt-01',
+      reporting_adjustment_id: published.adjustments[0]!.reporting_adjustment_id,
+      adjusts_reporting_revision_id: billing.reporting_revision_id,
+      status: 'accepted',
+      observed_adjustment_sha256: '0'.repeat(64),
+      observed_at: '2026-08-29T10:01:00.000Z',
+    }] }, 'buyer:alpha', ACCOUNT_ID);
+    expect(mismatch).toMatchObject({ results: [{ result: 'failed' }] });
+    const crossKindReuse = syncReliableReportingReceiptsForAccount({ adjustment_receipts: [{
+      reporting_receipt_id: validReceipt.reporting_receipt_id,
+      reporting_adjustment_id: published.adjustments[0]!.reporting_adjustment_id,
+      adjusts_reporting_revision_id: billing.reporting_revision_id,
+      status: 'accepted',
+      observed_adjustment_sha256: published.adjustments[0]!.canonical_adjustment_sha256,
+      observed_at: '2026-08-29T10:01:01.000Z',
+    }] }, 'buyer:alpha', ACCOUNT_ID);
+    expect(crossKindReuse).toMatchObject({ results: [{ result: 'failed' }] });
+    const after = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    expect(after.receipts).toHaveLength(1);
+    expect(after.adjustment_receipts).toEqual([]);
+  });
+
+  it('rejects duplicate cross-kind IDs and a combined batch above 100 before mutation', () => {
+    prepareReliableReportingReconciledBillingProbe('buyer:alpha', ACCOUNT_ID);
+    const duplicateId = 'rr-combined-batch-receipt-0001';
+    expect(() => syncReliableReportingReceiptsForAccount({
+      receipts: [{ reporting_receipt_id: duplicateId }],
+      adjustment_receipts: [{ reporting_receipt_id: duplicateId }],
+    }, 'buyer:alpha', ACCOUNT_ID)).toThrow(/unique across/);
+    expect(() => syncReliableReportingReceiptsForAccount({
+      receipts: Array.from({ length: 101 }, (_, index) => ({
+        reporting_receipt_id: `rr-oversized-batch-receipt-${String(index).padStart(4, '0')}`,
+      })),
+    }, 'buyer:alpha', ACCOUNT_ID)).toThrow(/at most 100/);
+    const after = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    expect(after.receipts).toEqual([]);
+    expect(after.adjustment_receipts).toEqual([]);
+  });
+
+  it('paginates every Reconciled Billing ledger resource exactly once in one flat union', () => {
+    const billing = prepareReliableReportingReconciledBillingProbe('buyer:alpha', ACCOUNT_ID);
+    syncReliableReportingReceiptsForAccount({ receipts: [{
+      reporting_receipt_id: 'rr-billing-pagination-receipt-01',
+      reporting_obligation_id: billing.reporting_obligation_id,
+      reporting_revision_id: billing.reporting_revision_id,
+      reporting_materialization_id: billing.reporting_materialization_id,
+      status: 'accepted',
+      verification_profile: 'canonical_digest',
+      observed_row_count: 2,
+      observed_control_totals: [
+        { name: 'impressions', value: '5', value_type: 'integer', unit: 'impressions' },
+        { name: 'spend', value: '8.00', value_type: 'decimal', unit: 'USD' },
+      ],
+      observed_canonical_content_digest: billing.canonical_content_digest,
+      observed_at: '2026-08-27T04:01:00.000Z',
+    }] }, 'buyer:alpha', ACCOUNT_ID);
+    const published = publishReliableReportingReconciledAdjustments('buyer:alpha', ACCOUNT_ID);
+    syncReliableReportingReceiptsForAccount({ adjustment_receipts: published.adjustments.map((adjustment, index) => ({
+      reporting_receipt_id: `rr-pagination-adjustment-receipt-${index}`,
+      reporting_adjustment_id: adjustment.reporting_adjustment_id,
+      adjusts_reporting_revision_id: billing.reporting_revision_id,
+      status: 'accepted',
+      observed_adjustment_sha256: adjustment.canonical_adjustment_sha256,
+      observed_at: `2026-08-29T10:01:0${index}.000Z`,
+    })) }, 'buyer:alpha', ACCOUNT_ID);
+
+    let cursor: string | undefined;
+    const seen: string[] = [];
+    do {
+      const page = getReportingStatusForAccount({
+        ...BASE_REQUEST,
+        view: 'periods',
+        pagination: { max_results: 1, ...(cursor && { cursor }) },
+      }, 'buyer:alpha', ACCOUNT_ID);
+      expect(page.pagination?.total_count).toBe(8);
+      const pageResources = [
+        ...(page.periods ?? []).map(value => `period:${value.reporting_obligation_id}`),
+        ...(page.revisions ?? []).map(value => `revision:${value.reporting_revision_id}`),
+        ...(page.adjustments ?? []).map(value => `adjustment:${(value as { reporting_adjustment_id: string }).reporting_adjustment_id}`),
+        ...(page.materializations ?? []).map(value => `materialization:${(value as { reporting_materialization_id: string }).reporting_materialization_id}`),
+        ...(page.receipts ?? []).map(value => `receipt:${(value as { reporting_receipt_id: string }).reporting_receipt_id}`),
+        ...(page.adjustment_receipts ?? []).map(value => `adjustment_receipt:${(value as { reporting_receipt_id: string }).reporting_receipt_id}`),
+      ];
+      expect(pageResources).toHaveLength(1);
+      seen.push(...pageResources);
+      cursor = page.pagination?.has_more ? page.pagination.cursor : undefined;
+    } while (cursor);
+    expect(new Set(seen).size).toBe(8);
+    expect(seen).toHaveLength(8);
   });
 
   it('excludes the exact period boundary, returns waiting for open scopes, and includes one millisecond later', () => {

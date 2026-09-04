@@ -1,6 +1,6 @@
 ---
 title: get_reporting_status
-description: "Check managed reporting health, enumerate expected periods and retained revisions, or resolve one exact reporting resource."
+description: "Check Reliable Reporting health, enumerate expected periods and retained revisions, or resolve one exact reporting resource."
 "og:title": "AdCP — get_reporting_status"
 ---
 
@@ -9,14 +9,15 @@ This task is experimental. Sellers implementing it declare
 `media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
 </Warning>
 
-`get_reporting_status` is the authoritative reliability surface for managed
-reporting delivery. It answers whether every report that should exist is present and
+`get_reporting_status` is the authoritative status surface for AdCP 3.2
+Reliable Reporting. It answers whether every report that should exist is present and
 usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 as the reporting-data API.
 
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.10/media-buy/get-reporting-status-request.json)
+{/* Using latest because Reliable Reporting 1.0 is not yet in a released schema bundle. */}
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-request.json)
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.10/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-response.json)
 
 ## Views
 
@@ -25,7 +26,7 @@ Every request explicitly selects one response shape:
 | View | Use |
 | --- | --- |
 | `summary` | Answer “where is my reporting?” for an account, media-buy, and time scope. |
-| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, materialization attempts, and consumer receipts. |
+| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, post-official adjustments, materialization attempts, and consumer receipts. Use `changes_after` for incremental repair. |
 | `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of materialization attempts. |
 
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
@@ -139,14 +140,18 @@ This state is reachable after the caller intentionally sends
 
 ## Reliability model
 
-The periods view keeps four facts distinct:
+The periods view keeps five facts distinct:
 
 - An **obligation** records what report was expected and when, so a missing first
   webhook is detectable.
 - A **revision** is one immutable logical publication. It is destination-independent,
   so one revision can fan out to S3, BigQuery, Databricks, Snowflake, and other
-  delivery paths without changing identity. A zero-row revision is real; a
-  restatement gets a new ID and retains supersession lineage.
+  delivery paths without changing identity. A zero-row revision is real;
+  provisional restatements get new snapshot IDs and retain supersession
+  lineage. An official revision is the immutable, invoice-addressable close.
+- An **adjustment** is one immutable post-official correction. It leaves the
+  original invoice and revision intact and carries signed control-total deltas
+  into a later open accounting period.
 - A **materialization** is one attempt to expose that revision through a durable file
   transfer, dataset share, or warehouse for one obligation and destination. A retry
   gets a new materialization ID but keeps the same revision ID.
@@ -154,9 +159,10 @@ The periods view keeps four facts distinct:
   result for an exact materialization. Availability says the producer published it;
   an accepted receipt says that consumer independently observed matching evidence.
 
-All historical revisions retained under the advertised capability window appear in
-the ledger. Consumers must not assume the latest restatement is the only relevant
-revision.
+All historical revisions and adjustments retained under the advertised capability
+window appear in the ledger. Consumers must not assume the latest snapshot is the
+only relevant record, and must never rewrite an invoice bound to an official
+revision when applying an adjustment.
 
 `reporting_revision_id` is the portable AdCP identity. Every ready resource selects
 immutable bytes or an immutable native snapshot/version—for example a Delta version,
@@ -193,17 +199,17 @@ durable materialization in this first managed-ledger version; a short-period pac
 configuration plus the signed readiness doorbell is the reliable fast path here.
 
 Periods pagination applies to the flat union of `periods[]` obligation records,
-`revisions[]`, `materializations[]`, and `receipts[]`, so one heavily restated,
-retried, or reconciled period cannot create an unbounded nested response. Each
-obligation's record counts let the SDK prove it found the complete associated history
-across pages.
+`revisions[]`, `adjustments[]`, `materializations[]`, and `receipts[]`, so one
+heavily restated, corrected, retried, or reconciled period cannot create an
+unbounded nested response. Each obligation's record counts let the SDK prove it
+found the complete associated history across pages.
 
 ## Readiness and recovery
 
 Push is **optional in every tier**: a polling-only seller that answers
 `get_reporting_status` truthfully is fully Core-conformant, and buyers MUST
 treat polling as the authoritative recovery path regardless of what is
-offered. Two doorbells exist, with different tiers and directions:
+offered. Three doorbells exist, with different purposes:
 
 - **`reporting.status_changed`** (any tier, including Core) — invalidation
   for health transitions in *either* direction, including clock-driven
@@ -211,10 +217,16 @@ offered. Two doorbells exist, with different tiers and directions:
   positive signal would ever announce, and recovery back to `healthy`/
   `complete`. Payload carries identifiers, the new health, and stable
   `issue_ids` matching `issues[].issue_id`, so consumers can project AdCP
-  reporting issues into durable work items.
+  reporting issues into durable work items. Repair it with a non-incremental
+  current summary or periods read: a clock-only transition may have no new
+  immutable ledger record and therefore no `changes_after` delta.
 - **`reporting.delivery_ready`** (managed-delivery tier only) — positive
   readiness for one materialization at a destination. Core configurations
   never fire it.
+- **`reporting.ledger_changed`** (any tier, including Core) — invalidation
+  for every new revision or adjustment, even when an already-healthy period
+  remains healthy. Its record identity lets receivers deduplicate; repair uses
+  the receiver's own durable checkpoint rather than trusting event order.
 
 When offered (advertised via `readiness_notification`),
 `reporting.delivery_ready` is an account-anchored doorbell registered through
@@ -230,7 +242,9 @@ Delivery is signed, at least once, and may be out of order. SDKs deduplicate tra
 retries by authenticated sender plus `idempotency_key`, deduplicate ingestion by
 revision/materialization identity, and combine this with
 periodic status polling, checksum verification, and a durable local checkpoint to
-produce effectively-once downstream publication. The protocol does not claim
+produce effectively-once downstream publication. `reporting.status_changed`
+must not be used to detect content corrections: health and ledger content are
+separate state machines. The protocol does not claim
 exactly-once network delivery.
 
 For configurations with `reconciliation_mode: consumer_receipt`, an SDK independently
@@ -242,7 +256,7 @@ the obligation unresolved and gives both parties a durable discrepancy to invest
 
 ## Configuration and capabilities
 
-Managed reporting capability resolves in layers. The seller-wide
+Reliable Reporting capability resolves in layers. The seller-wide
 `get_adcp_capabilities.media_buy.reporting_delivery.offerings[]` catalog describes
 atomic combinations the seller can provide: exact report definition and row grain,
 feed purpose, period/alignment/SLA, supported `snapshot` and/or `official` finality,
@@ -250,6 +264,21 @@ verification/reconciliation profile, and delivery method. Thus a seller can adve
 an hourly snapshot-to-S3 offering separately from daily official billing delivery or a
 versioned dataset share. Buyers never construct an unsupported cross-product from
 independent capability arrays.
+
+For the onboarding question **“Do you support Reliable Reporting?”**, use this
+machine decision procedure:
+
+1. `experimental_features` contains `media_buy.reporting_delivery`.
+2. `media_buy.reporting_delivery.supported` is `true`.
+3. `media_buy.reporting_delivery.reliable_reporting_version` is `"1.0"`.
+4. Read `managed_delivery` and `reconciled_billing` for optional tier support,
+   then select an atomic `offerings[]` entry that the Product exposes through
+   `reporting_delivery_offering_ids`.
+
+Legacy `reporting_delivery_methods`, generic reporting APIs, or another
+protocol declaration do not answer this AdCP capability question. AAMP and
+AdCP have overlapping reporting workflows but are not wire-compatible; assess
+each protocol through its own discovery surface rather than inferring support.
 
 Seller-wide support is not a claim that every product can produce every offering.
 Each Product's `reporting_capabilities.reporting_delivery_offering_ids` declares the
@@ -325,6 +354,16 @@ later periods are not created. Install multiple configurations when the buyer ne
 15-minute snapshot pacing feed, daily official analytics, and billing-cycle official
 billing data. Billing feeds require official finality.
 
+`source_timezone` represents an upstream reporting calendar that differs from
+the AdCP account clock—for example an ad server's network timezone. The
+installed schedule always carries its resolved IANA `period_timezone`; an
+offering either fixes that timezone or declares it `account_resolved`. Before a
+configuration becomes ready, the seller must prove that every selected source
+can produce the exact half-open periods natively or by lossless re-bucketing
+from finer-grained data. An unsupported calendar is a configuration error, not
+a reason to leave obligations `waiting`. If discovered after acceptance it is
+seller-owned `action_required`.
+
 Capability offerings advertise schedule constraints, not necessarily an
 account-specific billing clock. A billing-cycle offering declares its anchor policy as
 `fixed` or `configurable`. A fixed offering supplies the exact anchor and timezone; a
@@ -337,7 +376,8 @@ wall-clock time.
 
 For non-billing schedules, phase is not implicit. `utc` counts intervals from
 `1970-01-01T00:00:00Z`; `account_timezone` counts from local midnight on that date in
-the resolved account timezone. Boundaries are derived directly from that origin and
+the resolved account timezone; `source_timezone` counts from local midnight in
+its explicit upstream timezone. Boundaries are derived directly from that origin and
 the interval ordinal. Nonexistent DST times advance by the gap and ambiguous times use
 the earlier offset, so durations such as `P2D` or `PT7H` produce the same intervals in
 independent implementations.
@@ -369,6 +409,15 @@ task is deliberately narrow: it records content reconciliation, not mere webhook
 delivery. A separate replay mutation remains unnecessary in v1 because ordinary
 missed-event recovery reads retained immutable resources through this task.
 
+Capabilities may also publish evidence-scoped `reliability_statistics` for each
+offering: due and on-time counts, p50/p95 publication latency, official revision
+and adjustment counts, adjustment latency, and optional control-total magnitude.
+These figures name their measurement window, sample size, and ledger or
+third-party-attestation evidence. Sellers may not exclude late or corrected
+periods or combine unlike offerings. This keeps a long nominal SLA visible as a
+slower product rather than making it look equivalent to a short SLA that is
+consistently met.
+
 Each profile includes an exact HTTPS schema URI and SHA-256 digest. SDKs fetch only
 from the authenticated seller, named provider, or AdCP registry origin; reject IP
 literals, private/reserved DNS, userinfo, redirects, and DNS/connect mismatch; cap
@@ -399,26 +448,31 @@ bound to that immutable snapshot, every page repeats its identity, and
 `pagination.total_count` is required. SDKs reject a changed snapshot identity, dedupe
 each record by its type-specific immutable ID, and finish only when the unique stored
 record count equals `total_count` and each obligation's
-revision/materialization/receipt counts match. Later revisions are discovered by the
-next reconciliation; they
-never move the result set underneath an in-progress page walk.
+revision/adjustment/materialization/receipt counts match. A periods response also
+returns `changes_checkpoint`. The buyer persists it only after `has_more: false`
+and supplies it as `changes_after` on the next read. The seller must return every
+later record and the current projection of affected obligations; it may safely
+replay older immutable records. Later changes never move the result set underneath
+an in-progress page walk.
 
 The response ledger is not the buyer's only denominator. SDKs derive the exact
 periods that should exist from the buyer's saved configuration generations and
 resolved calendar boundaries, then require a matching obligation for every expected
 period. This detects an omitted first obligation even if no webhook or materialization
 ever existed. “Definitive for yesterday” therefore means: the requested scope is
-closed and retained, every locally expected obligation exists, exactly one current
-revision meets finality, a verified resource remains readable, all history counts are
-present, and—when configured—the authenticated consumer receipt for that revision is
-accepted.
+closed and retained, every locally expected obligation exists, one official revision
+provides the immutable close, a verified resource remains readable, all history counts
+are present, and—when configured—the authenticated consumer receipt for that revision
+is accepted. The invoice stores that exact `reporting_revision_id`; later corrections
+are adjustments in a later accounting period.
 
 An `official` revision also states why it is final and when that rule was applied.
 `source_final`, `contractual_cutoff`, and `stabilized` distinguish a provider's
 authoritative close from a versioned commercial cutoff or stabilization rule;
 `finality_policy_id` is bound by the immutable report definition. Social attribution
 feeds therefore do not have to pretend that a platform supplied a final bit it does
-not expose.
+not expose. `schedule.delivery_sla` cannot promise an official revision before its
+selected finality policy can become true.
 
 `scope.ledger_retained_from` and `scope.coverage_complete` prevent expired history from
 looking complete. Metadata may outlive physical resources; each completed obligation
@@ -427,8 +481,9 @@ readable through that time and the advertised resource-retention window. Outside
 explicit unavailable/error condition rather than silently claiming completeness.
 
 Deferring a separate replay mutation does not defer recovery. Missing webhooks,
-duplicates, out-of-order notifications, zero-row periods, failed materializations, and
-restatements all converge through the obligation ledger. Campaign-control decisions
+duplicates, out-of-order notifications, zero-row periods, failed materializations,
+snapshot restatements, and post-official adjustments all converge through the
+checkpointed obligation ledger. Campaign-control decisions
 based on feed health belong to buyer policy or Campaign Pulse, not this reporting
 delivery contract. This task reports evidence and never pauses or resumes spend.
 

@@ -84,6 +84,7 @@ const reconciledOffering = {
 // notification, no managed-delivery retention or revocation machinery.
 const coreCapabilities = {
   supported: true,
+  reliable_reporting_version: '1.0',
   configuration_task: 'sync_accounts',
   status_task: 'get_reporting_status',
   offerings: [coreOffering],
@@ -322,6 +323,7 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
       health: 'healthy',
       production_status: 'published',
       revision_count: 1,
+      adjustment_count: 0,
       issues: [],
     };
     assert.equal(validateObligation(coreObligation), true, JSON.stringify(validateObligation.errors));
@@ -336,7 +338,7 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     assert.match(obligationRules.obligation_availability, /MUST NOT be prerequisites for obligation creation/);
     assert.match(obligationRules.complete_finality, /For Core/);
     assert.match(obligationRules.complete_finality, /Managed-delivery additionally requires/);
-    assert.match(obligationRules.record_counts, /revision records for this obligation/);
+    assert.match(obligationRules.record_counts, /revision records.*adjustment_count counts distinct adjustments/);
 
     // A managed obligation claiming healthy without successful materializations is invalid.
     assert.equal(validateObligation({

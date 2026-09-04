@@ -4,7 +4,7 @@
   "title": "Sync Reporting Receipts Request",
   "x-status": "experimental",
   "x-tool-summary": "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
-  "description": "Submit durable authenticated consumer reconciliation results for reporting materializations. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governance principal.",
+  "description": "Submit durable authenticated consumer reconciliation results for reporting materializations and post-official adjustments. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governance principal.",
   "type": "object",
   "allOf": [
     { "$ref": "/schemas/core/version-envelope.json" }
@@ -25,12 +25,25 @@
       "minItems": 1,
       "maxItems": 100
     },
+    "adjustment_receipts": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/reporting-adjustment-receipt.json" },
+          { "not": { "required": ["received_at"] } }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Consumer acceptance or rejection of exact post-official adjustments."
+    },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "required": ["account", "idempotency_key", "receipts"],
+  "required": ["account", "idempotency_key"],
+  "anyOf": [{ "required": ["receipts"] }, { "required": ["adjustment_receipts"] }],
   "x-adcp-validation": {
-    "batch_identity": "reporting_receipt_id values MUST be unique within the batch. Every referenced obligation, revision, and materialization MUST resolve within the authenticated caller and account or fail with an indistinguishable unavailable result.",
+    "batch_identity": "reporting_receipt_id values MUST be unique across receipts and adjustment_receipts, whose combined length MUST NOT exceed 100. Every referenced obligation, revision, materialization, and adjustment MUST resolve within the authenticated caller and account or fail with an indistinguishable unavailable result.",
     "partial_results": "Each receipt is independent. One failed result does not roll back successfully recorded receipts; retries use the same receipt IDs and content."
   },
   "additionalProperties": true

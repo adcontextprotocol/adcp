@@ -42,7 +42,6 @@ import {
   replaceReportingConfigurationsDurably,
   resolveReportingAccountDurably,
   reportingConfigurationStatesForAccountDurably,
-  TRAINING_REPORTING_CORE_OFFERING,
   validateReportingConfigurationReplacementDurably,
   validateReportingConfigurationScopes,
   validateReportingConfigurations,
@@ -475,7 +474,7 @@ async function reportingMediaBuyCandidates(
         ?? [];
       return {
         packageId: pkg.packageId,
-        supported: acceptedOfferingIds.includes(TRAINING_REPORTING_CORE_OFFERING.offering_id),
+        offeringIds: [...acceptedOfferingIds],
       };
     }),
   }));

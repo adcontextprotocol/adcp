@@ -6,7 +6,7 @@
   "definitions": {
     "assetPath": {
       "type": "string",
-      "pattern": "^(?:(?:canonicalization|manifest|materialization|obligation|report-definition|revision|row-schema)\\.json|rows\\.jsonl|receipts/[a-z0-9][a-z0-9.-]*\\.json)$"
+      "pattern": "^(?:(?:adjustment|canonicalization|manifest|materialization|obligation|report-definition|revision|row-schema)\\.json|rows\\.jsonl|receipts/[a-z0-9][a-z0-9.-]*\\.json)$"
     },
     "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "asset": {
@@ -230,9 +230,10 @@
         "manifest": { "type": "string", "const": "manifest.json" },
         "report_definition": { "type": "string", "const": "report-definition.json" },
         "row_schema": { "type": "string", "const": "row-schema.json" },
-        "canonicalization": { "type": "string", "const": "canonicalization.json" }
+        "canonicalization": { "type": "string", "const": "canonicalization.json" },
+        "adjustment": { "type": "string", "const": "adjustment.json" }
       },
-      "required": ["obligation", "revision", "materialization", "manifest", "report_definition", "row_schema", "canonicalization"],
+      "required": ["obligation", "revision", "materialization", "manifest", "report_definition", "row_schema", "canonicalization", "adjustment"],
       "additionalProperties": false
     },
     "canonical_report": {
@@ -286,6 +287,18 @@
       "minItems": 2,
       "uniqueItems": true
     },
+    "post_official_adjustment": {
+      "type": "object",
+      "properties": {
+        "invoice_anchor_revision_id": { "type": "string", "const": "revision-august-official" },
+        "adjustment_asset": { "type": "string", "const": "adjustment.json" },
+        "accepted_receipt_request_asset": { "type": "string", "const": "receipts/adjustment-accepted-request.json" },
+        "accepted_receipt_response_asset": { "type": "string", "const": "receipts/adjustment-accepted-recorded-response.json" },
+        "original_revision_and_receipt_immutable": { "type": "boolean", "const": true }
+      },
+      "required": ["invoice_anchor_revision_id", "adjustment_asset", "accepted_receipt_request_asset", "accepted_receipt_response_asset", "original_revision_and_receipt_immutable"],
+      "additionalProperties": false
+    },
     "scenarios": {
       "type": "array",
       "minItems": 9,
@@ -321,6 +334,6 @@
       }
     }
   },
-  "required": ["$schema", "fixture_version", "protocol", "assets", "base_inputs", "canonical_report", "publish_order", "scenarios"],
+  "required": ["$schema", "fixture_version", "protocol", "assets", "base_inputs", "canonical_report", "publish_order", "post_official_adjustment", "scenarios"],
   "additionalProperties": false
 }

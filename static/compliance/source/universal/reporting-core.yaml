@@ -1,6 +1,7 @@
 id: reporting_core
 version: "1.0.0"
-title: "Reporting Core lifecycle"
+introduced_in: "3.2"
+title: "Reliable Reporting: Core lifecycle"
 category: schema_validation
 summary: "Validates reporting.core obligation-before-report behavior, clock-derived health, and explicit zero-row reporting."
 track: core
@@ -10,9 +11,11 @@ required_tools:
 requires:
   - controller
 
-requires_capability:
-  path: "media_buy.reporting_delivery.supported"
-  equals: true
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.supported"
+    equals: true
+  - path: "media_buy.reporting_delivery.reliable_reporting_version"
+    equals: "1.0"
 
 narrative: |
   Core is the only required reporting tier: obligations, revisions, the five
@@ -136,6 +139,12 @@ phases:
             path: "revisions"
             value: 0
             description: "Missing first reporting is explicit, not a zero-row report"
+          - check: field_present
+            path: "changes_checkpoint"
+            description: "Reliable Reporting 1.0 exposes a durable repair checkpoint"
+          - check: field_present
+            path: "adjustments"
+            description: "Reliable Reporting 1.0 exposes the post-official correction ledger"
 
       - id: advance_beyond_sla
         title: "Advance the same obligation beyond expected_at"
@@ -343,3 +352,173 @@ phases:
             path: "revisions[0].reporting_revision_id"
             context_key: "reporting_core_revision_id"
             description: "The status read returns the exact immutable revision just published"
+          - check: field_present
+            path: "changes_checkpoint"
+            description: "The terminal page carries the checkpoint to persist"
+          - check: field_present
+            path: "adjustments"
+            description: "Core returns the adjustment collection even when it is empty"
+
+  - id: official_source_calendar_and_checkpoint_repair
+    title: "Close a source-timezone day and repair an out-of-order correction"
+    narrative: |
+      The integrity probe installs a Core-only daily official feed aligned to
+      America/New_York across the fall DST boundary. The buyer saves the empty
+      obligation checkpoint; the controller then publishes the official close
+      and a later Core adjustment while simulating duplicate and out-of-order
+      ledger doorbells. A single changes_after read must converge on both
+      immutable records without rewriting the invoice anchor.
+
+    steps:
+      - id: prepare_core_integrity
+        title: "Prepare the non-UTC official Core period"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_core_integrity_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-rc.0"
+          scenario: "reliable_reporting_core_integrity_probe"
+          params:
+            operation: "prepare"
+          context:
+            correlation_id: "reliable_reporting_core--prepare-integrity"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Daily source-calendar fixture was prepared"
+          - check: field_value
+            path: "simulated.period_timezone"
+            value: "America/New_York"
+            description: "Fixture uses the upstream reporting calendar"
+          - check: field_value
+            path: "simulated.period_duration"
+            value: "P1D"
+            description: "Fixture represents a source-calendar day"
+
+      - id: read_core_integrity_baseline
+        title: "Persist the pre-publication checkpoint"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reliable_reporting_core_integrity_probe
+        stateful: true
+        context_outputs:
+          - name: reliable_reporting_core_checkpoint
+            path: "changes_checkpoint"
+          - name: reliable_reporting_core_obligation_id
+            path: "periods[0].reporting_obligation_id"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-rc.0"
+          view: "periods"
+          context:
+            correlation_id: "reliable_reporting_core--baseline"
+        validations:
+          - check: response_schema
+            description: "Baseline periods response is schema-valid"
+          - check: field_present
+            path: "changes_checkpoint"
+            description: "Buyer can persist an incremental-repair boundary"
+          - check: field_present
+            path: "adjustments"
+            description: "Core exposes an empty correction ledger before publication"
+          - check: field_value
+            path: "periods[0].schedule.alignment"
+            value: "source_timezone"
+            description: "The installed clock follows the upstream source"
+          - check: field_value
+            path: "periods[0].period.source_timezone"
+            value: "America/New_York"
+            description: "Resolved source timezone is echoed on the obligation"
+          - check: field_value
+            path: "periods[0].revision_count"
+            value: 0
+            description: "The checkpoint precedes the official close"
+
+      - id: publish_official_and_adjustment_out_of_order
+        title: "Publish an official close and later adjustment"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_core_integrity_probe
+        stateful: true
+        context_outputs:
+          - name: reliable_reporting_core_official_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-rc.0"
+          scenario: "reliable_reporting_core_integrity_probe"
+          params:
+            operation: "publish_official_adjustment"
+          context:
+            correlation_id: "reliable_reporting_core--publish-correction"
+        validations:
+          - check: response_schema
+            description: "Controller publication response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Official revision and later adjustment were committed"
+          - check: field_value
+            path: "simulated.notification_order[0]"
+            value: "adjustment"
+            description: "Fixture deliberately delivers the correction doorbell first"
+          - check: field_value
+            path: "simulated.notification_order[2]"
+            value: "adjustment"
+            description: "Fixture deliberately duplicates one doorbell"
+
+      - id: repair_core_integrity_from_checkpoint
+        title: "Converge from the saved checkpoint"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reliable_reporting_core_integrity_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-rc.0"
+          view: "periods"
+          changes_after: "$context.reliable_reporting_core_checkpoint"
+          context:
+            correlation_id: "reliable_reporting_core--repair"
+        validations:
+          - check: response_schema
+            description: "Incremental repair response is schema-valid"
+          - check: field_equals_context
+            path: "periods[0].reporting_obligation_id"
+            context_key: "reliable_reporting_core_obligation_id"
+            description: "Repair returns the current projection of the affected obligation"
+          - check: field_value
+            path: "revisions[0].finality"
+            value: "official"
+            description: "The invoice anchor is an immutable official revision"
+          - check: field_value
+            path: "periods[0].adjustment_count"
+            value: 1
+            description: "The later correction is counted separately"
+          - check: field_present
+            path: "adjustments[0].reporting_adjustment_id"
+            description: "Checkpoint repair discovers the health-neutral correction"
+          - check: field_equals_context
+            path: "adjustments[0].adjusts_reporting_revision_id"
+            context_key: "reliable_reporting_core_official_revision_id"
+            description: "The adjustment targets the exact official invoice anchor"
+          - check: field_present
+            path: "changes_checkpoint"
+            description: "Buyer receives the next durable checkpoint after convergence"

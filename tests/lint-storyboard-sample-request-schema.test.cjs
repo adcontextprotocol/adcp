@@ -275,6 +275,13 @@ test('normalizeSubstitutions produces a schema-valid digest placeholder', () => 
   assert.match(digest, /^sha256:[A-Za-z0-9_-]{43}$/);
 });
 
+test('normalizeSubstitutions produces a schema-valid hexadecimal SHA-256 placeholder', () => {
+  assert.equal(normalizeSubstitutions('$context.adjustment_digest', {
+    type: 'string',
+    pattern: '^[A-Fa-f0-9]{64}$',
+  }), 'a'.repeat(64));
+});
+
 test('normalizeSubstitutions produces a schema-valid currency placeholder', () => {
   assert.equal(normalizeSubstitutions('$context.pricing_currency', {
     type: 'string',

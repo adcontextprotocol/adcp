@@ -1,11 +1,11 @@
 ---
-title: "Implementing reporting.core"
-description: "The required reporting tier: obligations, five health states, and get_reporting_status — over the transports you already have."
-"og:title": "AdCP — Implementing reporting.core"
+title: "Reliable Reporting: implementing reporting.core"
+description: "The required Reliable Reporting tier: obligations, immutable closes, five health states, and get_reporting_status — over the transports you already have."
+"og:title": "AdCP — Reliable Reporting with reporting.core"
 ---
 
 <Warning>
-Managed reporting is experimental in 3.2. `reporting.core` is its required
+Reliable Reporting is experimental in 3.2. `reporting.core` is its required
 tier; `managed_delivery` and `reconciled_billing` are separately advertised
 optional tiers.
 </Warning>
@@ -27,8 +27,10 @@ Four ideas, one task:
    missing first report is detectable, not silent.
 2. **A zero-row report differs from no report.** An empty period commits a
    revision like any other; absence means something is wrong.
-3. **Revisions are immutable logical content.** A restatement is a new
-   revision superseding the old one, never an edit.
+3. **Revisions are immutable logical content.** A provisional restatement is a
+   new snapshot revision superseding the old snapshot, never an edit. An
+   `official` revision is the invoice-addressable close and cannot be
+   superseded; later corrections are explicit accounting adjustments.
 4. **[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)
    answers "where am I?"** — one authoritative read over the obligation
    ledger, summarized by five health states.
@@ -73,6 +75,11 @@ sequenceDiagram
     Source-->>Seller: Rows, including a valid zero-row result
     Seller->>Ledger: Commit immutable revision
 
+    opt Source corrects an official revision later
+        Seller->>Ledger: Commit immutable adjustment into an open accounting period
+        Seller-->>Buyer: reporting.ledger_changed (optional)
+    end
+
     alt Core
         Seller-->>Buyer: Revision readable through reporting API
     else Managed delivery
@@ -116,8 +123,10 @@ obligation appears in the first ledger snapshot strictly after `02:00Z`; with
   authoritative recovery path; a polling-only seller is fully conformant.
   If you do offer push, Core's doorbell is `reporting.status_changed` — an
   invalidation for health transitions in either direction, with stable
-  `issue_ids`. `reporting.delivery_ready` belongs to the managed-delivery
-  tier and never fires for Core configurations.
+  `issue_ids`. `reporting.ledger_changed` is the separate optional invalidation
+  for every new revision or adjustment, including changes that leave health
+  untouched. `reporting.delivery_ready` belongs to the managed-delivery tier
+  and never fires for Core configurations.
 - **No delivery machinery.** Core offerings omit `method`: the status ledger
   and its immutable revision metadata are required, while any existing
   `get_media_buy_delivery` read or legacy reporting webhook remains an
@@ -157,7 +166,10 @@ its source contains none of
    generations change *future* obligations, never past ones.
 4. **Commit revisions.** When a period's data is final enough for its
    declared finality, record an immutable revision — including zero-row
-   periods. Restatements create superseding revisions.
+   periods. Snapshot restatements create superseding revisions. Official
+   revisions are terminal; publish any later source correction as a signed
+   delta in a `reporting-adjustment` record applied to an open accounting
+   period.
 5. **Project status.** Serve `get_reporting_status`: summary and periods
    views over a consistent ledger snapshot, health computed from obligations
    versus revisions versus the clock, `issues[]` carrying the typed code,
@@ -182,15 +194,25 @@ its source contains none of
    returned obligation list cannot prove that the first one was not omitted.
 4. **Close the history.** Keep one `ledger_snapshot_id` across every page,
    deduplicate immutable IDs, match the returned record counts, and distinguish
-   a zero-row revision from no revision. Apply managed-resource and receipt
-   checks only when the selected tier requires them.
-5. **Treat push as a wake-up.** A doorbell starts a status read; it never
-   substitutes for one. Poll periodically even when notifications are enabled.
+   a zero-row revision from no revision. Bind invoices to an exact official
+   `reporting_revision_id` and apply later adjustments without rewriting that
+   invoice. Apply managed-resource and receipt checks only when the selected
+   tier requires them.
+5. **Checkpoint repair.** After consuming every page, persist
+   `changes_checkpoint`; send it as `changes_after` on the next periods read.
+   Deduplicate safely replayed records by immutable ID.
+6. **Treat push as a wake-up.** `reporting.ledger_changed` starts a
+   `changes_after` repair. Because a clock-only health transition may commit no
+   ledger record, `reporting.status_changed` starts a non-incremental current
+   summary or periods read. Poll periodically even when notifications are enabled.
 
 ## How to verify
 
-- The **`reporting-core-declaration` universal storyboard** grades capability
-  and tier boundaries without a controller. The lifecycle-focused
+- The **`reporting-core-declaration` universal storyboard** grades the
+  proper-name Reliable Reporting 1.0 declaration and Core boundary. The
+  capability-gated **`reliable-reporting-managed-delivery`** and
+  **`reliable-reporting-reconciled-billing`** storyboards grade the optional
+  tiers. The lifecycle-focused
   **`reporting-core` storyboard** uses `reporting_core_lifecycle_probe` to
   verify an obligation-before-report, clock-derived delayed health, and
   explicit zero-row publication.

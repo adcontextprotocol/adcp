@@ -94,6 +94,15 @@ function validateGoldenVectorSemantics(contract, canonicalize) {
   }
 }
 
+function isRecognizedIanaTimezone(value) {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value }).format();
+    return !/^[+-]\d{2}:?\d{2}$/.test(value);
+  } catch {
+    return false;
+  }
+}
+
 const fullCoverage = {
   status: 'full',
   evaluated_at: '2026-08-27T00:00:00Z',
@@ -186,8 +195,8 @@ const officialRevision = {
   finality: 'official',
   finality_basis: 'contractual_cutoff',
   finality_policy_id: 'analytics-daily-finality-v1',
-  finalized_at: '2026-08-28T04:00:00Z',
-  observed_at: '2026-08-28T04:00:00Z',
+  finalized_at: '2026-08-29T04:00:00Z',
+  observed_at: '2026-08-29T04:00:00Z',
   supersedes_reporting_revision_id: revision.reporting_revision_id,
   row_count: 2,
   control_totals: [
@@ -201,7 +210,7 @@ const officialRevision = {
     canonicalization_uri: 'https://schemas.example/reporting-canonicalization/v1.json',
     canonicalization_sha256: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
   },
-  created_at: '2026-08-28T04:00:01Z',
+  created_at: '2026-08-29T04:00:01Z',
 };
 
 const officialMaterialization = {
@@ -260,10 +269,14 @@ describe('managed reporting status contract', () => {
   let validateCoverage;
   let validateProductReportingCapabilities;
   let validateControlTotal;
+  let validateAdjustment;
+  let validateAdjustmentReceipt;
+  let validateReliabilityStatistics;
+  let validateLedgerWebhook;
   let canonicalize;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -287,6 +300,10 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-coverage.json'),
       compile('/schemas/core/reporting-capabilities.json'),
       compile('/schemas/core/reporting-control-total.json'),
+      compile('/schemas/core/reporting-adjustment.json'),
+      compile('/schemas/core/reporting-adjustment-receipt.json'),
+      compile('/schemas/core/reporting-reliability-statistics.json'),
+      compile('/schemas/core/reporting-ledger-changed-webhook.json'),
     ]);
     canonicalize = (await import('canonicalize')).default;
   });
@@ -601,6 +618,8 @@ describe('managed reporting status contract', () => {
     assert.equal(validateRequest({ account: { account_id: 'acc_123' }, view: 'revision', reporting_revision_id: revision.reporting_revision_id, pagination: { max_results: 10 } }), true, JSON.stringify(validateRequest.errors));
     assert.equal(validateRequest({ account: { account_id: 'acc_123' }, view: 'summary', health: ['delayed'] }), false);
     assert.equal(validateRequest({ account: { account_id: 'acc_123' }, view: 'periods', delivery_config_ids: ['billing-cycle'], feed_purposes: ['billing'] }), true, JSON.stringify(validateRequest.errors));
+    assert.equal(validateRequest({ account: { account_id: 'acc_123' }, view: 'periods', changes_after: 'checkpoint_0001' }), true, JSON.stringify(validateRequest.errors));
+    assert.equal(validateRequest({ account: { account_id: 'acc_123' }, view: 'summary', changes_after: 'checkpoint_0001' }), false);
     assert.equal(validateRequest({ account: { account_id: 'acc_123' }, view: 'summary', ext: 'not-an-object' }), false);
   });
 
@@ -615,6 +634,13 @@ describe('managed reporting status contract', () => {
     assert.equal(validateSchedule({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor: '2026-01-15T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' }), true, JSON.stringify(validateSchedule.errors));
     assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'utc', period_anchor: '2026-01-15T05:00:00Z', delivery_sla: 'PT4H' }), false);
     assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'utc', period_timezone: 'America/New_York', delivery_sla: 'PT4H' }), false);
+    assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'source_timezone', period_timezone: 'America/New_York', delivery_sla: 'PT8H' }), true, JSON.stringify(validateSchedule.errors));
+    assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'source_timezone', delivery_sla: 'PT8H' }), false);
+    assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'source_timezone', period_anchor: '2026-01-15T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'PT8H' }), false);
+    assert.equal(isRecognizedIanaTimezone('America/New_York'), true);
+    assert.equal(isRecognizedIanaTimezone('UTC'), true);
+    assert.equal(isRecognizedIanaTimezone('Not/A_Timezone'), false);
+    assert.match(readSchema('/schemas/core/reporting-schedule.json')['x-adcp-validation'].iana_timezone, /Reject unknown identifiers/);
     const field = readSchema('/schemas/account/sync-accounts-request.json')
       .properties.accounts.items.properties.reporting_delivery_configs;
     assert.match(field['x-adcp-validation'].unique_config_generation, /Reject/);
@@ -713,6 +739,9 @@ describe('managed reporting status contract', () => {
     assert.equal(validateScheduleOffering({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor_policy: 'configurable', delivery_sla: 'P1D' }), true, JSON.stringify(validateScheduleOffering.errors));
     assert.equal(validateScheduleOffering({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor_policy: 'fixed', period_anchor: '2026-01-31T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' }), true, JSON.stringify(validateScheduleOffering.errors));
     assert.equal(validateScheduleOffering({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor_policy: 'fixed', delivery_sla: 'P1D' }), false);
+    assert.equal(validateScheduleOffering({ period_duration: 'P1D', alignment: 'source_timezone', period_timezone_policy: 'fixed', period_timezone: 'America/New_York', delivery_sla: 'PT8H' }), true, JSON.stringify(validateScheduleOffering.errors));
+    assert.equal(validateScheduleOffering({ period_duration: 'P1D', alignment: 'source_timezone', period_timezone_policy: 'account_resolved', delivery_sla: 'PT8H' }), true, JSON.stringify(validateScheduleOffering.errors));
+    assert.equal(validateScheduleOffering({ period_duration: 'P1D', alignment: 'source_timezone', period_timezone_policy: 'account_resolved', period_timezone: 'America/New_York', delivery_sla: 'PT8H' }), false);
     assert.match(readSchema('/schemas/core/reporting-schedule.json')['x-adcp-validation'].period_generation, /origin and the interval ordinal/);
     assert.match(readSchema('/schemas/core/reporting-schedule.json')['x-adcp-validation'].period_generation, /1970-01-01T00:00:00Z as interval zero/);
     assert.equal(validateSchedule({ period_duration: 'P2D', alignment: 'utc', delivery_sla: 'PT4H' }), true, JSON.stringify(validateSchedule.errors));
@@ -720,7 +749,7 @@ describe('managed reporting status contract', () => {
 
   it('pins inspectable source, restatement, and finality semantics', () => {
     const definition = {
-      contract_version: '1.0',
+      contract_version: '1.1',
       media_type: 'application/vnd.adcp.reporting-definition+json',
       report_definition_id: revision.report_definition_id,
       reporting_profile: revision.reporting_profile,
@@ -734,7 +763,7 @@ describe('managed reporting status contract', () => {
       calendar: { timezone_basis: 'account_timezone' },
       metrics: [{ name: 'spend', source_expression: 'spend', aggregation: 'sum', unit: 'account_currency' }],
       dimensions: ['account_id', 'media_buy_id', 'period_start'],
-      restatement_policy: { source_requery_duration: 'P28D', emit_only_on_content_change: true },
+      restatement_policy: { source_requery_duration: 'P28D', emit_only_on_content_change: true, official_correction_mode: 'adjustments_only' },
       finality_policies: [{ finality_policy_id: officialRevision.finality_policy_id, basis: 'contractual_cutoff', duration_after_period_end: 'P2D' }],
     };
     assert.equal(validateReportDefinition(definition), true, JSON.stringify(validateReportDefinition.errors));
@@ -792,6 +821,7 @@ describe('managed reporting status contract', () => {
       view: 'periods',
       ledger_snapshot_id: 'ledger_empty_001',
       ledger_as_of: '2026-08-29T12:00:00Z',
+      changes_checkpoint: 'checkpoint_empty_001',
       account_id: 'acc_123',
       scope: {
         period_start: '2026-08-01T00:00:00Z',
@@ -817,6 +847,7 @@ describe('managed reporting status contract', () => {
       issues: [],
       periods: [],
       revisions: [],
+      adjustments: [],
       materializations: [],
       receipts: [],
       pagination: { has_more: false, total_count: 0 },
@@ -836,6 +867,7 @@ describe('managed reporting status contract', () => {
       ledger_as_of: '2026-08-28T12:00:00Z',
       account_id: 'acc_123',
       revision,
+      adjustments: [],
       materializations: [materialization],
       receipts: [],
       pagination: { has_more: false, total_count: 1 },
@@ -901,6 +933,7 @@ describe('managed reporting status contract', () => {
       health: 'complete',
       production_status: 'published',
       revision_count: 1,
+      adjustment_count: 0,
       materialization_count: 1,
       successful_materialization_count: 1,
       receipt_count: 0,
@@ -934,12 +967,13 @@ describe('managed reporting status contract', () => {
     assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
   });
 
-  it('returns every retained restatement in the paginated obligation ledger', () => {
+  it('returns the retained snapshot chain and immutable official close in the paginated ledger', () => {
     const response = {
       status: 'completed',
       view: 'periods',
       ledger_snapshot_id: 'ledger_20260829_001',
       ledger_as_of: '2026-08-29T12:00:00Z',
+      changes_checkpoint: 'checkpoint_20260829_001',
       account_id: 'acc_123',
       scope: {
         period_start: '2026-08-26T00:00:00Z',
@@ -974,6 +1008,7 @@ describe('managed reporting status contract', () => {
         health: 'complete',
         production_status: 'published',
         revision_count: 2,
+        adjustment_count: 0,
         materialization_count: 2,
         successful_materialization_count: 2,
         receipt_count: 0,
@@ -982,6 +1017,7 @@ describe('managed reporting status contract', () => {
         resource_retained_until: '2026-09-28T04:00:16Z',
       }],
       revisions: [revision, officialRevision],
+      adjustments: [],
       materializations: [materialization, officialMaterialization],
       receipts: [],
       pagination: { has_more: false, total_count: 5 },
@@ -992,6 +1028,143 @@ describe('managed reporting status contract', () => {
     response.pagination.total_count = 5;
     delete response.ledger_snapshot_id;
     assert.equal(validateResponse(response), false);
+  });
+
+  it('locks official revisions and records later corrections as accounting adjustments', () => {
+    assert.match(
+      readSchema('/schemas/enums/reporting-finality.json').description,
+      /official revision is the immutable, invoice-addressable close/,
+    );
+    assert.match(
+      readSchema('/schemas/core/reporting-revision.json')['x-adcp-validation'].slice_identity,
+      /no revision may supersede an official revision/,
+    );
+
+    const adjustment = {
+      reporting_adjustment_id: 'radj_20260829_001',
+      adjusts_reporting_revision_id: officialRevision.reporting_revision_id,
+      reason_code: 'invalid_traffic',
+      accounting_period: {
+        start: '2026-09-01T00:00:00Z',
+        end: '2026-10-01T00:00:00Z',
+      },
+      control_total_deltas: [
+        { name: 'impressions', value: '-20', value_type: 'integer', unit: 'impressions' },
+        { name: 'spend', value: '-35.00', value_type: 'decimal', unit: 'USD' },
+      ],
+      correction_observed_at: '2026-08-29T10:00:00Z',
+      created_at: '2026-08-29T10:00:01Z',
+    };
+    adjustment.canonical_adjustment_sha256 = crypto.createHash('sha256')
+      .update(canonicalize(adjustment))
+      .digest('hex');
+    assert.equal(validateAdjustment(adjustment), true, JSON.stringify(validateAdjustment.errors));
+    const coreAdjustment = structuredClone(adjustment);
+    delete coreAdjustment.canonical_adjustment_sha256;
+    assert.equal(validateAdjustment(coreAdjustment), true, 'Core adjustments do not require Reconciled Billing digest code');
+    assert.equal(new Set(adjustment.control_total_deltas.map(total => total.name)).size, adjustment.control_total_deltas.length);
+    const duplicateName = structuredClone(adjustment);
+    duplicateName.control_total_deltas.push({ name: 'spend', value: '1.00', value_type: 'decimal', unit: 'USD' });
+    assert.notEqual(new Set(duplicateName.control_total_deltas.map(total => total.name)).size, duplicateName.control_total_deltas.length);
+
+    const adjustmentReceipt = {
+      reporting_receipt_id: 'receipt_adjustment_20260829_001',
+      reporting_adjustment_id: adjustment.reporting_adjustment_id,
+      adjusts_reporting_revision_id: adjustment.adjusts_reporting_revision_id,
+      status: 'accepted',
+      observed_adjustment_sha256: adjustment.canonical_adjustment_sha256,
+      observed_at: '2026-08-29T10:01:00Z',
+    };
+    assert.equal(validateAdjustmentReceipt(adjustmentReceipt), true, JSON.stringify(validateAdjustmentReceipt.errors));
+    assert.equal(validateReceiptRequest({
+      account: { account_id: 'acc_123' },
+      idempotency_key: 'receipt-adjustment-batch-001',
+      adjustment_receipts: [adjustmentReceipt],
+    }), true, JSON.stringify(validateReceiptRequest.errors));
+    const recordedAdjustmentReceipt = { ...adjustmentReceipt, received_at: '2026-08-29T10:01:01Z' };
+    assert.equal(validateReceiptResponse({
+      status: 'completed',
+      results: [{ result: 'recorded', adjustment_receipt: recordedAdjustmentReceipt }],
+    }), true, JSON.stringify(validateReceiptResponse.errors));
+    delete adjustment.accounting_period;
+    assert.equal(validateAdjustment(adjustment), false);
+  });
+
+  it('publishes comparable observed reliability with evidence and sample counts', () => {
+    const statistics = {
+      offering_id: 'analytics-daily-delta',
+      measurement_period: {
+        start: '2026-06-01T00:00:00Z',
+        end: '2026-09-01T00:00:00Z',
+      },
+      obligations_due: 1000,
+      obligations_on_time: 982,
+      official_revisions_published: 900,
+      official_revisions_adjusted: 18,
+      publication_latency_seconds: { p50: 7200, p95: 14400 },
+      adjustment_latency_seconds: { p50: 86400, p95: 604800 },
+      adjustment_magnitude: [{
+        control_total_name: 'spend',
+        unit: 'USD',
+        sample_count: 18,
+        p50_absolute_delta: '12.50',
+        p95_absolute_delta: '83.75',
+      }],
+      evidence: {
+        basis: 'reporting_ledger',
+        generated_at: '2026-09-01T01:00:00Z',
+      },
+    };
+    assert.equal(validateReliabilityStatistics(statistics), true, JSON.stringify(validateReliabilityStatistics.errors));
+    delete statistics.adjustment_latency_seconds;
+    assert.equal(validateReliabilityStatistics(statistics), false);
+  });
+
+  it('gives reporting helper types globally distinct SDK names', () => {
+    const reliabilitySchema = readSchema('/schemas/core/reporting-reliability-statistics.json');
+    assert.equal(
+      reliabilitySchema.properties.measurement_period.$ref,
+      '#/definitions/ReportingReliabilityMeasurementPeriod',
+    );
+    assert.ok(reliabilitySchema.definitions.ReportingReliabilityMeasurementPeriod);
+
+    const adjustmentReceiptSchema = readSchema('/schemas/core/reporting-adjustment-receipt.json');
+    assert.equal(
+      adjustmentReceiptSchema.properties.rejection_codes.items.$ref,
+      '#/definitions/ReportingAdjustmentRejectionCode',
+    );
+    assert.ok(adjustmentReceiptSchema.definitions.ReportingAdjustmentRejectionCode);
+  });
+
+  it('announces ledger changes independently of health and repairs from a checkpoint', () => {
+    assert.equal(validateNotificationConfig({
+      subscriber_id: 'reporting-ledger',
+      url: 'https://buyer.example/webhooks/reporting-ledger',
+      event_types: ['reporting.ledger_changed'],
+      active: true,
+    }), true, JSON.stringify(validateNotificationConfig.errors));
+
+    const event = {
+      idempotency_key: 'whk_20260828_revision_0001',
+      notification_id: 'ledger_rrv_20260827_b',
+      notification_type: 'reporting.ledger_changed',
+      fired_at: '2026-08-28T04:00:02Z',
+      subscriber_id: 'reporting-ledger',
+      account_id: 'acc_123',
+      change_kind: 'revision_published',
+      reporting_revision_id: officialRevision.reporting_revision_id,
+      supersedes_reporting_revision_id: revision.reporting_revision_id,
+      finality: 'official',
+    };
+    assert.equal(validateLedgerWebhook(event), true, JSON.stringify(validateLedgerWebhook.errors));
+    event.change_kind = 'adjustment_published';
+    assert.equal(validateLedgerWebhook(event), false);
+    delete event.reporting_revision_id;
+    delete event.supersedes_reporting_revision_id;
+    delete event.finality;
+    event.reporting_adjustment_id = 'radj_20260829_001';
+    event.adjusts_reporting_revision_id = officialRevision.reporting_revision_id;
+    assert.equal(validateLedgerWebhook(event), true, JSON.stringify(validateLedgerWebhook.errors));
   });
 
   it('uses readiness as a secret-free account doorbell repaired through status', () => {
@@ -1047,6 +1220,11 @@ describe('managed reporting status contract', () => {
   });
 
   it('requires the experimental feature declaration when managed reporting is advertised', () => {
+    assert.equal(
+      readSchema('/schemas/core/reporting-delivery-capabilities.json').title,
+      'Reporting Delivery Capabilities',
+      'the stable title preserves the generated SDK ReportingDeliveryCapabilities symbol',
+    );
     const capabilities = {
       status: 'completed',
       adcp: {
@@ -1058,6 +1236,7 @@ describe('managed reporting status contract', () => {
       media_buy: {
         reporting_delivery: {
           supported: true,
+          reliable_reporting_version: '1.0',
           managed_delivery: true,
           configuration_task: 'sync_accounts',
           status_task: 'get_reporting_status',
@@ -1111,6 +1290,11 @@ describe('managed reporting status contract', () => {
       experimental_features: ['media_buy.reporting_delivery'],
     };
     assert.equal(validateCapabilities(capabilities), true, JSON.stringify(validateCapabilities.errors));
+    const ledgerOnly = structuredClone(capabilities);
+    delete ledgerOnly.media_buy.reporting_delivery.readiness_notification;
+    ledgerOnly.media_buy.reporting_delivery.ledger_notification = 'reporting.ledger_changed';
+    delete ledgerOnly.webhook_signing;
+    assert.equal(validateCapabilities(ledgerOnly), false, 'ledger notifications require webhook signing');
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'https://127.0.0.1/admin';
     assert.equal(validateCapabilities(capabilities), false);
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'https://schemas.example/media-buy-delivery/v1.json';

@@ -1,15 +1,18 @@
 id: reporting_core_declaration
 version: "1.0.0"
-title: "Reporting Core declaration"
+introduced_in: "3.2"
+title: "Reliable Reporting: Core declaration"
 category: schema_validation
-summary: "Validates that reporting.core is advertised without requiring optional reporting tiers or a sandbox controller."
+summary: "Validates the proper-name Reliable Reporting 1.0 declaration and its required Core tier without requiring optional tiers or a sandbox controller."
 track: core
 required_tools:
   - get_adcp_capabilities
 
-requires_capability:
-  path: "media_buy.reporting_delivery.supported"
-  equals: true
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.supported"
+    equals: true
+  - path: "media_buy.reporting_delivery.reliable_reporting_version"
+    equals: "1.0"
 
 narrative: |
   Core is the required reporting tier: obligations, revisions, the five health
@@ -62,6 +65,10 @@ phases:
             path: "media_buy.reporting_delivery.supported"
             value: true
             description: "Seller advertises the required Core tier"
+          - check: field_value
+            path: "media_buy.reporting_delivery.reliable_reporting_version"
+            value: "1.0"
+            description: "Seller makes the proper-name Reliable Reporting declaration"
           - check: field_value
             path: "media_buy.reporting_delivery.status_task"
             value: "get_reporting_status"

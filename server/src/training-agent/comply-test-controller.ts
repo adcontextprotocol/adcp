@@ -96,8 +96,14 @@ import {
   advanceReportingCoreLifecycleProbe,
   omitReportingCoreObligationProbe,
   prepareReportingCoreLifecycleProbe,
+  prepareReliableReportingManagedDeliveryProbe,
+  prepareReliableReportingReconciledBillingProbe,
+  prepareReliableReportingCoreIntegrityProbe,
+  publishReliableReportingReconciledAdjustments,
+  publishReliableReportingCoreIntegrityCorrection,
   publishZeroRowReportingCoreLifecycleProbe,
   resolveReportingAccountDurably,
+  updateReliableReportingManagedDeliveryProbe,
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 
@@ -1458,11 +1464,28 @@ const LOCAL_SCENARIOS = [
   'compact_product_lifecycle_probe',
   'compact_direct_buy_lifecycle_probe',
   'reporting_core_lifecycle_probe',
+  'reliable_reporting_core_integrity_probe',
+  'reliable_reporting_managed_delivery_probe',
+  'reliable_reporting_reconciled_billing_probe',
   'query_provenance_audit_observations',
   'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
 ] as const;
+
+async function resolveOrCreateReportingProbeAccount(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<{ accountId: string; account: AccountRef }> {
+  if (!args.account || args.account.sandbox !== true) throw new Error('Reporting probes require a sandbox account.');
+  const account = normalizeControllerAccountRef(args.account);
+  const existing = await resolveReportingAccountDurably(ctx.principal, account);
+  if (existing) return { accountId: existing.accountId, account: existing.account };
+  const accountId = typeof account.account_id === 'string' && account.account_id.length > 0
+    ? account.account_id
+    : 'reporting_core_lab';
+  return { accountId, account };
+}
 
 async function handleCompactLifecycleProbe(
   scenario: 'compact_product_lifecycle_probe' | 'compact_direct_buy_lifecycle_probe',
@@ -1624,17 +1647,13 @@ async function handleReportingCoreLifecycleProbe(
 ): Promise<object> {
   const operation = typeof params.operation === 'string' ? params.operation : undefined;
   let accountId: string;
+  let account: AccountRef;
   try {
-    const account = normalizeControllerAccountRef(args.account);
-    const reportingAccount = await resolveReportingAccountDurably(ctx.principal, account);
-    if (!reportingAccount || reportingAccount.account.sandbox !== true) {
-      throw new Error('Unknown or non-sandbox reporting account');
-    }
-    accountId = reportingAccount.accountId;
+    ({ accountId, account } = await resolveOrCreateReportingProbeAccount(args, ctx));
   } catch {
     return {
       success: false,
-      error: 'ACCOUNT_NOT_FOUND',
+      error: 'INVALID_STATE',
       error_detail: 'reporting_core_lifecycle_probe requires a caller-owned sandbox account with reporting configured',
     };
   }
@@ -1688,7 +1707,127 @@ async function handleReportingCoreLifecycleProbe(
     error: 'INVALID_PARAMS',
     error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, or omit_obligation',
   };
-  });
+  }, account);
+}
+
+async function handleReliableReportingCoreIntegrityProbe(
+  args: ToolArgs,
+  params: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<object> {
+  const operation = typeof params.operation === 'string' ? params.operation : undefined;
+  let accountId: string;
+  let account: AccountRef;
+  try {
+    ({ accountId, account } = await resolveOrCreateReportingProbeAccount(args, ctx));
+  } catch {
+    return {
+      success: false,
+      error: 'INVALID_STATE',
+      error_detail: 'reliable_reporting_core_integrity_probe requires a caller-owned sandbox account',
+    };
+  }
+  return withDurableReportingLedger(ctx.principal, accountId, true, () => {
+    try {
+      if (operation === 'prepare') {
+        return {
+          success: true,
+          simulated: prepareReliableReportingCoreIntegrityProbe(ctx.principal, accountId),
+          message: 'Prepared one daily official Core obligation in the upstream source timezone.',
+        };
+      }
+      if (operation === 'publish_official_adjustment') {
+        return {
+          success: true,
+          simulated: publishReliableReportingCoreIntegrityCorrection(ctx.principal, accountId),
+          message: 'Published the official close and a later Core adjustment with out-of-order duplicate doorbells.',
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: error instanceof Error ? error.message : 'Unable to update Reliable Reporting integrity fixture',
+      };
+    }
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'reliable_reporting_core_integrity_probe requires params.operation: prepare or publish_official_adjustment',
+    };
+  }, account);
+}
+
+async function handleReliableReportingManagedDeliveryProbe(
+  args: ToolArgs,
+  params: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<object> {
+  const operation = typeof params.operation === 'string' ? params.operation : undefined;
+  let accountId: string;
+  let account: AccountRef;
+  try {
+    ({ accountId, account } = await resolveOrCreateReportingProbeAccount(args, ctx));
+  } catch {
+    return { success: false, error: 'INVALID_STATE', error_detail: 'Managed Delivery probe requires a caller-owned sandbox account.' };
+  }
+  return withDurableReportingLedger(ctx.principal, accountId, true, () => {
+    try {
+      if (operation === 'prepare') {
+        return {
+          success: true,
+          simulated: prepareReliableReportingManagedDeliveryProbe(ctx.principal, accountId),
+          message: 'Prepared one verified managed dataset materialization.',
+        };
+      }
+      if (operation === 'suppress_readiness' || operation === 'advance_within_retention' || operation === 'revoke_access') {
+        return {
+          success: true,
+          simulated: updateReliableReportingManagedDeliveryProbe(ctx.principal, accountId, operation),
+          message: `Applied Managed Delivery probe operation ${operation}.`,
+        };
+      }
+    } catch (error) {
+      return { success: false, error: 'INVALID_STATE', error_detail: error instanceof Error ? error.message : 'Managed Delivery probe failed.' };
+    }
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'Managed Delivery probe requires prepare, suppress_readiness, advance_within_retention, or revoke_access.' };
+  }, account);
+}
+
+async function handleReliableReportingReconciledBillingProbe(
+  args: ToolArgs,
+  params: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<object> {
+  const operation = typeof params.operation === 'string' ? params.operation : undefined;
+  let accountId: string;
+  let account: AccountRef;
+  try {
+    ({ accountId, account } = await resolveOrCreateReportingProbeAccount(args, ctx));
+  } catch {
+    return { success: false, error: 'INVALID_STATE', error_detail: 'Reconciled Billing probe requires a caller-owned sandbox account.' };
+  }
+  return withDurableReportingLedger(ctx.principal, accountId, true, () => {
+    try {
+      if (operation === 'prepare') {
+        return {
+          success: true,
+          simulated: prepareReliableReportingReconciledBillingProbe(ctx.principal, accountId),
+          message: 'Prepared one verified official billing revision and materialization.',
+        };
+      }
+      if (operation === 'publish_adjustment') {
+        return {
+          success: true,
+          simulated: publishReliableReportingReconciledAdjustments(ctx.principal, accountId),
+          message: 'Published two content-addressed post-official billing adjustments.',
+        };
+      }
+    } catch (error) {
+      return { success: false, error: 'INVALID_STATE', error_detail: error instanceof Error ? error.message : 'Reconciled Billing probe failed.' };
+    }
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'Reconciled Billing probe requires prepare or publish_adjustment.' };
+  }, account);
 }
 
 function localScenariosFor(ctx: TrainingContext): string[] {
@@ -1697,7 +1836,12 @@ function localScenariosFor(ctx: TrainingContext): string[] {
     : [...LOCAL_SCENARIOS];
   const currentOnly = atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
     ? scenarios
-    : scenarios.filter(s => s !== 'reporting_core_lifecycle_probe');
+    : scenarios.filter(s => (
+      s !== 'reporting_core_lifecycle_probe'
+      && s !== 'reliable_reporting_core_integrity_probe'
+      && s !== 'reliable_reporting_managed_delivery_probe'
+      && s !== 'reliable_reporting_reconciled_billing_probe'
+    ));
   return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? currentOnly
     : currentOnly.filter(s => s !== 'expire_account_change_cursor');
@@ -2012,6 +2156,15 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'reporting_core_lifecycle_probe') {
     return handleReportingCoreLifecycleProbe(args, params, ctx);
+  }
+  if (scenario === 'reliable_reporting_core_integrity_probe') {
+    return handleReliableReportingCoreIntegrityProbe(args, params, ctx);
+  }
+  if (scenario === 'reliable_reporting_managed_delivery_probe') {
+    return handleReliableReportingManagedDeliveryProbe(args, params, ctx);
+  }
+  if (scenario === 'reliable_reporting_reconciled_billing_probe') {
+    return handleReliableReportingReconciledBillingProbe(args, params, ctx);
   }
   if (scenario === 'force_get_products_arm' && params.arm === 'rejected') {
     if (!supportsGetProductsRejected(ctx.servedAdcpVersion)) {

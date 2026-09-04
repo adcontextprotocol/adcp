@@ -10,10 +10,11 @@ import type { TaskRegistry, TenantConfig } from '@adcp/sdk/server';
 import { TOOL_INPUT_SHAPES } from '@adcp/sdk/schemas';
 import {
   TrainingSalesPlatform,
-  legacyGetReportingStatusHandler,
   legacyGetProductsHandler,
   legacyListCreativesHandler,
   legacySyncCreativesHandler,
+  reportingStatusForCustomTool,
+  syncReportingReceiptsForCustomTool,
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
@@ -39,6 +40,35 @@ const ACCOUNT_REF = z.object({
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
   operator: z.string().optional(),
 }).passthrough();
+
+const GET_REPORTING_STATUS_SCHEMA = {
+  account: ACCOUNT_REF,
+  view: z.enum(['summary', 'periods', 'revision']),
+  adcp_version: z.string().optional(),
+  adcp_major_version: z.number().int().optional(),
+  media_buy_ids: z.array(z.string().min(1)).min(1).max(100).optional(),
+  delivery_config_ids: z.array(z.string().min(1)).min(1).max(16).optional(),
+  feed_purposes: z.array(z.string()).min(1).optional(),
+  period: z.object({ start: z.string(), end: z.string() }).optional(),
+  health: z.array(z.string()).min(1).optional(),
+  finality: z.array(z.string()).min(1).optional(),
+  reporting_revision_id: z.string().min(1).max(255).optional(),
+  changes_after: z.string().min(1).max(2048).optional(),
+  pagination: z.any().optional(),
+  context: z.any().optional(),
+  ext: z.any().optional(),
+};
+
+const SYNC_REPORTING_RECEIPTS_SCHEMA = {
+  account: ACCOUNT_REF,
+  idempotency_key: z.string().min(16).max(255),
+  adcp_version: z.string().optional(),
+  adcp_major_version: z.number().int().optional(),
+  receipts: z.array(z.object({}).passthrough()).min(1).max(100).optional(),
+  adjustment_receipts: z.array(z.object({}).passthrough()).min(1).max(100).optional(),
+  context: z.any().optional(),
+  ext: z.any().optional(),
+};
 
 const SYNC_CATALOGS_SCHEMA = {
   idempotency_key: z.string().min(16).max(255),
@@ -104,9 +134,6 @@ export function buildSalesTenantConfig(
         legacyHandlers: {
           mediaBuy: {
             getProducts: legacyGetProductsHandler(options.storyboardCompat, taskRegistry),
-            ...(options.storyboardCompat?.version !== '3.0' && {
-              getReportingStatus: legacyGetReportingStatusHandler(),
-            }),
             listCreatives: legacyListCreativesHandler(options.storyboardCompat),
             syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
           },
@@ -114,6 +141,31 @@ export function buildSalesTenantConfig(
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
+          ...(options.storyboardCompat?.version !== '3.0' && {
+            get_reporting_status: customToolFor(
+              'get_reporting_status',
+              'Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.',
+              GET_REPORTING_STATUS_SCHEMA,
+              reportingStatusForCustomTool,
+              {
+                annotations: { readOnlyHint: true, idempotentHint: true },
+                // A failed lookup is a valid get_reporting_status result. Keep
+                // its status/failure_kind/errors envelope intact rather than
+                // recasting it as an MCP transport error.
+                payloadErrorsAsSuccess: true,
+              },
+            ),
+            sync_reporting_receipts: customToolFor(
+              'sync_reporting_receipts',
+              "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
+              SYNC_REPORTING_RECEIPTS_SCHEMA,
+              syncReportingReceiptsForCustomTool,
+              {
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+                enforceIdempotency: true,
+              },
+            ),
+          }),
           sync_catalogs: customToolFor(
             'sync_catalogs',
             'Push product catalogs (feeds, items, inventory) for catalog-driven campaigns. Supports URL feeds for scheduled re-fetch and inline items for small catalogs. Returns per-item approval status. Omit catalogs to discover existing synced catalogs.',

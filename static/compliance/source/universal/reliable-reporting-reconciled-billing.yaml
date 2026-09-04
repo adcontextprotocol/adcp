@@ -1,0 +1,333 @@
+id: reliable_reporting_reconciled_billing
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Reliable Reporting: Reconciled Billing"
+category: capability_discovery
+summary: "Validates the Reconciled Billing tier's canonical evidence and authenticated receipt path for official revisions and later adjustments."
+track: reporting
+required_tools:
+  - get_adcp_capabilities
+  - get_reporting_status
+  - sync_reporting_receipts
+
+requires:
+  - controller
+
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.reliable_reporting_version"
+    equals: "1.0"
+  - path: "media_buy.reporting_delivery.reconciled_billing"
+    equals: true
+
+narrative: |
+  Reconciled Billing is an explicit Reliable Reporting tier, not a synonym for
+  a seller exporting invoice data. Its capability must select a
+  consumer_receipt offering with canonicalization evidence and must expose the
+  receipt task. That same task records accepted or rejected receipts for
+  post-official adjustments without rewriting the original invoice revision.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "media_buy.reporting_delivery"
+  examples:
+    - "Seller agent supporting bilateral billing reconciliation"
+
+caller:
+  role: buyer_agent
+  example: "Compliance harness acting as an authorized billing consumer"
+
+prerequisites:
+  description: |
+    The seller advertises Reliable Reporting 1.0 and reconciled_billing: true.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: reconciled_billing_declaration
+    title: "Discover Reconciled Billing guarantees"
+    steps:
+      - id: get_reliable_reporting_reconciled_capabilities
+        title: "Read the Reconciled Billing declaration"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "reliable_reporting_reconciled_billing--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Capability response enforces a consumer_receipt offering with canonicalization evidence"
+          - check: field_value
+            path: "media_buy.reporting_delivery.reliable_reporting_version"
+            value: "1.0"
+            description: "Seller explicitly claims Reliable Reporting 1.0"
+          - check: field_value
+            path: "media_buy.reporting_delivery.reconciled_billing"
+            value: true
+            description: "Reconciled Billing tier is explicitly supported"
+          - check: field_value
+            path: "media_buy.reporting_delivery.receipt_task"
+            value: "sync_reporting_receipts"
+            description: "Revision and adjustment reconciliation uses the authenticated receipt task"
+
+  - id: reconciled_billing_lifecycle
+    title: "Reconcile an official invoice and its later correction"
+    narrative: |
+      The controller seeds a verified official billing revision. The buyer
+      stores its checkpoint, accepts the exact revision, then observes a
+      post-invoice adjustment and submits both accepted and rejected adjustment
+      evidence. The final changes_after read must expose the immutable invoice
+      anchor, correction, and authenticated outcomes without conflating them.
+    steps:
+      - id: prepare_reconciled_billing
+        title: "Prepare one verified official billing revision"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        context_outputs:
+          - name: reliable_reporting_billing_revision_id
+            path: "simulated.reporting_revision_id"
+          - name: reliable_reporting_billing_obligation_id
+            path: "simulated.reporting_obligation_id"
+          - name: reliable_reporting_billing_materialization_id
+            path: "simulated.reporting_materialization_id"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-rc.0"
+          scenario: "reliable_reporting_reconciled_billing_probe"
+          params:
+            operation: "prepare"
+          context:
+            correlation_id: "reliable_reporting_billing--prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Official revision and verified materialization were prepared"
+          - check: field_present
+            path: "simulated.canonical_content_digest"
+            description: "Fixture exposes exact canonical billing evidence"
+
+      - id: read_reconciled_billing_baseline
+        title: "Read the official anchor and save its checkpoint"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        context_outputs:
+          - name: reliable_reporting_billing_checkpoint
+            path: "changes_checkpoint"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-rc.0"
+          view: "periods"
+          context:
+            correlation_id: "reliable_reporting_billing--baseline"
+        validations:
+          - check: response_schema
+            description: "Billing ledger response is schema-valid"
+          - check: field_equals_context
+            path: "revisions[0].reporting_revision_id"
+            context_key: "reliable_reporting_billing_revision_id"
+            description: "Invoice binds to the seeded official revision"
+          - check: field_value
+            path: "revisions[0].finality"
+            value: "official"
+            description: "Reconciliation starts from a terminal close"
+          - check: field_present
+            path: "changes_checkpoint"
+            description: "Buyer saves a durable pre-correction checkpoint"
+          - check: field_present
+            path: "adjustment_receipts"
+            description: "Reconciled Billing exposes the authenticated correction outcomes collection"
+
+      - id: accept_official_revision
+        title: "Record acceptance of the exact official materialization"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_receipts"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-rc.0"
+          account:
+            account_id: "reporting_core_lab"
+          idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_official_receipt"
+          receipts:
+            - reporting_receipt_id: "rr-billing-official-receipt-0001"
+              reporting_obligation_id: "$context.reliable_reporting_billing_obligation_id"
+              reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              reporting_materialization_id: "$context.reliable_reporting_billing_materialization_id"
+              status: "accepted"
+              verification_profile: "canonical_digest"
+              observed_row_count: 2
+              observed_control_totals:
+                - name: "impressions"
+                  value: "5"
+                  value_type: "integer"
+                  unit: "impressions"
+                - name: "spend"
+                  value: "8.00"
+                  value_type: "decimal"
+                  unit: "USD"
+              observed_canonical_content_digest:
+                algorithm: "sha256"
+                value: "bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4"
+                canonicalization_id: "billing-rows-v1"
+                canonicalization_uri: "https://test-agent.adcontextprotocol.org/reporting/canonicalization/billing-rows-v1.json"
+                canonicalization_sha256: "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa"
+              observed_at: "2026-08-27T04:01:00Z"
+          context:
+            correlation_id: "reliable_reporting_billing--accept-official"
+        validations:
+          - check: response_schema
+            description: "Receipt acknowledgement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "Seller durably records the official revision outcome"
+          - check: field_equals_context
+            path: "results[0].receipt.reporting_revision_id"
+            context_key: "reliable_reporting_billing_revision_id"
+            description: "Acknowledgement retains the invoice anchor"
+
+      - id: publish_reconciled_adjustments
+        title: "Publish accepted and disputed post-invoice corrections"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        context_outputs:
+          - name: reliable_reporting_accepted_adjustment_id
+            path: "simulated.adjustments[0].reporting_adjustment_id"
+          - name: reliable_reporting_accepted_adjustment_digest
+            path: "simulated.adjustments[0].canonical_adjustment_sha256"
+          - name: reliable_reporting_disputed_adjustment_id
+            path: "simulated.adjustments[1].reporting_adjustment_id"
+          - name: reliable_reporting_disputed_observed_digest
+            path: "simulated.disputed_observed_adjustment_sha256"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-rc.0"
+          scenario: "reliable_reporting_reconciled_billing_probe"
+          params:
+            operation: "publish_adjustment"
+          context:
+            correlation_id: "reliable_reporting_billing--publish-adjustments"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Two immutable post-official adjustments were published"
+          - check: field_equals_context
+            path: "simulated.adjustments[0].adjusts_reporting_revision_id"
+            context_key: "reliable_reporting_billing_revision_id"
+            description: "Accepted-path correction targets the invoice anchor"
+          - check: field_equals_context
+            path: "simulated.adjustments[1].adjusts_reporting_revision_id"
+            context_key: "reliable_reporting_billing_revision_id"
+            description: "Dispute-path correction targets the same invoice anchor"
+          - check: field_present
+            path: "simulated.disputed_observed_adjustment_sha256"
+            description: "Controller supplies the buyer-observed mismatching digest used by the dispute path"
+
+      - id: reconcile_post_official_adjustments
+        title: "Accept one correction and reject the other"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_receipts"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-rc.0"
+          account:
+            account_id: "reporting_core_lab"
+          idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_adjustment_receipts"
+          adjustment_receipts:
+            - reporting_receipt_id: "rr-adjustment-accepted-receipt-01"
+              reporting_adjustment_id: "$context.reliable_reporting_accepted_adjustment_id"
+              adjusts_reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              status: "accepted"
+              observed_adjustment_sha256: "$context.reliable_reporting_accepted_adjustment_digest"
+              observed_at: "2026-08-29T10:01:00Z"
+            - reporting_receipt_id: "rr-adjustment-rejected-receipt-01"
+              reporting_adjustment_id: "$context.reliable_reporting_disputed_adjustment_id"
+              adjusts_reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              status: "rejected"
+              observed_adjustment_sha256: "$context.reliable_reporting_disputed_observed_digest"
+              rejection_codes: ["CANONICAL_DIGEST_MISMATCH"]
+              observed_at: "2026-08-29T10:01:01Z"
+          context:
+            correlation_id: "reliable_reporting_billing--reconcile-adjustments"
+        validations:
+          - check: response_schema
+            description: "Adjustment receipt acknowledgements are schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "Accepted correction outcome is durable"
+          - check: field_value
+            path: "results[0].adjustment_receipt.status"
+            value: "accepted"
+            description: "Exact digest match is accepted"
+          - check: field_value
+            path: "results[1].adjustment_receipt.status"
+            value: "rejected"
+            description: "Digest disagreement remains a durable dispute"
+
+      - id: repair_reconciled_billing_from_checkpoint
+        title: "Re-read every correction outcome from the old checkpoint"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-rc.0"
+          view: "periods"
+          changes_after: "$context.reliable_reporting_billing_checkpoint"
+          context:
+            correlation_id: "reliable_reporting_billing--checkpoint-repair"
+        validations:
+          - check: response_schema
+            description: "Checkpoint repair response is schema-valid"
+          - check: field_equals_context
+            path: "revisions[0].reporting_revision_id"
+            context_key: "reliable_reporting_billing_revision_id"
+            description: "Original official invoice anchor remains unchanged"
+          - check: field_value
+            path: "periods[0].adjustment_count"
+            value: 2
+            description: "Both post-official corrections are enumerated"
+          - check: array_length
+            path: "adjustments"
+            value: 2
+            description: "Correction records converge independent of notifications"
+          - check: array_length
+            path: "adjustment_receipts"
+            value: 2
+            description: "Accepted and disputed outcomes both converge"
+          - check: field_present
+            path: "changes_checkpoint"
+            description: "Buyer receives a new checkpoint after durable readback"
