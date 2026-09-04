@@ -737,9 +737,9 @@ Save the public AdCP test agent credentials for the user's organization so teamm
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-## sponsored_intelligence
+## sponsored_intelligence_discovery
 
-Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation
+Discover and connect to member brand agents that support Sponsored Intelligence, including anonymous offer-availability checks
 
 ### `get_si_availability`
 
@@ -758,6 +758,10 @@ List AAO member brand agents that support Sponsored Intelligence protocol. Shows
 Connect user with an SI-hosted brand agent. Initiates a conversational session where the brand agent can interact with the user.
 
 *Source: `server/src/addie/mcp/si-host-tools.ts`*
+
+## sponsored_intelligence_session
+
+Relay messages to, inspect, or end an active Sponsored Intelligence brand-agent session
 
 ### `send_to_si_agent`
 

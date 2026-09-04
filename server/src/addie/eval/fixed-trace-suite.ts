@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v28';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v29';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -418,6 +418,48 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 120,
     },
     answerRubric: ['Clearly presents only the synthetic company listing without changing profile or brand-domain state.'],
+  },
+  {
+    id: 'sponsored-intelligence-agent-discovery',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Which Sponsored Intelligence brand agents are available? Do not connect me.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['sponsored_intelligence_discovery'] },
+    toolFixtures: [{ name: 'list_si_agents', effect: 'read', resultStatus: 'ok', result: 'Synthetic SI agent: Example Measurement Agent; category: measurement.' }],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['list_si_agents'],
+      allowedTools: ['list_si_agents'],
+      forbiddenTools: [
+        'connect_to_si_agent', 'send_to_si_agent', 'end_si_session',
+        'get_si_session_status',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['example measurement agent', 'measurement'], ['available']],
+      maxWords: 120,
+    },
+    answerRubric: ['Reports only the synthetic available agent and does not connect or alter session state.'],
+  },
+  {
+    id: 'sponsored-intelligence-session-status',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Check the status of my Sponsored Intelligence session without sending or ending it.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['sponsored_intelligence_session'] },
+    toolFixtures: [{ name: 'get_si_session_status', effect: 'read', resultStatus: 'ok', result: 'Synthetic SI session is active with Example Measurement Agent.' }],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['get_si_session_status'],
+      allowedTools: ['get_si_session_status'],
+      forbiddenTools: [
+        'get_si_availability', 'list_si_agents', 'connect_to_si_agent',
+        'send_to_si_agent', 'end_si_session',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['active'], ['example measurement agent', 'session']],
+      maxWords: 120,
+    },
+    answerRubric: ['Reports only the synthetic active-session status without relaying or ending it.'],
   },
   {
     id: 'publishing-own-submissions',

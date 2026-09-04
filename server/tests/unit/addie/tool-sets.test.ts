@@ -75,6 +75,10 @@ import {
   PROPERTY_LIST_ENRICHMENT_TOOLS,
   PROPERTY_REGISTRY_RECORD_TOOLS,
   SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
+  SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS,
+  SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS,
+  SPONSORED_INTELLIGENCE_SESSION_TOOLS,
+  SPONSORED_INTELLIGENCE_TOOLS,
   TOOL_SETS,
   buildUnavailableSetsHint,
   getToolsForSets,
@@ -302,6 +306,9 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **partner_directory**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **agent_publisher_directory**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **directory**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **sponsored_intelligence_discovery**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **sponsored_intelligence_session**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **sponsored_intelligence**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
@@ -561,21 +568,36 @@ describe('getToolsForSets', () => {
   });
 
   describe('Sponsored Intelligence workflow', () => {
-    it('exposes the complete SI host surface only when its domain is selected', () => {
-      const siTools = [
+    it('separates discovery from active sessions with an exact hidden alias', () => {
+      expect(SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS).toEqual([
         'get_si_availability',
         'list_si_agents',
         'connect_to_si_agent',
-        'send_to_si_agent',
-        'end_si_session',
-        'get_si_session_status',
-      ];
-
+      ]);
+      expect(SPONSORED_INTELLIGENCE_SESSION_TOOLS).toEqual([
+        'send_to_si_agent', 'end_si_session', 'get_si_session_status',
+      ]);
+      expect(SPONSORED_INTELLIGENCE_TOOLS).toEqual([
+        ...SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS,
+        ...SPONSORED_INTELLIGENCE_SESSION_TOOLS,
+      ]);
+      expect(TOOL_SETS.sponsored_intelligence.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('sponsored_intelligence')).toBe(false);
+      for (const [name, domainTools] of Object.entries(SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(false).has(name), name).toBe(true);
+        expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+      }
+      expect(getToolsForSets(['sponsored_intelligence_discovery'], false, false)).not.toEqual(
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_SESSION_TOOLS),
+      );
+      expect(getToolsForSets(['sponsored_intelligence_session'], false, false)).not.toEqual(
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS),
+      );
       expect(getToolsForSets(['sponsored_intelligence'], false, false)).toEqual(
-        expect.arrayContaining(siTools),
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_TOOLS),
       );
       expect(getToolsForSets(['knowledge'], false, false)).not.toEqual(
-        expect.arrayContaining(siTools),
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_TOOLS),
       );
     });
   });
@@ -934,6 +956,8 @@ describe('getToolsForSets', () => {
       ['knowledge', 3],
       ['community_research', 6],
       ['schema_reference', 4],
+      ['sponsored_intelligence_discovery', 3],
+      ['sponsored_intelligence_session', 3],
       ['partner_directory', 5],
       ['agent_publisher_directory', 4],
       ['brand_registry_records', 5],

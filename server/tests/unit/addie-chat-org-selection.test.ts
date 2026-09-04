@@ -358,7 +358,7 @@ describe('mounted Addie web-thread ownership', () => {
 
     expect(siHostMocks.hasCachedSiSession).toHaveBeenCalledWith(conversationId);
     expect(processMessage.mock.calls[0]?.[optionsArgument]?.selectedToolSetNames)
-      .toEqual(['partner_directory', 'sponsored_intelligence']);
+      .toEqual(['partner_directory', 'sponsored_intelligence_session']);
   });
 
   it('issues an HttpOnly owner capability cookie when an anonymous POST creates a thread', async () => {

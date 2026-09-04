@@ -255,6 +255,7 @@ import {
   selectBoundedRoutedToolSets,
   selectSlackToolSets,
   type ActiveCertificationKind,
+  type SponsoredIntelligenceContextKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
 
@@ -1545,7 +1546,7 @@ export async function selectRoutedDirectSlackTools(input: {
   router: Pick<AddieRouter, 'quickMatch' | 'route'> | null;
   hasRegisteredTools?: (toolNames: string[]) => boolean;
   activeCertificationKind?: ActiveCertificationKind | null;
-  hasSponsoredIntelligenceContext?: boolean;
+  sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
   threadMessages?: string[];
   isPublicChannel?: boolean;
 }): Promise<RoutedDirectSlackTools> {
@@ -1580,7 +1581,7 @@ export async function selectRoutedDirectSlackTools(input: {
     isAdmin: input.isAAOAdmin,
     isPublicChannel: input.isPublicChannel,
     activeCertificationKind: input.activeCertificationKind,
-    hasSponsoredIntelligenceContext: input.hasSponsoredIntelligenceContext,
+    sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
     isToolAvailable: (name) => (
       (requestDefinitionNames.has(name) && requestHandlerNames.has(name))
       || input.hasRegisteredTools?.([name]) === true
@@ -1666,7 +1667,7 @@ async function selectRoutedToolsForSlackResponse(
         ? (toolNames) => claudeClient!.hasRegisteredTools(toolNames)
         : undefined,
       activeCertificationKind: options?.activeCertificationKind,
-      hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
+      sponsoredIntelligenceContextKind: hasCachedSiSession(threadId) ? 'session' : null,
       threadMessages: options?.threadMessages,
       isPublicChannel: threadContext?.viewing_channel_is_private === false,
     });
@@ -1685,7 +1686,7 @@ async function selectRoutedToolsForSlackResponse(
       workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
       systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
       activeCertificationKind: options?.activeCertificationKind,
-      hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
+      sponsoredIntelligenceContextKind: hasCachedSiSession(threadId) ? 'session' : null,
     });
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
@@ -1731,7 +1732,7 @@ async function selectRoutedToolsForSlackResponse(
     workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
     systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
     activeCertificationKind: options?.activeCertificationKind,
-    hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
+    sponsoredIntelligenceContextKind: hasCachedSiSession(threadId) ? 'session' : null,
   });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -3684,8 +3685,11 @@ export async function buildChannelResponseInvocation(input: {
     isAdmin: userIsAdmin,
     workingGroupSlug: channelContext?.viewing_channel_working_group_slug,
     systemRole: channelContext?.viewing_channel_system_role as SystemChannelRole | undefined,
-    hasSponsoredIntelligenceContext:
-      hasCachedSiSession(threadId) || (siRetrievalResult?.agents.length ?? 0) > 0,
+    sponsoredIntelligenceContextKind: hasCachedSiSession(threadId)
+      ? 'session'
+      : (siRetrievalResult?.agents.length ?? 0) > 0
+        ? 'discovery'
+        : null,
   });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -6126,7 +6130,7 @@ async function handleReactionAdded({
     source: 'channel',
     isAdmin: userIsAdmin,
     isPublicChannel: channelContext.viewing_channel_is_private === false,
-    hasSponsoredIntelligenceContext: hasCachedSiSession(thread.thread_id),
+    sponsoredIntelligenceContextKind: hasCachedSiSession(thread.thread_id) ? 'session' : null,
     isToolAvailable: (name) => (
       (requestDefinitionNames.has(name) && requestHandlerNames.has(name))
       || reactionClient.hasRegisteredTools([name])

@@ -694,7 +694,9 @@ ${
 - AdCP task inspection/execution or live agent capabilities → ["adcp_task_operations"]
 - Saved-agent registration, listing, removal, or setup → ["adcp_agent_management"]
 - Requests needing both may select both; never use the hidden legacy alias.
-- Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
+- Discovering or connecting to a Sponsored Intelligence brand agent, including checking offer availability → ["sponsored_intelligence_discovery"]
+- Relaying a message to, checking, or ending an active Sponsored Intelligence brand-agent conversation → ["sponsored_intelligence_session"]
+- Never use the hidden legacy Sponsored Intelligence alias.
 - Committee documents and news-source proposals → ["content"]
 - Submitting or inspecting the current member's articles/perspectives, or reading a Google Doc for publication → ["publishing_submission"]
 - Attaching an asset to published member content, or generating, regenerating, or checking its cover illustration → ["publishing_assets"]

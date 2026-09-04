@@ -158,10 +158,10 @@ describe('authenticated web Addie tool routing', () => {
       isAAOAdmin: false,
       requestTools: { tools, handlers },
       router: null,
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
     });
 
-    expect(selected.selectedToolSets).not.toContain('sponsored_intelligence');
+    expect(selected.selectedToolSets).not.toContain('sponsored_intelligence_session');
     expect(selected.allowedToolNames).not.toContain('send_to_si_agent');
   });
 

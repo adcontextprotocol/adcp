@@ -890,25 +890,35 @@ describe('Addie tool reference', () => {
     expect(knowledge).not.toContain('## AdCP Academy');
   });
 
-  it('loads Sponsored Intelligence relay guidance only with the complete routed workflow', () => {
-    const siTools = getToolsForSets(['sponsored_intelligence'], false, false);
-    const sponsoredIntelligence = buildAddieToolReference({
-      availableToolNames: siTools,
-      selectedToolSetNames: ['sponsored_intelligence'],
+  it('scopes Sponsored Intelligence discovery and relay guidance to their bounded domains', () => {
+    const discoveryTools = getToolsForSets(['sponsored_intelligence_discovery'], false, false);
+    const sessionTools = getToolsForSets(['sponsored_intelligence_session'], false, false);
+    const discovery = buildAddieToolReference({
+      availableToolNames: discoveryTools,
+      selectedToolSetNames: ['sponsored_intelligence_discovery'],
     });
     const missingRelay = buildAddieToolReference({
-      availableToolNames: siTools.filter(name => name !== 'send_to_si_agent'),
-      selectedToolSetNames: ['sponsored_intelligence'],
+      availableToolNames: sessionTools.filter(name => name !== 'send_to_si_agent'),
+      selectedToolSetNames: ['sponsored_intelligence_session'],
+    });
+    const session = buildAddieToolReference({
+      availableToolNames: sessionTools,
+      selectedToolSetNames: ['sponsored_intelligence_session'],
     });
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
       selectedToolSetNames: ['knowledge'],
     });
 
-    expect(sponsoredIntelligence).toContain('### Sponsored Intelligence conversations');
-    expect(sponsoredIntelligence).toContain('use send_to_si_agent for every user message');
-    expect(missingRelay).not.toContain('### Sponsored Intelligence conversations');
-    expect(knowledge).not.toContain('### Sponsored Intelligence conversations');
+    expect(discovery).toContain('### Sponsored Intelligence discovery');
+    expect(discovery).toContain('call connect_to_si_agent directly');
+    expect(discovery).not.toContain('### Sponsored Intelligence active sessions');
+    expect(session).toContain('### Sponsored Intelligence active sessions');
+    expect(session).toContain('Use send_to_si_agent for every user message');
+    expect(session).not.toContain('### Sponsored Intelligence discovery');
+    expect(missingRelay).not.toContain('### Sponsored Intelligence active sessions');
+    expect(knowledge).not.toContain('### Sponsored Intelligence discovery');
+    expect(knowledge).not.toContain('### Sponsored Intelligence active sessions');
   });
 
   it('loads each property guidance module only with its bounded routed workflow', () => {
@@ -963,7 +973,8 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Slack file handling');
     expect(stable).not.toContain('## AdCP Academy');
     expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
-    expect(stable).not.toContain('### Sponsored Intelligence conversations');
+    expect(stable).not.toContain('### Sponsored Intelligence discovery');
+    expect(stable).not.toContain('### Sponsored Intelligence active sessions');
     expect(stable).not.toContain('send_to_si_agent for EVERY user message');
     expect(stable).not.toContain('### Content submission and author safety');
     expect(stable).not.toContain('### Editorial review safety');

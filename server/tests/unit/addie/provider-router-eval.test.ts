@@ -141,12 +141,12 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(113);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(113);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(114);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(114);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_personal_profile', 'member_company_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
-      'adcp_task_operations', 'adcp_agent_management', 'sponsored_intelligence', 'content',
+      'adcp_task_operations', 'adcp_agent_management', 'sponsored_intelligence_discovery', 'sponsored_intelligence_session', 'content',
       'publishing_submission', 'publishing_assets', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
       'member_billing', 'admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account',
@@ -159,7 +159,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(112);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(113);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -179,6 +179,20 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('outreach');
     expect(expectedSets).not.toContain('member_profile');
     expect(expectedSets).not.toContain('publishing_author');
+    expect(expectedSets).not.toContain('sponsored_intelligence');
+  });
+
+  it('selects only the bounded Sponsored Intelligence domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['sponsored-intelligence', 'sponsored_intelligence_discovery'],
+      ['sponsored-intelligence-session', 'sponsored_intelligence_session'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded Sponsored Intelligence workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
   });
 
   it('selects only the bounded member-publishing domain needed by an ordinary request', async () => {
