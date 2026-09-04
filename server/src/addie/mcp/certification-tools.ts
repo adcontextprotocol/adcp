@@ -660,6 +660,7 @@ async function checkAndFormatCredentials(
   const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
   const now = Date.now();
   const existing = await certDb.getUserCredentials(userId);
+  const existingByCredentialId = new Map(existing.map(c => [c.credential_id, c]));
   const deferred = existing
     .filter(c =>
       !c.certifier_credential_id &&
@@ -669,7 +670,21 @@ async function checkAndFormatCredentials(
     )
     .map(c => c.credential_id);
 
-  const toProcess = [...new Set([...awarded, ...deferred])];
+  // Link rendering is independent of Certifier delivery. In particular,
+  // credentials without a Certifier group (such as Decision-Makers) are
+  // still useful on LinkedIn long after the issuance-retry window closes.
+  // Keep this set distinct from `deferred`: adding these records to the
+  // issuance queue would defeat the corrupt-row double-issuance defense.
+  const shareOnly = existing
+    .filter(c =>
+      !c.certifier_credential_id &&
+      !awarded.includes(c.credential_id) &&
+      !deferred.includes(c.credential_id) &&
+      (allowPaidCredentials || (credMap.get(c.credential_id)?.tier ?? Number.POSITIVE_INFINITY) <= 1),
+    )
+    .map(c => c.credential_id);
+
+  const toProcess = [...new Set([...awarded, ...deferred, ...shareOnly])];
   if (toProcess.length === 0) return [];
 
   const lines: string[] = [''];
@@ -677,13 +692,16 @@ async function checkAndFormatCredentials(
   for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
+      const shouldIssue = awarded.includes(credId) || deferred.includes(credId);
       // External issuance is its own authorization boundary. Recheck directly
       // before each paid badge call so membership ending during assessment or
       // an earlier network request cannot reuse a stale positive decision.
-      if (cred.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(userId))) {
+      if (shouldIssue && cred.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(userId))) {
         continue;
       }
-      const result = await issueCertifierBadge(userId, credId, cred, memberContext);
+      const result = shouldIssue
+        ? await issueCertifierBadge(userId, credId, cred, memberContext)
+        : existingByCredentialId.get(credId)?.certifier_public_id ?? null;
       if (result === NAME_REQUIRED_MARKER) {
         nameRequired = true;
         // Don't post "Credential earned!" or share links or specialist
@@ -692,10 +710,16 @@ async function checkAndFormatCredentials(
         continue;
       }
       lines.push(`**Credential earned: ${cred.name}!**`);
-      lines.push(...buildShareLinks(cred.name, result));
+      lines.push(...buildShareLinks(
+        cred.name,
+        result,
+        existingByCredentialId.get(credId)?.awarded_at
+          ? new Date(existingByCredentialId.get(credId)!.awarded_at)
+          : undefined,
+      ));
 
       // Post immediate Slack notification for Specialist (tier 3) credentials
-      if (cred.tier === 3) {
+      if (shouldIssue && cred.tier === 3) {
         const wu = memberContext?.workos_user;
         const userName = wu ? ((wu.first_name || '') + ' ' + (wu.last_name || '')).trim() || 'A member' : 'A member';
         notifySpecialistCredential(userName, cred.name).catch(err => {
