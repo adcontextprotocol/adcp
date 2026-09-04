@@ -594,29 +594,53 @@ For offline delivery, the seller provisions a per-account bucket and grants the 
 
 #### reporting_delivery (experimental)
 
-`media_buy.reporting_delivery` advertises managed reporting in **three tiers over one
-data model**. Presence requires `media_buy.reporting_delivery` in top-level
+`media_buy.reporting_delivery` advertises **Reliable Reporting** in three tiers over
+one data model. Presence requires `media_buy.reporting_delivery` in top-level
 `experimental_features`.
+
+The affirmative machine-readable answer to **“Do you support Reliable
+Reporting?”** is all three of:
+
+- `experimental_features` contains `media_buy.reporting_delivery`;
+- `media_buy.reporting_delivery.supported` is `true`; and
+- `media_buy.reporting_delivery.reliable_reporting_version` is `"1.0"`.
+
+Then inspect the optional tier flags and atomic offerings below. Legacy
+`reporting_delivery_methods`, a generic reporting endpoint, or an AAMP
+declaration does not imply this AdCP feature; AAMP and AdCP are not
+wire-compatible, so each is evaluated through its own capability surface.
 
 | Tier | Advertised by | Contains | Required? |
 |---|---|---|---|
-| **Core** | `supported: true` | Obligations, revisions, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method`, destinations, materializations, and canonicalization. | **Yes** — the only required tier |
+| **Core** | `supported: true` | Obligations, revisions, immutable post-official adjustments, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method`, destinations, materializations, and canonicalization. | **Yes** — the only required tier |
 | **Managed delivery** | `managed_delivery: true` | Offerings whose `method` names `file_transfer`, `dataset_share`, or `warehouse_materialization`, plus exact-resource retention and authorization-revocation bounds. | No |
 | **Reconciled billing** | `reconciled_billing: true` | `receipt_task` ([`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)), `consumer_receipt` reconciliation, and the canonical-digest contract in offering profiles. | No |
 
 A polling-only seller that repairs through `get_reporting_status` is fully
 Core-conformant. A supported RFC 9421 `webhook_signing` profile is required only
-when the seller declares either reporting notification.
+when the seller declares any reporting notification.
 
-Two optional doorbells: `status_notification` (`reporting.status_changed`) is
+Three optional doorbells: `status_notification` (`reporting.status_changed`) is
 tier-independent invalidation for health transitions in either direction —
-valid for Core, since it names no destination — and `readiness_notification`
-(`reporting.delivery_ready`) is managed-delivery-only positive readiness.
+valid for Core, since it names no destination, and repaired through a full
+current status read; `ledger_notification`
+(`reporting.ledger_changed`) announces each new revision or adjustment even when
+health is unchanged; and `readiness_notification` (`reporting.delivery_ready`)
+is managed-delivery-only positive readiness. Ledger changes repair through
+`changes_after`; health-only changes use a non-incremental summary or periods read.
 
 `offerings[]` are atomic—not a cross-product—and each binds one feed purpose,
 content-addressed reporting profile/schema, schedule, and supported finality;
 managed-delivery offerings additionally bind transport, orchestration,
 provider/access mode/format, and destination modes.
+
+Schedules may align to UTC, the AdCP account timezone, an explicit upstream
+`source_timezone`, or an anchored billing cycle. `source_timezone` covers clocks
+such as an ad server network timezone and is accepted only when the source can
+produce those exact periods natively or through lossless finer-grained
+re-bucketing. Optional `reliability_statistics[]` publish evidence-scoped
+on-time counts, publication latency, and post-official adjustment frequency,
+latency, and magnitude for exact offering IDs.
 
 #### performance_feedback
 
@@ -1253,7 +1277,7 @@ Array of metrics this measurement agent computes.
 | `unit`                | string       | Unit of the value when reported in `vendor_metric_values.value` (`score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, `USD`, etc.). Sellers populating `vendor_metric_values.unit` MUST match this declaration.                                                                                                                                               |
 | `description`         | string       | Human-readable description of what the metric measures and any methodology notes. AgenticAdvertising.org and buyer agents normalize across catalogs from this field plus the structured fields above; classification facets are not declared at the metric level.                                                                                                |
 | `methodology_url`     | string (URI) | URL to vendor's full methodology documentation. Mirrors `governance.property_features[].methodology_url`.                                                                                                                                                                                                                                                        |
-| `methodology_version` | string       | Optional version identifier (semver, ISO date, or vendor-defined string) for the methodology. When present, buyer agents can pin a contracted version so silent methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.                                                   |
+| `methodology_version` | string       | Optional version identifier (semver, ISO date, or vendor-defined string) for the methodology. When present, buyer agents can pin a contracted version via `committed_metrics[].methodology_version` so silent methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.                                                   |
 | `ext`                 | object       | Vendor extensions per the AdCP `ext` convention.                                                                                                                                                                                                                                                                                                                 |
 
 ```json Response example

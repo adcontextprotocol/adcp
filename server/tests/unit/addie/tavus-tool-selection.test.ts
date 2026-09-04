@@ -17,7 +17,7 @@ handlers.set('orphaned_handler', async () => '{}');
 const pairedGlobalToolNames = [...new Set([
   ...getToolsForSets(['knowledge'], false, false).filter((name) => name !== 'search_docs'),
   ...getToolsForSets(['member_billing'], false, false).filter((name) => name !== 'create_payment_link'),
-  ...getToolsForSets(['admin_prospects'], true, false).filter((name) => name !== 'add_prospect'),
+  ...getToolsForSets(['admin_prospect_pipeline'], true, false).filter((name) => name !== 'add_prospect'),
 ])];
 
 function routerFor(toolSets: string[]) {
@@ -87,11 +87,11 @@ describe('authenticated Tavus voice Addie tool routing', () => {
   });
 
   it('permits an admin domain only for an authenticated admin voice caller', async () => {
-    const admin = await select(routerFor(['admin_prospects']), true);
-    expect(admin.selectedToolSets).toContain('admin_prospects');
+    const admin = await select(routerFor(['admin_prospect_pipeline']), true);
+    expect(admin.selectedToolSets).toContain('admin_prospect_pipeline');
     expect(admin.requestTools.tools.map((tool) => tool.name)).toContain('add_prospect');
 
-    const member = await select(routerFor(['admin_prospects']));
+    const member = await select(routerFor(['admin_prospect_pipeline']));
     expect(member.selectedToolSets).toEqual(['knowledge', 'community_research', 'schema_reference']);
     expect(member.requestTools.tools.map((tool) => tool.name)).not.toContain('add_prospect');
   });

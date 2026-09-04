@@ -18,6 +18,7 @@ const releaseDocsWorkflow = fs.readFileSync(
   path.join(repoRoot, '.github/workflows/release-docs.yml'),
   'utf8'
 );
+const releaseDocsWorkflowConfig = YAML.parse(releaseDocsWorkflow);
 const schemaPrWorkflowConfig = YAML.parse(fs.readFileSync(
   path.join(repoRoot, '.github/workflows/validate-schema-bundle.yml'),
   'utf8'
@@ -256,6 +257,13 @@ assert(
 assert(
   !releaseDocsWorkflow.includes('gh pr merge --auto'),
   'Release documentation snapshots must wait for human review instead of enabling auto-merge.'
+);
+const releaseDocsCreatePr = releaseDocsWorkflowConfig.jobs['snapshot-docs'].steps.find(
+  step => step.name === 'Create Pull Request'
+);
+assert(
+  releaseDocsCreatePr.with['add-paths'].split(/\s+/).includes('llms-current.md'),
+  'Release documentation snapshot PRs must include the generated current LLM index.'
 );
 
 assert(

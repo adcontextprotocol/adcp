@@ -1,7 +1,7 @@
 # Reporting reconciliation fixture
 
 This directory is the protocol-owned, portable fixture for managed-reporting
-resource inspection and consumer receipts. SDKs consume the same
+resource inspection, immutable post-official adjustments, and consumer receipts. SDKs consume the same
 `scenario-index.json` and exact asset bytes; they do not copy or recreate the
 manifests, report objects, canonicalization vectors, or receipt bodies.
 The initial manifest, rows, row schema, report definition, and canonicalization
@@ -14,14 +14,17 @@ index; this protocol copy is authoritative for subsequent changes.
 2. Validate `scenario-index.json` against `scenario-index.schema.json`.
 3. Verify every cataloged asset's byte length, SHA-256, and SHA-512 before
    parsing it.
-4. Load the obligation, revision, materialization, manifest, report definition,
-   row schema, and canonicalization contract named by `base_inputs`.
+4. Load the obligation, revision, adjustment, materialization, manifest, report
+   definition, row schema, and canonicalization contract named by `base_inputs`.
 5. Apply each scenario's parameterized `mutation` operation to a fresh copy of
    those inputs, then reconcile it. `resource_reads` is the exact trace to
    assert, not a script that replaces the mutation recipe.
 6. Assert the error classification, read count, outcome, and receipt behavior.
 7. Validate receipt requests and acknowledgements with the schemas named in
    `protocol.schema_ids`.
+8. Execute `post_official_adjustment`: retain the invoice's official revision
+   and original receipt unchanged, verify the adjustment's JCS digest, and
+   record the exact accepted adjustment receipt.
 
 `publish_order` is part of the fixture: data objects become visible before the
 manifest, and the manifest is the commit point. A missing object after a valid,

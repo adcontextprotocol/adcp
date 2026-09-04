@@ -63,7 +63,6 @@ import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import {
   captureReportingMediaBuyCandidateDurably,
   resolveReportingAccountDurably,
-  TRAINING_REPORTING_CORE_OFFERING,
 } from './reporting-reliability.js';
 import {
   getSharedAccountCreative,
@@ -13169,8 +13168,7 @@ async function captureMediaBuyReportingState(
         .filter(pkg => !pkg.canceled)
         .map(pkg => ({
           packageId: pkg.packageId,
-          supported: offeringIdsByPackage[pkg.packageId]
-            ?.includes(TRAINING_REPORTING_CORE_OFFERING.offering_id) === true,
+          offeringIds: [...(offeringIdsByPackage[pkg.packageId] ?? [])],
         })),
     },
   );

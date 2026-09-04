@@ -27,6 +27,7 @@ import {
   classifyActiveCertificationProgress,
   selectBoundedRoutedToolSets,
   type ActiveCertificationKind,
+  type SponsoredIntelligenceContextKind,
 } from "../addie/slack-tool-selection.js";
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
@@ -341,7 +342,7 @@ export async function selectRoutedWebTools(input: {
   /** Globally registered definitions whose handlers were paired at registration time. */
   globalToolNames?: readonly string[];
   activeCertificationKind?: ActiveCertificationKind | null;
-  hasSponsoredIntelligenceContext?: boolean;
+  sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
   threadMessages?: string[];
 }): Promise<RoutedWebTools> {
   let plan: ExecutionPlan | null = null;
@@ -376,7 +377,7 @@ export async function selectRoutedWebTools(input: {
     source: 'dm',
     isAdmin: input.isAAOAdmin,
     activeCertificationKind: input.activeCertificationKind,
-    hasSponsoredIntelligenceContext: input.hasSponsoredIntelligenceContext,
+    sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
     isToolAvailable,
   });
   const { selectedToolSets, allowedToolNames } = selection;
@@ -1311,8 +1312,11 @@ export function createAddieChatRouter(options?: {
             router: resolveRouter(),
             globalToolNames: activeChatClient.getRegisteredTools?.(),
             activeCertificationKind,
-            hasSponsoredIntelligenceContext:
-              hasCachedSiSession(externalId) || siAgents.length > 0,
+            sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+              ? 'session'
+              : siAgents.length > 0
+                ? 'discovery'
+                : null,
             threadMessages: contextMessages.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
           })
         : null;
@@ -1805,8 +1809,11 @@ export function createAddieChatRouter(options?: {
             router: resolveRouter(),
             globalToolNames: activeChatClient.getRegisteredTools?.(),
             activeCertificationKind,
-            hasSponsoredIntelligenceContext:
-              hasCachedSiSession(externalId) || siAgents.length > 0,
+            sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+              ? 'session'
+              : siAgents.length > 0
+                ? 'discovery'
+                : null,
             threadMessages: contextMessages.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
           })
         : null;

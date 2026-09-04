@@ -81,32 +81,94 @@ const ENROLLMENT_TOOLS = ["get_account_link"];
  * audit behavior while preventing every admin turn from receiving the old
  * monolithic surface.
  */
+export const ADMIN_BILLING_DOMAIN_TOOL_SETS = {
+  admin_billing_payments: [
+    "send_payment_request",
+    "resend_invoice",
+    "list_pending_invoices",
+  ],
+  admin_billing_discounts: [
+    "grant_discount",
+    "remove_discount",
+    "list_discounts",
+    "create_promotion_code",
+  ],
+  admin_billing_account: [
+    "update_billing_email",
+    "preview_org_stripe_customer_update",
+    "confirm_org_stripe_customer_update",
+    "get_account",
+  ],
+} as const;
+
+export const ADMIN_PROSPECT_DOMAIN_TOOL_SETS = {
+  admin_prospect_pipeline: [
+    "add_prospect",
+    "update_prospect",
+    "query_prospects",
+    "claim_prospect",
+  ],
+  admin_prospect_research: [
+    "enrich_company",
+    "prospect_search_lusha",
+    "triage_prospect_domain",
+    "suggest_prospects",
+  ],
+} as const;
+
+export const ADMIN_FEED_DOMAIN_TOOL_SETS = {
+  admin_feed_monitoring: [
+    "search_industry_feeds",
+    "get_feed_stats",
+    "list_feed_proposals",
+  ],
+  admin_feed_curation: [
+    "add_industry_feed",
+    "approve_feed_proposal",
+    "reject_feed_proposal",
+    "add_media_contact",
+  ],
+} as const;
+
+export const ADMIN_WORKFLOW_DOMAIN_TOOL_SETS = {
+  admin_conversation_review: [
+    "query_admin_analytics",
+    "list_flagged_conversations",
+    "review_flagged_conversation",
+  ],
+  admin_followup_tasks: [
+    "set_reminder",
+    "my_upcoming_tasks",
+    "complete_task",
+    "log_conversation",
+  ],
+} as const;
+
+export const OUTREACH_DOMAIN_TOOL_SETS = {
+  outreach_reporting: [
+    "get_outreach_stats",
+    "get_outreach_history",
+    "get_action_items",
+  ],
+  outreach_contact_management: [
+    "send_outreach",
+    "lookup_person",
+    "get_account",
+    "create_contact",
+  ],
+} as const;
+
 export const ADMIN_DOMAIN_TOOL_SETS = {
+  ...ADMIN_BILLING_DOMAIN_TOOL_SETS,
+  ...ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
+  ...ADMIN_FEED_DOMAIN_TOOL_SETS,
+  ...ADMIN_WORKFLOW_DOMAIN_TOOL_SETS,
   admin_events: [
     "create_event",
     "update_event",
     "manage_event_registrations",
     "check_person_event_status",
     "invite_to_event",
-  ],
-  admin_prospects: [
-    "add_prospect",
-    "update_prospect",
-    "enrich_company",
-    "query_prospects",
-    "prospect_search_lusha",
-    "claim_prospect",
-    "triage_prospect_domain",
-    "suggest_prospects",
-  ],
-  admin_feeds: [
-    "search_industry_feeds",
-    "add_industry_feed",
-    "get_feed_stats",
-    "list_feed_proposals",
-    "approve_feed_proposal",
-    "reject_feed_proposal",
-    "add_media_contact",
   ],
   admin_group_structure: [
     "create_chapter",
@@ -140,15 +202,6 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "list_paying_members",
     "update_member_logo",
     "update_member_profile",
-  ],
-  admin_workflows: [
-    "query_admin_analytics",
-    "list_flagged_conversations",
-    "review_flagged_conversation",
-    "set_reminder",
-    "my_upcoming_tasks",
-    "complete_task",
-    "log_conversation",
   ],
   admin_brand_registry_integrity: [
     "list_missing_brands",
@@ -192,6 +245,82 @@ export const ADMIN_BRANDS_TOOLS = [
   "list_pending_community_mirrors",
   "transfer_brand_ownership",
   "list_orphaned_brands",
+] as const;
+
+export const ADMIN_BILLING_PAYMENT_TOOLS = ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_payments;
+export const ADMIN_BILLING_DISCOUNT_TOOLS = ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_discounts;
+export const ADMIN_BILLING_ACCOUNT_TOOLS = ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_account;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_BILLING_TOOLS = [
+  "send_payment_request",
+  "grant_discount",
+  "remove_discount",
+  "list_discounts",
+  "create_promotion_code",
+  "resend_invoice",
+  "update_billing_email",
+  "preview_org_stripe_customer_update",
+  "confirm_org_stripe_customer_update",
+  "list_pending_invoices",
+  "get_account",
+] as const;
+
+export const ADMIN_PROSPECT_PIPELINE_TOOLS = ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_pipeline;
+export const ADMIN_PROSPECT_RESEARCH_TOOLS = ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_research;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_PROSPECTS_TOOLS = [
+  "add_prospect",
+  "update_prospect",
+  "enrich_company",
+  "query_prospects",
+  "prospect_search_lusha",
+  "claim_prospect",
+  "triage_prospect_domain",
+  "suggest_prospects",
+] as const;
+
+export const ADMIN_FEED_MONITORING_TOOLS = ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_monitoring;
+export const ADMIN_FEED_CURATION_TOOLS = ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_curation;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_FEEDS_TOOLS = [
+  "search_industry_feeds",
+  "add_industry_feed",
+  "get_feed_stats",
+  "list_feed_proposals",
+  "approve_feed_proposal",
+  "reject_feed_proposal",
+  "add_media_contact",
+] as const;
+
+export const ADMIN_CONVERSATION_REVIEW_TOOLS = ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_conversation_review;
+export const ADMIN_FOLLOWUP_TASK_TOOLS = ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_followup_tasks;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_WORKFLOWS_TOOLS = [
+  "query_admin_analytics",
+  "list_flagged_conversations",
+  "review_flagged_conversation",
+  "set_reminder",
+  "my_upcoming_tasks",
+  "complete_task",
+  "log_conversation",
+] as const;
+
+export const OUTREACH_REPORTING_TOOLS = OUTREACH_DOMAIN_TOOL_SETS.outreach_reporting;
+export const OUTREACH_CONTACT_MANAGEMENT_TOOLS = OUTREACH_DOMAIN_TOOL_SETS.outreach_contact_management;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const OUTREACH_TOOLS = [
+  "get_outreach_stats",
+  "get_outreach_history",
+  "send_outreach",
+  "lookup_person",
+  "get_action_items",
+  "get_account",
+  "create_contact",
 ] as const;
 
 /** Bounded member-facing brand-registry domains for ordinary router plans. */
@@ -262,7 +391,25 @@ export const DIRECTORY_COMPATIBILITY_TOOLS = [
   "lookup_domain",
 ] as const;
 
-/** Bounded member account/profile surface for new router plans. */
+/** Bounded member profile domains for ordinary router plans. */
+export const MEMBER_PROFILE_DOMAIN_TOOL_SETS = {
+  member_personal_profile: [
+    "get_my_profile",
+    "update_my_profile",
+  ],
+  member_company_profile: [
+    "get_company_listing",
+    "update_company_listing",
+    "update_company_logo",
+    "request_brand_domain_challenge",
+    "verify_brand_domain_challenge",
+  ],
+} as const;
+
+export const MEMBER_PERSONAL_PROFILE_TOOLS = MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_personal_profile;
+export const MEMBER_COMPANY_PROFILE_TOOLS = MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_company_profile;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const MEMBER_PROFILE_TOOLS = [
   "get_my_profile",
   "update_my_profile",
@@ -325,7 +472,54 @@ export const COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS = [
 /** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const COMMUNITY_GROUP_TOOLS = COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS;
 
-/** Author-owned submission, document import, asset, and cover-image workflow. */
+/** Bounded Sponsored Intelligence domains for ordinary router plans. */
+export const SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS = {
+  sponsored_intelligence_discovery: [
+    "get_si_availability",
+    "list_si_agents",
+    "connect_to_si_agent",
+  ],
+  sponsored_intelligence_session: [
+    "send_to_si_agent",
+    "end_si_session",
+    "get_si_session_status",
+  ],
+} as const;
+
+export const SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS =
+  SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_discovery;
+export const SPONSORED_INTELLIGENCE_SESSION_TOOLS =
+  SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_session;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const SPONSORED_INTELLIGENCE_TOOLS = [
+  "get_si_availability",
+  "list_si_agents",
+  "connect_to_si_agent",
+  "send_to_si_agent",
+  "end_si_session",
+  "get_si_session_status",
+] as const;
+
+/** Bounded member publishing domains for ordinary router plans. */
+export const PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS = {
+  publishing_submission: [
+    "propose_content",
+    "get_my_content",
+    "read_google_doc",
+  ],
+  publishing_assets: [
+    "get_my_content",
+    "check_illustration_status",
+    "generate_perspective_illustration",
+    "attach_content_asset",
+  ],
+} as const;
+
+export const PUBLISHING_SUBMISSION_TOOLS = PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_submission;
+export const PUBLISHING_ASSET_TOOLS = PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_assets;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const PUBLISHING_AUTHOR_TOOLS = [
   "propose_content",
   "get_my_content",
@@ -431,6 +625,53 @@ export const MEETING_FULL_ADMINISTRATION_TOOLS = [
 /** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const MEETING_TOOLS = MEETING_FULL_ADMINISTRATION_TOOLS;
 
+/** Bounded committee-leadership domains for ordinary router plans. */
+export const COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS = {
+  committee_co_leaders: [
+    "add_committee_co_leader",
+    "remove_committee_co_leader",
+    "list_committee_co_leaders",
+    "list_working_groups",
+  ],
+  committee_event_planning: [
+    "list_working_groups",
+    "create_event",
+    "update_event",
+  ],
+  committee_event_registrations: [
+    "list_working_groups",
+    "manage_event_registrations",
+    "check_person_event_status",
+    "invite_to_event",
+  ],
+} as const;
+
+export const COMMITTEE_CO_LEADER_TOOLS =
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_co_leaders;
+export const COMMITTEE_EVENT_PLANNING_TOOLS =
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_planning;
+export const COMMITTEE_EVENT_REGISTRATION_TOOLS =
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_registrations;
+
+/**
+ * One long committee-leadership request spanning every bounded workflow.
+ * Kept literal so the router-visible composite and hidden alias are cataloged.
+ */
+export const COMMITTEE_FULL_LEADERSHIP_TOOLS = [
+  "add_committee_co_leader",
+  "remove_committee_co_leader",
+  "list_committee_co_leaders",
+  "list_working_groups",
+  "create_event",
+  "update_event",
+  "manage_event_registrations",
+  "check_person_event_status",
+  "invite_to_event",
+] as const;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const COMMITTEE_LEADERSHIP_TOOLS = COMMITTEE_FULL_LEADERSHIP_TOOLS;
+
 /** Publisher registry, configuration, authorization, and cached-status checks. */
 export const AGENT_REGISTRY_TOOLS = [
   "validate_adagents",
@@ -483,7 +724,30 @@ export const AGENT_VALIDATION_TOOLS = [
   "validate_agent",
 ] as const;
 
-/** Bounded property-registry audit, enrichment, and catalog surface. */
+/** Bounded property domains for ordinary router plans. */
+export const PROPERTY_DOMAIN_TOOL_SETS = {
+  property_registry_records: [
+    "resolve_property",
+    "save_property",
+    "list_properties",
+    "list_missing_properties",
+  ],
+  property_list_enrichment: [
+    "check_property_list",
+    "enhance_property",
+  ],
+  property_identifier_catalog: [
+    "resolve_catalog",
+    "browse_catalog",
+    "dispute_catalog_entry",
+  ],
+} as const;
+
+export const PROPERTY_REGISTRY_RECORD_TOOLS = PROPERTY_DOMAIN_TOOL_SETS.property_registry_records;
+export const PROPERTY_LIST_ENRICHMENT_TOOLS = PROPERTY_DOMAIN_TOOL_SETS.property_list_enrichment;
+export const PROPERTY_IDENTIFIER_CATALOG_TOOLS = PROPERTY_DOMAIN_TOOL_SETS.property_identifier_catalog;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const PROPERTY_CATALOG_TOOLS = [
   "resolve_property",
   "save_property",
@@ -494,6 +758,35 @@ export const PROPERTY_CATALOG_TOOLS = [
   "resolve_catalog",
   "browse_catalog",
   "dispute_catalog_entry",
+] as const;
+
+/** Bounded AdCP protocol-operation domains for ordinary router plans. */
+export const ADCP_OPERATION_DOMAIN_TOOL_SETS = {
+  adcp_task_operations: [
+    "ask_about_adcp_task",
+    "call_adcp_task",
+    "get_adcp_capabilities",
+  ],
+  adcp_agent_management: [
+    "save_agent",
+    "list_saved_agents",
+    "remove_saved_agent",
+    "setup_test_agent",
+  ],
+} as const;
+
+export const ADCP_TASK_OPERATION_TOOLS = ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_task_operations;
+export const ADCP_AGENT_MANAGEMENT_TOOLS = ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_agent_management;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADCP_OPERATIONS_TOOLS = [
+  "ask_about_adcp_task",
+  "call_adcp_task",
+  "get_adcp_capabilities",
+  "save_agent",
+  "list_saved_agents",
+  "remove_saved_agent",
+  "setup_test_agent",
 ] as const;
 
 /**
@@ -537,11 +830,27 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  member_personal_profile: {
+    name: "member_personal_profile",
+    description:
+      "Show or update the current member's personal profile and account details",
+    tools: [...MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_personal_profile],
+  },
+
+  member_company_profile: {
+    name: "member_company_profile",
+    description:
+      "Manage the current member's company directory listing, logo, brand color, and organization brand-domain claim",
+    tools: [...MEMBER_PROFILE_DOMAIN_TOOL_SETS.member_company_profile],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   member_profile: {
     name: "member_profile",
     description:
-      "Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim",
+      "Legacy combined member-profile compatibility surface",
     tools: [...MEMBER_PROFILE_TOOLS],
+    routerVisible: false,
   },
 
   community_group_discovery: {
@@ -678,11 +987,34 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  property_registry_records: {
+    name: "property_registry_records",
+    description:
+      'Resolve, save, and browse publisher property-registry records, including missing domains and property visibility.',
+    tools: [...PROPERTY_DOMAIN_TOOL_SETS.property_registry_records],
+  },
+
+  property_list_enrichment: {
+    name: "property_list_enrichment",
+    description:
+      'Audit supplied publisher-domain lists and assess unknown domains for property-registry review.',
+    tools: [...PROPERTY_DOMAIN_TOOL_SETS.property_list_enrichment],
+  },
+
+  property_identifier_catalog: {
+    name: "property_identifier_catalog",
+    description:
+      'Resolve identifiers to stable property records, browse the property catalog, and dispute incorrect catalog entries.',
+    tools: [...PROPERTY_DOMAIN_TOOL_SETS.property_identifier_catalog],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or two bounded property domains.
   property_catalog: {
     name: "property_catalog",
-    description:
-      'Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.',
+    description: 'Legacy combined property registry, enrichment, and identifier-catalog compatibility surface.',
     tools: [...PROPERTY_CATALOG_TOOLS],
+    routerVisible: false,
   },
 
   agent_conformance: {
@@ -692,35 +1024,48 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: ["issue_conformance_token", "run_conformance_against_my_agent"],
   },
 
-  adcp_operations: {
-    name: "adcp_operations",
+  adcp_task_operations: {
+    name: "adcp_task_operations",
     description:
-      "Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.",
-    tools: [
-      // Meta-tools (replace 43 individual AdCP tools)
-      "ask_about_adcp_task",
-      "call_adcp_task",
-      "get_adcp_capabilities",
-      // Agent management (unchanged, from member-tools.ts)
-      "save_agent",
-      "list_saved_agents",
-      "remove_saved_agent",
-      "setup_test_agent",
-    ],
+      "Inspect or execute AdCP protocol tasks and check live agent capabilities.",
+    tools: [...ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_task_operations],
   },
 
+  adcp_agent_management: {
+    name: "adcp_agent_management",
+    description:
+      "Register, list, remove, or set up saved AdCP agents.",
+    tools: [...ADCP_OPERATION_DOMAIN_TOOL_SETS.adcp_agent_management],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  adcp_operations: {
+    name: "adcp_operations",
+    description: "Legacy combined AdCP task and saved-agent compatibility surface.",
+    tools: [...ADCP_OPERATIONS_TOOLS],
+    routerVisible: false,
+  },
+
+  sponsored_intelligence_discovery: {
+    name: "sponsored_intelligence_discovery",
+    description:
+      "Discover and connect to member brand agents that support Sponsored Intelligence, including anonymous offer-availability checks",
+    tools: [...SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_discovery],
+  },
+
+  sponsored_intelligence_session: {
+    name: "sponsored_intelligence_session",
+    description:
+      "Relay messages to, inspect, or end an active Sponsored Intelligence brand-agent session",
+    tools: [...SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS.sponsored_intelligence_session],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   sponsored_intelligence: {
     name: "sponsored_intelligence",
-    description:
-      "Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation",
-    tools: [
-      "get_si_availability",
-      "list_si_agents",
-      "connect_to_si_agent",
-      "send_to_si_agent",
-      "end_si_session",
-      "get_si_session_status",
-    ],
+    description: "Legacy combined Sponsored Intelligence compatibility surface",
+    tools: [...SPONSORED_INTELLIGENCE_TOOLS],
+    routerVisible: false,
   },
 
   content: {
@@ -735,11 +1080,26 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  publishing_submission: {
+    name: "publishing_submission",
+    description:
+      "Submit or inspect member perspectives, including Google Doc import",
+    tools: [...PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_submission],
+  },
+
+  publishing_assets: {
+    name: "publishing_assets",
+    description:
+      "Manage published-content assets and cover illustrations",
+    tools: [...PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS.publishing_assets],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   publishing_author: {
     name: "publishing_author",
-    description:
-      "Submit and manage the current member's articles or perspectives, import Google Docs for publication, attach assets, and generate or check published cover illustrations",
+    description: "Legacy combined member-publishing compatibility surface",
     tools: [...PUBLISHING_AUTHOR_TOOLS],
+    routerVisible: false,
   },
 
   publishing_review: {
@@ -789,24 +1149,41 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     requiresPrecision: true,
   },
 
+  admin_billing_payments: {
+    name: "admin_billing_payments",
+    description:
+      "Administer payment requests and invoices for other organizations, including listing pending invoices and resending an open invoice (admin only)",
+    tools: [...ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_payments],
+    adminOnly: true,
+    requiresPrecision: true,
+  },
+
+  admin_billing_discounts: {
+    name: "admin_billing_discounts",
+    description:
+      "Inspect, grant, or remove organization discounts and create promotion codes (admin only)",
+    tools: [...ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_discounts],
+    adminOnly: true,
+    requiresPrecision: true,
+  },
+
+  admin_billing_account: {
+    name: "admin_billing_account",
+    description:
+      "Inspect an organization account, update its billing email, or preview and confirm a Stripe customer relink (admin only)",
+    tools: [...ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_account],
+    adminOnly: true,
+    requiresPrecision: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or two bounded admin billing domains.
   billing: {
     name: "billing",
-    description:
-      "Administer billing for other organizations - send payment requests, manage discounts and promotions, resend invoices, update billing identity, and inspect pending accounts",
-    tools: [
-      "send_payment_request",
-      "grant_discount",
-      "remove_discount",
-      "list_discounts",
-      "create_promotion_code",
-      "resend_invoice",
-      "update_billing_email",
-      "preview_org_stripe_customer_update",
-      "confirm_org_stripe_customer_update",
-      "list_pending_invoices",
-      "get_account",
-    ],
+    description: "Legacy combined admin-billing compatibility surface",
+    tools: [...ADMIN_BILLING_TOOLS],
     adminOnly: true,
+    routerVisible: false,
     requiresPrecision: true,
   },
 
@@ -861,21 +1238,39 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  committee_co_leaders: {
+    name: "committee_co_leaders",
+    description: "List, add, or remove co-leaders for a committee led by the current member",
+    tools: [...COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_co_leaders],
+  },
+
+  committee_event_planning: {
+    name: "committee_event_planning",
+    description: "Create or update an event for a committee led by the current member",
+    tools: [...COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_planning],
+  },
+
+  committee_event_registrations: {
+    name: "committee_event_registrations",
+    description:
+      "Review or manage registrations, check attendance status, and invite people to a committee event",
+    tools: [...COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS.committee_event_registrations],
+  },
+
+  // Explicit exception for one request spanning all three leadership workflows.
+  committee_full_leadership: {
+    name: "committee_full_leadership",
+    description:
+      "Handle one long request spanning committee co-leaders, event planning, and registration or invitation management",
+    tools: [...COMMITTEE_FULL_LEADERSHIP_TOOLS],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
   committee_leadership: {
     name: "committee_leadership",
-    description:
-      "Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings",
-    tools: [
-      "add_committee_co_leader",
-      "remove_committee_co_leader",
-      "list_committee_co_leaders",
-      "list_working_groups",
-      "create_event",
-      "update_event",
-      "manage_event_registrations",
-      "check_person_event_status",
-      "invite_to_event",
-    ],
+    description: "Legacy combined committee-leadership compatibility surface",
+    tools: [...COMMITTEE_LEADERSHIP_TOOLS],
+    routerVisible: false,
   },
 
   admin_events: {
@@ -886,20 +1281,56 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
-  admin_prospects: {
-    name: "admin_prospects",
+  admin_prospect_pipeline: {
+    name: "admin_prospect_pipeline",
     description:
-      "Manage the prospect pipeline: add, update, enrich, search, claim, triage, and suggest prospect organizations (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_prospects],
+      "Add, update, query, or claim prospect records (admin only)",
+    tools: [...ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_pipeline],
     adminOnly: true,
   },
 
+  admin_prospect_research: {
+    name: "admin_prospect_research",
+    description:
+      "Research, enrich, triage, or suggest prospect organizations (admin only)",
+    tools: [...ADMIN_PROSPECT_DOMAIN_TOOL_SETS.admin_prospect_research],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded prospect domains.
+  admin_prospects: {
+    name: "admin_prospects",
+    description: "Legacy combined admin-prospect compatibility surface",
+    tools: [...ADMIN_PROSPECTS_TOOLS],
+    adminOnly: true,
+    routerVisible: false,
+  },
+
+  admin_feed_monitoring: {
+    name: "admin_feed_monitoring",
+    description:
+      "Search industry feeds, inspect feed statistics, or list proposed feeds (admin only)",
+    tools: [...ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_monitoring],
+    adminOnly: true,
+  },
+
+  admin_feed_curation: {
+    name: "admin_feed_curation",
+    description:
+      "Add industry feeds, review feed proposals, or add verified media contacts (admin only)",
+    tools: [...ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_curation],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded feed domains.
   admin_feeds: {
     name: "admin_feeds",
-    description:
-      "Manage industry news feeds and media contacts, including review of proposed feeds (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_feeds],
+    description: "Legacy combined admin-feed compatibility surface",
+    tools: [...ADMIN_FEEDS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   admin_group_structure: {
@@ -952,12 +1383,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  admin_conversation_review: {
+    name: "admin_conversation_review",
+    description:
+      "Query community analytics or review flagged conversations (admin only)",
+    tools: [...ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_conversation_review],
+    adminOnly: true,
+  },
+
+  admin_followup_tasks: {
+    name: "admin_followup_tasks",
+    description:
+      "Manage reminders and tasks or log member and prospect interactions (admin only)",
+    tools: [...ADMIN_WORKFLOW_DOMAIN_TOOL_SETS.admin_followup_tasks],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route,
+  // including the server-owned error channel.
   admin_workflows: {
     name: "admin_workflows",
-    description:
-      "Run internal analytics, flagged-conversation review, reminders, tasks, and conversation logging (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_workflows],
+    description: "Legacy combined admin-workflow compatibility surface",
+    tools: [...ADMIN_WORKFLOWS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   admin_brand_registry_integrity: {
@@ -986,20 +1435,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  outreach_reporting: {
+    name: "outreach_reporting",
+    description:
+      "Outreach performance, history, and action items (admin only)",
+    tools: [...OUTREACH_DOMAIN_TOOL_SETS.outreach_reporting],
+    adminOnly: true,
+  },
+
+  outreach_contact_management: {
+    name: "outreach_contact_management",
+    description:
+      "Person/account lookup, contact creation, and outreach delivery (admin only)",
+    tools: [...OUTREACH_DOMAIN_TOOL_SETS.outreach_contact_management],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route,
+  // including the server-owned prospect channel.
   outreach: {
     name: "outreach",
-    description:
-      "SDR outreach operations — view outreach stats, check history, send outreach, look up people, manage action items (admin only)",
-    tools: [
-      "get_outreach_stats",
-      "get_outreach_history",
-      "send_outreach",
-      "lookup_person",
-      "get_action_items",
-      "get_account",
-      "create_contact",
-    ],
+    description: "Legacy combined outreach compatibility surface",
+    tools: [...OUTREACH_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   collaboration: {
@@ -1083,7 +1542,14 @@ export function getToolsForSets(
         continue;
       }
       // Skip enrollment and financial actions in public channels.
-      if (isPublicChannel && (setName === "member_billing" || setName === "billing")) {
+      if (
+        isPublicChannel
+        && (
+          setName === "member_billing"
+          || setName === "billing"
+          || Object.prototype.hasOwnProperty.call(ADMIN_BILLING_DOMAIN_TOOL_SETS, setName)
+        )
+      ) {
         continue;
       }
       for (const tool of toolSet.tools) {

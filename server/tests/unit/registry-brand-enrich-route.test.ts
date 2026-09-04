@@ -70,6 +70,7 @@ function discoveredBrandWithContext() {
     canonical_domain: 'acme.com',
     brand_name: 'Acme',
     source_type: 'enriched',
+    enrichment_provider: 'brandfetch',
     is_public: true,
     manifest_orphaned: false,
     brand_manifest: {
@@ -212,6 +213,32 @@ describe('GET /api/brands/enrich', () => {
     expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
   });
 
+  it('never refreshes a stale verified-owner identity from enrichment', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        id: 'brand-owner',
+        domain: 'owner.example',
+        has_brand_manifest: true,
+        brand_manifest: { name: 'Owner Canonical', url: 'https://owner.example' },
+        source_type: 'community',
+        workos_organization_id: 'org_owner',
+        domain_verified: true,
+        last_validated: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/enrich?domain=owner.example');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      cached: true,
+      manifest: { name: 'Owner Canonical', url: 'https://owner.example' },
+    });
+    expect(mocks.fetchBrandData).not.toHaveBeenCalled();
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
   it('persists only Brand API fields while returning Brand Context as ephemeral response context', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
@@ -249,6 +276,7 @@ describe('GET /api/brands/enrich', () => {
       domain: 'acme.com',
       brand_name: 'Acme',
       source_type: 'enriched',
+      enrichment_provider: 'brandfetch',
       brand_manifest: {
         name: 'Acme',
         url: 'https://acme.com',
@@ -325,6 +353,11 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
+    expect(res.body).toMatchObject({
+      source: 'enriched',
+      provenance: 'enriched',
+      provenance_provider: 'brandfetch',
+    });
   });
 
   it('reports verified owner-registered fallback records as hosted', async () => {
@@ -342,6 +375,24 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('hosted');
+    expect(res.body.provenance).toBe('canonical');
+    expect(res.body.provenance_provider).toBeUndefined();
+  });
+
+  it('does not guess the provider for a legacy enriched record', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(),
+        enrichment_provider: undefined,
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.provenance).toBe('enriched');
+    expect(res.body.provenance_provider).toBeUndefined();
   });
 
   it('does not report an unverified organization-attributed record as hosted', async () => {
@@ -359,6 +410,24 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('community');
+    expect(res.body.provenance).toBe('community');
+  });
+
+  it('omits provenance instead of inventing an unknown tier for stubs', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(),
+        source_type: 'stub',
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.source).toBe('stub');
+    expect(res.body.provenance).toBeUndefined();
+    expect(res.body.provenance_provider).toBeUndefined();
   });
 
   it('keeps identical live and stored records on the same provenance label', async () => {
@@ -469,6 +538,7 @@ describe('public registry brand read paths', () => {
     expect(res.body).toMatchObject({
       canonical_id: 'acme-live',
       source: 'brand_json',
+      provenance: 'canonical',
       promoted_from_schema: live.promoted_from_schema,
       migration_warnings: live.migration_warnings,
     });
@@ -500,7 +570,7 @@ describe('public registry brand read paths', () => {
     })).get('/api/brands/resolve?domain=acme.com');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(live);
+    expect(res.body).toEqual({ ...live, provenance: 'canonical' });
   });
 
   it('rejects path and port lookup inputs before brand resolution', async () => {
@@ -541,6 +611,8 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('enriched');
+    expect(res.body.provenance).toBe('enriched');
+    expect(res.body.provenance_provider).toBe('brandfetch');
     expect(res.body.live_brand_json).toEqual({
       valid: false,
       url: validation.url,
@@ -595,6 +667,11 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.results['acme.com'].brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
+    expect(res.body.results['acme.com']).toMatchObject({
+      source: 'enriched',
+      provenance: 'enriched',
+      provenance_provider: 'brandfetch',
+    });
   });
 
   it('rejects non-hostname inputs from bulk resolution', async () => {

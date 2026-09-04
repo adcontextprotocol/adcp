@@ -24,7 +24,7 @@ const pairedGlobalToolNames = [...new Set([
     .filter((name) => name !== 'search_docs'),
   ...getToolsForSets(['member_billing'], false, false)
     .filter((name) => name !== 'create_payment_link'),
-  ...getToolsForSets(['admin_prospects'], true, false)
+  ...getToolsForSets(['admin_prospect_pipeline'], true, false)
     .filter((name) => name !== 'add_prospect'),
 ])];
 
@@ -94,11 +94,11 @@ describe('authenticated web Addie tool routing', () => {
   });
 
   it('allows an authorized admin domain but rejects it for a member', async () => {
-    const adminSelected = await select(routerFor(['admin_prospects']), true);
-    expect(adminSelected.selectedToolSets).toContain('admin_prospects');
+    const adminSelected = await select(routerFor(['admin_prospect_pipeline']), true);
+    expect(adminSelected.selectedToolSets).toContain('admin_prospect_pipeline');
     expect(adminSelected.requestTools.tools.map((tool) => tool.name)).toContain('add_prospect');
 
-    const memberSelected = await select(routerFor(['admin_prospects']));
+    const memberSelected = await select(routerFor(['admin_prospect_pipeline']));
     expect(memberSelected.selectedToolSets).toEqual([
       'knowledge',
       'community_research',
@@ -158,10 +158,10 @@ describe('authenticated web Addie tool routing', () => {
       isAAOAdmin: false,
       requestTools: { tools, handlers },
       router: null,
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
     });
 
-    expect(selected.selectedToolSets).not.toContain('sponsored_intelligence');
+    expect(selected.selectedToolSets).not.toContain('sponsored_intelligence_session');
     expect(selected.allowedToolNames).not.toContain('send_to_si_agent');
   });
 
@@ -199,7 +199,7 @@ describe('authenticated web Addie tool routing', () => {
         if (options?.failureMode !== 'throw') {
           return {
             action: 'respond' as const,
-            tool_sets: ['admin_prospects'],
+            tool_sets: ['admin_prospect_pipeline'],
             confidence: 'high' as const,
             reason: 'internal router fallback',
             decision_method: 'llm' as const,

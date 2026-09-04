@@ -121,7 +121,10 @@ describe('Addie router prompt policy', () => {
     expect(memberPrompt).toContain('→ ["member_billing"]');
     expect(memberPrompt).toContain('Refunds, disputes, failed charges');
     expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
-    expect(adminPrompt).toContain('→ ["billing"]');
+    expect(adminPrompt).toContain('→ ["admin_billing_payments"]');
+    expect(adminPrompt).toContain('→ ["admin_billing_discounts"]');
+    expect(adminPrompt).toContain('→ ["admin_billing_account"]');
+    expect(adminPrompt).not.toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
     expect(memberPrompt).toContain('whether Addie exists as an MCP tool');
   });
@@ -305,7 +308,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['admin_workflows']);
+        expect(plan!.tool_sets).toEqual(['admin_conversation_review']);
       }
     });
 
@@ -331,6 +334,9 @@ describe('AddieRouter.quickMatch', () => {
       );
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['outreach_reporting']);
+      }
     });
 
     it('should NOT route engagement queries for non-admins', () => {
@@ -356,7 +362,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['admin_workflows']);
+        expect(plan!.tool_sets).toEqual(['admin_followup_tasks']);
       }
     });
 
@@ -532,13 +538,25 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should include bounded knowledge, member-profile, community-group, and directory sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('member_personal_profile');
+      expect(descriptions).toContain('member_company_profile');
+      expect(descriptions).not.toMatch(/\*\*member_profile\*\*/);
+      expect(descriptions).toContain('publishing_submission');
+      expect(descriptions).toContain('publishing_assets');
+      expect(descriptions).not.toMatch(/\*\*publishing_author\*\*/);
+      expect(descriptions).toContain('sponsored_intelligence_discovery');
+      expect(descriptions).toContain('sponsored_intelligence_session');
+      expect(descriptions).not.toMatch(/\*\*sponsored_intelligence\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
       expect(descriptions).toContain('community_group_contribution');
       expect(descriptions).toContain('partner_directory');
       expect(descriptions).toContain('agent_publisher_directory');
+      expect(descriptions).toContain('property_registry_records');
+      expect(descriptions).toContain('property_list_enrichment');
+      expect(descriptions).toContain('property_identifier_catalog');
+      expect(descriptions).not.toMatch(/\*\*property_catalog\*\*/);
       expect(descriptions).not.toMatch(/\*\*directory\*\*/);
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
@@ -557,8 +575,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toMatch(/\*\*member_billing\*\*/);
     });
 
-    it('should NOT include outreach set', () => {
-      // outreach is adminOnly: true
+    it('should NOT include outreach sets', () => {
+      expect(descriptions).not.toMatch(/\*\*outreach_reporting\*\*/);
+      expect(descriptions).not.toMatch(/\*\*outreach_contact_management\*\*/);
       expect(descriptions).not.toMatch(/\*\*outreach\*\*/);
     });
   });
@@ -567,7 +586,12 @@ describe('getToolSetDescriptionsForRouter', () => {
     const descriptions = getToolSetDescriptionsForRouter(true);
 
     it('should include bounded admin domains and hide the legacy set', () => {
-      expect(descriptions).toMatch(/\*\*admin_workflows\*\*/);
+      expect(descriptions).toMatch(/\*\*adcp_task_operations\*\*/);
+      expect(descriptions).toMatch(/\*\*adcp_agent_management\*\*/);
+      expect(descriptions).not.toMatch(/\*\*adcp_operations\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_conversation_review\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_followup_tasks\*\*/);
+      expect(descriptions).not.toMatch(/\*\*admin_workflows\*\*/);
       expect(descriptions).toMatch(/\*\*admin_group_structure\*\*/);
       expect(descriptions).toMatch(/\*\*admin_group_leadership\*\*/);
       expect(descriptions).toMatch(/\*\*admin_group_membership\*\*/);
@@ -584,23 +608,40 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).not.toMatch(/\*\*admin\*\*/);
     });
 
-    it('should include billing set', () => {
-      expect(descriptions).toMatch(/\*\*billing\*\*/);
+    it('should include bounded admin billing sets without the legacy alias', () => {
+      expect(descriptions).toMatch(/\*\*admin_billing_payments\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_billing_discounts\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_billing_account\*\*/);
+      expect(descriptions).not.toMatch(/\*\*billing\*\*/);
     });
 
-    it('should include outreach set', () => {
-      expect(descriptions).toMatch(/\*\*outreach\*\*/);
+    it('should include bounded outreach sets without the legacy alias', () => {
+      expect(descriptions).toMatch(/\*\*outreach_reporting\*\*/);
+      expect(descriptions).toMatch(/\*\*outreach_contact_management\*\*/);
+      expect(descriptions).not.toMatch(/\*\*outreach\*\*/);
     });
 
     it('should still include non-admin sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('member_personal_profile');
+      expect(descriptions).toContain('member_company_profile');
+      expect(descriptions).not.toMatch(/\*\*member_profile\*\*/);
+      expect(descriptions).toContain('publishing_submission');
+      expect(descriptions).toContain('publishing_assets');
+      expect(descriptions).not.toMatch(/\*\*publishing_author\*\*/);
+      expect(descriptions).toContain('sponsored_intelligence_discovery');
+      expect(descriptions).toContain('sponsored_intelligence_session');
+      expect(descriptions).not.toMatch(/\*\*sponsored_intelligence\*\*/);
       expect(descriptions).toContain('community_group_discovery');
       expect(descriptions).toContain('community_group_membership');
       expect(descriptions).toContain('council_interest');
       expect(descriptions).toContain('community_group_contribution');
       expect(descriptions).toContain('partner_directory');
       expect(descriptions).toContain('agent_publisher_directory');
+      expect(descriptions).toContain('property_registry_records');
+      expect(descriptions).toContain('property_list_enrichment');
+      expect(descriptions).toContain('property_identifier_catalog');
+      expect(descriptions).not.toMatch(/\*\*property_catalog\*\*/);
       expect(descriptions).not.toMatch(/\*\*directory\*\*/);
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
@@ -615,12 +656,16 @@ describe('getToolsForSets', () => {
   });
 
   it('should expose only the selected bounded publishing workflow', () => {
-    const authorTools = getToolsForSets(['publishing_author'], false);
+    const submissionTools = getToolsForSets(['publishing_submission'], false);
+    const assetTools = getToolsForSets(['publishing_assets'], false);
     const reviewTools = getToolsForSets(['publishing_review'], false);
     const promotionTools = getToolsForSets(['publishing_promotion'], false);
-    expect(authorTools).toContain('propose_content');
-    expect(authorTools).toContain('get_my_content');
-    expect(authorTools).not.toContain('approve_content');
+    expect(submissionTools).toContain('propose_content');
+    expect(submissionTools).toContain('get_my_content');
+    expect(submissionTools).not.toContain('attach_content_asset');
+    expect(assetTools).toContain('get_my_content');
+    expect(assetTools).toContain('attach_content_asset');
+    expect(assetTools).not.toContain('propose_content');
     expect(reviewTools).toContain('list_pending_content');
     expect(reviewTools).toContain('approve_content');
     expect(reviewTools).toContain('reject_content');
@@ -630,13 +675,22 @@ describe('getToolsForSets', () => {
     expect(getToolsForSets([], false)).not.toContain('propose_content');
   });
 
+  it('should expose only the selected bounded Sponsored Intelligence workflow', () => {
+    const discoveryTools = getToolsForSets(['sponsored_intelligence_discovery'], false);
+    const sessionTools = getToolsForSets(['sponsored_intelligence_session'], false);
+    expect(discoveryTools).toContain('connect_to_si_agent');
+    expect(discoveryTools).not.toContain('send_to_si_agent');
+    expect(sessionTools).toContain('send_to_si_agent');
+    expect(sessionTools).not.toContain('connect_to_si_agent');
+  });
+
   it('should keep read_google_doc with propose_content on the author surface', () => {
-    const tools = getToolsForSets(['publishing_author'], false);
+    const tools = getToolsForSets(['publishing_submission'], false);
     expect(tools).toContain('read_google_doc');
   });
 
   it('should keep published-cover operations on the author surface', () => {
-    const tools = getToolsForSets(['publishing_author'], false);
+    const tools = getToolsForSets(['publishing_assets'], false);
     expect(tools).toContain('check_illustration_status');
     expect(tools).toContain('generate_perspective_illustration');
   });
@@ -681,7 +735,7 @@ describe('getToolsForSets', () => {
   });
 
   it('should combine multiple sets', () => {
-    const tools = getToolsForSets(['knowledge', 'member_profile'], false);
+    const tools = getToolsForSets(['knowledge', 'member_personal_profile'], false);
     expect(tools).toContain('search_docs');
     expect(tools).toContain('get_my_profile');
   });
@@ -1025,7 +1079,7 @@ describe('parseRouterResponse', () => {
   });
 
   it('should handle markdown-wrapped JSON', () => {
-    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member_profile"],"confidence":"suggest","reason":"test"}\n```');
+    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member_personal_profile"],"confidence":"suggest","reason":"test"}\n```');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
       expect(plan.confidence).toBe('suggest');
@@ -1393,12 +1447,36 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       }
     }, 15000);
 
-    it('should route committee leadership to committee_leadership for non-admin', async () => {
+    it('should route committee co-leadership to its bounded set for non-admin', async () => {
       const plan = await routeAsMember('make <@U88888|Bob> a co-leader of my chapter');
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
-        expect(plan.tool_sets).toContain('committee_leadership');
+        expect(plan.tool_sets).toEqual(['committee_co_leaders']);
         expect(plan.tool_sets).not.toContain('admin');
+      }
+    }, 15000);
+
+    it('should route committee event planning and registrations independently', async () => {
+      const planning = await routeAsMember('create a webinar for the committee I lead');
+      const registrations = await routeAsMember('check whether Bob is registered before inviting him to my committee event');
+      expect(planning.action).toBe('respond');
+      expect(registrations.action).toBe('respond');
+      if (planning.action === 'respond') {
+        expect(planning.tool_sets).toEqual(['committee_event_planning']);
+      }
+      if (registrations.action === 'respond') {
+        expect(registrations.tool_sets).toEqual(['committee_event_registrations']);
+      }
+    }, 30000);
+
+    it('should reserve the full committee-leadership composite for all three workflows', async () => {
+      const plan = await routeAsMember(
+        'add Bob as co-leader, create our supplied webinar, and invite the named registered participants',
+      );
+      expect(plan.action).toBe('respond');
+      if (plan.action === 'respond') {
+        expect(plan.tool_sets).toEqual(['committee_full_leadership']);
+        expect(plan.tool_sets).not.toContain('committee_leadership');
       }
     }, 15000);
 

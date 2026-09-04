@@ -7,6 +7,8 @@
     "promoted_from": "adcontextprotocol/adcp-client@43f7660ce1be17073d1207ee0168ae8343941be8",
     "schema_ids": [
       "/schemas/core/reporting-canonicalization-contract.json",
+      "/schemas/core/reporting-adjustment.json",
+      "/schemas/core/reporting-adjustment-receipt.json",
       "/schemas/core/reporting-file-manifest.json",
       "/schemas/core/reporting-materialization.json",
       "/schemas/core/reporting-obligation.json",
@@ -18,19 +20,22 @@
     ]
   },
   "assets": {
+    "adjustment.json": { "size_bytes": 765, "sha256": "219612e625db6c7495c8ed400b7593b82fd4f4efd6ae19edb468df1937518121", "sha512": "62370059c540ca675696606f0afbd0a3f7325df5aa35b9ed49fec926e608d7b4972125c8670e7d6f6cddf85db35c158fb052c9f887862f17ee16c5f53dceefb4" },
     "canonicalization.json": { "size_bytes": 1177, "sha256": "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa", "sha512": "fad55d1bb257eaa7cc20659df130a0ab646e74ca26225e3fa66b3e34b1352b2ace683878f541728cffde6562532cf5d4cbb46906a093b4f3dd07dad992d728dc" },
     "manifest.json": { "size_bytes": 851, "sha256": "46d127b2026c48d2e5ced78237c9c1efe63dccbd5099ba4a561073a3f5ef75e6", "sha512": "fb9397c21b0476e182fe6738ca7f3e42bd6c79ddb4b9344b0aa9526b622c9356553c047a2d884d588093a2c73423cee128571c9cef7a2c6968f7138c1cf39583" },
     "materialization.json": { "size_bytes": 2024, "sha256": "00efd3586d60bade27754ce3b6104203ddf21824f37ac77ed40fd340c1fd1fc5", "sha512": "38d0c4d5cba4bf83893008625ec40f2ddc6a4dcc7102442d03f1441682a5fbdb935e590ddd48c305e3ced3dd07a2090c051bd6e82dded65c58c598609c4ef942" },
-    "obligation.json": { "size_bytes": 1458, "sha256": "2c29bf0a2771d2a3985d9e53478d8ae58cb5e39d9668fd2cc726411c845b9c12", "sha512": "15b1b27ef90c94b7827612f31f40e51238ccf7461c043fb0e66b05b87b92c1bb34b8b6c42250fb89a2a205a04951579896e615c012dece505f582b3fad512f6d" },
-    "report-definition.json": { "size_bytes": 902, "sha256": "e76fd773afe79938b17db11fd07f1274db311f842d8ae94586168229d38d9086", "sha512": "e2b7ac9ce55429a9ae6786864096a14ec08cf8b5dec09f66f2adcdeb73a5fb560944333276fdbd34afe29a3897d66aaffed947bae755ab286b6c8667fe4466cb" },
-    "revision.json": { "size_bytes": 2144, "sha256": "55c0f14e816f563d83a22633fe83921626cf0a094cac7f7e4a194e665b7d4cb0", "sha512": "aee263da538a9c95ee2f5a9942dfc150f2b398ed8b5c7e8de02a02d0e3a29e9d1e317b1ff4bac5497cc95ca20383b303f55630fc7e811beb90ae840153ed377e" },
+    "obligation.json": { "size_bytes": 1483, "sha256": "453a1b7a6740f069dba0c856b06a12e063adbf7ae662eaf5fadeaa092c14d14d", "sha512": "09d4029148891b07a6acf28f36dc26a83ddd15bdd40364732a606e35f538abd0a709d2a9c7cf63d7502d4f97d919a547ca0bd3162beef3dc3599f6b491152d79" },
+    "report-definition.json": { "size_bytes": 951, "sha256": "960239b140adfefcd9a4ac4117c4272f7e92cd7bdcf8531715af0455f0424c94", "sha512": "cba51b0c6b28faa738e0c2c9800aa1a1fb08f2f1ea4dc49c788940a67b802609b81345f2f2f69f13c6375c1bafc9160ebaba5076f92f51c413e293847e8ec83d" },
+    "revision.json": { "size_bytes": 2144, "sha256": "a3ba338f709dd5ac0089ccf249c78797d7592bd79ec1e3f913b8e3d6e32275fa", "sha512": "f5383deee8bf53ec7941dd4f0cbb680e33477d8bd01708d3b16804afcd3a3900900d7560ee7de8871259457d856e6db7ff5ae727b8b4ab742a9d31db668bded5" },
     "row-schema.json": { "size_bytes": 430, "sha256": "a76b10957579a086c3b8cb800b884a72fcec039b496947982f2f1068c0178103", "sha512": "8c87dc127237fdb73274f7692a2214e8b03efdc8017d5831542b431500fa355b7dd3ec402b0787b003399f15efaa611030a9e76dc800b71cd14fbad3823364b0" },
     "rows.jsonl": { "size_bytes": 156, "sha256": "735610f303d6d91aa618df3aa6d7f18bcf5dfa52bdbd9ef551293e6bd14c92d9", "sha512": "7f20c6cef80c7c8ced425ee30a620daba0996ec6786bfa1507ffa6f34f14967a95593cf47fd6658212dc7a6c6e8b2cc24edbb1e7a9b86e62759e76ff30e78a10" },
     "receipts/accepted-request.json": { "size_bytes": 1384, "sha256": "e3bb870d2543280af6e125eea79485390eea73299a0c1a5a110e400d3bf0a776", "sha512": "745fcd9e7a37446f301f626dde5ccb557338820a657a5004681faa09dad5012dc42d1be09c697fd09c7e0c43e20b029cd3f027b34d60d8a6ad835381a1e3c822" },
     "receipts/accepted-recorded-response.json": { "size_bytes": 1400, "sha256": "713187c1f7d5fabae2ad1643d24b67ff99d704a3a23e0e9337c690254d40cb28", "sha512": "98338d5a230f1136be2af98452edecf56d6c9d6e5dd67cb1901771e87d694ab1be1ed65bde9733e1b615c31a6c41b9e765c4a3fccad07fc5db9c63e5cd26bb5a" },
     "receipts/accepted-unchanged-response.json": { "size_bytes": 1401, "sha256": "5305be67809fd255be7de07b8f1621b3b0e1c69e4e09ee56c7c01584ce179497", "sha512": "f05948c5a48bac1c68c9d8d41bdc40324adb55b3283fdd00ca70ad1e41d4e5900e0cb4ea9ca932182aa411e6bd2fcc51846be7ff3e6009ed772f1af2d4773530" },
     "receipts/rejected-request.json": { "size_bytes": 1442, "sha256": "822de972018c81b8d1c00cce316154fa9ad34738de35137ae0483c382332c28f", "sha512": "0b6b5a6ad2ac7786c90f6d1922751f4df4ead069773215060658e21d4522ea11ac599b1c8ce9b45c07fac3f7dd3c902e0371bf01ddfba937610ab782da295c3d" },
-    "receipts/rejected-recorded-response.json": { "size_bytes": 1460, "sha256": "4da7606205061a857fa31816add7905415938beb6c029c638e0af3cdc59ee44e", "sha512": "bdb7ed3aca0def681cb8fa3dc69735d934a3472e14ed73dc7db7ea9586c33d2ab3daf7266a63c5db1dab77dc41cf2d6df34570de8a5871fa9983f04ef432de59" }
+    "receipts/rejected-recorded-response.json": { "size_bytes": 1460, "sha256": "4da7606205061a857fa31816add7905415938beb6c029c638e0af3cdc59ee44e", "sha512": "bdb7ed3aca0def681cb8fa3dc69735d934a3472e14ed73dc7db7ea9586c33d2ab3daf7266a63c5db1dab77dc41cf2d6df34570de8a5871fa9983f04ef432de59" },
+    "receipts/adjustment-accepted-request.json": { "size_bytes": 581, "sha256": "7bc788a1a02ac30c0b58f395100a3a0ba790d2113a11ba5850dbb1267d7d0288", "sha512": "95d996a4a647c73d6ce9b74d0f68ef0b076ce219af4bfd171fe2c0d348cdf754123a1884cbdc1c483064eb9726fbb3e8550089477a2487678c8d97342195b853" },
+    "receipts/adjustment-accepted-recorded-response.json": { "size_bytes": 564, "sha256": "a3a3b1b5b4bc97e0fde7ba708df93201ae6f523bf5fca33277f223af9bba851b", "sha512": "a00f13eef3b4d2d8d274d0e1c7e5553eee2853222ecac667f3a2641f54ceab791e6dcb7388d265fe627e41852cbd0b77286d2741c2afd2d0a96e776b87f9127e" }
   },
   "base_inputs": {
     "obligation": "obligation.json",
@@ -39,7 +44,8 @@
     "manifest": "manifest.json",
     "report_definition": "report-definition.json",
     "row_schema": "row-schema.json",
-    "canonicalization": "canonicalization.json"
+    "canonicalization": "canonicalization.json",
+    "adjustment": "adjustment.json"
   },
   "canonical_report": {
     "row_count": 2,
@@ -55,6 +61,13 @@
     ]
   },
   "publish_order": ["rows.jsonl", "manifest.json"],
+  "post_official_adjustment": {
+    "invoice_anchor_revision_id": "revision-august-official",
+    "adjustment_asset": "adjustment.json",
+    "accepted_receipt_request_asset": "receipts/adjustment-accepted-request.json",
+    "accepted_receipt_response_asset": "receipts/adjustment-accepted-recorded-response.json",
+    "original_revision_and_receipt_immutable": true
+  },
   "scenarios": [
     {
       "id": "valid",

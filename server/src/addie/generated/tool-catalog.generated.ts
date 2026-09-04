@@ -20,7 +20,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **knowledge** — search_docs, get_doc, search_repos
 - **community_research** — search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file
 - **schema_reference** — validate_json, get_schema, list_schemas, compare_schema_versions
-- **member_profile** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge
+- **member_personal_profile** — get_my_profile, update_my_profile
+- **member_company_profile** — get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge
 - **community_group_discovery** — list_working_groups, get_working_group, get_my_working_groups, list_committee_documents
 - **community_group_membership** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation
 - **council_interest** — list_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests
@@ -34,36 +35,50 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **agent_quality** — evaluate_agent_quality, test_rfp_response, test_io_execution
 - **agent_authentication** — grade_agent_signing, diagnose_agent_auth
 - **agent_end_to_end** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, validate_agent, evaluate_agent_quality, test_rfp_response, test_io_execution, grade_agent_signing, diagnose_agent_auth
-- **property_catalog** — resolve_property, save_property, list_properties, list_missing_properties, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry
+- **property_registry_records** — resolve_property, save_property, list_properties, list_missing_properties
+- **property_list_enrichment** — check_property_list, enhance_property
+- **property_identifier_catalog** — resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
-- **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
-- **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
+- **adcp_task_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities
+- **adcp_agent_management** — save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
+- **sponsored_intelligence_discovery** — get_si_availability, list_si_agents, connect_to_si_agent
+- **sponsored_intelligence_session** — send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
-- **publishing_author** — propose_content, get_my_content, read_google_doc, check_illustration_status, generate_perspective_illustration, attach_content_asset
+- **publishing_submission** — propose_content, get_my_content, read_google_doc
+- **publishing_assets** — get_my_content, check_illustration_status, generate_perspective_illustration, attach_content_asset
 - **publishing_review** — list_pending_content, approve_content, reject_content, request_revisions
 - **publishing_promotion** — list_perspectives, draft_social_posts
 - **github** — draft_github_issue, create_github_issue, get_github_issue, list_github_issues
 - **illustrations** — search_image_library
 - **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
-- **billing** *(admin only)* — send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
+- **admin_billing_payments** *(admin only)* — send_payment_request, resend_invoice, list_pending_invoices
+- **admin_billing_discounts** *(admin only)* — grant_discount, remove_discount, list_discounts, create_promotion_code
+- **admin_billing_account** *(admin only)* — update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
 - **meeting_attendance** — list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, add_meeting_attendee
 - **meeting_scheduling** — schedule_meeting, list_upcoming_meetings, cancel_meeting, update_meeting
 - **meeting_series_topics** — list_upcoming_meetings, cancel_meeting_series, update_topic_subscriptions, manage_committee_topics
 - **meeting_full_administration** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
-- **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
+- **committee_co_leaders** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups
+- **committee_event_planning** — list_working_groups, create_event, update_event
+- **committee_event_registrations** — list_working_groups, manage_event_registrations, check_person_event_status, invite_to_event
+- **committee_full_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
-- **admin_prospects** *(admin only)* — add_prospect, update_prospect, enrich_company, query_prospects, prospect_search_lusha, claim_prospect, triage_prospect_domain, suggest_prospects
-- **admin_feeds** *(admin only)* — search_industry_feeds, add_industry_feed, get_feed_stats, list_feed_proposals, approve_feed_proposal, reject_feed_proposal, add_media_contact
+- **admin_prospect_pipeline** *(admin only)* — add_prospect, update_prospect, query_prospects, claim_prospect
+- **admin_prospect_research** *(admin only)* — enrich_company, prospect_search_lusha, triage_prospect_domain, suggest_prospects
+- **admin_feed_monitoring** *(admin only)* — search_industry_feeds, get_feed_stats, list_feed_proposals
+- **admin_feed_curation** *(admin only)* — add_industry_feed, approve_feed_proposal, reject_feed_proposal, add_media_contact
 - **admin_group_structure** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, rename_working_group
 - **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
 - **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member
 - **admin_organization_integrity** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains
 - **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
-- **admin_workflows** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation, set_reminder, my_upcoming_tasks, complete_task, log_conversation
+- **admin_conversation_review** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation
+- **admin_followup_tasks** *(admin only)* — set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brand_registry_integrity** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
 - **admin_brand_logo_review** *(admin only)* — list_pending_brand_logos, list_brand_logos, review_brand_logo
-- **outreach** *(admin only)* — get_outreach_stats, get_outreach_history, send_outreach, lookup_person, get_action_items, get_account, create_contact
+- **outreach_reporting** *(admin only)* — get_outreach_stats, get_outreach_history, get_action_items
+- **outreach_contact_management** *(admin only)* — send_outreach, lookup_person, get_account, create_contact
 - **collaboration** — send_member_dm
 - **certification_overview** — list_certification_tracks, get_certification_module, get_learner_progress, check_credentials, set_my_name
 - **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task

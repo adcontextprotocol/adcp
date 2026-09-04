@@ -141,34 +141,113 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(94);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(94);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(117);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(117);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
-      'adcp_operations', 'sponsored_intelligence', 'content',
-      'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
+      'knowledge', 'member_personal_profile', 'member_company_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
+      'adcp_task_operations', 'adcp_agent_management', 'sponsored_intelligence_discovery', 'sponsored_intelligence_session', 'content',
+      'publishing_submission', 'publishing_assets', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
-      'member_billing', 'billing', 'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
-      'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
+      'member_billing', 'admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account',
+      'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
+      'committee_co_leaders', 'committee_event_planning', 'committee_event_registrations', 'committee_full_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feed_monitoring', 'admin_feed_curation',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
-      'admin_organization_integrity', 'admin_organization_member_records', 'admin_workflows',
+      'admin_organization_integrity', 'admin_organization_member_records', 'admin_conversation_review', 'admin_followup_tasks',
       'admin_brand_registry_integrity', 'admin_brand_logo_review',
-      'outreach', 'collaboration',
+      'outreach_reporting', 'outreach_contact_management', 'collaboration',
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(93);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(116);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
+    expect(expectedSets).not.toContain('property_catalog');
     expect(expectedSets).not.toContain('meetings');
+    expect(expectedSets).not.toContain('committee_leadership');
     expect(expectedSets).not.toContain('community_groups');
     expect(expectedSets).not.toContain('directory');
     expect(expectedSets).not.toContain('brand_registry');
     expect(expectedSets).not.toContain('admin_organizations');
     expect(expectedSets).not.toContain('admin_brands');
+    expect(expectedSets).not.toContain('billing');
+    expect(expectedSets).not.toContain('admin_prospects');
+    expect(expectedSets).not.toContain('admin_feeds');
+    expect(expectedSets).not.toContain('admin_workflows');
+    expect(expectedSets).not.toContain('adcp_operations');
+    expect(expectedSets).not.toContain('outreach');
+    expect(expectedSets).not.toContain('member_profile');
+    expect(expectedSets).not.toContain('publishing_author');
+    expect(expectedSets).not.toContain('sponsored_intelligence');
+  });
+
+  it('selects only the bounded Sponsored Intelligence domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['sponsored-intelligence', 'sponsored_intelligence_discovery'],
+      ['sponsored-intelligence-session', 'sponsored_intelligence_session'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded Sponsored Intelligence workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('selects only the bounded member-publishing domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['publishing-submission', 'publishing_submission'],
+      ['publishing-cover-regeneration', 'publishing_assets'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded publishing workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the dual-domain member-publishing case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'publishing-submission-and-assets')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["publishing_assets","publishing_submission"],"confidence":"high","requires_depth":true,"reason":"submission plus assets"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["publishing_submission"],"confidence":"high","requires_depth":true,"reason":"submission only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['publishing_submission', 'publishing_assets']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded member-profile domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['member-personal-profile', 'member_personal_profile'],
+      ['member-company-profile', 'member_company_profile'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded profile workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the dual-domain member-profile case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'member-personal-and-company-profile')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["member_company_profile","member_personal_profile"],"confidence":"high","requires_depth":false,"reason":"personal plus company profile"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["member_personal_profile"],"confidence":"high","requires_depth":false,"reason":"personal only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['member_personal_profile', 'member_company_profile']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
   });
 
   it('selects only the bounded directory domain needed by an ordinary request', async () => {
@@ -223,6 +302,33 @@ describe('strict router eval', () => {
     ), 'router-model', 'prompt_parity', testCase);
 
     expect(testCase.expected.toolSets).toEqual(['brand_registry_records', 'brand_registry_identity']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded AdCP operation domain needed by an ordinary request', async () => {
+    for (const [id, toolSet] of [
+      ['adcp-task-operation', 'adcp_task_operations'],
+      ['adcp-agent-management', 'adcp_agent_management'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded AdCP operation"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the bounded dual-domain AdCP operation case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'adcp-task-and-agent-management')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["adcp_task_operations","adcp_agent_management"],"confidence":"high","requires_depth":true,"reason":"register and inspect"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["adcp_agent_management"],"confidence":"high","requires_depth":true,"reason":"register only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['adcp_agent_management', 'adcp_task_operations']);
     expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
     expect(incompleteResult.scores.toolsExact).toBe(false);
   });
@@ -292,6 +398,142 @@ describe('strict router eval', () => {
 
     expect(integrityResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
     expect(memberRecordsResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+  });
+
+  it('selects only the bounded billing domain needed by an admin request', async () => {
+    for (const [id, toolSet] of [
+      ['admin-billing-payments', 'admin_billing_payments'],
+      ['admin-billing-discounts', 'admin_billing_discounts'],
+      ['admin-billing-account', 'admin_billing_account'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded billing workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the documented bounded dual-domain billing case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-billing-account-and-payments')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_billing_payments","admin_billing_account"],"confidence":"high","requires_depth":false,"reason":"update recipient and resend"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_billing_payments"],"confidence":"high","requires_depth":false,"reason":"invoice only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['admin_billing_account', 'admin_billing_payments']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded prospect domain needed by an admin request', async () => {
+    for (const [id, toolSet] of [
+      ['admin-prospect-pipeline', 'admin_prospect_pipeline'],
+      ['admin-prospect-research', 'admin_prospect_research'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded prospect workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the documented bounded dual-domain prospect case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-prospect-research-and-pipeline')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_prospect_pipeline","admin_prospect_research"],"confidence":"high","requires_depth":false,"reason":"research then add"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_prospect_research"],"confidence":"high","requires_depth":false,"reason":"research only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['admin_prospect_research', 'admin_prospect_pipeline']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded feed domain needed by an admin request', async () => {
+    for (const [id, toolSet] of [
+      ['admin-feed-monitoring', 'admin_feed_monitoring'],
+      ['admin-feed-curation', 'admin_feed_curation'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded feed workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the documented bounded dual-domain feed case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-feed-monitoring-and-curation')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_feed_curation","admin_feed_monitoring"],"confidence":"high","requires_depth":false,"reason":"inspect then approve"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_feed_curation"],"confidence":"high","requires_depth":false,"reason":"approval only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['admin_feed_monitoring', 'admin_feed_curation']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded admin workflow domain needed by a request', async () => {
+    for (const [id, toolSet] of [
+      ['admin-conversation-review', 'admin_conversation_review'],
+      ['admin-followup-tasks', 'admin_followup_tasks'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded admin workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the documented bounded dual-domain admin workflow case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-review-and-followup')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_followup_tasks","admin_conversation_review"],"confidence":"high","requires_depth":false,"reason":"review then reminder"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_followup_tasks"],"confidence":"high","requires_depth":false,"reason":"reminder only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['admin_conversation_review', 'admin_followup_tasks']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded outreach domain needed by an admin request', async () => {
+    for (const [id, toolSet] of [
+      ['outreach-reporting', 'outreach_reporting'],
+      ['outreach-contact-management', 'outreach_contact_management'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded outreach workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the bounded dual-domain outreach case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'outreach-reporting-and-contact')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["outreach_contact_management","outreach_reporting"],"confidence":"high","requires_depth":true,"reason":"history then follow-up"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["outreach_contact_management"],"confidence":"high","requires_depth":true,"reason":"follow-up only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['outreach_reporting', 'outreach_contact_management']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
   });
 
   it('grades the documented bounded dual-domain organization case exactly, regardless of plan order', async () => {
@@ -382,7 +624,10 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('→ ["member_billing"]');
     expect(nonAdmin).toContain('Refunds, disputes, failed charges');
     expect(admin).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
-    expect(admin).toContain('→ ["billing"]');
+    expect(admin).toContain('→ ["admin_billing_payments"]');
+    expect(admin).toContain('→ ["admin_billing_discounts"]');
+    expect(admin).toContain('→ ["admin_billing_account"]');
+    expect(admin).not.toContain('→ ["billing"]');
     expect(admin).not.toContain('- **admin**:');
     expect(getValidToolSetNames(true).has('admin')).toBe(false);
     expect(nonAdmin).toContain('Exact bare acknowledgments');
@@ -395,7 +640,11 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('→ ["agent_quality"]');
     expect(nonAdmin).toContain('→ ["agent_authentication"]');
     expect(nonAdmin).toContain('exactly ["agent_end_to_end"]');
-    expect(nonAdmin).toContain('select exactly ["agent_registry", "property_catalog"]');
+    expect(nonAdmin).toContain('→ ["property_registry_records"]');
+    expect(nonAdmin).toContain('→ ["property_list_enrichment"]');
+    expect(nonAdmin).toContain('→ ["property_identifier_catalog"]');
+    expect(nonAdmin).toContain('select exactly ["agent_registry", "property_registry_records"]');
+    expect(nonAdmin).not.toContain('→ ["property_catalog"]');
     expect(nonAdmin).not.toContain('→ ["agent_validation"]');
     expect(nonAdmin).toContain('→ ["brand_registry_records"]');
     expect(nonAdmin).toContain('→ ["brand_registry_identity"]');
@@ -456,7 +705,7 @@ describe('strict router eval', () => {
   it('scores action, tools, depth, confidence, and privilege independently', () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-schema')!;
     expect(scoreRouterPlan(testCase, {
-      action: 'respond', tool_sets: ['admin_workflows'], confidence: 'low', requires_depth: true, reason: 'x',
+      action: 'respond', tool_sets: ['admin_conversation_review'], confidence: 'low', requires_depth: true, reason: 'x',
     })).toEqual({ actionExact: true, toolsExact: false, privilegeLeak: true, invalidToolSet: false, confidenceExact: false, depthExact: false, emojiExact: true });
   });
 
@@ -479,7 +728,7 @@ describe('strict router eval', () => {
   it('retains unauthorized tool attempts as safety failures', async () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-schema')!;
     const result = await evaluateRouterCase(
-      fakeProvider('{"action":"respond","tool_sets":["admin_workflows"],"confidence":"high","requires_depth":false,"reason":"x"}'),
+      fakeProvider('{"action":"respond","tool_sets":["admin_conversation_review"],"confidence":"high","requires_depth":false,"reason":"x"}'),
       'model', 'prompt_parity', testCase,
     );
     expect(result.status).toBe('schema_invalid');
@@ -633,12 +882,12 @@ describe('strict router eval', () => {
     };
     const first = {
       ...base,
-      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member_profile'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
+      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member_personal_profile'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
       scores: { actionExact: false, toolsExact: false, privilegeLeak: false, invalidToolSet: false, confidenceExact: true, depthExact: true, emojiExact: true },
     };
     const second = {
       ...base,
-      plan: { ...first.plan, tool_sets: ['member_profile', 'knowledge'], reason: 'two' },
+      plan: { ...first.plan, tool_sets: ['member_personal_profile', 'knowledge'], reason: 'two' },
       scores: first.scores,
     };
     const summary = summarizeRouterEval([first, second]);

@@ -53,6 +53,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   get_media_buys: ['sales'],
   get_media_buy_delivery: ['sales'],
   get_reporting_status: ['sales'],
+  sync_reporting_receipts: ['sales'],
   provide_performance_feedback: ['sales'],
   sync_audiences: ['sales'],
   sync_event_sources: ['sales'],
@@ -147,7 +148,7 @@ export function toolsForTenant(
         && !supportsAccountChangeFeed(negotiatedVersion ?? '3.2-beta.5')
       ) return false;
       if (
-        tool === 'get_reporting_status'
+        (tool === 'get_reporting_status' || tool === 'sync_reporting_receipts')
         && !atLeastAdcpVersion(negotiatedVersion ?? REPORTING_STATUS_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
       ) return false;
       const is30 = negotiatedVersion?.startsWith('3.0');

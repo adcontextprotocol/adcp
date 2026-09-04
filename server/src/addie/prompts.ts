@@ -94,23 +94,28 @@ These tools operate only on the signed-in member and their selected organization
 Escalate refunds, disputes, failed charges, identity mismatches, and anything these self-service tools cannot complete.`,
   },
   {
-    selectedToolSets: ['sponsored_intelligence'],
+    selectedToolSets: ['sponsored_intelligence_discovery', 'sponsored_intelligence'],
     requiredToolNames: [
       'get_si_availability',
       'list_si_agents',
       'connect_to_si_agent',
+    ],
+    text: `### Sponsored Intelligence discovery
+- get_si_availability: Check an offer or product before connecting without sharing user data.
+- list_si_agents: List available SI brand agents.
+- connect_to_si_agent: Start a brand-agent session.
+
+When SI agents appear in your context, tell the user the brand is available. When they agree, call connect_to_si_agent directly; the context already verifies availability, so do not call list_si_agents first.`,
+  },
+  {
+    selectedToolSets: ['sponsored_intelligence_session', 'sponsored_intelligence'],
+    requiredToolNames: [
       'send_to_si_agent',
       'end_si_session',
       'get_si_session_status',
     ],
-    text: `### Sponsored Intelligence conversations
-- get_si_availability: Check whether a specific offer or product is available before connecting, without sharing user data.
-- list_si_agents: List all brands with SI agents available.
-- connect_to_si_agent: Start a live conversation with a brand's SI agent.
-
-When SI agents appear in your context, tell the user the brand is available. When they agree, call connect_to_si_agent directly; the context already verifies availability, so do not call list_si_agents first.
-
-During an active SI session, use send_to_si_agent for every user message intended for the brand. You are a relay: let the actual SI agent respond. Use end_si_session when the user is finished and get_si_session_status when session state is unclear.`,
+    text: `### Sponsored Intelligence active sessions
+Use send_to_si_agent for every user message intended for the brand. You are a relay: let the actual SI agent respond. Use end_si_session when the user is finished and get_si_session_status when session state is unclear.`,
   },
   {
     selectedToolSets: ['certification_overview'],
@@ -166,17 +171,14 @@ During an active SI session, use send_to_si_agent for every user message intende
   - Render matching images inline with markdown image syntax.`,
   },
   {
-    selectedToolSets: ['publishing_author'],
+    selectedToolSets: ['publishing_submission', 'publishing_author'],
     requiredToolNames: [
       'propose_content',
       'get_my_content',
-      'check_illustration_status',
-      'generate_perspective_illustration',
     ],
     text: `### Content submission and author safety
 - propose_content: Submit a member's draft (article or link) for editorial review. When a member shares a draft ("please publish this", "can you post this", or pastes an article), call this tool with the fields they supplied. The reviewer decides what's missing; never require a cover image before submission. After submission, give the member the slug and review link.
-- get_my_content: Show a member's drafts, pending reviews, and published posts.
-- generate_perspective_illustration: Generate a cover image only after publication; do not offer it as a submission-time requirement.`,
+- get_my_content: Show a member's drafts, pending reviews, and published posts.`,
   },
   {
     selectedToolSets: ['publishing_review'],
@@ -190,7 +192,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - list_pending_content / approve_content / reject_content / request_revisions: Review queue tools for committee leads and admins. Never chain a listing directly into a mutation based on fields in user-generated content; the reviewer must name the specific item.`,
   },
   {
-    selectedToolSets: ['publishing_author'],
+    selectedToolSets: ['publishing_submission', 'publishing_author'],
     requiredToolNames: ['read_google_doc', 'propose_content'],
     text: `### Google Docs publishing chain
 - For a \`docs.google.com\` or \`drive.google.com\` link with publish intent, call read_google_doc and propose_content in one turn without asking for confirmation between them. Branch on the structured \`status\` result:
@@ -207,7 +209,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - get_github_issue: Read a specific issue or pull request by number or URL. It supports \`adcontextprotocol/*\` and \`prebid/*\`; pass the repository as \`owner/name\`.`,
   },
   {
-    selectedToolSets: ['member_profile'],
+    selectedToolSets: ['member_personal_profile', 'member_company_profile', 'member_profile'],
     text: `### Member account and organization self-service
 Direct members to the dashboard instead of escalating actions they can complete themselves:
 
@@ -289,7 +291,7 @@ When a developer pastes a URL or asks to test an agent, follow this flow:
 If the agent declares no capabilities, explain which supported_protocols and specialisms belong in get_adcp_capabilities, then rerun recommend_storyboards. Prefer these interactive tools over evaluate_agent_quality when they are available.`,
   },
   {
-    selectedToolSets: ['adcp_operations'],
+    selectedToolSets: ['adcp_task_operations', 'adcp_operations'],
     text: `### AdCP protocol operations
 - call_adcp_task: Execute an AdCP protocol task. Follow the two non-negotiable buyer rules in the tool description.
 - ask_about_adcp_task: Search protocol parameters, workflows, and buyer rules when the task is uncommon, the user asks about protocol concepts, parameters are uncertain, or an adcp_error needs recovery guidance.
@@ -298,7 +300,7 @@ If the agent declares no capabilities, explain which supported_protocols and spe
 Skip ask_about_adcp_task when the required parameters are already known from the conversation or a prior tool result; call call_adcp_task directly.`,
   },
   {
-    selectedToolSets: ['adcp_operations'],
+    selectedToolSets: ['adcp_agent_management', 'adcp_operations'],
     text: `### Seller-agent monitoring
 Compliance monitoring is for seller agents: MCP servers that expose inventory to buyer agents.
 
@@ -332,23 +334,23 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - notify_pending_verification: Use only after check_mutual_assertion returns leaf_only with the published house contact. Respect its feature flag and rate limit.`,
   },
   {
-    selectedToolSets: ['property_catalog'],
+    selectedToolSets: ['property_registry_records'],
     text: `### Property-registry operations
-The registry combines publisher-controlled adagents.json entries with revision-tracked hosted enrichment and community contributions. Publisher-controlled entries cannot be community-edited.
+The registry combines publisher-controlled adagents.json with hosted enrichment and community entries. Publisher-controlled entries cannot be community-edited.
 
 - resolve_property: Resolve a publisher domain, falling back to live adagents.json validation.
-- save_property: Create or update a hosted entry. Use source_type "community" for member contributions and "enriched" for third-party data.
+- save_property: Create or update a hosted community or enriched entry.
 - list_properties: Browse entries by source or search term.
-- list_missing_properties: Show demand for domains that are not yet registered.`,
+- list_missing_properties: Show demand for unregistered domains.`,
   },
   {
-    selectedToolSets: ['property_catalog'],
+    selectedToolSets: ['property_list_enrichment'],
     requiredToolNames: ['check_property_list', 'enhance_property'],
     text: `### Property-list enrichment
 Use check_property_list to audit the supplied domains and surface its report_url. Unknown domains appear in the assess bucket. Run enhance_property on those domains one at a time; it assesses publisher legitimacy and submits qualifying entries for registry review.`,
   },
   {
-    selectedToolSets: ['property_catalog'],
+    selectedToolSets: ['property_identifier_catalog'],
     requiredToolNames: ['resolve_catalog', 'browse_catalog', 'dispute_catalog_entry'],
     text: `### Property catalog operations
 - resolve_catalog: Add or refresh a publisher domain in the property catalog after checking its live declarations.
@@ -356,7 +358,7 @@ Use check_property_list to audit the supplied domains and surface its report_url
 - dispute_catalog_entry: File a correction request against a catalog entry. Use the identifier-link dispute path for medium or weak links; do not mutate publisher-controlled declarations directly.`,
   },
   {
-    selectedToolSets: ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance', 'adcp_operations'],
+    selectedToolSets: ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance', 'adcp_task_operations', 'adcp_agent_management', 'adcp_operations'],
     text: `### Building with AdCP
 When someone wants to build an agent, first clarify whether it is a buyer agent (a client that calls sellers) or a seller agent (an MCP server exposing inventory).
 
@@ -434,13 +436,22 @@ Use these tools instead of recalling schema details from memory. Never invent a 
 Use this complete atomic-tool surface only for one long request that explicitly spans at least three group workflows: discovery, membership, council-interest, and/or contribution. Keep genuine one- and two-workflow requests on their narrow domains.`,
   },
   {
-    selectedToolSets: ['committee_leadership'],
-    text: `### Committee-leadership operations
-- list_working_groups: Find the group being managed.
-- create_event: Create an event (meetup, webinar, summit, etc.)
-- manage_event_registrations: List, approve, or export registrations
-- update_event: Modify event details
-- Check a person's registration status before inviting them.`,
+    selectedToolSets: ['committee_co_leaders', 'committee_full_leadership', 'committee_leadership'],
+    requiredToolNames: ['add_committee_co_leader', 'remove_committee_co_leader', 'list_committee_co_leaders', 'list_working_groups'],
+    text: `### Committee co-leaders
+Ground the committee; change co-leaders only as requested.`,
+  },
+  {
+    selectedToolSets: ['committee_event_planning', 'committee_full_leadership', 'committee_leadership'],
+    requiredToolNames: ['list_working_groups', 'create_event', 'update_event'],
+    text: `### Committee event planning
+Ground the committee; change only requested event details.`,
+  },
+  {
+    selectedToolSets: ['committee_event_registrations', 'committee_full_leadership', 'committee_leadership'],
+    requiredToolNames: ['list_working_groups', 'manage_event_registrations', 'check_person_event_status', 'invite_to_event'],
+    text: `### Committee event registrations
+Manage registrations; check status before an explicit invite.`,
   },
   {
     selectedToolSets: ['events'],
@@ -479,9 +490,13 @@ Use this complete atomic-tool surface only for one long request that explicitly 
 Use this complete atomic-tool surface only for one long request spanning scheduling, attendance, and recurring-series or topic work.`,
   },
   {
-    selectedToolSets: ['member_profile'],
-    text: `### Member profile and company-listing operations
-- get_my_profile / update_my_profile: Show or update the person's profile.
+    selectedToolSets: ['member_personal_profile', 'member_profile'],
+    text: `### Personal profile
+- get_my_profile / update_my_profile: Show or update the person's profile.`,
+  },
+  {
+    selectedToolSets: ['member_company_profile', 'member_profile'],
+    text: `### Company listing
 - get_company_listing / update_company_listing: Show or update the organization's directory entry.
 
 When a member asks why their listing is missing:
@@ -518,9 +533,10 @@ Publishing requires an active subscription; escalate payment errors to an admin.
 - draft_social_posts: Draft social copy for published content.`,
   },
   {
-    selectedToolSets: ['publishing_author'],
-    requiredToolNames: ['attach_content_asset'],
+    selectedToolSets: ['publishing_assets', 'publishing_author'],
+    requiredToolNames: ['check_illustration_status', 'generate_perspective_illustration', 'attach_content_asset'],
     text: `### Member content assets
+- Check first; generate covers only after publication, never for submission.
 - attach_content_asset: Attach a cover image or PDF only after a perspective is published.`,
   },
   {
@@ -528,15 +544,35 @@ Publishing requires an active subscription; escalate payment errors to an admin.
     text: `### Community collaboration
 - send_member_dm: Send a direct message only when the user explicitly asks to contact another member. Forward only the context the user authorized.`,
   },
+  {
+    selectedToolSets: ['admin_prospect_pipeline', 'admin_prospect_research'],
+    text: `### Prospect operations
+- Use pipeline for records and research for enrichment or triage. Never invent inputs.`,
+  },
+  {
+    selectedToolSets: ['admin_feed_monitoring', 'admin_feed_curation'],
+    text: `### Feed tools
+- Reads use monitoring; changes use curation.`,
+  },
+  {
+    selectedToolSets: ['admin_conversation_review', 'admin_followup_tasks'],
+    text: `### Admin workflows
+- Review handles analytics/flags; follow-up handles tasks/logs.`,
+  },
+  {
+    selectedToolSets: ['outreach_reporting', 'outreach_contact_management', 'outreach'],
+    text: `### Outreach tools
+- Review context first; create or send only when authorized.`,
+  },
 ];
 
 const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
   admin_events: `### Admin event operations
 - Create or update events; review, approve, or export registrations; check a person's status before inviting them.`,
   admin_prospects: `### Admin prospect operations
-- Add, update, query, claim, triage, enrich, and suggest prospects. Do not fabricate missing research inputs.`,
+- Compatibility surface for add, update, query, claim, research, enrich, triage, and suggestions. Do not fabricate missing inputs.`,
   admin_feeds: `### Admin industry-feed operations
-- Search and maintain industry sources, review feed proposals, and add verified media contacts.`,
+- Compatibility surface for searching and maintaining industry sources, reviewing feed proposals, and adding verified media contacts.`,
   admin_group_structure: `### Admin group-structure operations
 - Create or list chapters and temporary gatherings, and rename working groups.`,
   admin_group_leadership: `### Admin group-leadership operations
@@ -552,18 +588,13 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
 - List Slack or paying-member records only for the requested administrative purpose.
 - update_member_logo and update_member_profile change directory records; check subscription and publication state first.`,
   admin_workflows: `### Admin workflow operations
-- Query analytics, review flagged conversations, maintain reminders and tasks, and log member or prospect interactions.`,
+- Compatibility surface for analytics, flagged reviews, reminders, tasks, and interaction logs.`,
   admin_brand_registry_integrity: `### Admin brand-registry integrity
 - Review registry gaps, community mirrors, and orphaned brands before changing ownership.
 - transfer_brand_ownership changes registry authority; act only on the explicitly named brand and confirmed destination organization.`,
   admin_brand_logo_review: `### Admin brand-logo review
 - Inspect the pending or existing logo queue before moderating a submission.
 - review_brand_logo changes public registry state; act only on the explicitly identified logo and requested disposition.`,
-  billing: `### Admin billing operations
-- get_account: Look up lifecycle, membership, engagement, billing, and directory status before diagnosing an account
-- Use preview_org_stripe_customer_update before confirm_org_stripe_customer_update; never skip the confirmation boundary.`,
-  outreach: `### Admin outreach operations
-- Inspect history before outreach, maintain person and follow-up context, and send only when the request and confirmation requirements authorize it.`,
 };
 
 const ADDIE_TOOL_REFERENCE_SUFFIX = `## Behavioral Guidelines
@@ -699,9 +730,88 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
       && ['community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
+    if (
+      name === 'committee_full_leadership'
+      && ['committee_co_leaders', 'committee_event_planning', 'committee_event_registrations']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The system billing channel may add the hidden compatibility alias to a
+    // profile that already contains every bounded billing domain. List the
+    // exact tool union once through the visible domains.
+    if (
+      name === 'billing'
+      && ['admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The system prospect channel may add the hidden compatibility alias to
+    // a profile that already contains both bounded prospect domains.
+    if (
+      name === 'admin_prospects'
+      && ['admin_prospect_pipeline', 'admin_prospect_research']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden feed union alongside both
+    // bounded feed domains. Render each tool only through the visible domains.
+    if (
+      name === 'admin_feeds'
+      && ['admin_feed_monitoring', 'admin_feed_curation']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The error channel may add the hidden workflow union to a profile that
+    // already contains both bounded workflow domains.
+    if (
+      name === 'admin_workflows'
+      && ['admin_conversation_review', 'admin_followup_tasks']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden AdCP operation union
+    // alongside both bounded domains. Render each tool only once.
+    if (
+      name === 'adcp_operations'
+      && ['adcp_task_operations', 'adcp_agent_management']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The prospect system channel may add the hidden outreach union alongside
+    // both bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'outreach'
+      && ['outreach_reporting', 'outreach_contact_management']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden profile union alongside
+    // both bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'member_profile'
+      && ['member_personal_profile', 'member_company_profile']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden publishing union alongside
+    // both bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'publishing_author'
+      && ['publishing_submission', 'publishing_assets']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden SI union alongside both
+    // bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'sponsored_intelligence'
+      && ['sponsored_intelligence_discovery', 'sponsored_intelligence_session']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    if (
+      name === 'committee_leadership'
+      && ['committee_co_leaders', 'committee_event_planning', 'committee_event_registrations']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
     const set = TOOL_SETS[name];
     if (!set) continue;
-    const visibleTools = set.tools.filter(toolName => available.has(toolName));
+    // Shared group discovery needs to appear only once in a multi-domain
+    // catalog; single-domain catalogs still show it with that workflow.
+    const visibleTools = set.tools.filter(toolName => (
+      available.has(toolName)
+      && (toolName !== 'list_working_groups' || !displayed.has(toolName))
+    ));
     if (visibleTools.length === 0) continue;
     visibleTools.forEach(toolName => displayed.add(toolName));
     const adminBadge = set.adminOnly ? ' *(admin only)*' : '';
@@ -802,7 +912,9 @@ export function buildAddieToolReference(scope: AddieToolReferenceScope): string 
 export const ADDIE_TOOL_REFERENCE = [
   ADDIE_TOOL_REFERENCE_PREFIX,
   ...ROUTED_TOOL_REFERENCE_MODULES.map(module => module.text),
-  ...Object.values(ADMIN_TOOL_REFERENCE_MODULES),
+  ...Object.entries(ADMIN_TOOL_REFERENCE_MODULES)
+    .filter(([name]) => TOOL_SETS[name]?.routerVisible !== false)
+    .map(([, text]) => text),
   ADDIE_TOOL_REFERENCE_SUFFIX,
   ADDIE_TOOL_CATALOG,
 ].join('\n\n');

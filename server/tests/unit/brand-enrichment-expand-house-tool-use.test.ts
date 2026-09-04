@@ -182,6 +182,7 @@ describe('expandHouse: tool_use contract', () => {
 
     expect(result.status).toBe('enriched');
     expect(mocks.upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
+      enrichment_provider: 'brandfetch',
       house_domain: null,
       house_domain_audit: {
         actor_user_id: 'system:brand-classifier',

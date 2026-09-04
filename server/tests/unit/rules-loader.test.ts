@@ -159,7 +159,7 @@ describe('Rules Loader', () => {
     const seriesTopicRules = loadRules({ selectedToolSetNames: ['meeting_series_topics'] });
     const partnerDirectoryRules = loadRules({ selectedToolSetNames: ['partner_directory'] });
     const agentDirectoryRules = loadRules({ selectedToolSetNames: ['agent_publisher_directory'] });
-    const memberRules = loadRules({ selectedToolSetNames: ['member_profile'] });
+    const memberRules = loadRules({ selectedToolSetNames: ['member_personal_profile'] });
     const schemaRules = loadRules({ selectedToolSetNames: ['schema_reference'] });
 
     expect(knowledgeRules).toContain('# Knowledge');
@@ -272,7 +272,10 @@ describe('Addie tool reference', () => {
     expect(ADDIE_TOOL_REFERENCE).toContain('**agent_quality**');
     expect(ADDIE_TOOL_REFERENCE).toContain('**agent_authentication**');
     expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_validation**');
-    expect(ADDIE_TOOL_REFERENCE).toContain('**property_catalog**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_registry_records**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_list_enrichment**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_identifier_catalog**');
+    expect(ADDIE_TOOL_REFERENCE).not.toContain('**property_catalog**');
     expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_testing**');
     expect(ADDIE_TOOL_REFERENCE).toContain('evaluate_agent_quality');
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
@@ -280,17 +283,81 @@ describe('Addie tool reference', () => {
 
   it('scopes admin guidance and the authoritative catalog to routed domains', () => {
     const reference = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['admin_prospects'], true, false),
-      selectedToolSetNames: ['admin_prospects'],
+      availableToolNames: getToolsForSets(['admin_prospect_pipeline'], true, false),
+      selectedToolSetNames: ['admin_prospect_pipeline'],
     });
 
-    expect(reference).toContain('### Admin prospect operations');
-    expect(reference).toContain('- **admin_prospects** *(admin only)*');
+    expect(reference).toContain('### Prospect operations');
+    expect(reference).toContain('- **admin_prospect_pipeline** *(admin only)*');
     expect(reference).toContain('query_prospects');
     expect(reference).not.toContain('### Admin organization operations');
     expect(reference).not.toContain('- **admin_organizations**');
     expect(reference).not.toContain('merge_organizations');
     expect(reference).not.toContain('### Admin workflow operations');
+  });
+
+  it('keeps feed monitoring and curation guidance request-scoped', () => {
+    const monitoring = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_feed_monitoring'], true, false),
+      selectedToolSetNames: ['admin_feed_monitoring'],
+    });
+    const curation = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_feed_curation'], true, false),
+      selectedToolSetNames: ['admin_feed_curation'],
+    });
+
+    expect(monitoring).toContain('### Feed tools');
+    expect(monitoring).toContain('- **admin_feed_monitoring** *(admin only)*');
+    expect(monitoring).toContain('list_feed_proposals');
+    expect(monitoring).not.toContain('- **admin_feed_curation**');
+    expect(monitoring).not.toContain('approve_feed_proposal');
+    expect(curation).toContain('### Feed tools');
+    expect(curation).toContain('- **admin_feed_curation** *(admin only)*');
+    expect(curation).toContain('approve_feed_proposal');
+    expect(curation).not.toContain('- **admin_feed_monitoring**');
+    expect(curation).not.toContain('list_feed_proposals');
+  });
+
+  it('keeps admin review and follow-up guidance request-scoped', () => {
+    const review = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_conversation_review'], true, false),
+      selectedToolSetNames: ['admin_conversation_review'],
+    });
+    const followup = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_followup_tasks'], true, false),
+      selectedToolSetNames: ['admin_followup_tasks'],
+    });
+
+    expect(review).toContain('### Admin workflows');
+    expect(review).toContain('- **admin_conversation_review** *(admin only)*');
+    expect(review).toContain('query_admin_analytics');
+    expect(review).not.toContain('- **admin_followup_tasks**');
+    expect(review).not.toContain('set_reminder');
+    expect(followup).toContain('### Admin workflows');
+    expect(followup).toContain('- **admin_followup_tasks** *(admin only)*');
+    expect(followup).toContain('set_reminder');
+    expect(followup).not.toContain('- **admin_conversation_review**');
+    expect(followup).not.toContain('query_admin_analytics');
+  });
+
+  it('keeps outreach reporting and contact guidance request-scoped', () => {
+    const reporting = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['outreach_reporting'], true, false),
+      selectedToolSetNames: ['outreach_reporting'],
+    });
+    const contacts = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['outreach_contact_management'], true, false),
+      selectedToolSetNames: ['outreach_contact_management'],
+    });
+
+    expect(reporting).toContain('### Outreach tools');
+    expect(reporting).toContain('- **outreach_reporting** *(admin only)*');
+    expect(reporting).toContain('get_outreach_history');
+    expect(reporting).not.toContain('send_outreach');
+    expect(contacts).toContain('### Outreach tools');
+    expect(contacts).toContain('- **outreach_contact_management** *(admin only)*');
+    expect(contacts).toContain('send_outreach');
+    expect(contacts).not.toContain('get_outreach_history');
   });
 
   it('keeps organization-integrity and member-record guidance request-scoped', () => {
@@ -350,15 +417,15 @@ describe('Addie tool reference', () => {
   it('keeps the cacheable guidance stable while domain instructions vary', () => {
     const stable = buildAddieStableToolReference();
     const scoped = buildAddieScopedToolReference({
-      availableToolNames: getToolsForSets(['admin_workflows'], true, false),
-      selectedToolSetNames: ['admin_workflows'],
+      availableToolNames: getToolsForSets(['admin_followup_tasks'], true, false),
+      selectedToolSetNames: ['admin_followup_tasks'],
     });
 
     expect(stable).toContain('## Behavioral Guidelines');
-    expect(stable).not.toContain('### Admin workflow operations');
+    expect(stable).not.toContain('### Admin workflows');
     expect(stable).not.toContain('## Authoritative custom-tool catalog');
-    expect(scoped).toContain('### Admin workflow operations');
-    expect(scoped).toContain('- **admin_workflows** *(admin only)*');
+    expect(scoped).toContain('### Admin workflows');
+    expect(scoped).toContain('- **admin_followup_tasks** *(admin only)*');
   });
 
   it('loads knowledge guidance only for the routed knowledge domain', () => {
@@ -398,9 +465,13 @@ describe('Addie tool reference', () => {
   });
 
   it('scopes community and content guidance to their selected sets', () => {
-    const profile = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member_profile'], false, false),
-      selectedToolSetNames: ['member_profile'],
+    const personalProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_personal_profile'], false, false),
+      selectedToolSetNames: ['member_personal_profile'],
+    });
+    const companyProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_company_profile'], false, false),
+      selectedToolSetNames: ['member_company_profile'],
     });
     const groups = buildAddieToolReference({
       availableToolNames: getToolsForSets(['community_group_discovery'], false, false),
@@ -427,18 +498,22 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['meeting_full_administration'],
     });
 
-    expect(profile).toContain('### Member profile and company-listing operations');
-    expect(profile).not.toContain('### Working-group operations');
-    expect(profile).not.toContain('### Member content operations');
+    expect(personalProfile).toContain('### Personal profile');
+    expect(personalProfile).not.toContain('### Company listing');
+    expect(personalProfile).not.toContain('### Working-group operations');
+    expect(personalProfile).not.toContain('### Member content operations');
+    expect(companyProfile).toContain('### Company listing');
+    expect(companyProfile).not.toContain('### Personal profile');
     expect(groups).toContain('### Working-group discovery');
-    expect(groups).not.toContain('### Member profile and company-listing operations');
+    expect(groups).not.toContain('### Personal profile');
+    expect(groups).not.toContain('### Company listing');
     expect(groups).not.toContain('### Member content operations');
     expect(contribution).toContain('### Working-group contribution');
     expect(contribution).toContain('bookmark_resource: Save only a community resource whose URL, title, and reason are explicitly supplied or grounded by an earlier tool result. Never invent a required scalar.');
     expect(contribution).toContain('- **community_group_contribution** — get_my_working_groups, create_working_group_post, bookmark_resource');
     expect(promotion).toContain('### Member content operations');
     expect(promotion).not.toContain('### Working-group operations');
-    expect(profile).not.toContain('### Meeting operations');
+    expect(personalProfile).not.toContain('### Meeting operations');
     expect(attendance).toContain('### Meeting attendance');
     expect(attendance).not.toContain('### Meeting scheduling');
     expect(scheduling).toContain('### Meeting scheduling');
@@ -453,7 +528,8 @@ describe('Addie tool reference', () => {
     expect(fullAdministration).toContain(
       `- **meeting_full_administration** — ${fullMeetingTools.join(', ')}`,
     );
-    expect(attendance).not.toContain('### Member profile and company-listing operations');
+    expect(attendance).not.toContain('### Personal profile');
+    expect(attendance).not.toContain('### Company listing');
   });
 
   it('omits duplicate full-meeting guidance only from the synthetic all-domain profile', () => {
@@ -470,6 +546,54 @@ describe('Addie tool reference', () => {
     expect(reference).toContain('### Recurring meeting series and topics');
     expect(reference).not.toContain('### Full meeting administration');
     expect(reference).not.toContain('- **meeting_full_administration**');
+  });
+
+  it('scopes committee leadership guidance to co-leader, planning, and registration workflows', () => {
+    const coLeaders = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_co_leaders'], false, false),
+      selectedToolSetNames: ['committee_co_leaders'],
+    });
+    const planning = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_event_planning'], false, false),
+      selectedToolSetNames: ['committee_event_planning'],
+    });
+    const registrations = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_event_registrations'], false, false),
+      selectedToolSetNames: ['committee_event_registrations'],
+    });
+    const full = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['committee_full_leadership'], false, false),
+      selectedToolSetNames: ['committee_full_leadership'],
+    });
+
+    expect(coLeaders).toContain('### Committee co-leaders');
+    expect(coLeaders).not.toContain('### Committee event planning');
+    expect(coLeaders).not.toContain('### Committee event registrations');
+    expect(planning).toContain('### Committee event planning');
+    expect(planning).not.toContain('### Committee co-leaders');
+    expect(planning).not.toContain('### Committee event registrations');
+    expect(registrations).toContain('### Committee event registrations');
+    expect(registrations).not.toContain('### Committee co-leaders');
+    expect(registrations).not.toContain('### Committee event planning');
+    expect(full).toContain('### Committee co-leaders');
+    expect(full).toContain('### Committee event planning');
+    expect(full).toContain('### Committee event registrations');
+  });
+
+  it('omits the hidden committee alias catalog entry when all bounded domains are selected', () => {
+    const selectedToolSetNames = [
+      'committee_co_leaders', 'committee_event_planning',
+      'committee_event_registrations', 'committee_leadership',
+    ];
+    const reference = buildAddieToolReference({
+      availableToolNames: getToolsForSets(selectedToolSetNames, false, false),
+      selectedToolSetNames,
+    });
+
+    expect(reference).toContain('- **committee_co_leaders**');
+    expect(reference).toContain('- **committee_event_planning**');
+    expect(reference).toContain('- **committee_event_registrations**');
+    expect(reference).not.toContain('- **committee_leadership**');
   });
 
   it('omits duplicate full-community-group guidance only from the synthetic all-domain profile', () => {
@@ -491,9 +615,13 @@ describe('Addie tool reference', () => {
   });
 
   it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
-    const author = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['publishing_author'], false, false),
-      selectedToolSetNames: ['publishing_author'],
+    const submission = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['publishing_submission'], false, false),
+      selectedToolSetNames: ['publishing_submission'],
+    });
+    const assets = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['publishing_assets'], false, false),
+      selectedToolSetNames: ['publishing_assets'],
     });
     const review = buildAddieToolReference({
       availableToolNames: getToolsForSets(['publishing_review'], false, false),
@@ -512,9 +640,13 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['knowledge'],
     });
 
-    expect(author).toContain('### Content submission and author safety');
-    expect(author).toContain('### Google Docs publishing chain');
-    expect(author).not.toContain('### Editorial review safety');
+    expect(submission).toContain('### Content submission and author safety');
+    expect(submission).toContain('### Google Docs publishing chain');
+    expect(submission).not.toContain('### Member content assets');
+    expect(submission).not.toContain('### Editorial review safety');
+    expect(assets).toContain('### Member content assets');
+    expect(assets).not.toContain('### Content submission and author safety');
+    expect(assets).not.toContain('### Google Docs publishing chain');
     expect(review).toContain('### Editorial review safety');
     expect(review).not.toContain('### Content submission and author safety');
     expect(github).toContain('### GitHub issue workflows');
@@ -527,10 +659,10 @@ describe('Addie tool reference', () => {
   });
 
   it('omits the Google Docs publishing chain when its conditional reader is unavailable', () => {
-    const tools = getToolsForSets(['publishing_author'], false, false);
+    const tools = getToolsForSets(['publishing_submission'], false, false);
     const reference = buildAddieToolReference({
       availableToolNames: tools.filter(name => name !== 'read_google_doc'),
-      selectedToolSetNames: ['publishing_author'],
+      selectedToolSetNames: ['publishing_submission'],
     });
 
     expect(reference).toContain('### Content submission and author safety');
@@ -539,8 +671,8 @@ describe('Addie tool reference', () => {
 
   it('scopes account self-service guidance to member requests', () => {
     const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member_profile'], false, false),
-      selectedToolSetNames: ['member_profile'],
+      availableToolNames: getToolsForSets(['member_personal_profile'], false, false),
+      selectedToolSetNames: ['member_personal_profile'],
     });
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
@@ -589,10 +721,14 @@ describe('Addie tool reference', () => {
     expect(events).not.toContain('### Slack file handling');
   });
 
-  it('scopes protocol, agent-validation, and property guidance to their routed domains', () => {
+  it('scopes protocol, saved-agent, agent-validation, and property guidance to their routed domains', () => {
     const protocol = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['adcp_operations'], false, false),
-      selectedToolSetNames: ['adcp_operations'],
+      availableToolNames: getToolsForSets(['adcp_task_operations'], false, false),
+      selectedToolSetNames: ['adcp_task_operations'],
+    });
+    const agentManagement = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['adcp_agent_management'], false, false),
+      selectedToolSetNames: ['adcp_agent_management'],
     });
     const registry = buildAddieToolReference({
       availableToolNames: getToolsForSets(['agent_registry'], false, false),
@@ -610,15 +746,26 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['agent_end_to_end'], false, false),
       selectedToolSetNames: ['agent_end_to_end'],
     });
-    const property = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['property_catalog'], false, false),
-      selectedToolSetNames: ['property_catalog'],
+    const propertyRecords = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_registry_records'], false, false),
+      selectedToolSetNames: ['property_registry_records'],
+    });
+    const propertyList = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_list_enrichment'], false, false),
+      selectedToolSetNames: ['property_list_enrichment'],
+    });
+    const propertyCatalog = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_identifier_catalog'], false, false),
+      selectedToolSetNames: ['property_identifier_catalog'],
     });
     expect(protocol).toContain('### AdCP protocol operations');
-    expect(protocol).toContain('### Seller-agent monitoring');
+    expect(protocol).not.toContain('### Seller-agent monitoring');
     expect(protocol).toContain('### Building with AdCP');
     expect(protocol).not.toContain('### Publisher and agent testing');
     expect(protocol).not.toContain('### Property-registry operations');
+    expect(agentManagement).toContain('### Seller-agent monitoring');
+    expect(agentManagement).not.toContain('### AdCP protocol operations');
+    expect(agentManagement).toContain('### Building with AdCP');
     expect(registry).toContain('### Publisher and agent registry checks');
     expect(registry).toContain('### Building with AdCP');
     expect(registry).not.toContain('### Agent quality and behavior testing');
@@ -636,10 +783,16 @@ describe('Addie tool reference', () => {
     expect(endToEnd).toContain('validate_adagents');
     expect(endToEnd).toContain('diagnose_agent_auth');
     expect(endToEnd).toContain('test_io_execution');
-    expect(property).toContain('### Property-registry operations');
-    expect(property).toContain('### Property-list enrichment');
-    expect(property).not.toContain('### Publisher and agent testing');
-    expect(property).not.toContain('### Building with AdCP');
+    expect(propertyRecords).toContain('### Property-registry operations');
+    expect(propertyRecords).not.toContain('### Property-list enrichment');
+    expect(propertyRecords).not.toContain('### Property catalog operations');
+    expect(propertyList).toContain('### Property-list enrichment');
+    expect(propertyList).not.toContain('### Property-registry operations');
+    expect(propertyList).not.toContain('### Property catalog operations');
+    expect(propertyCatalog).toContain('### Property catalog operations');
+    expect(propertyCatalog).not.toContain('### Property-registry operations');
+    expect(propertyCatalog).not.toContain('### Property-list enrichment');
+    expect(propertyCatalog).not.toContain('### Building with AdCP');
   });
 
   it('scopes brand guidance to brand-registry requests', () => {
@@ -656,8 +809,8 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['brand_registry_identity'],
     });
     const property = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['property_catalog'], false, false),
-      selectedToolSetNames: ['property_catalog'],
+      availableToolNames: getToolsForSets(['property_registry_records'], false, false),
+      selectedToolSetNames: ['property_registry_records'],
     });
 
     expect(directory).not.toContain('### Brand-registry records');
@@ -785,41 +938,56 @@ describe('Addie tool reference', () => {
     expect(knowledge).not.toContain('## AdCP Academy');
   });
 
-  it('loads Sponsored Intelligence relay guidance only with the complete routed workflow', () => {
-    const siTools = getToolsForSets(['sponsored_intelligence'], false, false);
-    const sponsoredIntelligence = buildAddieToolReference({
-      availableToolNames: siTools,
-      selectedToolSetNames: ['sponsored_intelligence'],
+  it('scopes Sponsored Intelligence discovery and relay guidance to their bounded domains', () => {
+    const discoveryTools = getToolsForSets(['sponsored_intelligence_discovery'], false, false);
+    const sessionTools = getToolsForSets(['sponsored_intelligence_session'], false, false);
+    const discovery = buildAddieToolReference({
+      availableToolNames: discoveryTools,
+      selectedToolSetNames: ['sponsored_intelligence_discovery'],
     });
     const missingRelay = buildAddieToolReference({
-      availableToolNames: siTools.filter(name => name !== 'send_to_si_agent'),
-      selectedToolSetNames: ['sponsored_intelligence'],
+      availableToolNames: sessionTools.filter(name => name !== 'send_to_si_agent'),
+      selectedToolSetNames: ['sponsored_intelligence_session'],
+    });
+    const session = buildAddieToolReference({
+      availableToolNames: sessionTools,
+      selectedToolSetNames: ['sponsored_intelligence_session'],
     });
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
       selectedToolSetNames: ['knowledge'],
     });
 
-    expect(sponsoredIntelligence).toContain('### Sponsored Intelligence conversations');
-    expect(sponsoredIntelligence).toContain('use send_to_si_agent for every user message');
-    expect(missingRelay).not.toContain('### Sponsored Intelligence conversations');
-    expect(knowledge).not.toContain('### Sponsored Intelligence conversations');
+    expect(discovery).toContain('### Sponsored Intelligence discovery');
+    expect(discovery).toContain('call connect_to_si_agent directly');
+    expect(discovery).not.toContain('### Sponsored Intelligence active sessions');
+    expect(session).toContain('### Sponsored Intelligence active sessions');
+    expect(session).toContain('Use send_to_si_agent for every user message');
+    expect(session).not.toContain('### Sponsored Intelligence discovery');
+    expect(missingRelay).not.toContain('### Sponsored Intelligence active sessions');
+    expect(knowledge).not.toContain('### Sponsored Intelligence discovery');
+    expect(knowledge).not.toContain('### Sponsored Intelligence active sessions');
   });
 
-  it('loads property catalog guidance only with the complete routed workflow', () => {
-    const propertyTools = getToolsForSets(['property_catalog'], false, false);
+  it('loads each property guidance module only with its bounded routed workflow', () => {
+    const propertyTools = getToolsForSets(['property_identifier_catalog'], false, false);
     const complete = buildAddieToolReference({
       availableToolNames: propertyTools,
-      selectedToolSetNames: ['property_catalog'],
+      selectedToolSetNames: ['property_identifier_catalog'],
     });
     const missingDispute = buildAddieToolReference({
       availableToolNames: propertyTools.filter(name => name !== 'dispute_catalog_entry'),
-      selectedToolSetNames: ['property_catalog'],
+      selectedToolSetNames: ['property_identifier_catalog'],
+    });
+    const propertyList = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_list_enrichment'], false, false),
+      selectedToolSetNames: ['property_list_enrichment'],
     });
 
-    expect(complete).toContain('### Property-list enrichment');
     expect(complete).toContain('### Property catalog operations');
     expect(missingDispute).not.toContain('### Property catalog operations');
+    expect(propertyList).toContain('### Property-list enrichment');
+    expect(propertyList).not.toContain('### Property catalog operations');
   });
 
   it('loads brand canonical guidance only with the complete routed workflow', () => {
@@ -853,7 +1021,11 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Slack file handling');
     expect(stable).not.toContain('## AdCP Academy');
     expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
-    expect(stable).not.toContain('### Sponsored Intelligence conversations');
+    expect(stable).not.toContain('### Sponsored Intelligence discovery');
+    expect(stable).not.toContain('### Sponsored Intelligence active sessions');
+    expect(stable).not.toContain('### Committee co-leaders');
+    expect(stable).not.toContain('### Committee event planning');
+    expect(stable).not.toContain('### Committee event registrations');
     expect(stable).not.toContain('send_to_si_agent for EVERY user message');
     expect(stable).not.toContain('### Content submission and author safety');
     expect(stable).not.toContain('### Editorial review safety');
@@ -862,9 +1034,13 @@ describe('Addie tool reference', () => {
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {
-    const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member_profile'], false, false),
-      selectedToolSetNames: ['member_profile'],
+    const personalProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_personal_profile'], false, false),
+      selectedToolSetNames: ['member_personal_profile'],
+    });
+    const companyProfile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_company_profile'], false, false),
+      selectedToolSetNames: ['member_company_profile'],
     });
     const events = buildAddieToolReference({
       availableToolNames: getToolsForSets(['events'], false, false),
@@ -875,8 +1051,11 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['content'],
     });
 
-    expect(member).not.toContain('add_committee_document:');
-    expect(member).not.toContain('get_member_engagement:');
+    expect(personalProfile).not.toContain('update_company_listing');
+    expect(personalProfile).not.toContain('request_brand_domain_challenge');
+    expect(companyProfile).not.toContain('update_my_profile');
+    expect(personalProfile).not.toContain('add_committee_document:');
+    expect(personalProfile).not.toContain('get_member_engagement:');
     expect(events).not.toContain('create_event:');
     expect(events).not.toContain('manage_event_registrations:');
     expect(content).not.toContain('attach_content_asset:');
@@ -886,11 +1065,11 @@ describe('Addie tool reference', () => {
   it('omits selected-domain guidance when no domain tool reached the wire', () => {
     const scoped = buildAddieScopedToolReference({
       availableToolNames: ['search_docs'],
-      selectedToolSetNames: ['admin_workflows'],
+      selectedToolSetNames: ['admin_conversation_review'],
     });
 
-    expect(scoped).not.toContain('### Admin workflow operations');
-    expect(scoped).not.toContain('- **admin_workflows**');
+    expect(scoped).not.toContain('### Admin workflows');
+    expect(scoped).not.toContain('- **admin_conversation_review**');
   });
 
   it('lists only tool names present on the request wire surface', () => {

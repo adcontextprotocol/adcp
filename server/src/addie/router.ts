@@ -576,7 +576,7 @@ export function buildRoutingPrompt(ctx: RoutingContext): string {
   if (!isLinked) {
     conditionalRules += `
 The user has NOT linked their Slack account to AgenticAdvertising.org.
-- If they ask about membership or account features, include the "member_profile" tool set`;
+- If they ask about membership or account features, include the "member_personal_profile" tool set`;
   }
   if (isAAOAdmin) {
     conditionalRules += `
@@ -588,7 +588,7 @@ The user is an ADMIN.
     conditionalRules += `
 The user is NOT an admin.
 - The current member can handle membership pricing, payment links, invoice creation, and their organization's billing portal with "member_billing".
-- Refunds, payment disputes, failed charges, and requests to act on another organization require human support → respond with [] (no routed tools) and use escalate_to_admin. Never route a non-admin to the admin-only "billing" set.`;
+- Refunds, payment disputes, failed charges, and requests to act on another organization require human support → respond with [] (no routed tools) and use escalate_to_admin. Never route a non-admin to an admin billing domain.`;
   }
 
   const channelLine = ctx.channelName ? `- Channel: #${ctx.channelName}` : "";
@@ -668,7 +668,9 @@ ${
 - Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure. "What do the official docs say about package identifiers?" → exactly ["knowledge"]
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating registry configuration, select exactly ["schema_reference", "agent_registry"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_registry"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
-- Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
+- Questions about the current member's personal profile or account details → ["member_personal_profile"]
+- Questions about the current member's company listing, logo, brand color, or organization brand-domain claim → ["member_company_profile"]
+- Requests needing both personal and company profile work may select both; never use the hidden legacy alias.
 - Browsing working groups or councils, inspecting one group, reviewing the current member's memberships, or reading committee documents → ["community_group_discovery"]
 - Joining a public working group or requesting access to a private group → ["community_group_membership"]
 - Expressing, withdrawing, or reviewing the current member's future-council interest → ["council_interest"]
@@ -677,29 +679,42 @@ ${
 - Looking for member organizations, companies, vendors, service providers, implementation partners, or an introduction → ["partner_directory"]
 - Browsing visible AdCP agents or publishers, inspecting an agent URL, or finding agents for a publisher domain → ["agent_publisher_directory"]
 - A request that genuinely needs both member-organization discovery and agent/publisher lookup may select both bounded directory domains; do not select the hidden legacy alias.
-- Researching, resolving, saving, or browsing brand-registry records, or finding missing brands → ["brand_registry_records"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or ["property_catalog"]
-- Managing brand logos or canonical documents, checking reciprocal brand.json assertions, or notifying pending verification → ["brand_registry_identity"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or ["property_catalog"]
+- Researching, resolving, saving, or browsing brand-registry records, or finding missing brands → ["brand_registry_records"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or a property domain
+- Managing brand logos or canonical documents, checking reciprocal brand.json assertions, or notifying pending verification → ["brand_registry_identity"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or a property domain
 - A request that genuinely needs both registry-record and identity-verification workflows may select both bounded domains; do not select the hidden legacy alias.
 - Validating adagents.json, brand resolution, registry status, or publisher authorization → ["agent_registry"]
 - Testing an agent's live quality, RFP response, or IO execution → ["agent_quality"]
 - Diagnosing OAuth or grading RFC 9421 request signing → ["agent_authentication"]
 - A single long end-to-end agent diagnosis that explicitly needs registry/configuration, OAuth or signing, and RFP or IO behavior → exactly ["agent_end_to_end"]. This composite preserves every requested step under the direct two-domain cap; use the three narrow domains above for typical requests.
-- Auditing, resolving, enriching, browsing, or disputing publisher property-registry or catalog entries → ["property_catalog"]. For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_registry", "property_catalog"]
-- Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
-- Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
+- Resolving, saving, or browsing publisher property-registry records, including missing domains and property visibility → ["property_registry_records"]
+- Auditing a supplied publisher-domain list or assessing unknown domains for registry review → ["property_list_enrichment"]
+- Resolving identifiers to stable property records, browsing the identifier catalog, or disputing a catalog entry → ["property_identifier_catalog"]
+- A request that audits a property list and adds legitimate identifiers to the catalog may select exactly ["property_list_enrichment", "property_identifier_catalog"]. Do not select the hidden legacy alias.
+- For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_registry", "property_registry_records"]
+- AdCP task inspection/execution or live agent capabilities → ["adcp_task_operations"]
+- Saved-agent registration, listing, removal, or setup → ["adcp_agent_management"]
+- Requests needing both may select both; never use the hidden legacy alias.
+- Discovering or connecting to a Sponsored Intelligence brand agent, including checking offer availability → ["sponsored_intelligence_discovery"]
+- Relaying a message to, checking, or ending an active Sponsored Intelligence brand-agent conversation → ["sponsored_intelligence_session"]
+- Never use the hidden legacy Sponsored Intelligence alias.
 - Committee documents and news-source proposals → ["content"]
-- Submitting or managing the current member's articles/perspectives, reading a Google Doc for publication, attaching an asset, or generating, regenerating, or checking a published cover illustration → ["publishing_author"]
+- Submitting or inspecting the current member's articles/perspectives, or reading a Google Doc for publication → ["publishing_submission"]
+- Attaching an asset to published member content, or generating, regenerating, or checking its cover illustration → ["publishing_assets"]
+- Requests needing both submission and published-asset work may select both; never use the hidden legacy alias.
 - Reviewing the editorial queue or approving, rejecting, or requesting revisions to a specific submission → ["publishing_review"]
 - Browsing published perspectives or drafting social posts that promote published content → ["publishing_promotion"]
 - Certification track/module previews, learner progress, certificates, badges, or credential checks → ["certification_overview"]
 - Starting or continuing a standard AdCP Academy module, lesson, or build project → ["certification_learning"]
 - Placement assessment, testing out modules, or starting/continuing a specialist capstone or exam → ["certification_assessment"]
 - Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
-- Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those always use ["publishing_author"]
-- Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_profile"]
+- Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those use ["publishing_assets"]
+- Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_company_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
-    ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
+    ? `- Sending a payment request, resending an open invoice, or listing pending invoices for other organizations → ["admin_billing_payments"]
+- Inspecting, granting, or removing discounts, or creating promotion codes → ["admin_billing_discounts"]
+- Inspecting an organization account, updating its billing email, or previewing or confirming a Stripe customer relink → ["admin_billing_account"]
+- A request that genuinely needs two admin billing workflows may select the applicable two bounded domains; do not select the hidden legacy alias.`
     : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Meeting calendar, agendas/details, RSVPs, or adding attendees → ["meeting_attendance"]
@@ -709,22 +724,34 @@ ${isAAOAdmin
 - Requests that need two meeting workflows may select the applicable two meeting domains; never exceed the global two-domain cap.
 - When "working group" only identifies which meeting or agenda the user means, select the applicable meeting domain and do NOT add a community-group domain. Add the applicable narrow group domain only when the user is asking about group membership, participation, group information, or documents.
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
-- Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
-- Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
+- Adding, updating, querying, or claiming prospect records → ["admin_prospect_pipeline"]
+- Researching, enriching, triaging, or suggesting prospect organizations → ["admin_prospect_research"]
+- A request that genuinely needs both prospect workflows may select both bounded domains; do not select the hidden legacy alias.
+- Searching industry feeds, inspecting feed statistics, or listing feed proposals → ["admin_feed_monitoring"]
+- Adding an industry feed, approving or rejecting a feed proposal, or adding a verified media contact → ["admin_feed_curation"]
+- A request that genuinely needs feed inspection plus a curation action may select both bounded domains; do not select the hidden legacy alias.
 - Duplicate-organization investigation or merge, domain-health checks, and verified-domain reconciliation → ["admin_organization_integrity"]
 - Organization-member role changes, organization Slack rosters, paying-member records, or directory logo/profile changes → ["admin_organization_member_records"]
 - A request that genuinely needs both organization integrity and member-record workflows may select both bounded domains; do not select the hidden legacy alias or add a composite.
-- Task management, marking tasks done, checking tasks, reminders, logging conversations, flagged-conversation review, or community analytics → ["admin_workflows"]
+- Community analytics or listing/reviewing flagged conversations → ["admin_conversation_review"]
+- Task management, reminders, or logging member/prospect interactions → ["admin_followup_tasks"]
+- A request that genuinely needs analytics/review plus follow-up work may select both bounded domains; do not select the hidden legacy alias.
 - Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
-- Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
+- Listing, adding, or removing co-leaders for your own committee (non-admin) → ["committee_co_leaders"]
+- Creating or updating an event for your own committee (non-admin) → ["committee_event_planning"]
+- Managing event registrations, checking attendance status, or inviting people to your own committee event (non-admin) → ["committee_event_registrations"]
+- One explicit request spanning co-leaders, event planning, and registration/invitation management → ["committee_full_leadership"]
+- Never use the hidden legacy committee-leadership alias.
 ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming a working group (admin action) → ["admin_group_structure"]
 - Adding/removing/listing committee or working-group leaders (admin action) → ["admin_group_leadership"]
 - Adding/removing working-group members (admin action) → ["admin_group_membership"]
 - Brand or property registry gaps, community-mirror reconciliation, ownership transfers, or orphaned brands → ["admin_brand_registry_integrity"]
 - Pending or existing brand-logo queues, approvals, rejections, or deletions → ["admin_brand_logo_review"]
 - A request that genuinely needs both brand-registry integrity and logo-review workflows may select both bounded domains; do not select the hidden legacy alias.
-- Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
-- Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
+- Outreach performance, history, or action items → ["outreach_reporting"]
+- Person/account lookup, contact creation, or sending outreach → ["outreach_contact_management"]
+- Requests needing reporting plus contact work may select both; never use the hidden legacy alias.
+- Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_conversation_review"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]
 - Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge
 - Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
@@ -1466,7 +1493,7 @@ export class AddieRouter {
       if (adminOutreachPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["outreach"],
+          tool_sets: ["outreach_reporting"],
           confidence: "high",
           reason: "Admin outreach query",
           decision_method: "quick_match",
@@ -1479,7 +1506,7 @@ export class AddieRouter {
       if (adminAnalyticsPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin_workflows"],
+          tool_sets: ["admin_conversation_review"],
           confidence: "high",
           reason: "Admin engagement/analytics query",
           decision_method: "quick_match",
@@ -1493,7 +1520,7 @@ export class AddieRouter {
       if (adminTaskPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin_workflows"],
+          tool_sets: ["admin_followup_tasks"],
           confidence: "high",
           reason: "Admin task management",
           decision_method: "quick_match",
@@ -1507,7 +1534,7 @@ export class AddieRouter {
       if (outreachLogPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin_workflows"],
+          tool_sets: ["admin_followup_tasks"],
           confidence: "high",
           reason: "Admin outreach logging",
           decision_method: "quick_match",

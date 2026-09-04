@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v19');
-    expect(FIXED_TRACE_SUITE).toHaveLength(18);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v30');
+    expect(FIXED_TRACE_SUITE).toHaveLength(31);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -213,6 +213,45 @@ describe('fixed cross-provider trace suite', () => {
     });
   });
 
+  it('keeps the company-profile trace read-only and isolated from personal-profile tools', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'member-company-listing')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['member_company_profile'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['get_company_listing']);
+    expect(trace.expectation.requiredTools).toEqual(['get_company_listing']);
+    expect(trace.expectation.allowedTools).toEqual(['get_company_listing']);
+    expect(trace.expectation.forbiddenTools).toContain('get_my_profile');
+    expect(trace.expectation.forbiddenTools).toContain('update_company_listing');
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
+  it('keeps publishing submission and asset traces read-only and isolated', () => {
+    const submission = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'publishing-own-submissions')!;
+    const assets = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'publishing-cover-status')!;
+
+    expect(submission.routing).toEqual({ action: 'respond', toolSets: ['publishing_submission'] });
+    expect(submission.expectation.requiredTools).toEqual(['get_my_content']);
+    expect(submission.expectation.forbiddenTools).toContain('generate_perspective_illustration');
+    expect(assets.routing).toEqual({ action: 'respond', toolSets: ['publishing_assets'] });
+    expect(assets.expectation.requiredTools).toEqual(['check_illustration_status']);
+    expect(assets.expectation.forbiddenTools).toContain('propose_content');
+    expect(submission.expectation.mutationAuthorization).toBe('none');
+    expect(assets.expectation.mutationAuthorization).toBe('none');
+  });
+
+  it('keeps Sponsored Intelligence discovery and session-status traces read-only and isolated', () => {
+    const discovery = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'sponsored-intelligence-agent-discovery')!;
+    const session = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'sponsored-intelligence-session-status')!;
+
+    expect(discovery.routing).toEqual({ action: 'respond', toolSets: ['sponsored_intelligence_discovery'] });
+    expect(discovery.expectation.requiredTools).toEqual(['list_si_agents']);
+    expect(discovery.expectation.forbiddenTools).toContain('connect_to_si_agent');
+    expect(session.routing).toEqual({ action: 'respond', toolSets: ['sponsored_intelligence_session'] });
+    expect(session.expectation.requiredTools).toEqual(['get_si_session_status']);
+    expect(session.expectation.forbiddenTools).toContain('send_to_si_agent');
+    expect(discovery.expectation.mutationAuthorization).toBe('none');
+    expect(session.expectation.mutationAuthorization).toBe('none');
+  });
+
   it('keeps the member-record fixed trace provider-neutral, read-only, and bounded', () => {
     const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'admin-member-records-without-slack')!;
     expect(trace.routing).toEqual({ action: 'respond', toolSets: ['admin_organization_member_records'] });
@@ -248,6 +287,25 @@ describe('fixed cross-provider trace suite', () => {
     expect(trace.expectation.mutationAuthorization).toBe('none');
   });
 
+  it('keeps the pending-invoice fixed trace read-only and isolated from other billing workflows', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'admin-billing-pending-invoices')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['admin_billing_payments'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['list_pending_invoices']);
+    expect(trace.expectation.requiredTools).toEqual(['list_pending_invoices']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual(expect.arrayContaining([
+      'send_payment_request',
+      'resend_invoice',
+      'grant_discount',
+      'remove_discount',
+      'update_billing_email',
+      'preview_org_stripe_customer_update',
+      'confirm_org_stripe_customer_update',
+      'get_account',
+    ]));
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
   it('keeps the brand-identity fixed trace provider-neutral, read-only, and bounded', () => {
     const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'brand-mutual-assertion')!;
     expect(trace.routing).toEqual({ action: 'respond', toolSets: ['brand_registry_identity'] });
@@ -278,6 +336,51 @@ describe('fixed cross-provider trace suite', () => {
       'list_members',
       'get_member',
       'lookup_domain',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
+  it('keeps the saved-agent trace read-only and isolated from protocol task operations', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'adcp-saved-agent-list')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['adcp_agent_management'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['list_saved_agents']);
+    expect(trace.expectation.requiredTools).toEqual(['list_saved_agents']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'save_agent', 'remove_saved_agent', 'setup_test_agent',
+      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
+  it('keeps outreach action-item review read-only and isolated from contact operations', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'outreach-action-items-list')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['outreach_reporting'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['get_action_items']);
+    expect(trace.expectation.requiredTools).toEqual(['get_action_items']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'get_outreach_stats', 'get_outreach_history', 'send_outreach', 'lookup_person',
+      'get_account', 'create_contact',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
+  it('keeps the property identifier-catalog trace read-only and isolated from registry and enrichment', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'property-identifier-catalog-browse')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['property_identifier_catalog'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['browse_catalog']);
+    expect(trace.expectation.requiredTools).toEqual(['browse_catalog']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'resolve_property',
+      'save_property',
+      'list_properties',
+      'list_missing_properties',
+      'check_property_list',
+      'enhance_property',
+      'resolve_catalog',
+      'dispute_catalog_entry',
     ]);
     expect(trace.expectation.mutationAuthorization).toBe('none');
   });
@@ -391,8 +494,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 18,
-      observed: 18,
+      expected: 31,
+      observed: 31,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -403,11 +506,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 18);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.014);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 31);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.03);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 15,
+      complete: 28,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -556,7 +659,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 18, observed: 3, omitted: 15, complete: false });
+    expect(summary).toMatchObject({ expected: 31, observed: 3, omitted: 28, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

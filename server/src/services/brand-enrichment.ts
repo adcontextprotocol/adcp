@@ -121,7 +121,8 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   if (existing?.source_type === 'enriched' && existing.has_brand_manifest) {
     return { domain, status: 'skipped', brand_name: existing.brand_name, error: 'Already enriched' };
   }
-  // Skip community brands with fresh manifests (e.g., recently downgraded from enriched due to low quality)
+  // Skip fresh community-curated manifests; enrichment must not churn a
+  // stronger human-contributed identity.
   if (existing?.source_type === 'community' && existing.has_brand_manifest && existing.last_validated) {
     const ageMs = Date.now() - new Date(existing.last_validated).getTime();
     if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
@@ -210,8 +211,9 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     ? await downloadAndCacheLogos(domain, result.manifest.logos)
     : result.manifest.logos;
 
-  // Determine source_type: only mark as 'enriched' if Brandfetch returned meaningful data
-  const sourceType = result.highQuality !== false ? 'enriched' : 'community';
+  // Brandfetch remains enrichment regardless of data quality. Quality affects
+  // review/usefulness, not who supplied the identity.
+  const sourceType = 'enriched' as const;
 
   // Map to discovered brand input. `classification` flows through the
   // dedicated typed field (UpsertDiscoveredBrandInput.classification), NOT
@@ -235,6 +237,7 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     },
     has_brand_manifest: true,
     source_type: sourceType,
+    enrichment_provider: 'brandfetch',
     // Apply classification fields if available
     ...(classification ? {
       keller_type: classification.keller_type,
@@ -270,14 +273,13 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
 
   logger.info(
     { domain, brandName, sourceType, keller_type: classification?.keller_type },
-    sourceType === 'enriched' ? 'Brand enriched' : 'Brand saved as community (low-quality Brandfetch data)'
+    'Brand enriched'
   );
   return {
     domain,
-    status: sourceType === 'enriched' ? 'enriched' : 'skipped',
+    status: 'enriched',
     brand_name: brandName,
     classification: classification || undefined,
-    error: sourceType === 'community' ? 'Low-quality Brandfetch result saved as community' : undefined,
   };
 }
 

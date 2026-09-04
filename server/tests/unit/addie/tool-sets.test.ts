@@ -1,18 +1,39 @@
 import { describe, it, expect } from 'vitest';
 import { ADDIE_TOOL_CATALOG } from '../../../src/addie/generated/tool-catalog.generated.js';
 import {
+  ADCP_AGENT_MANAGEMENT_TOOLS,
+  ADCP_OPERATION_DOMAIN_TOOL_SETS,
+  ADCP_OPERATIONS_TOOLS,
+  ADCP_TASK_OPERATION_TOOLS,
   AGENT_AUTHENTICATION_TOOLS,
   AGENT_END_TO_END_TOOLS,
   AGENT_QUALITY_TOOLS,
   AGENT_REGISTRY_TOOLS,
   AGENT_VALIDATION_TOOLS,
+  ADMIN_BILLING_ACCOUNT_TOOLS,
+  ADMIN_BILLING_DISCOUNT_TOOLS,
+  ADMIN_BILLING_DOMAIN_TOOL_SETS,
+  ADMIN_BILLING_PAYMENT_TOOLS,
+  ADMIN_BILLING_TOOLS,
   ADMIN_BRAND_LOGO_REVIEW_TOOLS,
   ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS,
   ADMIN_BRANDS_TOOLS,
+  ADMIN_CONVERSATION_REVIEW_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
+  ADMIN_FEED_CURATION_TOOLS,
+  ADMIN_FEED_DOMAIN_TOOL_SETS,
+  ADMIN_FEED_MONITORING_TOOLS,
+  ADMIN_FEEDS_TOOLS,
+  ADMIN_FOLLOWUP_TASK_TOOLS,
   ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
+  ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
+  ADMIN_PROSPECT_PIPELINE_TOOLS,
+  ADMIN_PROSPECT_RESEARCH_TOOLS,
+  ADMIN_PROSPECTS_TOOLS,
+  ADMIN_WORKFLOW_DOMAIN_TOOL_SETS,
+  ADMIN_WORKFLOWS_TOOLS,
   AGENT_PUBLISHER_DIRECTORY_TOOLS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
@@ -22,6 +43,12 @@ import {
   CERTIFICATION_ASSESSMENT_TOOLS,
   CERTIFICATION_LEARNING_TOOLS,
   CERTIFICATION_OVERVIEW_TOOLS,
+  COMMITTEE_CO_LEADER_TOOLS,
+  COMMITTEE_EVENT_PLANNING_TOOLS,
+  COMMITTEE_EVENT_REGISTRATION_TOOLS,
+  COMMITTEE_FULL_LEADERSHIP_TOOLS,
+  COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS,
+  COMMITTEE_LEADERSHIP_TOOLS,
   COMMUNITY_GROUP_CONTRIBUTION_TOOLS,
   COMMUNITY_GROUP_DISCOVERY_TOOLS,
   COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
@@ -29,18 +56,35 @@ import {
   COMMUNITY_GROUP_TOOLS,
   COUNCIL_INTEREST_TOOLS,
   DIRECTORY_COMPATIBILITY_TOOLS,
+  MEMBER_COMPANY_PROFILE_TOOLS,
+  MEMBER_PERSONAL_PROFILE_TOOLS,
+  MEMBER_PROFILE_DOMAIN_TOOL_SETS,
   MEMBER_PROFILE_TOOLS,
   MEETING_ATTENDANCE_TOOLS,
   MEETING_FULL_ADMINISTRATION_TOOLS,
   MEETING_SCHEDULING_TOOLS,
   MEETING_SERIES_TOPIC_TOOLS,
   MEETING_TOOLS,
+  OUTREACH_CONTACT_MANAGEMENT_TOOLS,
+  OUTREACH_DOMAIN_TOOL_SETS,
+  OUTREACH_REPORTING_TOOLS,
+  OUTREACH_TOOLS,
   PARTNER_DIRECTORY_TOOLS,
+  PUBLISHING_ASSET_TOOLS,
+  PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS,
   PUBLISHING_AUTHOR_TOOLS,
   PUBLISHING_PROMOTION_TOOLS,
   PUBLISHING_REVIEW_TOOLS,
+  PUBLISHING_SUBMISSION_TOOLS,
   PROPERTY_CATALOG_TOOLS,
+  PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+  PROPERTY_LIST_ENRICHMENT_TOOLS,
+  PROPERTY_REGISTRY_RECORD_TOOLS,
   SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
+  SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS,
+  SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS,
+  SPONSORED_INTELLIGENCE_SESSION_TOOLS,
+  SPONSORED_INTELLIGENCE_TOOLS,
   TOOL_SETS,
   buildUnavailableSetsHint,
   getToolsForSets,
@@ -48,6 +92,131 @@ import {
 } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
+  it('keeps submissions and published assets separate with an exact hidden alias', () => {
+    expect(PUBLISHING_SUBMISSION_TOOLS).toEqual([
+      'propose_content', 'get_my_content', 'read_google_doc',
+    ]);
+    expect(PUBLISHING_ASSET_TOOLS).toEqual([
+      'get_my_content', 'check_illustration_status',
+      'generate_perspective_illustration', 'attach_content_asset',
+    ]);
+    expect(PUBLISHING_AUTHOR_TOOLS).toEqual([
+      'propose_content', 'get_my_content', 'read_google_doc', 'check_illustration_status',
+      'generate_perspective_illustration', 'attach_content_asset',
+    ]);
+    expect(TOOL_SETS.publishing_author.tools).toEqual(PUBLISHING_AUTHOR_TOOLS);
+    expect(TOOL_SETS.publishing_author.routerVisible).toBe(false);
+    expect(getValidToolSetNames(false).has('publishing_author')).toBe(false);
+    for (const [name, domainTools] of Object.entries(PUBLISHING_AUTHOR_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+    }
+    expect(getToolsForSets(['publishing_submission'], false, false)).not.toEqual(
+      expect.arrayContaining(['check_illustration_status', 'generate_perspective_illustration', 'attach_content_asset']),
+    );
+    expect(getToolsForSets(['publishing_assets'], false, false)).not.toEqual(
+      expect.arrayContaining(['propose_content', 'read_google_doc']),
+    );
+    expect(getToolsForSets(['publishing_author'], false, false)).toEqual(
+      expect.arrayContaining(PUBLISHING_AUTHOR_TOOLS),
+    );
+  });
+
+  it('keeps personal and company profiles separate with an exact hidden alias', () => {
+    expect(MEMBER_PERSONAL_PROFILE_TOOLS).toEqual([
+      'get_my_profile', 'update_my_profile',
+    ]);
+    expect(MEMBER_COMPANY_PROFILE_TOOLS).toEqual([
+      'get_company_listing', 'update_company_listing', 'update_company_logo',
+      'request_brand_domain_challenge', 'verify_brand_domain_challenge',
+    ]);
+    expect(MEMBER_PROFILE_TOOLS).toEqual([
+      'get_my_profile', 'update_my_profile', 'get_company_listing', 'update_company_listing',
+      'update_company_logo', 'request_brand_domain_challenge', 'verify_brand_domain_challenge',
+    ]);
+    expect(TOOL_SETS.member_profile.tools).toEqual(MEMBER_PROFILE_TOOLS);
+    expect(TOOL_SETS.member_profile.routerVisible).toBe(false);
+    expect(getValidToolSetNames(false).has('member_profile')).toBe(false);
+    for (const [name, domainTools] of Object.entries(MEMBER_PROFILE_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+    }
+    expect(getToolsForSets(['member_personal_profile'], false, false)).not.toEqual(
+      expect.arrayContaining(MEMBER_COMPANY_PROFILE_TOOLS),
+    );
+    expect(getToolsForSets(['member_company_profile'], false, false)).not.toEqual(
+      expect.arrayContaining(MEMBER_PERSONAL_PROFILE_TOOLS),
+    );
+    expect(getToolsForSets(['member_profile'], false, false)).toEqual(
+      expect.arrayContaining(MEMBER_PROFILE_TOOLS),
+    );
+  });
+
+  it('keeps outreach reporting and contact work separate with an exact hidden alias', () => {
+    expect(OUTREACH_REPORTING_TOOLS).toEqual([
+      'get_outreach_stats', 'get_outreach_history', 'get_action_items',
+    ]);
+    expect(OUTREACH_CONTACT_MANAGEMENT_TOOLS).toEqual([
+      'send_outreach', 'lookup_person', 'get_account', 'create_contact',
+    ]);
+    expect(OUTREACH_TOOLS).toEqual([
+      'get_outreach_stats', 'get_outreach_history', 'send_outreach', 'lookup_person',
+      'get_action_items', 'get_account', 'create_contact',
+    ]);
+    expect(TOOL_SETS.outreach.tools).toEqual(OUTREACH_TOOLS);
+    expect(TOOL_SETS.outreach.routerVisible).toBe(false);
+    expect(getValidToolSetNames(true).has('outreach')).toBe(false);
+    for (const [name, domainTools] of Object.entries(OUTREACH_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(true).has(name), name).toBe(true);
+      expect(getValidToolSetNames(false).has(name), name).toBe(false);
+      expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+      const customTools = getToolsForSets([name], true, false)
+        .filter((toolName) => toolName !== 'web_search');
+      expect(customTools.length, name).toBeLessThanOrEqual(12);
+    }
+    expect(getToolsForSets(['outreach_reporting'], true, false)).not.toEqual(
+      expect.arrayContaining(OUTREACH_CONTACT_MANAGEMENT_TOOLS),
+    );
+    expect(getToolsForSets(['outreach_contact_management'], true, false)).not.toEqual(
+      expect.arrayContaining(OUTREACH_REPORTING_TOOLS),
+    );
+    expect(getToolsForSets(['outreach'], true, false)).toEqual(
+      expect.arrayContaining(OUTREACH_TOOLS),
+    );
+  });
+
+  it('keeps AdCP task operations and saved-agent management separate with an exact hidden alias', () => {
+    expect(ADCP_TASK_OPERATION_TOOLS).toEqual([
+      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+    ]);
+    expect(ADCP_AGENT_MANAGEMENT_TOOLS).toEqual([
+      'save_agent', 'list_saved_agents', 'remove_saved_agent', 'setup_test_agent',
+    ]);
+    expect(ADCP_OPERATIONS_TOOLS).toEqual([
+      'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
+      'save_agent', 'list_saved_agents', 'remove_saved_agent', 'setup_test_agent',
+    ]);
+    expect(TOOL_SETS.adcp_operations.tools).toEqual(ADCP_OPERATIONS_TOOLS);
+    expect(TOOL_SETS.adcp_operations.routerVisible).toBe(false);
+    expect(getValidToolSetNames(false).has('adcp_operations')).toBe(false);
+    for (const [name, domainTools] of Object.entries(ADCP_OPERATION_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+      const customTools = getToolsForSets([name], false, false)
+        .filter((toolName) => toolName !== 'web_search');
+      expect(customTools.length, name).toBeLessThanOrEqual(12);
+    }
+    expect(getToolsForSets(['adcp_task_operations'], false, false)).not.toEqual(
+      expect.arrayContaining(ADCP_AGENT_MANAGEMENT_TOOLS),
+    );
+    expect(getToolsForSets(['adcp_agent_management'], false, false)).not.toEqual(
+      expect.arrayContaining(ADCP_TASK_OPERATION_TOOLS),
+    );
+    expect(getToolsForSets(['adcp_operations'], false, false)).toEqual(
+      expect.arrayContaining(ADCP_OPERATIONS_TOOLS),
+    );
+  });
+
   describe('admin always-available tools', () => {
     it('includes resolve_escalation for admins without admin set routed', () => {
       const tools = getToolsForSets(['knowledge'], true, false);
@@ -94,34 +263,69 @@ describe('getToolsForSets', () => {
       }
     });
 
-    it('loads only the selected admin domain and rejects it for non-admins', () => {
-      const adminTools = getToolsForSets(['admin_prospects'], true, false);
-      expect(adminTools).toContain('query_prospects');
-      expect(adminTools).not.toContain('merge_organizations');
-      expect(adminTools).not.toContain('create_event');
+    it('loads only the selected prospect domain and rejects it for non-admins', () => {
+      const pipelineTools = getToolsForSets(['admin_prospect_pipeline'], true, false);
+      expect(pipelineTools).toContain('query_prospects');
+      expect(pipelineTools).not.toContain('enrich_company');
+      expect(pipelineTools).not.toContain('merge_organizations');
 
-      const memberTools = getToolsForSets(['admin_prospects'], false, false);
+      const researchTools = getToolsForSets(['admin_prospect_research'], true, false);
+      expect(researchTools).toContain('enrich_company');
+      expect(researchTools).not.toContain('query_prospects');
+
+      const memberTools = getToolsForSets(['admin_prospect_pipeline'], false, false);
       expect(memberTools).not.toContain('query_prospects');
     });
 
     it('generates the compact catalog from router-visible domains only', () => {
-      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **member_personal_profile**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **member_company_profile**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **member_profile**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **outreach_reporting**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **outreach_contact_management**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **outreach**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **adcp_task_operations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **adcp_agent_management**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **adcp_operations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_pipeline**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospect_research**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_prospects**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_feed_monitoring**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_feed_curation**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_feeds**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_conversation_review**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_followup_tasks**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_workflows**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_member_records**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_organizations**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_registry_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_logo_review**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_brands**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_billing_payments**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_billing_discounts**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_billing_account**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **billing**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_records**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_identity**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **brand_registry**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **partner_directory**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **agent_publisher_directory**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **directory**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **sponsored_intelligence_discovery**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **sponsored_intelligence_session**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **sponsored_intelligence**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_co_leaders**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_event_planning**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_event_registrations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **committee_full_leadership**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **committee_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_author**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_submission**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_assets**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **publishing_author**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_review**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_promotion**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_overview**');
@@ -207,6 +411,142 @@ describe('getToolsForSets', () => {
         expect.arrayContaining(ADMIN_BRAND_LOGO_REVIEW_TOOLS),
       );
     });
+
+    it('keeps admin billing workflows separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_BILLING_PAYMENT_TOOLS).toEqual([
+        'send_payment_request', 'resend_invoice', 'list_pending_invoices',
+      ]);
+      expect(ADMIN_BILLING_DISCOUNT_TOOLS).toEqual([
+        'grant_discount', 'remove_discount', 'list_discounts', 'create_promotion_code',
+      ]);
+      expect(ADMIN_BILLING_ACCOUNT_TOOLS).toEqual([
+        'update_billing_email', 'preview_org_stripe_customer_update',
+        'confirm_org_stripe_customer_update', 'get_account',
+      ]);
+      expect(ADMIN_BILLING_TOOLS).toEqual([
+        'send_payment_request', 'grant_discount', 'remove_discount', 'list_discounts',
+        'create_promotion_code', 'resend_invoice', 'update_billing_email',
+        'preview_org_stripe_customer_update', 'confirm_org_stripe_customer_update',
+        'list_pending_invoices', 'get_account',
+      ]);
+      expect(TOOL_SETS.billing.tools).toEqual(ADMIN_BILLING_TOOLS);
+      expect(TOOL_SETS.billing.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('billing')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_BILLING_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+        expect(TOOL_SETS[name].requiresPrecision).toBe(true);
+      }
+      expect(getToolsForSets(['admin_billing_payments'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BILLING_DISCOUNT_TOOLS),
+      );
+      expect(getToolsForSets(['admin_billing_discounts'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BILLING_ACCOUNT_TOOLS),
+      );
+      expect(getToolsForSets(['admin_billing_account'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BILLING_PAYMENT_TOOLS),
+      );
+      expect(getToolsForSets(['billing'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_BILLING_TOOLS),
+      );
+    });
+
+    it('keeps prospect records and research separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_PROSPECT_PIPELINE_TOOLS).toEqual([
+        'add_prospect', 'update_prospect', 'query_prospects', 'claim_prospect',
+      ]);
+      expect(ADMIN_PROSPECT_RESEARCH_TOOLS).toEqual([
+        'enrich_company', 'prospect_search_lusha', 'triage_prospect_domain', 'suggest_prospects',
+      ]);
+      expect(ADMIN_PROSPECTS_TOOLS).toEqual([
+        'add_prospect', 'update_prospect', 'enrich_company', 'query_prospects',
+        'prospect_search_lusha', 'claim_prospect', 'triage_prospect_domain', 'suggest_prospects',
+      ]);
+      expect(TOOL_SETS.admin_prospects.tools).toEqual(ADMIN_PROSPECTS_TOOLS);
+      expect(TOOL_SETS.admin_prospects.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_prospects')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_PROSPECT_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+      }
+      expect(getToolsForSets(['admin_prospect_pipeline'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_PROSPECT_RESEARCH_TOOLS),
+      );
+      expect(getToolsForSets(['admin_prospect_research'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_PROSPECT_PIPELINE_TOOLS),
+      );
+      expect(getToolsForSets(['admin_prospects'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_PROSPECTS_TOOLS),
+      );
+    });
+
+    it('keeps feed monitoring and curation separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_FEED_MONITORING_TOOLS).toEqual([
+        'search_industry_feeds', 'get_feed_stats', 'list_feed_proposals',
+      ]);
+      expect(ADMIN_FEED_CURATION_TOOLS).toEqual([
+        'add_industry_feed', 'approve_feed_proposal', 'reject_feed_proposal', 'add_media_contact',
+      ]);
+      expect(ADMIN_FEEDS_TOOLS).toEqual([
+        'search_industry_feeds', 'add_industry_feed', 'get_feed_stats', 'list_feed_proposals',
+        'approve_feed_proposal', 'reject_feed_proposal', 'add_media_contact',
+      ]);
+      expect(TOOL_SETS.admin_feeds.tools).toEqual(ADMIN_FEEDS_TOOLS);
+      expect(TOOL_SETS.admin_feeds.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_feeds')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_FEED_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+        const customTools = getToolsForSets([name], true, false)
+          .filter((toolName) => toolName !== 'web_search');
+        expect(customTools.length, name).toBeLessThanOrEqual(12);
+      }
+      expect(getToolsForSets(['admin_feed_monitoring'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_FEED_CURATION_TOOLS),
+      );
+      expect(getToolsForSets(['admin_feed_curation'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_FEED_MONITORING_TOOLS),
+      );
+      expect(getToolsForSets(['admin_feeds'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_FEEDS_TOOLS),
+      );
+    });
+
+    it('keeps conversation review and follow-up work separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_CONVERSATION_REVIEW_TOOLS).toEqual([
+        'query_admin_analytics', 'list_flagged_conversations', 'review_flagged_conversation',
+      ]);
+      expect(ADMIN_FOLLOWUP_TASK_TOOLS).toEqual([
+        'set_reminder', 'my_upcoming_tasks', 'complete_task', 'log_conversation',
+      ]);
+      expect(ADMIN_WORKFLOWS_TOOLS).toEqual([
+        'query_admin_analytics', 'list_flagged_conversations', 'review_flagged_conversation',
+        'set_reminder', 'my_upcoming_tasks', 'complete_task', 'log_conversation',
+      ]);
+      expect(TOOL_SETS.admin_workflows.tools).toEqual(ADMIN_WORKFLOWS_TOOLS);
+      expect(TOOL_SETS.admin_workflows.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_workflows')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_WORKFLOW_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+        const customTools = getToolsForSets([name], true, false)
+          .filter((toolName) => toolName !== 'web_search');
+        expect(customTools.length, name).toBeLessThanOrEqual(12);
+      }
+      expect(getToolsForSets(['admin_conversation_review'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_FOLLOWUP_TASK_TOOLS),
+      );
+      expect(getToolsForSets(['admin_followup_tasks'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_CONVERSATION_REVIEW_TOOLS),
+      );
+      expect(getToolsForSets(['admin_workflows'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_WORKFLOWS_TOOLS),
+      );
+    });
   });
 
   describe('certification workflow', () => {
@@ -239,36 +579,99 @@ describe('getToolsForSets', () => {
   });
 
   describe('Sponsored Intelligence workflow', () => {
-    it('exposes the complete SI host surface only when its domain is selected', () => {
-      const siTools = [
+    it('separates discovery from active sessions with an exact hidden alias', () => {
+      expect(SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS).toEqual([
         'get_si_availability',
         'list_si_agents',
         'connect_to_si_agent',
-        'send_to_si_agent',
-        'end_si_session',
-        'get_si_session_status',
-      ];
-
+      ]);
+      expect(SPONSORED_INTELLIGENCE_SESSION_TOOLS).toEqual([
+        'send_to_si_agent', 'end_si_session', 'get_si_session_status',
+      ]);
+      expect(SPONSORED_INTELLIGENCE_TOOLS).toEqual([
+        ...SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS,
+        ...SPONSORED_INTELLIGENCE_SESSION_TOOLS,
+      ]);
+      expect(TOOL_SETS.sponsored_intelligence.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('sponsored_intelligence')).toBe(false);
+      for (const [name, domainTools] of Object.entries(SPONSORED_INTELLIGENCE_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(false).has(name), name).toBe(true);
+        expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+      }
+      expect(getToolsForSets(['sponsored_intelligence_discovery'], false, false)).not.toEqual(
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_SESSION_TOOLS),
+      );
+      expect(getToolsForSets(['sponsored_intelligence_session'], false, false)).not.toEqual(
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_DISCOVERY_TOOLS),
+      );
       expect(getToolsForSets(['sponsored_intelligence'], false, false)).toEqual(
-        expect.arrayContaining(siTools),
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_TOOLS),
       );
       expect(getToolsForSets(['knowledge'], false, false)).not.toEqual(
-        expect.arrayContaining(siTools),
+        expect.arrayContaining(SPONSORED_INTELLIGENCE_TOOLS),
       );
     });
   });
 
-  describe('bounded agent and property domains', () => {
-    it('routes the complete property audit, enrichment, catalog, and dispute surface', () => {
-      expect(getToolsForSets(['property_catalog'], false, false)).toEqual(
-        expect.arrayContaining([
-          'check_property_list',
-          'enhance_property',
-          'resolve_catalog',
-          'browse_catalog',
-          'dispute_catalog_entry',
-        ]),
+  describe('committee leadership workflows', () => {
+    it('separates co-leaders, event planning, and registrations with exact compatibility surfaces', () => {
+      expect(COMMITTEE_CO_LEADER_TOOLS).toEqual([
+        'add_committee_co_leader', 'remove_committee_co_leader',
+        'list_committee_co_leaders', 'list_working_groups',
+      ]);
+      expect(COMMITTEE_EVENT_PLANNING_TOOLS).toEqual([
+        'list_working_groups', 'create_event', 'update_event',
+      ]);
+      expect(COMMITTEE_EVENT_REGISTRATION_TOOLS).toEqual([
+        'list_working_groups', 'manage_event_registrations',
+        'check_person_event_status', 'invite_to_event',
+      ]);
+      expect(COMMITTEE_FULL_LEADERSHIP_TOOLS).toEqual(COMMITTEE_LEADERSHIP_TOOLS);
+      expect(COMMITTEE_LEADERSHIP_TOOLS).toEqual([
+        'add_committee_co_leader', 'remove_committee_co_leader',
+        'list_committee_co_leaders', 'list_working_groups',
+        'create_event', 'update_event', 'manage_event_registrations',
+        'check_person_event_status', 'invite_to_event',
+      ]);
+      expect(TOOL_SETS.committee_leadership.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('committee_leadership')).toBe(false);
+
+      for (const [name, domainTools] of Object.entries(COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(false).has(name), name).toBe(true);
+        expect(getToolsForSets([name], false, false)).toEqual(expect.arrayContaining(domainTools));
+      }
+      expect(getValidToolSetNames(false).has('committee_full_leadership')).toBe(true);
+      expect(getToolsForSets(['committee_full_leadership'], false, false)).toEqual(
+        expect.arrayContaining(COMMITTEE_FULL_LEADERSHIP_TOOLS),
       );
+      expect(getToolsForSets(['committee_leadership'], false, false)).toEqual(
+        expect.arrayContaining(COMMITTEE_LEADERSHIP_TOOLS),
+      );
+      expect(getToolsForSets(['committee_co_leaders'], false, false)).not.toContain('create_event');
+      expect(getToolsForSets(['committee_event_planning'], false, false)).not.toContain('invite_to_event');
+      expect(getToolsForSets(['committee_event_registrations'], false, false)).not.toContain('update_event');
+    });
+  });
+
+  describe('bounded agent and property domains', () => {
+    it('keeps property registry, list enrichment, and identifier catalog workflows isolated', () => {
+      expect(PROPERTY_REGISTRY_RECORD_TOOLS).toEqual([
+        'resolve_property', 'save_property', 'list_properties', 'list_missing_properties',
+      ]);
+      expect(PROPERTY_LIST_ENRICHMENT_TOOLS).toEqual([
+        'check_property_list', 'enhance_property',
+      ]);
+      expect(PROPERTY_IDENTIFIER_CATALOG_TOOLS).toEqual([
+        'resolve_catalog', 'browse_catalog', 'dispute_catalog_entry',
+      ]);
+      expect(PROPERTY_CATALOG_TOOLS).toEqual([
+        ...PROPERTY_REGISTRY_RECORD_TOOLS,
+        ...PROPERTY_LIST_ENRICHMENT_TOOLS,
+        ...PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+      ]);
+      expect(PROPERTY_REGISTRY_RECORD_TOOLS.filter((tool) => new Set<string>(PROPERTY_LIST_ENRICHMENT_TOOLS).has(tool))).toEqual([]);
+      expect(PROPERTY_REGISTRY_RECORD_TOOLS.filter((tool) => new Set<string>(PROPERTY_IDENTIFIER_CATALOG_TOOLS).has(tool))).toEqual([]);
+      expect(PROPERTY_LIST_ENRICHMENT_TOOLS.filter((tool) => new Set<string>(PROPERTY_IDENTIFIER_CATALOG_TOOLS).has(tool))).toEqual([]);
     });
 
     it('keeps registry, quality, authentication, and property workflows isolated', () => {
@@ -276,7 +679,9 @@ describe('getToolsForSets', () => {
       const quality = getToolsForSets(['agent_quality'], false, false);
       const authentication = getToolsForSets(['agent_authentication'], false, false);
       const endToEnd = getToolsForSets(['agent_end_to_end'], false, false);
-      const property = getToolsForSets(['property_catalog'], false, false);
+      const propertyRecords = getToolsForSets(['property_registry_records'], false, false);
+      const propertyList = getToolsForSets(['property_list_enrichment'], false, false);
+      const propertyCatalog = getToolsForSets(['property_identifier_catalog'], false, false);
 
       expect(registry).toEqual(expect.arrayContaining([
         'validate_adagents',
@@ -304,10 +709,16 @@ describe('getToolsForSets', () => {
       ]));
       expect(endToEnd).not.toContain('test_adcp_agent');
       expect(endToEnd).not.toContain('compare_media_kit');
-      expect(property).toContain('resolve_property');
-      expect(property).toContain('dispute_catalog_entry');
-      expect(property).not.toContain('evaluate_agent_quality');
-      expect(property).not.toContain('diagnose_agent_auth');
+      expect(propertyRecords).toContain('resolve_property');
+      expect(propertyRecords).not.toContain('check_property_list');
+      expect(propertyList).toContain('enhance_property');
+      expect(propertyList).not.toContain('browse_catalog');
+      expect(propertyCatalog).toContain('dispute_catalog_entry');
+      expect(propertyCatalog).not.toContain('resolve_property');
+      for (const propertyTools of [propertyRecords, propertyList, propertyCatalog]) {
+        expect(propertyTools).not.toContain('evaluate_agent_quality');
+        expect(propertyTools).not.toContain('diagnose_agent_auth');
+      }
     });
 
     it('keeps narrow agent routes visible and the exact legacy union hidden', () => {
@@ -332,7 +743,8 @@ describe('getToolsForSets', () => {
         'evaluate_agent_quality', 'grade_agent_signing', 'diagnose_agent_auth',
         'compare_media_kit', 'test_rfp_response', 'test_io_execution', 'validate_agent',
       ]);
-      expect(PROPERTY_CATALOG_TOOLS).toHaveLength(9);
+      expect(TOOL_SETS.property_catalog.tools).toEqual(PROPERTY_CATALOG_TOOLS);
+      expect(TOOL_SETS.property_catalog.routerVisible).toBe(false);
       expect(TOOL_SETS.agent_validation.tools).toEqual(AGENT_VALIDATION_TOOLS);
       expect(TOOL_SETS.agent_validation.routerVisible).toBe(false);
       expect(getValidToolSetNames(false).has('agent_validation')).toBe(false);
@@ -340,7 +752,17 @@ describe('getToolsForSets', () => {
       expect(getValidToolSetNames(false).has('agent_quality')).toBe(true);
       expect(getValidToolSetNames(false).has('agent_authentication')).toBe(true);
       expect(getValidToolSetNames(false).has('agent_end_to_end')).toBe(true);
-      expect(getValidToolSetNames(false).has('property_catalog')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_catalog')).toBe(false);
+      expect(getValidToolSetNames(false).has('property_registry_records')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_list_enrichment')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_identifier_catalog')).toBe(true);
+
+      expect(getToolsForSets(['property_registry_records'], false, false)).toHaveLength(10);
+      expect(getToolsForSets(['property_list_enrichment'], false, false)).toHaveLength(8);
+      expect(getToolsForSets(['property_identifier_catalog'], false, false)).toHaveLength(9);
+      expect(getToolsForSets(['property_registry_records'], true, false)).toHaveLength(12);
+      expect(getToolsForSets(['property_list_enrichment'], true, false)).toHaveLength(10);
+      expect(getToolsForSets(['property_identifier_catalog'], true, false)).toHaveLength(11);
     });
 
     it.each(['agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end'] as const)(
@@ -501,10 +923,10 @@ describe('getToolsForSets', () => {
 
       expect(TOOL_SETS.member_billing.tools).toEqual(memberBillingTools);
       expect(tools).toEqual(expect.arrayContaining(memberBillingTools));
-      for (const adminTool of TOOL_SETS.billing.tools) {
+      for (const adminTool of ADMIN_BILLING_TOOLS) {
         expect(tools).not.toContain(adminTool);
       }
-      expect(TOOL_SETS.billing.tools.filter((tool) => memberBillingTools.includes(tool))).toEqual([]);
+      expect(ADMIN_BILLING_TOOLS.filter((tool) => memberBillingTools.includes(tool))).toEqual([]);
     });
   });
 
@@ -524,24 +946,32 @@ describe('getToolsForSets', () => {
       expect(tools).toContain('get_account_link');
     });
 
-    it('skips member and admin billing sets in public channels', () => {
-      const billingTools = [...TOOL_SETS.member_billing.tools, ...TOOL_SETS.billing.tools];
-      const tools = getToolsForSets(['member_billing', 'billing'], true, true);
+    it('skips member, bounded admin, and legacy billing sets in public channels', () => {
+      const billingTools = [...TOOL_SETS.member_billing.tools, ...ADMIN_BILLING_TOOLS];
+      const tools = getToolsForSets([
+        'member_billing',
+        'admin_billing_payments',
+        'admin_billing_discounts',
+        'admin_billing_account',
+        'billing',
+      ], true, true);
       for (const billingTool of billingTools) {
         expect(tools).not.toContain(billingTool);
       }
     });
 
-    it('includes billing tool set in private channels for admins', () => {
-      const tools = getToolsForSets(['billing'], true, false);
+    it('includes the selected bounded billing domain in private channels for admins', () => {
+      const tools = getToolsForSets(['admin_billing_payments'], true, false);
       expect(tools).toContain('send_payment_request');
+      expect(tools).not.toContain('grant_discount');
       expect(tools).not.toContain('find_membership_products');
     });
 
-    it('keeps Stripe customer relinks behind the precision-gated billing set', () => {
-      expect(TOOL_SETS.billing.requiresPrecision).toBe(true);
-      expect(TOOL_SETS.billing.tools).toContain('preview_org_stripe_customer_update');
-      expect(TOOL_SETS.billing.tools).toContain('confirm_org_stripe_customer_update');
+    it('keeps Stripe customer relinks behind the precision-gated account domain', () => {
+      expect(TOOL_SETS.admin_billing_account.requiresPrecision).toBe(true);
+      expect(TOOL_SETS.admin_billing_account.tools).toContain('preview_org_stripe_customer_update');
+      expect(TOOL_SETS.admin_billing_account.tools).toContain('confirm_org_stripe_customer_update');
+      expect(TOOL_SETS.admin_billing_payments.tools).not.toContain('preview_org_stripe_customer_update');
     });
 
     it('still includes non-enrollment always-available tools in public channels', () => {
@@ -558,13 +988,15 @@ describe('getToolsForSets', () => {
 
   describe('bounded member-facing domains', () => {
     it.each([
-      ['member_profile', 7],
+      ['member_personal_profile', 2],
+      ['member_company_profile', 5],
       ['community_group_discovery', 4],
       ['community_group_membership', 4],
       ['council_interest', 4],
       ['community_group_contribution', 3],
       ['community_group_full_participation', 11],
-      ['publishing_author', 6],
+      ['publishing_submission', 3],
+      ['publishing_assets', 4],
       ['publishing_review', 4],
       ['publishing_promotion', 2],
       ['certification_overview', 5],
@@ -575,6 +1007,8 @@ describe('getToolsForSets', () => {
       ['knowledge', 3],
       ['community_research', 6],
       ['schema_reference', 4],
+      ['sponsored_intelligence_discovery', 3],
+      ['sponsored_intelligence_session', 3],
       ['partner_directory', 5],
       ['agent_publisher_directory', 4],
       ['brand_registry_records', 5],
@@ -583,7 +1017,9 @@ describe('getToolsForSets', () => {
       ['agent_quality', 3],
       ['agent_authentication', 2],
       ['agent_end_to_end', 10],
-      ['property_catalog', 9],
+      ['property_registry_records', 4],
+      ['property_list_enrichment', 2],
+      ['property_identifier_catalog', 3],
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
@@ -606,7 +1042,9 @@ describe('getToolsForSets', () => {
       expect(COMMUNITY_GROUP_CONTRIBUTION_TOOLS).toEqual([
         'get_my_working_groups', 'create_working_group_post', 'bookmark_resource',
       ]);
-      expect(getValidToolSetNames(false).has('member_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('member_personal_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('member_company_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('member_profile')).toBe(false);
       for (const name of [
         'community_group_discovery', 'community_group_membership', 'council_interest',
         'community_group_contribution', 'community_group_full_participation',
@@ -619,12 +1057,13 @@ describe('getToolsForSets', () => {
     });
 
     it('keeps profile, community-group, and bounded publishing workflows isolated', () => {
-      const profile = getToolsForSets(['member_profile'], false, false);
+      const profile = getToolsForSets(['member_personal_profile'], false, false);
       const discovery = getToolsForSets(['community_group_discovery'], false, false);
       const membership = getToolsForSets(['community_group_membership'], false, false);
       const councilInterest = getToolsForSets(['council_interest'], false, false);
       const contribution = getToolsForSets(['community_group_contribution'], false, false);
-      const author = getToolsForSets(['publishing_author'], false, false);
+      const submission = getToolsForSets(['publishing_submission'], false, false);
+      const assets = getToolsForSets(['publishing_assets'], false, false);
       const review = getToolsForSets(['publishing_review'], false, false);
       const promotion = getToolsForSets(['publishing_promotion'], false, false);
 
@@ -642,24 +1081,31 @@ describe('getToolsForSets', () => {
       expect(contribution).toContain('bookmark_resource');
       expect(contribution).not.toContain('get_my_profile');
       expect(contribution).not.toContain('attach_content_asset');
-      expect(author).toContain('propose_content');
-      expect(author).toContain('attach_content_asset');
-      expect(author).not.toContain('approve_content');
-      expect(author).not.toContain('draft_social_posts');
+      expect(submission).toContain('propose_content');
+      expect(submission).toContain('read_google_doc');
+      expect(submission).not.toContain('attach_content_asset');
+      expect(assets).toContain('get_my_content');
+      expect(assets).toContain('attach_content_asset');
+      expect(assets).not.toContain('propose_content');
+      expect(assets).not.toContain('read_google_doc');
       expect(review).toContain('approve_content');
       expect(review).not.toContain('propose_content');
       expect(promotion).toContain('list_perspectives');
       expect(promotion).toContain('draft_social_posts');
       expect(promotion).not.toContain('attach_content_asset');
-      expect(author).not.toContain('get_my_profile');
-      expect(author).not.toContain('join_working_group');
+      expect(submission).not.toContain('get_my_profile');
+      expect(assets).not.toContain('join_working_group');
     });
 
-    it('keeps publishing routes visible', () => {
+    it('keeps bounded publishing routes visible and the exact alias hidden', () => {
       expect(PUBLISHING_AUTHOR_TOOLS).toHaveLength(6);
+      expect(PUBLISHING_SUBMISSION_TOOLS).toHaveLength(3);
+      expect(PUBLISHING_ASSET_TOOLS).toHaveLength(4);
       expect(PUBLISHING_REVIEW_TOOLS).toHaveLength(4);
       expect(PUBLISHING_PROMOTION_TOOLS).toHaveLength(2);
-      expect(getValidToolSetNames(false).has('publishing_author')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_submission')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_assets')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_author')).toBe(false);
       expect(getValidToolSetNames(false).has('publishing_review')).toBe(true);
       expect(getValidToolSetNames(false).has('publishing_promotion')).toBe(true);
     });

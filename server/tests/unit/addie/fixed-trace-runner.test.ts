@@ -24,6 +24,7 @@ import { DIRECTORY_TOOLS } from '../../../src/addie/mcp/directory-tools.js';
 import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../../../src/addie/mcp/member-tools.js';
 import { KNOWLEDGE_TOOLS } from '../../../src/addie/mcp/knowledge-search.js';
+import { PROPERTY_TOOLS } from '../../../src/addie/mcp/property-tools.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -151,6 +152,30 @@ const CANONICAL_ADMIN_BRAND_LOGO_TOOLS = ADMIN_TOOLS.filter((definition) => [
   'list_pending_brand_logos',
 ].includes(definition.name));
 
+const CANONICAL_ADMIN_BILLING_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'list_pending_invoices',
+].includes(definition.name));
+
+const CANONICAL_ADMIN_PROSPECT_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'query_prospects',
+].includes(definition.name));
+
+const CANONICAL_ADMIN_FEED_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'list_feed_proposals',
+].includes(definition.name));
+
+const CANONICAL_ADMIN_WORKFLOW_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'my_upcoming_tasks',
+].includes(definition.name));
+
+const CANONICAL_ADCP_AGENT_MANAGEMENT_TOOLS = MEMBER_TOOLS.filter((definition) => [
+  'list_saved_agents',
+].includes(definition.name));
+
+const CANONICAL_OUTREACH_REPORTING_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'get_action_items',
+].includes(definition.name));
+
 const CANONICAL_BRAND_IDENTITY_TOOLS = BRAND_CANONICAL_TOOLS.filter((definition) => [
   'check_mutual_assertion',
 ].includes(definition.name));
@@ -159,10 +184,20 @@ const CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS = DIRECTORY_TOOLS.filter((defini
   'list_agents',
 ].includes(definition.name));
 
+const CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS = PROPERTY_TOOLS.filter((definition) => [
+  'browse_catalog',
+].includes(definition.name));
+
 const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
   'get_my_profile',
+  'get_company_listing',
+  'get_my_content',
+  'check_illustration_status',
+  'list_si_agents',
+  'get_si_session_status',
+  'list_committee_co_leaders',
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',
@@ -171,8 +206,15 @@ const TOOL_DEFINITIONS = [
   CANONICAL_COMMUNITY_GROUP_TOOLS,
   CANONICAL_ADMIN_MEMBER_RECORDS_TOOLS,
   CANONICAL_ADMIN_BRAND_LOGO_TOOLS,
+  CANONICAL_ADMIN_BILLING_TOOLS,
+  CANONICAL_ADMIN_PROSPECT_TOOLS,
+  CANONICAL_ADMIN_FEED_TOOLS,
+  CANONICAL_ADMIN_WORKFLOW_TOOLS,
+  CANONICAL_ADCP_AGENT_MANAGEMENT_TOOLS,
+  CANONICAL_OUTREACH_REPORTING_TOOLS,
   CANONICAL_BRAND_IDENTITY_TOOLS,
   CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS,
+  CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS,
 );
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {

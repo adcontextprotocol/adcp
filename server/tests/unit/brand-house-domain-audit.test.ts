@@ -108,7 +108,7 @@ describe('brand house-domain audit trail (#3419)', () => {
     const insert = client.query.mock.calls.find(call =>
       typeof call[0] === 'string' && call[0].includes('INSERT INTO brands'),
     )!;
-    expect((insert[1] as unknown[])[14]).toBe(false);
+    expect((insert[1] as unknown[])[15]).toBe(false);
     expect(client.query.mock.calls.some(call =>
       typeof call[0] === 'string' && call[0].includes('registry_audit_log'),
     )).toBe(false);
@@ -141,7 +141,7 @@ describe('brand house-domain audit trail (#3419)', () => {
     const insert = client.query.mock.calls.find(call =>
       typeof call[0] === 'string' && call[0].includes('INSERT INTO brands'),
     )!;
-    expect((insert[1] as unknown[])[14]).toBe(true);
+    expect((insert[1] as unknown[])[15]).toBe(true);
     const audit = client.query.mock.calls.find(call =>
       typeof call[0] === 'string' && call[0].includes('registry_audit_log'),
     )!;

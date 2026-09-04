@@ -26,7 +26,13 @@ const RELEASE_STORY_ALIASES = new Set([
   '/docs/reference/migration/3-1-to-3-2',
   '/docs/media-buy/product-discovery/proposal-negotiation',
 ]);
-const CURRENT_LLMS_INDEX_ALIAS = '/_llms/current.md';
+// Mintlify Cloud handles Markdown requests before docs.json redirects, both
+// inside /_llms and at the root. These obsolete redirects must stay removed;
+// llms-current.md is a real source page instead.
+const OBSOLETE_CURRENT_LLMS_REDIRECTS = new Set([
+  '/llms-current.md',
+  '/_llms/current.md',
+]);
 // Production builds fetch versioned navigation specs reliably from public URLs;
 // release tags keep each docs version tied to the spec shipped with that release.
 const RELEASE_OPENAPI_URL = (releaseVersion) =>
@@ -135,29 +141,50 @@ function versionLine(value) {
   return typeof value === 'string' ? VERSION_LINE_RE.exec(value)?.[1] : undefined;
 }
 
-function updateCurrentLlmsIndexAlias(config) {
-  const versions = config?.navigation?.versions;
-  if (!Array.isArray(versions) || versions.length === 0) return;
-
-  const currentVersion = versions.find((entry) => entry.default)?.version
-    ?? versions[0]?.version;
-  if (typeof currentVersion !== 'string') return;
-
-  if (!Array.isArray(config.redirects)) config.redirects = [];
-  const destination = `/_llms/${currentVersion.replaceAll('.', '-')}.md`;
-  const existing = config.redirects.find(
-    (redirect) => redirect?.source === CURRENT_LLMS_INDEX_ALIAS
+function removeObsoleteCurrentLlmsRedirects(config) {
+  if (!Array.isArray(config.redirects)) return;
+  config.redirects = config.redirects.filter(
+    (redirect) => !OBSOLETE_CURRENT_LLMS_REDIRECTS.has(redirect?.source)
   );
-  if (existing) {
-    existing.destination = destination;
-    existing.permanent = false;
-  } else {
-    config.redirects.unshift({
-      source: CURRENT_LLMS_INDEX_ALIAS,
-      destination,
-      permanent: false,
-    });
+}
+
+export function renderCurrentLlmsIndex(config) {
+  const versions = config?.navigation?.versions;
+  if (!Array.isArray(versions) || versions.length === 0) {
+    throw new Error('docs.json must contain at least one navigation version');
   }
+
+  const current = versions.find((entry) => entry.default) ?? versions[0];
+  if (typeof current?.version !== 'string') {
+    throw new Error('the current docs navigation entry must have a version');
+  }
+
+  const builds = new Set(
+    collectStrings(current.groups)
+      .map((value) => /^dist\/docs\/([^/]+)\//.exec(value)?.[1])
+      .filter(Boolean)
+  );
+  if (builds.size !== 1) {
+    throw new Error(
+      `the current docs navigation must reference exactly one release build; found ${[...builds].join(', ') || 'none'}`
+    );
+  }
+
+  const version = current.version;
+  const build = [...builds][0];
+  const slug = version.replaceAll('.', '-');
+  const base = 'https://docs.adcontextprotocol.org';
+  return [
+    `# AdCP Current Documentation: ${version}`,
+    '',
+    `> Current stable AdCP documentation. Version: ${version}. Build: ${build}.`,
+    '',
+    '## Indexes',
+    '',
+    `- [AdCP ${version} full index](${base}/_llms/${slug}.md): Complete current documentation index for build ${build}.`,
+    `- [AdCP ${version} protocol index](${base}/_llms/${slug}/protocol.md): Complete current protocol documentation for build ${build}.`,
+    '',
+  ].join('\n');
 }
 
 function updateReleaseStoryAliases(config, releaseVersion) {
@@ -296,7 +323,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     }
     updatePrereleaseBanner(config, releaseVersion, majorMinor);
     updateReleaseStoryAliases(config, releaseVersion);
-    updateCurrentLlmsIndexAlias(config);
+    removeObsoleteCurrentLlmsRedirects(config);
     return {
       config,
       action: 'updated',
@@ -332,7 +359,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   versions.splice(insertionIndex, 0, newEntry);
   updatePrereleaseBanner(config, releaseVersion, majorMinor);
   updateReleaseStoryAliases(config, releaseVersion);
-  updateCurrentLlmsIndexAlias(config);
+  removeObsoleteCurrentLlmsRedirects(config);
   return {
     config,
     action: 'added',
@@ -394,10 +421,11 @@ function main() {
     docsJsonPath = 'docs.json',
     dockerignorePath = '.dockerignore',
     schemaToolsPath = 'server/src/addie/mcp/schema-tools.ts',
+    currentLlmsIndexPath = 'llms-current.md',
   ] = process.argv.slice(2);
   if (!releaseVersion || !majorMinor) {
     console.error(
-      'Usage: update-release-docs-nav.mjs <release-version> <major-minor> [docs.json] [.dockerignore] [schema-tools.ts]'
+      'Usage: update-release-docs-nav.mjs <release-version> <major-minor> [docs.json] [.dockerignore] [schema-tools.ts] [llms-current.md]'
     );
     process.exit(2);
   }
@@ -405,6 +433,7 @@ function main() {
   const config = JSON.parse(readFileSync(docsJsonPath, 'utf8'));
   const { action, sourceVersion } = updateDocsConfig(config, releaseVersion, majorMinor);
   writeFileSync(docsJsonPath, `${JSON.stringify(config, null, 2)}\n`);
+  writeFileSync(currentLlmsIndexPath, renderCurrentLlmsIndex(config));
   const dockerignore = readFileSync(dockerignorePath, 'utf8');
   writeFileSync(dockerignorePath, updateDockerignore(dockerignore, releaseVersion));
   const schemaTools = readFileSync(schemaToolsPath, 'utf8');

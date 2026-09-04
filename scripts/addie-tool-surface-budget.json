@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "b5ee2e94275c2cc5371405989ab411872b2a991a85c1c2bac8b4b0523bff95ef",
-  "profile_contract_sha256": "cc35ec7fd2ff65acfffd3d0d2e1f8638b630b42f491997944d590d6711f27e37",
+  "profile_ids_sha256": "d24d47bc28e22f61fde59ebabc87e95f12e3607066a50c7581430371ac805c43",
+  "profile_contract_sha256": "ba7ce13a4e8c23f9c92470fa52d112586b2822ae614ffabcc905c88f2897d0f9",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {

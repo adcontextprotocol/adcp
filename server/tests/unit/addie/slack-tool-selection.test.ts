@@ -12,6 +12,8 @@ import {
   type SystemChannelRole,
 } from '../../../src/addie/slack-tool-selection.js';
 import {
+  ADCP_AGENT_MANAGEMENT_TOOLS,
+  ADCP_TASK_OPERATION_TOOLS,
   AGENT_END_TO_END_TOOLS,
   ADMIN_BRANDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
@@ -21,6 +23,8 @@ import {
   getToolsForSets,
   MEETING_FULL_ADMINISTRATION_TOOLS,
   MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
+  PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+  PROPERTY_LIST_ENRICHMENT_TOOLS,
 } from '../../../src/addie/tool-sets.js';
 
 const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
@@ -300,29 +304,29 @@ describe('Slack tool-set selection policy', () => {
     })).toEqual(['billing']);
   });
 
-  it('adds Sponsored Intelligence tools for a relevant retrieval or active session', () => {
+  it('adds only the server-trusted Sponsored Intelligence context domain', () => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['partner_directory'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
-      hasSponsoredIntelligenceContext: true,
-    })).toEqual(['partner_directory', 'sponsored_intelligence']);
+      sponsoredIntelligenceContextKind: 'discovery',
+    })).toEqual(['partner_directory', 'sponsored_intelligence_discovery']);
 
     expect(selectSlackToolSets({
-      routerSelectedSets: ['sponsored_intelligence'],
+      routerSelectedSets: ['sponsored_intelligence_session'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
-      hasSponsoredIntelligenceContext: true,
-    })).toEqual(['sponsored_intelligence']);
+      sponsoredIntelligenceContextKind: 'session',
+    })).toEqual(['sponsored_intelligence_session']);
 
     expect(selectSlackToolSets({
       routerAvailable: false,
       source: 'dm',
       isAdmin: false,
-      hasSponsoredIntelligenceContext: true,
-    })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence']);
+      sponsoredIntelligenceContextKind: 'session',
+    })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence_session']);
   });
 
   it('rejects obsolete router-plan aliases before they reach prompt or tool selection', () => {
@@ -357,7 +361,7 @@ describe('Slack tool-set selection policy', () => {
     expect(publicMember.allowedToolNames).not.toContain('get_account_link');
 
     const admin = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['admin_prospect_pipeline'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'channel',
       isAdmin: true,
@@ -386,6 +390,54 @@ describe('Slack tool-set selection policy', () => {
     expect(selection.allowedToolNames).toEqual(expect.arrayContaining(expectedTools));
     expect(selection.allowedToolNames).not.toContain('test_adcp_agent');
     expect(selection.allowedToolNames).not.toContain('compare_media_kit');
+  });
+
+  it('keeps AdCP task and saved-agent reaction surfaces separate', () => {
+    const taskSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_task_operations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+      isToolAvailable: () => true,
+    });
+    const managementSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_agent_management'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(taskSelection.allowedToolNames).toEqual(expect.arrayContaining(ADCP_TASK_OPERATION_TOOLS));
+    expect(taskSelection.allowedToolNames).not.toEqual(expect.arrayContaining(ADCP_AGENT_MANAGEMENT_TOOLS));
+    expect(managementSelection.allowedToolNames).toEqual(expect.arrayContaining(ADCP_AGENT_MANAGEMENT_TOOLS));
+    expect(managementSelection.allowedToolNames).not.toEqual(expect.arrayContaining(ADCP_TASK_OPERATION_TOOLS));
+  });
+
+  it('keeps public AdCP mentions read-only and strips saved-agent management', () => {
+    const taskSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_task_operations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+    const managementSelection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['adcp_agent_management'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(taskSelection.allowedToolNames).toEqual([
+      'web_search', 'ask_about_adcp_task', 'get_adcp_capabilities',
+    ]);
+    expect(managementSelection.allowedToolNames).toEqual(['web_search']);
   });
 
   it('retains a long end-to-end agent request as one domain under the direct cap', () => {
@@ -456,6 +508,27 @@ describe('Slack tool-set selection policy', () => {
     expect(selection.selectedToolSets).toEqual(['member_billing', 'partner_directory']);
     expect(selection.allowedToolNames).toContain('create_payment_link');
     expect(selection.allowedToolNames).not.toContain('search_docs');
+  });
+
+  it('accepts the bounded two-domain property-list-to-catalog workflow', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['property_list_enrichment', 'property_identifier_catalog'], confidence: 'high', reason: 'audit and resolve property list', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['property_list_enrichment', 'property_identifier_catalog']);
+    const propertyTools = new Set<string>([
+      ...PROPERTY_LIST_ENRICHMENT_TOOLS,
+      ...PROPERTY_IDENTIFIER_CATALOG_TOOLS,
+    ]);
+    expect(selection.allowedToolNames.filter((name) =>
+      propertyTools.has(name),
+    )).toEqual([...PROPERTY_LIST_ENRICHMENT_TOOLS, ...PROPERTY_IDENTIFIER_CATALOG_TOOLS]);
+    expect(selection.allowedToolNames).not.toContain('resolve_property');
   });
 
   it('allows only the explicit full meeting composite and preserves its exact legacy union', () => {
@@ -590,9 +663,11 @@ describe('Slack tool-set selection policy', () => {
     ['legacy community-groups union', { action: 'respond', tool_sets: ['community_groups'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy directory union', { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-registry union', { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy property-catalog union', { action: 'respond', tool_sets: ['property_catalog'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
-    ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy Sponsored Intelligence union', { action: 'respond', tool_sets: ['sponsored_intelligence'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospect_pipeline'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized organization integrity domain', { action: 'respond', tool_sets: ['admin_organization_integrity'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized brand logo-review domain', { action: 'respond', tool_sets: ['admin_brand_logo_review'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'partner_directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
@@ -604,12 +679,12 @@ describe('Slack tool-set selection policy', () => {
       isAdmin: false,
       isPublicChannel: false,
       activeCertificationKind: 'mixed',
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
       systemRole: 'billing',
     });
     expect(selection.useSafeFallback).toBe(true);
     expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
-    expect(selection.selectedToolSets).not.toContain('sponsored_intelligence');
+    expect(selection.selectedToolSets).not.toContain('sponsored_intelligence_session');
     expect(selection.allowedToolNames).not.toEqual(expect.arrayContaining([
       'capture_learning', 'set_outreach_preference', 'create_payment_link',
       'add_prospect', 'send_to_si_agent', 'start_certification_module',
@@ -624,7 +699,7 @@ describe('Slack tool-set selection policy', () => {
       isAdmin: true,
       isPublicChannel: false,
       activeCertificationKind: 'learning',
-      hasSponsoredIntelligenceContext: true,
+      sponsoredIntelligenceContextKind: 'session',
     });
     expect(selection.useSafeFallback).toBe(true);
     expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);

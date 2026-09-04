@@ -11,6 +11,7 @@ import {
 export type SlackToolSource = 'dm' | 'mention' | 'channel';
 export type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
 export type ActiveCertificationKind = 'learning' | 'assessment' | 'mixed';
+export type SponsoredIntelligenceContextKind = 'discovery' | 'session';
 
 export const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
 
@@ -75,8 +76,8 @@ export interface SlackToolSetSelectionInput {
   activeCertificationKind?: ActiveCertificationKind | null;
   /** Legacy boolean callers receive the mixed compatibility-safe workflow. */
   hasActiveCertification?: boolean;
-  /** Relevant SI retrievals or an active session make brand-agent tools actionable. */
-  hasSponsoredIntelligenceContext?: boolean;
+  /** Server-trusted SI retrieval or active-session context. */
+  sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
 }
 
 export function hasActiveCertificationProgress(
@@ -139,8 +140,8 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
     appendUnique(selected, SYSTEM_CHANNEL_TOOL_SETS[input.systemRole] ?? []);
   }
 
-  if (input.hasSponsoredIntelligenceContext) {
-    appendUnique(selected, ['sponsored_intelligence']);
+  if (input.sponsoredIntelligenceContextKind) {
+    appendUnique(selected, [`sponsored_intelligence_${input.sponsoredIntelligenceContextKind}`]);
   }
 
   return selected;
@@ -162,7 +163,7 @@ export interface BoundedRoutedToolSetSelectionInput {
   workingGroupSlug?: string | null;
   systemRole?: SystemChannelRole | null;
   activeCertificationKind?: ActiveCertificationKind | null;
-  hasSponsoredIntelligenceContext?: boolean;
+  sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
   /** Exact definition-and-handler availability at the delivery boundary. */
   isToolAvailable?: (toolName: string) => boolean;
 }
@@ -218,9 +219,9 @@ export function selectBoundedRoutedToolSets(
     workingGroupSlug: useSafeFallback ? undefined : input.workingGroupSlug,
     systemRole: useSafeFallback ? undefined : input.systemRole,
     activeCertificationKind: useSafeFallback ? null : trustedActiveCertificationKind,
-    hasSponsoredIntelligenceContext: useSafeFallback
-      ? false
-      : input.hasSponsoredIntelligenceContext,
+    sponsoredIntelligenceContextKind: useSafeFallback
+      ? null
+      : input.sponsoredIntelligenceContextKind,
   });
   // The legacy Slack selector retains its direct-message knowledge overlay
   // for non-bounded callers. A trusted bounded response plan, however, is
@@ -274,7 +275,7 @@ export function selectBoundedRoutedToolSets(
       source: input.source,
       isAdmin: input.isAdmin,
       activeCertificationKind: null,
-      hasSponsoredIntelligenceContext: false,
+      sponsoredIntelligenceContextKind: null,
     });
     allowedToolNames = getSafeReadOnlyFallbackTools();
     allowedToolNames = retainPublicMentionReadOnlyTools(
