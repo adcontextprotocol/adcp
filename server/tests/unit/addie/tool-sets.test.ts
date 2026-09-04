@@ -56,6 +56,10 @@ import {
   MEETING_SCHEDULING_TOOLS,
   MEETING_SERIES_TOPIC_TOOLS,
   MEETING_TOOLS,
+  OUTREACH_CONTACT_MANAGEMENT_TOOLS,
+  OUTREACH_DOMAIN_TOOL_SETS,
+  OUTREACH_REPORTING_TOOLS,
+  OUTREACH_TOOLS,
   PARTNER_DIRECTORY_TOOLS,
   PUBLISHING_AUTHOR_TOOLS,
   PUBLISHING_PROMOTION_TOOLS,
@@ -72,6 +76,39 @@ import {
 } from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
+  it('keeps outreach reporting and contact work separate with an exact hidden alias', () => {
+    expect(OUTREACH_REPORTING_TOOLS).toEqual([
+      'get_outreach_stats', 'get_outreach_history', 'get_action_items',
+    ]);
+    expect(OUTREACH_CONTACT_MANAGEMENT_TOOLS).toEqual([
+      'send_outreach', 'lookup_person', 'get_account', 'create_contact',
+    ]);
+    expect(OUTREACH_TOOLS).toEqual([
+      'get_outreach_stats', 'get_outreach_history', 'send_outreach', 'lookup_person',
+      'get_action_items', 'get_account', 'create_contact',
+    ]);
+    expect(TOOL_SETS.outreach.tools).toEqual(OUTREACH_TOOLS);
+    expect(TOOL_SETS.outreach.routerVisible).toBe(false);
+    expect(getValidToolSetNames(true).has('outreach')).toBe(false);
+    for (const [name, domainTools] of Object.entries(OUTREACH_DOMAIN_TOOL_SETS)) {
+      expect(getValidToolSetNames(true).has(name), name).toBe(true);
+      expect(getValidToolSetNames(false).has(name), name).toBe(false);
+      expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+      const customTools = getToolsForSets([name], true, false)
+        .filter((toolName) => toolName !== 'web_search');
+      expect(customTools.length, name).toBeLessThanOrEqual(12);
+    }
+    expect(getToolsForSets(['outreach_reporting'], true, false)).not.toEqual(
+      expect.arrayContaining(OUTREACH_CONTACT_MANAGEMENT_TOOLS),
+    );
+    expect(getToolsForSets(['outreach_contact_management'], true, false)).not.toEqual(
+      expect.arrayContaining(OUTREACH_REPORTING_TOOLS),
+    );
+    expect(getToolsForSets(['outreach'], true, false)).toEqual(
+      expect.arrayContaining(OUTREACH_TOOLS),
+    );
+  });
+
   it('keeps AdCP task operations and saved-agent management separate with an exact hidden alias', () => {
     expect(ADCP_TASK_OPERATION_TOOLS).toEqual([
       'ask_about_adcp_task', 'call_adcp_task', 'get_adcp_capabilities',
@@ -165,6 +202,9 @@ describe('getToolsForSets', () => {
     });
 
     it('generates the compact catalog from router-visible domains only', () => {
+      expect(ADDIE_TOOL_CATALOG).toContain('- **outreach_reporting**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **outreach_contact_management**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **outreach**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **adcp_task_operations**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **adcp_agent_management**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **adcp_operations**');

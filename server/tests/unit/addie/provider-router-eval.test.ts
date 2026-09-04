@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(108);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(108);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(110);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(110);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
@@ -155,11 +155,11 @@ describe('strict router eval', () => {
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
       'admin_organization_integrity', 'admin_organization_member_records', 'admin_conversation_review', 'admin_followup_tasks',
       'admin_brand_registry_integrity', 'admin_brand_logo_review',
-      'outreach', 'collaboration',
+      'outreach_reporting', 'outreach_contact_management', 'collaboration',
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(107);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(109);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -176,6 +176,7 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('admin_feeds');
     expect(expectedSets).not.toContain('admin_workflows');
     expect(expectedSets).not.toContain('adcp_operations');
+    expect(expectedSets).not.toContain('outreach');
   });
 
   it('selects only the bounded directory domain needed by an ordinary request', async () => {
@@ -433,6 +434,33 @@ describe('strict router eval', () => {
     ), 'router-model', 'prompt_parity', testCase);
 
     expect(testCase.expected.toolSets).toEqual(['admin_conversation_review', 'admin_followup_tasks']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded outreach domain needed by an admin request', async () => {
+    for (const [id, toolSet] of [
+      ['outreach-reporting', 'outreach_reporting'],
+      ['outreach-contact-management', 'outreach_contact_management'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded outreach workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the bounded dual-domain outreach case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'outreach-reporting-and-contact')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["outreach_contact_management","outreach_reporting"],"confidence":"high","requires_depth":true,"reason":"history then follow-up"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["outreach_contact_management"],"confidence":"high","requires_depth":true,"reason":"follow-up only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['outreach_reporting', 'outreach_contact_management']);
     expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
     expect(incompleteResult.scores.toolsExact).toBe(false);
   });

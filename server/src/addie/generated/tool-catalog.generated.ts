@@ -71,7 +71,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_followup_tasks** *(admin only)* — set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brand_registry_integrity** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
 - **admin_brand_logo_review** *(admin only)* — list_pending_brand_logos, list_brand_logos, review_brand_logo
-- **outreach** *(admin only)* — get_outreach_stats, get_outreach_history, send_outreach, lookup_person, get_action_items, get_account, create_contact
+- **outreach_reporting** *(admin only)* — get_outreach_stats, get_outreach_history, get_action_items
+- **outreach_contact_management** *(admin only)* — send_outreach, lookup_person, get_account, create_contact
 - **collaboration** — send_member_dm
 - **certification_overview** — list_certification_tracks, get_certification_module, get_learner_progress, check_credentials, set_my_name
 - **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task

@@ -144,6 +144,20 @@ export const ADMIN_WORKFLOW_DOMAIN_TOOL_SETS = {
   ],
 } as const;
 
+export const OUTREACH_DOMAIN_TOOL_SETS = {
+  outreach_reporting: [
+    "get_outreach_stats",
+    "get_outreach_history",
+    "get_action_items",
+  ],
+  outreach_contact_management: [
+    "send_outreach",
+    "lookup_person",
+    "get_account",
+    "create_contact",
+  ],
+} as const;
+
 export const ADMIN_DOMAIN_TOOL_SETS = {
   ...ADMIN_BILLING_DOMAIN_TOOL_SETS,
   ...ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
@@ -293,6 +307,20 @@ export const ADMIN_WORKFLOWS_TOOLS = [
   "my_upcoming_tasks",
   "complete_task",
   "log_conversation",
+] as const;
+
+export const OUTREACH_REPORTING_TOOLS = OUTREACH_DOMAIN_TOOL_SETS.outreach_reporting;
+export const OUTREACH_CONTACT_MANAGEMENT_TOOLS = OUTREACH_DOMAIN_TOOL_SETS.outreach_contact_management;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const OUTREACH_TOOLS = [
+  "get_outreach_stats",
+  "get_outreach_history",
+  "send_outreach",
+  "lookup_person",
+  "get_action_items",
+  "get_account",
+  "create_contact",
 ] as const;
 
 /** Bounded member-facing brand-registry domains for ordinary router plans. */
@@ -1238,20 +1266,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  outreach_reporting: {
+    name: "outreach_reporting",
+    description:
+      "Outreach performance, history, and action items (admin only)",
+    tools: [...OUTREACH_DOMAIN_TOOL_SETS.outreach_reporting],
+    adminOnly: true,
+  },
+
+  outreach_contact_management: {
+    name: "outreach_contact_management",
+    description:
+      "Person/account lookup, contact creation, and outreach delivery (admin only)",
+    tools: [...OUTREACH_DOMAIN_TOOL_SETS.outreach_contact_management],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route,
+  // including the server-owned prospect channel.
   outreach: {
     name: "outreach",
-    description:
-      "SDR outreach operations — view outreach stats, check history, send outreach, look up people, manage action items (admin only)",
-    tools: [
-      "get_outreach_stats",
-      "get_outreach_history",
-      "send_outreach",
-      "lookup_person",
-      "get_action_items",
-      "get_account",
-      "create_contact",
-    ],
+    description: "Legacy combined outreach compatibility surface",
+    tools: [...OUTREACH_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   collaboration: {

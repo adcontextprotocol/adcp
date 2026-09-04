@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v25');
-    expect(FIXED_TRACE_SUITE).toHaveLength(24);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v26');
+    expect(FIXED_TRACE_SUITE).toHaveLength(25);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -314,6 +314,19 @@ describe('fixed cross-provider trace suite', () => {
     expect(trace.expectation.mutationAuthorization).toBe('none');
   });
 
+  it('keeps outreach action-item review read-only and isolated from contact operations', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'outreach-action-items-list')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['outreach_reporting'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['get_action_items']);
+    expect(trace.expectation.requiredTools).toEqual(['get_action_items']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'get_outreach_stats', 'get_outreach_history', 'send_outreach', 'lookup_person',
+      'get_account', 'create_contact',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
   it('keeps the property identifier-catalog trace read-only and isolated from registry and enrichment', () => {
     const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'property-identifier-catalog-browse')!;
     expect(trace.routing).toEqual({ action: 'respond', toolSets: ['property_identifier_catalog'] });
@@ -442,8 +455,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 24,
-      observed: 24,
+      expected: 25,
+      observed: 25,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -454,11 +467,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 24);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.020);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 25);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.021);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 21,
+      complete: 22,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -607,7 +620,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 24, observed: 3, omitted: 21, complete: false });
+    expect(summary).toMatchObject({ expected: 25, observed: 3, omitted: 22, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

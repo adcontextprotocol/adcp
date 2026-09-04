@@ -340,6 +340,26 @@ describe('Addie tool reference', () => {
     expect(followup).not.toContain('query_admin_analytics');
   });
 
+  it('keeps outreach reporting and contact guidance request-scoped', () => {
+    const reporting = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['outreach_reporting'], true, false),
+      selectedToolSetNames: ['outreach_reporting'],
+    });
+    const contacts = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['outreach_contact_management'], true, false),
+      selectedToolSetNames: ['outreach_contact_management'],
+    });
+
+    expect(reporting).toContain('### Outreach tools');
+    expect(reporting).toContain('- **outreach_reporting** *(admin only)*');
+    expect(reporting).toContain('get_outreach_history');
+    expect(reporting).not.toContain('send_outreach');
+    expect(contacts).toContain('### Outreach tools');
+    expect(contacts).toContain('- **outreach_contact_management** *(admin only)*');
+    expect(contacts).toContain('send_outreach');
+    expect(contacts).not.toContain('get_outreach_history');
+  });
+
   it('keeps organization-integrity and member-record guidance request-scoped', () => {
     const integrity = buildAddieToolReference({
       availableToolNames: getToolsForSets(['admin_organization_integrity'], true, false),
