@@ -1248,6 +1248,56 @@ export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuy
   };
 }
 
+export async function reportingStatusForCustomTool(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<object> {
+  const syntheticCtx = {
+    authInfo: { clientId: ctx.principal },
+    account: undefined as never,
+  };
+  try {
+    return await legacyGetReportingStatusHandler()(args as never, syntheticCtx as never) as object;
+  } catch (err) {
+    if (err instanceof AdcpError) return adcpLegacyErrorPayload(err);
+    throw err;
+  }
+}
+
+export async function syncReportingReceiptsForCustomTool(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<object> {
+  const syntheticCtx = {
+    authInfo: { clientId: ctx.principal },
+    account: undefined as never,
+  };
+  try {
+    return await legacySyncReportingReceiptsHandler()(args as never, syntheticCtx as never) as object;
+  } catch (err) {
+    if (err instanceof AdcpError) return adcpLegacyErrorPayload(err);
+    throw err;
+  }
+}
+
+function adcpLegacyErrorPayload(err: AdcpError): { errors: Record<string, unknown>[] } {
+  const ext = err as unknown as {
+    code?: string;
+    recovery?: string;
+    field?: string;
+    details?: unknown;
+  };
+  return {
+    errors: [{
+      code: ext.code ?? 'INTERNAL_ERROR',
+      message: err.message,
+      ...(ext.recovery && { recovery: ext.recovery }),
+      ...(ext.field && { field: ext.field }),
+      ...(ext.details !== undefined && { details: ext.details }),
+    }],
+  };
+}
+
 export function legacySyncCreativesHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): NonNullable<LegacyMediaBuyHandlers['syncCreatives']> {

@@ -1752,10 +1752,11 @@ function recordsFor(
       const activatedMs = parseInstant(window.start);
       const periodMs = stored.config.schedule.period_duration === 'P1D' ? 24 * HOUR_MS : HOUR_MS;
       const slaMs = stored.config.schedule.delivery_sla === 'PT4H' ? 4 * HOUR_MS : HOUR_MS;
-      const firstStart = Math.max(floorHour(activatedMs + periodMs - 1), retentionStartMs);
+      const floorPeriod = (ms: number): number => Math.floor(ms / periodMs) * periodMs;
+      const firstStart = Math.max(floorPeriod(activatedMs + periodMs - 1), retentionStartMs);
       const finalEnd = Math.min(
-        floorHour(nowMs),
-        window.end ? floorHour(parseInstant(window.end) + periodMs - 1) : floorHour(nowMs),
+        floorPeriod(nowMs),
+        window.end ? floorPeriod(parseInstant(window.end) + periodMs - 1) : floorPeriod(nowMs),
       );
       for (let startMs = firstStart; startMs < finalEnd; startMs += periodMs) {
       const endMs = startMs + periodMs;
@@ -1819,9 +1820,9 @@ function recordsFor(
         period: { start: iso(startMs), end: periodEnd, source_timezone: 'UTC' },
         expected_at: iso(endMs + slaMs),
         schedule: stored.config.schedule,
-        required_finality: 'snapshot',
-        reconciliation_mode: 'delivery_only',
-        reconciliation_status: 'not_required',
+        required_finality: stored.config.required_finality,
+        reconciliation_mode: stored.config.reconciliation_mode,
+        reconciliation_status: stored.config.reconciliation_mode === 'consumer_receipt' ? 'pending' : 'not_required',
         health,
         production_status: published ? 'published' : 'pending',
         revision_count: published ? 1 : 0,
