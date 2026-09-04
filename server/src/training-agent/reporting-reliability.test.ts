@@ -110,7 +110,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     syncReliableReportingReceiptsForAccount(
       {
         receipts: [{
-          reporting_receipt_id: 'rcpt-1b-rev-001',
+          reporting_receipt_id: 'rcpt-1b-rev-0001',
           reporting_obligation_id: probe.reporting_obligation_id,
           reporting_revision_id: probe.reporting_revision_id,
           reporting_materialization_id: probe.reporting_materialization_id,
@@ -122,6 +122,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
             { name: 'spend', value: '8.00', value_type: 'decimal', unit: 'USD' },
           ],
           observed_canonical_content_digest: probe.canonical_content_digest,
+          observed_at: '2026-08-29T10:00:00.000Z',
         }],
       },
       principal,
@@ -144,11 +145,12 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     syncReliableReportingReceiptsForAccount(
       {
         adjustment_receipts: [{
-          reporting_receipt_id: 'rcpt-1b-adj-001',
+          reporting_receipt_id: 'rcpt-1b-adj-0001',
           reporting_adjustment_id: acceptedAdj.reporting_adjustment_id,
           adjusts_reporting_revision_id: acceptedAdj.adjusts_reporting_revision_id,
           status: 'accepted',
           observed_adjustment_sha256: acceptedAdj.canonical_adjustment_sha256,
+          observed_at: '2026-08-29T10:01:00.000Z',
         }],
       },
       principal,

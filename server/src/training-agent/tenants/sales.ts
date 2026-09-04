@@ -147,7 +147,13 @@ export function buildSalesTenantConfig(
               'Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.',
               GET_REPORTING_STATUS_SCHEMA,
               reportingStatusForCustomTool,
-              { annotations: { readOnlyHint: true, idempotentHint: true } },
+              {
+                annotations: { readOnlyHint: true, idempotentHint: true },
+                // A failed lookup is a valid get_reporting_status result. Keep
+                // its status/failure_kind/errors envelope intact rather than
+                // recasting it as an MCP transport error.
+                payloadErrorsAsSuccess: true,
+              },
             ),
             sync_reporting_receipts: customToolFor(
               'sync_reporting_receipts',
