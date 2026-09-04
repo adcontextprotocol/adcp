@@ -75,7 +75,7 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
-import { atLeastAdcpVersion, REPORTING_STATUS_ADCP_VERSION, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsReliableReporting, supportsReportingStatus, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -444,6 +444,7 @@ export const TRAINING_SALES_CAPABILITIES = {
       reporting_delivery: {
         supported: true as const,
         reliable_reporting_version: '1.0' as const,
+        revision_content_task: 'get_media_buy_delivery' as const,
         managed_delivery: true as const,
         reconciled_billing: true as const,
         configuration_task: 'sync_accounts' as const,
@@ -1147,13 +1148,21 @@ export function legacyGetProductsHandler(
 export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHandlers['getReportingStatus']> {
   return async (req, ctx) => {
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
-    if (!version.ok || !atLeastAdcpVersion(version.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+    if (!version.ok || !supportsReportingStatus(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
         recovery: 'correctable',
         message: version.ok
-          ? 'get_reporting_status is available only in AdCP 3.2 and later.'
+          ? 'Reporting status is available only in AdCP 3.2 beta.10 and later.'
           : version.message,
         field: 'adcp_version',
+      });
+    }
+    if (!supportsReliableReporting(version.servedVersion)
+      && (req as unknown as { changes_after?: unknown }).changes_after !== undefined) {
+      throw new AdcpError('VALIDATION_ERROR', {
+        recovery: 'correctable',
+        message: 'changes_after is available only in AdCP 3.2 RC.1 and later.',
+        field: 'changes_after',
       });
     }
     const resolved = ctx.account as {
@@ -1208,17 +1217,37 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
         }),
       })),
     );
-    return validateReliableReportingResponse(response);
+    return supportsReliableReporting(version.servedVersion)
+      ? validateReliableReportingResponse(response)
+      : projectRc0ReportingStatus(response as unknown as Record<string, unknown>) as never;
   };
+}
+
+/** The released RC0 handler must never accidentally grow source/latest fields. */
+function projectRc0ReportingStatus(response: Record<string, unknown>): Record<string, unknown> {
+  const rc1Only = new Set([
+    'changes_checkpoint', 'adjustments', 'adjustment_receipts',
+    'revision_content_sha256', 'pending_adjustment_count',
+    'accepted_adjustment_receipt_count', 'rejected_adjustment_receipt_count',
+    'adjustment_receipt_count', 'adjustment_count',
+  ]);
+  const project = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(project);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !rc1Only.has(key))
+      .map(([key, nested]) => [key, project(nested)]));
+  };
+  return project(response) as Record<string, unknown>;
 }
 
 export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuyHandlers['syncReportingReceipts']> {
   return async (req, ctx) => {
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
-    if (!version.ok || !atLeastAdcpVersion(version.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+    if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
         recovery: 'correctable',
-        message: 'sync_reporting_receipts is available only in AdCP 3.2 and later.',
+        message: 'Reliable Reporting 1.0 receipts are available only in AdCP 3.2 RC.1 and later.',
         field: 'adcp_version',
       });
     }
@@ -1232,19 +1261,31 @@ export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuy
     if (!reportingAccount) {
       throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting account was not found.', field: 'account' });
     }
-    const response = await withDurableReportingLedger(
-      principal,
-      reportingAccount.accountId,
-      true,
-      () => syncReliableReportingReceiptsForAccount(
-        req as unknown as Parameters<typeof syncReliableReportingReceiptsForAccount>[0],
+    try {
+      const response = await withDurableReportingLedger(
         principal,
         reportingAccount.accountId,
-      ),
-      reportingAccount.account,
-      reportingAccount.accountState,
-    );
-    return response as never;
+        true,
+        () => syncReliableReportingReceiptsForAccount(
+          req as unknown as Parameters<typeof syncReliableReportingReceiptsForAccount>[0],
+          principal,
+          reportingAccount.accountId,
+        ),
+        reportingAccount.account,
+        reportingAccount.accountState,
+      );
+      return response as never;
+    } catch (error) {
+      // Source-schema input validation and direct test construction must be
+      // reported as a correctable protocol validation failure, never as a
+      // transient service outage.
+      if (error instanceof Error && /receipt|batch|immutable|replacement/i.test(error.message)) {
+        throw new AdcpError('VALIDATION_ERROR', {
+          recovery: 'correctable', message: error.message, field: 'receipts',
+        });
+      }
+      throw error;
+    }
   };
 }
 

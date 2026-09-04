@@ -7,6 +7,7 @@
   "type": "object",
   "properties": {
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Portable AdCP identity for this immutable report publication. Distinct from package delivery_revision_id and provider-native versions." },
+    "revision_content_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 of the immutable RFC 8785 JCS binding object containing reporting_revision_id, row_count, control_totals, and reporting_rows. Reliable Reporting 1.0 Core revisions include it and exact reads return the identical value." },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Identity or canonical fingerprint of immutable metric, grain, attribution, breakdown, action-definition, profile, and calendar/timezone semantics." },
     "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)" },
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
@@ -48,7 +49,7 @@
     "canonical_content_digest": { "$ref": "/schemas/core/reporting-canonical-content-digest.json" },
     "created_at": { "type": "string", "format": "date-time" }
   },
-  "required": ["reporting_revision_id", "report_definition_id", "report_definition_uri", "report_definition_sha256", "reporting_profile", "schema_version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "account_id", "media_buy_ids", "coverage", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "control_totals", "created_at"],
+  "required": ["reporting_revision_id", "revision_content_sha256", "report_definition_id", "report_definition_uri", "report_definition_sha256", "reporting_profile", "schema_version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "account_id", "media_buy_ids", "coverage", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "control_totals", "created_at"],
   "allOf": [
     {
       "if": { "properties": { "data_through_precision": { "const": "unknown" } }, "required": ["data_through_precision"] },
@@ -68,7 +69,7 @@
     "fan_out": "Delivery configuration, obligation, destination, feed purpose, and recipient identity belong only on reporting_materialization and reporting_obligation. They MUST NOT affect reporting_revision_id for identical content.",
     "finality_evidence": "An official revision's finality_policy_id and finality_basis MUST match the pinned report definition, and finalized_at MUST be no later than created_at. source_final requires the named source_signal to have been authoritatively observed no earlier than period.end. contractual_cutoff requires finalized_at to be at or after period.end plus duration_after_period_end. stabilized requires finalized_at to be at or after period.end plus minimum_age and requires retained observation history proving unchanged_for immediately before finalized_at. A seller MUST NOT publish the irreversible official close before the selected policy is satisfied.",
     "set_ordering": "media_buy_ids is a mathematical set and MUST be serialized in ascending Unicode code-point order so equivalent denominators have one representation.",
-    "digest_requirement": "canonical_content_digest is optional for non-billing delivery profiles. It is mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
+    "digest_requirement": "revision_content_sha256 is required for every revision and is SHA-256 of RFC 8785 JCS for {reporting_revision_id,row_count,control_totals,reporting_rows}. Exact revision reads MUST return metadata, rows, ID, count, totals, and this digest identically to status. canonical_content_digest is separate external-materialization evidence: it is optional for non-billing delivery profiles and mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
   },
   "additionalProperties": false
 }

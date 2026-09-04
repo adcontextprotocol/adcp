@@ -29,7 +29,7 @@
   "required_finality": "official",
   "reconciliation_mode": "consumer_receipt",
   "reconciliation_status": "pending",
-  "health": "waiting",
+  "health": "action_required",
   "production_status": "published",
   "revision_count": 1,
   "adjustment_count": 0,
@@ -37,6 +37,14 @@
   "successful_materialization_count": 1,
   "receipt_count": 0,
   "accepted_receipt_count": 0,
-  "issues": [],
+  "issues": [
+    {
+      "issue_id": "reporting-issue.receipt-required-fixture",
+      "code": "RECEIPT_REQUIRED",
+      "severity": "action_required",
+      "responsible_party": "buyer",
+      "recommended_action": "contact_buyer"
+    }
+  ],
   "resource_retained_until": "2026-09-27T04:00:02Z"
 }

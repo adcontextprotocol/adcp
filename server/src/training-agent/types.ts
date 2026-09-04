@@ -28,10 +28,12 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
  */
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
-/** Current prerelease schema bundle shipped by the server SDK. */
+/** Current published candidate schema bundle shipped by the server. */
 export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.0' as const;
 /** First released schema checkpoint containing get_reporting_status. */
 export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
+/** First candidate checkpoint containing Reliable Reporting 1.0. */
+export const RELIABLE_REPORTING_ADCP_VERSION = '3.2-rc.1' as const;
 
 /** Release checkpoints the reference training agent can serve. */
 export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
@@ -83,6 +85,16 @@ export function supportsGetProductsRejected(servedVersion: string | undefined): 
 
 export function supportsSellerGovernanceDiscovery(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
+}
+
+/** Reliable Reporting 1.0 is available only from its matching RC.1 candidate. */
+export function supportsReliableReporting(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, RELIABLE_REPORTING_ADCP_VERSION);
+}
+
+/** The pre-Reliable-Reporting status read shipped in the RC.0 wire bundle. */
+export function supportsReportingStatus(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, REPORTING_STATUS_ADCP_VERSION);
 }
 
 /** Account change feed is a 3.2+ surface and must not leak into 3.1

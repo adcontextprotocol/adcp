@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/reporting-health.json",
   "title": "Reporting Health",
-  "description": "Operational health for an explicitly echoed reporting scope. Aggregate precedence is action_required, delayed, then healthy. waiting applies only when no active obligation is due. complete applies only when the queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization.",
+  "description": "Operational health for an explicitly echoed reporting scope. Aggregate precedence is action_required, delayed, then healthy. waiting applies only when no active obligation is due. action_required also applies immediately when a readable consumer-receipt revision or adjustment lacks an accepted current receipt; Reliable Reporting defines no separate receipt SLA. complete applies only when the queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization.",
   "type": "string",
   "enum": ["healthy", "waiting", "delayed", "action_required", "complete"],
   "enumDescriptions": {
     "healthy": "Due obligations in the queried active scope are current and automated delivery is working.",
     "waiting": "No obligation in the queried active scope is due yet.",
     "delayed": "At least one obligation is late, but remains within the seller's declared automated recovery path.",
-    "action_required": "A delivery, SLA, or retry boundary was crossed and at least one structured human action is supplied.",
+    "action_required": "A delivery, SLA, retry, or immediate readable-evidence receipt-reconciliation boundary was crossed and at least one structured human action is supplied.",
     "complete": "The queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization."
   }
 }

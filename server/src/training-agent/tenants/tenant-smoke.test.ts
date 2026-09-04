@@ -2074,10 +2074,10 @@ describe('tenant routing smoke', () => {
         route.rendering_origin === 'agent_approximation'
       ))).toBe(true);
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
-        expect.arrayContaining(SALES_CURRENT_SCENARIOS),
+        expect.arrayContaining(SALES_CURRENT_SCENARIOS.filter(scenario => scenario !== 'reporting_core_lifecycle_probe')),
       );
       expect(body.result?.structuredContent?.compliance_testing?.scenarios)
-        .toContain('reporting_core_lifecycle_probe');
+        .not.toContain('reporting_core_lifecycle_probe');
       const validation = validateSourceSchema(
         'protocol/get-adcp-capabilities-response.json',
         body.result?.structuredContent,

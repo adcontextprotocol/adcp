@@ -303,10 +303,21 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   assert.equal(validateReportDefinition(reportDefinition), true, JSON.stringify(validateReportDefinition.errors));
   assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
   assert.equal(obligation.reconciliation_status, 'pending');
-  assert.equal(obligation.health, 'waiting');
+  assert.equal(obligation.health, 'action_required');
+  assert.equal(obligation.issues[0].code, 'RECEIPT_REQUIRED');
   assert.equal(obligation.receipt_count, 0);
   assert.equal(obligation.accepted_receipt_count, 0);
   assert.equal(validateRevision(revision), true, JSON.stringify(validateRevision.errors));
+  assert.equal(
+    hash(Buffer.from(canonicalize({
+      reporting_revision_id: revision.reporting_revision_id,
+      row_count: revision.row_count,
+      control_totals: revision.control_totals,
+      reporting_rows: rows,
+    })), 'sha256'),
+    revision.revision_content_sha256,
+    'the immutable revision binding commits ID, count, totals, and authoritative rows',
+  );
   assert.equal(validateMaterialization(materialization), true, JSON.stringify(validateMaterialization.errors));
   assert.equal(validateAdjustment(adjustment), true, JSON.stringify(validateAdjustment.errors));
   assert.equal(adjustment.adjusts_reporting_revision_id, revision.reporting_revision_id);
@@ -338,7 +349,7 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
     adjustmentReceiptResponse.results[0].adjustment_receipt,
     { ...submittedAdjustmentReceipt, received_at: '2026-08-29T10:01:01Z' },
   );
-  assert.equal(index.post_official_adjustment.invoice_anchor_revision_id, revision.reporting_revision_id);
+  assert.equal(index.post_official_adjustment.supporting_evidence_revision_id, revision.reporting_revision_id);
   assert.equal(index.post_official_adjustment.original_revision_and_receipt_immutable, true);
 
   for (const manifestPath of ['manifest.json']) {

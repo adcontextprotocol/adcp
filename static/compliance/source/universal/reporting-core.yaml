@@ -7,6 +7,7 @@ summary: "Validates reporting.core obligation-before-report behavior, clock-deri
 track: core
 required_tools:
   - get_reporting_status
+  - get_media_buy_delivery
 
 requires:
   - controller
@@ -30,6 +31,12 @@ narrative: |
   revision, lateness derives from the schedule rather than media-buy
   acceptance, and a zero-row revision satisfies the obligation without being
   confused with missing reporting.
+
+  For exact revision reads, the fixture uses a one-row page size. The two
+  returned pages are the complete ordered row sequence; concatenate them in
+  cursor order, then recompute the RFC 8785/JCS SHA-256 over
+  `{reporting_revision_id,row_count,control_totals,reporting_rows}` and compare
+  it with both the status revision and `reporting_revision_binding`.
 
 agent:
   interaction_model: any
@@ -80,7 +87,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "prepare"
@@ -108,7 +114,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reporting_core--waiting"
@@ -157,7 +162,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "advance_time"
@@ -191,7 +195,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "summary"
           context:
             correlation_id: "reporting_core--delayed"
@@ -225,7 +228,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "advance_time"
@@ -259,7 +261,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "summary"
           context:
             correlation_id: "reporting_core--action-required"
@@ -297,7 +298,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "publish_zero_row"
@@ -325,7 +325,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reporting_core--zero-row"
@@ -359,6 +358,361 @@ phases:
             path: "adjustments"
             description: "Core returns the adjustment collection even when it is empty"
 
+      - id: read_zero_row_content_exactly
+        title: "Read the immutable zero-row revision through the Core transport"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          reporting_revision_id: "$context.reporting_core_revision_id"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "reporting_core--exact-zero"
+        validations:
+          - check: response_schema
+            description: "Exact Core content response is schema-valid"
+          - check: field_equals_context
+            path: "reporting_revision.reporting_revision_id"
+            context_key: "reporting_core_revision_id"
+            description: "Exact response echoes the requested immutable revision"
+          - check: field_value
+            path: "reporting_revision.row_count"
+            value: 0
+            description: "The retained zero-row publication remains an empty logical row set"
+          - check: field_value
+            path: "pagination.total_count"
+            value: 0
+            description: "Zero rows still return one schema-valid empty page"
+
+  - id: exact_nonempty_revision_content
+    title: "Traverse a frozen non-empty Core revision"
+    narrative: |
+      The controller publishes two deterministic logical rows. The caller walks
+      every exact-read cursor page, preserves row order for JCS binding-digest
+      recomputation, and verifies every row against the fixed, independently
+      generated RFC 8785/JCS vector below. The literal vector binds the exact
+      ID, totals, periods, dimensions, and metrics, so a seller/controller
+      cannot make a shared digest implementation conceal an altered row. Exact
+      Core reads contain no Managed materialization or receipt machinery. A
+      mixed selector and an RC0 exact-read request are rejected.
+
+    steps:
+      - id: prepare_nonempty_core
+        title: "Prepare a separate deterministic Core account"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "prepare"
+          context:
+            correlation_id: "reporting_core--prepare-nonempty"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+
+      - id: publish_nonempty_core
+        title: "Commit the deterministic two-row revision"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: reporting_core_nonempty_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "publish_nonempty"
+          context:
+            correlation_id: "reporting_core--publish-nonempty"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "simulated.row_count"
+            value: 2
+            description: "The fixture commits two authoritative logical rows"
+          - check: field_value
+            path: "simulated.reporting_revision_id"
+            value: "reporting-revision.ecc62efa00946aa1e2788ad9"
+            description: "The fixed vector pins the immutable revision identity"
+          - check: field_value
+            path: "simulated.revision_content_sha256"
+            value: "5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1"
+            description: "The independently generated RFC 8785/JCS two-row binding vector fixes the expected digest"
+
+      - id: read_nonempty_revision_status
+        title: "Read the revision metadata from the status ledger"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: reporting_core_nonempty_status_metadata
+            path: "revision"
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+          view: "revision"
+          reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
+        validations:
+          - check: response_schema
+            description: "Status ledger revision is schema-valid"
+          - check: field_value
+            path: "revision.reporting_revision_id"
+            value: "reporting-revision.ecc62efa00946aa1e2788ad9"
+            description: "Status returns the vector's immutable revision ID"
+          - check: field_value
+            path: "revision.row_count"
+            value: 2
+            description: "Status binds exactly two complete logical rows"
+          - check: field_value
+            path: "revision.control_totals"
+            value: [{ name: "impressions", value: "5", value_type: "integer", unit: "impressions" }]
+            description: "Status returns the vector's fixed control totals"
+          - check: field_value
+            path: "revision.revision_content_sha256"
+            value: "5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1"
+            description: "Status exposes the fixed independently generated revision-binding digest"
+
+      - id: exact_nonempty_page_one
+        title: "Read first immutable row page"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: reporting_core_nonempty_cursor
+            path: "pagination.cursor"
+          - name: reporting_core_nonempty_metadata
+            path: "reporting_revision"
+          - name: reporting_core_nonempty_binding
+            path: "reporting_revision_binding"
+          - name: reporting_core_nonempty_first_rows
+            path: "reporting_rows"
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+          reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "reporting_core--exact-page-one"
+        validations:
+          - check: response_schema
+            description: "First exact page is schema-valid"
+          - check: field_present
+            path: "reporting_revision"
+            description: "A reporting_revision_id request returns the complete exact-response quartet"
+          - check: field_present
+            path: "reporting_revision_binding"
+            description: "Exact response includes its immutable full-walk binding"
+          - check: field_present
+            path: "reporting_rows"
+            description: "Exact response includes this page of authoritative rows"
+          - check: field_present
+            path: "pagination"
+            description: "Exact response includes frozen cursor pagination"
+          - check: field_equals_context
+            path: "reporting_revision.reporting_revision_id"
+            context_key: "reporting_core_nonempty_revision_id"
+            description: "Exact response echoes requested revision identity"
+          - check: field_value
+            path: "reporting_revision.reporting_revision_id"
+            value: "reporting-revision.ecc62efa00946aa1e2788ad9"
+            description: "Exact response cannot substitute a controller-supplied revision ID"
+          - check: field_value
+            path: "reporting_revision.row_count"
+            value: 2
+            description: "Exact metadata binds the complete two-row sequence"
+          - check: field_value
+            path: "reporting_revision.control_totals"
+            value: [{ name: "impressions", value: "5", value_type: "integer", unit: "impressions" }]
+            description: "Exact metadata contains the independently fixed totals"
+          - check: field_value
+            path: "reporting_revision.revision_content_sha256"
+            value: "5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1"
+            description: "Exact metadata carries the fixed full-walk digest"
+          - check: field_equals_context
+            path: "reporting_revision"
+            context_key: "reporting_core_nonempty_status_metadata"
+            description: "Exact metadata is identical to the authoritative status revision"
+          - check: field_value
+            path: "reporting_revision_binding.content_sha256"
+            value: "5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1"
+            description: "Binding digest is independently fixed rather than copied from the controller"
+          - check: field_value
+            path: "reporting_revision_binding.reporting_revision_id"
+            value: "reporting-revision.ecc62efa00946aa1e2788ad9"
+            description: "Binding ID is the literal test-vector identity"
+          - check: field_value
+            path: "reporting_revision_binding.row_count"
+            value: 2
+            description: "Binding count covers the complete cursor traversal"
+          - check: field_value
+            path: "reporting_revision_binding.control_totals"
+            value: [{ name: "impressions", value: "5", value_type: "integer", unit: "impressions" }]
+            description: "Binding totals are fixed independently of controller output"
+          - check: field_value
+            path: "pagination.total_count"
+            value: 2
+            description: "Pagination total equals the immutable revision row count"
+          - check: field_value
+            path: "reporting_rows[0]"
+            value: { period_start: "2026-08-01T00:00:00.000Z", period_end: "2026-08-01T01:00:00.000Z", impressions: 2, dimensions: { media_buy_id: "media-buy-core-001", package_id: "package-core-001", country: "US" }, metrics: { impressions: 2, clicks: 1 } }
+            description: "The first complete row, including its periods, dimensions, and metrics, matches the independent vector"
+          - check: array_length
+            path: "reporting_rows"
+            value: 1
+            description: "The cursor starts with exactly one row from the immutable sequence"
+          - check: field_absent
+            path: "reporting_materializations"
+            description: "Core exact reads expose no Managed Delivery materializations"
+          - check: field_absent
+            path: "receipts"
+            description: "Core exact reads expose no receipt machinery"
+          - check: field_absent
+            path: "reporting_materialization_id"
+            description: "Core exact reads do not expose a Managed Delivery materialization identifier"
+
+      - id: exact_nonempty_page_two
+        title: "Exhaust the frozen cursor walk"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: reporting_core_nonempty_second_rows
+            path: "reporting_rows"
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+          reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
+          pagination:
+            max_results: 1
+            cursor: "$context.reporting_core_nonempty_cursor"
+          context:
+            correlation_id: "reporting_core--exact-page-two"
+        validations:
+          - check: response_schema
+            description: "Final exact page is schema-valid"
+          - check: field_equals_context
+            path: "reporting_revision"
+            context_key: "reporting_core_nonempty_metadata"
+            description: "Revision metadata is byte-stable across pages"
+          - check: field_equals_context
+            path: "reporting_revision_binding"
+            context_key: "reporting_core_nonempty_binding"
+            description: "Binding is stable while rows are concatenated in cursor order for JCS verification"
+          - check: field_value
+            path: "reporting_revision.revision_content_sha256"
+            value: "5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1"
+            description: "The final page repeats the fixed full-walk revision digest"
+          - check: field_value
+            path: "reporting_revision_binding.content_sha256"
+            value: "5199a776b3a99915f084e16c921b2e501fcedd949017236d51a2303c5c2f5cd1"
+            description: "The final page repeats the independent complete-sequence digest"
+          - check: field_value
+            path: "pagination.has_more"
+            value: false
+            description: "The second page exhausts the two-row immutable set"
+          - check: field_value
+            path: "pagination.total_count"
+            value: 2
+            description: "Every exact page repeats the committed total row count"
+          - check: field_value
+            path: "reporting_rows[0]"
+            value: { period_start: "2026-08-01T00:00:00.000Z", period_end: "2026-08-01T01:00:00.000Z", impressions: 3, dimensions: { media_buy_id: "media-buy-core-002", package_id: "package-core-002", country: "CA" }, metrics: { impressions: 3, clicks: 0 } }
+            description: "The final complete row, including its periods, dimensions, and metrics, completes the independent vector"
+          - check: array_length
+            path: "reporting_rows"
+            value: 1
+            description: "Each cursor page contains exactly one row, so no row can be skipped or duplicated"
+
+      - id: exact_nonempty_repeat
+        title: "Repeat the first page without changing the revision"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+          reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
+          pagination:
+            max_results: 1
+        validations:
+          - check: response_schema
+            description: "Repeat exact page is schema-valid"
+          - check: field_equals_context
+            path: "reporting_revision"
+            context_key: "reporting_core_nonempty_metadata"
+            description: "A repeated exact read returns identical immutable metadata"
+          - check: field_equals_context
+            path: "reporting_revision_binding"
+            context_key: "reporting_core_nonempty_binding"
+            description: "A repeated exact read returns the committed binding"
+          - check: field_equals_context
+            path: "reporting_rows"
+            context_key: "reporting_core_nonempty_first_rows"
+            description: "A repeated first page returns the same ordered row for stable concatenation"
+
+      - id: exact_nonempty_reject_mixed_selector
+        title: "Reject mixed delivery selectors"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+          reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
+          include_package_daily_breakdown: false
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
+            description: "Exact revision selection excludes every delivery filter"
+
+      - id: exact_nonempty_reject_rc0
+        title: "Reject exact reads on the frozen RC0 wire"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_nonempty_lab"
+          reporting_revision_id: "$context.reporting_core_nonempty_revision_id"
+          adcp_version: "3.2-rc.0"
+        validations:
+          - check: error_code
+            value: "VERSION_UNSUPPORTED"
+            description: "RC0 cannot execute the unreleased RC1 exact-read surface"
+
   - id: official_source_calendar_and_checkpoint_repair
     title: "Close a source-timezone day and repair an out-of-order correction"
     narrative: |
@@ -370,6 +724,48 @@ phases:
       immutable records without rewriting the invoice anchor.
 
     steps:
+      - id: run_real_source_calendar_dst_scheduler
+        title: "Run the installed source-calendar scheduler through DST"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reliable_reporting_core_integrity_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          scenario: "reliable_reporting_core_integrity_probe"
+          params:
+            operation: "probe_scheduler_dst"
+        validations:
+          - check: response_schema
+            description: "Scheduler probe response is schema-valid"
+          - check: field_value
+            path: "simulated.fall_back.start"
+            value: "2026-11-01T04:00:00.000Z"
+            description: "The real scheduler starts the New York fall-back day at local midnight"
+          - check: field_value
+            path: "simulated.fall_back.end"
+            value: "2026-11-02T05:00:00.000Z"
+            description: "Fall-back produces a 25-hour civil day, not a fixed UTC day"
+          - check: field_value
+            path: "simulated.fall_back.expected_at"
+            value: "2026-11-02T09:00:00.000Z"
+            description: "The four-hour local SLA is applied after the fall-back boundary"
+          - check: field_value
+            path: "simulated.spring_forward.start"
+            value: "2026-03-08T05:00:00.000Z"
+            description: "The real scheduler starts the New York spring-forward day at local midnight"
+          - check: field_value
+            path: "simulated.spring_forward.end"
+            value: "2026-03-09T04:00:00.000Z"
+            description: "Spring-forward produces a 23-hour civil day"
+          - check: field_value
+            path: "simulated.spring_forward.expected_at"
+            value: "2026-03-09T08:00:00.000Z"
+            description: "The local four-hour SLA remains calendar-correct after spring-forward"
+
       - id: prepare_core_integrity
         title: "Prepare the non-UTC official Core period"
         task: comply_test_controller
@@ -381,7 +777,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_core_integrity_probe"
           params:
             operation: "prepare"
@@ -419,7 +814,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reliable_reporting_core--baseline"
@@ -459,7 +853,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_core_integrity_probe"
           params:
             operation: "publish_official_adjustment"
@@ -492,7 +885,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "periods"
           changes_after: "$context.reliable_reporting_core_checkpoint"
           context:

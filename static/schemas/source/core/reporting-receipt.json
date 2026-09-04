@@ -10,6 +10,7 @@
     "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
     "reporting_materialization_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_materialization" },
+    "supersedes_reporting_receipt_id": { "type": "string", "minLength": 16, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{16,255}$", "x-entity": "reporting_receipt", "description": "Optional immutable rejected receipt replaced by this new receipt. It MUST name the caller's current rejected receipt for this obligation and revision; accepted current receipts are terminal." },
     "status": { "type": "string", "enum": ["accepted", "rejected"] },
     "verification_profile": { "$ref": "/schemas/core/reporting-verification-profile.json" },
     "observed_row_count": { "type": "integer", "minimum": 0 },
@@ -53,7 +54,7 @@
   "x-adcp-validation": {
     "authorization": "The seller derives the consumer principal from authenticated transport and accepts receipts only for that principal's account-bound obligation and materialization. Unknown, unauthorized, cross-account, and cross-caller identifiers are indistinguishable.",
     "acceptance_match": "accepted requires exact equality with the selected materialization verification evidence: row count and control totals always; canonical digest or manifest digest when selected. A mismatch MUST be submitted or recorded as rejected.",
-    "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict."
+    "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict. A consumer retains one current leaf per obligation and revision: a new ID may supersede only that current rejected leaf. History remains append-only; an accepted current leaf is terminal."
   },
   "additionalProperties": false
 }

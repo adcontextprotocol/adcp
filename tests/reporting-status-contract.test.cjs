@@ -120,6 +120,7 @@ const fullCoverage = {
 
 const revision = {
   reporting_revision_id: 'rrv_20260827_a',
+  revision_content_sha256: 'f'.repeat(64),
   report_definition_id: 'rdef_daily_delivery_v1',
   report_definition_uri: 'https://schemas.example/reporting-definitions/daily-delivery-v1.json',
   report_definition_sha256: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
@@ -938,6 +939,7 @@ describe('managed reporting status contract', () => {
       successful_materialization_count: 1,
       receipt_count: 0,
       accepted_receipt_count: 0,
+      pending_adjustment_count: 0,
       issues: [],
       resource_retained_until: '2026-09-28T04:00:16Z',
     };
@@ -961,9 +963,25 @@ describe('managed reporting status contract', () => {
     obligation.reconciliation_mode = 'consumer_receipt';
     obligation.reconciliation_status = 'pending';
     assert.equal(validateObligation(obligation), false);
+    obligation.health = 'action_required';
+    obligation.issues = [{
+      issue_id: 'receipt-required', code: 'RECEIPT_REQUIRED', severity: 'action_required',
+      responsible_party: 'buyer', recommended_action: 'contact_buyer',
+    }];
+    assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
+    obligation.reconciliation_status = 'rejected';
+    assert.equal(validateObligation(obligation), false);
+    obligation.issues = [{
+      issue_id: 'receipt-rejected', code: 'RECEIPT_REJECTED', severity: 'action_required',
+      responsible_party: 'seller', recommended_action: 'contact_seller',
+    }];
+    assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
     obligation.reconciliation_status = 'accepted';
+    obligation.health = 'complete';
+    obligation.issues = [];
     obligation.receipt_count = 1;
     obligation.accepted_receipt_count = 1;
+    obligation.pending_adjustment_count = 0;
     assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
   });
 
@@ -1240,6 +1258,7 @@ describe('managed reporting status contract', () => {
           managed_delivery: true,
           configuration_task: 'sync_accounts',
           status_task: 'get_reporting_status',
+          revision_content_task: 'get_media_buy_delivery',
           receipt_task: 'sync_reporting_receipts',
           readiness_notification: 'reporting.delivery_ready',
           offerings: [{

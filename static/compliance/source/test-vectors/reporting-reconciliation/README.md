@@ -22,7 +22,7 @@ index; this protocol copy is authoritative for subsequent changes.
 6. Assert the error classification, read count, outcome, and receipt behavior.
 7. Validate receipt requests and acknowledgements with the schemas named in
    `protocol.schema_ids`.
-8. Execute `post_official_adjustment`: retain the invoice's official revision
+8. Execute `post_official_adjustment`: retain the external billing system's supporting-evidence revision
    and original receipt unchanged, verify the adjustment's JCS digest, and
    record the exact accepted adjustment receipt.
 

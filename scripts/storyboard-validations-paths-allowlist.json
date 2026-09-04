@@ -1,4 +1,23 @@
 {
   "$comment": "Per-storyboard exceptions for lint-storyboard-validations-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema or envelope. Re-review during spec changes.",
-  "allowlist": []
+  "allowlist": [
+    {
+      "file": "static/compliance/source/universal/reporting-core.yaml",
+      "step": "exact_nonempty_page_one",
+      "path": "reporting_materializations",
+      "reason": "This negative assertion intentionally guards the Core/Managed boundary: a Core exact read must not surface the Managed Delivery collection."
+    },
+    {
+      "file": "static/compliance/source/universal/reporting-core.yaml",
+      "step": "exact_nonempty_page_one",
+      "path": "receipts",
+      "reason": "This negative assertion intentionally guards the Core/Reconciled Billing boundary: a Core exact read must not surface receipt machinery."
+    },
+    {
+      "file": "static/compliance/source/universal/reporting-core.yaml",
+      "step": "exact_nonempty_page_one",
+      "path": "reporting_materialization_id",
+      "reason": "This negative assertion intentionally guards the Core/Managed boundary: a Core exact read must not surface a materialization identifier."
+    }
+  ]
 }

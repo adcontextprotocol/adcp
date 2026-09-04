@@ -24,7 +24,7 @@ narrative: |
   a seller exporting invoice data. Its capability must select a
   consumer_receipt offering with canonicalization evidence and must expose the
   receipt task. That same task records accepted or rejected receipts for
-  post-official adjustments without rewriting the original invoice revision.
+  post-official adjustments without rewriting the original reporting revision.
 
 agent:
   interaction_model: any
@@ -73,12 +73,12 @@ phases:
             description: "Revision and adjustment reconciliation uses the authenticated receipt task"
 
   - id: reconciled_billing_lifecycle
-    title: "Reconcile an official invoice and its later correction"
+    title: "Reconcile official billing evidence and its later correction"
     narrative: |
       The controller seeds a verified official billing revision. The buyer
       stores its checkpoint, accepts the exact revision, then observes a
-      post-invoice adjustment and submits both accepted and rejected adjustment
-      evidence. The final changes_after read must expose the immutable invoice
+      post-publication adjustment and submits both accepted and rejected adjustment
+      evidence. The final changes_after read must expose the immutable reporting
       anchor, correction, and authenticated outcomes without conflating them.
     steps:
       - id: prepare_reconciled_billing
@@ -99,7 +99,6 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_reconciled_billing_probe"
           params:
             operation: "prepare"
@@ -130,7 +129,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reliable_reporting_billing--baseline"
@@ -140,7 +138,7 @@ phases:
           - check: field_equals_context
             path: "revisions[0].reporting_revision_id"
             context_key: "reliable_reporting_billing_revision_id"
-            description: "Invoice binds to the seeded official revision"
+            description: "Billing evidence binds to the seeded official revision"
           - check: field_value
             path: "revisions[0].finality"
             value: "official"
@@ -151,9 +149,17 @@ phases:
           - check: field_present
             path: "adjustment_receipts"
             description: "Reconciled Billing exposes the authenticated correction outcomes collection"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "Readable evidence with a missing current receipt is immediately action_required, without an invented SLA"
+          - check: field_value
+            path: "periods[0].issues[0].code"
+            value: "RECEIPT_REQUIRED"
+            description: "The missing revision receipt is a structured buyer action"
 
-      - id: accept_official_revision
-        title: "Record acceptance of the exact official materialization"
+      - id: reject_official_revision
+        title: "Record a rejected official-materialization receipt"
         task: sync_reporting_receipts
         schema_ref: "media-buy/sync-reporting-receipts-request.json"
         response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
@@ -161,12 +167,57 @@ phases:
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
-          adcp_version: "3.2-rc.0"
           account:
             account_id: "reporting_core_lab"
           idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_official_receipt"
           receipts:
             - reporting_receipt_id: "rr-billing-official-receipt-0001"
+              reporting_obligation_id: "$context.reliable_reporting_billing_obligation_id"
+              reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              reporting_materialization_id: "$context.reliable_reporting_billing_materialization_id"
+              status: "rejected"
+              verification_profile: "canonical_digest"
+              observed_row_count: 2
+              observed_control_totals:
+                - name: "impressions"
+                  value: "5"
+                  value_type: "integer"
+                  unit: "impressions"
+                - name: "spend"
+                  value: "8.00"
+                  value_type: "decimal"
+                  unit: "USD"
+              rejection_codes: ["CANONICAL_DIGEST_MISMATCH"]
+              observed_at: "2026-08-27T04:01:00Z"
+          context:
+            correlation_id: "reliable_reporting_billing--accept-official"
+        validations:
+          - check: response_schema
+            description: "Receipt acknowledgement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "Seller durably records the rejected official revision evidence"
+          - check: field_equals_context
+            path: "results[0].receipt.reporting_revision_id"
+            context_key: "reliable_reporting_billing_revision_id"
+            description: "Rejected evidence remains bound to the immutable reporting revision"
+
+      - id: supersede_rejected_official_revision_receipt
+        title: "Replace the rejected revision receipt with accepted evidence"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_receipts"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_official_repair"
+          receipts:
+            - reporting_receipt_id: "rr-billing-official-repaired-0001"
+              supersedes_reporting_receipt_id: "rr-billing-official-receipt-0001"
               reporting_obligation_id: "$context.reliable_reporting_billing_obligation_id"
               reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
               reporting_materialization_id: "$context.reliable_reporting_billing_materialization_id"
@@ -188,20 +239,93 @@ phases:
                 canonicalization_id: "billing-rows-v1"
                 canonicalization_uri: "https://test-agent.adcontextprotocol.org/reporting/canonicalization/billing-rows-v1.json"
                 canonicalization_sha256: "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa"
-              observed_at: "2026-08-27T04:01:00Z"
-          context:
-            correlation_id: "reliable_reporting_billing--accept-official"
+              observed_at: "2026-08-27T04:02:00Z"
         validations:
           - check: response_schema
-            description: "Receipt acknowledgement is schema-valid"
+            description: "Revision-replacement acknowledgement is schema-valid"
           - check: field_value
             path: "results[0].result"
             value: "recorded"
-            description: "Seller durably records the official revision outcome"
-          - check: field_equals_context
-            path: "results[0].receipt.reporting_revision_id"
-            context_key: "reliable_reporting_billing_revision_id"
-            description: "Acknowledgement retains the invoice anchor"
+            description: "A new immutable accepted receipt replaces only the current rejected leaf"
+
+      - id: reject_terminal_official_revision_receipt
+        title: "Reject a stale revision supersession after acceptance"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_official_stale"
+          receipts:
+            - reporting_receipt_id: "rr-billing-official-stale-0001"
+              supersedes_reporting_receipt_id: "rr-billing-official-repaired-0001"
+              reporting_obligation_id: "$context.reliable_reporting_billing_obligation_id"
+              reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              reporting_materialization_id: "$context.reliable_reporting_billing_materialization_id"
+              status: "accepted"
+              verification_profile: "canonical_digest"
+              observed_row_count: 2
+              observed_control_totals: []
+              observed_canonical_content_digest:
+                algorithm: "sha256"
+                value: "bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4"
+                canonicalization_id: "billing-rows-v1"
+                canonicalization_uri: "https://test-agent.adcontextprotocol.org/reporting/canonicalization/billing-rows-v1.json"
+                canonicalization_sha256: "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa"
+              observed_at: "2026-08-27T04:03:00Z"
+        validations:
+          - check: response_schema
+            description: "Terminal revision rejection response is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "failed"
+            description: "An accepted current revision receipt is terminal"
+
+      - id: read_accepted_revision_receipt
+        title: "Confirm acceptance completes the current receipt obligation"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "periods"
+        validations:
+          - check: response_schema
+            description: "Accepted-receipt status response is schema-valid"
+          - check: field_value
+            path: "periods[0].reconciliation_status"
+            value: "accepted"
+            description: "The one current accepted revision receipt is terminal"
+          - check: field_value
+            path: "periods[0].health"
+            value: "complete"
+            description: "The closed fixture becomes complete after the current receipt is accepted"
+
+      - id: read_revision_receipt_history
+        title: "Read back append-only rejected and replacement receipt history"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "revision"
+          reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+        validations:
+          - check: response_schema
+            description: "Revision receipt history response is schema-valid"
+          - check: array_length
+            path: "receipts"
+            value: 2
+            description: "Rejected and accepted replacement receipts remain append-only history"
 
       - id: publish_reconciled_adjustments
         title: "Publish accepted and disputed post-invoice corrections"
@@ -217,13 +341,14 @@ phases:
             path: "simulated.adjustments[0].canonical_adjustment_sha256"
           - name: reliable_reporting_disputed_adjustment_id
             path: "simulated.adjustments[1].reporting_adjustment_id"
+          - name: reliable_reporting_disputed_adjustment_digest
+            path: "simulated.adjustments[1].canonical_adjustment_sha256"
           - name: reliable_reporting_disputed_observed_digest
             path: "simulated.disputed_observed_adjustment_sha256"
         sample_request:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_reconciled_billing_probe"
           params:
             operation: "publish_adjustment"
@@ -239,14 +364,41 @@ phases:
           - check: field_equals_context
             path: "simulated.adjustments[0].adjusts_reporting_revision_id"
             context_key: "reliable_reporting_billing_revision_id"
-            description: "Accepted-path correction targets the invoice anchor"
+            description: "Accepted-path correction targets the immutable revision"
           - check: field_equals_context
             path: "simulated.adjustments[1].adjusts_reporting_revision_id"
             context_key: "reliable_reporting_billing_revision_id"
-            description: "Dispute-path correction targets the same invoice anchor"
+            description: "Dispute-path correction targets the same immutable revision"
           - check: field_present
             path: "simulated.disputed_observed_adjustment_sha256"
             description: "Controller supplies the buyer-observed mismatching digest used by the dispute path"
+
+      - id: read_adjustment_reopened_state
+        title: "Observe a new adjustment reopen reconciliation immediately"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "periods"
+        validations:
+          - check: response_schema
+            description: "Reopened reconciliation response is schema-valid"
+          - check: field_value
+            path: "periods[0].reconciliation_status"
+            value: "pending"
+            description: "A new applicable adjustment reopens previously accepted evidence"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "Missing adjustment receipts are immediately actionable, not waiting"
+          - check: field_value
+            path: "periods[0].issues[0].code"
+            value: "ADJUSTMENT_RECEIPT_REQUIRED"
+            description: "The buyer receives the precise missing-adjustment action"
 
       - id: reconcile_post_official_adjustments
         title: "Accept one correction and reject the other"
@@ -257,7 +409,6 @@ phases:
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
-          adcp_version: "3.2-rc.0"
           account:
             account_id: "reporting_core_lab"
           idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_adjustment_receipts"
@@ -293,6 +444,29 @@ phases:
             value: "rejected"
             description: "Digest disagreement remains a durable dispute"
 
+      - id: read_rejected_adjustment_state
+        title: "Keep rejected current adjustment evidence actionable"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "periods"
+        validations:
+          - check: response_schema
+            description: "Rejected-evidence status response is schema-valid"
+          - check: field_value
+            path: "periods[0].reconciliation_status"
+            value: "rejected"
+            description: "A rejected current adjustment receipt preserves the evidence discrepancy"
+          - check: field_value
+            path: "periods[0].issues[0].code"
+            value: "ADJUSTMENT_RECEIPT_REJECTED"
+            description: "Rejected evidence assigns seller investigation/remediation"
+
       - id: repair_reconciled_billing_from_checkpoint
         title: "Re-read every correction outcome from the old checkpoint"
         task: get_reporting_status
@@ -304,7 +478,6 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-rc.0"
           view: "periods"
           changes_after: "$context.reliable_reporting_billing_checkpoint"
           context:
@@ -331,3 +504,84 @@ phases:
           - check: field_present
             path: "changes_checkpoint"
             description: "Buyer receives a new checkpoint after durable readback"
+
+      - id: supersede_rejected_adjustment_receipt
+        title: "Replace only the current rejected adjustment receipt"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_adjustment_repair"
+          adjustment_receipts:
+            - reporting_receipt_id: "rr-adjustment-repaired-receipt-01"
+              supersedes_reporting_receipt_id: "rr-adjustment-rejected-receipt-01"
+              reporting_adjustment_id: "$context.reliable_reporting_disputed_adjustment_id"
+              adjusts_reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              status: "accepted"
+              observed_adjustment_sha256: "$context.reliable_reporting_disputed_adjustment_digest"
+              observed_at: "2026-08-29T10:02:00Z"
+        validations:
+          - check: response_schema
+            description: "Replacement acknowledgement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "A new immutable receipt supersedes the current rejected leaf"
+
+      - id: reject_stale_adjustment_supersession
+        title: "Reject supersession after the accepted current leaf becomes terminal"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_stale_repair"
+          adjustment_receipts:
+            - reporting_receipt_id: "rr-adjustment-stale-receipt-01"
+              supersedes_reporting_receipt_id: "rr-adjustment-repaired-receipt-01"
+              reporting_adjustment_id: "$context.reliable_reporting_disputed_adjustment_id"
+              adjusts_reporting_revision_id: "$context.reliable_reporting_billing_revision_id"
+              status: "accepted"
+              observed_adjustment_sha256: "$context.reliable_reporting_disputed_adjustment_digest"
+              observed_at: "2026-08-29T10:03:00Z"
+        validations:
+          - check: response_schema
+            description: "Terminal-leaf rejection response is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "failed"
+            description: "Accepted current leaves cannot be superseded"
+
+      - id: read_reconciliation_restored
+        title: "Confirm current-leaf completion while retaining append-only history"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        comply_scenario: reliable_reporting_reconciled_billing_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          view: "periods"
+        validations:
+          - check: response_schema
+            description: "Restored reconciliation response is schema-valid"
+          - check: field_value
+            path: "periods[0].reconciliation_status"
+            value: "accepted"
+            description: "All current revision and adjustment leaves are accepted"
+          - check: field_value
+            path: "periods[0].health"
+            value: "complete"
+            description: "Accepted current leaves restore the closed fixture to complete"
+          - check: field_value
+            path: "periods[0].adjustment_receipt_count"
+            value: 3
+            description: "Immutable rejected and replacement receipt history remains countable"

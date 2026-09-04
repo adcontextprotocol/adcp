@@ -151,6 +151,17 @@ function collectStoryboardRequestFixtures() {
   return fixtures;
 }
 
+// MCP tools/list deliberately presents a structural discovery schema without
+// root allOf/if/not constraints. The canonical task invocation still enforces
+// the exact-revision selector exclusion. Keep this one conformance negative
+// explicit: it proves that a generated MCP schema stays discoverable without
+// weakening the authoritative wire schema at call time.
+function isExactRevisionRootConstraintDeferral(relativePath, fixture) {
+  return relativePath === 'media-buy/get-media-buy-delivery-request.json'
+    && typeof fixture?.reporting_revision_id === 'string'
+    && fixture.include_package_daily_breakdown === false;
+}
+
 test('schema bounds include the complete JSON document', () => {
   const schema = {
     type: 'object',
@@ -1009,8 +1020,17 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     let firstValidFixture;
     for (const [index, fixture] of fixtures.entries()) {
       const sourceValid = validateSource(fixture);
+      const projectedValid = validateProjected(fixture);
+      if (isExactRevisionRootConstraintDeferral(relativePath, fixture)) {
+        assert.equal(sourceValid, false,
+          `${relativePath} exact selector fixture ${index} must fail canonical validation`);
+        assert.equal(projectedValid, true,
+          `${relativePath} exact selector fixture ${index} must remain discoverable until call validation`);
+        invalidParityCaseCount++;
+        continue;
+      }
       assert.equal(
-        validateProjected(fixture),
+        projectedValid,
         sourceValid,
         `${relativePath} changed storyboard fixture ${index} validation outcome`
       );
@@ -1189,6 +1209,14 @@ test('representative capability-selected media-buy runtime exposes only selected
     const validateSource = draft07.compile(compactSource);
     const validateProjected = draft2020.compile(projectedSchema);
     for (const [index, fixture] of fixtures.entries()) {
+      if (isExactRevisionRootConstraintDeferral(sourceRelativePath, fixture)) {
+        assert.equal(validateSource(fixture), false,
+          `${toolName} fixture ${index} must reject mixed exact-read selectors at canonical call validation`);
+        assert.equal(validateProjected(fixture), true,
+          `${toolName} fixture ${index} intentionally defers its root selector constraint in MCP discovery`);
+        parityCases++;
+        continue;
+      }
       assert.equal(
         validateProjected(fixture),
         validateSource(fixture),

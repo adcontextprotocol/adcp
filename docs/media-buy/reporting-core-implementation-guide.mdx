@@ -12,11 +12,22 @@ optional tiers.
 
 Every buyer eventually asks one question: **"do I have definitive reporting
 for this period — and if not, whose problem is it?"** `reporting.core` makes
-that question machine-answerable. It is deliberately small: a seller that
-already serves [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
-can add Core while any existing reporting webhooks continue unchanged. Core
-itself requires **no destination, manifest, canonicalization, digest, receipt,
-or push code**.
+that question machine-answerable. Core is the required operational reporting
+baseline: a seller must retain immutable revision evidence and expose its exact
+binding over its existing reporting transports. Core requires no destination,
+manifest, external materialization, receipt, or push code. It does require the
+fixed revision-binding digest over canonical rows; this is distinct from the
+Managed Delivery external-materialization canonicalization contract. Core carries
+the operational cost of durable obligations, revision retention, and repair.
+
+For an exact Core revision read, call `get_media_buy_delivery` with
+`reporting_revision_id` and, optionally, an account selector. The returned `reporting_revision_binding`
+must echo that ID and bind `{ reporting_revision_id, row_count, control_totals,
+reporting_rows }` with RFC 8785 JCS and SHA-256. Exact reads are cursor-paginated:
+every page repeats identical revision metadata and binding, and a consumer hashes
+the concatenated rows in cursor order only after exhausting the frozen walk. Do
+not substitute a fresh date-range pull for this read: it may have changed since
+the immutable revision was published.
 
 ## What Core is
 
@@ -29,7 +40,7 @@ Four ideas, one task:
    revision like any other; absence means something is wrong.
 3. **Revisions are immutable logical content.** A provisional restatement is a
    new snapshot revision superseding the old snapshot, never an edit. An
-   `official` revision is the invoice-addressable close and cannot be
+   `official` revision is immutable billing-purpose evidence and cannot be
    superseded; later corrections are explicit accounting adjustments.
 4. **[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)
    answers "where am I?"** — one authoritative read over the obligation
@@ -132,15 +143,18 @@ obligation appears in the first ledger snapshot strictly after `02:00Z`; with
   `get_media_buy_delivery` read or legacy reporting webhook remains an
   optional data transport. Core never requires push. Destinations, manifests,
   and provisioning belong to the `managed_delivery` tier.
-- **No canonical hashing or receipts.** `reconciliation_mode` is
-  `delivery_only`, offering profiles omit the `canonicalization_*` contract,
-  and `sync_reporting_receipts` does not exist for you. Those belong to the
+- **No Managed canonicalization or receipts.** `reconciliation_mode` is
+  `delivery_only`, offering profiles omit the external-materialization
+  `canonicalization_*` contract, and `sync_reporting_receipts` does not exist
+  for you. Core still commits its fixed revision-binding JCS/SHA-256 digest;
+  receipts and Managed external materialization machinery belong to the
   `reconciled_billing` tier.
 
 The boundary is executable: the `reporting-core` fixture test in the
 protocol repository implements a complete polling-only seller and asserts
 its source contains none of
-`destination | manifest | canonical | digest | receipt | readiness | webhook`.
+`destination | manifest | receipt | readiness | webhook` (the Core binding
+digest is intentionally retained).
 
 ## Build order for a seller
 
@@ -194,9 +208,9 @@ its source contains none of
    returned obligation list cannot prove that the first one was not omitted.
 4. **Close the history.** Keep one `ledger_snapshot_id` across every page,
    deduplicate immutable IDs, match the returned record counts, and distinguish
-   a zero-row revision from no revision. Bind invoices to an exact official
-   `reporting_revision_id` and apply later adjustments without rewriting that
-   invoice. Apply managed-resource and receipt checks only when the selected
+   a zero-row revision from no revision. An external billing system MAY retain
+   an exact official `reporting_revision_id` as supporting evidence and apply
+   later adjustments under its own controls. Apply managed-resource and receipt checks only when the selected
    tier requires them.
 5. **Checkpoint repair.** After consuming every page, persist
    `changes_checkpoint`; send it as `changes_after` on the next periods read.
@@ -223,8 +237,8 @@ its source contains none of
   received.
 
 The reporting lab requires a negotiated AdCP 3.2 release that supports
-`get_reporting_status` (the current training surface is `3.2-rc.0`); the
-training agent otherwise serves its default 3.0 surface, where these
+Reliable Reporting 1.0 (planned for the next RC.1 wire bundle); the deployed
+training agent otherwise serves its RC.0/default surface, where these
 experimental reporting fields are unavailable. Put the same negotiated version
 on every `sync_accounts`, controller, and `get_reporting_status` request.
 

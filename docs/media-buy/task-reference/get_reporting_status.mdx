@@ -5,7 +5,8 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 ---
 
 <Warning>
-This task is experimental. Sellers implementing it declare
+**Reliable Reporting 1.0 / RC1 additions — unreleased source contract.** This
+task is experimental. Sellers implementing it declare
 `media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
 </Warning>
 
@@ -14,10 +15,25 @@ Reliable Reporting. It answers whether every report that should exist is present
 usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 as the reporting-data API.
 
-{/* Using latest because Reliable Reporting 1.0 is not yet in a released schema bundle. */}
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-request.json)
+<Note>
+The schema links below describe the published RC0 baseline. Fields and behavior
+explicitly labeled **Reliable Reporting 1.0 / RC1** below are unreleased source
+contract and will publish with RC1. RC0 does not support `changes_after`,
+`adjustment_receipts`, receipt replacement semantics, or any other RC1-only
+addition.
+</Note>
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-response.json)
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/get-reporting-status-request.json)
+
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/get-reporting-status-response.json)
+
+<Note>
+**Reliable Reporting 1.0 / RC1 additions:** incremental `changes_after` repair and
+its checkpoint, post-official `adjustments[]` and `adjustment_receipts[]`, and their
+correction/reconciliation semantics below are unreleased. RC0 already supports the
+`summary`, `periods`, and `revision` views, retained revisions, materializations,
+`receipts[]`, and cursor pagination; do not infer the RC1 additions from that baseline.
+</Note>
 
 ## Views
 
@@ -26,8 +42,8 @@ Every request explicitly selects one response shape:
 | View | Use |
 | --- | --- |
 | `summary` | Answer “where is my reporting?” for an account, media-buy, and time scope. |
-| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, post-official adjustments, materialization attempts, and consumer receipts. Use `changes_after` for incremental repair. |
-| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of materialization attempts. |
+| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, **RC1** post-official adjustments and adjustment receipts, materialization attempts, and consumer receipts. Use **RC1** `changes_after` for incremental repair. |
+| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its **RC1** adjustments and adjustment receipts, materializations, and receipts. |
 
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
 explicit so adding a filter never silently changes the response type.
@@ -116,7 +132,7 @@ explicit so adding a filter never silently changes the response type.
 | `healthy` | Due obligations in this active scope are current and automatic delivery is working. |
 | `waiting` | No obligation in this active scope is due yet. |
 | `delayed` | At least one obligation is late but still inside automatic recovery. |
-| `action_required` | An SLA or retry boundary was crossed; `issues[]` supplies the human action. |
+| `action_required` | An SLA or retry boundary was crossed, **or** readable revision and verified materialization evidence crossed the immediate consumer-reconciliation boundary with a missing or rejected current receipt; `issues[]` supplies the human action. Reliable Reporting defines no separate receipt SLA. |
 | `complete` | This scope is closed, fully covered by retained ledger history, and every obligation over its configured covered denominator has the required finality and an authoritative readable revision — for Core (API-delivered) obligations that means published and retained per `status_retention_days`; managed-delivery obligations additionally require a verified readable materialization. Obligations configured for consumer reconciliation also have an accepted receipt for the current revision. This delivery state does not replace the separate `coverage.status` claim. |
 
 Aggregate precedence is `action_required` before `delayed` before `healthy`.
@@ -148,10 +164,10 @@ The periods view keeps five facts distinct:
   so one revision can fan out to S3, BigQuery, Databricks, Snowflake, and other
   delivery paths without changing identity. A zero-row revision is real;
   provisional restatements get new snapshot IDs and retain supersession
-  lineage. An official revision is the immutable, invoice-addressable close.
-- An **adjustment** is one immutable post-official correction. It leaves the
-  original invoice and revision intact and carries signed control-total deltas
-  into a later open accounting period.
+  lineage. An official revision is immutable billing-purpose reporting evidence.
+- An **adjustment** is one immutable accounting-only post-official correction.
+  It carries signed control-total deltas in a period derived from a pinned billing
+  calendar/correction policy; it cannot reopen books or alter invoices.
 - A **materialization** is one attempt to expose that revision through a durable file
   transfer, dataset share, or warehouse for one obligation and destination. A retry
   gets a new materialization ID but keeps the same revision ID.
@@ -161,8 +177,8 @@ The periods view keeps five facts distinct:
 
 All historical revisions and adjustments retained under the advertised capability
 window appear in the ledger. Consumers must not assume the latest snapshot is the
-only relevant record, and must never rewrite an invoice bound to an official
-revision when applying an adjustment.
+only relevant record, and must never treat an adjustment as authority to rewrite an
+invoice or accounting book.
 
 `reporting_revision_id` is the portable AdCP identity. Every ready resource selects
 immutable bytes or an immutable native snapshot/version—for example a Delta version,
@@ -199,7 +215,8 @@ durable materialization in this first managed-ledger version; a short-period pac
 configuration plus the signed readiness doorbell is the reliable fast path here.
 
 Periods pagination applies to the flat union of `periods[]` obligation records,
-`revisions[]`, `adjustments[]`, `materializations[]`, and `receipts[]`, so one
+`revisions[]`, `adjustments[]`, `materializations[]`, `receipts[]`, and
+`adjustment_receipts[]`, so one
 heavily restated, corrected, retried, or reconciled period cannot create an
 unbounded nested response. Each obligation's record counts let the SDK prove it
 found the complete associated history across pages.
@@ -462,9 +479,10 @@ period. This detects an omitted first obligation even if no webhook or materiali
 ever existed. “Definitive for yesterday” therefore means: the requested scope is
 closed and retained, every locally expected obligation exists, one official revision
 provides the immutable close, a verified resource remains readable, all history counts
-are present, and—when configured—the authenticated consumer receipt for that revision
-is accepted. The invoice stores that exact `reporting_revision_id`; later corrections
-are adjustments in a later accounting period.
+are present, and—when configured—every authenticated receipt for that revision and its
+applicable adjustments is accepted. External billing systems MAY retain that exact
+`reporting_revision_id` as supporting evidence; later corrections are accounting-only
+adjustments in a billing-calendar-derived period.
 
 An `official` revision also states why it is final and when that rule was applied.
 `source_final`, `contractual_cutoff`, and `stabilized` distinguish a provider's

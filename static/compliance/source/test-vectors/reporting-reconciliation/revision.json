@@ -1,5 +1,6 @@
 {
   "reporting_revision_id": "revision-august-official",
+  "revision_content_sha256": "3680bc5ad32d37c375f55403975c69ff64f48e3677f392113ba8bb1b723de391",
   "report_definition_id": "billing-v1",
   "report_definition_uri": "https://schemas.fixture.example.net/report-definition.json",
   "report_definition_sha256": "960239b140adfefcd9a4ac4117c4272f7e92cd7bdcf8531715af0455f0424c94",

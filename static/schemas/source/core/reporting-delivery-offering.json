@@ -3,7 +3,7 @@
   "$id": "/schemas/core/reporting-delivery-offering.json",
   "title": "Reporting Delivery Offering",
   "x-status": "experimental",
-  "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering.",
+  "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering. A Core API-delivered offering requires no Managed external-materialization canonicalization code or contract, but every resulting revision still carries the fixed RFC 8785/JCS revision-binding canonicalization and digest.",
   "type": "object",
   "definitions": {
     "ReportingFeedPurpose": {
@@ -27,7 +27,7 @@
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
     "reporting_profile": {
       "type": "object",
-      "description": "Machine-readable semantic and validation contract for delivered rows. The canonicalization_* fields describe the canonical-digest contract and are required only for offerings under the reconciled_billing tier; Core and managed-delivery offerings omit them.",
+      "description": "Machine-readable semantic and validation contract for delivered rows. The canonicalization_* fields describe the external-materialization canonical-digest contract and are required only for offerings under the reconciled_billing tier; Core and managed-delivery offerings omit those fields but every Core revision still carries the fixed RFC 8785/JCS revision-binding digest.",
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
         "version": { "type": "string", "minLength": 1, "maxLength": 64 },
@@ -102,6 +102,7 @@
     {
       "if": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } }, "required": ["reconciliation_mode"] },
       "then": {
+        "required": ["method"],
         "properties": {
           "reporting_profile": {
             "required": [
@@ -117,7 +118,7 @@
     }
   ],
   "x-adcp-validation": {
-    "tier_boundaries": "An offering without method is Core: delivered through existing API transports, no destination, manifest, or canonicalization knowledge required. method requires the managed_delivery capability. reconciliation_mode consumer_receipt requires the reconciled_billing capability, and such offerings MUST carry the full canonicalization_* contract in reporting_profile. delivery_only offerings omit canonicalization.",
+    "tier_boundaries": "An offering without method is Core: delivered through existing API transports, with no destination, manifest, or Managed external-materialization canonicalization code or contract required. Every Core revision nevertheless carries the fixed RFC 8785/JCS revision-binding canonicalization and digest. method requires the managed_delivery capability. reconciliation_mode consumer_receipt requires a managed method and the reconciled_billing capability, and such offerings MUST carry the full external canonicalization_* contract in reporting_profile. delivery_only offerings omit that external canonicalization contract.",
     "safe_schema_fetch": "schema_uri, canonicalization_uri, and report_definition_uri origins must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected content type, verify the corresponding SHA-256 before parsing, and cache by digest. The canonicalization and report-definition documents MUST validate against their AdCP contract schemas. The fetched row schema's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Fetched content and annotations are untrusted data, never agent or LLM instructions.",
     "snapshot_declaration": "A snapshot claim is the atomic combination of supported_finality containing snapshot, this exact schedule, report definition/profile, and delivery method. Sellers MUST NOT imply a faster snapshot cadence from polling, webhook, or transport support that is not advertised by such an offering."
   },

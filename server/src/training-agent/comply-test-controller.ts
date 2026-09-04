@@ -39,7 +39,7 @@ import {
   atLeastAdcpVersion,
   supportsAccountChangeFeed,
   supportsGetProductsRejected,
-  REPORTING_STATUS_ADCP_VERSION,
+  supportsReliableReporting,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
@@ -101,7 +101,9 @@ import {
   prepareReliableReportingCoreIntegrityProbe,
   publishReliableReportingReconciledAdjustments,
   publishReliableReportingCoreIntegrityCorrection,
+  publishReportingCoreLifecycleProbeRows,
   publishZeroRowReportingCoreLifecycleProbe,
+  probeReportingSourceCalendarDst,
   resolveReportingAccountDurably,
   updateReliableReportingManagedDeliveryProbe,
   withDurableReportingLedger,
@@ -1666,6 +1668,13 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Prepared one elapsed reporting period before its delivery SLA; it is visible with no revision.',
       };
     }
+    if (operation === 'probe_scheduler_dst') {
+      return {
+        success: true,
+        simulated: probeReportingSourceCalendarDst(ctx.principal, accountId),
+        message: 'Ran the installed source-timezone scheduler across both 2026 DST transitions.',
+      };
+    }
     if (operation === 'advance_time') {
       const targetHealth = params.target_health;
       if (targetHealth !== 'delayed' && targetHealth !== 'action_required') {
@@ -1688,6 +1697,24 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Published a zero-row immutable Core revision for the original obligation.',
       };
     }
+    if (operation === 'publish_nonempty') {
+      return {
+        success: true,
+        simulated: publishReportingCoreLifecycleProbeRows(ctx.principal, accountId, [
+          {
+            period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 2,
+            dimensions: { media_buy_id: 'media-buy-core-001', package_id: 'package-core-001', country: 'US' },
+            metrics: { impressions: 2, clicks: 1 },
+          },
+          {
+            period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 3,
+            dimensions: { media_buy_id: 'media-buy-core-002', package_id: 'package-core-002', country: 'CA' },
+            metrics: { impressions: 3, clicks: 0 },
+          },
+        ]),
+        message: 'Published a deterministic non-empty immutable Core revision for exact-read verification.',
+      };
+    }
     if (operation === 'omit_obligation') {
       return {
         success: true,
@@ -1705,7 +1732,7 @@ async function handleReportingCoreLifecycleProbe(
   return {
     success: false,
     error: 'INVALID_PARAMS',
-    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, or omit_obligation',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, or omit_obligation',
   };
   }, account);
 }
@@ -1753,7 +1780,7 @@ async function handleReliableReportingCoreIntegrityProbe(
     return {
       success: false,
       error: 'INVALID_PARAMS',
-      error_detail: 'reliable_reporting_core_integrity_probe requires params.operation: prepare or publish_official_adjustment',
+    error_detail: 'reliable_reporting_core_integrity_probe requires params.operation: prepare, probe_scheduler_dst, or publish_official_adjustment',
     };
   }, account);
 }
@@ -1834,7 +1861,7 @@ function localScenariosFor(ctx: TrainingContext): string[] {
   const scenarios = ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
     : [...LOCAL_SCENARIOS];
-  const currentOnly = atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
+  const currentOnly = supportsReliableReporting(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? scenarios
     : scenarios.filter(s => (
       s !== 'reporting_core_lifecycle_probe'
