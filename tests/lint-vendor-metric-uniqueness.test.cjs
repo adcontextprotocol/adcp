@@ -141,3 +141,34 @@ test('findDuplicatesInPayload: empty arrays produce no violations', () => {
   assert.deepEqual(findDuplicatesInPayload({ vendor_metric_values: [] }), []);
   assert.deepEqual(findDuplicatesInPayload({ vendor_metrics: [] }), []);
 });
+
+
+// ── qualifier-aware row keys (#7234) ──────────────────────────────────────
+
+test('findDuplicatesInPayload: vendor_metric_values rows with distinct qualifiers are allowed', () => {
+  const row = (q) => ({ vendor: { domain: 'v.example' }, metric_id: 'conversions', value: 1, qualifier: { attribution_window: q } });
+  const dups = findDuplicatesInPayload({ vendor_metric_values: [row({ interval: 7, unit: 'days' }), row({ interval: 30, unit: 'days' })] });
+  assert.deepEqual(dups, []);
+});
+
+test('findDuplicatesInPayload: qualifier key order does not evade the duplicate check', () => {
+  const dups = findDuplicatesInPayload({ vendor_metric_values: [
+    { vendor: { domain: 'v.example' }, metric_id: 'conversions', value: 1, qualifier: { attribution_window: { interval: 14, unit: 'days' } } },
+    { vendor: { domain: 'v.example' }, metric_id: 'conversions', value: 2, qualifier: { attribution_window: { unit: 'days', interval: 14 } } },
+  ] });
+  assert.equal(dups.length, 1);
+});
+
+test('findDuplicatesInPayload: vendor_metrics declarations never partition on qualifier', () => {
+  const dups = findDuplicatesInPayload({ vendor_metrics: [
+    { vendor: { domain: 'v.example' }, metric_id: 'x', qualifier: { lift_dimension: 'awareness' } },
+    { vendor: { domain: 'v.example' }, metric_id: 'x', qualifier: { lift_dimension: 'consideration' } },
+  ] });
+  assert.equal(dups.length, 1);
+});
+
+test('vendorMetricKey: includeQualifier appends canonical qualifier, default keeps 3-part key', () => {
+  const e = { vendor: { domain: 'v.example' }, metric_id: 'm', qualifier: { attribution_window: { unit: 'days', interval: 7 } } };
+  assert.equal(vendorMetricKey(e), 'v.example||m');
+  assert.equal(vendorMetricKey(e, true), 'v.example||m|{"attribution_window":{"interval":7,"unit":"days"}}');
+});

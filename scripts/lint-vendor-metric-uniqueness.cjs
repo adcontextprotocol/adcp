@@ -12,7 +12,10 @@
  * fixtures. The companion check in scripts/build-schemas.cjs enforces the same
  * constraint on schema file `examples` arrays. Issue: adcontextprotocol/adcp#3502.
  *
- * Key normalization: `domain|brand_id|metric_id` where absent brand_id → "".
+ * Key normalization: `domain|brand_id|metric_id` where absent brand_id → "" for
+ * `vendor_metrics` declarations; `vendor_metric_values` rows append `|qualifier`
+ * (key-sorted JSON of the qualifier; omitted entirely when absent) because delivery-metrics.json
+ * allows the same vendor metric on multiple rows with distinct qualifiers (#7234).
  * The `|` separator is safe: domain (`[a-z0-9.-]`), brand_id (`[a-z0-9_]`), and
  * metric_id (`[a-z][a-z0-9_]*`) cannot contain `|`. Absent brand_id is the empty
  * string — distinct from any valid brand_id so `{domain:"x"}` and
@@ -67,12 +70,39 @@ function iterSteps(doc) {
  * Build the semantic key string for a vendor metric entry.
  * Normalizes absent brand_id to "" so {domain:"x"} ≠ {domain:"x",brand_id:"sub"}.
  */
-function vendorMetricKey(entry) {
+/**
+ * Canonical string for a structured qualifier: keys sorted recursively so
+ * `{interval:14,unit:'days'}` and `{unit:'days',interval:14}` produce the same
+ * string — the join rule stated on committed-metric.json. Absent/empty
+ * qualifier → "" and callers omit the separator, so unqualified rows keep the
+ * historical 3-part key.
+ */
+function canonicalQualifier(q) {
+  if (!q || typeof q !== 'object' || Array.isArray(q)) return '';
+  const sort = (v) => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v && typeof v === 'object') {
+      return Object.keys(v).sort().reduce((acc, k) => { acc[k] = sort(v[k]); return acc; }, {});
+    }
+    return v;
+  };
+  const keys = Object.keys(q);
+  return keys.length ? JSON.stringify(sort(q)) : '';
+}
+
+/**
+ * Build the semantic key string for a vendor metric entry.
+ * `includeQualifier` is true for `vendor_metric_values` rows, which partition on
+ * qualifier; declarations (`vendor_metrics`) never carry one.
+ */
+function vendorMetricKey(entry, includeQualifier = false) {
   if (!entry || typeof entry !== 'object' || !entry.vendor) return null;
   const domain = typeof entry.vendor.domain === 'string' ? entry.vendor.domain : '';
   const brandId = typeof entry.vendor.brand_id === 'string' ? entry.vendor.brand_id : '';
   const metricId = typeof entry.metric_id === 'string' ? entry.metric_id : '';
-  return `${domain}|${brandId}|${metricId}`;
+  const key = `${domain}|${brandId}|${metricId}`;
+  const q = includeQualifier ? canonicalQualifier(entry.qualifier) : '';
+  return q ? `${key}|${q}` : key;
 }
 
 /**
@@ -87,7 +117,7 @@ function findDuplicatesInPayload(payload) {
     if (!Array.isArray(arr) || arr.length < 2) continue;
     const seen = new Set();
     for (const entry of arr) {
-      const key = vendorMetricKey(entry);
+      const key = vendorMetricKey(entry, field === 'vendor_metric_values');
       if (key === null) continue;
       if (seen.has(key)) duplicates.push(`${field}[]: "${key}"`);
       seen.add(key);
@@ -156,4 +186,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { lint, findDuplicatesInPayload, vendorMetricKey };
+module.exports = { lint, findDuplicatesInPayload, vendorMetricKey, canonicalQualifier };
