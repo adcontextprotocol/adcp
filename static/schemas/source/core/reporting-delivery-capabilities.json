@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/reporting-delivery-capabilities.json",
-  "title": "Reliable Reporting Capabilities",
+  "title": "Reporting Delivery Capabilities",
   "x-status": "experimental",
   "description": "Reliable Reporting status and durable delivery support, advertised in three tiers over one data model. Core (supported: true) is the required tier: obligations, revisions, post-official adjustments, the five health states, and get_reporting_status over transports sellers already have — polling get_media_buy_delivery and the existing reporting_webhook, with no destination or materialization machinery. managed_delivery adds file/dataset-share/warehouse delivery and materializations. reconciled_billing adds canonical digests and consumer receipts. Each offerings entry is an atomic supported combination; buyers MUST NOT construct an unsupported cross-product. Presence requires media_buy.reporting_delivery in experimental_features; RFC 9421 webhook signing is required only when readiness_notification, status_notification, or ledger_notification is declared. Polling get_media_buy_delivery remains the compatibility baseline when this block is absent.",
   "type": "object",

@@ -1220,6 +1220,11 @@ describe('managed reporting status contract', () => {
   });
 
   it('requires the experimental feature declaration when managed reporting is advertised', () => {
+    assert.equal(
+      readSchema('/schemas/core/reporting-delivery-capabilities.json').title,
+      'Reporting Delivery Capabilities',
+      'the stable title preserves the generated SDK ReportingDeliveryCapabilities symbol',
+    );
     const capabilities = {
       status: 'completed',
       adcp: {
