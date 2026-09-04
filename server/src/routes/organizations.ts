@@ -3726,9 +3726,34 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
-      if (!membership) {
-        return res.status(403).json({ error: 'You are not a member of this organization' });
+      const canaryDecision = await evaluateOrganizationAuthorizationCanary({
+        boundary: ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_REFERRAL_CODES_READ,
+        principal: user,
+        organizationId: orgId,
+        getWorkos: getAuthorizationEnforcementWorkos,
+        minimumRole: 'member',
+      });
+
+      if (canaryDecision.enforced) {
+        recordOrganizationAuthorizationCanaryDecision(
+          ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_REFERRAL_CODES_READ,
+          canaryDecision,
+        );
+        if (canaryDecision.status === 'unavailable') {
+          return res.status(503).json({
+            error: 'Authorization temporarily unavailable',
+            message: 'Organization access could not be verified. Please retry.',
+          });
+        }
+        if (canaryDecision.status === 'forbidden') {
+          return res.status(403).json({ error: 'You are not a member of this organization' });
+        }
+      } else {
+        // Kill-switch/default path: retain the shipped canonical-user decision.
+        const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+        if (!membership) {
+          return res.status(403).json({ error: 'You are not a member of this organization' });
+        }
       }
 
       const rows = await referralDb.listReferralCodes(orgId);

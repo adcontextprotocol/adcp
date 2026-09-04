@@ -659,6 +659,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(matched).toBeDefined();
     expect(matched!.lifecycle_stage).toBe('production');
     expect(matched!.last_checked_at).toBeNull();
+    expect(matched!.eligible_backlog).toBeGreaterThanOrEqual(due.length);
   });
 
   it('POST does NOT overwrite an existing agent_registry_metadata row on re-register', async () => {

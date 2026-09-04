@@ -194,6 +194,74 @@ export const ADMIN_BRANDS_TOOLS = [
   "list_orphaned_brands",
 ] as const;
 
+/** Bounded member-facing brand-registry domains for ordinary router plans. */
+export const BRAND_REGISTRY_DOMAIN_TOOL_SETS = {
+  brand_registry_records: [
+    "research_brand",
+    "resolve_brand",
+    "save_brand",
+    "list_brands",
+    "list_missing_brands",
+  ],
+  brand_registry_identity: [
+    "upload_brand_logo",
+    "publish_brand_canonical_document",
+    "add_to_brand_refs",
+    "check_mutual_assertion",
+    "notify_pending_verification",
+  ],
+} as const;
+
+export const BRAND_REGISTRY_RECORDS_TOOLS = BRAND_REGISTRY_DOMAIN_TOOL_SETS.brand_registry_records;
+export const BRAND_REGISTRY_IDENTITY_TOOLS = BRAND_REGISTRY_DOMAIN_TOOL_SETS.brand_registry_identity;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const BRAND_REGISTRY_TOOLS = [
+  "research_brand",
+  "resolve_brand",
+  "save_brand",
+  "list_brands",
+  "list_missing_brands",
+  "upload_brand_logo",
+  "publish_brand_canonical_document",
+  "add_to_brand_refs",
+  "check_mutual_assertion",
+  "notify_pending_verification",
+] as const;
+
+/** Bounded authenticated directory domains for ordinary router plans. */
+export const DIRECTORY_DOMAIN_TOOL_SETS = {
+  partner_directory: [
+    "search_members",
+    "request_introduction",
+    "get_my_search_analytics",
+    "list_members",
+    "get_member",
+  ],
+  agent_publisher_directory: [
+    "list_agents",
+    "get_agent",
+    "list_publishers",
+    "lookup_domain",
+  ],
+} as const;
+
+export const PARTNER_DIRECTORY_TOOLS = DIRECTORY_DOMAIN_TOOL_SETS.partner_directory;
+export const AGENT_PUBLISHER_DIRECTORY_TOOLS = DIRECTORY_DOMAIN_TOOL_SETS.agent_publisher_directory;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const DIRECTORY_COMPATIBILITY_TOOLS = [
+  "search_members",
+  "request_introduction",
+  "get_my_search_analytics",
+  "list_members",
+  "get_member",
+  "list_agents",
+  "get_agent",
+  "list_publishers",
+  "lookup_domain",
+] as const;
+
 /** Bounded member account/profile surface for new router plans. */
 export const MEMBER_PROFILE_TOOLS = [
   "get_my_profile",
@@ -523,43 +591,52 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
-  directory: {
-    name: "directory",
-    // NOTE: This tool set is a superset of DIRECTORY_TOOLS in directory-tools.ts.
-    // Anonymous web/MCP users get only the DIRECTORY_TOOLS subset (read-only public lookups).
-    // This set adds member-scoped search and introduction tools, but deliberately
-    // excludes brand-registry mutations and canonical-document workflows.
+  partner_directory: {
+    name: "partner_directory",
+    // Authenticated routing combines member-scoped search and introductions
+    // with the public organization list/detail definitions.
     description:
-      "Search the member, agent, and publisher directory for organizations, partners, vendors, consultants, service providers, and introductions",
-    tools: [
-      "search_members",
-      "request_introduction",
-      "get_my_search_analytics",
-      "list_members",
-      "get_member",
-      "list_agents",
-      "get_agent",
-      "list_publishers",
-      "lookup_domain",
-    ],
+      "Search member organizations for partners, vendors, consultants, and service providers, inspect member profiles, request introductions, and review search analytics",
+    tools: [...DIRECTORY_DOMAIN_TOOL_SETS.partner_directory],
   },
 
+  agent_publisher_directory: {
+    name: "agent_publisher_directory",
+    description:
+      "Browse visible AdCP agents and publishers, inspect an agent by URL, and find agents authorized or claimed for a publisher domain",
+    tools: [...DIRECTORY_DOMAIN_TOOL_SETS.agent_publisher_directory],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded directory domains.
+  directory: {
+    name: "directory",
+    description: "Legacy combined member, agent, and publisher directory compatibility surface",
+    tools: [...DIRECTORY_COMPATIBILITY_TOOLS],
+    routerVisible: false,
+  },
+
+  brand_registry_records: {
+    name: "brand_registry_records",
+    description:
+      "Research, resolve, save, and browse brand-registry records and identify missing brands",
+    tools: [...BRAND_REGISTRY_DOMAIN_TOOL_SETS.brand_registry_records],
+  },
+
+  brand_registry_identity: {
+    name: "brand_registry_identity",
+    description:
+      "Manage brand logos and canonical documents, verify reciprocal brand.json assertions, and notify pending verification",
+    tools: [...BRAND_REGISTRY_DOMAIN_TOOL_SETS.brand_registry_identity],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded brand-registry domains.
   brand_registry: {
     name: "brand_registry",
-    description:
-      "Research and manage brand-registry entries, logos, canonical brand documents, reciprocal brand.json assertions, and registry gaps",
-    tools: [
-      "research_brand",
-      "resolve_brand",
-      "save_brand",
-      "list_brands",
-      "list_missing_brands",
-      "upload_brand_logo",
-      "publish_brand_canonical_document",
-      "add_to_brand_refs",
-      "check_mutual_assertion",
-      "notify_pending_verification",
-    ],
+    description: "Legacy combined brand-registry compatibility surface",
+    tools: [...BRAND_REGISTRY_TOOLS],
+    routerVisible: false,
   },
 
   agent_registry: {

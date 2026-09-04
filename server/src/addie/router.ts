@@ -674,8 +674,12 @@ ${
 - Expressing, withdrawing, or reviewing the current member's future-council interest → ["council_interest"]
 - Creating a post in one of the current member's working groups, or saving/bookmarking a community resource → ["community_group_contribution"]
 - A single long request that explicitly spans at least three group workflows (discovery, membership, council interest, or contribution) → exactly ["community_group_full_participation"]. Use one or two narrow group domains for ordinary requests; genuine two-workflow requests remain under the global two-domain cap.
-- Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"], ["agent_registry"], or ["property_catalog"]
+- Looking for member organizations, companies, vendors, service providers, implementation partners, or an introduction → ["partner_directory"]
+- Browsing visible AdCP agents or publishers, inspecting an agent URL, or finding agents for a publisher domain → ["agent_publisher_directory"]
+- A request that genuinely needs both member-organization discovery and agent/publisher lookup may select both bounded directory domains; do not select the hidden legacy alias.
+- Researching, resolving, saving, or browsing brand-registry records, or finding missing brands → ["brand_registry_records"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or ["property_catalog"]
+- Managing brand logos or canonical documents, checking reciprocal brand.json assertions, or notifying pending verification → ["brand_registry_identity"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or ["property_catalog"]
+- A request that genuinely needs both registry-record and identity-verification workflows may select both bounded domains; do not select the hidden legacy alias.
 - Validating adagents.json, brand resolution, registry status, or publisher authorization → ["agent_registry"]
 - Testing an agent's live quality, RFP response, or IO execution → ["agent_quality"]
 - Diagnosing OAuth or grading RFC 9421 request signing → ["agent_authentication"]
@@ -727,7 +731,7 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Current date or time from the trusted request context → respond with []. Never ignore a direct date/time question
 - General questions needing no tools → []
 
-**directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
+**directory note**: The partner directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["partner_directory"] — the handler can ask follow-up questions with full context.
 
 ## Messages to React To (emoji only, standalone channel messages)
 Use these for short social messages with some context. Exact bare acknowledgments

@@ -19,6 +19,8 @@ import {
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import { ADMIN_TOOLS } from '../../../src/addie/mcp/admin-tools.js';
+import { BRAND_CANONICAL_TOOLS } from '../../../src/addie/mcp/brand-canonical-tools.js';
+import { DIRECTORY_TOOLS } from '../../../src/addie/mcp/directory-tools.js';
 import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../../../src/addie/mcp/member-tools.js';
 import { KNOWLEDGE_TOOLS } from '../../../src/addie/mcp/knowledge-search.js';
@@ -149,6 +151,14 @@ const CANONICAL_ADMIN_BRAND_LOGO_TOOLS = ADMIN_TOOLS.filter((definition) => [
   'list_pending_brand_logos',
 ].includes(definition.name));
 
+const CANONICAL_BRAND_IDENTITY_TOOLS = BRAND_CANONICAL_TOOLS.filter((definition) => [
+  'check_mutual_assertion',
+].includes(definition.name));
+
+const CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS = DIRECTORY_TOOLS.filter((definition) => [
+  'list_agents',
+].includes(definition.name));
+
 const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
@@ -161,6 +171,8 @@ const TOOL_DEFINITIONS = [
   CANONICAL_COMMUNITY_GROUP_TOOLS,
   CANONICAL_ADMIN_MEMBER_RECORDS_TOOLS,
   CANONICAL_ADMIN_BRAND_LOGO_TOOLS,
+  CANONICAL_BRAND_IDENTITY_TOOLS,
+  CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS,
 );
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {

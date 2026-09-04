@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v17';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v19';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -397,6 +397,46 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       requiredTextAny: [['sample member', 'profile']], maxWords: 120,
     },
     answerRubric: ['Clearly presents only the authenticated synthetic member profile.'],
+  },
+  {
+    id: 'brand-mutual-assertion',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Check whether synthetic-leaf.invalid has a reciprocal canonical assertion with its house.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['brand_registry_identity'] },
+    toolFixtures: [
+      { name: 'check_mutual_assertion', effect: 'read', resultStatus: 'ok', result: 'Synthetic assertion status: mutual for synthetic-leaf.invalid and synthetic-house.invalid.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['check_mutual_assertion'],
+      allowedTools: ['check_mutual_assertion'],
+      forbiddenTools: ['research_brand', 'save_brand', 'upload_brand_logo', 'publish_brand_canonical_document', 'add_to_brand_refs', 'notify_pending_verification'],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['mutual'], ['synthetic-leaf.invalid', 'leaf']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic reciprocal-assertion result without changing registry or canonical-document state.'],
+  },
+  {
+    id: 'directory-agent-lookup',
+    category: 'knowledge',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'List the visible sales agents in the directory.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['agent_publisher_directory'] },
+    toolFixtures: [
+      { name: 'list_agents', effect: 'read', resultStatus: 'ok', result: 'Visible sales agents: Synthetic Seller Agent at https://seller.synthetic.invalid.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['list_agents'],
+      allowedTools: ['list_agents'],
+      forbiddenTools: ['search_members', 'request_introduction', 'get_my_search_analytics', 'list_members', 'get_member', 'lookup_domain'],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['synthetic seller agent', 'sales agent'], ['seller.synthetic.invalid', 'synthetic.invalid']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic visible-agent result without searching members or requesting an introduction.'],
   },
   {
     id: 'admin-duplicate-organizations',

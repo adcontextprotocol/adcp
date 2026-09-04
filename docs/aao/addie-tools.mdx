@@ -328,9 +328,9 @@ List documents tracked by a committee. Shows document titles, status, and summar
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-## directory
+## partner_directory
 
-Search the member, agent, and publisher directory for organizations, partners, vendors, consultants, service providers, and introductions
+Search member organizations for partners, vendors, consultants, and service providers, inspect member profiles, request introductions, and review search analytics
 
 ### `search_members`
 
@@ -362,6 +362,10 @@ Get an AgenticAdvertising.org member by slug. Returns visibility-filtered agent 
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
+## agent_publisher_directory
+
+Browse visible AdCP agents and publishers, inspect an agent by URL, and find agents authorized or claimed for a publisher domain
+
 ### `list_agents`
 
 List AdCP agents visible to the caller. Public agents are always returned; callers on an API-access tier also receive members_only agents. Private agents are never returned. Can filter by agent type.
@@ -386,9 +390,9 @@ Find all agents authorized for a specific publisher domain. Shows both verified 
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
-## brand_registry
+## brand_registry_records
 
-Research and manage brand-registry entries, logos, canonical brand documents, reciprocal brand.json assertions, and registry gaps
+Research, resolve, save, and browse brand-registry records and identify missing brands
 
 ### `research_brand`
 
@@ -419,6 +423,10 @@ List brands in the registry with optional filters and cached relationship trust 
 List the most-requested brand domains that are not yet in the registry. Shows demand signals — which brands people are looking for but we don't have.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
+
+## brand_registry_identity
+
+Manage brand logos and canonical documents, verify reciprocal brand.json assertions, and notify pending verification
 
 ### `upload_brand_logo`
 

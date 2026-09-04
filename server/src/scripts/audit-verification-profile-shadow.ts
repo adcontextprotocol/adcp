@@ -79,8 +79,16 @@ export function buildDecisionGates(summary: Summary): {
     sandbox_bundle_projection_resolved: {
       pass: sandboxUnresolvedBundles === 0,
       unresolved_bundles: sandboxUnresolvedBundles,
+      executed_storyboard_bundles: numeric(summary, 'sandbox_unresolved_executed_bundles'),
+      missing_tools_bundles: numeric(summary, 'sandbox_unresolved_missing_tools_bundles'),
+      unknown_cause_bundles: numeric(summary, 'sandbox_unresolved_unknown_bundles'),
     },
-    failures_attributed: { pass: unattributedFailures === 0, unattributed_failures: unattributedFailures },
+    failures_attributed: {
+      pass: unattributedFailures === 0,
+      unattributed_failures: unattributedFailures,
+      malformed_flat_failures: numeric(summary, 'unattributed_flat_failures'),
+      unexplained_phase_failures: numeric(summary, 'unexplained_phase_failures'),
+    },
   };
   const blockingReasons = Object.entries(gates)
     .filter(([, gate]) => !gate.pass)
@@ -126,7 +134,18 @@ function agentReasons(agent: Record<string, unknown>): {
   review_reasons: string[];
 } {
   if (agent.evaluated_at == null) {
-    return { blocking_reasons: ['not_assessed'], review_reasons: [] };
+    const blocking = ['not_assessed'];
+    if (agent.latest_public_run_at == null) {
+      blocking.push('no_public_run');
+    } else if (agent.latest_public_run_in_window === true) {
+      blocking.push('recent_public_run_without_shadow_assessment');
+    } else {
+      blocking.push('latest_public_run_stale');
+    }
+    const review = agent.latest_public_run_empty_tracks === true
+      ? ['latest_public_run_has_no_track_evidence']
+      : [];
+    return { blocking_reasons: blocking, review_reasons: review };
   }
   const blocking: string[] = [];
   if (numeric(agent, 'decision_ready_run_count') < 2) {
@@ -200,6 +219,14 @@ export async function runAudit(
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
          AND COALESCE(m.monitoring_paused, FALSE) = FALSE
      ),
+     latest_public AS (
+       SELECT DISTINCT ON (r.agent_url)
+              r.agent_url, r.tested_at, r.overall_status, r.tracks_json
+       FROM agent_compliance_runs r
+       JOIN eligible e ON e.agent_url = r.agent_url
+       WHERE r.dry_run = FALSE
+       ORDER BY r.agent_url, r.tested_at DESC, r.id DESC
+     ),
      policy_history AS (
        SELECT MIN(s.evaluated_at) AS observation_started_at
        FROM verification_profile_shadow_assessments s
@@ -223,7 +250,11 @@ export async function runAudit(
                 s.controller_cascade_step_count, s.observed_failure_count,
                 s.sandbox_observable_failure_count, s.non_controller_gap_step_count,
                 s.controller_missing_storyboard_count, s.other_missing_storyboard_count,
-                s.mixed_controller_failure_phase_count
+                s.mixed_controller_failure_phase_count,
+                s.unattributed_flat_failure_count, s.unexplained_phase_failure_count,
+                s.sandbox_unresolved_executed_bundle_count,
+                s.sandbox_unresolved_missing_tools_bundle_count,
+                s.sandbox_unresolved_unknown_bundle_count
               ) AS evidence_fingerprint,
               (
                 s.run_complete
@@ -323,6 +354,23 @@ export async function runAudit(
        )::double precision AS policy_observation_age_hours,
        COUNT(e.agent_url)::int AS eligible_agents,
        COUNT(l.agent_url)::int AS assessed_agents,
+       COUNT(*) FILTER (WHERE e.agent_url IS NOT NULL AND l.agent_url IS NULL)::int AS unassessed_agents,
+       COUNT(*) FILTER (
+         WHERE e.agent_url IS NOT NULL AND l.agent_url IS NULL AND p.agent_url IS NULL
+       )::int AS unassessed_without_public_run,
+       COUNT(*) FILTER (
+         WHERE e.agent_url IS NOT NULL AND l.agent_url IS NULL
+           AND p.tested_at >= NOW() - make_interval(hours => $2)
+       )::int AS unassessed_with_recent_public_run,
+       COUNT(*) FILTER (
+         WHERE e.agent_url IS NOT NULL AND l.agent_url IS NULL
+           AND p.tested_at < NOW() - make_interval(hours => $2)
+       )::int AS unassessed_with_stale_public_run,
+       COUNT(*) FILTER (
+         WHERE e.agent_url IS NOT NULL AND l.agent_url IS NULL
+           AND p.agent_url IS NOT NULL
+           AND jsonb_array_length(COALESCE(p.tracks_json, '[]'::jsonb)) = 0
+       )::int AS unassessed_latest_public_run_empty_tracks,
        COUNT(*) FILTER (WHERE l.run_count >= 2)::int AS agents_with_two_or_more_runs,
        COUNT(*) FILTER (WHERE l.decision_ready_run_count >= 2)::int
          AS agents_with_two_or_more_decision_ready_runs,
@@ -353,6 +401,20 @@ export async function runAudit(
          0
        )::int AS sandbox_unresolved_bundles,
        COALESCE(SUM(l.unattributed_failure_count), 0)::int AS unattributed_failures,
+       COALESCE(SUM(l.unattributed_flat_failure_count), 0)::int AS unattributed_flat_failures,
+       COALESCE(SUM(l.unexplained_phase_failure_count), 0)::int AS unexplained_phase_failures,
+       COALESCE(
+         SUM(l.sandbox_unresolved_executed_bundle_count) FILTER (WHERE l.sandbox_eligible),
+         0
+       )::int AS sandbox_unresolved_executed_bundles,
+       COALESCE(
+         SUM(l.sandbox_unresolved_missing_tools_bundle_count) FILTER (WHERE l.sandbox_eligible),
+         0
+       )::int AS sandbox_unresolved_missing_tools_bundles,
+       COALESCE(
+         SUM(l.sandbox_unresolved_unknown_bundle_count) FILTER (WHERE l.sandbox_eligible),
+         0
+       )::int AS sandbox_unresolved_unknown_bundles,
        COALESCE(SUM(l.controller_gap_phase_count), 0)::int AS controller_gap_phases,
        COALESCE(SUM(l.other_missing_storyboard_count), 0)::int AS other_missing_storyboards,
        bi.active_badges_not_spec_passing,
@@ -367,6 +429,7 @@ export async function runAudit(
      CROSS JOIN legacy_badges lb
      LEFT JOIN eligible e ON TRUE
      LEFT JOIN latest l ON l.agent_url = e.agent_url
+     LEFT JOIN latest_public p ON p.agent_url = e.agent_url
      GROUP BY ph.observation_started_at,
               bi.active_badges_not_spec_passing, bi.active_badges_not_sandbox_passing,
               lb.active_or_degraded, lb.carrying_retired_live,
@@ -404,6 +467,14 @@ export async function runAudit(
            AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
            AND COALESCE(m.monitoring_paused, FALSE) = FALSE
        ),
+       latest_public AS (
+         SELECT DISTINCT ON (r.agent_url)
+                r.agent_url, r.tested_at, r.overall_status, r.tracks_json
+         FROM agent_compliance_runs r
+         JOIN eligible e ON e.agent_url = r.agent_url
+         WHERE r.dry_run = FALSE
+         ORDER BY r.agent_url, r.tested_at DESC, r.id DESC
+       ),
        ranked AS (
          SELECT s.*,
                 ROW_NUMBER() OVER (PARTITION BY s.agent_url ORDER BY s.evaluated_at DESC, s.id DESC) AS recency,
@@ -420,7 +491,11 @@ export async function runAudit(
                   s.controller_cascade_step_count, s.observed_failure_count,
                   s.sandbox_observable_failure_count, s.non_controller_gap_step_count,
                   s.controller_missing_storyboard_count, s.other_missing_storyboard_count,
-                  s.mixed_controller_failure_phase_count
+                  s.mixed_controller_failure_phase_count,
+                  s.unattributed_flat_failure_count, s.unexplained_phase_failure_count,
+                  s.sandbox_unresolved_executed_bundle_count,
+                  s.sandbox_unresolved_missing_tools_bundle_count,
+                  s.sandbox_unresolved_unknown_bundle_count
                 ) AS evidence_fingerprint,
                 (
                   s.run_complete
@@ -476,7 +551,11 @@ export async function runAudit(
               r.sandbox_eligible,
               r.run_complete, r.bundle_evidence_present, r.failing_bundle_count,
               r.incomplete_bundle_count, r.sandbox_unresolved_bundle_count,
-              r.unattributed_failure_count,
+              r.unattributed_failure_count, r.unattributed_flat_failure_count,
+              r.unexplained_phase_failure_count,
+              r.sandbox_unresolved_executed_bundle_count,
+              r.sandbox_unresolved_missing_tools_bundle_count,
+              r.sandbox_unresolved_unknown_bundle_count,
               s.run_count,
               COALESCE(d.decision_ready_run_count, 0) AS decision_ready_run_count,
               COALESCE(d.outcome_variant_count, 0) AS outcome_variant_count,
@@ -485,11 +564,18 @@ export async function runAudit(
               r.controller_gap_phase_count,
               r.controller_missing_storyboard_count, r.other_missing_storyboard_count,
               r.mixed_controller_failure_phase_count, r.evaluated_at,
+              p.tested_at AS latest_public_run_at,
+              p.overall_status AS latest_public_status,
+              (p.agent_url IS NOT NULL AND
+                jsonb_array_length(COALESCE(p.tracks_json, '[]'::jsonb)) = 0
+              ) AS latest_public_run_empty_tracks,
+              (p.tested_at >= NOW() - make_interval(hours => $2)) AS latest_public_run_in_window,
               COALESCE(badges.active_badges, '[]'::jsonb) AS active_badges
        FROM eligible e
        LEFT JOIN evidence_ordered r ON r.agent_url = e.agent_url AND r.recency = 1
        LEFT JOIN stability s ON s.agent_url = e.agent_url
        LEFT JOIN decision_ready_stability d ON d.agent_url = e.agent_url
+       LEFT JOIN latest_public p ON p.agent_url = e.agent_url
        LEFT JOIN LATERAL (
          SELECT jsonb_agg(
            jsonb_build_object(

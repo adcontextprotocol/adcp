@@ -25,6 +25,7 @@ function loadControls(currentSettings: Record<string, unknown>) {
     <input type="checkbox" id="organizationAuthorizationDomainsRead">
     <input type="checkbox" id="organizationAuthorizationPendingJoinRequestCountRead">
     <input type="checkbox" id="organizationAuthorizationPendingJoinRequestsRead">
+    <input type="checkbox" id="organizationAuthorizationReferralCodesRead">
     <button id="saveOrganizationAuthorizationBtn" disabled>Save</button>
   `);
   const fetchMock = vi.fn();
@@ -102,6 +103,12 @@ describe("admin organization authorization runtime control", () => {
     ) as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById(
       "organizationAuthorizationPendingJoinRequestsRead",
+    ) as HTMLInputElement).disabled).toBe(true);
+    expect((document.getElementById(
+      "organizationAuthorizationReferralCodesRead",
+    ) as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById(
+      "organizationAuthorizationReferralCodesRead",
     ) as HTMLInputElement).disabled).toBe(true);
     expect(document.getElementById("currentOrganizationAuthorizationStatus")?.textContent)
       .toContain("roles read");
@@ -253,6 +260,45 @@ describe("admin organization authorization runtime control", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       enabled: true,
       boundaries: ["organization_pending_join_requests_read"],
+    });
+
+    controls.dom.window.close();
+  });
+
+  it("saves a referral-codes-only staged selection independently", async () => {
+    const controls = loadControls({
+      organization_authorization_enforcement: {
+        enabled: false,
+        boundaries: [],
+      },
+      organization_authorization_environment_ceiling: {
+        boundaries: ["organization_referral_codes_read"],
+      },
+    });
+    controls.updateOrganizationAuthorizationDisplay();
+    const document = controls.dom.window.document;
+    const checkbox = document.getElementById(
+      "organizationAuthorizationReferralCodesRead",
+    ) as HTMLInputElement;
+    expect(checkbox.disabled).toBe(false);
+    (document.getElementById(
+      "organizationAuthorizationEnabled",
+    ) as HTMLSelectElement).value = "true";
+    checkbox.checked = true;
+
+    controls.fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      organization_authorization_enforcement: {
+        enabled: true,
+        boundaries: ["organization_referral_codes_read"],
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    await controls.saveOrganizationAuthorizationEnforcement();
+
+    const [, init] = controls.fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      enabled: true,
+      boundaries: ["organization_referral_codes_read"],
     });
 
     controls.dom.window.close();

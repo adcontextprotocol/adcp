@@ -15,6 +15,7 @@ import {
   AGENT_END_TO_END_TOOLS,
   ADMIN_BRANDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
+  BRAND_REGISTRY_TOOLS,
   COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
   COMMUNITY_GROUP_TOOLS,
   getToolsForSets,
@@ -109,7 +110,7 @@ describe('Slack tool-set selection policy', () => {
 
   it('leaves bounded channel selection unchanged', () => {
     const selection = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
@@ -118,12 +119,12 @@ describe('Slack tool-set selection policy', () => {
     });
 
     expect(selection.useSafeFallback).toBe(false);
-    expect(selection.selectedToolSets).toEqual(['directory']);
+    expect(selection.selectedToolSets).toEqual(['partner_directory']);
   });
 
   it('keeps the trusted active-certification direct overlay unchanged', () => {
     const selection = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'dm',
       isAdmin: false,
@@ -142,7 +143,7 @@ describe('Slack tool-set selection policy', () => {
 
   it('uses the explicit audited read-only surface for public app mentions', () => {
     const publicMention = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'public brand lookup', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['brand_registry_records'], confidence: 'high', reason: 'public brand lookup', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'mention',
       isAdmin: true,
@@ -162,11 +163,27 @@ describe('Slack tool-set selection policy', () => {
     ]));
   });
 
+  it('filters every identity-domain tool from a public brand-verification mention', () => {
+    const publicMention = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['brand_registry_identity'], confidence: 'high', reason: 'public canonical check', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(publicMention.useSafeFallback).toBe(false);
+    expect(publicMention.allowedToolNames.filter((name) =>
+      (BRAND_REGISTRY_TOOLS as readonly string[]).includes(name),
+    )).toEqual([]);
+  });
+
   it.each(['mention', 'channel'] as const)(
     'keeps a %s with accidental certification context on its ordinary bounded route',
     (source) => {
       const selection = selectBoundedRoutedToolSets({
-        plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+        plan: { action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
         routerAvailable: true,
         source,
         isAdmin: false,
@@ -176,7 +193,7 @@ describe('Slack tool-set selection policy', () => {
       });
 
       expect(selection.useSafeFallback).toBe(false);
-      expect(selection.selectedToolSets).toEqual(['directory']);
+      expect(selection.selectedToolSets).toEqual(['partner_directory']);
       expect(selection.allowedToolNames).toContain('search_members');
       expect(selection.allowedToolNames).not.toContain('search_docs');
     },
@@ -186,7 +203,7 @@ describe('Slack tool-set selection policy', () => {
     'falls back when a required %s route tool is unavailable despite accidental certification context',
     (source) => {
       const selection = selectBoundedRoutedToolSets({
-        plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+        plan: { action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
         routerAvailable: true,
         source,
         isAdmin: false,
@@ -203,7 +220,7 @@ describe('Slack tool-set selection policy', () => {
 
   it('keeps trusted active-certification knowledge when optional Slack retrieval is unavailable', () => {
     const selection = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'dm',
       isAdmin: false,
@@ -224,18 +241,18 @@ describe('Slack tool-set selection policy', () => {
 
   it('keeps the non-bounded legacy direct route unchanged', () => {
     expect(selectSlackToolSets({
-      routerSelectedSets: ['directory'],
+      routerSelectedSets: ['partner_directory'],
       routerAvailable: true,
       source: 'dm',
       isAdmin: false,
-    })).toEqual(['directory', 'knowledge']);
+    })).toEqual(['partner_directory', 'knowledge']);
 
     expect(selectSlackToolSets({
-      routerSelectedSets: ['directory'],
+      routerSelectedSets: ['partner_directory'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
-    })).toEqual(['directory']);
+    })).toEqual(['partner_directory']);
   });
 
   it('does not treat a non-DM certification context as a routing override', () => {
@@ -285,12 +302,12 @@ describe('Slack tool-set selection policy', () => {
 
   it('adds Sponsored Intelligence tools for a relevant retrieval or active session', () => {
     expect(selectSlackToolSets({
-      routerSelectedSets: ['directory'],
+      routerSelectedSets: ['partner_directory'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: false,
       hasSponsoredIntelligenceContext: true,
-    })).toEqual(['directory', 'sponsored_intelligence']);
+    })).toEqual(['partner_directory', 'sponsored_intelligence']);
 
     expect(selectSlackToolSets({
       routerSelectedSets: ['sponsored_intelligence'],
@@ -394,7 +411,7 @@ describe('Slack tool-set selection policy', () => {
     'does not append knowledge to a trusted narrow bounded %s response plan',
     (source) => {
       const selection = selectBoundedRoutedToolSets({
-        plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+        plan: { action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
         routerAvailable: true,
         source,
         isAdmin: false,
@@ -402,14 +419,14 @@ describe('Slack tool-set selection policy', () => {
       });
 
       expect(selection.useSafeFallback).toBe(false);
-      expect(selection.selectedToolSets).toEqual(['directory']);
+      expect(selection.selectedToolSets).toEqual(['partner_directory']);
       expect(selection.allowedToolNames).not.toContain('search_docs');
     },
   );
 
   it.each([
     [['knowledge']],
-    [['knowledge', 'directory']],
+    [['knowledge', 'partner_directory']],
   ] as const)(
     'preserves explicitly router-selected knowledge in bounded direct plans',
     (tool_sets) => {
@@ -428,7 +445,7 @@ describe('Slack tool-set selection policy', () => {
 
   it('accepts exactly two explicitly routed direct domains without an implicit overlay', () => {
     const selection = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['member_billing', 'directory'], confidence: 'high', reason: 'billing directory request', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['member_billing', 'partner_directory'], confidence: 'high', reason: 'billing directory request', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'dm',
       isAdmin: false,
@@ -436,7 +453,7 @@ describe('Slack tool-set selection policy', () => {
     });
 
     expect(selection.useSafeFallback).toBe(false);
-    expect(selection.selectedToolSets).toEqual(['member_billing', 'directory']);
+    expect(selection.selectedToolSets).toEqual(['member_billing', 'partner_directory']);
     expect(selection.allowedToolNames).toContain('create_payment_link');
     expect(selection.allowedToolNames).not.toContain('search_docs');
   });
@@ -571,12 +588,14 @@ describe('Slack tool-set selection policy', () => {
     ['legacy agent-validation union', { action: 'respond', tool_sets: ['agent_validation'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy meetings union', { action: 'respond', tool_sets: ['meetings'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy community-groups union', { action: 'respond', tool_sets: ['community_groups'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy directory union', { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy brand-registry union', { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized organization integrity domain', { action: 'respond', tool_sets: ['admin_organization_integrity'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized brand logo-review domain', { action: 'respond', tool_sets: ['admin_brand_logo_review'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
-    ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'partner_directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
   ] as const)('uses the mutation-free fallback for reaction %s', (_label, plan) => {
     const selection = selectBoundedRoutedToolSets({
       plan,

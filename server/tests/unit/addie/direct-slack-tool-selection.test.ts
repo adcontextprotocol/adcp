@@ -100,7 +100,7 @@ describe('direct Slack Addie response tool routing', () => {
     ['empty', routerFor([])],
     ['stale', routerFor(['obsolete_router_alias'])],
     ['unauthenticated', routerFor(['admin_prospects'])],
-    ['over-two-domain', routerFor(['knowledge', 'directory', 'events'])],
+    ['over-two-domain', routerFor(['knowledge', 'partner_directory', 'events'])],
     ['non-response', {
       quickMatch: vi.fn().mockReturnValue({ action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }),
       route: vi.fn(),
@@ -236,11 +236,11 @@ describe('direct Slack Addie response tool routing', () => {
   it('does not let a mention inherit certification and excludes mutations from a public mention', async () => {
     const certificationMention = await select({
       source: 'mention',
-      toolSets: ['directory'],
+      toolSets: ['partner_directory'],
       activeCertificationKind: 'learning',
       isPublicChannel: false,
     });
-    expect(certificationMention.selectedToolSets).toEqual(['directory']);
+    expect(certificationMention.selectedToolSets).toEqual(['partner_directory']);
     expect(certificationMention.allowedToolNames).not.toContain('start_certification_module');
 
     const publicAdminMention = await select({

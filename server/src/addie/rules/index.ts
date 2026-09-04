@@ -59,12 +59,12 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
     'community_group_contribution',
     'community_group_full_participation',
   ],
-  'Partner Directory': ['directory'],
+  'Partner Directory': ['partner_directory'],
   'Meeting Attendance and Calendar': ['meeting_attendance', 'meeting_full_administration'],
   'Meeting Scheduling': ['meeting_scheduling', 'meeting_full_administration'],
   'Recurring Meeting Series and Topics': ['meeting_series_topics', 'meeting_full_administration'],
   'Capability Questions: Verify Against the Request Surface': GLOBAL_BEHAVIOR_SECTION,
-  'Honest Reporting After Search': ['knowledge', 'schema_reference', 'directory'],
+  'Honest Reporting After Search': ['knowledge', 'schema_reference', 'partner_directory', 'agent_publisher_directory'],
   'Verify Claims With Tools': GLOBAL_BEHAVIOR_SECTION,
   'Compliance Controller Skip Framing': ['agent_quality', 'agent_end_to_end', 'agent_conformance'],
   'Publisher and Agent Setup Diagnosis': ['agent_registry', 'agent_end_to_end', 'property_catalog'],
@@ -80,7 +80,7 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   'Knowledge Search First': ['knowledge'],
   'Building and Testing Agents': ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance'],
   'Registering an Agent in the AgenticAdvertising.org Registry': ['agent_registry'],
-  'Brand-Ownership Intent: Route to Brand Builder': ['brand_registry', 'property_catalog'],
+  'Brand-Ownership Intent: Route to Brand Builder': ['brand_registry_records', 'brand_registry_identity', 'property_catalog'],
   'Uncertainty Acknowledgment': GLOBAL_BEHAVIOR_SECTION,
 };
 

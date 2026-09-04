@@ -308,24 +308,24 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - Never register the public test agent or a buyer agent. Buyer agents are clients that call seller agents; direct their builders to the client SDKs and public test agent instead.`,
   },
   {
-    selectedToolSets: ['brand_registry'],
-    text: `### Brand-registry operations
+    selectedToolSets: ['brand_registry_records'],
+    text: `### Brand-registry records
 - research_brand: Research a brand by domain and save enrichment data.
 - resolve_brand: Resolve a domain to its canonical brand identity from brand.json.
 - save_brand: Add a community brand. It is not needed after research_brand, which auto-saves enrichment.
 - list_brands: Browse registry entries.
-- list_missing_brands: Show the most-requested brands not yet in the registry.
-- upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.`,
+- list_missing_brands: Show the most-requested brands not yet in the registry.`,
   },
   {
-    selectedToolSets: ['brand_registry'],
+    selectedToolSets: ['brand_registry_identity'],
     requiredToolNames: [
       'publish_brand_canonical_document',
       'add_to_brand_refs',
       'check_mutual_assertion',
       'notify_pending_verification',
     ],
-    text: `### Brand canonical-document operations
+    text: `### Brand identity and canonical-document operations
+- upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.
 - publish_brand_canonical_document: Generate and validate a leaf brand document for the operator to host; the tool does not upload it.
 - add_to_brand_refs: Add the reciprocal child pointer to a house portfolio.
 - check_mutual_assertion: Verify whether leaf and house documents reciprocally assert the relationship.
@@ -492,14 +492,17 @@ When a member asks why their listing is missing:
 Publishing requires an active subscription; escalate payment errors to an admin.`,
   },
   {
-    selectedToolSets: ['directory'],
-    text: `### Member-directory operations
-The directory lists member organizations, not individual people. For vendors, implementation partners, consultants, or service providers, search using the user's actual need (for example, "CTV measurement"), not generic terms such as "partner".
-
-- search_members: Find member organizations by capability or need; use the user's stated need as the query.
-- list_members: Browse organizations by offering, market, or search term.
-- request_introduction: Request an email introduction to a specific member organization.
-- get_my_search_analytics: Show the current user's profile analytics.`,
+    selectedToolSets: ['partner_directory'],
+    text: `### Partner-directory operations
+- search_members / list_members / get_member: Find member organizations by stated need; results are organizations, not people.
+- request_introduction: Ask for an introduction to one member organization.
+- get_my_search_analytics: Show the user's search analytics.`,
+  },
+  {
+    selectedToolSets: ['agent_publisher_directory'],
+    text: `### Agent and publisher directory operations
+- list_agents / get_agent: Browse visible agents or inspect an exact URL; preserve visibility scope.
+- list_publishers / lookup_domain: List publishers or agents for a domain; distinguish authorization from claims.`,
   },
   {
     selectedToolSets: ['content'],

@@ -10,7 +10,7 @@ describe('fixed trace long-form incident evaluation', () => {
 
     expect(artifact).toMatchObject({
       artifactVersion: FIXED_TRACE_INCIDENT_EVAL_VERSION,
-      traceSuiteVersion: 'addie-fixed-traces-v17',
+      traceSuiteVersion: 'addie-fixed-traces-v19',
       traceId: 'long-form-deck-delivery',
       noNetwork: true,
       passed: true,

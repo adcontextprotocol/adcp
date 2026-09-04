@@ -13,8 +13,12 @@ import {
   ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
+  AGENT_PUBLISHER_DIRECTORY_TOOLS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
+  BRAND_REGISTRY_IDENTITY_TOOLS,
+  BRAND_REGISTRY_RECORDS_TOOLS,
+  BRAND_REGISTRY_TOOLS,
   CERTIFICATION_ASSESSMENT_TOOLS,
   CERTIFICATION_LEARNING_TOOLS,
   CERTIFICATION_OVERVIEW_TOOLS,
@@ -24,12 +28,14 @@ import {
   COMMUNITY_GROUP_MEMBERSHIP_TOOLS,
   COMMUNITY_GROUP_TOOLS,
   COUNCIL_INTEREST_TOOLS,
+  DIRECTORY_COMPATIBILITY_TOOLS,
   MEMBER_PROFILE_TOOLS,
   MEETING_ATTENDANCE_TOOLS,
   MEETING_FULL_ADMINISTRATION_TOOLS,
   MEETING_SCHEDULING_TOOLS,
   MEETING_SERIES_TOPIC_TOOLS,
   MEETING_TOOLS,
+  PARTNER_DIRECTORY_TOOLS,
   PUBLISHING_AUTHOR_TOOLS,
   PUBLISHING_PROMOTION_TOOLS,
   PUBLISHING_REVIEW_TOOLS,
@@ -106,6 +112,12 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_registry_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_logo_review**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_brands**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_records**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_identity**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **brand_registry**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **partner_directory**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **agent_publisher_directory**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **directory**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
@@ -394,18 +406,85 @@ describe('getToolsForSets', () => {
   });
 
   describe('brand canonical-document workflow', () => {
-    it('routes the complete publish, reciprocity, notification, and logo surface separately from directory lookup', () => {
+    it('keeps registry records and identity verification separate while retaining the exact hidden alias', () => {
+      expect(BRAND_REGISTRY_RECORDS_TOOLS).toEqual([
+        'research_brand', 'resolve_brand', 'save_brand', 'list_brands', 'list_missing_brands',
+      ]);
+      expect(BRAND_REGISTRY_IDENTITY_TOOLS).toEqual([
+        'upload_brand_logo', 'publish_brand_canonical_document', 'add_to_brand_refs',
+        'check_mutual_assertion', 'notify_pending_verification',
+      ]);
+      expect(BRAND_REGISTRY_TOOLS).toEqual([
+        'research_brand', 'resolve_brand', 'save_brand', 'list_brands', 'list_missing_brands',
+        'upload_brand_logo', 'publish_brand_canonical_document', 'add_to_brand_refs',
+        'check_mutual_assertion', 'notify_pending_verification',
+      ]);
+      expect(TOOL_SETS.brand_registry.tools).toEqual(BRAND_REGISTRY_TOOLS);
+      expect(TOOL_SETS.brand_registry.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('brand_registry')).toBe(false);
+      expect(getValidToolSetNames(false).has('brand_registry_records')).toBe(true);
+      expect(getValidToolSetNames(false).has('brand_registry_identity')).toBe(true);
+      expect(getToolsForSets(['brand_registry_records'], false, false)).toEqual(
+        expect.arrayContaining(BRAND_REGISTRY_RECORDS_TOOLS),
+      );
+      expect(getToolsForSets(['brand_registry_records'], false, false).filter((name) =>
+        (BRAND_REGISTRY_IDENTITY_TOOLS as readonly string[]).includes(name),
+      )).toEqual([]);
+      expect(getToolsForSets(['brand_registry_identity'], false, false)).toEqual(
+        expect.arrayContaining(BRAND_REGISTRY_IDENTITY_TOOLS),
+      );
+      expect(getToolsForSets(['brand_registry_identity'], false, false).filter((name) =>
+        (BRAND_REGISTRY_RECORDS_TOOLS as readonly string[]).includes(name),
+      )).toEqual([]);
       expect(getToolsForSets(['brand_registry'], false, false)).toEqual(
-        expect.arrayContaining([
-          'upload_brand_logo',
-          'publish_brand_canonical_document',
-          'add_to_brand_refs',
-          'check_mutual_assertion',
-          'notify_pending_verification',
-        ]),
+        expect.arrayContaining(BRAND_REGISTRY_TOOLS),
       );
       expect(getToolsForSets(['directory'], false, false)).not.toContain('save_brand');
       expect(getToolsForSets(['directory'], false, false)).not.toContain('publish_brand_canonical_document');
+    });
+  });
+
+  describe('authenticated directory workflow', () => {
+    it('keeps partner and agent-publisher lookups separate while retaining the exact hidden alias', () => {
+      expect(PARTNER_DIRECTORY_TOOLS).toEqual([
+        'search_members', 'request_introduction', 'get_my_search_analytics', 'list_members', 'get_member',
+      ]);
+      expect(AGENT_PUBLISHER_DIRECTORY_TOOLS).toEqual([
+        'list_agents', 'get_agent', 'list_publishers', 'lookup_domain',
+      ]);
+      expect(DIRECTORY_COMPATIBILITY_TOOLS).toEqual([
+        ...PARTNER_DIRECTORY_TOOLS,
+        ...AGENT_PUBLISHER_DIRECTORY_TOOLS,
+      ]);
+      expect(DIRECTORY_COMPATIBILITY_TOOLS).toHaveLength(9);
+      expect(TOOL_SETS.directory.tools).toEqual(DIRECTORY_COMPATIBILITY_TOOLS);
+      expect(TOOL_SETS.directory.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('directory')).toBe(false);
+      expect(getValidToolSetNames(false).has('partner_directory')).toBe(true);
+      expect(getValidToolSetNames(false).has('agent_publisher_directory')).toBe(true);
+      expect(getToolsForSets(['partner_directory'], false, false)).toEqual(
+        expect.arrayContaining(PARTNER_DIRECTORY_TOOLS),
+      );
+      expect(getToolsForSets(['partner_directory'], false, false).filter((name) =>
+        (AGENT_PUBLISHER_DIRECTORY_TOOLS as readonly string[]).includes(name),
+      )).toEqual([]);
+      expect(getToolsForSets(['agent_publisher_directory'], false, false)).toEqual(
+        expect.arrayContaining(AGENT_PUBLISHER_DIRECTORY_TOOLS),
+      );
+      expect(getToolsForSets(['agent_publisher_directory'], false, false).filter((name) =>
+        (PARTNER_DIRECTORY_TOOLS as readonly string[]).includes(name),
+      )).toEqual([]);
+      expect(getToolsForSets(['directory'], false, false)).toEqual(
+        expect.arrayContaining(DIRECTORY_COMPATIBILITY_TOOLS),
+      );
+    });
+
+    it.each([
+      ['partner_directory', 10, 12],
+      ['agent_publisher_directory', 9, 11],
+    ] as const)('keeps %s authenticated member/admin surfaces within the typical target', (name, memberCount, adminCount) => {
+      expect(getToolsForSets([name], false, false).filter((tool) => tool !== 'web_search')).toHaveLength(memberCount);
+      expect(getToolsForSets([name], true, false).filter((tool) => tool !== 'web_search')).toHaveLength(adminCount);
     });
   });
 
@@ -496,8 +575,10 @@ describe('getToolsForSets', () => {
       ['knowledge', 3],
       ['community_research', 6],
       ['schema_reference', 4],
-      ['directory', 9],
-      ['brand_registry', 10],
+      ['partner_directory', 5],
+      ['agent_publisher_directory', 4],
+      ['brand_registry_records', 5],
+      ['brand_registry_identity', 5],
       ['agent_registry', 5],
       ['agent_quality', 3],
       ['agent_authentication', 2],
