@@ -1,0 +1,238 @@
+/**
+ * Regression tests for the four sub-bugs fixed in PR #7228 (branch mumbai-v6):
+ *
+ *   1A  recordsFor uses hardcoded HOUR_MS step regardless of period_duration;
+ *       expected_at also hardcoded to +HOUR_MS instead of +delivery_sla.
+ *   1B  health:'complete' set as soon as any revision receipt is accepted,
+ *       without also checking adjustment receipts for consumer_receipt mode.
+ *   2   Legacy getReportingStatus handler cast strips changes_after at the
+ *       TypeScript boundary (req typed as old SDK GetReportingStatusRequest).
+ *   3   Checkpoint fingerprint is order-dependent: unsorted delivery_config_ids,
+ *       media_buy_ids, feed_purposes, and finality arrays; same bug in
+ *       validateReportingConfigurationReplacement's immutableConfig comparison.
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  clearReportingReliabilityStore,
+  replaceReportingConfigurations,
+  getReportingStatusForAccount,
+  syncReliableReportingReceiptsForAccount,
+  prepareReportingCoreLifecycleProbe,
+  setReportingCoreLifecycleProbeClock,
+  prepareReliableReportingReconciledBillingProbe,
+  publishReliableReportingReconciledAdjustments,
+  TRAINING_REPORTING_MANAGED_OFFERING,
+  type TrainingGetReportingStatusRequest,
+  type TrainingGetReportingStatusResponse,
+} from './reporting-reliability.js';
+
+describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
+  beforeEach(() => {
+    clearReportingReliabilityStore();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bug 1A: daily offering must generate one P1D obligation per day, not 24
+  // ---------------------------------------------------------------------------
+  it('daily (P1D) offering generates one obligation per calendar day, not 24 hourly ones', () => {
+    const principal = 'test-pr7228-1a';
+    const accountId = 'acct-1a';
+
+    // Construct a valid analytics-daily-managed config. schema requires method +
+    // destination when the offering advertises one.
+    const dailyConfig = {
+      delivery_config_id: 'test-daily-analytics',
+      delivery_config_version: 1,
+      offering_id: TRAINING_REPORTING_MANAGED_OFFERING.offering_id,        // 'analytics-daily-managed'
+      active: true,
+      feed_purpose: TRAINING_REPORTING_MANAGED_OFFERING.feed_purpose,       // 'analytics'
+      report_definition_id: TRAINING_REPORTING_MANAGED_OFFERING.report_definition_id,
+      reporting_profile: TRAINING_REPORTING_MANAGED_OFFERING.reporting_profile.id,
+      scope: { all_media_buys: true },
+      coverage_requirement: 'full',
+      required_finality: 'official',
+      reconciliation_mode: 'delivery_only',
+      schedule: TRAINING_REPORTING_MANAGED_OFFERING.schedule,               // period_duration: 'P1D', delivery_sla: 'PT4H'
+      method: {
+        pattern: TRAINING_REPORTING_MANAGED_OFFERING.method.pattern,        // 'dataset_share'
+        transport: TRAINING_REPORTING_MANAGED_OFFERING.method.transport,    // 'training_dataset'
+        orchestration: TRAINING_REPORTING_MANAGED_OFFERING.method.orchestration, // 'producer_managed'
+        destination: {
+          mode: 'provision',
+          provider: { domain: TRAINING_REPORTING_MANAGED_OFFERING.method.provider.domain },
+          access_mode: TRAINING_REPORTING_MANAGED_OFFERING.method.access_mode,   // 'read_only'
+          recipient: { identity: 'test-reporting-consumer-1a' },
+        },
+      },
+    };
+
+    const activatedAt = '2026-09-01T00:00:00.000Z';
+    replaceReportingConfigurations(principal, accountId, [dailyConfig], activatedAt);
+    // 2026-09-04T10:00Z is ~3.4 days after activation; setReportingCoreLifecycleProbeClock
+    // sets ledger.virtualNow without requiring the core lifecycle probe's exact fixture.
+    setReportingCoreLifecycleProbeClock(principal, accountId, '2026-09-04T10:00:00.000Z');
+
+    const response = getReportingStatusForAccount(
+      { view: 'periods' } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+
+    expect(response.status).toBe('completed');
+    const periods = response.periods ?? [];
+
+    // Before fix: step = HOUR_MS → ~80 hourly obligations for the same window.
+    // After fix:  step = 24 * HOUR_MS → one obligation per day.
+    expect(periods.length).toBeGreaterThan(0);
+    expect(periods.length).toBeLessThan(5);
+
+    for (const period of periods) {
+      const durationMs = Date.parse(period.period.end) - Date.parse(period.period.start);
+      // Each obligation must span exactly 24 h (86 400 000 ms).
+      expect(durationMs).toBe(86_400_000);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bug 1B: reconciled billing health must not be 'complete' until both
+  // revision receipts AND adjustment receipts are accepted
+  // ---------------------------------------------------------------------------
+  it('reconciled billing health stays non-complete until adjustment receipts are accepted', () => {
+    const principal = 'test-pr7228-1b';
+    const accountId = 'acct-1b';
+
+    const probe = prepareReliableReportingReconciledBillingProbe(principal, accountId);
+    const { adjustments } = publishReliableReportingReconciledAdjustments(principal, accountId);
+
+    // Submit an accepted revision receipt. The canonical_digest verification data
+    // is taken directly from the probe fixture (row_count=2, canonical SHA present).
+    syncReliableReportingReceiptsForAccount(
+      {
+        receipts: [{
+          reporting_receipt_id: 'rcpt-1b-rev-001',
+          reporting_obligation_id: probe.reporting_obligation_id,
+          reporting_revision_id: probe.reporting_revision_id,
+          reporting_materialization_id: probe.reporting_materialization_id,
+          status: 'accepted',
+          verification_profile: 'canonical_digest',
+          observed_row_count: 2,
+          observed_control_totals: [
+            { name: 'impressions', value: '5', value_type: 'integer', unit: 'impressions' },
+            { name: 'spend', value: '8.00', value_type: 'decimal', unit: 'USD' },
+          ],
+          observed_canonical_content_digest: probe.canonical_content_digest,
+        }],
+      },
+      principal,
+      accountId,
+    );
+
+    const afterRevision = getReportingStatusForAccount(
+      { view: 'periods' } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+
+    // Before fix: health flips to 'complete' here (Bug 1B).
+    // After fix:  consumer_receipt mode requires adjustment receipts too.
+    const periodsAfterRevision = afterRevision.periods ?? [];
+    expect(periodsAfterRevision.some(p => p.health === 'complete')).toBe(false);
+
+    // Now submit the accepted adjustment receipt.
+    const acceptedAdj = adjustments.find(a => a.reason_code === 'invalid_traffic')!;
+    syncReliableReportingReceiptsForAccount(
+      {
+        adjustment_receipts: [{
+          reporting_receipt_id: 'rcpt-1b-adj-001',
+          reporting_adjustment_id: acceptedAdj.reporting_adjustment_id,
+          adjusts_reporting_revision_id: acceptedAdj.adjusts_reporting_revision_id,
+          status: 'accepted',
+          observed_adjustment_sha256: acceptedAdj.canonical_adjustment_sha256,
+        }],
+      },
+      principal,
+      accountId,
+    );
+
+    const afterAdjustment = getReportingStatusForAccount(
+      { view: 'periods' } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+
+    const periodsAfterAdjustment = afterAdjustment.periods ?? [];
+    expect(periodsAfterAdjustment.some(p => p.health === 'complete')).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bug 2: changes_after must survive the round-trip through getReportingStatus
+  // ---------------------------------------------------------------------------
+  it('changes_after token from a completed response is honoured on the next call', () => {
+    const principal = 'test-pr7228-2';
+    const accountId = 'acct-2';
+
+    // Core lifecycle probe: hourly config, virtualNow = 2026-08-01T01:30 → one
+    // complete period [00:00, 01:00) exists.
+    prepareReportingCoreLifecycleProbe(principal, accountId);
+
+    const first = getReportingStatusForAccount(
+      { view: 'periods' } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+
+    expect(first.status).toBe('completed');
+    const checkpoint = first.changes_checkpoint;
+    expect(checkpoint).toMatch(/^reporting_change_\d+_[0-9a-f]{16}$/);
+
+    // A second call with changes_after set to the returned checkpoint must
+    // succeed (status: 'completed') rather than return lookup_unavailable.
+    const second = getReportingStatusForAccount(
+      { view: 'periods', changes_after: checkpoint } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    );
+
+    expect(second.status).toBe('completed');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bug 3: feed_purposes (and other array filters) in reversed order must
+  // produce the same checkpoint fingerprint → changes_after must still be valid
+  // ---------------------------------------------------------------------------
+  it('feed_purposes in reversed order with a valid changes_after token succeeds', () => {
+    const principal = 'test-pr7228-3';
+    const accountId = 'acct-3';
+
+    prepareReportingCoreLifecycleProbe(principal, accountId);
+
+    // First request: feed_purposes = ['pacing', 'analytics'] (one order)
+    const first = getReportingStatusForAccount(
+      { view: 'periods', feed_purposes: ['pacing', 'analytics'] } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+
+    expect(first.status).toBe('completed');
+    const checkpoint = first.changes_checkpoint;
+    expect(checkpoint).toMatch(/^reporting_change_\d+_[0-9a-f]{16}$/);
+
+    // Second request: same filters but feed_purposes in reversed order + the
+    // checkpoint from the first call.
+    // Before fix: JSON.stringify(['analytics','pacing']) !== JSON.stringify(['pacing','analytics'])
+    //   → different fingerprint → status: 'failed' (lookup_unavailable).
+    // After fix:  arrays sorted before stringify → same fingerprint → status: 'completed'.
+    const second = getReportingStatusForAccount(
+      {
+        view: 'periods',
+        feed_purposes: ['analytics', 'pacing'],
+        changes_after: checkpoint,
+      } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    );
+
+    expect(second.status).toBe('completed');
+  });
+});

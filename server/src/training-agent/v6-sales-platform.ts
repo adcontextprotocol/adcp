@@ -1183,7 +1183,7 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     const reportingProducts = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
     for (const [productId, product] of session.configuredProducts) reportingProducts.set(productId, product);
     const response = await getReportingStatusForAccountDurably(
-      req as Parameters<typeof getReportingStatusForAccountDurably>[0],
+      req as unknown as Parameters<typeof getReportingStatusForAccountDurably>[0],
       principal,
       accountId,
       [...session.mediaBuys.values()].map(mediaBuy => ({
