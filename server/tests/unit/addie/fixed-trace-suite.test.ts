@@ -15,6 +15,7 @@ import {
   type FixedTraceObservation,
   type FixedTraceRunMetadata,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
+import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 
 const HASH = createHash('sha256').update('fixture').digest('hex');
 
@@ -137,6 +138,13 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 }
 
 describe('fixed cross-provider trace suite', () => {
+  it('resolves one canonical definition for every fixture tool', () => {
+    const fixtureNames = [
+      ...new Set(FIXED_TRACE_SUITE.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name))),
+    ];
+    expect(canonicalFixedTraceToolDefinitions().map((tool) => tool.name)).toEqual(fixtureNames);
+  });
+
   it('is a fixed synthetic corpus covering every required risk category', () => {
     expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v31');
     expect(FIXED_TRACE_SUITE).toHaveLength(32);
