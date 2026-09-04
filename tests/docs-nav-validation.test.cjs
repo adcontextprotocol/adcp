@@ -161,6 +161,28 @@ test('default version carries the Latest tag', () => {
   }
 });
 
+test('current llms index discovers and follows the default docs version', () => {
+  const aliasUrl = 'https://docs.adcontextprotocol.org/_llms/current.md';
+  const aliases = docsConfig.redirects?.filter(
+    redirect => redirect.source === '/_llms/current.md'
+  ) || [];
+  const [alias] = aliases;
+  const expectedDestination = `/_llms/${defaultVersion.replaceAll('.', '-')}.md`;
+
+  if (!docsConfig.description?.includes(aliasUrl)) {
+    throw new Error(`docs.json description must advertise ${aliasUrl} for /llms.txt clients`);
+  }
+  if (aliases.length !== 1) {
+    throw new Error('docs.json must define exactly one /_llms/current.md alias');
+  }
+  if (alias.destination !== expectedDestination || alias.permanent !== false) {
+    throw new Error(
+      `/_llms/current.md must temporarily redirect to ${expectedDestination}; ` +
+      `found ${alias.destination || '(missing destination)'}`
+    );
+  }
+});
+
 test('OpenAPI navigation uses release-pinned public sources', () => {
   const sources = collectOpenApiSources(navigation.versions);
   if (sources.length === 0) {

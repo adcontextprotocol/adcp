@@ -286,6 +286,11 @@ function sampleConfig() {
 
     assert.deepEqual(config.redirects, [
       {
+        source: '/_llms/current.md',
+        destination: '/_llms/3-0.md',
+        permanent: false,
+      },
+      {
         source: '/docs/intro',
         destination: '/dist/docs/3.0.1/intro',
         permanent: false,
@@ -312,6 +317,39 @@ function sampleConfig() {
     assert.equal(result.sourceVersion, '3.0');
     assert.equal(config.navigation.versions[1].version, '3.1-rc');
     assert.equal(config.navigation.versions[1].groups[0].pages[0], 'dist/docs/3.1.0-rc.5/intro');
+  });
+
+  test('keeps the current llms index alias on the default stable docs version', () => {
+    const config = sampleConfig();
+    config.redirects = [{
+      source: '/_llms/current.md',
+      destination: '/_llms/2-5.md',
+      permanent: true,
+    }];
+
+    updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
+
+    assert.deepEqual(config.redirects[0], {
+      source: '/_llms/current.md',
+      destination: '/_llms/3-0.md',
+      permanent: false,
+    });
+  });
+
+  test('adds the current llms index alias once when redirects are absent', () => {
+    const config = sampleConfig();
+
+    updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
+    updateDocsConfig(config, '3.1.0-rc.6', '3.1-rc');
+
+    assert.deepEqual(
+      config.redirects.filter(redirect => redirect.source === '/_llms/current.md'),
+      [{
+        source: '/_llms/current.md',
+        destination: '/_llms/3-0.md',
+        permanent: false,
+      }]
+    );
   });
 
   test('carries the 3.2 story from beta to RC and retargets its public aliases', () => {
@@ -369,6 +407,7 @@ function sampleConfig() {
     assert.deepEqual(
       config.redirects.map((redirect) => redirect.destination),
       [
+        '/_llms/3-0.md',
         '/dist/docs/3.2.0-rc.0/reference/whats-new-in-3-2',
         '/dist/docs/3.2.0-rc.0/media-buy/product-discovery/proposal-negotiation',
       ]

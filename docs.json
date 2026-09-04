@@ -5,7 +5,7 @@
     "content": "AdCP 3.2 preview is available — [see what's new and try the proposal lifecycle →](/3.2)",
     "dismissible": true
   },
-  "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
+  "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms. Current stable documentation index: https://docs.adcontextprotocol.org/_llms/current.md.",
   "metadata": {
     "og:site_name": "AdCP — Ad Context Protocol",
     "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
@@ -2881,6 +2881,11 @@
     }
   },
   "redirects": [
+    {
+      "source": "/_llms/current.md",
+      "destination": "/_llms/3-1.md",
+      "permanent": false
+    },
     {
       "source": "/extensions/adcp/v3",
       "destination": "/docs/building/by-layer/L0/a2a-profile-extension"
