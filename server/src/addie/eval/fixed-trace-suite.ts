@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v30';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v31';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -384,6 +384,38 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       'Explains that a buyer calls a defined task with structured input and the seller returns that task\'s structured response.',
       'Uses the official-doc fixture without inventing protocol fields.',
     ],
+  },
+  {
+    id: 'community-discussion-search-read-only',
+    category: 'knowledge',
+    privacy: 'synthetic',
+    request: {
+      source: 'dm',
+      message: 'Search recent Slack discussions about synthetic community meetup formats without reading files or external sources.',
+      nowUtc: NOW,
+      isAdmin: false,
+    },
+    routing: { action: 'respond', toolSets: ['community_discussions'] },
+    toolFixtures: [
+      {
+        name: 'search_slack',
+        effect: 'read',
+        resultStatus: 'ok',
+        result: 'Synthetic Slack discussion: members preferred small working sessions with a published recap.',
+      },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['search_slack'],
+      allowedTools: ['search_slack'],
+      forbiddenTools: [
+        'get_channel_activity', 'read_slack_file', 'search_resources', 'get_recent_news', 'fetch_url',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['small working sessions'], ['published recap']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic Slack evidence without reading files or external industry sources.'],
   },
   {
     id: 'member-own-profile',

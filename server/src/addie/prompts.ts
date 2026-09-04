@@ -224,7 +224,7 @@ To change a primary email, the member should link the new address under Settings
 Organizations are needed for team features such as saved agents, member management, and billing. They are not required to use the public test agent, certification, or protocol documentation. Never tell someone they need an organization merely to try AdCP.`,
   },
   {
-    selectedToolSets: ['community_research'],
+    selectedToolSets: ['community_discussions', 'community_research'],
     requiredToolNames: ['read_slack_file'],
     text: `### Slack file handling
 - read_slack_file: Read file content shared in Slack.`,
@@ -377,10 +377,14 @@ When someone wants to build an agent, first clarify whether it is a buyer agent 
 For protocol behavior and structure, verify with these authoritative sources before answering. Do not rely on model memory.`,
   },
   {
-    selectedToolSets: ['community_research'],
-    text: `### Community and industry research
+    selectedToolSets: ['community_discussions', 'community_research'],
+    text: `### Community discussion research
 - search_slack: Search community discussions
-- get_channel_activity: Review recent activity in an accessible Slack channel
+- get_channel_activity: Review recent activity in an accessible Slack channel`,
+  },
+  {
+    selectedToolSets: ['industry_research', 'community_research'],
+    text: `### Industry resource research
 - search_resources: Search curated industry articles
 - get_recent_news: Get recent ad tech news
 - fetch_url: Read a web page supplied by the user or returned by research`,

@@ -667,7 +667,9 @@ ${
 }IMPORTANT: Select tool SETS based on the user's INTENT:
 - Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure. "What do the official docs say about package identifiers?" → exactly ["knowledge"]
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating registry configuration, select exactly ["schema_reference", "agent_registry"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_registry"]
-- Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
+- Explicit requests to search or recap Slack history, channel activity, community discussions, or files shared in Slack → ["community_discussions"]
+- Explicit requests to search curated industry resources, recent news, or a supplied public web page → ["industry_research"]
+- A request that explicitly needs both Slack/community discussion and external industry research may select both bounded domains. Never use the hidden legacy research alias, and do not add either research domain merely because community or industry opinion could supplement an authoritative answer
 - Questions about the current member's personal profile or account details → ["member_personal_profile"]
 - Questions about the current member's company listing, logo, brand color, or organization brand-domain claim → ["member_company_profile"]
 - Requests needing both personal and company profile work may select both; never use the hidden legacy alias.
@@ -754,7 +756,7 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_conversation_review"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]
 - Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge
-- Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
+- Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_discussions"] to distinguish documented rules from current discussion
 - Current date or time from the trusted request context → respond with []. Never ignore a direct date/time question
 - General questions needing no tools → []
 

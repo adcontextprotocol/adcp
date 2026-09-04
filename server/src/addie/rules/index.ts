@@ -98,6 +98,8 @@ const KNOWLEDGE_RULE_TOOL_SETS = new Set(['knowledge']);
 // roadmap/RFC requests route with `github`; community research has its own
 // domain, so those requests still receive the ecosystem context.
 const ECOSYSTEM_CONTEXT_TOOL_SETS = new Set([
+  'community_discussions',
+  'industry_research',
   'community_research',
   'github',
   'content',
@@ -111,6 +113,8 @@ const ECOSYSTEM_CONTEXT_TOOL_SETS = new Set([
 const EVIDENCE_BOUND_URL_FREE_TOOL_SETS = new Set([
   'knowledge',
   'schema_reference',
+  'community_discussions',
+  'industry_research',
   'community_research',
   'illustrations',
 ]);

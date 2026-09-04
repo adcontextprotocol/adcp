@@ -49,13 +49,16 @@ import {
   COMMITTEE_FULL_LEADERSHIP_TOOLS,
   COMMITTEE_LEADERSHIP_DOMAIN_TOOL_SETS,
   COMMITTEE_LEADERSHIP_TOOLS,
+  COMMUNITY_DISCUSSION_TOOLS,
   COMMUNITY_GROUP_CONTRIBUTION_TOOLS,
   COMMUNITY_GROUP_DISCOVERY_TOOLS,
   COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
   COMMUNITY_GROUP_MEMBERSHIP_TOOLS,
   COMMUNITY_GROUP_TOOLS,
+  COMMUNITY_RESEARCH_TOOLS,
   COUNCIL_INTEREST_TOOLS,
   DIRECTORY_COMPATIBILITY_TOOLS,
+  INDUSTRY_RESEARCH_TOOLS,
   MEMBER_COMPANY_PROFILE_TOOLS,
   MEMBER_PERSONAL_PROFILE_TOOLS,
   MEMBER_PROFILE_DOMAIN_TOOL_SETS,
@@ -1005,7 +1008,8 @@ describe('getToolsForSets', () => {
       ['github', 4],
       ['illustrations', 1],
       ['knowledge', 3],
-      ['community_research', 6],
+      ['community_discussions', 3],
+      ['industry_research', 3],
       ['schema_reference', 4],
       ['sponsored_intelligence_discovery', 3],
       ['sponsored_intelligence_session', 3],
@@ -1128,16 +1132,33 @@ describe('getToolsForSets', () => {
       expect(getToolsForSets(['knowledge'], false, false)).not.toContain('draft_github_issue');
     });
 
-    it('keeps protocol, community, and schema retrieval in separate domains', () => {
+    it('keeps discussion and industry research bounded with an exact hidden alias', () => {
+      expect(TOOL_SETS.community_discussions.tools).toEqual([...COMMUNITY_DISCUSSION_TOOLS]);
+      expect(TOOL_SETS.industry_research.tools).toEqual([...INDUSTRY_RESEARCH_TOOLS]);
+      expect(TOOL_SETS.community_research.tools).toEqual([...COMMUNITY_RESEARCH_TOOLS]);
+      expect(TOOL_SETS.community_research.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('community_research')).toBe(false);
+      expect(getValidToolSetNames(false).has('community_discussions')).toBe(true);
+      expect(getValidToolSetNames(false).has('industry_research')).toBe(true);
+      expect([
+        ...TOOL_SETS.community_discussions.tools,
+        ...TOOL_SETS.industry_research.tools,
+      ].sort()).toEqual([...TOOL_SETS.community_research.tools].sort());
+    });
+
+    it('keeps protocol, discussion, industry, and schema retrieval in separate domains', () => {
       const knowledge = getToolsForSets(['knowledge'], false, false);
-      const community = getToolsForSets(['community_research'], false, false);
+      const discussions = getToolsForSets(['community_discussions'], false, false);
+      const industry = getToolsForSets(['industry_research'], false, false);
       const schemas = getToolsForSets(['schema_reference'], false, false);
 
       expect(knowledge).toContain('search_docs');
       expect(knowledge).not.toContain('search_slack');
       expect(knowledge).not.toContain('validate_json');
-      expect(community).toContain('search_slack');
-      expect(community).not.toContain('search_docs');
+      expect(discussions).toContain('search_slack');
+      expect(discussions).not.toContain('search_resources');
+      expect(industry).toContain('search_resources');
+      expect(industry).not.toContain('search_slack');
       expect(schemas).toContain('validate_json');
       expect(schemas).not.toContain('search_docs');
     });

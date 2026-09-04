@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v30');
-    expect(FIXED_TRACE_SUITE).toHaveLength(31);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v31');
+    expect(FIXED_TRACE_SUITE).toHaveLength(32);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -494,8 +494,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 31,
-      observed: 31,
+      expected: 32,
+      observed: 32,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -506,11 +506,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 31);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.03);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 32);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.031);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 28,
+      complete: 29,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -659,7 +659,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 31, observed: 3, omitted: 28, complete: false });
+    expect(summary).toMatchObject({ expected: 32, observed: 3, omitted: 29, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

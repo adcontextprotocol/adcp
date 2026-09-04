@@ -190,6 +190,7 @@ const CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS = PROPERTY_TOOLS.filter((defin
 
 const TOOL_DEFINITIONS = [
   'search_docs',
+  'search_slack',
   'get_doc',
   'get_my_profile',
   'get_company_listing',
@@ -318,6 +319,30 @@ describe('fixed trace artifact runner', () => {
       deterministicPass: true,
       metadataPass: true,
     });
+  });
+
+  it('replays community discussion search without exposing industry research', async () => {
+    const selectedTrace = trace('community-discussion-search-read-only');
+    const router = new ScriptedProvider([routeResponse('respond', ['community_discussions'])]);
+    const generation = new ScriptedProvider([
+      response([{
+        type: 'tool_call',
+        id: 'community-tool-1',
+        name: 'search_slack',
+        input: { query: 'synthetic community meetup formats' },
+      }], 'tool_calls', 'community-search'),
+      response([{
+        type: 'text',
+        text: 'Members preferred small working sessions with a published recap.',
+      }], 'stop', 'community-final'),
+    ]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation.route).toEqual({ action: 'respond', toolSets: ['community_discussions'] });
+    expect(observation.tools.map((tool) => tool.name)).toEqual(['search_slack']);
+    expect(generation.respondCalls[0].tools?.map((tool) => tool.name)).toEqual(['search_slack']);
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ deterministicPass: true });
   });
 
   it('replays four requested long-meeting mutations through canonical schemas', async () => {
