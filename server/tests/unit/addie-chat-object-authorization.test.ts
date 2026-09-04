@@ -730,6 +730,50 @@ describe('Addie chat conversation object authorization', () => {
     }));
   });
 
+  it('gives every active certification learning thread the expanded reserve', async () => {
+    const conversationId = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
+    mocks.memberContext = {
+      is_mapped: true,
+      is_member: false,
+      slack_linked: false,
+      workos_user: { workos_user_id: 'user_attacker' },
+    };
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: conversationId,
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.getProgress.mockResolvedValue([{
+      module_id: 'A2',
+      status: 'in_progress',
+      addie_thread_id: conversationId,
+      completed_at: null,
+    }]);
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Continue the learning section',
+        conversation_id: conversationId,
+        client_request_id: '4328e677-4ac0-4b9f-900b-dc42a419b2ea',
+      });
+
+    expect(response.status).toBe(200);
+    expect(mocks.processMessageStream).toHaveBeenCalledOnce();
+    const processOptions = mocks.processMessageStream.mock.calls[0]?.[3];
+    expect(processOptions).toEqual(expect.objectContaining({
+      costScope: {
+        userId: 'user_attacker',
+        tier: 'member_free',
+        certificationReserveUsd: 3,
+      },
+    }));
+    expect(processOptions).not.toHaveProperty('maxIterations');
+    expect(processOptions).not.toHaveProperty('maxMessages');
+  });
+
   it('denies cross-user feedback before attempting a message update', async () => {
     const response = await request(mountChatRouter())
       .post('/9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489/feedback')
