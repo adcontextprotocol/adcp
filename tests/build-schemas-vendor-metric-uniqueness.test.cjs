@@ -31,6 +31,7 @@ const path = require('node:path');
 const {
   collectVendorMetricExamples,
   lintVendorMetricSemanticUniqueness,
+  canonicalQualifier,
 } = require('../scripts/build-schemas.cjs');
 
 function writeJson(filePath, value) {
@@ -256,4 +257,63 @@ test('lintVendorMetricSemanticUniqueness: reports one violation per duplicate ar
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
+});
+
+
+// ── qualifier-aware row keys (#7234) ──────────────────────────────────────
+
+function valueRow(metricId, extra = {}) {
+  return { vendor: { domain: 'v.example' }, metric_id: metricId, value: 1, ...extra };
+}
+
+test('collectVendorMetricExamples: vendor_metric_values rows with distinct qualifiers are NOT duplicates', () => {
+  const schema = { examples: [{ vendor_metric_values: [
+    valueRow('conversions', { qualifier: { attribution_window: { interval: 7, unit: 'days' } } }),
+    valueRow('conversions', { qualifier: { attribution_window: { interval: 30, unit: 'days' } } }),
+  ] }] };
+  const out = collectVendorMetricExamples(schema, 'core/delivery-metrics.json');
+  assert.equal(out.length, 1);
+  assert.equal(new Set(out[0].tuples).size, 2);
+});
+
+test('collectVendorMetricExamples: qualifier key order does not create distinct rows', () => {
+  const schema = { examples: [{ vendor_metric_values: [
+    valueRow('conversions', { qualifier: { attribution_window: { interval: 14, unit: 'days' } } }),
+    valueRow('conversions', { qualifier: { attribution_window: { unit: 'days', interval: 14 } } }),
+  ] }] };
+  const out = collectVendorMetricExamples(schema, 'core/delivery-metrics.json');
+  assert.equal(new Set(out[0].tuples).size, 1, 'order-only qualifier difference must still collide');
+});
+
+test('collectVendorMetricExamples: rows differing only in a non-key field are still duplicates', () => {
+  const schema = { examples: [{ vendor_metric_values: [
+    valueRow('gaze_attention_seconds', { vendor_relationship: 'first_party' }),
+    valueRow('gaze_attention_seconds', { vendor_relationship: 'third_party' }),
+  ] }] };
+  const out = collectVendorMetricExamples(schema, 'core/delivery-metrics.json');
+  assert.equal(new Set(out[0].tuples).size, 1);
+});
+
+test('collectVendorMetricExamples: unqualified rows keep the historical 3-part key shape', () => {
+  const schema = { examples: [{ vendor_metric_values: [ valueRow('a'), valueRow('b') ] }] };
+  const out = collectVendorMetricExamples(schema, 'core/delivery-metrics.json');
+  assert.deepEqual(out[0].tuples, ['v.example||a', 'v.example||b']);
+});
+
+test('collectVendorMetricExamples: vendor_metrics declarations ignore qualifier entirely', () => {
+  const schema = { examples: [{ vendor_metrics: [
+    { ...vendorMetric('v.example', undefined, 'x'), qualifier: { lift_dimension: 'awareness' } },
+    { ...vendorMetric('v.example', undefined, 'x'), qualifier: { lift_dimension: 'consideration' } },
+  ] }] };
+  const out = collectVendorMetricExamples(schema, 'core/reporting-capabilities.json');
+  assert.equal(new Set(out[0].tuples).size, 1, 'declarations have no qualifier partition');
+});
+
+test('canonicalQualifier: sorts keys recursively and treats absent/empty as ""', () => {
+  assert.equal(canonicalQualifier(undefined), '');
+  assert.equal(canonicalQualifier({}), '');
+  assert.equal(
+    canonicalQualifier({ attribution_window: { unit: 'days', interval: 14 }, attribution_methodology: 'modeled' }),
+    canonicalQualifier({ attribution_methodology: 'modeled', attribution_window: { interval: 14, unit: 'days' } })
+  );
 });

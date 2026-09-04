@@ -612,7 +612,15 @@ function lintErrorCodeEnumMetadata(sourceDir) {
 // describe the same brand). This lint enforces the MUST constraint by
 // normalizing the semantic tuple and checking for duplicates.
 //
-// Key normalization: use `|`-delimited string `domain|brand_id|metric_id`.
+// Key normalization: use `|`-delimited string `domain|brand_id|metric_id` for
+// `vendor_metrics` declarations, and `domain|brand_id|metric_id|qualifier` for
+// `vendor_metric_values` rows — delivery-metrics.json allows the same vendor
+// metric on multiple rows when each carries a distinct qualifier (7-day vs
+// 30-day attribution windows), so the qualifier is part of the row key (#7234).
+// The qualifier component is the key-sorted JSON of the qualifier object (deep
+// equality, order-insensitive); unqualified rows keep the historical 3-part key
+// (no trailing separator). The qualifier is placed last because serialized JSON
+// may legally contain `|` inside string values.
 // The `|` separator is safe because domain (`[a-z0-9.-]`), brand_id
 // (`[a-z0-9_]`), and metric_id (`[a-z][a-z0-9_]*`) cannot contain `|`. Absent
 // brand_id normalizes to "" (empty string) — the empty string is distinct from
@@ -627,6 +635,27 @@ function lintErrorCodeEnumMetadata(sourceDir) {
 //      metric data. TS scanning would require a parser — deferred until a
 //      fixture adds vendor metrics, at which point build failures will surface
 //      the gap. See #3502 item 1 for the tracking comment.
+
+
+/**
+ * Canonical string for a structured qualifier: keys sorted recursively so
+ * `{interval:14,unit:'days'}` and `{unit:'days',interval:14}` produce the same
+ * string — the join rule stated on committed-metric.json. Absent/empty
+ * qualifier → "" and callers omit the separator, so unqualified rows keep the
+ * historical 3-part key.
+ */
+function canonicalQualifier(q) {
+  if (!q || typeof q !== 'object' || Array.isArray(q)) return '';
+  const sort = (v) => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v && typeof v === 'object') {
+      return Object.keys(v).sort().reduce((acc, k) => { acc[k] = sort(v[k]); return acc; }, {});
+    }
+    return v;
+  };
+  const keys = Object.keys(q);
+  return keys.length ? JSON.stringify(sort(q)) : '';
+}
 
 /**
  * Recursively collect all `examples` values that contain vendor metric arrays.
@@ -648,7 +677,10 @@ function collectVendorMetricExamples(obj, schemaPath, out = []) {
       const domain = typeof entry.vendor.domain === 'string' ? entry.vendor.domain : '';
       const brandId = typeof entry.vendor.brand_id === 'string' ? entry.vendor.brand_id : '';
       const metricId = typeof entry.metric_id === 'string' ? entry.metric_id : '';
-      tuples.push(`${domain}|${brandId}|${metricId}`);
+      const key = `${domain}|${brandId}|${metricId}`;
+      // Rows (vendor_metric_values) partition on qualifier; declarations do not.
+      const q = field === 'vendor_metric_values' ? canonicalQualifier(entry.qualifier) : '';
+      tuples.push(q ? `${key}|${q}` : key);
     }
     if (tuples.length > 0) out.push({ schemaPath, arrayField: field, tuples });
   }
@@ -695,7 +727,8 @@ function lintVendorMetricSemanticUniqueness(sourceDir) {
     throw new Error(
       `Vendor metric uniqueness lint: ${violations.length} duplicate tuple(s) found in schema examples.\n\n` +
       lines.join('\n') +
-      `\n\nFix: each (vendor.domain, vendor.brand_id, metric_id) tuple MUST appear at most once per array.\n` +
+      `\n\nFix: each (vendor.domain, vendor.brand_id, metric_id) tuple MUST appear at most once per vendor_metrics array,\n` +
+      `and each (vendor.domain, vendor.brand_id, metric_id, qualifier) tuple at most once per vendor_metric_values array.\n` +
       `See static/schemas/source/core/reporting-capabilities.json and delivery-metrics.json for the\n` +
       `normative uniqueness constraint. Issue: adcontextprotocol/adcp#3502.`
     );
@@ -2686,6 +2719,7 @@ module.exports = {
   buildTaskResultResolution,
   validateManifestToolRelationships,
   collectVendorMetricExamples,
+  canonicalQualifier,
   lintVendorMetricSemanticUniqueness,
 };
 
