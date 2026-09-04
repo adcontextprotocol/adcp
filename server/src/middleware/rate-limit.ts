@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit';
 import type { IncrementResponse, Options, Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
+import { isBreakGlassAdminEmail } from '../auth/admin-access.js';
 import { CachedPostgresStore, PostgresStore, type WeightedIncrementStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
@@ -105,8 +106,7 @@ async function skipForAdmins(req: Request): Promise<boolean> {
 
   if (user.isAdmin === true) return true;
 
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) ?? [];
-  if (user.email && adminEmails.includes(user.email.toLowerCase())) {
+  if (isBreakGlassAdminEmail(user.email)) {
     return true;
   }
 

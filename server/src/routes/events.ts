@@ -40,7 +40,8 @@ import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/client.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
-import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
+import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
 import { getWorkos } from "../auth/workos-client.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 
@@ -1740,9 +1741,8 @@ export function createEventsRouter(): {
       let isDraftPreview = false;
       if (!["published", "completed"].includes(event.status)) {
         const user = req.user;
-        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = !!user && (
-          adminEmails.includes(user.email.toLowerCase()) ||
+          isBreakGlassAdminEmail(user.email) ||
           await isWebUserAAOAdmin(user.id)
         );
         if (!isAdmin) {

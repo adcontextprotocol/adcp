@@ -197,7 +197,11 @@ const AAO_ADMIN_WORKING_GROUP_SLUG = "aao-admin";
 const KITCHEN_CABINET_SLUG = "kitchen-cabinet";
 
 // Cache for admin status checks - admin status rarely changes
-const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+// Site-admin membership can be revoked on another replica. Keep successful
+// membership decisions short-lived so every replica rechecks within a minute.
+const ADMIN_POSITIVE_CACHE_TTL_MS = 60 * 1000;
+const ADMIN_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
+const COUNCIL_CACHE_TTL_MS = 30 * 60 * 1000;
 // Shared cache module — invalidators can be called without dragging the
 // rest of admin-tools (and its Anthropic-instantiating dependencies)
 // into unrelated import graphs.
@@ -206,7 +210,8 @@ const adminStatusCache = getSlackAdminStatusCache();
 /**
  * Check if a Slack user is an admin
  * Looks up their WorkOS user ID via Slack mapping and checks membership in aao-admin working group
- * Results are cached for 30 minutes to reduce DB load
+ * Positive results are cached for at most 60 seconds so a revoke propagates
+ * across replicas without a shared cache invalidation channel.
  */
 export async function isSlackUserAAOAdmin(
   slackUserId: string,
@@ -228,7 +233,7 @@ export async function isSlackUserAAOAdmin(
       );
       adminStatusCache.set(slackUserId, {
         isAdmin: false,
-        expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+        expiresAt: Date.now() + ADMIN_NEGATIVE_CACHE_TTL_MS,
       });
       return false;
     }
@@ -254,7 +259,7 @@ export async function isSlackUserAAOAdmin(
     // Cache the result
     adminStatusCache.set(slackUserId, {
       isAdmin,
-      expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+      expiresAt: Date.now() + (isAdmin ? ADMIN_POSITIVE_CACHE_TTL_MS : ADMIN_NEGATIVE_CACHE_TTL_MS),
     });
 
     logger.info(
@@ -330,7 +335,7 @@ export async function isWebUserAAOCouncil(
     const isCouncil = await wgDb.isMember(group.id, workosUserId);
     webCouncilStatusCache.set(workosUserId, {
       isCouncil,
-      expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+      expiresAt: Date.now() + COUNCIL_CACHE_TTL_MS,
     });
 
     logger.debug(
@@ -6768,6 +6773,9 @@ export function createAdminToolHandlers(
       if (!committee) {
         return `❌ Committee "${committeeSlug}" not found. Use list_working_groups, list_chapters, or list_industry_gatherings to find the correct slug.`;
       }
+      if (committee.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+        return '⚠️ AAO site-admin membership must be changed through the dedicated audited admin workflow.';
+      }
 
       // Check if already a leader (use canonical_user_id for Slack/WorkOS resolution)
       const leaders = await wgDb.getLeaders(committee.id);
@@ -6985,6 +6993,9 @@ Use add_committee_leader to assign a leader.`;
       if (!group) {
         return `❌ Committee "${committeeSlug}" not found. Use list_working_groups to find the correct slug.`;
       }
+      if (group.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+        return '⚠️ AAO site-admin membership must be changed through the dedicated audited admin workflow.';
+      }
 
       // Check if already a member
       const existing = await wgDb.getMembership(group.id, userId);
@@ -7074,6 +7085,9 @@ Use add_committee_leader to assign a leader.`;
       if (!group) {
         return `❌ Committee "${committeeSlug}" not found. Use list_working_groups to find the correct slug.`;
       }
+      if (group.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+        return '⚠️ AAO site-admin membership must be changed through the dedicated audited admin workflow.';
+      }
 
       const existing = await wgDb.getMembership(group.id, userId);
       if (!existing || existing.status !== "active") {
@@ -7116,6 +7130,9 @@ Use add_committee_leader to assign a leader.`;
       const wg = await wgDb.getWorkingGroupBySlug(slug);
       if (!wg) {
         return `❌ Working group with slug "${slug}" not found.`;
+      }
+      if (wg.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+        return '⚠️ The AAO site-admin working group cannot be renamed. Its membership is changed only through the dedicated audited admin workflow.';
       }
 
       const generatedSlug =

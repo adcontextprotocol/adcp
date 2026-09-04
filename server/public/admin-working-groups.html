@@ -654,6 +654,7 @@
         groups = await response.json();
         renderGroupsList();
         populateMemberGroupFilter();
+        applyMembershipDeepLink();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -686,6 +687,21 @@
           loadAllMemberships();
         }
       }
+    }
+
+    // The People admin panel links here instead of creating another membership
+    // editor. Keep the site-admin context in the established membership view.
+    function applyMembershipDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') !== 'members') return;
+
+      const groupSlug = params.get('group');
+      const group = groups.find((candidate) => candidate.slug === groupSlug);
+      if (group) document.getElementById('memberGroupFilter').value = group.id;
+
+      const userId = params.get('user');
+      if (userId) document.getElementById('memberSearchInput').value = userId;
+      showPageTab('allMembers');
     }
 
     // Load all memberships for the All Members tab
@@ -731,7 +747,8 @@
           (m.user_name && m.user_name.toLowerCase().includes(searchTerm)) ||
           (m.user_email && m.user_email.toLowerCase().includes(searchTerm)) ||
           (m.user_org_name && m.user_org_name.toLowerCase().includes(searchTerm)) ||
-          (m.working_group_name && m.working_group_name.toLowerCase().includes(searchTerm))
+          (m.working_group_name && m.working_group_name.toLowerCase().includes(searchTerm)) ||
+          (m.workos_user_id && m.workos_user_id.toLowerCase().includes(searchTerm))
         );
       }
 
@@ -1194,11 +1211,22 @@
     async function addMember(userId, name, email, orgName) {
       if (!editingGroup) return;
 
+      const isAAOAdminGroup = editingGroup.slug === 'aao-admin';
+      const reason = isAAOAdminGroup
+        ? prompt('Why are you granting AAO site-admin access? This reason is recorded in the audit history.')
+        : null;
+      if (isAAOAdminGroup && (!reason || !reason.trim())) return;
+
       try {
-        const response = await fetch(`/api/admin/working-groups/${editingGroup.id}/members`, {
+        const response = await fetch(isAAOAdminGroup
+          ? '/api/admin/aao-admin/grant'
+          : `/api/admin/working-groups/${editingGroup.id}/members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(isAAOAdminGroup ? {
+            workos_user_id: userId,
+            reason: reason.trim(),
+          } : {
             workos_user_id: userId,
             user_name: name,
             user_email: email,
@@ -1218,11 +1246,24 @@
     // Remove member
     async function removeMember(userId) {
       if (!editingGroup) return;
-      if (!confirm('Remove this member from the working group?')) return;
+      const isAAOAdminGroup = editingGroup.slug === 'aao-admin';
+      if (!confirm(isAAOAdminGroup
+        ? 'Revoke this person\'s AAO site-admin access?'
+        : 'Remove this member from the working group?')) return;
+      const reason = isAAOAdminGroup
+        ? prompt('Why are you revoking AAO site-admin access? This reason is recorded in the audit history.')
+        : null;
+      if (isAAOAdminGroup && (!reason || !reason.trim())) return;
 
       try {
-        const response = await fetch(`/api/admin/working-groups/${editingGroup.id}/members/${userId}`, {
-          method: 'DELETE'
+        const response = await fetch(isAAOAdminGroup
+          ? '/api/admin/aao-admin/revoke'
+          : `/api/admin/working-groups/${editingGroup.id}/members/${userId}`, {
+          method: isAAOAdminGroup ? 'POST' : 'DELETE',
+          ...(isAAOAdminGroup ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workos_user_id: userId, reason: reason.trim() }),
+          } : {}),
         });
 
         if (!response.ok) throw new Error('Failed to remove member');

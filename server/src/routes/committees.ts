@@ -509,6 +509,12 @@ export function createCommitteeRouters(): {
 
       // Check if we're adding/changing a Slack channel
       const existingGroup = await workingGroupDb.getWorkingGroupById(id);
+      if (existingGroup?.slug === 'aao-admin') {
+        return res.status(405).json({
+          error: 'aao_admin_dedicated_endpoint_required',
+          message: 'AAO site-admin group metadata is not managed through this endpoint',
+        });
+      }
 
       // Validate slug format and uniqueness if changing
       if (updates.slug) {
@@ -607,6 +613,10 @@ export function createCommitteeRouters(): {
       if (!isUuid(id)) {
         return res.status(400).json({ error: 'Invalid working group ID' });
       }
+      const group = await workingGroupDb.getWorkingGroupById(id);
+      if (group?.slug === 'aao-admin') {
+        return res.status(405).json({ error: 'aao_admin_dedicated_endpoint_required', message: 'AAO site-admin group cannot be deactivated' });
+      }
       const deactivated = await workingGroupDb.deactivateWorkingGroup(id);
 
       if (!deactivated) {
@@ -632,6 +642,10 @@ export function createCommitteeRouters(): {
       const { id } = req.params;
       if (!isUuid(id)) {
         return res.status(400).json({ error: 'Invalid working group ID' });
+      }
+      const group = await workingGroupDb.getWorkingGroupById(id);
+      if (group?.slug === 'aao-admin') {
+        return res.status(405).json({ error: 'aao_admin_dedicated_endpoint_required', message: 'AAO site-admin group cannot be reactivated' });
       }
       const reactivated = await workingGroupDb.reactivateWorkingGroup(id);
 
@@ -673,6 +687,17 @@ export function createCommitteeRouters(): {
       const { workos_user_id, user_email, user_name, user_org_name, workos_organization_id } = req.body;
       const user = req.user!;
 
+      // The security-sensitive site-admin group may only be changed through
+      // its slug-pinned, reason-required endpoint. Do not let this generic
+      // route turn a client-supplied ID into platform authority.
+      const group = await workingGroupDb.getWorkingGroupById(id);
+      if (group?.slug === 'aao-admin') {
+        return res.status(405).json({
+          error: 'aao_admin_dedicated_endpoint_required',
+          message: 'Use the dedicated AAO site-admin grant endpoint',
+        });
+      }
+
       if (!workos_user_id) {
         return res.status(400).json({
           error: 'Missing required field',
@@ -694,7 +719,6 @@ export function createCommitteeRouters(): {
       invalidateWebAdminStatusCache(workos_user_id);
 
       // Auto-invite new member to the group's Slack channel (fire-and-forget)
-      const group = await workingGroupDb.getWorkingGroupById(id);
       if (group?.slack_channel_id) {
         const slackDb = new SlackDatabase();
         slackDb.getByWorkosUserId(workos_user_id).then(mapping => {
@@ -719,6 +743,13 @@ export function createCommitteeRouters(): {
   adminApiRouter.delete('/:id/members/:userId', async (req: Request, res: Response) => {
     try {
       const { id, userId } = req.params;
+      const group = await workingGroupDb.getWorkingGroupById(id);
+      if (group?.slug === 'aao-admin') {
+        return res.status(405).json({
+          error: 'aao_admin_dedicated_endpoint_required',
+          message: 'Use the dedicated AAO site-admin revoke endpoint',
+        });
+      }
       const deleted = await workingGroupDb.deleteMembership(id, userId);
 
       if (!deleted) {
@@ -1348,6 +1379,10 @@ export function createCommitteeRouters(): {
           error: 'Working group not found',
           message: `No working group found with slug: ${slug}`,
         });
+      }
+
+      if (group.slug === 'aao-admin') {
+        return res.status(403).json({ error: 'aao_admin_dedicated_endpoint_required', message: 'AAO site-admin access cannot be self-revoked here' });
       }
 
       const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;

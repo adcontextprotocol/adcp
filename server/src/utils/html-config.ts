@@ -14,7 +14,10 @@ import { fileURLToPath } from "url";
 import { resolveEffectiveMembership } from "../db/org-filters.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { createLogger } from "../logger.js";
-import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import {
+  resolveWebUserAAOAdminAccess,
+} from "../addie/admin-status-lookup.js";
+import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
 
 const logger = createLogger('html-config');
 
@@ -58,8 +61,7 @@ export function buildAppConfig(user?: AppUser | null): {
     if (typeof user.isAdmin === 'boolean') {
       isAdmin = user.isAdmin;
     } else {
-      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-      isAdmin = adminEmails.includes(user.email.toLowerCase());
+      isAdmin = isBreakGlassAdminEmail(user.email);
     }
   }
 
@@ -164,22 +166,17 @@ export function getPublicFilePath(filename: string): string {
 
 /**
  * Resolve the admin flag for a user using the same rules as the requireAdmin
- * middleware: ADMIN_EMAILS env var OR membership in the aao-admin working
- * group. If the user already has isAdmin set (e.g. a dev user), trust it.
+ * middleware: site-admin working-group membership, with `ADMIN_EMAILS` as an
+ * environment-managed break-glass fallback. If the user already has isAdmin
+ * set (e.g. a dev user), trust it.
  */
 export async function enrichUserWithAdmin(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
   if (!user) return user;
   if (typeof user.isAdmin === 'boolean') return user;
 
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-  if (adminEmails.includes(user.email.toLowerCase())) {
-    user.isAdmin = true;
-    return user;
-  }
-
   if (user.id) {
     try {
-      user.isAdmin = await isWebUserAAOAdmin(user.id);
+      user.isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
     } catch (error) {
       logger.warn({ error, userId: user.id }, 'Failed to resolve isAdmin via working group; defaulting to false');
       user.isAdmin = false;

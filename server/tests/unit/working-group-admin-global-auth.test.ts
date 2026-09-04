@@ -13,9 +13,13 @@ const mocks = vi.hoisted(() => ({
   poolQuery: vi.fn(),
   listWorkingGroups: vi.fn(),
   addMembership: vi.fn(),
+  grantAAOAdminMembership: vi.fn(),
+  revokeAAOAdminMembership: vi.fn(),
   getWorkingGroupById: vi.fn(),
   getWorkingGroupBySlug: vi.fn(),
   isMember: vi.fn(),
+  updateWorkingGroup: vi.fn(),
+  removeMembership: vi.fn(),
   invalidateMemberContextCache: vi.fn(),
   invalidateWebAdminStatusCache: vi.fn(),
 }));
@@ -72,23 +76,31 @@ vi.mock('../../src/db/working-group-db.js', () => ({
   WorkingGroupDatabase: class WorkingGroupDatabase {
     listWorkingGroups = mocks.listWorkingGroups;
     addMembership = mocks.addMembership;
+    grantAAOAdminMembership = mocks.grantAAOAdminMembership;
+    revokeAAOAdminMembership = mocks.revokeAAOAdminMembership;
     getWorkingGroupById = mocks.getWorkingGroupById;
     getWorkingGroupBySlug = mocks.getWorkingGroupBySlug;
     isMember = mocks.isMember;
+    updateWorkingGroup = mocks.updateWorkingGroup;
+    removeMembership = mocks.removeMembership;
   },
 }));
 
 const { createCommitteeRouters } = await import('../../src/routes/committees.js');
+const { createAAOAdminRouter } = await import('../../src/routes/aao-admin.js');
 const { stopAuthTimers } = await import('../../src/middleware/auth.js');
 const { csrfProtection } = await import('../../src/middleware/csrf.js');
+const { invalidateWebAdminStatusCache: clearWebAdminStatusCache } = await import('../../src/addie/admin-status-cache.js');
 
 function createApp() {
   const app = express();
   app.use(cookieParser());
   app.use(csrfProtection);
   app.use(express.json());
-  const { adminApiRouter } = createCommitteeRouters();
+  const { adminApiRouter, publicApiRouter } = createCommitteeRouters();
   app.use('/api/admin/working-groups', adminApiRouter);
+  app.use('/api/admin/aao-admin', createAAOAdminRouter());
+  app.use('/api/working-groups', publicApiRouter);
   return app;
 }
 
@@ -108,6 +120,7 @@ describe('working-group real global-admin boundary', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    clearWebAdminStatusCache();
     mocks.createValidation.mockImplementation(
       ({ value }: { value: string }) => Promise.resolve(
         validatedTenantKey(value.includes('read') ? 'admin:read' : 'admin:*'),
@@ -152,6 +165,8 @@ describe('working-group real global-admin boundary', () => {
       workos_user_id: 'user_new_member',
     });
     mocks.getWorkingGroupById.mockResolvedValue(null);
+    mocks.grantAAOAdminMembership.mockResolvedValue({ workos_user_id: 'user_new_member' });
+    mocks.revokeAAOAdminMembership.mockResolvedValue('user_new_member');
   });
 
   it.each(['admin:*', 'admin:read'] as const)(
@@ -164,6 +179,34 @@ describe('working-group real global-admin boundary', () => {
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('global_admin_required');
       expect(mocks.listWorkingGroups).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['admin:*', 'admin:read'] as const)(
+    'refuses a tenant key with %s before a dedicated site-admin revoke',
+    async (permission) => {
+      const response = await request(app)
+        .post('/api/admin/aao-admin/revoke')
+        .set('Authorization', `Bearer sk_tenant_${permission === 'admin:read' ? 'read' : 'full'}`)
+        .send({ workos_user_id: 'user_new_member', reason: 'Offboarding' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('global_admin_required');
+      expect(mocks.revokeAAOAdminMembership).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['admin:*', 'admin:read'] as const)(
+    'refuses a tenant key with %s before a dedicated site-admin grant',
+    async (permission) => {
+      const response = await request(app)
+        .post('/api/admin/aao-admin/grant')
+        .set('Authorization', `Bearer sk_tenant_${permission === 'admin:read' ? 'read' : 'full'}`)
+        .send({ workos_user_id: 'user_new_member', reason: 'Coverage rotation' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('global_admin_required');
+      expect(mocks.grantAAOAdminMembership).not.toHaveBeenCalled();
     },
   );
 
@@ -196,20 +239,52 @@ describe('working-group real global-admin boundary', () => {
     expect(mocks.listWorkingGroups).toHaveBeenCalledOnce();
   });
 
-  it('allows a static global admin key to add a member to aao-admin', async () => {
+  it('refuses generic membership writes to aao-admin even for a static global admin key', async () => {
+    mocks.getWorkingGroupById.mockResolvedValueOnce({ id: 'wg_aao_admin', slug: 'aao-admin' });
     const response = await request(app)
       .post('/api/admin/working-groups/wg_aao_admin/members')
       .set('Authorization', 'Bearer static-global-admin-key')
       .send({ workos_user_id: 'user_new_member' });
 
-    expect(response.status).toBe(201);
-    expect(mocks.addMembership).toHaveBeenCalledWith(
-      expect.objectContaining({
-        working_group_id: 'wg_aao_admin',
-        workos_user_id: 'user_new_member',
-        added_by_user_id: 'admin_api_key',
-      }),
-    );
+    expect(response.status).toBe(405);
+    expect(response.body.error).toBe('aao_admin_dedicated_endpoint_required');
+    expect(mocks.addMembership).not.toHaveBeenCalled();
+  });
+
+  it('refuses generic leader updates to aao-admin even for a static global admin key', async () => {
+    mocks.getWorkingGroupById.mockResolvedValueOnce({ id: 'wg_aao_admin', slug: 'aao-admin' });
+    const response = await request(app)
+      .put('/api/admin/working-groups/wg_aao_admin')
+      .set('Authorization', 'Bearer static-global-admin-key')
+      .send({ leader_user_ids: ['user_new_member'] });
+
+    expect(response.status).toBe(405);
+    expect(response.body.error).toBe('aao_admin_dedicated_endpoint_required');
+    expect(mocks.updateWorkingGroup).not.toHaveBeenCalled();
+  });
+
+  it('refuses an otherwise authenticated non-admin before a dedicated grant', async () => {
+    mocks.isMember.mockResolvedValue(false);
+    const csrfToken = 'a'.repeat(64);
+    const response = await request(app)
+      .post('/api/admin/aao-admin/grant')
+      .set('Cookie', [`wos-session=valid-sso-admin-session`, `csrf-token=${csrfToken}`])
+      .set('X-CSRF-Token', csrfToken)
+      .send({ workos_user_id: 'user_new_member', reason: 'Coverage rotation' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('Admin access required');
+    expect(mocks.grantAAOAdminMembership).not.toHaveBeenCalled();
+  });
+
+  it('refuses self-revocation through the public working-group leave route', async () => {
+    const response = await request(app)
+      .delete('/api/working-groups/aao-admin/leave')
+      .set('Authorization', 'Bearer static-global-admin-key');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('aao_admin_dedicated_endpoint_required');
+    expect(mocks.removeMembership).not.toHaveBeenCalled();
   });
 
   it('rejects an SSO cookie write without a matching CSRF token', async () => {
@@ -228,5 +303,6 @@ describe('working-group real global-admin boundary', () => {
 });
 
 afterAll(() => {
+  clearWebAdminStatusCache();
   stopAuthTimers();
 });
