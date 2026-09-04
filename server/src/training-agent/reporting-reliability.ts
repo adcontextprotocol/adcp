@@ -1753,7 +1753,10 @@ function recordsFor(
       const periodMs = stored.config.schedule.period_duration === 'P1D' ? 24 * HOUR_MS : HOUR_MS;
       const slaMs = stored.config.schedule.delivery_sla === 'PT4H' ? 4 * HOUR_MS : HOUR_MS;
       const floorPeriod = (ms: number): number => Math.floor(ms / periodMs) * periodMs;
-      const firstStart = Math.max(floorPeriod(activatedMs + periodMs - 1), retentionStartMs);
+      // floorPeriod aligns the retention boundary to the period grid so that
+      // daily configs older than RETENTION_DAYS always start at midnight, not
+      // at an arbitrary hour inherited from floorHour(nowMs).
+      const firstStart = Math.max(floorPeriod(activatedMs + periodMs - 1), floorPeriod(retentionStartMs));
       const finalEnd = Math.min(
         floorPeriod(nowMs),
         window.end ? floorPeriod(parseInstant(window.end) + periodMs - 1) : floorPeriod(nowMs),

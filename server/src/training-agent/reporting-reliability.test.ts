@@ -235,4 +235,70 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
 
     expect(second.status).toBe('completed');
   });
+
+  // ---------------------------------------------------------------------------
+  // Bug 4: for daily configs older than RETENTION_DAYS (31 days), the retention
+  // cutoff was hour-aligned (floorHour) but not period-aligned (floorPeriod),
+  // causing the first visible period to start at an arbitrary hour instead of
+  // midnight UTC.
+  // ---------------------------------------------------------------------------
+  it('daily config older than 31 days: all periods start at midnight UTC', () => {
+    const principal = 'test-pr7228-4';
+    const accountId = 'acct-4';
+
+    // Activate 40 days in the past so the 31-day retention window is the
+    // binding constraint on firstStart, not the activation date.
+    const activatedAt = new Date(Date.UTC(2026, 6, 25, 0, 0, 0, 0)).toISOString(); // 2026-07-25T00:00:00.000Z
+
+    const dailyConfig = {
+      delivery_config_id: 'test-daily-retention',
+      delivery_config_version: 1,
+      offering_id: TRAINING_REPORTING_MANAGED_OFFERING.offering_id,
+      active: true,
+      feed_purpose: TRAINING_REPORTING_MANAGED_OFFERING.feed_purpose,
+      report_definition_id: TRAINING_REPORTING_MANAGED_OFFERING.report_definition_id,
+      reporting_profile: TRAINING_REPORTING_MANAGED_OFFERING.reporting_profile.id,
+      scope: { all_media_buys: true },
+      coverage_requirement: 'full',
+      required_finality: 'official',
+      reconciliation_mode: 'delivery_only',
+      schedule: TRAINING_REPORTING_MANAGED_OFFERING.schedule, // P1D / PT4H
+      method: {
+        pattern: TRAINING_REPORTING_MANAGED_OFFERING.method.pattern,
+        transport: TRAINING_REPORTING_MANAGED_OFFERING.method.transport,
+        orchestration: TRAINING_REPORTING_MANAGED_OFFERING.method.orchestration,
+        destination: {
+          mode: 'provision',
+          provider: { domain: TRAINING_REPORTING_MANAGED_OFFERING.method.provider.domain },
+          access_mode: TRAINING_REPORTING_MANAGED_OFFERING.method.access_mode,
+          recipient: { identity: 'test-reporting-consumer-4' },
+        },
+      },
+    };
+
+    replaceReportingConfigurations(principal, accountId, [dailyConfig], activatedAt);
+    // virtualNow: 2026-09-04T10:30:00.000Z — a non-midnight hour so that
+    // floorHour(nowMs) - 31*DAY_MS lands at 10:00 UTC (not midnight).
+    // Before the fix, firstStart = that 10:00 timestamp, producing periods
+    // starting at 10:00, 10:00+24h, … instead of 00:00, 00:00+24h, …
+    setReportingCoreLifecycleProbeClock(principal, accountId, '2026-09-04T10:30:00.000Z');
+
+    const response = getReportingStatusForAccount(
+      { view: 'periods' } as TrainingGetReportingStatusRequest,
+      principal,
+      accountId,
+    ) as TrainingGetReportingStatusResponse;
+
+    expect(response.status).toBe('completed');
+    const periods = response.periods ?? [];
+    expect(periods.length).toBeGreaterThan(0);
+
+    for (const period of periods) {
+      // Every period must start at exactly midnight UTC.
+      expect(period.period.start).toMatch(/T00:00:00\.000Z$/);
+      // And span exactly 24 hours.
+      const durationMs = Date.parse(period.period.end) - Date.parse(period.period.start);
+      expect(durationMs).toBe(86_400_000);
+    }
+  });
 });
