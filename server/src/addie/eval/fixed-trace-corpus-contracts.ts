@@ -169,10 +169,16 @@ export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText 
   };
 }
 
-function rawStringLeaves(value: unknown): string[] {
+/**
+ * Snapshot callers guarantee inert plain data. Include property names so an
+ * identity or evaluator marker cannot hide in an otherwise benign key.
+ */
+function rawTextFragments(value: unknown): string[] {
   if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap(rawStringLeaves);
-  if (value && typeof value === 'object') return Object.values(value).flatMap(rawStringLeaves);
+  if (Array.isArray(value)) return value.flatMap(rawTextFragments);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, nested]) => [key, ...rawTextFragments(nested)]);
+  }
   return [];
 }
 
@@ -187,7 +193,7 @@ export function candidateVisibleMarkerOverlap(value: unknown, markers: readonly 
   // callers reject unsafe candidate input rather than inspecting attacker
   // accessors or treating malformed object shapes as an empty overlap.
   if (!detached.snapshot) return [...markers];
-  const canonicalValues = rawStringLeaves(detached.snapshot).map(canonicalFixedTraceText);
+  const canonicalValues = rawTextFragments(detached.snapshot).map(canonicalFixedTraceText);
   return markers.filter((marker) => {
     const normalizedMarker = normalizeMarker(marker);
     return normalizedMarker.length >= 5 && canonicalValues.some((candidate) => candidate.malformedPercentEncoding
@@ -206,12 +212,42 @@ function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; va
   return [];
 }
 
+function candidateContainsInputValue(candidate: unknown, value: string): boolean {
+  const expected = canonicalFixedTraceText(value);
+  if (!expected.compact) return true;
+  return rawTextFragments(candidate).some((fragment) => {
+    const available = canonicalFixedTraceText(fragment);
+    return available.malformedPercentEncoding || available.compact.includes(expected.compact);
+  });
+}
+
+function receiptContainsInputValue(
+  trace: FixedTraceCorpusCase,
+  callIndex: number,
+  value: string,
+): boolean {
+  const call = trace.toolContract?.orderedCalls[callIndex];
+  const dependency = call?.dependsOn;
+  if (!dependency || dependency.callIndex >= callIndex) return false;
+  const fixtureIndex = trace.toolContract!.orderedCalls.slice(0, dependency.callIndex + 1)
+    .filter((entry) => entry.execution === 'executed').length - 1;
+  const receipt = trace.toolFixtures[fixtureIndex]?.result;
+  return typeof receipt === 'string' && candidateContainsInputValue({ receipt }, value);
+}
+
+function evaluatorOnlyInputAuthorityValid(trace: FixedTraceCorpusCase): boolean {
+  if (trace.phase !== 'tuning') return false;
+  const authority = FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY.find((entry) => entry.id === trace.id);
+  return Boolean(authority && fixedTraceTuningSemanticSha256(trace) === authority.semanticSha256);
+}
+
 /**
- * Validate that explicitly evaluator-only call inputs remain outside the
- * candidate projection. Exact replay inputs are an oracle for grading, not
- * instructions to the model. This boundary applies to development and tuning
- * alike, and operates only on declared private paths rather than guessing at
- * otherwise ordinary request words.
+ * Every replay-input leaf has exactly one provenance class: candidate text,
+ * a declared prior receipt, or an explicitly evaluator-only leaf. The walker
+ * covers nested objects and arrays in every phase; a path declaration is only
+ * an exception for a private leaf, never a bypass for the rest of an input.
+ * Schema-shaped number/boolean/null leaves are evaluator structural controls
+ * and cannot carry a hidden textual identity or grading instruction.
  */
 export function validateFixedTraceCandidateInputProvenance(
   suite: ReadonlyArray<FixedTraceCorpusCase>,
@@ -219,19 +255,35 @@ export function validateFixedTraceCandidateInputProvenance(
   const detached = detachFixedTraceSnapshot(suite);
   if (!detached.snapshot) return [`unsafe_candidate_input_provenance:${detached.error}`];
   if (!Array.isArray(detached.snapshot)) return ['unsafe_candidate_input_provenance:non_plain_object'];
+  const snapshot = detached.snapshot as ReadonlyArray<FixedTraceCorpusCase>;
   try {
   const failures: string[] = [];
-  for (const trace of detached.snapshot) {
+  for (const trace of snapshot) {
+    const visible = candidateInput(trace);
     for (const [callIndex, call] of (trace.toolContract?.orderedCalls ?? []).entries()) {
-      for (const path of call.evaluatorOnlyInputPaths ?? []) {
-        const leaves = inputScalarLeaves(call.input).filter((leaf) => leaf.path === path);
-        if (leaves.length !== 1) {
+      const leaves = inputScalarLeaves(call.input);
+      const leavesByPath = new Map(leaves.map((leaf) => [leaf.path, leaf]));
+      const evaluatorOnlyPaths = new Set(call.evaluatorOnlyInputPaths ?? []);
+      const privateAuthorityValid = evaluatorOnlyPaths.size === 0 || evaluatorOnlyInputAuthorityValid(trace);
+      for (const path of evaluatorOnlyPaths) {
+        if (!leavesByPath.has(path)) {
           failures.push(`invalid_evaluator_only_input_path:${trace.id}:${callIndex}:${path}`);
+        }
+      }
+      for (const leaf of leaves) {
+        if (typeof leaf.value !== 'string') continue;
+        if (evaluatorOnlyPaths.has(leaf.path)) {
+          if (candidateContainsInputValue(visible, leaf.value)) {
+            failures.push(`evaluator_input_visible:${trace.id}:${callIndex}:${leaf.path}`);
+          }
+          if (!privateAuthorityValid) {
+            failures.push(`evaluator_input_authority_mismatch:${trace.id}:${callIndex}:${leaf.path}`);
+          }
           continue;
         }
-        const value = leaves[0]!.value;
-        if (typeof value === 'string' && candidateVisibleMarkerOverlap(candidateInput(trace), [value]).length > 0) {
-          failures.push(`evaluator_input_visible:${trace.id}:${callIndex}:${path}`);
+        if (!candidateContainsInputValue(visible, leaf.value)
+          && !receiptContainsInputValue(trace, callIndex, leaf.value)) {
+          failures.push(`unproven_contract_input:${trace.id}:${callIndex}:${leaf.path}`);
         }
       }
     }

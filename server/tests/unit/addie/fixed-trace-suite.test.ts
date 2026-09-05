@@ -752,6 +752,76 @@ describe('fixed cross-provider trace suite', () => {
     }
 
     expect(validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS)).toEqual([]);
+
+    // Every input leaf is classified, not just a hand-picked tuning path. The
+    // formal-review mutation remains schema-valid but is neither candidate nor
+    // receipt derived, so both provenance and the full validator must reject.
+    const privateDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const retry = privateDevelopmentReplay.find((trace) => trace.id === 'dev-tool-error-retry')!;
+    for (const call of retry.toolContract!.orderedCalls) call.input.query = 'private evaluator dossier';
+    expect(validateFixedTraceCorpusToolContracts(privateDevelopmentReplay)).toEqual([]);
+    expect(validateFixedTraceCandidateInputProvenance(privateDevelopmentReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-tool-error-retry:0:$.query',
+      'unproven_contract_input:dev-tool-error-retry:1:$.query',
+    ]));
+    expect(validateFixedTraceCorpus(privateDevelopmentReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-tool-error-retry:0:$.query',
+      'unproven_contract_input:dev-tool-error-retry:1:$.query',
+    ]));
+
+    const otherDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const ambiguous = otherDevelopmentReplay.find((trace) => trace.id === 'dev-ambiguous-policy-and-billing')!;
+    ambiguous.toolContract!.orderedCalls[0]!.input.doc_id = 'private evaluator dossier';
+    expect(validateFixedTraceCorpusToolContracts(otherDevelopmentReplay)).toEqual([]);
+    expect(validateFixedTraceCorpus(otherDevelopmentReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-ambiguous-policy-and-billing:0:$.doc_id',
+    ]));
+
+    const privateTuningReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const catalog = privateTuningReplay.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    catalog.toolContract!.orderedCalls[0]!.input.search = 'private evaluator dossier';
+    expect(validateFixedTraceCorpusToolContracts(privateTuningReplay)).toEqual([]);
+    expect(validateFixedTraceCandidateInputProvenance(privateTuningReplay)).toEqual(expect.arrayContaining([
+      'evaluator_input_authority_mismatch:tune-property-catalog-resolution:0:$.search',
+    ]));
+    expect(validateFixedTraceCorpus(privateTuningReplay)).toEqual(expect.arrayContaining([
+      'evaluator_input_authority_mismatch:tune-property-catalog-resolution:0:$.search',
+    ]));
+
+    const identityInKey = structuredClone(FIXED_TRACE_CORPUS);
+    identityInKey.find((trace) => trace.id === 'dev-ordinary-greeting')!.expectation['nytimes.com'] = 'benign';
+    expect(validateFixedTraceCorpus(identityInKey)).toEqual(expect.arrayContaining([
+      'identity_leakage:dev-ordinary-greeting',
+    ]));
+
+    const serializedNestedLeak = structuredClone(FIXED_TRACE_CORPUS);
+    serializedNestedLeak.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.threadContext = [{
+      user: 'member',
+      text: JSON.stringify({ nested: [{ 'Br.i.an O Keλley': 'expected&#32;answer BLUE' }] }),
+    }];
+    expect(validateFixedTraceCorpus(serializedNestedLeak)).toEqual(expect.arrayContaining([
+      'identity_leakage:dev-ordinary-greeting',
+      'candidate_input_leakage:dev-ordinary-greeting',
+    ]));
+
+    const accessorReplay = structuredClone(FIXED_TRACE_CORPUS);
+    let accessorReads = 0;
+    Object.defineProperty(accessorReplay.find((trace) => trace.id === 'dev-tool-error-retry')!.toolContract!.orderedCalls[0]!.input, 'query', {
+      enumerable: true,
+      get: () => { accessorReads++; return 'private evaluator dossier'; },
+    });
+    expect(validateFixedTraceCandidateInputProvenance(accessorReplay)).toEqual(['unsafe_candidate_input_provenance:accessor']);
+    expect(accessorReads).toBe(0);
+
+    const proxyReplay = structuredClone(FIXED_TRACE_CORPUS);
+    let proxyTraps = 0;
+    proxyReplay.find((trace) => trace.id === 'dev-tool-error-retry')!.toolContract!.orderedCalls[0]!.input = new Proxy({}, {
+      get: () => { proxyTraps++; return undefined; },
+      ownKeys: () => { proxyTraps++; return []; },
+    });
+    expect(validateFixedTraceCandidateInputProvenance(proxyReplay)).toEqual(['unsafe_candidate_input_provenance:proxy']);
+    expect(proxyTraps).toBe(0);
+
     const hiddenInput = structuredClone(FIXED_TRACE_CORPUS);
     const hiddenTrace = hiddenInput.find((trace) => trace.id === 'tune-channel-recap-thread')!;
     hiddenTrace.request.message += ' Use willow-workshop.';

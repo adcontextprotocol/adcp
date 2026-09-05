@@ -1438,12 +1438,12 @@ const TUNING_REQUIRED_RECEIPT_DEPENDENCIES: Readonly<Record<string, ReadonlyArra
  */
 const TUNING_EVALUATOR_ONLY_INPUT_PATHS: Readonly<Record<string, Readonly<Record<number, ReadonlyArray<string>>>>> = Object.freeze({
   'tune-channel-recap-thread': Object.freeze({ 0: Object.freeze(['$.channel']) }),
-  'tune-channel-tool-result-injection': Object.freeze({ 0: Object.freeze(['$.channel']) }),
+  'tune-channel-tool-result-injection': Object.freeze({ 0: Object.freeze(['$.query', '$.channel']) }),
   'tune-directory-publisher-filter': Object.freeze({ 1: Object.freeze(['$.member_slug', '$.requester_name', '$.requester_email', '$.requester_company', '$.message', '$.reasoning']) }),
   'tune-property-catalog-resolution': Object.freeze({ 0: Object.freeze(['$.search']) }),
   'tune-admin-roster-partial-outage': Object.freeze({ 1: Object.freeze(['$.query']) }),
   'tune-ambiguous-catalog-and-roster': Object.freeze({ 0: Object.freeze(['$.search']) }),
-  'tune-ambiguous-channel-meeting': Object.freeze({ 0: Object.freeze(['$.channel']) }),
+  'tune-ambiguous-channel-meeting': Object.freeze({ 0: Object.freeze(['$.query', '$.channel']), 1: Object.freeze(['$.working_group_slug']) }),
   'tune-long-doc-bounded': Object.freeze({ 0: Object.freeze(['$.query']) }),
   'tune-long-channel-injection': Object.freeze({ 0: Object.freeze(['$.query', '$.channel']) }),
 });
@@ -1997,7 +1997,17 @@ export const FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST = Object.freeze({
 // Ordinary product language such as "public", "catalog", or "access" is
 // legitimate candidate context.  Reject only evaluator vocabulary and explicit
 // outcome/policy coaching, including obfuscated forms after canonicalization.
-const CANDIDATE_VISIBLE_LEAKAGE = /\b(?:phase|evaluation|evaluator|grader|grading|rubric|grader marker|expected answer|expected refusal|expected (?:result|status|outcome)|desired output|failure mode|fixture(?: outcome| result)?|policy disposition|result status|terminal status|answer key)\b/i;
+const CANDIDATE_VISIBLE_LEAKAGE = /\b(?:phase|evaluation|evaluator|grader|grading|rubric|grader marker|expected answer|expected refusal|expected (?:result|status|outcome)|desired output|failure mode|fixture(?: outcome| result)?|policy disposition|result status|terminal status|answer key|blue)\b/i;
+
+/** This only receives detached snapshots; keys are candidate/evaluator data too. */
+function rawTextFragments(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(rawTextFragments);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, nested]) => [key, ...rawTextFragments(nested)]);
+  }
+  return [];
+}
 
 function rawStringLeaves(value: unknown): string[] {
   if (typeof value === 'string') return [value];
@@ -2040,13 +2050,38 @@ function identityValueLeakage(value: string): boolean {
     || PRODUCTION_IDENTITY_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function identityKeyLeakage(key: string): boolean {
+  // Canonical snake-case schema field names such as org_id and user_id are
+  // structure, not production identities. Keep the allowance narrow and
+  // still reject protected compact spellings inside otherwise valid keys.
+  if (/^[a-z][a-z0-9_]{0,63}$/.test(key)) {
+    const canonical = canonicalFixedTraceText(key);
+    const normalizedWords = ` ${canonical.text.replace(/[^a-z0-9_]+/g, ' ').trim()} `;
+    const protectedSkeleton = [
+      'brianokelley', 'scope3', 'nytimescom', 'satyanadella', 'thetradedesk',
+    ].some((identity) => new RegExp([...identity].join('_*'), 'u').test(canonical.text));
+    return FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST.deniedIdentityTokens
+      .some((token) => normalizedWords.includes(` ${token} `))
+      || protectedSkeleton || /\b[uw]\d{9,}\b/i.test(canonical.compact);
+  }
+  return identityValueLeakage(key);
+}
+
+function rawObjectKeys(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(rawObjectKeys);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, nested]) => [key, ...rawObjectKeys(nested)]);
+  }
+  return [];
+}
+
 function identityLeakage(trace: FixedTraceCorpusCase): boolean {
-  return rawStringLeaves(trace).some(identityValueLeakage);
+  return rawStringLeaves(trace).some(identityValueLeakage) || rawObjectKeys(trace).some(identityKeyLeakage);
 }
 
 /** Candidate-facing messages may not carry evaluator classifications or policy. */
 function candidateVisibleLeakage(value: unknown): boolean {
-  return rawStringLeaves(value).some((leaf) => {
+  return rawTextFragments(value).some((leaf) => {
     const canonical = canonicalFixedTraceText(leaf);
     return canonical.malformedPercentEncoding || CANDIDATE_VISIBLE_LEAKAGE.test(canonical.text);
   });
