@@ -5,6 +5,7 @@ import type {
   ModelReasoningEffort,
 } from "../model-providers/model-provider.js";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
+import { resolveModelCostPricing } from "../model-cost-pricing.js";
 
 /**
  * Diagnostic integrity only. An importer supplies this module's key, so this
@@ -185,6 +186,8 @@ const isEffort = (value: unknown): value is ModelReasoningEffort =>
   value === "provider_default" || value === "none" || value === "low" || value === "medium" || value === "high";
 const isNonemptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
+const isSha256 = (value: unknown): value is string =>
+  typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 function assertExpectedInvocation(entry: FixedTraceExpectedInvocation, runId: string): void {
   if (!hasExactKeys(entry, [
     "runId", "phaseId", "caseId", "armId", "stage", "invocation", "attempt", "requested", "controls",
@@ -210,8 +213,8 @@ function assertExpectedInvocation(entry: FixedTraceExpectedInvocation, runId: st
     "limitsSha256", "retryCacheSamplingSha256", "failureDenominatorId",
   ]) ||
     !Object.entries(controls).every(([key, value]) => key === "presentedToolNames"
-      ? Array.isArray(value) && value.every(isNonemptyString)
-      : isNonemptyString(value)))
+      ? Array.isArray(value) && value.length > 0 && value.every(isNonemptyString)
+      : key === "failureDenominatorId" ? isNonemptyString(value) : isSha256(value)))
     throw new Error("expected sequence entry has invalid controls");
 }
 const invocationKey = (
@@ -291,6 +294,8 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
         "authentication",
         "expected sequence contract has extra or missing fields",
       );
+    if (!isSha256(contract.protocolFingerprint) || !isSha256(contract.manifestFingerprint) || !isSha256(contract.signature))
+      throw new FixedTraceLedgerValidationError("authentication", "expected sequence contract has non-canonical hash evidence");
     const projection = contractProjection({
       version: contract.version,
       keyId: contract.keyId,
@@ -325,8 +330,8 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
         throw new Error("expected sequence has extra or missing fields");
       if (
         !input.runId.trim() ||
-        !input.protocolFingerprint.trim() ||
-        !input.manifestFingerprint.trim() ||
+        !isSha256(input.protocolFingerprint) ||
+        !isSha256(input.manifestFingerprint) ||
         input.entries.length === 0
       )
         throw new Error(
@@ -456,6 +461,34 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
               "substitution",
               "dispatched invocation lacks complete trusted usage or pricing",
             );
+          const cohort = resolveModelCostPricing(
+            actual.returned.provider,
+            actual.returned.model,
+          );
+          if (
+            !cohort ||
+            actual.pricing.profileId !== cohort.version ||
+            actual.pricing.costUsd !== cohort.estimateCostMicros(actual.usage) / 1_000_000 ||
+            (cohort.validBefore !== null && Date.parse(actual.startedAt) >= cohort.validBefore.getTime())
+          )
+            throw new FixedTraceLedgerValidationError(
+              "substitution",
+              "ledger pricing is not the effective immutable returned-model price cohort",
+            );
+          if (![actual.toolCallsSha256, actual.toolInputsSha256, actual.toolResultsSha256].every(isSha256))
+            throw new FixedTraceLedgerValidationError(
+              "substitution",
+              "dispatched invocation lacks complete tool evidence hashes",
+            );
+        } else if (
+          actual.returned.provider !== null || actual.returned.model !== null ||
+          actual.returned.identityPolicy !== null || actual.usage !== null || actual.pricing !== null ||
+          actual.toolCallsSha256 !== null || actual.toolInputsSha256 !== null || actual.toolResultsSha256 !== null
+        ) {
+          throw new FixedTraceLedgerValidationError(
+            "substitution",
+            "not-dispatched invocation contains provider exposure or usage evidence",
+          );
         }
         seen.add(key);
         observed.push(actual);

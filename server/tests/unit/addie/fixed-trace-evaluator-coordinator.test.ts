@@ -5,6 +5,10 @@ import {
   type FixedTraceActualInvocation,
   type FixedTraceExpectedInvocation,
 } from "../../../src/addie/eval/fixed-trace-evaluator-coordinator.js";
+import { resolveModelCostPricing } from "../../../src/addie/model-cost-pricing.js";
+
+const digest = (value: string) => value.repeat(64);
+const anthopicCohort = resolveModelCostPricing("anthropic", "claude-sonnet-5")!;
 
 const coordinator = createFixedTraceEvaluatorCoordinator({
   hmacKey: new Uint8Array(32).fill(7),
@@ -28,21 +32,21 @@ const expected = (
     identityPolicy: "exact_model_identity_v1",
   },
   controls: {
-    promptSha256: "a",
-    systemSha256: "b",
-    messagesSha256: "c",
-    toolSchemaSha256: "d",
-    providerRequestSha256: "e",
+    promptSha256: digest("a"),
+    systemSha256: digest("b"),
+    messagesSha256: digest("c"),
+    toolSchemaSha256: digest("d"),
+    providerRequestSha256: digest("e"),
     presentedToolNames: ["search_docs"],
-    presentedToolOrderSha256: "f",
-    simulatorReceiptProvenanceSha256: "g",
-    simulatorControlsSha256: "h",
-    architectureSha256: "i",
-    admissionSha256: "j",
-    configSha256: "k",
-    pricingSha256: "l",
-    limitsSha256: "m",
-    retryCacheSamplingSha256: "n",
+    presentedToolOrderSha256: digest("f"),
+    simulatorReceiptProvenanceSha256: digest("a"),
+    simulatorControlsSha256: digest("b"),
+    architectureSha256: digest("c"),
+    admissionSha256: digest("d"),
+    configSha256: digest("e"),
+    pricingSha256: digest("f"),
+    limitsSha256: digest("a"),
+    retryCacheSamplingSha256: digest("b"),
     failureDenominatorId: "all-planned-invocations-v1",
   },
 });
@@ -55,9 +59,9 @@ const actual = (
     model: "claude-sonnet-5",
     identityPolicy: "exact_model_identity_v1",
   },
-  toolCallsSha256: "o",
-  toolInputsSha256: "p",
-  toolResultsSha256: "q",
+  toolCallsSha256: digest("a"),
+  toolInputsSha256: digest("b"),
+  toolResultsSha256: digest("c"),
   startedAt: "2026-09-05T00:00:00.000Z",
   finishedAt: "2026-09-05T00:00:01.000Z",
   latencyMs: 1_000,
@@ -67,15 +71,18 @@ const actual = (
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
   },
-  pricing: { profileId: "p", costUsd: 0.000001 },
+  pricing: {
+    profileId: anthopicCohort.version,
+    costUsd: anthopicCohort.estimateCostMicros({ inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }) / 1_000_000,
+  },
   terminalStatus: "complete",
   errorCode: null,
 });
 const contract = () =>
   coordinator.issueExpectedSequence({
     runId: "run-1",
-    protocolFingerprint: "protocol",
-    manifestFingerprint: "manifest",
+    protocolFingerprint: digest("a"),
+    manifestFingerprint: digest("b"),
     entries: [expected("case-a", 1), expected("case-b", 2)],
   });
 
@@ -97,7 +104,7 @@ describe("fixed-trace evaluator-owned evidence coordinator", () => {
   it("snapshots and freezes nested contracts and ledgers", () => {
     const entries = [expected("case-a", 1), expected("case-b", 2)];
     const issued = coordinator.issueExpectedSequence({
-      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest", entries,
+      runId: "run-1", protocolFingerprint: digest("a"), manifestFingerprint: digest("b"), entries,
     });
     (entries[0]!.controls.presentedToolNames as unknown as string[])[0] = "rewritten";
     expect(issued.entries[0]!.controls.presentedToolNames[0]).toBe("search_docs");
@@ -124,7 +131,7 @@ describe("fixed-trace evaluator-owned evidence coordinator", () => {
       "not_admitted_diagnostic_hmac_without_privileged_durable_authority",
     );
     const issued = arbitraryImporter.issueExpectedSequence({
-      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest",
+      runId: "run-1", protocolFingerprint: digest("a"), manifestFingerprint: digest("b"),
       entries: [expected("case-a", 1)],
     });
     expect(arbitraryImporter.validate(issued, [actual(issued.entries[0]!)]).admission)
@@ -137,13 +144,13 @@ describe("fixed-trace evaluator-owned evidence coordinator", () => {
     key.fill(4);
     config.keyId = "rewritten-key";
     const issued = detached.issueExpectedSequence({
-      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest",
+      runId: "run-1", protocolFingerprint: digest("a"), manifestFingerprint: digest("b"),
       entries: [expected("case-a", 1)],
     });
     expect(issued.keyId).toBe("detached-key");
     expect(detached.validate(issued, [actual(issued.entries[0]!)]).complete).toBe(true);
     const getterInput = {
-      protocolFingerprint: "protocol", manifestFingerprint: "manifest", entries: [expected("case-a", 1)],
+      protocolFingerprint: digest("a"), manifestFingerprint: digest("b"), entries: [expected("case-a", 1)],
     } as Record<string, unknown>;
     let reads = 0;
     Object.defineProperty(getterInput, "runId", {
@@ -154,7 +161,7 @@ describe("fixed-trace evaluator-owned evidence coordinator", () => {
     expect(reads).toBe(0);
     expect(() => createFixedTraceEvaluatorCoordinator(new Proxy(config, {}))).toThrow("non-proxy");
     expect(() => detached.issueExpectedSequence(new Proxy({
-      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest", entries: [expected("case-a", 1)],
+      runId: "run-1", protocolFingerprint: digest("a"), manifestFingerprint: digest("b"), entries: [expected("case-a", 1)],
     }, {}))).toThrow("must not contain a Proxy");
     const actualEntries = [actual(issued.entries[0]!)];
     expect(() => detached.validate(issued, new Proxy(actualEntries, {}))).toThrow("must not contain a Proxy");
