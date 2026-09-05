@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { fixedTraceEstimatedCostUsd } from '../../../src/addie/eval/fixed-trace-budget.js';
-import { FIXED_TRACE_PROTOCOL_PRICING, FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES, assertFixedTraceEvaluationProtocol, assertFixedTraceEvaluationProtocolTrusted, estimateFixedTraceEvaluationProtocol, fixedTraceEvaluationProtocolFingerprint, fixedTraceEvaluationProtocolRunnerBinding } from '../../../src/addie/eval/fixed-trace-evaluation-protocol.js';
+import { FIXED_TRACE_CONFIRMATORY_POWER_GATE, FIXED_TRACE_PROTOCOL_PRICING, FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES, assertFixedTraceEvaluationProtocol, assertFixedTraceEvaluationProtocolTrusted, estimateFixedTraceEvaluationProtocol, evaluateFixedTraceConfirmatoryClaim, fixedTraceEvaluationProtocolFingerprint, fixedTraceEvaluationProtocolRunnerBinding } from '../../../src/addie/eval/fixed-trace-evaluation-protocol.js';
 
 function historicalOwnEnumerableFingerprint(value: unknown): string {
   const canonical = (current: unknown): string => {
@@ -20,7 +20,44 @@ describe('fixed-trace evaluation protocol projection', () => {
     expect(protocol.phases.map((phase) => phase.id)).toEqual(['bounded_smoke', 'router_screen', 'oracle_generator_ceiling', 'deployable_architecture', 'controlled_tuning']);
     expect(protocol.unavailableFinalTarget).toEqual({ availability: 'unavailable', uniqueCaseCount: 38, repetitions: 3, missingCaseCount: 38 });
     expect(protocol.phases.every((phase) => phase.resultUse === 'diagnostic_only')).toBe(true);
-    expect(estimateFixedTraceEvaluationProtocol(protocol)).toMatchObject({ dispatchable: false, expectedSpendUsd: null });
+    expect(estimateFixedTraceEvaluationProtocol(protocol)).toMatchObject({
+      dispatchable: false,
+      expectedSpendUsd: null,
+      budgetProjection: {
+        screeningTuning: { uniqueEvaluableCaseCount: 120, approvalCeilingUsd: null },
+        confirmatory: { requiredIndependentEvaluableCaseCount: 8_721, unavailableTargetCaseCount: 38, approvalCeilingUsd: null },
+      },
+    });
+  });
+
+  it('labels nominal 38-case margins inconclusive and does not treat repeated generations as independent cases', () => {
+    const nominalAt38 = evaluateFixedTraceConfirmatoryClaim({
+      pairedCaseIds: Array.from({ length: 38 }, (_, index) => `case-${index + 1}`),
+      observedSuperiorityPercentagePoints: 5.1,
+      observedNonInferiorityPercentagePoints: -2.9,
+    });
+    expect(nominalAt38).toMatchObject({
+      independentEvaluableCaseCount: 38,
+      nominalMarginsReached: true,
+      confirmatoryClaim: 'refused_underpowered',
+    });
+
+    const repeatedGenerations = evaluateFixedTraceConfirmatoryClaim({
+      pairedCaseIds: Array.from({ length: 38 * 3 }, (_, index) => `case-${index % 38}`),
+      observedSuperiorityPercentagePoints: 5.1,
+      observedNonInferiorityPercentagePoints: -2.9,
+    });
+    expect(repeatedGenerations).toMatchObject({
+      independentEvaluableCaseCount: 38,
+      repeatedObservationCount: 76,
+      requiredIndependentEvaluableCaseCount: 8_721,
+      confirmatoryClaim: 'refused_underpowered',
+    });
+    expect(FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredAnalysis).toEqual({
+      resampling: 'grouped_stratified_case_level_bootstrap',
+      multiplicityCorrection: 'holm',
+      pairedDiscordanceTest: 'predeclared_exact_paired_test_required',
+    });
   });
   it('keeps Terra and Sol as unpriced inert descriptors', () => {
     expect(FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES).toEqual([{ provider: 'openai', model: 'gpt-5.6-terra', dispatchable: false, trustedPrice: null }, { provider: 'openai', model: 'gpt-5.6-sol', dispatchable: false, trustedPrice: null }]);

@@ -21,6 +21,34 @@ import { deepFreezeFixedTrace, snapshotFixedTraceJson } from './fixed-trace-safe
 export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
   'addie-fixed-trace-evaluation-protocol-v1' as const;
 
+/**
+ * Evaluator-owned confirmatory precision rule. The conservative normal
+ * approximation assumes the maximum possible variance (1) of a paired
+ * case-level difference in [-1, 1], with one-sided alpha .025 and 80% power.
+ * The non-inferiority margin is limiting: ceil((1.9599639845 + .8416212336)^2
+ * / .03^2) = 8,721 independent paired cases. This is deliberately a sample
+ * requirement, not a price quote or an authorization to spend.
+ */
+export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
+  version: 'addie-fixed-trace-confirmatory-power-v1',
+  unit: 'unique_paired_case',
+  repetitionsCountAsIndependentCases: false,
+  oneSidedAlpha: 0.025,
+  targetPower: 0.8,
+  conservativePairedDifferenceVarianceUpperBound: 1,
+  superiorityMarginPercentagePoints: 5,
+  nonInferiorityMarginPercentagePoints: -3,
+  superiorityRequiredIndependentEvaluableCases: 3_140,
+  nonInferiorityRequiredIndependentEvaluableCases: 8_721,
+  requiredIndependentEvaluableCases: 8_721,
+  requiredAnalysis: Object.freeze({
+    resampling: 'grouped_stratified_case_level_bootstrap',
+    multiplicityCorrection: 'holm',
+    pairedDiscordanceTest: 'predeclared_exact_paired_test_required',
+  }),
+  currentScreeningTuningUniqueCaseCount: 120,
+} as const);
+
 export type FixedTraceProtocolPhaseId =
   | 'bounded_smoke'
   | 'router_screen'
@@ -223,10 +251,80 @@ export interface FixedTraceProtocolEstimate {
   phases: readonly FixedTraceProtocolPhaseEstimate[];
   screening: { candidateCeilingUsd: number; judgeCeilingUsd: number; totalCeilingUsd: number };
   unavailableFinalTarget: FixedTraceEvaluationProtocol['unavailableFinalTarget'];
+  /** The confirmatory sample remains unpriced and cannot authorize spend. */
+  budgetProjection: {
+    screeningTuning: {
+      uniqueEvaluableCaseCount: number;
+      repetitionsCountAsIndependentCases: false;
+      expectedSpendUsd: null;
+      approvalCeilingUsd: null;
+    };
+    confirmatory: {
+      requiredIndependentEvaluableCaseCount: number;
+      unavailableTargetCaseCount: number;
+      expectedSpendUsd: null;
+      approvalCeilingUsd: null;
+      spendAuthorization: 'refused_pending_evaluator_owned_paired_test';
+    };
+  };
   candidateCeilingUsd: number;
   judgeCeilingUsd: number;
   contingencyUsd: number;
   totalCeilingUsd: number;
+}
+
+export interface FixedTraceConfirmatoryClaimInput {
+  /** One entry per observed paired evaluation; repeated IDs remain one case. */
+  pairedCaseIds: readonly string[];
+  observedSuperiorityPercentagePoints: number;
+  observedNonInferiorityPercentagePoints: number;
+}
+
+export interface FixedTraceConfirmatoryClaimGate {
+  independentEvaluableCaseCount: number;
+  repeatedObservationCount: number;
+  requiredIndependentEvaluableCaseCount: number;
+  nominalMarginsReached: boolean;
+  confirmatoryClaim: 'refused_underpowered' | 'refused_pending_evaluator_owned_paired_test';
+}
+
+/**
+ * Counts only distinct paired case IDs. Crossing a nominal quality margin is
+ * descriptive until the evaluator has both the predeclared sample and its
+ * grouped/stratified case-level bootstrap, Holm correction, and exact paired
+ * discordance test. This offline planner can never promote a candidate.
+ */
+export function evaluateFixedTraceConfirmatoryClaim(
+  input: FixedTraceConfirmatoryClaimInput,
+): FixedTraceConfirmatoryClaimGate {
+  const snapshot = snapshotFixedTraceJson(input, 'confirmatory claim') as FixedTraceConfirmatoryClaimInput;
+  assertExactKeys(snapshot, [
+    'pairedCaseIds', 'observedSuperiorityPercentagePoints', 'observedNonInferiorityPercentagePoints',
+  ], 'confirmatory claim');
+  const pairedCaseIds = snapshot.pairedCaseIds;
+  if (pairedCaseIds.some((caseId) => typeof caseId !== 'string' || !caseId.trim())) {
+    throw new Error('Confirmatory paired case IDs must be nonblank strings');
+  }
+  if (!Number.isFinite(snapshot.observedSuperiorityPercentagePoints)
+    || !Number.isFinite(snapshot.observedNonInferiorityPercentagePoints)) {
+    throw new Error('Confirmatory observed margins must be finite');
+  }
+  const independentEvaluableCaseCount = new Set(pairedCaseIds).size;
+  const repeatedObservationCount = pairedCaseIds.length - independentEvaluableCaseCount;
+  const nominalMarginsReached = snapshot.observedSuperiorityPercentagePoints
+    >= FIXED_TRACE_CONFIRMATORY_POWER_GATE.superiorityMarginPercentagePoints
+    && snapshot.observedNonInferiorityPercentagePoints
+      >= FIXED_TRACE_CONFIRMATORY_POWER_GATE.nonInferiorityMarginPercentagePoints;
+  return Object.freeze({
+    independentEvaluableCaseCount,
+    repeatedObservationCount,
+    requiredIndependentEvaluableCaseCount: FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredIndependentEvaluableCases,
+    nominalMarginsReached,
+    confirmatoryClaim: independentEvaluableCaseCount
+      < FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredIndependentEvaluableCases
+      ? 'refused_underpowered'
+      : 'refused_pending_evaluator_owned_paired_test',
+  });
 }
 
 function canonicalJson(value: unknown): string {
@@ -557,6 +655,21 @@ export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluat
     phases: Object.freeze(phases),
     screening: summarize(phases),
     unavailableFinalTarget: snapshot.unavailableFinalTarget,
+    budgetProjection: Object.freeze({
+      screeningTuning: Object.freeze({
+        uniqueEvaluableCaseCount: FIXED_TRACE_CONFIRMATORY_POWER_GATE.currentScreeningTuningUniqueCaseCount,
+        repetitionsCountAsIndependentCases: false,
+        expectedSpendUsd: null,
+        approvalCeilingUsd: null,
+      }),
+      confirmatory: Object.freeze({
+        requiredIndependentEvaluableCaseCount: FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredIndependentEvaluableCases,
+        unavailableTargetCaseCount: snapshot.unavailableFinalTarget.uniqueCaseCount,
+        expectedSpendUsd: null,
+        approvalCeilingUsd: null,
+        spendAuthorization: 'refused_pending_evaluator_owned_paired_test',
+      }),
+    }),
     candidateCeilingUsd,
     judgeCeilingUsd,
     contingencyUsd,
