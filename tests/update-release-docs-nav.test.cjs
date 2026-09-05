@@ -255,6 +255,19 @@ function sampleConfig() {
     );
   });
 
+  test('retargets an official prerelease release URL to the new checkpoint', () => {
+    const config = sampleConfig();
+    config.banner.content =
+      'AdCP 3.1 release candidate is available — [start testing →](https://github.com/adcontextprotocol/adcp/releases/tag/v3.1.0-rc.4)';
+
+    updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
+
+    assert.equal(
+      config.banner.content,
+      'AdCP 3.1 release candidate is available — [start testing →](https://github.com/adcontextprotocol/adcp/releases/tag/v3.1.0-rc.5)'
+    );
+  });
+
   test('does not convert live docs paths when updating the existing default version', () => {
     const config = sampleConfig();
     config.navigation.versions[0].groups[0].pages.push('dist/docs/3.0.0/old');

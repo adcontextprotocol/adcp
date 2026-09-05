@@ -290,9 +290,19 @@ test('prerelease banner links directly or through a public alias to the current 
   const overviewPage = collectPages(previewVersion.groups).find(page =>
     page.endsWith(`/reference/whats-new-in-${major}-${minor}`)
   );
+  const previewBuilds = new Set(
+    collectPages(previewVersion.groups)
+      .map(page => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+      .filter(Boolean)
+  );
+  const [previewBuild] = previewBuilds;
+  const officialReleaseUrl = previewBuilds.size === 1
+    ? `https://github.com/adcontextprotocol/adcp/releases/tag/v${previewBuild}`
+    : null;
   const allowedDestinations = new Set([
     landingPage ? `/${landingPage}` : null,
-    overviewPage ? `/${overviewPage}` : null
+    overviewPage ? `/${overviewPage}` : null,
+    officialReleaseUrl
   ]);
   const resolvedDestination = bannerRedirect?.destination || bannerLink;
   if (!allowedDestinations.has(resolvedDestination)) {
@@ -300,7 +310,7 @@ test('prerelease banner links directly or through a public alias to the current 
       `Prerelease banner must resolve to the current story; found ${bannerLink || 'no link'}`
     );
   }
-  if (new RegExp(`AdCP ${major}\\.${minor} (?:beta|rc)\\.\\d+`).test(bannerContent)) {
+  if (new RegExp(`AdCP ${major}\\.${minor} (?:beta|rc)\\.\\d+`, 'i').test(bannerContent)) {
     throw new Error('Prerelease banner must not freeze a moving prerelease ordinal in its copy');
   }
 });

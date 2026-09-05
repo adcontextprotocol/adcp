@@ -15,6 +15,7 @@ const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
 const DIST_DOCS_ABSOLUTE_PREFIX_RE = /^\/dist\/docs\/[^/]+\//;
 const PRERELEASE_DOCS_LABEL_RE = /^(\d+)\.(\d+)-([0-9A-Za-z]+)$/;
 const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
+const OFFICIAL_PRERELEASE_RELEASE_URL_RE = /https:\/\/github\.com\/adcontextprotocol\/adcp\/releases\/tag\/v\d+\.\d+\.\d+-(?:beta|rc)\.\d+/g;
 const VERSION_LINE_RE = /^(\d+\.\d+)/;
 const RELEASE_STORY_ALIASES = new Set([
   '/3.2',
@@ -216,8 +217,11 @@ function updatePrereleaseBanner(config, releaseVersion, majorMinor) {
   const snapshotPathPattern = new RegExp(
     `/dist/docs/[^/]+/reference/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`
   );
+  const officialReleaseUrl = `https://github.com/adcontextprotocol/adcp/releases/tag/v${releaseVersion}`;
+  const hasOfficialReleaseUrl = OFFICIAL_PRERELEASE_RELEASE_URL_RE.test(content);
+  OFFICIAL_PRERELEASE_RELEASE_URL_RE.lastIndex = 0;
 
-  if (!content.includes(sourcePath) && !snapshotPathPattern.test(content)) {
+  if (!content.includes(sourcePath) && !snapshotPathPattern.test(content) && !hasOfficialReleaseUrl) {
     return false;
   }
 
@@ -225,6 +229,7 @@ function updatePrereleaseBanner(config, releaseVersion, majorMinor) {
   config.banner.content = content
     .replace(sourcePath, destination)
     .replace(snapshotPathPattern, destination)
+    .replace(OFFICIAL_PRERELEASE_RELEASE_URL_RE, officialReleaseUrl)
     .replace(
       PRERELEASE_BANNER_VERSION_RE,
       (version, bannerMajor, bannerMinor, bannerPrerelease) =>

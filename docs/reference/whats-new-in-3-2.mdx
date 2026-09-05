@@ -8,11 +8,21 @@ description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in release candidate.** RC.0 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed RC.0. Python
-higher-level helpers remain partial, and Go exact support is
-still pending. See the [3.2 prerelease program](/docs/reference/3-2-beta) before testing.
+**3.2 is in release candidate.** RC.1 is the current signed protocol
+checkpoint. No SDK embeds it yet. TypeScript `@adcp/sdk@14.0.0-beta.31` and
+Python `adcp==8.0.0b13` embed RC.0; Python higher-level helpers remain partial.
+Go `adcp/v3@v3.2.0` has partial 3.2 support but remains pinned to protocol
+beta.9. Use RC.1 for raw-wire or code-generation testing, and do not combine it
+with an older SDK unless that SDK documents forward compatibility. See the
+[3.2 prerelease program](/docs/reference/3-2-beta).
 </Warning>
+
+<Info>
+**New in RC.1:** Reliable Reporting 1.0 becomes a named, version-discovered
+experimental capability, with stronger delivery, reach, vendor-metric, and
+reconciliation semantics. The public training seller and current SDK wave
+remain on RC.0 until they publish explicit RC.1 support.
+</Info>
 
 AdCP 3.2 turns a media-buy conversation into a commercial lifecycle that
 software can safely operate. A buyer can move from a brief to seller-authored
@@ -23,7 +33,8 @@ kind of change is happening.
 That is the release's central upgrade: conversational on the outside,
 explicit and accountable on the inside. Targeting and creative capabilities
 are discoverable, commercial terms are immutable and digestible, retries are
-safe, and operational changes no longer rewrite the agreement they came from.
+safe, operational changes no longer rewrite the agreement they came from, and
+expected reports cannot silently disappear.
 
 Existing 3.1 integrations can remain pinned to `"3.1"`. The broad 3.x
 `get_products`, `create_media_buy`, and `update_media_buy` facades remain
@@ -32,7 +43,7 @@ tools after capability discovery.
 
 <CardGroup cols={3}>
   <Card
-    title="Try the lifecycle"
+    title="Try the proposal flow"
     icon="messages"
     href="https://agenticadvertising.org/chat?prompt=Run%20a%20live%20AdCP%203.2%20proposal%20demo%20against%20the%20constrained-seller%20training%20profile.%20Show%20me%20the%20alternatives%20and%20stop%20before%20refining."
   >
@@ -40,13 +51,82 @@ tools after capability discovery.
     required.
   </Card>
   <Card title="Build it" icon="code" href="/docs/building/by-layer/L4/choose-your-sdk">
-    Choose an SDK that explicitly embeds the current 3.2 protocol checkpoint.
+    Choose an SDK-backed RC.0 path or use the signed RC.1 bundle directly.
   </Card>
   <Card title="Adopt it" icon="route" href="/docs/reference/migration/3-1-to-3-2">
     Add compact lifecycle tools incrementally while keeping 3.1 integrations
     pinned and working.
   </Card>
 </CardGroup>
+
+## What 3.2 means for you
+
+| If you are… | The practical change | Start here |
+|---|---|---|
+| A media buyer or operator | A brief can become a seller-authored proposal, a negotiated hold, an accepted buy, and a controlled campaign without losing which terms were agreed. | [Try the live lifecycle](https://agenticadvertising.org/chat?prompt=Run%20a%20live%20AdCP%203.2%20proposal%20demo%20against%20the%20constrained-seller%20training%20profile.%20Show%20me%20the%20alternatives%20and%20stop%20before%20refining.) |
+| A developer or platform team | Seven capability-gated tools replace overloaded modes, with immutable proposal state, revision checks, exact version negotiation, and MCP validation-schema pairs that are 76–95% smaller for comparable operations. | [Choose an SDK](/docs/building/by-layer/L4/choose-your-sdk) |
+| An existing 3.1 adopter | There is no forced migration deadline: keep production pinned to `"3.1"`, add compact tools incrementally, and validate an exact release candidate in staging. | [Follow the migration guide](/docs/reference/migration/3-1-to-3-2) |
+
+## 3.1 to 3.2 by the numbers
+
+3.1 made the 3.x foundation safer to operate: release pinning, canonical
+creative formats, distributed brand trust, wholesale-feed repair, webhook
+observability, idempotency, and capability-gated compliance. 3.2 builds the
+commercial lifecycle on that foundation: explicit proposals, holds,
+acceptance, controls, targeting resolution, principal configuration, and
+reporting reconciliation.
+
+| Published surface | 3.1.0 | 3.2.0-rc.1 | Change |
+|---|---:|---:|---:|
+| Source JSON Schema files | 648 | 979 | +331 (+51%) |
+| Manifested tools | 64 | 77 | +13 net (+20%) |
+| Compliance YAML files | 137 | 215 | +78 (+57%) |
+| Source documentation pages | 327 | 367 | +40 (+12%) |
+
+The schema count reflects named request, response, async, and reusable schemas
+for code generation; it is a surface-area measure, not a claim that every file
+represents a separate adopter feature. The tool delta is 14 additions and one
+retired experimental tool. Seven of the additions are the compact media-buy
+lifecycle itself.
+
+The larger corpus produces a smaller per-operation MCP validation footprint. The
+compact tools no longer pull every legacy mode, inline creative, and provenance
+branch into each operation. Comparing the published, self-contained 3.1 bundled
+request-plus-response schemas with the generic RC.1 MCP media-buy pairs under
+`mcp/2026-07-28/media-buy/`:
+
+| Comparable operation | 3.1 compatibility pair | 3.2 RC.1 compact pair | Reduction |
+|---|---:|---:|---:|
+| Proposal planning | 3,021,309 bytes (`get_products`) | 734,563 bytes (`request_proposals`) | 75.7% |
+| Direct purchase | 2,782,428 bytes (`create_media_buy`) | 508,751 bytes (`buy_products`) | 81.7% |
+| Proposal acceptance | 2,782,428 bytes (`create_media_buy`) | 328,309 bytes (`accept_proposal`) | 88.2% |
+| Operational control | 4,369,798 bytes (`update_media_buy`) | 204,300 bytes (`control_media_buy`) | 95.3% |
+
+These are UTF-8 JSON Schema artifact sizes, not typical transaction-body sizes
+or a latency benchmark. The 3.2 model-context profile presents input-only
+schemas; response schemas remain available to SDKs and validators.
+
+There are two useful lenses on features and hardening:
+
+- **Published impact:** the cumulative 3.2 prerelease changelog contains 245
+  entries: 137 under **Minor Changes** (56%) and 108 under **Patch Changes**
+  (44%). Those release labels describe compatibility impact, not engineering
+  effort, so they are not a pure feature-versus-hardening classification.
+- **Repository engineering:** the 917 PRs represented between the 3.1.0 and
+  RC.1 tags classify by conventional title as 188 feature/spec PRs (21%), 455
+  fix/test/refactor/performance/compliance PRs (50%), 207 docs/release/CI/dependency
+  PRs (23%), and 67 untyped PRs (7%). That is about 2.4 hardening PRs for every
+  feature PR. This broader lens includes the reference implementation, training,
+  website, and member application as well as protocol work.
+
+The published 3.2 ledger contains entries from 225 merged PRs by 12 human
+authors, plus four direct commits.
+Using the milestone's current membership, 145 of the 146 issues opened by the
+RC.1 cutoff were already closed at the cut. Across release-ledger PR authors
+and milestone issue authors, at least 23 people contributed directly; reviews,
+comments, working-group discussion, and SDK-repository contributions make the
+real participation count higher. Counts describe merged units, not effort or
+lines of code.
 
 ## The 3.2 feature set
 
@@ -87,6 +167,32 @@ identity. A client can add proposal exploration before it adds purchasing.
 Cross-agent transfer of a committed hold is deliberately not implied: the
 agent that accepts a proposal must be able to authenticate its buyer binding,
 resolve the immutable snapshot, and consume its inventory hold atomically.
+
+### Reliable Reporting makes missing data visible
+
+Reliable Reporting 1.0 treats reporting as an accountable ledger rather than
+an optional export. A buyer can determine which reporting periods should
+exist, whether each obligation is waiting, healthy, delayed, or requires
+action, and whether an official revision is present—even when the correct
+report contains zero rows. Missing obligations cannot disappear from the
+seller's own denominator.
+
+The model has three explicitly discovered tiers:
+
+- **Core** adds schedule-derived obligations, immutable revisions, health, and
+  `get_reporting_status` over reporting transports the seller already offers;
+- **Managed Delivery** binds durable file, dataset-share, or warehouse
+  materializations to exact revisions, destinations, retention, and access;
+- **Reconciled Billing** adds authenticated consumer receipts, canonical
+  content agreement, and explicit post-official adjustments without claiming
+  to create or settle invoices.
+
+RC.0 introduced the reporting-status baseline. RC.1 makes Reliable Reporting
+a named, version-discovered experimental capability and adds source-timezone
+schedules, checkpointed repair for missed or out-of-order events, immutable
+billing-purpose evidence, adjustment and receipt reconciliation, and
+evidence-scoped reliability statistics. RC.1 has no matched SDK pairing yet. See
+[Implementing Reliable Reporting Core](/docs/media-buy/reporting-core-implementation-guide).
 
 ### A durable connection for authenticated principals
 
@@ -217,6 +323,12 @@ Creative agents advertise stable capability IDs and supported operations;
 products expose accepted `format_options[]`; build and transformer calls select
 those capabilities directly.
 
+For a generative campaign, that creates one traceable path from brief and
+format selection through build, pre-flight preview, assignment, live delivery,
+and post-flight replay. Keep the chosen capability, format, creative and
+variant IDs, and provenance together so the asset audited after delivery is
+the asset that was previewed before launch.
+
 3.2 also adds image pixel-density and rendition-set semantics, creative
 localization, optional async preview, audio loudness constraints, VAST-tagged
 audio delivery through the `audio_vast` canonical, VAST 4.3 and validation
@@ -295,6 +407,7 @@ does not turn every schema addition into an implementation claim. The current
 | Portable attestations and audience evidence | Versioned `attestations`, `rights-attestations`, `governance-runtime-attestations`, and `audience-evidence` vector suites | Deterministic trust, binding, revocation, cache-reuse, and requirement-mode coverage. These library fixtures do not claim a live issuer/resolver network or replace an agent storyboard. |
 | Timezone and operational controls | Account-timezone and budget-cap-timezone storyboard families, plus deterministic media-buy read filters | End-to-end for the declared reference-agent routes. |
 | OAuth and cache isolation | `oauth_setup` and wholesale product/signal cache-scope isolation storyboards | Protocol and transport behavior are exercised independently of any one commercial workflow. |
+| Reliable Reporting 1.0 | `reporting_core_declaration`, `reporting_core`, `reliable_reporting_managed_delivery`, and `reliable_reporting_reconciled_billing` cover the named capability and its three tiers | Published in RC.1. The public training seller remains on RC.0 until it advertises and serves the newer exact pin. |
 | Experimental governance and Trusted Match | Property-list webhook signing and publisher-authentication rejection storyboards | Partial reference evidence only; experimental declarations and exact-version pinning remain mandatory. |
 | Advanced delivery reporting | `advanced_delivery_reporting` covers metric narrowing, `time_based_views`, canonical `by_format` rows, limits, truncation disclosure, and applied-sort echoes across discovery, purchase, simulation, and delivery | End-to-end on the reference sales tenant for the declared product capabilities. Expanded channel-specific OOH/audio metrics remain separate coverage work. |
 | Audience activation | `audience_activation_discovery` covers the experimental feature gate, catalog-wide method union, per-product declarations, vendor-constrained matching, OR and wildcard semantics, and exclusion of undeclared products | Discovery is end-to-end on the reference sales tenant. External dataset or distributed-segment binding remains an account-setup integration until the external-source runtime extension lands; the storyboard does not imply that runtime exists. |
@@ -308,13 +421,14 @@ for the remaining runner and coverage gaps.
 
 | If you are… | Review before advertising 3.2 |
 |---|---|
-| Any seller or service | Advertise `"3.2-rc.0"` only when serving that exact prerelease, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
+| Any seller or service | Advertise `"3.2-rc.1"` only when serving that exact prerelease, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
 | A buyer | Gate compact tools and optional targeting on capabilities; do not infer 3.2 support from a major-only declaration. |
 | A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
+| A reporting implementer | Treat Reliable Reporting as a separately discovered, versioned experimental capability. Do not infer RC.1 fields from RC.0 or from legacy delivery reporting. |
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
-| An SDK maintainer | Generate from the signed RC.0 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
-| A compliance operator | Test RC.0 from its signed assets or an SDK that explicitly lists RC.0, such as TypeScript SDK 14 beta.31 or Python SDK 8 beta.13; retain end-to-end integration evidence and do not issue a 3.2 badge from a prerelease. |
+| An SDK maintainer | Generate from the signed RC.1 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
+| A compliance operator | Test RC.1 directly from its signed assets. For SDK-backed RC.0 testing, use an SDK that explicitly lists RC.0, such as TypeScript SDK 14 beta.31 or Python SDK 8 beta.13. Do not treat any of those packages as RC.1 evidence; retain exact versions end to end and do not issue a 3.2 badge from a prerelease. |
 
 ## Start here
 

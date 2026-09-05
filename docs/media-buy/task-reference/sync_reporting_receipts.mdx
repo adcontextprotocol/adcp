@@ -5,8 +5,8 @@ description: "Record authenticated consumer reconciliation results for Reliable 
 ---
 
 <Warning>
-**Reliable Reporting 1.0 / RC1 additions — unreleased source contract.** This
-task is experimental and belongs to the optional **Reconciled Billing tier**: only sellers advertising
+**Reliable Reporting 1.0 is published in RC.1 and remains experimental.** This
+task belongs to the optional **Reconciled Billing tier**: only sellers advertising
 `media_buy.reporting_delivery.reconciled_billing: true` implement it, and its
 presence is declared through `receipt_task`. Core-tier sellers never implement
 receipts. Sellers implementing it declare `media_buy.reporting_delivery` in
@@ -25,7 +25,7 @@ it is not invoice/price/fee approval, a dispute waiver, posting authorization, o
 payment due. `rejected` means an evidence discrepancy only. An external billing system
 MAY retain `reporting_revision_id` as supporting evidence.
 
-**Reliable Reporting 1.0 / RC1 addition:** If the source is corrected, the seller
+**Reliable Reporting 1.0 / RC.1 addition:** If the source is corrected, the seller
 publishes a separate accounting-only reporting adjustment into a period
 derived from its pinned billing calendar and correction policy; that metadata does not
 authorize reopening books or altering invoices. The consumer recomputes the adjustment's
@@ -39,22 +39,21 @@ records matching reporting evidence; that billing system still decides whether a
 invoice action is appropriate.
 
 <Note>
-The schema links below describe the published RC0 baseline. Fields and behavior
-explicitly labeled **Reliable Reporting 1.0 / RC1** below are unreleased source
-contract and will publish with RC1. RC0 does not support `changes_after`,
-`adjustment_receipts`, receipt replacement semantics, or any other RC1-only
+The schema links below pin the published RC.1 contract. RC.0 does not support `changes_after`,
+`adjustment_receipts`, receipt replacement semantics, or any other RC.1-only
 addition.
 </Note>
 
-**Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/sync-reporting-receipts-request.json)
+{/* The stable /schemas/v3 alias does not expose this RC.1-only task yet. */}
+**Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/sync-reporting-receipts-request.json)
 
-**Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/sync-reporting-receipts-response.json)
+**Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/sync-reporting-receipts-response.json)
 
 <Note>
-**Reliable Reporting 1.0 / RC1 additions:** `adjustment_receipts[]`, post-official
+**Reliable Reporting 1.0 / RC.1 additions:** `adjustment_receipts[]`, post-official
 adjustment reconciliation, and receipt replacement/supersession and append-only-history
-semantics below are unreleased. RC0 already supports the batched revision
-materialization `receipts[]` form; it must not be read as supporting these RC1 additions.
+semantics below are published in RC.1. RC.0 supports the batched revision
+materialization `receipts[]` form; it must not be read as supporting these RC.1 additions.
 </Note>
 
 ```json
@@ -93,7 +92,7 @@ governance consumer. The seller accepts a receipt only for that principal's
 account-bound obligation and materialization. Unknown, unauthorized, cross-account,
 and cross-caller identifiers return indistinguishable failures.
 
-**Reliable Reporting 1.0 / RC1 reconciliation semantics:** reconciliation is immediately due once the revision and verified materialization are
+**Reliable Reporting 1.0 / RC.1 reconciliation semantics:** reconciliation is immediately due once the revision and verified materialization are
 readable; Reliable Reporting does not define a separate receipt SLA. A missing current
 revision receipt produces `action_required` / `RECEIPT_REQUIRED`; a missing adjustment
 receipt produces `ADJUSTMENT_RECEIPT_REQUIRED`, both assigned to the consumer. A current
@@ -111,7 +110,7 @@ totals. Its selected verification profile adds one of:
 - `canonical_digest`: the digest of canonical logical content, required for billing.
 
 If evidence differs, consumers submit `status: rejected` with stable rejection codes.
-**Reliable Reporting 1.0 / RC1 replacement semantics:**
+**Reliable Reporting 1.0 / RC.1 replacement semantics:**
 A receipt records exactly one materialization evidence attempt. Materializations are
 attempts within one current authenticated-consumer + obligation + revision replacement
 chain, not independently reconciled materialization chains. A receipt ID is immutable. Exact retries are unchanged; reuse with different content

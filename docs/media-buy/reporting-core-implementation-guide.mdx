@@ -232,23 +232,27 @@ digest is intentionally retained).
   explicit zero-row publication.
 - The **reporting-core fixture test** is the tier boundary stated as code —
   copy its Core capability block and offering as your starting fixtures.
-- Buyers verify you the same way their SDKs do: webhook or not, they poll
+- Buyers verify the contract the same way with or without webhooks: they poll
   `get_reporting_status` and reconcile obligations against what they
   received.
 
-The reporting lab requires a negotiated AdCP 3.2 release that supports
-Reliable Reporting 1.0 (planned for the next RC.1 wire bundle); the deployed
-training agent otherwise serves its RC.0/default surface, where these
-experimental reporting fields are unavailable. Put the same negotiated version
-on every `sync_accounts`, controller, and `get_reporting_status` request.
+Reliable Reporting 1.0 is published in the RC.1 wire bundle. The public
+training agent still serves its RC.0/default surface, where the RC.1 reporting
+fields are unavailable, so the reporting lab is not live there yet. In any
+RC.1-capable environment, put the same negotiated version on every
+`sync_accounts`, controller, and `get_reporting_status` request.
 
-In the public sales sandbox, call `comply_test_controller` with
+Once the public sales sandbox advertises `"3.2-rc.1"`, call
+`comply_test_controller` with
 `scenario: "reporting_core_lifecycle_probe"` and `operation: "prepare"`. Use
 the returned account and stable identifiers in a `get_reporting_status`
 `periods` read. Then run `advance_time` with `target_health: "delayed"`, read
 the summary, run `publish_zero_row`, and read the periods view again. The
 [controller reference](/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
 contains the exact request shapes.
+
+Until then, run those shapes against your own RC.1-capable local or staging
+implementation; do not send RC.1-only fields to the RC.0 training route.
 
 ## The ladder above Core
 

@@ -32,14 +32,14 @@
 </head>
 <body data-nav-theme="dark">
 
-<!-- 3.2 preview announcement strip (dismissible) -->
-<div id="aao-announcement" style="display:none;background:var(--color-brand);color:var(--color-text-on-dark);padding:10px 20px;text-align:center;font-size:14px;line-height:1.4;position:relative;">
-  <strong>AdCP 3.2 preview is ready to try</strong> &mdash; <a href="https://docs.adcontextprotocol.org/3.2" style="color:var(--color-text-on-dark);text-decoration:underline;">explore the proposal lifecycle &rarr;</a>
-  <button onclick="document.getElementById('aao-announcement').style.display='none';document.cookie='aao_announce_32_dismissed=1;path=/;max-age=2592000';" aria-label="Dismiss announcement" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--color-text-on-dark);font-size:18px;cursor:pointer;padding:0 6px;line-height:1;">&times;</button>
+<!-- 3.2 release-candidate announcement strip (dismissible) -->
+<div id="adcp-announcement" style="display:none;background:var(--color-brand);color:var(--color-text-on-dark);padding:10px 20px;text-align:center;font-size:14px;line-height:1.4;position:relative;">
+  <strong>AdCP 3.2 release candidate adds Reliable Reporting to the compact lifecycle</strong> &mdash; <a href="https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.0-rc.1" style="color:var(--color-text-on-dark);text-decoration:underline;">open the current signed release &rarr;</a>
+  <button onclick="document.getElementById('adcp-announcement').style.display='none';document.cookie='adcp_announce_32_rc1_dismissed=1;path=/;max-age=2592000';" aria-label="Dismiss announcement" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--color-text-on-dark);font-size:18px;cursor:pointer;padding:0 6px;line-height:1;">&times;</button>
 </div>
 <script>
-  if (!document.cookie.split(';').some(c => c.trim().startsWith('aao_announce_32_dismissed='))) {
-    document.getElementById('aao-announcement').style.display = 'block';
+  if (!document.cookie.split(';').some(c => c.trim().startsWith('adcp_announce_32_rc1_dismissed='))) {
+    document.getElementById('adcp-announcement').style.display = 'block';
   }
 </script>
 
