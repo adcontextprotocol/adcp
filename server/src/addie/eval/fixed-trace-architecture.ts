@@ -1,6 +1,7 @@
 import type { AddieTool } from '../types.js';
 import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import { quickMatchRoutingContext, type ExecutionPlan } from '../router.js';
+import { createHash } from 'node:crypto';
 import type { FixedTraceCase } from './fixed-trace-suite.js';
 
 /**
@@ -346,7 +347,8 @@ export function fixedTraceArchitectureArm(
 
 export type FixedTraceToolDefinitionProvenance =
   | 'fixture_local'
-  | 'authorized_definition_handler_intersection';
+  | 'authorized_definition_handler_intersection'
+  | 'evaluator_owned_production_definitions_simulated_receipts';
 
 /**
  * Records what selected the candidate's visible tools.  The production
@@ -357,7 +359,7 @@ export interface FixedTraceToolUniverseProvenance {
   source:
     | 'fixture_local_routed_replay'
     | 'authorized_definition_handler_intersection_not_captured'
-    | 'evaluator_owned_production_shaped_intersection'
+    | 'evaluator_owned_production_definitions_simulated_receipts'
     | 'fixture_oracle';
   intentNarrowing: 'llm_router' | 'production_quick_match_or_llm_router' | 'not_applied' | 'fixture_oracle';
   bounded: boolean;
@@ -366,6 +368,66 @@ export interface FixedTraceToolUniverseProvenance {
   toolNamesSha256?: string | null;
   toolSchemaSha256?: string | null;
   definitionHandlerSha256?: string | null;
+}
+
+export interface FixedTraceRequestThreadFactsProvenance {
+  source: 'not_applicable' | 'fixture_case_request_not_authenticated';
+  traceFacts: readonly Readonly<{
+    traceId: string;
+    requestThreadFactsSha256: string;
+    provenance: 'fixture_case_request_not_authenticated';
+  }>[];
+}
+
+export interface FixedTraceDirectRequestThreadFacts {
+  source: FixedTraceCase['request']['source'];
+  isAAOAdmin: boolean;
+  isThread: boolean;
+  channelPrivacy: 'private' | 'unknown';
+  authentication: 'not_authenticated_fixture_claim';
+  provenance: 'fixture_case_request_not_authenticated';
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  }
+  throw new Error('Cannot canonicalize a non-JSON request/thread fact');
+}
+
+function sha256(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+}
+
+/** Preserve fixture-visible facts exactly; never manufacture production auth/context. */
+export function fixedTraceDirectRequestThreadFacts(trace: FixedTraceCase): FixedTraceDirectRequestThreadFacts {
+  return Object.freeze({
+    source: trace.request.source,
+    isAAOAdmin: trace.request.isAdmin,
+    isThread: (trace.request.threadContext?.length ?? 0) > 0,
+    channelPrivacy: trace.request.source === 'dm' ? 'private' : 'unknown',
+    authentication: 'not_authenticated_fixture_claim',
+    provenance: 'fixture_case_request_not_authenticated',
+  });
+}
+
+export function fixedTraceRequestThreadFactsProvenance(
+  traceSuite: ReadonlyArray<FixedTraceCase>,
+  arm: FixedTraceArchitectureArmId = 'two_stage_llm_router',
+): FixedTraceRequestThreadFactsProvenance {
+  if (arm !== 'direct_generation') return Object.freeze({ source: 'not_applicable', traceFacts: [] });
+  return Object.freeze({
+    source: 'fixture_case_request_not_authenticated',
+    traceFacts: Object.freeze(traceSuite.map((trace) => Object.freeze({
+      traceId: trace.id,
+      requestThreadFactsSha256: sha256(fixedTraceDirectRequestThreadFacts(trace)),
+      provenance: 'fixture_case_request_not_authenticated' as const,
+    })).sort((left, right) => left.traceId.localeCompare(right.traceId))),
+  });
 }
 
 /**
@@ -397,7 +459,7 @@ export function fixedTraceToolUniverseProvenance(
 ): FixedTraceToolUniverseProvenance {
   if (arm === 'direct_generation') {
     return Object.freeze({
-      source: 'evaluator_owned_production_shaped_intersection',
+      source: 'evaluator_owned_production_definitions_simulated_receipts',
       intentNarrowing: 'not_applied',
       bounded: true,
       deployable: false,
@@ -438,11 +500,18 @@ export type FixedTraceDirectArmAdmissionReason =
   | 'fixture_local_tool_definitions'
   | 'authorized_tool_intersection_not_captured'
   | 'authorized_tool_universe_unbounded'
-  | 'request_thread_execution_envelope_not_captured';
+  | 'request_thread_execution_envelope_not_captured'
+  | 'production_binding_contract_not_captured'
+  | 'request_thread_facts_not_authenticated'
+  | 'evaluator_simulated_receipt_handlers';
 
 export interface FixedTraceDirectToolUniverse extends FixedTraceToolUniverseProvenance {
   surface: FixedTraceCase['request']['source'];
   isAdmin: boolean;
+  isThread: boolean;
+  channelPrivacy: 'private' | 'unknown';
+  requestThreadFactsSha256: string;
+  requestThreadFactsProvenance: 'fixture_case_request_not_authenticated';
 }
 
 export interface FixedTraceDirectArmAdmission {
@@ -473,12 +542,17 @@ function freezeAdmission(
  * handler intersection, and must not substitute a fixture-local subset.
  */
 export function deriveFixedTraceDirectToolUniverse(trace: FixedTraceCase): FixedTraceDirectToolUniverse {
+  const facts = fixedTraceDirectRequestThreadFacts(trace);
   return Object.freeze({
     ...fixedTraceToolUniverseProvenance('direct_generation'),
-    // Surface and authorization are evaluator-owned. Fixed traces can supply
-    // only synthetic conversation content, never capability claims.
-    surface: 'dm',
-    isAdmin: false,
+    // These remain fixture claims, not production authentication. They are
+    // retained for audit and bound to the cohort, never replaced by a DM.
+    surface: facts.source,
+    isAdmin: facts.isAAOAdmin,
+    isThread: facts.isThread,
+    channelPrivacy: facts.channelPrivacy,
+    requestThreadFactsSha256: sha256(facts),
+    requestThreadFactsProvenance: facts.provenance,
   });
 }
 
@@ -496,10 +570,14 @@ export function admitFixedTraceDirectArm(
   definitionProvenance: FixedTraceToolDefinitionProvenance,
 ): FixedTraceDirectArmAdmission {
   const universe = deriveFixedTraceDirectToolUniverse(trace);
-  // The evaluator's definitions, synthetic receipt handlers, policy, and
-  // request/thread envelope are all fixed above. Caller-provided definitions
-  // and provenance never participate in direct admission.
+  // The evaluator has production definitions but only simulated/offline
+  // receipts and fixture claims. It has no authenticated production binding
+  // contract or request/thread envelope, so it must reject before dispatch.
   void definitions;
   void definitionProvenance;
-  return freezeAdmission(true, [], universe);
+  return freezeAdmission(false, [
+    'production_binding_contract_not_captured',
+    'request_thread_facts_not_authenticated',
+    'evaluator_simulated_receipt_handlers',
+  ], universe);
 }

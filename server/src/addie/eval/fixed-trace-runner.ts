@@ -46,8 +46,6 @@ import {
 import {
   FIXED_TRACE_DIRECT_TOOL_HANDLERS,
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
-  admitDirectToolExecution,
-  fixedTraceDirectRequestThreadFacts,
 } from '../direct-tool-universe.js';
 import {
   admitFixedTraceDirectArm,
@@ -55,6 +53,7 @@ import {
   fixedTraceArchitectureArm,
   fixedTraceExecutionEnvelopeProvenance,
   fixedTraceHybridPolicy,
+  fixedTraceRequestThreadFactsProvenance,
   fixedTraceToolUniverseProvenance,
   validateFixedTraceHybridPolicy,
   type FixedTraceArchitectureArmId,
@@ -206,14 +205,9 @@ function fixedTraceDirectToolEnvironment() {
         resultStatus: 'ok' as const,
       };
     }),
-    authorize: ({ toolName, toolCallId, isMutation }: {
-      toolName: string;
-      toolCallId: string;
-      isMutation: boolean;
-    }) => admitDirectToolExecution(
-      fixedTraceDirectRequestThreadFacts(),
-      { toolName, isMutation, idempotencyKey: toolCallId },
-    ),
+    // The evaluator universe is read-only. No fixture claim is ever used to
+    // authorize a mutation under a production identity.
+    authorize: () => ({ allowed: false as const, reason: 'mutation_confirmation_required' as const }),
   };
 }
 
@@ -673,7 +667,7 @@ export function fixedTraceArchitectureConfigSha256(
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
     toolDefinitionProvenance: arm.id === 'direct_generation'
-      ? 'authorized_definition_handler_intersection'
+      ? 'evaluator_owned_production_definitions_simulated_receipts'
       : config.toolDefinitionProvenance ?? 'fixture_local',
     architectureArm: arm,
     hybridPolicy: arm.id === 'deterministic_policy_llm_fallback_hybrid'
@@ -681,6 +675,7 @@ export function fixedTraceArchitectureConfigSha256(
       : null,
     toolUniverse: fixedTraceToolUniverseProvenance(arm.id),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(arm.id),
+    requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, arm.id),
     routerControl: cohortStageControl(config.router),
     generationControl: cohortStageControl(config.generation),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
@@ -692,7 +687,7 @@ export function buildFixedTraceGenerationRequest(
   route: StrictRouterPlan,
   definitions: readonly AddieTool[],
   config: FixedTraceProviderStageConfig,
-  requestFacts: Pick<ReturnType<typeof fixedTraceDirectRequestThreadFacts>, 'surface' | 'isAAOAdmin'> | null = null,
+  requestFacts: { surface: FixedTraceCase['request']['source']; isAAOAdmin: boolean } | null = null,
 ): ModelRequest {
   const availableToolNames = definitions.map((definition) => definition.name);
   const selectedToolSets = route.action === 'respond' ? route.tool_sets ?? [] : [];
@@ -762,7 +757,7 @@ function baseMetadata(
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
     toolDefinitionProvenance: architectureArm.id === 'direct_generation'
-      ? 'authorized_definition_handler_intersection'
+      ? 'evaluator_owned_production_definitions_simulated_receipts'
       : config.toolDefinitionProvenance ?? 'fixture_local',
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
@@ -779,6 +774,7 @@ function baseMetadata(
         : [...trace.toolFixtures.map((fixture) => fixture.name)].sort(),
     },
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(architectureArm.id),
+    requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, architectureArm.id),
     directArmAdmission: admission,
     caseControl: trace.caseControl ?? null,
     routerControl: cohortStageControl(config.router),
@@ -967,9 +963,28 @@ export async function runFixedTraceCase(
   validateStageConfig('generation', generationConfig);
   const architectureArm = fixedTraceArchitectureArm(executionConfig.architectureArm);
   if (architectureArm.id === 'direct_generation') {
-    // Never fall back to trace-local definitions: a direct arm with an
-    // incomplete deployable fixture surface is not evidence.
-    return directAdmissionMetadata(executionConfig, toolSchemaSha256, executionTrace);
+    // The evaluator's receipts and fixture facts are diagnostic only; an
+    // admission result can never open a direct-production dispatch path.
+    return {
+      traceId: executionTrace.id,
+      metadata: baseMetadata(
+        executionTrace,
+        executionConfig,
+        toolSchemaSha256,
+        notRunStageMetadata(executionTrace),
+        notRunStageMetadata(executionTrace),
+      ),
+      terminalStage: 'admission',
+      terminalStatus: 'not_admitted_architecture',
+      boundaryReason: null,
+      localReplacementReason: null,
+      finishReason: null,
+      output: fallbackOutput('not_admitted_architecture'),
+      flagged: true,
+      route: null,
+      tools: [],
+      rejectedToolCalls: [],
+    };
   }
   const hybridDecision = architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
     ? decideFixedTraceHybridRoute({
@@ -1048,7 +1063,7 @@ export async function runFixedTraceCase(
     routed.plan,
     definitions,
     generationConfig,
-    architectureArm.id === 'direct_generation' ? fixedTraceDirectRequestThreadFacts() : null,
+    null,
   );
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;

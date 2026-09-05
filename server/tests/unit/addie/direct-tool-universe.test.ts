@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   admitDirectToolExecution,
+  captureAuthenticatedDirectToolBindingContract,
   captureAddieRequestThreadFacts,
   captureAuthorizedDirectToolUniverse,
   createSyntheticDirectToolReceiptHandlers,
@@ -8,15 +9,6 @@ import {
   type AuthorizedToolBinding,
 } from '../../../src/addie/direct-tool-universe.js';
 import { getSafeReadOnlyFallbackTools } from '../../../src/addie/tool-sets.js';
-import type { AddieTool } from '../../../src/addie/types.js';
-
-function definition(name: string): AddieTool {
-  return {
-    name,
-    description: `Synthetic ${name} definition.`,
-    input_schema: { type: 'object', properties: {} },
-  };
-}
 
 function facts(overrides: Partial<Parameters<typeof captureAddieRequestThreadFacts>[0]> = {}) {
   return captureAddieRequestThreadFacts({
@@ -37,12 +29,18 @@ function facts(overrides: Partial<Parameters<typeof captureAddieRequestThreadFac
   });
 }
 
-function bindings(...names: string[]): AuthorizedToolBinding[] {
-  return names.map((name) => ({
-    definition: definition(name),
-    handler: vi.fn(async () => '{"must_not":"run"}'),
-    handlerIdentity: `production-contract/${name}/v1`,
-  }));
+function bindings(requestFacts = facts()): AuthorizedToolBinding[] {
+  return FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => {
+    const binding = {
+      definition: structuredClone(tool.definition),
+      handler: vi.fn(async () => '{"must_not":"run"}'),
+      handlerIdentity: `production-contract/${tool.definition.name}/v1`,
+    };
+    return {
+      ...binding,
+      contract: captureAuthenticatedDirectToolBindingContract(requestFacts, binding),
+    };
+  });
 }
 
 describe('direct tool-universe capture', () => {
@@ -57,66 +55,100 @@ describe('direct tool-universe capture', () => {
       .toBe(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames.length);
   });
 
-  it('derives the bounded read-only universe from authenticated request facts, not a route or fixture', () => {
+  it('derives the complete bounded read-only universe from authenticated request facts, not a route or fixture', () => {
+    const requestFacts = facts();
     const universe = captureAuthorizedDirectToolUniverse(
-      facts(),
-      bindings('create_payment_link', 'search_docs', 'add_prospect'),
+      requestFacts,
+      bindings(requestFacts),
     );
 
     expect(universe).toMatchObject({
       source: 'authenticated_request_definition_handler_intersection',
       policy: 'shared_deterministic_surface_policy',
       selectedToolSets: ['knowledge', 'community_research', 'schema_reference'],
-      toolNames: ['search_docs'],
+      toolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
     });
     expect(universe.toolNamesSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(universe.definitionHandlerSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(universe.requestThreadFactsSha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it('honors public-channel and admin authorization through the shared surface policy', () => {
-    const publicMention = captureAuthorizedDirectToolUniverse(
-      facts({ surface: 'mention', channelPrivacy: 'public', isAAOAdmin: true }),
-      bindings('search_docs', 'resolve_escalation', 'add_prospect'),
-    );
-    const privateMember = captureAuthorizedDirectToolUniverse(
-      facts({ isAAOAdmin: false }),
-      bindings('search_docs', 'add_prospect'),
-    );
-
-    expect(publicMention.toolNames).toEqual(['search_docs']);
-    expect(privateMember.toolNames).toEqual(['search_docs']);
+  it('fails closed if any policy-required production binding is removed or an extra is supplied', () => {
+    const requestFacts = facts();
+    const complete = bindings(requestFacts);
+    expect(() => captureAuthorizedDirectToolUniverse(
+      requestFacts,
+      complete.filter((binding) => binding.definition.name !== 'search_docs'),
+    )).toThrow('incomplete, stale, or contain extras');
+    expect(() => captureAuthorizedDirectToolUniverse(requestFacts, [
+      ...complete,
+      complete[0]!,
+    ])).toThrow('Duplicate tool binding');
+    const extraDefinition = { ...complete[0]!.definition, name: 'unexpected_extra' };
+    const extra = {
+      definition: extraDefinition,
+      handler: vi.fn(async () => '{"must_not":"run"}'),
+      handlerIdentity: 'production-contract/unexpected-extra/v1',
+    };
+    expect(() => captureAuthorizedDirectToolUniverse(requestFacts, [
+      ...complete,
+      ...[{
+        ...extra,
+        contract: captureAuthenticatedDirectToolBindingContract(requestFacts, extra),
+      }],
+    ])).toThrow();
+    expect(() => captureAuthorizedDirectToolUniverse(requestFacts, [{
+      ...complete[0]!, handler: undefined,
+    } as unknown as AuthorizedToolBinding, ...complete.slice(1)])).toThrow('Tool handler is required');
   });
 
-  it('requires an exact definition/handler binding and preserves deterministic policy order and hashes', () => {
-    const complete = bindings('get_schema', 'search_docs', 'list_schemas');
-    const first = captureAuthorizedDirectToolUniverse(facts(), complete);
-    const reorderedBindings = captureAuthorizedDirectToolUniverse(facts(), [...complete].reverse());
+  it('honors authenticated private-member facts without filtering the required binding contract', () => {
+    const privateFacts = facts({ isAAOAdmin: false });
+    const privateMember = captureAuthorizedDirectToolUniverse(
+      privateFacts,
+      bindings(privateFacts),
+    );
 
-    expect(first.toolNames).toEqual(['search_docs', 'get_schema', 'list_schemas']);
+    expect(privateMember.toolNames).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
+  });
+
+  it('rejects swapped, forged, stale, or mutated authenticated binding contracts', () => {
+    const requestFacts = facts();
+    const complete = bindings(requestFacts);
+    const first = captureAuthorizedDirectToolUniverse(requestFacts, complete);
+    const reorderedBindings = captureAuthorizedDirectToolUniverse(requestFacts, [...complete].reverse());
+
+    expect(first.toolNames).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
     expect(reorderedBindings.toolNames).toEqual(first.toolNames);
     expect(reorderedBindings.toolNamesSha256).toBe(first.toolNamesSha256);
     expect(reorderedBindings.definitionHandlerSha256).toBe(first.definitionHandlerSha256);
-    expect(() => captureAuthorizedDirectToolUniverse(facts(), [complete[0]!, complete[0]!]))
-      .toThrow('Duplicate tool binding');
-    expect(() => captureAuthorizedDirectToolUniverse(facts(), [{
-      ...complete[0]!, handlerIdentity: '',
-    }])).toThrow('Tool handler identity is required');
+    const swapped = { ...complete[0]!, contract: { ...complete[1]!.contract } };
+    expect(() => captureAuthorizedDirectToolUniverse(requestFacts, [swapped, ...complete.slice(1)]))
+      .toThrow('stale, swapped, or mismatched');
+    const forged = { ...complete[0]!, contract: { ...complete[0]!.contract, requestThreadFactsSha256: '0'.repeat(64) } };
+    expect(() => captureAuthorizedDirectToolUniverse(requestFacts, [forged, ...complete.slice(1)]))
+      .toThrow('stale, swapped, or mismatched');
+    const mutated = { ...complete[0]!, definition: { ...complete[0]!.definition, description: 'mutated' } };
+    expect(() => captureAuthorizedDirectToolUniverse(requestFacts, [mutated, ...complete.slice(1)]))
+      .toThrow('stale, swapped, or mismatched');
   });
 
   it('uses synthetic receipt handlers and never invokes a production handler', async () => {
-    const productionBindings = bindings('search_docs');
-    const universe = captureAuthorizedDirectToolUniverse(facts(), productionBindings);
+    const requestFacts = facts();
+    const productionBindings = bindings(requestFacts);
+    const universe = captureAuthorizedDirectToolUniverse(requestFacts, productionBindings);
     const handlers = createSyntheticDirectToolReceiptHandlers(universe);
 
     expect([...handlers.keys()]).toEqual(universe.toolNames);
     expect(universe.tools.map((tool) => tool.definition.name)).toEqual([...handlers.keys()]);
-    const receipt = JSON.parse(await handlers.get('search_docs')!({ query: 'untrusted model input' }));
+    const firstTool = universe.tools[0]!;
+    const receipt = JSON.parse(await handlers.get(firstTool.definition.name)!({ query: 'untrusted model input' }));
     expect(receipt).toEqual({
       kind: 'synthetic_direct_tool_receipt',
-      toolName: 'search_docs',
-      definitionSha256: universe.tools[0]!.definitionSha256,
-      handlerIdentitySha256: universe.tools[0]!.handlerIdentitySha256,
+      toolName: firstTool.definition.name,
+      definitionSha256: firstTool.definitionSha256,
+      handlerProvenance: 'evaluator_simulated_receipt',
+      receiptHandlerIdentitySha256: expect.any(String),
       definitionHandlerSha256: universe.definitionHandlerSha256,
     });
     expect(productionBindings[0]!.handler).not.toHaveBeenCalled();

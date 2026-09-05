@@ -20,6 +20,7 @@ import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_HYBRID_EVALUATOR_SUITE,
   FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS,
+  fixedTraceArchitectureConfigSha256FromMetadata,
   fixedTraceSuiteSha256,
   gradeFixedTrace,
   mutationInputProvenanceFailures,
@@ -1729,7 +1730,7 @@ describe('fixed trace artifact runner', () => {
       .toThrow('Fixed trace observation suite hash does not match grading suite');
   });
 
-  it('executes direct generation through the evaluator-owned surface without a router dispatch', async () => {
+  it('rejects direct generation before either model stage when production request facts and handlers are not captured', async () => {
     const router = new ScriptedProvider([]);
     const generation = new ScriptedProvider([response([
       { type: 'text', text: 'Synthetic task answer.' },
@@ -1741,10 +1742,10 @@ describe('fixed trace artifact runner', () => {
     }));
 
     expect(router.respondCalls).toHaveLength(0);
-    expect(generation.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(0);
     expect(observation).toMatchObject({
-      terminalStage: 'generation',
-      terminalStatus: 'complete',
+      terminalStage: 'admission',
+      terminalStatus: 'not_admitted_architecture',
       metadata: {
         architectureArm: {
           id: 'direct_generation',
@@ -1752,15 +1753,19 @@ describe('fixed trace artifact runner', () => {
           rolloutEligible: false,
         },
         toolUniverse: {
-          source: 'evaluator_owned_production_shaped_intersection',
+          source: 'evaluator_owned_production_definitions_simulated_receipts',
           intentNarrowing: 'not_applied',
           bounded: true,
           deployable: false,
           toolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
         },
         directArmAdmission: {
-          admitted: true,
-          reasons: [],
+          admitted: false,
+          reasons: expect.arrayContaining([
+            'production_binding_contract_not_captured',
+            'request_thread_facts_not_authenticated',
+            'evaluator_simulated_receipt_handlers',
+          ]),
         },
       },
     });
@@ -1769,11 +1774,11 @@ describe('fixed trace artifact runner', () => {
       effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
     });
     expect(observation.metadata.generation).toMatchObject({
-      source: 'provider', requestedProvider: 'anthropic', requestedModel: 'claude-haiku-4-5',
+      source: 'not_run', requestedProvider: null, requestedModel: null,
     });
     const directRun = summarizeFixedTraceRun([observation], [selectedTrace]).summary;
     expect(directRun.comparisonEligible).toBe(false);
-    expect(directRun.terminalStatusCounts.complete).toBe(1);
+    expect(directRun.terminalStatusCounts.not_admitted_architecture).toBe(1);
     expect(Object.values(directRun.terminalStatusCounts).reduce((total, count) => total + count, 0))
       .toBe(directRun.observed);
   });
@@ -1805,19 +1810,19 @@ describe('fixed trace artifact runner', () => {
       TOOL_DEFINITIONS,
       'fixture_local',
     ).reasons);
-    // Relabeling trace-local schemas cannot affect the evaluator-owned
-    // request-fact universe or change its diagnostic-only admission.
+    // Trace-local schemas cannot turn fixture claims and evaluator receipts
+    // into an authenticated production binding contract.
     expect(admitFixedTraceDirectArm(
       selectedTrace,
       TOOL_DEFINITIONS,
       'authorized_definition_handler_intersection',
     )).toMatchObject({
-      admitted: true,
-      reasons: [],
+      admitted: false,
+      reasons: expect.arrayContaining(['production_binding_contract_not_captured']),
     });
   });
 
-  it('rejects fixture laundering and caller truncation by using the complete fixed direct universe', async () => {
+  it('preserves admin/channel/thread facts and rejects fixture laundering before dispatch', async () => {
     const router = new ScriptedProvider([]);
     const generation = new ScriptedProvider([
       response([{
@@ -1848,22 +1853,18 @@ describe('fixed trace artifact runner', () => {
     const observation = await runFixedTraceCase(laundered, direct);
 
     expect(router.respondCalls).toHaveLength(0);
-    expect(generation.respondCalls).toHaveLength(2);
-    expect(generation.respondCalls[0]!.tools.map((definition) => definition.name))
-      .toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
-    expect(generation.respondCalls[0]!.system.map((part) => part.text).join('\n'))
-      .toContain('Surface: dm');
-    expect(generation.respondCalls[0]!.system.map((part) => part.text).join('\n'))
-      .toContain('Platform admin: no');
-    expect(observation.tools).toMatchObject([{
-      name: 'search_docs', effect: 'read', policyDisposition: 'allowed', simulated: true,
-    }]);
+    expect(generation.respondCalls).toHaveLength(0);
+    expect(observation).toMatchObject({ terminalStage: 'admission', terminalStatus: 'not_admitted_architecture' });
+    expect(observation.metadata.directArmAdmission?.universe).toMatchObject({
+      surface: 'channel', isAdmin: true, isThread: false, channelPrivacy: 'unknown',
+      requestThreadFactsProvenance: 'fixture_case_request_not_authenticated',
+    });
     expect(observation.metadata.traceSuiteSha256).toBe(fixedTraceSuiteSha256([laundered]));
     expect(observation.metadata.toolUniverse.toolNames).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
     expect(observation.metadata.toolSchemaSha256).toBe(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256);
-    expect(fixedTraceArchitectureConfigSha256(direct)).toBe(
+    expect(fixedTraceArchitectureConfigSha256(direct)).not.toBe(
       fixedTraceArchitectureConfigSha256(config(router, generation, {
-        architectureArm: 'direct_generation', traceSuite: [laundered], toolDefinitions: TOOL_DEFINITIONS,
+        architectureArm: 'direct_generation', traceSuite: [selectedTrace], toolDefinitions: TOOL_DEFINITIONS,
       })),
     );
     expect(fixedTraceArchitectureConfigSha256(direct)).toBe(
@@ -1877,6 +1878,85 @@ describe('fixed trace artifact runner', () => {
         generation: { ...direct.generation, maxOutputTokens: direct.generation.maxOutputTokens + 1 },
       }),
     );
+
+    const adminTrace = trace('admin-duplicate-organizations');
+    const adminObservation = await runFixedTraceCase(adminTrace, config(
+      new ScriptedProvider([]), new ScriptedProvider([]), {
+        architectureArm: 'direct_generation', traceSuite: [adminTrace],
+      },
+    ));
+    expect(adminObservation.metadata.directArmAdmission?.universe).toMatchObject({
+      surface: 'dm', isAdmin: true, isThread: false, channelPrivacy: 'private',
+    });
+    const nonAdminCopy: FixedTraceCase = {
+      ...adminTrace,
+      request: { ...adminTrace.request, isAdmin: false },
+    };
+    expect(deriveFixedTraceDirectToolUniverse(adminTrace).requestThreadFactsSha256)
+      .not.toBe(deriveFixedTraceDirectToolUniverse(nonAdminCopy).requestThreadFactsSha256);
+    expect(fixedTraceArchitectureConfigSha256(config(
+      new ScriptedProvider([]), new ScriptedProvider([]), {
+        architectureArm: 'direct_generation', traceSuite: [adminTrace],
+      },
+    ))).not.toBe(fixedTraceArchitectureConfigSha256(config(
+      new ScriptedProvider([]), new ScriptedProvider([]), {
+        architectureArm: 'direct_generation', traceSuite: [nonAdminCopy],
+      },
+    )));
+
+    const threadedChannel: FixedTraceCase = {
+      ...selectedTrace,
+      id: 'synthetic-threaded-channel-boundary',
+      request: {
+        ...selectedTrace.request,
+        source: 'channel',
+        isAdmin: false,
+        threadContext: [{ user: 'member', text: 'Synthetic thread context.' }],
+      },
+    };
+    const threadedObservation = await runFixedTraceCase(threadedChannel, config(
+      new ScriptedProvider([]), new ScriptedProvider([]), {
+        architectureArm: 'direct_generation', traceSuite: [threadedChannel],
+      },
+    ));
+    expect(threadedObservation.metadata.directArmAdmission?.universe).toMatchObject({
+      surface: 'channel', isAdmin: false, isThread: true, channelPrivacy: 'unknown',
+    });
+  });
+
+  it('rejects restamped request/thread facts across direct cases and architecture arms', async () => {
+    const firstTrace = trace('knowledge-task-model');
+    const secondTrace = trace('admin-duplicate-organizations');
+    const directConfig = config(new ScriptedProvider([]), new ScriptedProvider([]), {
+      architectureArm: 'direct_generation', traceSuite: [firstTrace, secondTrace],
+    });
+    const first = await runFixedTraceCase(firstTrace, directConfig);
+    const second = await runFixedTraceCase(secondTrace, directConfig);
+    const launderedFacts = {
+      ...first.metadata.requestThreadFacts,
+      traceFacts: first.metadata.requestThreadFacts.traceFacts.map((fact) => ({
+        ...fact,
+        requestThreadFactsSha256: fact.traceId === secondTrace.id
+          ? first.metadata.requestThreadFacts.traceFacts.find((candidate) => candidate.traceId === firstTrace.id)!.requestThreadFactsSha256
+          : fact.requestThreadFactsSha256,
+      })),
+    };
+    for (const observation of [first, second]) {
+      observation.metadata.requestThreadFacts = launderedFacts;
+      observation.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observation.metadata);
+    }
+    expect(() => summarizeFixedTraceRun([first, second], [firstTrace, secondTrace]))
+      .toThrow('Fixed trace request/thread facts do not match grading suite');
+
+    const routed = await runFixedTraceCase(firstTrace, config(
+      new ScriptedProvider([routeResponse('respond', ['knowledge'])]),
+      new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]),
+      { traceSuite: [firstTrace] },
+    ));
+    routed.metadata.requestThreadFacts = first.metadata.requestThreadFacts;
+    routed.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(routed.metadata);
+    expect(() => summarizeFixedTraceRun([routed], [firstTrace]))
+      .toThrow('Fixed trace request/thread facts do not match grading suite');
   });
 
   it('runs an oracle route only as a rollout-ineligible generation diagnostic', async () => {

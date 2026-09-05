@@ -10,7 +10,7 @@ import {
   type SponsoredIntelligenceContextKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
-import { getSafeReadOnlyFallbackTools } from './tool-sets.js';
+import { getSafeReadOnlyFallbackTools, SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
 import type { AddieTool } from './types.js';
 
 /**
@@ -56,6 +56,40 @@ export interface AuthorizedToolBinding {
   handler: ToolHandler;
   /** Stable deployment-owned identity for the handler contract, not source code. */
   handlerIdentity: string;
+  /**
+   * Captured by the authenticated production registration boundary together
+   * with this exact request. A caller cannot turn a fixture receipt into this
+   * contract by merely choosing a similar identity string.
+   */
+  contract: AuthenticatedDirectToolBindingContract;
+}
+
+export interface AuthenticatedDirectToolBindingContract {
+  source: 'authenticated_production_binding_contract';
+  requestThreadFactsSha256: string;
+  toolName: string;
+  definitionSha256: string;
+  handlerIdentity: string;
+  handlerIdentitySha256: string;
+}
+
+/**
+ * Production registration boundaries use this immediately after resolving the
+ * authenticated request and its handler. Evaluators must never call it for
+ * fixture receipt handlers; those use the separately labeled universe below.
+ */
+export function captureAuthenticatedDirectToolBindingContract(
+  facts: AddieRequestThreadFacts,
+  binding: Pick<AuthorizedToolBinding, 'definition' | 'handlerIdentity'>,
+): AuthenticatedDirectToolBindingContract {
+  return deepFreeze({
+    source: 'authenticated_production_binding_contract' as const,
+    requestThreadFactsSha256: sha256(facts),
+    toolName: binding.definition.name,
+    definitionSha256: definitionSha256(binding.definition),
+    handlerIdentity: binding.handlerIdentity,
+    handlerIdentitySha256: sha256(binding.handlerIdentity),
+  });
 }
 
 export interface CapturedDirectTool {
@@ -63,6 +97,7 @@ export interface CapturedDirectTool {
   readonly definitionSha256: string;
   readonly handlerIdentity: string;
   readonly handlerIdentitySha256: string;
+  readonly handlerProvenance: 'authenticated_production_binding' | 'evaluator_simulated_receipt';
 }
 
 /**
@@ -71,7 +106,9 @@ export interface CapturedDirectTool {
  * provider request. The handler functions never leave the capture boundary.
  */
 export interface CapturedDirectToolUniverse {
-  readonly source: 'authenticated_request_definition_handler_intersection';
+  readonly source:
+    | 'authenticated_request_definition_handler_intersection'
+    | 'evaluator_owned_production_definitions_simulated_receipts';
   readonly policy: 'shared_deterministic_surface_policy';
   readonly requestThreadFactsSha256: string;
   readonly selectedToolSets: readonly string[];
@@ -79,6 +116,8 @@ export interface CapturedDirectToolUniverse {
   readonly toolNamesSha256: string;
   readonly toolSchemaSha256: string;
   readonly definitionHandlerSha256: string;
+  /** Present only when a production registration boundary captured it. */
+  readonly authenticatedBindingContractSha256: string | null;
   readonly tools: readonly CapturedDirectTool[];
 }
 
@@ -86,7 +125,8 @@ export interface SyntheticDirectToolReceipt {
   readonly kind: 'synthetic_direct_tool_receipt';
   readonly toolName: string;
   readonly definitionSha256: string;
-  readonly handlerIdentitySha256: string;
+  readonly handlerProvenance: 'evaluator_simulated_receipt';
+  readonly receiptHandlerIdentitySha256: string;
   readonly definitionHandlerSha256: string;
 }
 
@@ -195,6 +235,35 @@ function definitionSha256(definition: AddieTool): string {
   });
 }
 
+/** The fixed fallback's 13 custom definitions are taken only from production registries. */
+function fixedTraceProductionDefinitions(): AddieTool[] {
+  const byName = new Map<string, AddieTool>();
+  for (const definition of [...KNOWLEDGE_TOOLS, ...SCHEMA_TOOLS, ...URL_TOOLS]) {
+    if (byName.has(definition.name)) throw new Error(`Duplicate production direct tool definition: ${definition.name}`);
+    byName.set(definition.name, definition);
+  }
+  return getSafeReadOnlyFallbackTools().flatMap((name) => {
+    if (name === 'web_search') return [];
+    const definition = byName.get(name);
+    if (!definition) throw new Error(`Missing production direct tool definition: ${name}`);
+    return [definition];
+  });
+}
+
+function expectedDirectSelection(facts: AddieRequestThreadFacts) {
+  // Do not pass availability here. Availability is an admission condition,
+  // never a mechanism for shrinking the policy-selected capability surface.
+  return selectBoundedRoutedToolSets({
+    plan: null,
+    routerAvailable: false,
+    source: facts.surface,
+    isAdmin: facts.isAAOAdmin,
+    isPublicChannel: channelIsPublic(facts),
+    activeCertificationKind: facts.activeCertificationKind,
+    sponsoredIntelligenceContextKind: facts.sponsoredIntelligenceContextKind,
+  });
+}
+
 /**
  * Capture the production-shaped custom-tool intersection for direct
  * generation. Selection intentionally invokes the existing deterministic
@@ -205,49 +274,53 @@ export function captureAuthorizedDirectToolUniverse(
   facts: AddieRequestThreadFacts,
   bindings: readonly AuthorizedToolBinding[],
 ): CapturedDirectToolUniverse {
+  const factsHash = sha256(facts);
+  const selection = expectedDirectSelection(facts);
+  const selectedCustomNames = selection.allowedToolNames.filter((name) => name !== 'web_search');
+  const productionDefinitions = new Map(fixedTraceProductionDefinitions().map((definition) => [definition.name, definition]));
+  if (selectedCustomNames.some((name) => !productionDefinitions.has(name))) {
+    throw new Error('Authorized direct production definition registry is incomplete for the selected policy');
+  }
   const byName = new Map<string, AuthorizedToolBinding>();
   for (const binding of bindings) {
     if (!binding.definition.name.trim()) throw new Error('Tool definition name is required');
     if (typeof binding.handler !== 'function') throw new Error(`Tool handler is required: ${binding.definition.name}`);
     if (!binding.handlerIdentity.trim()) throw new Error(`Tool handler identity is required: ${binding.definition.name}`);
     if (byName.has(binding.definition.name)) throw new Error(`Duplicate tool binding: ${binding.definition.name}`);
+    const bindingDefinitionSha256 = definitionSha256(binding.definition);
+    if (
+      binding.contract.source !== 'authenticated_production_binding_contract'
+      || binding.contract.requestThreadFactsSha256 !== factsHash
+      || binding.contract.toolName !== binding.definition.name
+      || binding.contract.definitionSha256 !== bindingDefinitionSha256
+      || binding.contract.handlerIdentity !== binding.handlerIdentity
+      || binding.contract.handlerIdentitySha256 !== sha256(binding.handlerIdentity)
+    ) throw new Error(`Authenticated direct tool binding contract is stale, swapped, or mismatched: ${binding.definition.name}`);
+    const productionDefinition = productionDefinitions.get(binding.definition.name);
+    if (!productionDefinition || definitionSha256(productionDefinition) !== bindingDefinitionSha256) {
+      throw new Error(`Authorized direct tool definition is not the production registry definition: ${binding.definition.name}`);
+    }
     byName.set(binding.definition.name, binding);
   }
-
-  const selection = selectBoundedRoutedToolSets({
-    plan: null,
-    routerAvailable: false,
-    source: facts.surface,
-    isAdmin: facts.isAAOAdmin,
-    isPublicChannel: channelIsPublic(facts),
-    activeCertificationKind: facts.activeCertificationKind,
-    sponsoredIntelligenceContextKind: facts.sponsoredIntelligenceContextKind,
-    // This is the exact definition/handler intersection. Provider-managed
-    // tools are intentionally absent from the direct custom-tool universe.
-    isToolAvailable: (name) => byName.has(name),
-  });
-  // `web_search` is provider-managed and intentionally cannot participate in
-  // a custom definition/handler contract. Every admitted custom name must be
-  // present: filtering a partial intersection would silently truncate the
-  // request-fact policy surface.
-  const selectedCustomNames = selection.allowedToolNames.filter((name) => name !== 'web_search');
-  if (selectedCustomNames.some((name) => !byName.has(name))) {
-    throw new Error('Authorized direct tool universe is incomplete');
-  }
-  const tools = selectedCustomNames.flatMap((name) => {
+  if (
+    byName.size !== selectedCustomNames.length
+    || selectedCustomNames.some((name) => !byName.has(name))
+    || [...byName.keys()].some((name) => !selectedCustomNames.includes(name))
+  ) throw new Error('Authorized direct tool bindings are incomplete, stale, or contain extras');
+  const tools = selectedCustomNames.map((name) => {
     const binding = byName.get(name);
-    if (!binding) return [];
+    if (!binding) throw new Error(`Authorized direct tool binding is missing: ${name}`);
     const definition = deepFreeze(structuredClone(binding.definition));
     const definitionHash = definitionSha256(definition);
-    return [deepFreeze({
+    return deepFreeze({
       definition,
       definitionSha256: definitionHash,
       handlerIdentity: binding.handlerIdentity,
       handlerIdentitySha256: sha256(binding.handlerIdentity),
-    })];
+      handlerProvenance: 'authenticated_production_binding' as const,
+    });
   });
   const toolNames = tools.map((tool) => tool.definition.name);
-  const factsHash = sha256(facts);
   return deepFreeze({
     source: 'authenticated_request_definition_handler_intersection' as const,
     policy: 'shared_deterministic_surface_policy' as const,
@@ -264,15 +337,19 @@ export function captureAuthorizedDirectToolUniverse(
       definitionSha256: tool.definitionSha256,
       handlerIdentitySha256: tool.handlerIdentitySha256,
     }))),
+    authenticatedBindingContractSha256: sha256(tools.map((tool) => ({
+      name: tool.definition.name,
+      definitionSha256: tool.definitionSha256,
+      handlerIdentitySha256: tool.handlerIdentitySha256,
+    }))),
     tools,
   });
 }
 
 /**
  * Create inert evaluator handlers for an already captured universe. Each
- * receipt binds the visible definition to the same handler-identity contract
- * captured from production; it never invokes a production handler or records
- * model-provided arguments.
+ * receipt has evaluator-owned provenance. It never invokes a production
+ * handler, and must not be represented as a production handler identity.
  */
 export function createSyntheticDirectToolReceiptHandlers(
   universe: CapturedDirectToolUniverse,
@@ -281,7 +358,8 @@ export function createSyntheticDirectToolReceiptHandlers(
     kind: 'synthetic_direct_tool_receipt',
     toolName: tool.definition.name,
     definitionSha256: tool.definitionSha256,
-    handlerIdentitySha256: tool.handlerIdentitySha256,
+    handlerProvenance: 'evaluator_simulated_receipt',
+    receiptHandlerIdentitySha256: sha256(`evaluator-receipt/${tool.definition.name}/${tool.definitionSha256}`),
     definitionHandlerSha256: universe.definitionHandlerSha256,
   } satisfies SyntheticDirectToolReceipt)]));
 }
@@ -291,35 +369,36 @@ export function createSyntheticDirectToolReceiptHandlers(
  * before intent routing. This is evaluator-owned rather than a per-case
  * selection: a trace cannot add, remove, or relabel the candidate universe.
  */
-const FIXED_TRACE_DIRECT_FACTS = captureAddieRequestThreadFacts({
-  surface: 'dm',
-  authenticatedPrincipalId: 'fixed-trace-evaluator-principal',
-  accountAccess: 'member',
-  isAAOAdmin: false,
-  threadId: 'fixed-trace-evaluator-thread',
-  isThread: true,
-  channelPrivacy: 'private',
-  confirmation: 'not_required',
-  confirmedMutationToolNames: [],
-  confirmedMutationIdempotencyKeys: [],
-  idempotencyScope: 'fixed-trace-evaluator-request',
-  completedToolCallKeys: [],
-  replayClassification: 'initial',
-});
-
-function fixedTraceProductionDefinitions(): AddieTool[] {
-  const byName = new Map<string, AddieTool>();
-  for (const definition of [...KNOWLEDGE_TOOLS, ...SCHEMA_TOOLS, ...URL_TOOLS]) {
-    if (byName.has(definition.name)) throw new Error(`Duplicate production direct tool definition: ${definition.name}`);
-    byName.set(definition.name, definition);
-  }
-  return getSafeReadOnlyFallbackTools().flatMap((name) => {
-    // web_search is provider-managed in production. It is deliberately not a
-    // custom evaluator tool, so direct fixed traces never enable network use.
-    if (name === 'web_search') return [];
-    const definition = byName.get(name);
-    if (!definition) throw new Error(`Missing production direct tool definition: ${name}`);
-    return [definition];
+function captureFixedTraceEvaluatorToolUniverse(): CapturedDirectToolUniverse {
+  const tools = fixedTraceProductionDefinitions().map((originalDefinition) => {
+    const definition = deepFreeze(structuredClone(originalDefinition));
+    const definitionHash = definitionSha256(definition);
+    const handlerIdentity = `evaluator-simulated-receipt/${definition.name}/${definitionHash}`;
+    return deepFreeze({
+      definition,
+      definitionSha256: definitionHash,
+      handlerIdentity,
+      handlerIdentitySha256: sha256(handlerIdentity),
+      handlerProvenance: 'evaluator_simulated_receipt' as const,
+    });
+  });
+  const toolNames = tools.map((tool) => tool.definition.name);
+  return deepFreeze({
+    source: 'evaluator_owned_production_definitions_simulated_receipts' as const,
+    policy: 'shared_deterministic_surface_policy' as const,
+    requestThreadFactsSha256: sha256({ source: 'fixed_trace_evaluator_not_authenticated' }),
+    selectedToolSets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
+    toolNames,
+    toolNamesSha256: sha256(toolNames),
+    toolSchemaSha256: sha256(tools.map((tool) => ({ name: tool.definition.name, definitionSha256: tool.definitionSha256 }))),
+    definitionHandlerSha256: sha256(tools.map((tool) => ({
+      name: tool.definition.name,
+      definitionSha256: tool.definitionSha256,
+      handlerIdentitySha256: tool.handlerIdentitySha256,
+      handlerProvenance: tool.handlerProvenance,
+    }))),
+    authenticatedBindingContractSha256: null,
+    tools,
   });
 }
 
@@ -328,19 +407,8 @@ function fixedTraceProductionDefinitions(): AddieTool[] {
  * It is immutable, complete for the shared fallback policy, and paired only
  * with inert evaluator receipt handlers.
  */
-export const FIXED_TRACE_DIRECT_TOOL_UNIVERSE = captureAuthorizedDirectToolUniverse(
-  FIXED_TRACE_DIRECT_FACTS,
-  fixedTraceProductionDefinitions().map((definition) => ({
-    definition,
-    handler: async () => '{"kind":"unreachable_production_shaped_receipt"}',
-    handlerIdentity: `fixed-trace-receipt/${definition.name}/${definitionSha256(definition)}`,
-  })),
-);
+export const FIXED_TRACE_DIRECT_TOOL_UNIVERSE = captureFixedTraceEvaluatorToolUniverse();
 
 export const FIXED_TRACE_DIRECT_TOOL_HANDLERS = createSyntheticDirectToolReceiptHandlers(
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
 );
-
-export function fixedTraceDirectRequestThreadFacts(): AddieRequestThreadFacts {
-  return FIXED_TRACE_DIRECT_FACTS;
-}
