@@ -22,12 +22,38 @@ import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDom
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { mergeUsers } from '../../db/user-merge-db.js';
+import { resolveMembershipTier, type MembershipTierRow } from '../../db/organization-db.js';
 import {
   buildCountryMembersCsv,
   type CountryMemberExportRow,
 } from './country-members-export.js';
 
 const logger = createLogger('admin-users-routes');
+
+type CredentialOrganizationMembership = MembershipTierRow & {
+  workos_organization_id: string;
+  subscription_canceled_at: Date | null;
+};
+
+function resolveEntitledMemberships(rows: CredentialOrganizationMembership[]) {
+  return rows.flatMap((row) => {
+    const membershipTier = resolveMembershipTier(row);
+    return membershipTier
+      ? [{
+          workos_organization_id: row.workos_organization_id,
+          membership_tier: membershipTier,
+        }]
+      : [];
+  });
+}
+
+function isCorporateMembershipTier(tier: string): boolean {
+  return tier.startsWith('company_');
+}
+
+function isIndividualMembershipTier(tier: string): boolean {
+  return tier.startsWith('individual_');
+}
 
 /**
  * Linear-time plausibility check for an email-shaped string. Avoids the
@@ -1020,6 +1046,7 @@ export function createAdminUsersRouter(): Router {
   router.post('/:userId/credentials', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
+    const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
     const existingUserId = req.params.userId;
     const credId = (req.body?.workos_user_id as string | undefined)?.trim();
 
@@ -1083,6 +1110,53 @@ export function createAdminUsersRouter(): Router {
       }
     }
 
+    // Do not let a corporate membership become an entitlement of an
+    // individual-tier identity merely because an operator confirmed a
+    // credential merge. The safe, supported direction for this shape is to
+    // keep the corporate credential canonical and bind the personal one to
+    // it. This check deliberately runs even when consolidate=true: that flag
+    // acknowledges an ordinary destructive merge; it is not a tier override.
+    const [credentialMemberships, hostMemberships] = await Promise.all([
+      pool.query<CredentialOrganizationMembership>(
+        `SELECT o.workos_organization_id, o.membership_tier,
+                o.subscription_price_lookup_key, o.subscription_status,
+                o.subscription_amount, o.subscription_interval, o.is_personal,
+                o.subscription_canceled_at
+           FROM organization_memberships om
+           JOIN organizations o
+             ON o.workos_organization_id = om.workos_organization_id
+          WHERE om.workos_user_id = $1
+            AND o.subscription_canceled_at IS NULL
+          ORDER BY o.workos_organization_id`,
+        [credId]
+      ),
+      pool.query<CredentialOrganizationMembership>(
+        `SELECT o.workos_organization_id, o.membership_tier,
+                o.subscription_price_lookup_key, o.subscription_status,
+                o.subscription_amount, o.subscription_interval, o.is_personal,
+                o.subscription_canceled_at
+           FROM organization_memberships om
+           JOIN organizations o
+             ON o.workos_organization_id = om.workos_organization_id
+          WHERE om.workos_user_id = $1
+            AND o.subscription_canceled_at IS NULL
+          ORDER BY o.workos_organization_id`,
+        [existingUserId]
+      ),
+    ]);
+    const corporateMemberships = resolveEntitledMemberships(credentialMemberships.rows)
+      .filter((membership) => isCorporateMembershipTier(membership.membership_tier));
+    const personalMemberships = resolveEntitledMemberships(hostMemberships.rows)
+      .filter((membership) => isIndividualMembershipTier(membership.membership_tier));
+    if (corporateMemberships.length > 0 && personalMemberships.length > 0) {
+      return res.status(409).json({
+        error: 'corporate_membership_personal_host_conflict',
+        message: 'Cannot bind a corporate-tier credential onto an individual-tier account. Start from the corporate account and bind the personal credential so the corporate account remains canonical.',
+        corporate_memberships: corporateMemberships,
+        personal_memberships: personalMemberships,
+      });
+    }
+
     // Foot-gun gate: refuse silent consolidation. If credId has any app-state
     // attached (org membership, points, certification work, working-group
     // membership), binding will MOVE it onto the host — that's a real account
@@ -1117,12 +1191,25 @@ export function createAdminUsersRouter(): Router {
       }
     }
 
+    if (consolidateConfirmed && req.adminAccessMechanism === 'static_admin_api_key') {
+      return res.status(403).json({
+        error: 'identity_bearing_admin_required',
+        message: 'Destructive consolidation must be confirmed by an identity-bearing SSO admin session; the static admin API key cannot provide individual actor attribution.',
+      });
+    }
+
     // mergeUsers moves any app-state from credId to existingUserId, rebinds
     // credId's identity_workos_users row to existingUserId's identity as
     // is_primary = FALSE, and drops the orphan identity. Throws if either
     // user lacks an identity binding.
     try {
-      await mergeUsers(existingUserId, credId, adminUserId);
+      await mergeUsers(existingUserId, credId, adminUserId, {
+        auditContext: {
+          acting_workos_user_id: adminAuthCredentialId,
+          admin_access_mechanism: req.adminAccessMechanism ?? null,
+          consolidation_confirmed: consolidateConfirmed,
+        },
+      });
     } catch (err) {
       logger.error({ err, existingUserId, credId }, 'Admin link-credential: mergeUsers failed');
       return res.status(500).json({ error: 'Failed to bind credential' });
@@ -1396,6 +1483,33 @@ export function createAdminUsersRouter(): Router {
       });
     }
 
+    // A corporate credential must remain canonical once it carries an
+    // entitled corporate membership. Otherwise an operator could safely bind
+    // a personal credential onto it, then promote that credential and move
+    // the corporate membership onto the personal account.
+    const currentMembershipRows = await pool.query<CredentialOrganizationMembership>(
+      `SELECT o.workos_organization_id, o.membership_tier,
+              o.subscription_price_lookup_key, o.subscription_status,
+              o.subscription_amount, o.subscription_interval, o.is_personal,
+              o.subscription_canceled_at
+         FROM organization_memberships om
+         JOIN organizations o
+           ON o.workos_organization_id = om.workos_organization_id
+        WHERE om.workos_user_id = $1
+          AND o.subscription_canceled_at IS NULL
+        ORDER BY o.workos_organization_id`,
+      [currentPrimaryId],
+    );
+    const corporateMemberships = resolveEntitledMemberships(currentMembershipRows.rows)
+      .filter((membership) => isCorporateMembershipTier(membership.membership_tier));
+    if (corporateMemberships.length > 0) {
+      return res.status(409).json({
+        error: 'corporate_membership_primary_required',
+        message: 'Cannot promote another credential while the current primary holds an entitled corporate membership. Keep the corporate credential canonical.',
+        corporate_memberships: corporateMemberships,
+      });
+    }
+
     // Foot-gun gate: promote runs the same consolidation as link-credential.
     // Memberships whose partner key the incoming credential already holds are
     // DELETED by it — the outgoing row's role, seat, upstream membership id,
@@ -1417,12 +1531,26 @@ export function createAdminUsersRouter(): Router {
       }
     }
 
+    if (req.body?.consolidate === true && req.adminAccessMechanism === 'static_admin_api_key') {
+      return res.status(403).json({
+        error: 'identity_bearing_admin_required',
+        message: 'Destructive consolidation must be confirmed by an identity-bearing SSO admin session; the static admin API key cannot provide individual actor attribution.',
+      });
+    }
+
     // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary
     // rebind, AND the new primary's is_primary=TRUE flip all happen in one
     // transaction. This closes the window where the identity has zero
     // primaries.
     try {
-      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId, { ensurePrimaryFlag: true });
+      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId, {
+        ensurePrimaryFlag: true,
+        auditContext: {
+          acting_workos_user_id: adminAuthCredentialId,
+          admin_access_mechanism: req.adminAccessMechanism ?? null,
+          consolidation_confirmed: req.body?.consolidate === true,
+        },
+      });
     } catch (err) {
       logger.error(
         { err, userId, newPrimaryId, currentPrimaryId },

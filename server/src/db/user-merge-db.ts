@@ -120,6 +120,8 @@ export interface MergeUsersOptions {
    * already is_primary=TRUE in normal mergeUsers callers.
    */
   ensurePrimaryFlag?: boolean;
+  /** Additional server-derived context retained with the transactional merge audit. */
+  auditContext?: Record<string, unknown>;
 }
 
 /**
@@ -877,6 +879,7 @@ export async function mergeUsers(
           primary_user_id: primaryUserId,
           secondary_user_id: secondaryUserId,
           merged_at: summary.merged_at,
+          ...(options.auditContext ? { audit_context: options.auditContext } : {}),
           tables_affected: summary.tables_merged
             .filter(t => t.rows_moved > 0 || t.rows_skipped_duplicate > 0)
             .map(t => t.table_name),
