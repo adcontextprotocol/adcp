@@ -6,13 +6,17 @@ export const MAX_RATIONAL_POLYNOMIAL_DEGREE = 25;
 function validatePolynomial(value: RationalPolynomial, name: string): void {
   if (!Array.isArray(value) || value.length === 0 || value.length - 1 > MAX_RATIONAL_POLYNOMIAL_DEGREE) throw new RangeError(`${name} degree must be in [0, ${MAX_RATIONAL_POLYNOMIAL_DEGREE}]`);
   for (const coefficient of value) validateBoundedRational(coefficient, `${name} coefficient`);
+  if (value.length > 1 && compare(value[value.length - 1]!, ZERO) === 0) throw new RangeError(`${name} must be canonical (no trailing zero coefficient)`);
 }
 
 export function polynomial(coefficients: readonly Rational[]): RationalPolynomial {
-  validatePolynomial(coefficients, 'Polynomial');
+  if (!Array.isArray(coefficients) || coefficients.length > MAX_RATIONAL_POLYNOMIAL_DEGREE + 1) throw new RangeError(`Polynomial degree must be in [0, ${MAX_RATIONAL_POLYNOMIAL_DEGREE}]`);
+  for (const coefficient of coefficients) validateBoundedRational(coefficient, 'Polynomial coefficient');
   const result = [...coefficients];
   while (result.length > 1 && compare(result[result.length - 1]!, ZERO) === 0) result.pop();
-  return Object.freeze(result.length === 0 ? [ZERO] : result);
+  const normalized = Object.freeze(result.length === 0 ? [ZERO] : result);
+  validatePolynomial(normalized, 'Polynomial');
+  return normalized;
 }
 export function constant(value: Rational): RationalPolynomial { return polynomial([value]); }
 export function degree(value: RationalPolynomial): number { validatePolynomial(value, 'Polynomial'); return value.length - 1; }

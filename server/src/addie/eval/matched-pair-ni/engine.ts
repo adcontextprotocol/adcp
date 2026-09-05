@@ -4,11 +4,11 @@
  * 3540-3549, doi:10.1002/sim.3229. This module is diagnostic only; see
  * admission.ts. It does not implement confidence inversion or resizing.
  */
-import { evaluateInterval, interval, intervalAdd, intervalDividePositive, intervalMultiply, intervalSubtract, maximizePolynomial, sqrtInterval, type RationalInterval } from './algebraic.js';
+import { evaluateInterval, interval, intervalAdd, intervalDividePositive, intervalMultiply, intervalSubtract, isolateInteriorRoots, sqrtInterval, type RationalInterval } from './algebraic.js';
 import type { ExactInferenceCertificate, IndeterminateCertificate } from './certificates.js';
 import { MATCHED_PAIR_NI_ADMISSION, type MatchedPairNiAdmission } from './admission.js';
-import { constant, degree, divideWithRemainder, isZero, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale, type RationalPolynomial } from './polynomial.js';
-import { add, choose, compare, decimal, divide, equal, multiply, negate, pow, rational, subtract, type Rational, ONE, TWO, validateExternalRational, ZERO } from './rational.js';
+import { constant, degree, derivative, divideWithRemainder, evaluate, isZero, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale, type RationalPolynomial } from './polynomial.js';
+import { add, choose, compare, decimal, divide, equal, multiply, negate, pow, rational, rationalBitLength, subtract, type Rational, ONE, TWO, validateExternalRational, ZERO } from './rational.js';
 
 export const MATCHED_PAIR_NI_MAX_N = 25;
 // 24 exact dyadic subdivisions give a < 2^-24 nuisance interval while
@@ -17,6 +17,9 @@ export const MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS = 24;
 export const MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE = 25;
 /** Measured synchronous ceiling for exhaustive rejection-region certification. */
 export const MATCHED_PAIR_NI_MAX_SIZE_N = 8;
+/** Preflight limits prevent legal-but-expensive precision from entering Sturm work. */
+export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE = 128;
+export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE = 16;
 
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
 export interface ReducedMatchedPairState { readonly n: number; readonly x: number; readonly t: number; }
@@ -28,6 +31,7 @@ export interface MatchedPairNiResult {
   readonly diagnostic: Readonly<{
     /** Evidence about H0 only; deliberately not named `reject` or `decision`. */
     statisticalRejectNull: boolean;
+    readonly alphaDecision: 'reject_certified' | 'nonreject_certified' | 'indeterminate_alpha_overlap';
     readonly pValue: Readonly<{ lower: Rational; upper: Rational }>;
     readonly certificate?: ExactInferenceCertificate;
     readonly indeterminate?: IndeterminateCertificate;
@@ -36,6 +40,11 @@ export interface MatchedPairNiResult {
 type NoRootPromotionField = 'reject' extends keyof MatchedPairNiResult ? never : 'decision' extends keyof MatchedPairNiResult ? never : true;
 /** Compile-time sentinel: adding a root promotion decision fails typecheck. */
 export const MATCHED_PAIR_NI_NO_ROOT_PROMOTION_FIELD: NoRootPromotionField = true;
+function exceedsPrecisionBudget(state: ReducedMatchedPairState, margin: Rational, alpha: Rational): boolean {
+  const limit = state.n <= MATCHED_PAIR_NI_MAX_SIZE_N
+    ? MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE : MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE;
+  return rationalBitLength(margin) > limit || rationalBitLength(alpha) > limit;
+}
 
 function finiteCount(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`${name} must be a nonnegative safe integer`);
@@ -183,6 +192,28 @@ function reducedStateProbabilityInterval(state: ReducedMatchedPairState, margin:
 function probabilityRegionInterval(states: readonly ReducedMatchedPairState[], margin: Rational, phi: RationalInterval): RationalInterval {
   return states.reduce((result, state) => intervalAdd(result, reducedStateProbabilityInterval(state, margin, phi)), interval(ZERO, ZERO));
 }
+/** Engine-private factored maximum; its region derives only from E+M states. */
+function maximizeProbabilityRegion(region: RationalPolynomial, states: readonly ReducedMatchedPairState[], margin: Rational) {
+  const roots = isolateInteriorRoots(derivative(region), margin, ONE, MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS);
+  let lower = evaluate(region, margin); let upper = lower;
+  for (const point of [ONE, ...roots.exact]) {
+    const value = evaluate(region, point);
+    if (compare(value, lower) > 0) lower = value;
+    if (compare(value, upper) > 0) upper = value;
+  }
+  for (const root of roots.intervals) {
+    const factored = probabilityRegionInterval(states, margin, root);
+    // A private factorization is accepted only if its outer bounds are also
+    // compatible with the independently expanded rational polynomial bound.
+    const expanded = evaluateInterval(region, root);
+    if (compare(factored.lower, expanded.upper) > 0 || compare(factored.upper, expanded.lower) < 0) {
+      throw new RangeError('Factored probability enclosure conflicts with expanded polynomial');
+    }
+    if (compare(factored.lower, lower) > 0) lower = factored.lower;
+    if (compare(factored.upper, upper) > 0) upper = factored.upper;
+  }
+  return Object.freeze({ lower, upper, stationaryPointCount: roots.exact.length + roots.intervals.length, indeterminate: roots.unresolved });
+}
 function stateKey(state: ReducedMatchedPairState): string { return `${state.x}:${state.t}`; }
 /** Caches the exhaustive E step, keeping the certified result deterministic. */
 function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational) {
@@ -267,8 +298,9 @@ export function restrictedScoreEM(input: MatchedPairNiInput): MatchedPairNiResul
   validate(observed, input.margin, input.alpha);
   if (equal(input.margin, ZERO)) {
     const p = conditionalMcNemarPValue(observed);
-    return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, input.alpha) <= 0, pValue: Object.freeze({ lower: p, upper: p }) }) });
+    return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, input.alpha) <= 0, alphaDecision: compare(p, input.alpha) <= 0 ? 'reject_certified' : 'nonreject_certified', pValue: Object.freeze({ lower: p, upper: p }) }) });
   }
+  if (exceedsPrecisionBudget(observed, input.margin, input.alpha)) return indeterminate('complexity_ceiling');
   try {
     const states = enumerateReducedStates(observed.n);
     const eStep = buildEStep(states, input.margin);
@@ -295,8 +327,7 @@ function restrictedScoreEMReduced(
     }
     else if (compare(current.lower, observedE.upper) <= 0) return indeterminate('ambiguous_e_ordering');
   }
-  const maximum = maximizePolynomial(region, margin, ONE, MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS,
-    (phi) => probabilityRegionInterval(regionStates, margin, phi));
+  const maximum = maximizeProbabilityRegion(region, regionStates, margin);
   if (maximum.indeterminate) return indeterminate('root_isolation_ceiling');
   const pValue = Object.freeze({ lower: maximum.lower, upper: maximum.upper });
   const certificate: ExactInferenceCertificate = Object.freeze({
@@ -305,10 +336,12 @@ function restrictedScoreEMReduced(
     safeCeiling: Object.freeze({ maxN: MATCHED_PAIR_NI_MAX_N, maxPolynomialDegree: MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE, maxRootBisections: MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS }),
     exactness: 'certified_enclosure_only',
   });
-  return Object.freeze({ mode: 'restricted_score_e_plus_m', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(pValue.upper, alpha) <= 0, pValue, certificate }) });
+  const alphaDecision = compare(pValue.upper, alpha) <= 0 ? 'reject_certified'
+    : compare(pValue.lower, alpha) > 0 ? 'nonreject_certified' : 'indeterminate_alpha_overlap';
+  return Object.freeze({ mode: 'restricted_score_e_plus_m', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: alphaDecision === 'reject_certified', alphaDecision, pValue, certificate }) });
 }
 function indeterminate(reason: IndeterminateCertificate['reason']): MatchedPairNiResult {
-  return Object.freeze({ mode: 'restricted_score_e_plus_m', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: false, pValue: Object.freeze({ lower: ZERO, upper: ONE }), indeterminate: Object.freeze({ method: 'lloyd_moldovan_2008_restricted_score_e_plus_m', reason, reject: false }) }) });
+  return Object.freeze({ mode: 'restricted_score_e_plus_m', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: false, alphaDecision: 'indeterminate_alpha_overlap', pValue: Object.freeze({ lower: ZERO, upper: ONE }), indeterminate: Object.freeze({ method: 'lloyd_moldovan_2008_restricted_score_e_plus_m', reason, reject: false }) }) });
 }
 
 export interface NullBoundarySizeEnvelope {
@@ -317,7 +350,13 @@ export interface NullBoundarySizeEnvelope {
   readonly lower: RationalPolynomial;
   readonly upper: RationalPolynomial;
   readonly indeterminateStates: readonly ReducedMatchedPairState[];
-  readonly reason: 'indeterminate_p_value' | 'overlapping_p_value' | 'size_complexity_ceiling' | null;
+  /** Engine failures are distinct from a determinate p-value spanning alpha. */
+  readonly engineIndeterminacy: readonly Readonly<{
+    state: ReducedMatchedPairState;
+    reason: IndeterminateCertificate['reason'];
+  }>[];
+  readonly alphaOverlapStates: readonly ReducedMatchedPairState[];
+  readonly reason: IndeterminateCertificate['reason'] | 'overlapping_p_value' | 'size_complexity_ceiling' | null;
 }
 /**
  * Certified null-boundary size envelope. Any unresolved p-value is included
@@ -327,10 +366,13 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
   validate({ n, x: 0, t: 0 }, margin, alpha);
   if (equal(margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
   const states = enumerateReducedStates(n);
+  if (exceedsPrecisionBudget({ n, x: 0, t: 0 }, margin, alpha)) {
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: constant(ONE), indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
+  }
   if (n > MATCHED_PAIR_NI_MAX_SIZE_N) {
     let upper = constant(ZERO);
     for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, margin));
-    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, reason: 'size_complexity_ceiling' });
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   let eStep: ReturnType<typeof buildEStep>;
   try {
@@ -339,10 +381,12 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
     if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
     let upper = constant(ZERO);
     for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, margin));
-    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, reason: 'size_complexity_ceiling' });
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   let lower = constant(ZERO); let upper = constant(ZERO);
   const indeterminateStates: ReducedMatchedPairState[] = [];
+  const engineIndeterminacy: { state: ReducedMatchedPairState; reason: IndeterminateCertificate['reason'] }[] = [];
+  const alphaOverlapStates: ReducedMatchedPairState[] = [];
   try {
     for (const state of states) {
       const counts = { n11: n - state.t, n10: state.x, n01: state.t - state.x, n00: 0 };
@@ -351,6 +395,7 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
       if (outcome.diagnostic.indeterminate) {
         upper = polynomialAdd(upper, probability);
         indeterminateStates.push(state);
+        engineIndeterminacy.push(Object.freeze({ state, reason: outcome.diagnostic.indeterminate.reason }));
       } else if (outcome.diagnostic.statisticalRejectNull) {
         lower = polynomialAdd(lower, probability);
         upper = polynomialAdd(upper, probability);
@@ -359,17 +404,20 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
         // Include it only in the upper size region and advertise the uncertainty.
         upper = polynomialAdd(upper, probability);
         indeterminateStates.push(state);
+        alphaOverlapStates.push(state);
       }
     }
   } catch (error) {
     if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
     let fallbackUpper = constant(ZERO);
     for (const state of states) fallbackUpper = polynomialAdd(fallbackUpper, reducedStateProbabilityPolynomial(state, margin));
-    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: fallbackUpper, indeterminateStates: states, reason: 'size_complexity_ceiling' });
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: fallbackUpper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   return Object.freeze({
     status: indeterminateStates.length === 0 ? 'certified' : 'indeterminate', lower, upper,
-    indeterminateStates: Object.freeze(indeterminateStates), reason: indeterminateStates.length === 0 ? null : 'overlapping_p_value',
+    indeterminateStates: Object.freeze(indeterminateStates),
+    engineIndeterminacy: Object.freeze(engineIndeterminacy), alphaOverlapStates: Object.freeze(alphaOverlapStates),
+    reason: engineIndeterminacy[0]?.reason ?? (alphaOverlapStates.length > 0 ? 'overlapping_p_value' : null),
   });
 }
 /** Typed non-admitting contracts: confidence inversion and adaptive resizing are deliberately absent. */

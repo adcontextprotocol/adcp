@@ -52,7 +52,7 @@ export function compare(a: Rational, b: Rational): -1 | 0 | 1 {
   return value < 0n ? -1 : value > 0n ? 1 : 0;
 }
 export function equal(a: Rational, b: Rational): boolean { return compare(a, b) === 0; }
-export function abs(a: Rational): Rational { return a.numerator < 0n ? negate(a) : a; }
+export function abs(a: Rational): Rational { validateBoundedRational(a, 'Rational'); return a.numerator < 0n ? negate(a) : a; }
 export function pow(a: Rational, exponent: number): Rational {
   validateBoundedRational(a, 'Rational');
   if (!Number.isSafeInteger(exponent) || exponent < 0) throw new RangeError('Rational exponent must be a nonnegative safe integer');
@@ -81,8 +81,9 @@ export function choose(n: number, k: number): bigint {
   for (let i = 1; i <= selected; i++) result = result * BigInt(n - selected + i) / BigInt(i);
   return result;
 }
-export function display(a: Rational): string { return a.denominator === 1n ? String(a.numerator) : `${a.numerator}/${a.denominator}`; }
+export function display(a: Rational): string { validateBoundedRational(a, 'Rational'); return a.denominator === 1n ? String(a.numerator) : `${a.numerator}/${a.denominator}`; }
 function bitLength(value: bigint): number { return (value < 0n ? -value : value).toString(2).length; }
+export function rationalBitLength(value: Rational): number { validateBoundedRational(value, 'Rational'); return Math.max(bitLength(value.numerator), bitLength(value.denominator)); }
 /** Validate untrusted structural Rational values at the engine boundary. */
 export function validateExternalRational(value: Rational, name: string): void {
   if (typeof value?.numerator !== 'bigint' || typeof value?.denominator !== 'bigint' || value.denominator <= 0n) {

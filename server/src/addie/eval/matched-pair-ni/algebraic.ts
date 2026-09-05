@@ -138,7 +138,6 @@ export interface MaximumCertificate { readonly lower: Rational; readonly upper: 
  */
 export function maximizePolynomial(
   value: RationalPolynomial, lower: Rational, upper: Rational, maxSplits = 24,
-  encloseAt: ((at: RationalInterval) => RationalInterval) | undefined = undefined,
 ): MaximumCertificate {
   validateAlgebraicPolynomial(value); validateBoundedRational(lower, 'Maximum lower bound'); validateBoundedRational(upper, 'Maximum upper bound');
   if (!Number.isSafeInteger(maxSplits) || maxSplits < 1 || maxSplits > 64) throw new RangeError('Maximum root refinement must be an integer in [1, 64]');
@@ -151,7 +150,7 @@ export function maximizePolynomial(
     if (compare(candidate, maximum) > 0) maximum = candidate;
   }
   for (const root of roots.intervals) {
-    const candidate = encloseAt ? encloseAt(root) : evaluateInterval(value, root);
+    const candidate = evaluateInterval(value, root);
     if (compare(candidate.lower, minimum) > 0) minimum = candidate.lower;
     if (compare(candidate.upper, maximum) > 0) maximum = candidate.upper;
   }

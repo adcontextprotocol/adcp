@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
-import { interval, isolateInteriorRoots, maximizePolynomial } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
+import { interval, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
@@ -12,8 +13,7 @@ import {
   restrictedPhiInterval,
   restrictedScoreEM,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
-import { polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
-import { add, choose, compare, decimal, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
+import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   const margin = parseMatchedPairNiDecimal('0.10');
@@ -64,6 +64,13 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, -1)).toThrow(/\[1, 64\]/);
     expect(() => interval({ numerator: 2n, denominator: 2n }, ONE)).toThrow(/normalized/);
     expect(() => polynomial([{ numerator: 2n, denominator: 2n }])).toThrow(/normalized/);
+    expect(() => abs({ numerator: 2n, denominator: 2n })).toThrow(/normalized/);
+    expect(() => display({ numerator: 2n, denominator: 2n })).toThrow(/normalized/);
+    expect(() => abs({ numerator: 1n, denominator: -1n })).toThrow(/ceiling/);
+    expect(() => display({ numerator: 1n << 8_193n, denominator: 1n })).toThrow(/ceiling/);
+    expect(() => isZero([ZERO, ZERO])).toThrow(/canonical/);
+    expect(() => sturmSequence([ZERO, ZERO])).toThrow(/canonical/);
+    expect(() => divideWithRemainder([ONE], [ZERO, ZERO])).toThrow(/canonical/);
   });
 
   it('exhaustively reduces four-cell null probabilities for every small table', () => {
@@ -147,6 +154,34 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(envelope.reason).toBe('size_complexity_ceiling');
   });
 
+  it('preflights a legal 256-bit margin before n=25 algebraic work', () => {
+    const outcome = restrictedScoreEM({
+      counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: rational(1n, 1n << 255n), alpha,
+    });
+    expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
+    expect(outcome.diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
+  });
+
+  it('does not accept a caller-provided maximum enclosure callback', () => {
+    const cubic = [ZERO, rational(2), ZERO, negate(ONE)] as const;
+    const honest = maximizePolynomial(cubic, ZERO, ONE);
+    const withForgedExtraArgument = (maximizePolynomial as unknown as (...args: unknown[]) => typeof honest)(
+      cubic, ZERO, ONE, 24, () => interval(rational(100), rational(100)),
+    );
+    expect(compare(honest.upper, rational(11, 10))).toBeLessThan(0);
+    expect(withForgedExtraArgument).toEqual(honest);
+  });
+
+  it('keeps engine ambiguity distinct from a determinate alpha overlap in size envelopes', () => {
+    const ambiguous = nullBoundarySizeEnvelope(2, decimal('0.20'), alpha);
+    expect(ambiguous.status).toBe('indeterminate');
+    expect(ambiguous.reason).toBe('ambiguous_e_ordering');
+    expect(ambiguous.alphaOverlapStates).toEqual([]);
+    expect(ambiguous.engineIndeterminacy).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: 'ambiguous_e_ordering' }),
+    ]));
+  });
+
   it('conservatively propagates a real overlapping p-value matrix into upper envelopes', () => {
     for (const fixtureCase of [
       { counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, n: 4, x: 3, t: 3, margin: decimal('0.07') },
@@ -156,7 +191,10 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       const uncertain = nullBoundarySizeEnvelope(fixtureCase.n, fixtureCase.margin, midpoint(p.lower, p.upper));
       expect(uncertain.status).toBe('indeterminate');
       expect(uncertain.reason).toBe('overlapping_p_value');
+      expect(uncertain.engineIndeterminacy).toEqual([]);
+      expect(uncertain.alphaOverlapStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
       expect(uncertain.indeterminateStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
+      expect(restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha: midpoint(p.lower, p.upper) }).diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
     }
   });
 
