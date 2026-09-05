@@ -61,6 +61,11 @@ import {
 } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import {
+  TRAINING_SELLER_VAST_VERSIONS,
+  resolveProductVastVersions,
+  validateCreativeVastDocuments,
+} from './vast-document-validation.js';
+import {
   captureReportingMediaBuyCandidateDurably,
   getCoreRevisionContentPageForAccountDurably,
   hasCoreRevisionContentForAccountDurably,
@@ -15886,6 +15891,27 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
     }
 
+    if (!isThreeZeroStoryboardCompat(ctx)) {
+      const vastError = validateCreativeVastDocuments({
+        assets: candidateManifest?.assets ?? creativeShape.assets,
+        fieldPrefix: `creatives[${creativeId}]`,
+        productVastVersions: resolveProductVastVersions(
+          identity.formatOptionRef,
+          productValidationMap.values(),
+        ),
+        sellerVastVersions: TRAINING_SELLER_VAST_VERSIONS,
+      });
+      if (vastError) {
+        results.push({
+          creative_id: creativeId,
+          action: 'failed',
+          errors: [vastError],
+        });
+        stagedCreativeManifests.delete(creativeId);
+        continue;
+      }
+    }
+
     if (!isDryRun) {
       const manifest = candidateManifest;
       const storedCreative: CreativeState = {
@@ -17879,6 +17905,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
           negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
         },
+        ...(includeThreeOneFields(ctx) && {
+          creative_specs: {
+            vast_validation: 'document',
+            vast_versions: [...TRAINING_SELLER_VAST_VERSIONS],
+          },
+        }),
       },
     },
     creative: {
