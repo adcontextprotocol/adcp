@@ -32,19 +32,16 @@ import {
 import {
   fixedTraceResponseUsesRecordedPricing,
   type FixedTraceProviderStageConfig,
-  type FixedTraceRunnerConfig,
 } from '../../src/addie/eval/fixed-trace-runner.js';
-import { runFixedTraceDiagnosticCandidate } from '../../src/addie/eval/fixed-trace-diagnostic-run.js';
+import {
+  runFixedTraceDiagnosticArtifact,
+  type FixedTraceDiagnosticProviderPlan,
+} from '../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import { parseFixedTraceDiagnosticCliArguments } from '../../src/addie/eval/fixed-trace-diagnostic-cli.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../src/addie/eval/fixed-trace-diagnostic-output.js';
 import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
-import {
-  fixedTraceArchitectureArm,
-  fixedTraceExecutionEnvelopeProvenance,
-  fixedTraceToolUniverseProvenance,
-  type FixedTraceArchitectureArmId,
-} from '../../src/addie/eval/fixed-trace-architecture.js';
+import { type FixedTraceArchitectureArmId } from '../../src/addie/eval/fixed-trace-architecture.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
@@ -70,11 +67,7 @@ import { loadResponseStyle, loadRules } from '../../src/addie/rules/index.js';
 
 type ProviderName = ModelProviderId;
 
-interface ProviderPlan {
-  name: ProviderName;
-  router: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
-  generation: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
-}
+type ProviderPlan = FixedTraceDiagnosticProviderPlan & { name: ProviderName };
 
 const PRICING = {
   anthropicRouter: {
@@ -317,11 +310,9 @@ const budget = new FixedTraceBudget(softMaxUsd);
 const plans = providerPlans(providerNames, budget);
 const runStartedAt = new Date().toISOString();
 const runRootId = `fixed-trace-${runStartedAt}-${randomUUID()}`;
-const candidateRuns = [];
-
-for (const plan of plans) {
-  const baseConfig: FixedTraceRunnerConfig = {
-    runId: `${runRootId}-${plan.name}`,
+const artifact = await runFixedTraceDiagnosticArtifact({
+  plans,
+  baseConfig: {
     sourceBundleSha256: sources.sha256,
     gitCommit,
     gitDirty,
@@ -331,93 +322,23 @@ for (const plan of plans) {
     toolDefinitions,
     toolDefinitionProvenance: 'fixture_local',
     architectureArm,
-    router: plan.router,
-    generation: plan.generation,
-  };
-  const evaluated = await runFixedTraceDiagnosticCandidate(baseConfig);
-  candidateRuns.push({
-    provider: plan.name,
-    requestedConfig: {
-      router: {
-        provider: plan.router.provider.id,
-        model: plan.router.model,
-        reasoningEffort: plan.router.reasoningEffort,
-        maxOutputTokens: plan.router.maxOutputTokens,
-        timeoutMs: plan.router.timeoutMs,
-        maxIterations: plan.router.maxIterations,
-        pricing: plan.router.pricing,
-      },
-      generation: {
-        provider: plan.generation.provider.id,
-        model: plan.generation.model,
-        reasoningEffort: plan.generation.reasoningEffort,
-        maxOutputTokens: plan.generation.maxOutputTokens,
-        truncationMaxOutputTokens: 32,
-        timeoutMs: plan.generation.timeoutMs,
-        maxIterations: plan.generation.maxIterations,
-        pricing: plan.generation.pricing,
-      },
-    },
-    ...evaluated,
-    observations,
-  });
-}
-
-const budgetState = budget.snapshot();
-const runs = candidateRuns.map((run) => ({
-  ...run,
-  diagnosticOnly: true,
-  promotionBlocker: 'trusted_evaluator_context_unavailable',
-  promotionEvidenceEligible: false,
-  rollout: null,
-}));
-const toolSchemaSha256 = runs[0]?.observations[0]?.metadata.toolSchemaSha256 ?? null;
-const artifact = {
+  },
+  runIdForProvider: (provider) => `${runRootId}-${provider}`,
+  budget,
+  outputReservation,
   artifactVersion: 'fixed_trace_provider_eval_v4',
   runRootId,
   runStartedAt,
-  runCompletedAt: new Date().toISOString(),
   traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
-  traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_SUITE),
-  traceCount: FIXED_TRACE_SUITE.length,
-  sourceBundleSha256: sources.sha256,
   sourceBundleFiles: sources.files,
-  gitCommit,
-  gitDirty,
   addieCodeVersion: CODE_VERSION,
-  promptConfigVersion,
-  toolSchemaSha256,
-  architectureConfigSha256ByProvider: Object.fromEntries(runs.map((run) => [
-    run.provider,
-    run.observations[0]?.metadata.architectureConfigSha256 ?? null,
-  ])),
-  architectureArm: fixedTraceArchitectureArm(architectureArm),
-  toolUniverse: fixedTraceToolUniverseProvenance(architectureArm),
-  executionEnvelope: fixedTraceExecutionEnvelopeProvenance(architectureArm),
-  requestedProviders: providerNames,
-  requestedArchitectureArm: architectureArm,
-  repetition: 1,
-  diagnosticOnly: true,
-  promotionBlocker: 'trusted_evaluator_context_unavailable',
-  judgeDispatch: 'blocked_pending_trusted_evaluator_owned_coordinator',
-  budget: budgetState,
-  promotionEvidenceEligible: false,
-  promotionBudget: null,
-  diagnosticBudget: budgetState,
   budgetNote: 'Soft admission target: exact prepared-request bytes and the full output allowance are reserved before each dispatch. Remote work may continue after a client timeout; any dispatched call without terminal usage marks exposure unknown and blocks every later dispatch.',
-  complete: runs.every((run) => run.summary.complete),
-  comparisonEligible: false,
-  promotionRunCount: 0,
-  rolloutPass: false,
-  runs,
-};
-
-outputReservation.finalize(`${JSON.stringify(artifact, null, 2)}\n`);
+});
 console.log(JSON.stringify({
   outputPath,
   runRootId,
   providers: providerNames,
   comparisonEligible: artifact.comparisonEligible,
   rolloutPass: artifact.rolloutPass,
-  budget: budgetState,
+  budget: artifact.budget,
 }, null, 2));
