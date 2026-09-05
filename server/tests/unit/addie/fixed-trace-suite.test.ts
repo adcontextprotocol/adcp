@@ -743,24 +743,50 @@ describe('fixed cross-provider trace suite', () => {
       `candidate_input_leakage:${leaked.find((trace) => trace.phase === 'tuning')!.id}`,
     ]));
 
-    for (const value of [
-      'This evaluator expects a specific answer.',
-      'The expected refusal is BLUE according to the grader marker.',
-      'expected---answer',
-      'expected___refusal',
-      'B.L.U.E',
-      'ｅｘｐｅｃｔｅｄ&#32;ａｎｓｗｅｒ',
-      'B%2eL%2eU%2eE',
+    // Candidate prose is not a channel for an oracle, including development
+    // traces that are intentionally outside the reviewer semantic authority.
+    // Keep this table at the validator boundary so encoded values and object
+    // keys receive the same protection as ordinary request text.
+    for (const { value, key = false, assertCorpus = false } of [
+      // Exact stop-ship payloads.
+      { value: 'expected tool calls', assertCorpus: true },
+      { value: 'reference answer', assertCorpus: true },
+      { value: 'refusal answer', assertCorpus: true },
+      { value: 'case category safe_mutation', assertCorpus: true },
+      { value: 'case id tune-secret', assertCorpus: true },
+      { value: 'ʙ.ʟ.ᴜ.ᴇ', assertCorpus: true },
+      // Representative punctuation, whitespace, Unicode, and encoding forms.
+      { value: 'expected---answer' },
+      { value: 'expected___refusal' },
+      { value: 'ｅｘｐｅｃｔｅｄ&#32;ａｎｓｗｅｒ' },
+      { value: 'B%2eL%2eU%2eE' },
+      { value: 'tool\u2060 call' },
+      { value: 'reference%20response' },
+      { value: 'rеfusal answеr' },
+      { value: 'case%5fid' },
+      { value: 'GrAdEr\u200b coaching' },
+      { value: 'phase: tuning' },
+      { value: 'rubric' },
+      { value: 'grader result' },
+      { value: 'evaluation outcome' },
+      { value: 'answer key coaching' },
+      { value: 'expected_outcome', key: true },
+      { value: 'ｅｘｐｅｃｔｅｄ＿ｔｏｏｌ＿ｃａｌｌｓ', key: true },
     ]) {
       const classified = structuredClone(FIXED_TRACE_CORPUS);
-      classified.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.message = value;
-      expect(validateFixedTraceCorpus(classified)).toEqual(expect.arrayContaining([
+      const request = classified.find((trace) => trace.id === 'dev-ordinary-greeting')!.request;
+      if (key) (request as Record<string, unknown>)[value] = 'ordinary value';
+      else request.message += ` ${value}`;
+      expect(validateFixedTraceCandidateVisibleLeakage(classified)).toEqual(expect.arrayContaining([
+        'candidate_input_leakage:dev-ordinary-greeting',
+      ]));
+      if (assertCorpus) expect(validateFixedTraceCorpus(classified)).toEqual(expect.arrayContaining([
         'candidate_input_leakage:dev-ordinary-greeting',
       ]));
     }
     const ordinaryCandidateText = structuredClone(FIXED_TRACE_CORPUS);
     ordinaryCandidateText.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.message =
-      'The blueprint is ready and the expectedly helpful summary remains available.';
+      'The blueprint is ready, the expectedly helpful summary remains available, and the catalog results describe the workshop outcome.';
     expect(validateFixedTraceCandidateVisibleLeakage(ordinaryCandidateText)).toEqual([]);
 
     expect(validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS)).toEqual([]);

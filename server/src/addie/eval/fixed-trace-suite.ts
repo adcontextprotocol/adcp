@@ -41,7 +41,6 @@ import {
   validateFixedTraceCorpusSemanticAuthority,
   validateFixedTraceCorpusToolContracts,
 } from './fixed-trace-corpus-contracts.js';
-import type { FixedTraceCanonicalText } from './fixed-trace-corpus-contracts.js';
 import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
 
 /** Version lock for the predeclared partitioned corpus. */
@@ -1995,25 +1994,41 @@ export const FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST = Object.freeze({
   deniedIdentityTokens: Object.freeze(['google', 'openai', 'anthropic', 'microsoft', 'amazon', 'meta', 'apple', 'wpp', 'groupm', 'omnicom', 'publicis', 'dentsu', 'havas', 'brian o kelley', 'brianokelley', 'scope 3', 'scope3', 'nytimes com', 'nytimescom', 'satya nadella', 'satya_nadella', 'satyanadella', 'the trade desk', 'thetradedesk']),
 });
 
-// Ordinary product language such as "public", "catalog", or "access" is
-// legitimate candidate context.  Reject only evaluator vocabulary and explicit
-// outcome/policy coaching, including obfuscated forms after canonicalization.
+// Ordinary product language such as "blueprint", "expectedly", a workshop
+// "outcome", "catalog results", "public", or "access" is legitimate
+// candidate context. Reject evaluator and oracle vocabulary at word boundaries,
+// including normalized obfuscation.
+// Development requests are not authority-hashed, so this must fail closed for
+// every reviewed oracle class rather than rely on an external lock.
 const CANDIDATE_VISIBLE_LEAKAGE_MARKERS = Object.freeze([
-  'phase', 'evaluation', 'evaluator', 'grader', 'grading', 'rubric', 'grader marker',
+  'expectation', 'expected',
+  'tool call', 'tool calls',
+  'reference answer', 'reference response', 'reference solution',
+  'refusal', 'refusal answer', 'refusal response',
+  'case category', 'case id', 'case identifier', 'safe mutation',
+  'phase', 'evaluation', 'evaluator', 'oracle',
+  'grader', 'grading', 'rubric', 'grader marker',
+  'grader result', 'graded result', 'evaluation result', 'terminal result',
+  'grader outcome', 'graded outcome', 'evaluation outcome', 'terminal outcome',
+  'answer key', 'coaching',
   'expected answer', 'expected refusal', 'expected result', 'expected status',
   'expected outcome', 'desired output', 'failure mode', 'fixture outcome',
   'fixture result', 'policy disposition', 'result status', 'terminal status',
-  'answer key', 'blue',
+  'blue',
 ]);
 
-function containsCanonicalMarker(value: FixedTraceCanonicalText, marker: string): boolean {
+function canonicalMarkerPattern(marker: string): RegExp {
   const compact = canonicalFixedTraceText(marker).compact;
-  if (!compact) return false;
+  if (!compact) return /$^/u;
   // The canonicalizer has already decoded bounded HTML/percent layers and
   // folded reviewed confusables. Treat only non-alphanumerics as separators,
   // so expected---answer and B.L.U.E match while blueprint does not.
-  return new RegExp(`(?:^|[^a-z0-9])${[...compact].join('[^a-z0-9]*')}(?=$|[^a-z0-9])`, 'u').test(value.text);
+  return new RegExp(`(?:^|[^a-z0-9])${[...compact].join('[^a-z0-9]*')}(?=$|[^a-z0-9])`, 'u');
 }
+
+const CANDIDATE_VISIBLE_LEAKAGE_PATTERNS = Object.freeze(
+  CANDIDATE_VISIBLE_LEAKAGE_MARKERS.map((marker) => canonicalMarkerPattern(marker)),
+);
 
 /** This only receives detached snapshots; keys are candidate/evaluator data too. */
 function rawTextFragments(value: unknown): string[] {
@@ -2100,7 +2115,7 @@ function candidateVisibleLeakage(value: unknown): boolean {
   return rawTextFragments(value).some((leaf) => {
     const canonical = canonicalFixedTraceText(leaf);
     return canonical.malformedPercentEncoding
-      || CANDIDATE_VISIBLE_LEAKAGE_MARKERS.some((marker) => containsCanonicalMarker(canonical, marker));
+      || CANDIDATE_VISIBLE_LEAKAGE_PATTERNS.some((pattern) => pattern.test(canonical.text));
   });
 }
 
@@ -2126,7 +2141,10 @@ export function validateFixedTraceCandidateVisibleLeakage(
       if (trace.toolFixtures.some((fixture) => JSON.stringify(visible).includes(fixture.result))) {
         failures.push(`fixture_visible:${trace.id}`);
       }
-      if (candidateVisibleLeakage(visible)) failures.push(`candidate_input_leakage:${trace.id}`);
+      // `candidateVisibleTraceInput` intentionally projects only a deployable
+      // request shape. Audit the raw request too: candidate-visible object keys
+      // must not smuggle oracle vocabulary before shape validation rejects them.
+      if (candidateVisibleLeakage(trace.request)) failures.push(`candidate_input_leakage:${trace.id}`);
     }
     return failures;
   } catch {

@@ -51,6 +51,12 @@ const TEXT_CONFUSABLES: Readonly<Record<string, string>> = Object.freeze({
   '\u0432': 'b', '\u0455': 's', '\u04cf': 'l',
   '\u0131': 'i',
   '\u03b1': 'a', '\u03b2': 'b', '\u03b5': 'e', '\u03b7': 'n', '\u03b9': 'i', '\u03ba': 'k', '\u03bf': 'o', '\u03c1': 'p', '\u03c4': 't', '\u03c5': 'y', '\u03c7': 'x',
+  // Reviewed Latin small-cap and homoglyph forms. These occur in copied
+  // evaluator coaching and must not create an alternate oracle vocabulary.
+  '\u1d00': 'a', '\u0299': 'b', '\u1d04': 'c', '\u1d05': 'd', '\u1d07': 'e', '\ua730': 'f',
+  '\u0262': 'g', '\u029c': 'h', '\u026a': 'i', '\u1d0a': 'j', '\u1d0b': 'k', '\u029f': 'l',
+  '\u1d0d': 'm', '\u0274': 'n', '\u1d0f': 'o', '\u1d18': 'p', '\u024a': 'q', '\u0280': 'r',
+  '\ua731': 's', '\u1d1b': 't', '\u1d1c': 'u', '\u1d20': 'v', '\u1d21': 'w', '\u028f': 'y', '\u1d22': 'z',
   // The corpus only folds reviewed lookalikes.  Lambda is included because it
   // has appeared in an attempted spelling of a protected surname; this is not
   // intended to be a general transliteration table.
@@ -158,7 +164,7 @@ export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText 
   text = text.normalize('NFKD').toLocaleLowerCase('en-US').replace(/\p{M}/gu, '');
   for (const [confusable, replacement] of Object.entries(TEXT_CONFUSABLES)) text = text.replaceAll(confusable, replacement);
   text = text
-    .replace(/[\u200b-\u200d\ufeff]/g, '')
+    .replace(/\p{Cf}/gu, '')
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
     .replace(/\[\s*(?:\.|dot)\s*\]|\(\s*(?:\.|dot)\s*\)|\{\s*(?:\.|dot)\s*\}/g, '.')
     .replace(/\b(?:dot|period)\b/g, '.')
