@@ -18,6 +18,7 @@ import {
   type FixedTraceCase,
 } from './fixed-trace-suite.js';
 import type { FixedTraceToolDefinitionProvenance } from './fixed-trace-architecture.js';
+import { deepFreezeFixedTrace, snapshotFixedTraceJson } from './fixed-trace-safe-snapshot.js';
 
 /** A versioned, network-free admission contract for fixed-trace experiments. */
 export const FIXED_TRACE_EXPERIMENT_PLAN_VERSION = 'addie-fixed-trace-experiment-plan-v1' as const;
@@ -172,7 +173,7 @@ export type FixedTraceTrustedManifestResolver = (id: string) => FixedTraceTruste
 
 /** Stable identity for a resolver-owned manifest, used by the raw ledger. */
 export function fixedTraceTrustedManifestFingerprint(manifest: FixedTraceTrustedManifest): string {
-  return sha256(manifest);
+  return sha256(snapshotFixedTraceJson(manifest, 'trusted manifest'));
 }
 
 /**
@@ -214,10 +215,14 @@ export type FixedTraceHoldoutFinalizationConsumer = (id: string, frozenCandidate
 
 export interface FixedTraceRawLedgerEntry {
   sequence: number;
+  /** The plan-controlled stage grouping; it cannot be supplied out of order. */
+  phaseId: FixedTraceScreeningStage;
   armId: string;
   repetitionIndex: number;
   traceId: string;
   stage: 'router' | 'generation' | 'judge';
+  /** One ledger entry represents one configured stage invocation envelope. */
+  callIndex: 1;
   dispatched: boolean;
   requestedProvider: ModelProviderId | null;
   requestedModel: string | null;
@@ -291,54 +296,6 @@ export interface FixedTraceOfflinePlanValidation {
   planFingerprint: string;
 }
 
-/**
- * Copies only JSON data from a plain object. Reflection happens before any
- * value read, so accessors are never invoked. `structuredClone` rejects a
- * Proxy, which closes the remaining caller-controlled object membrane.
- */
-function snapshotJson(value: unknown, label: string): unknown {
-  const copy = (candidate: unknown, path: string): unknown => {
-    if (candidate === null || typeof candidate === 'string' || typeof candidate === 'boolean') return candidate;
-    if (typeof candidate === 'number') {
-      if (!Number.isFinite(candidate)) throw new Error(`${path} contains a non-finite number`);
-      return candidate;
-    }
-    if (typeof candidate !== 'object') throw new Error(`${path} is not JSON data`);
-    if (Array.isArray(candidate)) {
-      const descriptors = Object.getOwnPropertyDescriptors(candidate);
-      if (Object.getPrototypeOf(candidate) !== Array.prototype || Object.getOwnPropertySymbols(candidate).length > 0) {
-        throw new Error(`${path} must be a plain array without symbols`);
-      }
-      for (const [key, descriptor] of Object.entries(descriptors)) {
-        if (key !== 'length' && (!('value' in descriptor) || !descriptor.enumerable)) {
-          throw new Error(`${path} contains an accessor or hidden property`);
-        }
-      }
-      return candidate.map((item, index) => copy(item, `${path}[${index}]`));
-    }
-    if (Object.getPrototypeOf(candidate) !== Object.prototype || Object.getOwnPropertySymbols(candidate).length > 0) {
-      throw new Error(`${path} must be a plain object without symbols`);
-    }
-    const descriptors = Object.getOwnPropertyDescriptors(candidate);
-    const output: Record<string, unknown> = {};
-    for (const [key, descriptor] of Object.entries(descriptors)) {
-      if (!('value' in descriptor) || !descriptor.enumerable) {
-        throw new Error(`${path}.${key} must be an own enumerable data property`);
-      }
-      output[key] = copy(descriptor.value, `${path}.${key}`);
-    }
-    return output;
-  };
-  // Do this after descriptor validation: structuredClone otherwise invokes a
-  // getter. It reliably rejects Proxy values that can impersonate descriptors.
-  try {
-    structuredClone(value);
-  } catch {
-    throw new Error(`${label} must not contain a Proxy or non-cloneable value`);
-  }
-  return deepFreeze(copy(value, label));
-}
-
 function assertExactKeys(value: object, keys: readonly string[], label: string): void {
   const actual = Object.keys(value).sort();
   const expected = [...keys].sort();
@@ -363,12 +320,6 @@ function canonicalJson(value: unknown): string {
 
 function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
-}
-
-function deepFreeze<T>(value: T): T {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
-  for (const nested of Object.values(value)) deepFreeze(nested);
-  return Object.freeze(value);
 }
 
 function requireHash(value: string, label: string): void {
@@ -541,13 +492,19 @@ function assertFixedTraceExperimentPlanStructure(
   }
 }
 
+/** The sole boundary at which caller data becomes immutable plan data. */
+function validatedPlanSnapshot(plan: FixedTraceExperimentPlan): FixedTraceExperimentPlan {
+  const snapshot = snapshotFixedTraceJson(plan, 'experiment plan') as FixedTraceExperimentPlan;
+  assertFixedTraceExperimentPlanStructure(snapshot);
+  return snapshot;
+}
+
 /** Validate an untrusted plan without credentials, providers, outputs, or a resolver. */
 export function validateFixedTraceExperimentPlanOffline(plan: FixedTraceExperimentPlan): FixedTraceOfflinePlanValidation {
-  const snapshot = snapshotJson(plan, 'experiment plan') as FixedTraceExperimentPlan;
+  const snapshot = validatedPlanSnapshot(plan);
   // A submitted plan can describe only priced, already reviewed stages. Terra
   // and Sol have no reviewed repository price, so their descriptors cannot
   // enter an estimate or a budget reservation.
-  assertFixedTraceExperimentPlanStructure(snapshot);
   return Object.freeze({
     diagnosticOnly: true,
     comparisonEligible: false,
@@ -566,12 +523,17 @@ export function validateFixedTraceExperimentPlanOffline(plan: FixedTraceExperime
 export function validateFixedTraceRawAuditableLedgerOffline(
   plan: FixedTraceExperimentPlan,
   ledger: FixedTraceRawAuditableLedger,
+  expectedTrustedManifestSha256: string,
 ): void {
-  const safePlan = snapshotJson(plan, 'experiment plan') as FixedTraceExperimentPlan;
-  const safeLedger = snapshotJson(ledger, 'raw ledger') as FixedTraceRawAuditableLedger;
-  assertFixedTraceExperimentPlanStructure(safePlan);
+  const safePlan = validatedPlanSnapshot(plan);
+  const safeLedger = snapshotFixedTraceJson(ledger, 'raw ledger') as FixedTraceRawAuditableLedger;
+  requireHash(expectedTrustedManifestSha256, 'expected trustedManifestSha256');
   assertExactKeys(safeLedger, ['version', 'trustedManifestSha256', 'planFingerprint', 'budgetIdentitySha256', 'entries'], 'raw ledger');
   if (safeLedger.version !== FIXED_TRACE_RAW_LEDGER_VERSION) throw new Error('Unsupported raw fixed-trace ledger version');
+  if (safeLedger.trustedManifestSha256 !== expectedTrustedManifestSha256) throw new Error('Raw ledger trusted manifest mismatch');
+  if (safeLedger.planFingerprint !== sha256(safePlan)) throw new Error('Raw ledger plan fingerprint mismatch');
+  const expectedBudgetIdentity = estimateFixedTraceExperiment(safePlan, (() => null) as FixedTraceTrustedManifestResolver).budgetIdentitySha256;
+  if (safeLedger.budgetIdentitySha256 !== expectedBudgetIdentity) throw new Error('Raw ledger budget identity mismatch');
   if (!Array.isArray(safeLedger.entries)) throw new Error('Raw ledger entries must be an array');
   const traceById = new Map(FIXED_TRACE_SUITE.map((trace) => [trace.id, trace]));
   const expected = safePlan.arms.flatMap((arm) => selectedTraceIds(safePlan).flatMap((traceId) => {
@@ -584,7 +546,7 @@ export function validateFixedTraceRawAuditableLedgerOffline(
   if (safeLedger.entries.length !== expected.length) throw new Error('Raw ledger lacks complete planned-stage coverage');
   for (const [index, entry] of safeLedger.entries.entries()) {
     assertExactKeys(entry, [
-      'sequence', 'armId', 'repetitionIndex', 'traceId', 'stage', 'dispatched',
+      'sequence', 'phaseId', 'armId', 'repetitionIndex', 'traceId', 'stage', 'callIndex', 'dispatched',
       'requestedProvider', 'requestedModel', 'returnedProvider', 'returnedModel',
       'promptSha256', 'providerRequestSha256', 'responseSha256', 'rawRequestArtifact',
       'rawResponseArtifact', 'exactToolNames', 'caseControlSha256', 'executionEnvelopeSha256',
@@ -593,7 +555,7 @@ export function validateFixedTraceRawAuditableLedgerOffline(
       'finishReason', 'usage', 'estimatedCostUsd',
     ], `raw ledger entry ${index + 1}`);
     const want = expected[index]!;
-    if (entry.sequence !== index + 1 || entry.armId !== want.arm.id || entry.repetitionIndex !== want.arm.repetitionIndex || entry.traceId !== want.traceId || entry.stage !== want.stage) {
+    if (entry.sequence !== index + 1 || entry.phaseId !== want.arm.screeningStage || entry.armId !== want.arm.id || entry.repetitionIndex !== want.arm.repetitionIndex || entry.traceId !== want.traceId || entry.stage !== want.stage || entry.callIndex !== 1) {
       throw new Error('Raw ledger sequence does not exactly match the planned stages');
     }
     const trace = traceById.get(entry.traceId);
@@ -659,9 +621,9 @@ export function fixedTraceExperimentRunnerBinding(
     addieCodeVersion: plan.addieCodeVersion,
     stageControlVersion: plan.stageControlVersion,
     promptConfigVersion: plan.promptConfigVersion,
-    traceSuite: deepFreeze(structuredClone(suite.traceSuite)),
+    traceSuite: deepFreezeFixedTrace(snapshotFixedTraceJson(suite.traceSuite, 'trusted manifest trace suite')) as ReadonlyArray<FixedTraceCase>,
     traceSuiteSha256: suite.traceSuiteSha256,
-    toolDefinitions: deepFreeze(structuredClone(suite.toolDefinitions)),
+    toolDefinitions: deepFreezeFixedTrace(snapshotFixedTraceJson(suite.toolDefinitions, 'trusted manifest tool definitions')) as ReadonlyArray<AddieTool>,
     toolDefinitionProvenance: suite.toolDefinitionProvenance,
     providerDegradationInjectionEnabled: plan.providerDegradationInjectionEnabled,
   });
@@ -669,7 +631,8 @@ export function fixedTraceExperimentRunnerBinding(
 
 /** Omits only execution partition/finalization state so an approved candidate cannot drift at unlock. */
 export function fixedTraceCandidatePlanFingerprint(plan: FixedTraceExperimentPlan): string {
-  const { partition, ...candidatePlan } = plan;
+  const snapshot = validatedPlanSnapshot(plan);
+  const { partition, ...candidatePlan } = snapshot;
   return sha256({
     ...candidatePlan,
     partition: {
@@ -704,8 +667,8 @@ export function assertFixedTraceExperimentPlan(
   resolver: FixedTraceTrustedManifestResolver,
   holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver,
 ): void {
-  const snapshot = snapshotJson(plan, 'experiment plan') as FixedTraceExperimentPlan;
-  assertFixedTraceExperimentPlanStructure(snapshot, holdoutFinalizationResolver);
+  const snapshot = validatedPlanSnapshot(plan);
+  if (snapshot.partition.selected === 'holdout') assertHoldoutFinalization(snapshot, holdoutFinalizationResolver);
   resolveTrustedManifest(snapshot, resolver);
 }
 
@@ -719,10 +682,10 @@ export function fixedTraceExperimentPlanFingerprint(plan: FixedTraceExperimentPl
 export function fixedTraceExperimentExecutionOrder(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver, holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver): readonly string[] {
   void resolver;
   void holdoutFinalizationResolver;
-  validateFixedTraceExperimentPlanOffline(plan);
-  return Object.freeze([...plan.arms]
-    .sort((left, right) => sha256({ seed: plan.ordering.seed, arm: left.id, repetition: left.repetitionIndex })
-      .localeCompare(sha256({ seed: plan.ordering.seed, arm: right.id, repetition: right.repetitionIndex })) || left.id.localeCompare(right.id))
+  const snapshot = validatedPlanSnapshot(plan);
+  return Object.freeze([...snapshot.arms]
+    .sort((left, right) => sha256({ seed: snapshot.ordering.seed, arm: left.id, repetition: left.repetitionIndex })
+      .localeCompare(sha256({ seed: snapshot.ordering.seed, arm: right.id, repetition: right.repetitionIndex })) || left.id.localeCompare(right.id))
     .map((arm) => arm.id));
 }
 
@@ -750,20 +713,20 @@ function reservation(
 export function estimateFixedTraceExperiment(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver, holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver): FixedTraceDryRunEstimate {
   void resolver;
   void holdoutFinalizationResolver;
-  validateFixedTraceExperimentPlanOffline(plan);
+  const snapshot = validatedPlanSnapshot(plan);
   const candidate: FixedTraceStageReservation[] = [];
   const judges: FixedTraceStageReservation[] = [];
-  const traceIds = selectedTraceIds(plan);
-  for (const arm of plan.arms) {
-    if (arm.router) candidate.push(reservation(arm, 'router', arm.router, traceIds, plan.pricingAsOf));
-    if (arm.generation) candidate.push(reservation(arm, 'generation', arm.generation, traceIds, plan.pricingAsOf));
-    for (const judge of arm.judges ?? []) judges.push(reservation(arm, 'judge', judge, traceIds, plan.pricingAsOf));
+  const traceIds = selectedTraceIds(snapshot);
+  for (const arm of snapshot.arms) {
+    if (arm.router) candidate.push(reservation(arm, 'router', arm.router, traceIds, snapshot.pricingAsOf));
+    if (arm.generation) candidate.push(reservation(arm, 'generation', arm.generation, traceIds, snapshot.pricingAsOf));
+    for (const judge of arm.judges ?? []) judges.push(reservation(arm, 'judge', judge, traceIds, snapshot.pricingAsOf));
   }
   const candidateCeilingUsd = candidate.reduce((total, item) => total + item.ceilingUsd, 0);
   const judgeCeilingUsd = judges.reduce((total, item) => total + item.ceilingUsd, 0);
-  if (candidateCeilingUsd > plan.budgets.candidateCeilingUsd) throw new Error('Candidate worst-case reservation exceeds its separate budget');
-  if (judgeCeilingUsd > plan.budgets.judgeCeilingUsd) throw new Error('Judge worst-case reservation exceeds its separate budget');
-  const planFingerprint = fixedTraceExperimentPlanFingerprint(plan, resolver, holdoutFinalizationResolver);
+  if (candidateCeilingUsd > snapshot.budgets.candidateCeilingUsd) throw new Error('Candidate worst-case reservation exceeds its separate budget');
+  if (judgeCeilingUsd > snapshot.budgets.judgeCeilingUsd) throw new Error('Judge worst-case reservation exceeds its separate budget');
+  const planFingerprint = sha256(snapshot);
   const budgetIdentitySha256 = sha256({
     planFingerprint,
     candidate: candidate.map((item) => ({ ...item })),
@@ -774,7 +737,10 @@ export function estimateFixedTraceExperiment(plan: FixedTraceExperimentPlan, res
     budgetIdentitySha256,
     diagnosticOnly: true,
     comparisonEligible: false,
-    executionOrder: fixedTraceExperimentExecutionOrder(plan, resolver, holdoutFinalizationResolver),
+    executionOrder: Object.freeze([...snapshot.arms]
+      .sort((left, right) => sha256({ seed: snapshot.ordering.seed, arm: left.id, repetition: left.repetitionIndex })
+        .localeCompare(sha256({ seed: snapshot.ordering.seed, arm: right.id, repetition: right.repetitionIndex })) || left.id.localeCompare(right.id))
+      .map((arm) => arm.id)),
     candidate: Object.freeze({ ceilingUsd: candidateCeilingUsd, expectedSpendUsd: null, reservations: Object.freeze(candidate) }),
     judges: Object.freeze({ ceilingUsd: judgeCeilingUsd, expectedSpendUsd: null, reservations: Object.freeze(judges) }),
     totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd,

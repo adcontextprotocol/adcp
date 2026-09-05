@@ -1228,7 +1228,7 @@ export function publishReportingCoreLifecycleProbeRows(
   }, rows);
   ledger.publishedRevisions.set(obligation, revision);
   ledger.version += 1;
-  return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: revision.revision_content_sha256 };
+  return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: (revision as unknown as { revision_content_sha256: string }).revision_content_sha256 };
 }
 
 /**
@@ -2268,7 +2268,7 @@ function commitRevisionContent(
     reporting_rows: rows,
   })).digest('hex');
   const existing = ledger.revisionContents.get(revision.reporting_revision_id);
-  const committed: ReportingRevision = { ...structuredClone(revision), revision_content_sha256: bindingSha256 };
+  const committed = { ...structuredClone(revision), revision_content_sha256: bindingSha256 } as ReportingRevision;
   if (existing) {
     // Identity binds the complete metadata, authoritative rows, and binding
     // digest. Exact retries return the originally committed revision bytes.

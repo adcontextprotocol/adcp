@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
+import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, estimateFixedTraceExperiment, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
 import { FIXED_TRACE_PARTITION_MANIFEST, FIXED_TRACE_PARTITION_MANIFEST_SHA256, FIXED_TRACE_PARTITION_MANIFEST_VERSION } from '../../../src/addie/eval/fixed-trace-partition.js';
 import { CLAUDE_PRICING_VERSION } from '../../../src/addie/claude-pricing.js';
 import { CODE_VERSION } from '../../../src/addie/config-version.js';
@@ -26,16 +26,33 @@ describe('fixed-trace experiment plan offline boundary', () => {
     const terra = plan(); terra.arms[0].router!.model = 'gpt-5.6-terra';
     expect(() => validateFixedTraceExperimentPlanOffline(terra)).toThrow('Unavailable immutable pricing');
   });
+  it('does not invoke a hostile getter before rejecting it, and detaches estimates', () => {
+    const hostile = plan() as any;
+    let reads = 0;
+    Object.defineProperty(hostile, 'id', { enumerable: true, get() { reads += 1; return 'forged'; } });
+    expect(() => validateFixedTraceExperimentPlanOffline(hostile)).toThrow('own enumerable data');
+    expect(reads).toBe(0);
+    const mutable = plan();
+    const estimate = estimateFixedTraceExperiment(mutable, () => null);
+    mutable.arms[0].router!.maxOutputTokens = 999;
+    expect(estimate.candidate.reservations[0]?.outputTokens).toBe(FIXED_TRACE_PARTITION_MANIFEST.development.length * 10);
+    expect(Object.isFrozen(estimate.candidate.reservations)).toBe(true);
+    (mutable.arms as any).extra = true;
+    expect(() => validateFixedTraceExperimentPlanOffline(mutable)).toThrow('extra array property');
+  });
   it('requires exact ledger sequence, tools, and offline provider resolution', () => {
     const current = plan();
-    const entries = FIXED_TRACE_PARTITION_MANIFEST.development.map((traceId, index) => ({ sequence: index + 1, armId: 'router-r1', repetitionIndex: 1, traceId, stage: 'router' as const, dispatched: false, requestedProvider: 'anthropic' as const, requestedModel: 'claude-haiku-4-5', returnedProvider: null, returnedModel: null, promptSha256: HASH, providerRequestSha256: null, responseSha256: null, rawRequestArtifact: null, rawResponseArtifact: null, exactToolNames: FIXED_TRACE_SUITE.find((item) => item.id === traceId)!.toolFixtures.map((fixture) => fixture.name), caseControlSha256: HASH, executionEnvelopeSha256: HASH, directAdmissionSha256: HASH, maxOutputTokens: 10, timeoutMs: 1_000, maxIterations: 1, transportRetries: 0 as const, reasoningEffort: 'provider_default' as const, samplingMode: 'provider_no_sampling_control' as const, cacheMode: 'disabled' as const, status: 'not_dispatched' as const, finishReason: null, usage: null, estimatedCostUsd: null }));
-    const ledger = { version: 'addie-fixed-trace-raw-ledger-v1' as const, trustedManifestSha256: HASH, planFingerprint: HASH, budgetIdentitySha256: HASH, entries };
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger)).not.toThrow();
+    const entries = FIXED_TRACE_PARTITION_MANIFEST.development.map((traceId, index) => ({ sequence: index + 1, phaseId: 'router_only_screen' as const, armId: 'router-r1', repetitionIndex: 1, traceId, stage: 'router' as const, callIndex: 1 as const, dispatched: false, requestedProvider: 'anthropic' as const, requestedModel: 'claude-haiku-4-5', returnedProvider: null, returnedModel: null, promptSha256: HASH, providerRequestSha256: null, responseSha256: null, rawRequestArtifact: null, rawResponseArtifact: null, exactToolNames: FIXED_TRACE_SUITE.find((item) => item.id === traceId)!.toolFixtures.map((fixture) => fixture.name), caseControlSha256: HASH, executionEnvelopeSha256: HASH, directAdmissionSha256: HASH, maxOutputTokens: 10, timeoutMs: 1_000, maxIterations: 1, transportRetries: 0 as const, reasoningEffort: 'provider_default' as const, samplingMode: 'provider_no_sampling_control' as const, cacheMode: 'disabled' as const, status: 'not_dispatched' as const, finishReason: null, usage: null, estimatedCostUsd: null }));
+    const ledger = { version: 'addie-fixed-trace-raw-ledger-v1' as const, trustedManifestSha256: HASH, planFingerprint: validateFixedTraceExperimentPlanOffline(current).planFingerprint, budgetIdentitySha256: estimateFixedTraceExperiment(current, () => null).budgetIdentitySha256, entries };
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).not.toThrow();
     ledger.entries[1].sequence = 1;
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger)).toThrow('sequence');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('sequence');
     ledger.entries[1].sequence = 2; ledger.entries[0].exactToolNames = ['tampered'];
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger)).toThrow('tool names');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('tool names');
     ledger.entries[0].exactToolNames = FIXED_TRACE_SUITE.find((item) => item.id === ledger.entries[0].traceId)!.toolFixtures.map((fixture) => fixture.name); ledger.entries[0].returnedProvider = 'google'; ledger.entries[0].returnedModel = 'gemini-3.7-flash';
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger)).toThrow('dispatch, response');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('dispatch, response');
+    ledger.entries[0].returnedProvider = null; ledger.entries[0].returnedModel = null;
+    ledger.trustedManifestSha256 = 'b'.repeat(64);
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('trusted manifest mismatch');
   });
 });

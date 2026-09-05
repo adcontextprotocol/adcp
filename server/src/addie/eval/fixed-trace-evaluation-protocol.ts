@@ -9,10 +9,10 @@ import {
   validateFixedTracePricing,
 } from './fixed-trace-budget.js';
 import {
-  fixedTraceSuiteSha256,
   type FixedTraceCase,
   type FixedTracePricing,
 } from './fixed-trace-suite.js';
+import { deepFreezeFixedTrace, snapshotFixedTraceJson } from './fixed-trace-safe-snapshot.js';
 
 /**
  * A planning-only contract. It has no dispatcher and is deliberately unable
@@ -26,8 +26,7 @@ export type FixedTraceProtocolPhaseId =
   | 'router_screen'
   | 'oracle_generator_ceiling'
   | 'deployable_architecture'
-  | 'controlled_tuning'
-  | 'sealed_final';
+  | 'controlled_tuning';
 
 export type FixedTraceProtocolArchitecture =
   | 'two_stage_llm_router'
@@ -143,6 +142,13 @@ export interface FixedTraceEvaluationProtocol {
   trustedManifestId: string;
   pricingAsOf: string;
   contingencyBasisPoints: number;
+  /** A planning deficit only; it is not an executable or authenticated phase. */
+  unavailableFinalTarget: {
+    availability: 'unavailable';
+    uniqueCaseCount: number;
+    repetitions: number;
+    missingCaseCount: number;
+  };
   phases: readonly FixedTraceProtocolPhase[];
 }
 
@@ -216,7 +222,7 @@ export interface FixedTraceProtocolEstimate {
   stages: readonly FixedTraceProtocolStageEstimate[];
   phases: readonly FixedTraceProtocolPhaseEstimate[];
   screening: { candidateCeilingUsd: number; judgeCeilingUsd: number; totalCeilingUsd: number };
-  finalConfirmation: { candidateCeilingUsd: number; judgeCeilingUsd: number; totalCeilingUsd: number };
+  unavailableFinalTarget: FixedTraceEvaluationProtocol['unavailableFinalTarget'];
   candidateCeilingUsd: number;
   judgeCeilingUsd: number;
   contingencyUsd: number;
@@ -245,6 +251,14 @@ function positiveInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${label} must be a positive integer`);
 }
 
+function assertExactKeys(value: object, keys: readonly string[], label: string): void {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    throw new Error(`${label} has unknown, missing, or inherited fields`);
+  }
+}
+
 function pricing(profileId: string, pricingAsOf: string): FixedTraceProtocolPricingProfile {
   const profile = FIXED_TRACE_PROTOCOL_PRICING.find((candidate) => candidate.profileId === profileId);
   if (!profile) throw new Error(`Unavailable immutable pricing profile: ${profileId}`);
@@ -257,6 +271,11 @@ function pricing(profileId: string, pricingAsOf: string): FixedTraceProtocolPric
 }
 
 function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf: string): FixedTraceProtocolPricingProfile {
+  assertExactKeys(stage, [
+    'role', 'provider', 'model', 'reasoningEffort', 'pricingProfileId',
+    'maxInputTokensPerInvocation', 'maxOutputTokensPerInvocation', 'timeoutMs',
+    'maxInvocationsPerCase', 'transportRetries', 'samplingMode', 'temperature', 'cacheMode',
+  ], label);
   positiveInteger(stage.maxInputTokensPerInvocation, `${label}.maxInputTokensPerInvocation`);
   positiveInteger(stage.maxOutputTokensPerInvocation, `${label}.maxOutputTokensPerInvocation`);
   positiveInteger(stage.timeoutMs, `${label}.timeoutMs`);
@@ -273,11 +292,8 @@ function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf:
   return resolved;
 }
 
-function candidateProviders(arm: FixedTraceProtocolArm): Set<ModelProviderId> {
-  return new Set(arm.stages.filter((stage) => stage.role !== 'judge').map((stage) => stage.provider));
-}
-
 function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, pricingAsOf: string): void {
+  assertExactKeys(arm, ['id', 'architecture', 'admission', 'stages'], `protocol arm`);
   if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(arm.id)) throw new Error(`Invalid protocol arm ID: ${arm.id}`);
   const routers = arm.stages.filter((stage) => stage.role === 'router');
   const generations = arm.stages.filter((stage) => stage.role === 'generation');
@@ -302,13 +318,23 @@ function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, p
   if (judges.length !== 0) throw new Error(`${arm.id} judges are blocked in the diagnostic-only protocol`);
 }
 
-/** Fingerprints every material execution and budget control; no resolver is trusted here. */
+function validatedProtocolSnapshot(protocol: FixedTraceEvaluationProtocol): FixedTraceEvaluationProtocol {
+  const snapshot = snapshotFixedTraceJson(protocol, 'evaluation protocol') as FixedTraceEvaluationProtocol;
+  assertFixedTraceEvaluationProtocolStructure(snapshot);
+  return snapshot;
+}
+
+/** Fingerprints the exact detached projection which passed all protocol checks. */
 export function fixedTraceEvaluationProtocolFingerprint(protocol: FixedTraceEvaluationProtocol): string {
-  return sha256(protocol);
+  return sha256(validatedProtocolSnapshot(protocol));
 }
 
 /** Validate the planning projection without loading traces, credentials, or providers. */
-export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluationProtocol): void {
+function assertFixedTraceEvaluationProtocolStructure(protocol: FixedTraceEvaluationProtocol): void {
+  assertExactKeys(protocol, [
+    'version', 'id', 'trustedManifestId', 'pricingAsOf', 'contingencyBasisPoints',
+    'unavailableFinalTarget', 'phases',
+  ], 'evaluation protocol');
   if (protocol.version !== FIXED_TRACE_EVALUATION_PROTOCOL_VERSION || !protocol.id.trim() || !protocol.trustedManifestId.trim()) {
     throw new Error('Unsupported or incomplete fixed-trace evaluation protocol');
   }
@@ -317,11 +343,19 @@ export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluatio
   }
   const phaseIds = new Set<string>();
   const armIds = new Set<string>();
-  const requiredOrder = ['bounded_smoke', 'router_screen', 'oracle_generator_ceiling', 'deployable_architecture', 'controlled_tuning', 'sealed_final'] as const;
+  assertExactKeys(protocol.unavailableFinalTarget, ['availability', 'uniqueCaseCount', 'repetitions', 'missingCaseCount'], 'evaluation protocol.unavailableFinalTarget');
+  if (protocol.unavailableFinalTarget.availability !== 'unavailable'
+    || protocol.unavailableFinalTarget.uniqueCaseCount !== 38
+    || protocol.unavailableFinalTarget.repetitions !== 3
+    || protocol.unavailableFinalTarget.missingCaseCount !== 38) {
+    throw new Error('Protocol unavailable final target is invalid');
+  }
+  const requiredOrder = ['bounded_smoke', 'router_screen', 'oracle_generator_ceiling', 'deployable_architecture', 'controlled_tuning'] as const;
   if (protocol.phases.length !== requiredOrder.length || protocol.phases.some((phase, index) => phase.id !== requiredOrder[index])) {
     throw new Error('Protocol phases must use the exact required order');
   }
   for (const phase of protocol.phases) {
+    assertExactKeys(phase, ['id', 'uniqueCaseCount', 'repetitions', 'resultUse', 'arms'], 'protocol phase');
     if (phaseIds.has(phase.id)) throw new Error(`Duplicate protocol phase: ${phase.id}`);
     phaseIds.add(phase.id);
     positiveInteger(phase.uniqueCaseCount, `${phase.id}.uniqueCaseCount`);
@@ -335,6 +369,10 @@ export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluatio
     }
   }
   for (const required of requiredOrder) if (!phaseIds.has(required)) throw new Error(`Protocol is missing required phase: ${required}`);
+}
+
+export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluationProtocol): void {
+  void validatedProtocolSnapshot(protocol);
 }
 
 /**
@@ -405,10 +443,10 @@ function stageEstimate(
  * observed tokenization and tool-loop length are deliberately not guessed.
  */
 export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluationProtocol): FixedTraceProtocolEstimate {
-  assertFixedTraceEvaluationProtocol(protocol);
-  const stages = protocol.phases.flatMap((phase) => phase.arms.flatMap((arm) =>
-    arm.stages.map((stage) => stageEstimate(phase, arm, stage, protocol.pricingAsOf))));
-  const phases = protocol.phases.map((phase) => {
+  const snapshot = validatedProtocolSnapshot(protocol);
+  const stages = snapshot.phases.flatMap((phase) => phase.arms.flatMap((arm) =>
+    arm.stages.map((stage) => stageEstimate(phase, arm, stage, snapshot.pricingAsOf))));
+  const phases = snapshot.phases.map((phase) => {
     const entries = stages.filter((entry) => entry.phaseId === phase.id);
     const candidate = entries.filter((entry) => entry.role !== 'judge');
     const judges = entries.filter((entry) => entry.role === 'judge');
@@ -425,24 +463,22 @@ export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluat
       totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd,
     });
   });
-  const screeningPhases = phases.filter((phase) => phase.phaseId !== 'sealed_final');
-  const finalPhase = phases.find((phase) => phase.phaseId === 'sealed_final')!;
   const candidateCeilingUsd = phases.reduce((total, phase) => total + phase.candidateCeilingUsd, 0);
   const judgeCeilingUsd = phases.reduce((total, phase) => total + phase.judgeCeilingUsd, 0);
-  const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * protocol.contingencyBasisPoints / 10_000;
+  const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * snapshot.contingencyBasisPoints / 10_000;
   const summarize = (source: readonly FixedTraceProtocolPhaseEstimate[]) => Object.freeze({
     candidateCeilingUsd: source.reduce((total, phase) => total + phase.candidateCeilingUsd, 0),
     judgeCeilingUsd: source.reduce((total, phase) => total + phase.judgeCeilingUsd, 0),
     totalCeilingUsd: source.reduce((total, phase) => total + phase.totalCeilingUsd, 0),
   });
   return Object.freeze({
-    protocolFingerprint: fixedTraceEvaluationProtocolFingerprint(protocol),
+    protocolFingerprint: sha256(snapshot),
     dispatchable: false,
     expectedSpendUsd: null,
     stages: Object.freeze(stages),
     phases: Object.freeze(phases),
-    screening: summarize(screeningPhases),
-    finalConfirmation: summarize([finalPhase]),
+    screening: summarize(phases),
+    unavailableFinalTarget: snapshot.unavailableFinalTarget,
     candidateCeilingUsd,
     judgeCeilingUsd,
     contingencyUsd,
@@ -474,18 +510,6 @@ const generation = (
   samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
 });
 
-const judge = (
-  provider: ModelProviderId,
-  model: string,
-  reasoningEffort: ModelReasoningEffort,
-  pricingProfileId: string,
-): FixedTraceProtocolStage => ({
-  role: 'judge', provider, model, reasoningEffort, pricingProfileId,
-  maxInputTokensPerInvocation: 8_192, maxOutputTokensPerInvocation: 600,
-  timeoutMs: 60_000, maxInvocationsPerCase: 1, transportRetries: 0,
-  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
-});
-
 const PRICE = Object.freeze({
   haiku: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
   sonnet: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
@@ -499,12 +523,15 @@ export const FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES = Object.freeze([
 ]);
 
 /** A closed, diagnostic-only projection with no promotion or execution path. */
-export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProtocol = Object.freeze({
+export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProtocol = deepFreezeFixedTrace({
   version: FIXED_TRACE_EVALUATION_PROTOCOL_VERSION,
   id: 'addie-6842-6846-staged-v1',
   trustedManifestId: 'externally-owned-addie-fixed-trace-v120',
   pricingAsOf: '2026-09-05T12:00:00.000Z',
   contingencyBasisPoints: 0,
+  unavailableFinalTarget: {
+    availability: 'unavailable', uniqueCaseCount: 38, repetitions: 3, missingCaseCount: 38,
+  },
   phases: Object.freeze([
     Object.freeze({
       id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1, resultUse: 'diagnostic_only',
@@ -541,14 +568,6 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
       id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3, resultUse: 'diagnostic_only',
       arms: Object.freeze([
         Object.freeze({ id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-        ]) }),
-      ]),
-    }),
-    Object.freeze({
-      id: 'sealed_final', uniqueCaseCount: 38, repetitions: 3, resultUse: 'diagnostic_only',
-      arms: Object.freeze([
-        Object.freeze({ id: 'final-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
           router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
         ]) }),
       ]),

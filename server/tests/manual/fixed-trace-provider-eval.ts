@@ -326,7 +326,7 @@ if (cliArguments.validateOnly) {
   process.exit(0);
 }
 if (!outputArgument?.trim()) throw new Error('--output is required');
-const outputPath = resolve(outputArgument);
+resolve(outputArgument);
 throw new Error('Live fixed-trace replay is disabled pending an evaluator-owned execution-contract review');
 // This exclusive create happens before source inspection, credentials,
 // provider construction, or dispatch. Never unlink it: an empty file is the
