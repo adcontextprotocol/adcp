@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION, assertFixedTraceExperimentPlan, estimateFixedTraceExperiment, fixedTraceCandidatePlanFingerprint, fixedTraceExperimentPlanFingerprint, fixedTraceTrustedManifestFingerprint, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
+import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION, assertFixedTraceExperimentPlan, estimateFixedTraceExperiment, fixedTraceCandidatePlanFingerprint, fixedTraceExperimentPlanFingerprint, fixedTraceTrustedManifestFingerprint, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
 import { FIXED_TRACE_PARTITION_MANIFEST, FIXED_TRACE_PARTITION_MANIFEST_SHA256, FIXED_TRACE_PARTITION_MANIFEST_VERSION } from '../../../src/addie/eval/fixed-trace-partition.js';
 import { CLAUDE_PRICING_VERSION } from '../../../src/addie/claude-pricing.js';
 import { CODE_VERSION } from '../../../src/addie/config-version.js';
@@ -53,42 +53,43 @@ describe('fixed-trace experiment plan offline boundary', () => {
     (mutable.arms as any).extra = true;
     expect(() => validateFixedTraceExperimentPlanOffline(mutable)).toThrow('extra array property');
   });
-  it('validates a declared holdout gate before its resolver check without recursive fingerprinting', () => {
-    const holdout = plan() as any;
-    holdout.partition = {
+  it('reclassifies the repository-visible split as development validation, never a confirmatory holdout', () => {
+    const validation = plan() as any;
+    validation.partition = {
       manifestVersion: FIXED_TRACE_PARTITION_MANIFEST_VERSION,
       manifestSha256: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
-      selected: 'holdout',
-      finalizationGate: { version: FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION, recordId: 'finalize-1' },
+      selected: 'repository_visible_development_validation',
     };
-    holdout.arms[0].router.requestBounds.inputBytesByTrace = Object.fromEntries(
-      FIXED_TRACE_PARTITION_MANIFEST.holdout.map((id) => [id, [100]]),
+    validation.arms[0].router.requestBounds.inputBytesByTrace = Object.fromEntries(
+      FIXED_TRACE_PARTITION_MANIFEST.repositoryVisibleDevelopmentValidation.map((id) => [id, [100]]),
     );
-    const fingerprint = fixedTraceCandidatePlanFingerprint(holdout);
-    expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
-    expect(() => assertFixedTraceExperimentPlan(holdout, () => null, () => ({
-      version: FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION,
-      trustedManifestId: holdout.trustedManifestId,
-      frozenCandidatePlanFingerprint: fingerprint,
-      consumed: false,
-    }))).toThrow('Trusted fixed-trace manifest is locked');
+    expect(validateFixedTraceExperimentPlanOffline(validation)).toMatchObject({ diagnosticOnly: true, dispatchable: false });
+    expect(FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION).toContain('not_confirmatory_holdout');
+    expect(() => assertFixedTraceExperimentPlan(validation, () => null)).toThrow('locked');
+    validation.partition.selected = 'holdout';
+    expect(() => validateFixedTraceExperimentPlanOffline(validation)).toThrow('Only repository-visible development partitions');
   });
-  it('requires exact ledger sequence, tools, and offline provider resolution', () => {
+  it('rejects every syntax-shaped ledger until a trusted coordinator binds exact execution expectations', () => {
     const current = plan();
-    const entries = FIXED_TRACE_PARTITION_MANIFEST.development.map((traceId, index) => ({ sequence: index + 1, phaseId: 'router_only_screen' as const, armId: 'router-r1', repetitionIndex: 1, traceId, stage: 'router' as const, callIndex: 1 as const, dispatched: false, requestedProvider: 'anthropic' as const, requestedModel: 'claude-haiku-4-5', returnedProvider: null, returnedModel: null, promptSha256: HASH, providerRequestSha256: null, responseSha256: null, rawRequestArtifact: null, rawResponseArtifact: null, exactToolNames: FIXED_TRACE_SUITE.find((item) => item.id === traceId)!.toolFixtures.map((fixture) => fixture.name), caseControlSha256: HASH, executionEnvelopeSha256: HASH, directAdmissionSha256: HASH, maxOutputTokens: 10, timeoutMs: 1_000, maxIterations: 1, transportRetries: 0 as const, reasoningEffort: 'provider_default' as const, samplingMode: 'provider_no_sampling_control' as const, cacheMode: 'disabled' as const, status: 'not_dispatched' as const, finishReason: null, usage: null, estimatedCostUsd: null }));
+    const entries = FIXED_TRACE_PARTITION_MANIFEST.development.map((traceId, index) => ({ sequence: index + 1, phaseId: 'router_only_screen' as const, armId: 'router-r1', repetitionIndex: 1, traceId, stage: 'router' as const, callIndex: 1, attemptIndex: 1, dispatched: false, requestedProvider: 'anthropic' as const, requestedModel: 'claude-haiku-4-5', returnedProvider: null, returnedModel: null, promptSha256: HASH, systemSha256: HASH, docsSha256: HASH, toolSchemaSha256: HASH, providerRequestSha256: null, responseSha256: null, rawRequestArtifact: null, rawResponseArtifact: null, exactToolNames: FIXED_TRACE_SUITE.find((item) => item.id === traceId)!.toolFixtures.map((fixture) => fixture.name), caseControlSha256: HASH, executionEnvelopeSha256: HASH, directAdmissionSha256: HASH, simulatorReceiptSha256: HASH, simulatorResultProvenanceSha256: HASH, maxOutputTokens: 10, timeoutMs: 1_000, maxIterations: 1, transportRetries: 0 as const, reasoningEffort: 'provider_default' as const, samplingMode: 'provider_no_sampling_control' as const, cacheMode: 'disabled' as const, pricingProfileId: CLAUDE_PRICING_VERSION, failureDenominatorId: 'all-planned-case-stage-invocations-v1', status: 'not_dispatched' as const, finishReason: null, usage: null, estimatedCostUsd: null }));
     const ledger = { version: 'addie-fixed-trace-raw-ledger-v1' as const, trustedManifestSha256: HASH, planFingerprint: validateFixedTraceExperimentPlanOffline(current).planFingerprint, budgetIdentitySha256: estimateFixedTraceExperiment(current, () => null).budgetIdentitySha256, entries };
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).not.toThrow();
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('unavailable pending a trusted evaluator-owned coordinator');
     const hostileLedger = { ...ledger } as any;
     Object.defineProperty(hostileLedger, '__proto__', { enumerable: true, value: { poisoned: true } });
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, hostileLedger, HASH)).toThrow('dangerous prototype key');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, hostileLedger, HASH)).toThrow('unavailable pending a trusted evaluator-owned coordinator');
     ledger.entries[1].sequence = 1;
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('sequence');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('unavailable pending a trusted evaluator-owned coordinator');
     ledger.entries[1].sequence = 2; ledger.entries[0].exactToolNames = ['tampered'];
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('tool names');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('unavailable pending a trusted evaluator-owned coordinator');
     ledger.entries[0].exactToolNames = FIXED_TRACE_SUITE.find((item) => item.id === ledger.entries[0].traceId)!.toolFixtures.map((fixture) => fixture.name); ledger.entries[0].returnedProvider = 'google'; ledger.entries[0].returnedModel = 'gemini-3.7-flash';
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('dispatch, response');
+    ledger.entries[0].callIndex = 99;
+    ledger.entries[0].promptSha256 = 'f'.repeat(64);
+    ledger.entries[0].caseControlSha256 = 'e'.repeat(64);
+    ledger.entries[0].executionEnvelopeSha256 = 'd'.repeat(64);
+    ledger.entries[0].directAdmissionSha256 = 'c'.repeat(64);
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('unavailable pending a trusted evaluator-owned coordinator');
     ledger.entries[0].returnedProvider = null; ledger.entries[0].returnedModel = null;
     ledger.trustedManifestSha256 = 'b'.repeat(64);
-    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('trusted manifest mismatch');
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('unavailable pending a trusted evaluator-owned coordinator');
   });
 });

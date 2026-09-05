@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto';
 import type { ModelProviderId, ModelReasoningEffort } from '../model-providers/model-provider.js';
 import {
   GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
+  OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
 } from '../model-cost-pricing.js';
 import { CLAUDE_PRICING_VERSION } from '../claude-pricing.js';
+import { OPENAI_ROUTER_MODEL } from '../model-providers/openai-responses-provider.js';
 import {
   fixedTraceEstimatedCostUsd,
   validateFixedTracePricing,
@@ -16,7 +18,7 @@ import { deepFreezeFixedTrace, snapshotFixedTraceJson } from './fixed-trace-safe
 
 /**
  * A planning-only contract. It has no dispatcher and is deliberately unable
- * to make a corpus, an execution envelope, or a sealed holdout trusted.
+ * to make a corpus, an execution envelope, or a confirmatory final pack trusted.
  */
 export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
   'addie-fixed-trace-evaluation-protocol-v1' as const;
@@ -24,26 +26,32 @@ export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
 /**
  * Evaluator-owned confirmatory precision rule. The conservative normal
  * approximation assumes the maximum possible variance (1) of a paired
- * case-level difference in [-1, 1], with one-sided alpha .025 and 80% power.
- * The non-inferiority margin is limiting: ceil((1.9599639845 + .8416212336)^2
- * / .03^2) = 8,721 independent paired cases. This is deliberately a sample
- * requirement, not a price quote or an authorization to spend.
+ * case-level difference in [-1, 1]. The primary family is exactly two
+ * one-sided claims (superiority and non-inferiority). Holm's first rejection
+ * is allocated alpha .0125, which yields the conservative normal-approximate
+ * requirements below. An evaluator-owned exact paired-discordance power
+ * calculation remains required before a confirmatory claim.
  */
 export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
   version: 'addie-fixed-trace-confirmatory-power-v1',
   unit: 'unique_paired_case',
   repetitionsCountAsIndependentCases: false,
-  oneSidedAlpha: 0.025,
+  primaryHypothesisFamily: Object.freeze({
+    size: 2,
+    correction: 'holm',
+    orderedOneSidedAlpha: Object.freeze([0.0125, 0.025]),
+  }),
   targetPower: 0.8,
   conservativePairedDifferenceVarianceUpperBound: 1,
   superiorityMarginPercentagePoints: 5,
   nonInferiorityMarginPercentagePoints: -3,
-  superiorityRequiredIndependentEvaluableCases: 3_140,
-  nonInferiorityRequiredIndependentEvaluableCases: 8_721,
-  requiredIndependentEvaluableCases: 8_721,
+  superiorityRequiredIndependentEvaluableCases: 3_803,
+  nonInferiorityRequiredIndependentEvaluableCases: 10_562,
+  requiredIndependentEvaluableCases: 10_562,
   requiredAnalysis: Object.freeze({
     resampling: 'grouped_stratified_case_level_bootstrap',
     multiplicityCorrection: 'holm',
+    pairedDiscordancePower: 'evaluator_owned_exact_paired_discordance_contract_unavailable',
     pairedDiscordanceTest: 'predeclared_exact_paired_test_required',
   }),
   currentScreeningTuningUniqueCaseCount: 120,
@@ -84,6 +92,20 @@ export interface FixedTraceProtocolPricingProfile extends FixedTracePricing {
  * must add a reviewed ceiling instead of silently reusing these values.
  */
 export const FIXED_TRACE_PROTOCOL_PRICING = Object.freeze([
+  Object.freeze({
+    provider: 'openai',
+    model: OPENAI_ROUTER_MODEL,
+    profileId: `${OPENAI_GPT_5_6_LUNA_PRICING_VERSION}:${OPENAI_ROUTER_MODEL}`,
+    version: OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
+    validBefore: '2026-09-06T00:00:00.000Z',
+    inputUsdPerMillionTokens: 0.2,
+    outputUsdPerMillionTokens: 1.2,
+    cacheReadUsdPerMillionTokens: null,
+    cacheWriteUsdPerMillionTokens: null,
+    cacheReadAccounting: 'unsupported',
+    cacheWriteAccounting: 'unsupported',
+    source: 'Repository OpenAI Luna router price pin, checked 2026-08-26.',
+  }),
   Object.freeze({
     provider: 'anthropic',
     model: 'claude-haiku-4-5',
@@ -130,6 +152,8 @@ export const FIXED_TRACE_PROTOCOL_PRICING = Object.freeze([
 
 export interface FixedTraceProtocolStage {
   role: FixedTraceProtocolStageRole;
+  /** Judges receive blinded candidate artifacts; candidate stages do not. */
+  blinded: true | null;
   provider: ModelProviderId;
   model: string;
   reasoningEffort: ModelReasoningEffort;
@@ -147,7 +171,7 @@ export interface FixedTraceProtocolStage {
 }
 
 const STAGE_FIELD_KEYS = Object.freeze([
-  'role', 'provider', 'model', 'reasoningEffort', 'pricingProfileId',
+  'role', 'blinded', 'provider', 'model', 'reasoningEffort', 'pricingProfileId',
   'maxInputTokensPerInvocation', 'maxOutputTokensPerInvocation', 'timeoutMs',
   'maxInvocationsPerCase', 'transportRetries', 'samplingMode', 'temperature', 'cacheMode',
 ] as const);
@@ -156,9 +180,30 @@ export interface FixedTraceProtocolArm {
   id: string;
   architecture: FixedTraceProtocolArchitecture;
   admission: FixedTraceProtocolAdmission;
+  /** The three architecture arms share this frozen comparison universe. */
+  ablationControlId: string | null;
+  /** Luna may judge only after an independently verified calibration admission. */
+  lunaJudgeCalibration: 'not_applicable' | 'requires_verified_luna_judge_calibration';
   /** Each judge appears once; exactly two are required for compared outputs. */
   stages: readonly FixedTraceProtocolStage[];
 }
+
+/**
+ * Exactly what the architecture ablation holds fixed. These are contracts for
+ * a future evaluator, not authority to run one. The generator's stage record
+ * supplies the exact provider/model/effort/limits; all three final arms use
+ * that same record.
+ */
+export const FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL = Object.freeze({
+  id: 'fixed-trace-architecture-ablation-v1',
+  cases: 'same_evaluator_owned_cases_and_order',
+  generator: 'same_anthropic_claude_sonnet_5_provider_default_stage',
+  promptToolUniverse: 'same_production_shaped_prompt_system_docs_tools_schemas',
+  simulatorReceipts: 'same_fixed_trace_simulator_receipts_and_result_provenance',
+  executionLimits: 'same_input_output_timeout_invocation_retry_cache_sampling_controls',
+  judging: 'same_two_blinded_provider_excluding_judges',
+  failureDenominator: 'same_all_planned_case_stage_invocations_including_failures',
+} as const);
 
 export interface FixedTraceProtocolPhase {
   id: FixedTraceProtocolPhaseId;
@@ -255,7 +300,7 @@ export interface FixedTraceProtocolEstimate {
   expectedSpendUsd: null;
   stages: readonly FixedTraceProtocolStageEstimate[];
   phases: readonly FixedTraceProtocolPhaseEstimate[];
-  screening: { candidateCeilingUsd: number; judgeCeilingUsd: number; totalCeilingUsd: number };
+  screening: { candidateCeilingUsd: number; judgeCeilingUsd: number; contingencyUsd: number; totalCeilingUsd: number };
   unavailableFinalTarget: FixedTraceEvaluationProtocol['unavailableFinalTarget'];
   /** The confirmatory sample remains unpriced and cannot authorize spend. */
   budgetProjection: {
@@ -386,6 +431,9 @@ function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf:
   if (stage.transportRetries !== 0 || stage.samplingMode !== 'provider_no_sampling_control' || stage.temperature !== null || stage.cacheMode !== 'disabled') {
     throw new Error(`${label} has an unsupported execution control`);
   }
+  if ((stage.role === 'judge' && stage.blinded !== true) || (stage.role !== 'judge' && stage.blinded !== null)) {
+    throw new Error(`${label} has an invalid blinded-judge control`);
+  }
   const resolved = pricing(stage.pricingProfileId, pricingAsOf);
   if (
     resolved.profileId !== stage.pricingProfileId
@@ -404,6 +452,7 @@ function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf:
  * may provide JSON that equals them, but cannot select a price cohort.
  */
 const PRICE = Object.freeze({
+  luna: `${OPENAI_GPT_5_6_LUNA_PRICING_VERSION}:${OPENAI_ROUTER_MODEL}`,
   haiku: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
   sonnet: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
   gemini: `${GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION}:gemini-3.7-flash`,
@@ -415,7 +464,7 @@ const router = (
   reasoningEffort: ModelReasoningEffort,
   pricingProfileId: string,
 ): FixedTraceProtocolStage => Object.freeze({
-  role: 'router', provider, model, reasoningEffort, pricingProfileId,
+  role: 'router', blinded: null, provider, model, reasoningEffort, pricingProfileId,
   maxInputTokensPerInvocation: 4_096, maxOutputTokensPerInvocation: 300,
   timeoutMs: 120_000, maxInvocationsPerCase: 1, transportRetries: 0,
   samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
@@ -427,17 +476,34 @@ const generation = (
   reasoningEffort: ModelReasoningEffort,
   pricingProfileId: string,
 ): FixedTraceProtocolStage => Object.freeze({
-  role: 'generation', provider, model, reasoningEffort, pricingProfileId,
+  role: 'generation', blinded: null, provider, model, reasoningEffort, pricingProfileId,
   maxInputTokensPerInvocation: 16_384, maxOutputTokensPerInvocation: 900,
   timeoutMs: 120_000, maxInvocationsPerCase: 12, transportRetries: 0,
   samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
 });
 
+const judge = (
+  provider: ModelProviderId,
+  model: string,
+  reasoningEffort: ModelReasoningEffort,
+  pricingProfileId: string,
+): FixedTraceProtocolStage => Object.freeze({
+  role: 'judge', blinded: true, provider, model, reasoningEffort, pricingProfileId,
+  maxInputTokensPerInvocation: 16_384, maxOutputTokensPerInvocation: 300,
+  timeoutMs: 120_000, maxInvocationsPerCase: 1, transportRetries: 0,
+  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
+});
+
+const NO_ABLATION = null;
+const NO_LUNA_JUDGE_CALIBRATION = 'not_applicable' as const;
+const LUNA_JUDGE_CALIBRATION = 'requires_verified_luna_judge_calibration' as const;
+const ABLATION = FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL.id;
+
 const EVALUATOR_OWNED_PHASE_MATRIX = Object.freeze([
   Object.freeze({
     id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1,
     arms: Object.freeze([Object.freeze({
-      id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
       stages: Object.freeze([
         router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
         generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
@@ -448,31 +514,50 @@ const EVALUATOR_OWNED_PHASE_MATRIX = Object.freeze([
     id: 'router_screen', uniqueCaseCount: 46, repetitions: 3,
     arms: Object.freeze([Object.freeze({
       id: 'router-haiku-default', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
       stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]),
+    }), Object.freeze({
+      id: 'router-luna-none', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
+      stages: Object.freeze([router('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna)]),
     })]),
   }),
   Object.freeze({
     id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2,
     arms: Object.freeze([Object.freeze({
-      id: 'oracle-sonnet-default', architecture: 'oracle_route_diagnostic', admission: 'planning_only',
+      id: 'generator-sonnet-default', architecture: 'oracle_route_diagnostic', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
       stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]),
+    }), Object.freeze({
+      id: 'generator-haiku-default', architecture: 'oracle_route_diagnostic', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
+      stages: Object.freeze([generation('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]),
     })]),
   }),
   Object.freeze({
     id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3,
     arms: Object.freeze([
       Object.freeze({
-        id: 'incumbent-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only',
+        id: 'routed-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION,
         stages: Object.freeze([
           router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
           generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
+          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
         ]),
       }),
       Object.freeze({
-        id: 'gemini-low-medium-pipeline', architecture: 'two_stage_llm_router', admission: 'planning_only',
+        id: 'safe-hybrid-sonnet', architecture: 'hybrid_safe_signal_then_llm', admission: 'requires_verified_hybrid_contract', ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION,
         stages: Object.freeze([
-          router('google', 'gemini-3.7-flash', 'low', PRICE.gemini),
-          generation('google', 'gemini-3.7-flash', 'medium', PRICE.gemini),
+          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
+          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
+        ]),
+      }),
+      Object.freeze({
+        id: 'bounded-direct-sonnet', architecture: 'direct_bounded_production_shaped', admission: 'requires_verified_direct_contract', ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION,
+        stages: Object.freeze([
+          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
+          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
         ]),
       }),
     ]),
@@ -480,7 +565,7 @@ const EVALUATOR_OWNED_PHASE_MATRIX = Object.freeze([
   Object.freeze({
     id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3,
     arms: Object.freeze([Object.freeze({
-      id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
       stages: Object.freeze([
         router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
         generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
@@ -494,6 +579,7 @@ function matchesEvaluatorOwnedStage(
   expected: FixedTraceProtocolStage,
 ): boolean {
   return stage.role === expected.role
+    && stage.blinded === expected.blinded
     && stage.provider === expected.provider
     && stage.model === expected.model
     && stage.reasoningEffort === expected.reasoningEffort
@@ -526,7 +612,9 @@ function assertEvaluatorOwnedPhaseMatrix(phase: FixedTraceProtocolPhase, index: 
     if (!expectedArm
       || arm.id !== expectedArm.id
       || arm.architecture !== expectedArm.architecture
-      || arm.admission !== expectedArm.admission) {
+      || arm.admission !== expectedArm.admission
+      || arm.ablationControlId !== expectedArm.ablationControlId
+      || arm.lunaJudgeCalibration !== expectedArm.lunaJudgeCalibration) {
       throw new Error(`${phase.id} arm does not match the evaluator-owned arm matrix`);
     }
     if (arm.stages.length !== expectedArm.stages.length) {
@@ -544,7 +632,7 @@ function assertEvaluatorOwnedPhaseMatrix(phase: FixedTraceProtocolPhase, index: 
 }
 
 function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, pricingAsOf: string): void {
-  assertExactKeys(arm, ['id', 'architecture', 'admission', 'stages'], `protocol arm`);
+  assertExactKeys(arm, ['id', 'architecture', 'admission', 'ablationControlId', 'lunaJudgeCalibration', 'stages'], `protocol arm`);
   if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(arm.id)) throw new Error(`Invalid protocol arm ID: ${arm.id}`);
   const routers = arm.stages.filter((stage) => stage.role === 'router');
   const generations = arm.stages.filter((stage) => stage.role === 'generation');
@@ -557,7 +645,36 @@ function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, p
     return;
   }
   if (generations.length !== 1 || routers.length > 1) throw new Error(`${arm.id} requires exactly one generation stage and at most one router`);
-  if (arm.architecture === 'two_stage_llm_router') {
+  if (phase.id === 'deployable_architecture') {
+    if (arm.ablationControlId !== ABLATION) throw new Error(`${arm.id} must use the fixed architecture ablation control`);
+    const candidateProviders = new Set([...routers, ...generations].map((stage) => stage.provider));
+    if (candidateProviders.size !== 1) throw new Error(`${arm.id} must be a single-provider candidate pipeline for independent judging`);
+    if (arm.architecture === 'two_stage_llm_router' && (routers.length !== 1 || arm.admission !== 'planning_only')) {
+      throw new Error(`${arm.id} must use its locked routed architecture contract`);
+    }
+    if (arm.architecture === 'hybrid_safe_signal_then_llm' && (routers.length !== 0 || arm.admission !== 'requires_verified_hybrid_contract')) {
+      throw new Error(`${arm.id} requires its verified hybrid admission`);
+    }
+    if (arm.architecture === 'direct_bounded_production_shaped' && (routers.length !== 0 || arm.admission !== 'requires_verified_direct_contract')) {
+      throw new Error(`${arm.id} requires its verified direct admission`);
+    }
+    if (!['two_stage_llm_router', 'hybrid_safe_signal_then_llm', 'direct_bounded_production_shaped'].includes(arm.architecture)) {
+      throw new Error(`${arm.id} is not an architecture-ablation candidate`);
+    }
+    if (judges.length !== 2 || arm.stages.slice(-2).some((stage) => stage.role !== 'judge')) {
+      throw new Error(`${arm.id} requires exactly two trailing blinded judges`);
+    }
+    const judgeProviders = new Set(judges.map((stage) => stage.provider));
+    if (judgeProviders.size !== 2 || [...judgeProviders].some((provider) => candidateProviders.has(provider))) {
+      throw new Error(`${arm.id} judges must be provider-excluding and independent`);
+    }
+    const usesLunaJudge = judges.some((stage) => stage.provider === 'openai' && stage.model === OPENAI_ROUTER_MODEL);
+    if (usesLunaJudge !== (arm.lunaJudgeCalibration === LUNA_JUDGE_CALIBRATION)) {
+      throw new Error(`${arm.id} Luna judge calibration admission is not locked`);
+    }
+  } else if (arm.ablationControlId !== NO_ABLATION || arm.lunaJudgeCalibration !== NO_LUNA_JUDGE_CALIBRATION) {
+    throw new Error(`${arm.id} has architecture-ablation controls outside the ablation phase`);
+  } else if (arm.architecture === 'two_stage_llm_router') {
     if (routers.length !== 1) throw new Error(`${arm.id} requires a router stage`);
   } else if (arm.architecture !== 'oracle_route_diagnostic' || routers.length !== 0) {
     throw new Error(`${arm.id} direct and hybrid substitutions are not admitted`);
@@ -566,7 +683,7 @@ function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, p
     throw new Error(`${arm.id} oracle routing is diagnostic-only`);
   }
   for (const stage of arm.stages) assertStage(stage, `${arm.id}.${stage.role}`, pricingAsOf);
-  if (judges.length !== 0) throw new Error(`${arm.id} judges are blocked in the diagnostic-only protocol`);
+  if (phase.id !== 'deployable_architecture' && judges.length !== 0) throw new Error(`${arm.id} judges are blocked outside the architecture ablation`);
 }
 
 function validatedProtocolSnapshot(protocol: FixedTraceEvaluationProtocol): FixedTraceEvaluationProtocol {
@@ -716,11 +833,12 @@ export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluat
   const candidateCeilingUsd = phases.reduce((total, phase) => total + phase.candidateCeilingUsd, 0);
   const judgeCeilingUsd = phases.reduce((total, phase) => total + phase.judgeCeilingUsd, 0);
   const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * snapshot.contingencyBasisPoints / 10_000;
-  const summarize = (source: readonly FixedTraceProtocolPhaseEstimate[]) => Object.freeze({
-    candidateCeilingUsd: source.reduce((total, phase) => total + phase.candidateCeilingUsd, 0),
-    judgeCeilingUsd: source.reduce((total, phase) => total + phase.judgeCeilingUsd, 0),
-    totalCeilingUsd: source.reduce((total, phase) => total + phase.totalCeilingUsd, 0),
-  });
+  const summarize = (source: readonly FixedTraceProtocolPhaseEstimate[]) => {
+    const candidateCeilingUsd = source.reduce((total, phase) => total + phase.candidateCeilingUsd, 0);
+    const judgeCeilingUsd = source.reduce((total, phase) => total + phase.judgeCeilingUsd, 0);
+    const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * snapshot.contingencyBasisPoints / 10_000;
+    return Object.freeze({ candidateCeilingUsd, judgeCeilingUsd, contingencyUsd, totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd + contingencyUsd });
+  };
   return Object.freeze({
     protocolFingerprint: sha256(snapshot),
     dispatchable: false,
@@ -763,7 +881,9 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
   id: 'addie-6842-6846-staged-v1',
   trustedManifestId: 'externally-owned-addie-fixed-trace-v120',
   pricingAsOf: '2026-09-05T12:00:00.000Z',
-  contingencyBasisPoints: 0,
+  // Includes explicit failure/usage accounting contingency in every reported
+  // screening ceiling; it is still a non-authorizing offline projection.
+  contingencyBasisPoints: 2_000,
   unavailableFinalTarget: {
     availability: 'unavailable', uniqueCaseCount: 38, repetitions: 3, missingCaseCount: 38,
   },
@@ -771,7 +891,7 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
     Object.freeze({
       id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1, resultUse: 'diagnostic_only',
       arms: Object.freeze([Object.freeze({
-        id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only',
+        id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
         stages: Object.freeze([
           router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
           generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
@@ -780,29 +900,43 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
     }),
     Object.freeze({
       id: 'router_screen', uniqueCaseCount: 46, repetitions: 3, resultUse: 'diagnostic_only',
-      arms: Object.freeze([Object.freeze({ id: 'router-haiku-default', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]) })]),
+      arms: Object.freeze([
+        Object.freeze({ id: 'router-haiku-default', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]) }),
+        Object.freeze({ id: 'router-luna-none', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([router('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna)]) }),
+      ]),
     }),
     Object.freeze({
       id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2, resultUse: 'diagnostic_only',
-      arms: Object.freeze([Object.freeze({ id: 'oracle-sonnet-default', architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const, stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]) })]),
+      arms: Object.freeze([
+        Object.freeze({ id: 'generator-sonnet-default', architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]) }),
+        Object.freeze({ id: 'generator-haiku-default', architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([generation('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]) }),
+      ]),
     }),
     Object.freeze({
       id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3, resultUse: 'diagnostic_only',
       arms: Object.freeze([
-        Object.freeze({ id: 'incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
+        Object.freeze({ id: 'routed-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
           router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
           generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
+          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
         ]) }),
-        Object.freeze({ id: 'gemini-low-medium-pipeline', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('google', 'gemini-3.7-flash', 'low', PRICE.gemini),
-          generation('google', 'gemini-3.7-flash', 'medium', PRICE.gemini),
+        Object.freeze({ id: 'safe-hybrid-sonnet', architecture: 'hybrid_safe_signal_then_llm' as const, admission: 'requires_verified_hybrid_contract' as const, ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
+          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
+          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
+        ]) }),
+        Object.freeze({ id: 'bounded-direct-sonnet', architecture: 'direct_bounded_production_shaped' as const, admission: 'requires_verified_direct_contract' as const, ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
+          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
+          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
         ]) }),
       ]),
     }),
     Object.freeze({
       id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3, resultUse: 'diagnostic_only',
       arms: Object.freeze([
-        Object.freeze({ id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
+        Object.freeze({ id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
           router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
         ]) }),
       ]),

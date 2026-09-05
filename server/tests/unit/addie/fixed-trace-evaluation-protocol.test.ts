@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { fixedTraceEstimatedCostUsd } from '../../../src/addie/eval/fixed-trace-budget.js';
-import { FIXED_TRACE_CONFIRMATORY_POWER_GATE, FIXED_TRACE_PROTOCOL_PRICING, FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES, assertFixedTraceEvaluationProtocol, assertFixedTraceEvaluationProtocolTrusted, estimateFixedTraceEvaluationProtocol, evaluateFixedTraceConfirmatoryClaim, fixedTraceEvaluationProtocolFingerprint, fixedTraceEvaluationProtocolRunnerBinding } from '../../../src/addie/eval/fixed-trace-evaluation-protocol.js';
+import { FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL, FIXED_TRACE_CONFIRMATORY_POWER_GATE, FIXED_TRACE_PROTOCOL_PRICING, FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES, assertFixedTraceEvaluationProtocol, assertFixedTraceEvaluationProtocolTrusted, estimateFixedTraceEvaluationProtocol, evaluateFixedTraceConfirmatoryClaim, fixedTraceEvaluationProtocolFingerprint, fixedTraceEvaluationProtocolRunnerBinding } from '../../../src/addie/eval/fixed-trace-evaluation-protocol.js';
+import { OPENAI_GPT_5_6_LUNA_PRICING_VERSION, resolveModelCostPricing } from '../../../src/addie/model-cost-pricing.js';
 import { snapshotFixedTraceJson } from '../../../src/addie/eval/fixed-trace-safe-snapshot.js';
 
 function historicalOwnEnumerableFingerprint(value: unknown): string {
@@ -26,12 +27,17 @@ describe('fixed-trace evaluation protocol projection', () => {
       expectedSpendUsd: null,
       budgetProjection: {
         screeningTuning: { uniqueEvaluableCaseCount: 120, approvalCeilingUsd: null },
-        confirmatory: { requiredIndependentEvaluableCaseCount: 8_721, unavailableTargetCaseCount: 38, approvalCeilingUsd: null },
+        confirmatory: { requiredIndependentEvaluableCaseCount: 10_562, unavailableTargetCaseCount: 38, approvalCeilingUsd: null },
       },
     });
   });
 
   it('labels nominal 38-case margins inconclusive and does not treat repeated generations as independent cases', () => {
+    expect(FIXED_TRACE_CONFIRMATORY_POWER_GATE.primaryHypothesisFamily).toEqual({
+      size: 2, correction: 'holm', orderedOneSidedAlpha: [0.0125, 0.025],
+    });
+    expect(FIXED_TRACE_CONFIRMATORY_POWER_GATE.superiorityRequiredIndependentEvaluableCases).toBe(3_803);
+    expect(FIXED_TRACE_CONFIRMATORY_POWER_GATE.nonInferiorityRequiredIndependentEvaluableCases).toBe(10_562);
     const nominalAt38 = evaluateFixedTraceConfirmatoryClaim({
       pairedCaseIds: Array.from({ length: 38 }, (_, index) => `case-${index + 1}`),
       observedSuperiorityPercentagePoints: 5.1,
@@ -51,20 +57,61 @@ describe('fixed-trace evaluation protocol projection', () => {
     expect(repeatedGenerations).toMatchObject({
       independentEvaluableCaseCount: 38,
       repeatedObservationCount: 76,
-      requiredIndependentEvaluableCaseCount: 8_721,
+      requiredIndependentEvaluableCaseCount: 10_562,
       confirmatoryClaim: 'refused_underpowered',
     });
     expect(FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredAnalysis).toEqual({
       resampling: 'grouped_stratified_case_level_bootstrap',
       multiplicityCorrection: 'holm',
+      pairedDiscordancePower: 'evaluator_owned_exact_paired_discordance_contract_unavailable',
       pairedDiscordanceTest: 'predeclared_exact_paired_test_required',
     });
+  });
+  it('locks a same-generator, provider-excluding, two-judge architecture ablation', () => {
+    expect(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases.find((item) => item.id === 'router_screen')?.arms.map((arm) => arm.stages[0] && [arm.stages[0].model, arm.stages[0].reasoningEffort]))
+      .toEqual([['claude-haiku-4-5', 'provider_default'], ['gpt-5.6-luna', 'none']]);
+    expect(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases.find((item) => item.id === 'oracle_generator_ceiling')?.arms.map((arm) => arm.stages[0] && [arm.stages[0].model, arm.stages[0].reasoningEffort]))
+      .toEqual([['claude-sonnet-5', 'provider_default'], ['claude-haiku-4-5', 'provider_default']]);
+    const phase = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases.find((item) => item.id === 'deployable_architecture')!;
+    expect(phase.arms.map((arm) => arm.id)).toEqual(['routed-haiku-sonnet', 'safe-hybrid-sonnet', 'bounded-direct-sonnet']);
+    expect(phase.arms.map((arm) => arm.ablationControlId)).toEqual([FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL.id, FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL.id, FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL.id]);
+    for (const arm of phase.arms) {
+      const candidate = arm.stages.filter((stage) => stage.role !== 'judge');
+      const judges = arm.stages.filter((stage) => stage.role === 'judge');
+      expect(candidate.filter((stage) => stage.role === 'generation')).toEqual([expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-5', reasoningEffort: 'provider_default' })]);
+      expect(new Set(candidate.map((stage) => stage.provider))).toEqual(new Set(['anthropic']));
+      expect(judges.map((stage) => stage.provider)).toEqual(['openai', 'google']);
+      expect(arm.lunaJudgeCalibration).toBe('requires_verified_luna_judge_calibration');
+    }
+    expect(phase.arms[1]?.admission).toBe('requires_verified_hybrid_contract');
+    expect(phase.arms[2]?.admission).toBe('requires_verified_direct_contract');
+    const estimate = estimateFixedTraceEvaluationProtocol(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
+    expect(estimate.phases.find((item) => item.phaseId === 'deployable_architecture')).toMatchObject({ judgeCalls: 46 * 3 * 3 * 2 });
+    expect(estimate.judgeCeilingUsd).toBeGreaterThan(0);
+    expect(estimate.screening.contingencyUsd).toBeGreaterThan(0);
+    expect(estimate.screening.totalCeilingUsd).toBe(
+      estimate.screening.candidateCeilingUsd + estimate.screening.judgeCeilingUsd + estimate.screening.contingencyUsd,
+    );
+    const selfJudging = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    selfJudging.phases[3].arms[0].stages[2].provider = 'anthropic';
+    expect(() => assertFixedTraceEvaluationProtocol(selfJudging)).toThrow('evaluator-owned stage configuration matrix');
+    const uncalibratedLuna = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    uncalibratedLuna.phases[3].arms[0].lunaJudgeCalibration = 'not_applicable';
+    expect(() => assertFixedTraceEvaluationProtocol(uncalibratedLuna)).toThrow('evaluator-owned arm matrix');
   });
   it('keeps Terra and Sol as unpriced inert descriptors', () => {
     expect(FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES).toEqual([{ provider: 'openai', model: 'gpt-5.6-terra', dispatchable: false, trustedPrice: null }, { provider: 'openai', model: 'gpt-5.6-sol', dispatchable: false, trustedPrice: null }]);
     const terra = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
     terra.phases[1].arms[0].stages[0].provider = 'openai'; terra.phases[1].arms[0].stages[0].model = 'gpt-5.6-terra';
     expect(() => assertFixedTraceEvaluationProtocol(terra)).toThrow('evaluator-owned stage configuration matrix');
+  });
+  it('reuses only the exact approved Luna provider, model, pricing, and control identity', () => {
+    const luna = resolveModelCostPricing('openai', 'gpt-5.6-luna');
+    expect(luna).toMatchObject({ provider: 'openai', model: 'gpt-5.6-luna', version: OPENAI_GPT_5_6_LUNA_PRICING_VERSION });
+    expect(luna?.estimateCostMicros({ inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBe(1_400_000);
+    expect(resolveModelCostPricing('openai', 'gpt-5.6-luna-20260826')).toBeNull();
+    expect(resolveModelCostPricing('openai', 'gpt-5.6-terra')).toBeNull();
+    expect(resolveModelCostPricing('openai', 'gpt-5.6-sol')).toBeNull();
   });
   it('rejects reversed, duplicated, direct, smoke-promotion, and fabricated trust', () => {
     const reversed = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL); reversed.phases.reverse();

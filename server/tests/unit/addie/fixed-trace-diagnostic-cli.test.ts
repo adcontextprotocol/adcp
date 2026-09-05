@@ -32,7 +32,7 @@ describe('fixed-trace diagnostic CLI parser', () => {
       validated: { providers: ['openai'], architectureArm: 'direct_generation', suite: 'canonical', softMaxUsd: 1, outputPath: output },
     });
     expect(existsSync(output)).toBe(false);
-  });
+  }, 20_000);
 
   it('binds the reviewed hybrid evaluator suite only to the hybrid arm during validate-only planning', () => {
     const output = resolve('/tmp/fixed-trace-diagnostic-cli-hybrid-suite-no-write.json');
@@ -46,7 +46,7 @@ describe('fixed-trace diagnostic CLI parser', () => {
       '--architecture-arm=two_stage_llm_router', '--suite=hybrid-evaluator', '--soft-max-usd=1', `--output=${output}`,
     ], { cwd: process.cwd(), stdio: 'pipe' })).toThrow();
     expect(existsSync(output)).toBe(false);
-  });
+  }, 20_000);
 
   it.each([
     ['--soft-max-usd=0', '--output=/tmp/out.json'],

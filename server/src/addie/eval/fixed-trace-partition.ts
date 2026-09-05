@@ -17,7 +17,11 @@ export const FIXED_TRACE_PARTITION_MANIFEST = Object.freeze({
     'admin-feed-monitoring-proposals', 'admin-followup-task-list', 'outreach-action-items-list',
     'meeting-full-administration-confirmed', 'community-group-full-participation-confirmed',
   ]),
-  holdout: Object.freeze([
+  // This is intentionally *not* a holdout. Every request, route,
+  // expectation, rubric, and fixture is repository-visible, so it is usable
+  // only for development validation. A confirmatory pack is absent from this
+  // repository and must be externally authored and custodied.
+  repositoryVisibleDevelopmentValidation: Object.freeze([
     'billing-invoice-preview-only', 'billing-invoice-confirmed', 'knowledge-tool-error',
     'tool-result-prompt-injection', 'current-utc-date', 'bounded-truncation',
     'long-form-deck-delivery', 'provider-unavailable',
@@ -25,7 +29,7 @@ export const FIXED_TRACE_PARTITION_MANIFEST = Object.freeze({
 });
 
 export const FIXED_TRACE_PARTITION_MANIFEST_SHA256 =
-  '9eb4e5b32864f203658842745637fcca67cbc43f9d043a6c15445f0acd1e8adc' as const;
+  '65407c60fce215042c1e692ac2edbc7f501d7b83802661e1d3dd61fafde4b74b' as const;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -45,6 +49,9 @@ export function assertFixedTracePartitionManifest(): void {
   if (fixedTracePartitionManifestSha256() !== FIXED_TRACE_PARTITION_MANIFEST_SHA256) {
     throw new Error('Fixed-trace partition manifest hash mismatch');
   }
-  const all = [...FIXED_TRACE_PARTITION_MANIFEST.development, ...FIXED_TRACE_PARTITION_MANIFEST.holdout];
+  const all = [
+    ...FIXED_TRACE_PARTITION_MANIFEST.development,
+    ...FIXED_TRACE_PARTITION_MANIFEST.repositoryVisibleDevelopmentValidation,
+  ];
   if (new Set(all).size !== all.length) throw new Error('Fixed-trace partition manifest has duplicate IDs');
 }

@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto';
 import type { ModelProviderId, ModelReasoningEffort } from '../model-providers/model-provider.js';
 import {
   GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
+  OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
 } from '../model-cost-pricing.js';
 import { CLAUDE_PRICING_VERSION } from '../claude-pricing.js';
+import { OPENAI_ROUTER_MODEL } from '../model-providers/openai-responses-provider.js';
 import {
   FIXED_TRACE_PARTITION_MANIFEST,
   FIXED_TRACE_PARTITION_MANIFEST_SHA256,
@@ -14,7 +16,6 @@ import type { AddieTool } from '../types.js';
 import { CODE_VERSION } from '../config-version.js';
 import {
   FIXED_TRACE_STAGE_CONTROL_VERSION,
-  FIXED_TRACE_SUITE,
   type FixedTraceCase,
 } from './fixed-trace-suite.js';
 import type { FixedTraceToolDefinitionProvenance } from './fixed-trace-architecture.js';
@@ -22,11 +23,9 @@ import { deepFreezeFixedTrace, snapshotFixedTraceJson } from './fixed-trace-safe
 
 /** A versioned, network-free admission contract for fixed-trace experiments. */
 export const FIXED_TRACE_EXPERIMENT_PLAN_VERSION = 'addie-fixed-trace-experiment-plan-v1' as const;
-export const FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION =
-  'addie-fixed-trace-holdout-finalization-v1' as const;
 export const FIXED_TRACE_RAW_LEDGER_VERSION = 'addie-fixed-trace-raw-ledger-v1' as const;
-export const FIXED_TRACE_HOLDOUT_LIMITATION =
-  'execution_locked_repository_visible_not_secret_holdout' as const;
+export const FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION =
+  'repository_visible_development_validation_not_confirmatory_holdout' as const;
 
 export type FixedTraceExperimentArchitecture =
   | 'two_stage_llm_router'
@@ -53,6 +52,11 @@ export interface FixedTraceImmutablePricingProfile {
  * unavailable, rather than inheriting a sibling model's price.
  */
 export const FIXED_TRACE_IMMUTABLE_PRICING = Object.freeze([
+  Object.freeze({
+    provider: 'openai', model: OPENAI_ROUTER_MODEL, version: OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
+    validBefore: '2026-09-06T00:00:00.000Z', inputUsdPerMillionTokens: 0.2, outputUsdPerMillionTokens: 1.2,
+    source: 'Repository OpenAI Luna router price pin, checked 2026-08-26.',
+  }),
   Object.freeze({
     provider: 'anthropic', model: 'claude-haiku-4-5', version: CLAUDE_PRICING_VERSION,
     validBefore: '2026-09-06T00:00:00.000Z', inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
@@ -127,9 +131,7 @@ export interface FixedTraceExperimentPlan {
   partition: {
     manifestVersion: typeof FIXED_TRACE_PARTITION_MANIFEST_VERSION;
     manifestSha256: typeof FIXED_TRACE_PARTITION_MANIFEST_SHA256;
-    selected: 'development' | 'holdout';
-    /** Holdout is legal only for a separately versioned, explicit finalization. */
-    finalizationGate?: { version: typeof FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION; recordId: string };
+    selected: 'development' | 'repository_visible_development_validation';
   };
   ordering: { seed: string };
   budgets: { candidateCeilingUsd: number; judgeCeilingUsd: number };
@@ -151,7 +153,7 @@ export interface FixedTraceTrustedManifest {
    * Resolver-owned, phase-selected execution inputs. They are never inferred
    * from a plan or copied onto an observation after execution.
    */
-  suites: Readonly<Record<'development' | 'holdout', FixedTraceTrustedSuite>>;
+  suites: Readonly<Record<'development' | 'repository_visible_development_validation', FixedTraceTrustedSuite>>;
   partitionManifestSha256: string;
   rawLedgerVersion: typeof FIXED_TRACE_RAW_LEDGER_VERSION;
   gitCommit: string;
@@ -198,21 +200,16 @@ export interface FixedTraceExperimentRunnerBinding {
 }
 
 /**
- * Finalization state belongs to a controlled store, not the candidate plan.
- * `consume` is intentionally separate from inspection: dry runs never spend
- * the one-time holdout authorization.
+ * A confirmatory finalization authority is intentionally absent. The only
+ * in-repository secondary split is development validation, not a secret pack;
+ * an externally authored/custodied final pack needs its own reviewed system.
  */
-export interface FixedTraceHoldoutFinalizationRecord {
-  id: string;
-  version: typeof FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION;
-  trustedManifestId: string;
-  frozenCandidatePlanFingerprint: string;
-  consumed: boolean;
-  tracePackVisibility: 'repository_visible' | 'externally_sealed';
-}
-export type FixedTraceHoldoutFinalizationResolver = (id: string) => FixedTraceHoldoutFinalizationRecord | null;
-export type FixedTraceHoldoutFinalizationConsumer = (id: string, frozenCandidatePlanFingerprint: string) => boolean;
 
+/**
+ * An untrusted proposed observation shape. It cannot be validated or used as
+ * evidence in this PR. A future evaluator must bind every field below to a
+ * `FixedTraceTrustedExecutionExpectation` before the matching invocation.
+ */
 export interface FixedTraceRawLedgerEntry {
   sequence: number;
   /** The plan-controlled stage grouping; it cannot be supplied out of order. */
@@ -221,14 +218,19 @@ export interface FixedTraceRawLedgerEntry {
   repetitionIndex: number;
   traceId: string;
   stage: 'router' | 'generation' | 'judge';
-  /** One ledger entry represents one configured stage invocation envelope. */
-  callIndex: 1;
+  /** Monotonic configured invocation within a stage; never collapsed to one row. */
+  callIndex: number;
+  /** Every network attempt is represented, including failed attempts. */
+  attemptIndex: number;
   dispatched: boolean;
   requestedProvider: ModelProviderId | null;
   requestedModel: string | null;
   returnedProvider: ModelProviderId | null;
   returnedModel: string | null;
   promptSha256: string;
+  systemSha256: string;
+  docsSha256: string;
+  toolSchemaSha256: string;
   providerRequestSha256: string | null;
   responseSha256: string | null;
   /** Content-addressed immutable raw artifacts; their bytes stay outside summaries. */
@@ -238,6 +240,8 @@ export interface FixedTraceRawLedgerEntry {
   caseControlSha256: string;
   executionEnvelopeSha256: string;
   directAdmissionSha256: string;
+  simulatorReceiptSha256: string;
+  simulatorResultProvenanceSha256: string;
   maxOutputTokens: number | null;
   timeoutMs: number | null;
   maxIterations: number | null;
@@ -245,11 +249,25 @@ export interface FixedTraceRawLedgerEntry {
   reasoningEffort: ModelReasoningEffort;
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control' | null;
   cacheMode: 'disabled' | null;
+  pricingProfileId: string | null;
+  failureDenominatorId: string;
   /** Offline validation admits only the explicit non-dispatch terminal state. */
   status: 'not_dispatched';
   finishReason: null;
   usage: null;
   estimatedCostUsd: null;
+}
+
+/**
+ * Evaluator-owned pre-dispatch expected values. A coordinator must create and
+ * authenticate this complete sequence from the immutable manifest before any
+ * provider call; there is deliberately no implementation in this PR.
+ */
+export interface FixedTraceTrustedExecutionExpectation {
+  trustedManifestSha256: string;
+  planFingerprint: string;
+  budgetIdentitySha256: string;
+  entries: readonly FixedTraceRawLedgerEntry[];
 }
 
 export interface FixedTraceRawAuditableLedger {
@@ -334,7 +352,9 @@ function requirePositiveInteger(value: number, label: string): void {
 }
 
 function selectedTraceIds(plan: FixedTraceExperimentPlan): readonly string[] {
-  return FIXED_TRACE_PARTITION_MANIFEST[plan.partition.selected];
+  return plan.partition.selected === 'development'
+    ? FIXED_TRACE_PARTITION_MANIFEST.development
+    : FIXED_TRACE_PARTITION_MANIFEST.repositoryVisibleDevelopmentValidation;
 }
 
 function pricingFor(stage: FixedTracePlannedStage, pricingAsOf: string): FixedTraceImmutablePricingProfile {
@@ -448,12 +468,7 @@ function assertPlanShape(plan: FixedTraceExperimentPlan): void {
     'traceSuiteSha256', 'promptConfigVersion', 'toolSchemaSha256', 'toolDefinitionProvenance',
     'providerDegradationInjectionEnabled', 'partition', 'ordering', 'budgets', 'arms',
   ], 'experiment plan');
-  assertExactKeys(plan.partition, [
-    'manifestVersion', 'manifestSha256', 'selected', ...(plan.partition.finalizationGate ? ['finalizationGate'] : []),
-  ], 'experiment plan.partition');
-  if (plan.partition.finalizationGate) {
-    assertExactKeys(plan.partition.finalizationGate, ['version', 'recordId'], 'experiment plan.partition.finalizationGate');
-  }
+  assertExactKeys(plan.partition, ['manifestVersion', 'manifestSha256', 'selected'], 'experiment plan.partition');
   assertExactKeys(plan.ordering, ['seed'], 'experiment plan.ordering');
   assertExactKeys(plan.budgets, ['candidateCeilingUsd', 'judgeCeilingUsd'], 'experiment plan.budgets');
 }
@@ -477,10 +492,8 @@ function assertFixedTraceExperimentPlanStructure(
   if (plan.partition.manifestVersion !== FIXED_TRACE_PARTITION_MANIFEST_VERSION || plan.partition.manifestSha256 !== FIXED_TRACE_PARTITION_MANIFEST_SHA256) {
     throw new Error('Experiment plan uses an uncommitted fixed-trace partition manifest');
   }
-  if (plan.partition.selected === 'holdout') {
-    assertHoldoutFinalizationGateShape(plan);
-  } else if (plan.partition.selected !== 'development' || plan.partition.finalizationGate) {
-    throw new Error('Development execution must not carry a holdout finalization gate');
+  if (!['development', 'repository_visible_development_validation'].includes(plan.partition.selected)) {
+    throw new Error('Only repository-visible development partitions are available');
   }
   if (!plan.ordering.seed.trim()) throw new Error('Experiment ordering seed is required');
   if (!Number.isFinite(plan.budgets.candidateCeilingUsd) || plan.budgets.candidateCeilingUsd <= 0) throw new Error('candidateCeilingUsd must be positive');
@@ -527,67 +540,15 @@ export function validateFixedTraceRawAuditableLedgerOffline(
   ledger: FixedTraceRawAuditableLedger,
   expectedTrustedManifestSha256: string,
 ): void {
-  const safePlan = validatedPlanSnapshot(plan);
-  const safeLedger = snapshotFixedTraceJson(ledger, 'raw ledger') as FixedTraceRawAuditableLedger;
-  requireHash(expectedTrustedManifestSha256, 'expected trustedManifestSha256');
-  assertExactKeys(safeLedger, ['version', 'trustedManifestSha256', 'planFingerprint', 'budgetIdentitySha256', 'entries'], 'raw ledger');
-  if (safeLedger.version !== FIXED_TRACE_RAW_LEDGER_VERSION) throw new Error('Unsupported raw fixed-trace ledger version');
-  if (safeLedger.trustedManifestSha256 !== expectedTrustedManifestSha256) throw new Error('Raw ledger trusted manifest mismatch');
-  if (safeLedger.planFingerprint !== sha256(safePlan)) throw new Error('Raw ledger plan fingerprint mismatch');
-  const expectedBudgetIdentity = estimateFixedTraceExperiment(safePlan, (() => null) as FixedTraceTrustedManifestResolver).budgetIdentitySha256;
-  if (safeLedger.budgetIdentitySha256 !== expectedBudgetIdentity) throw new Error('Raw ledger budget identity mismatch');
-  if (!Array.isArray(safeLedger.entries)) throw new Error('Raw ledger entries must be an array');
-  const traceById = new Map(FIXED_TRACE_SUITE.map((trace) => [trace.id, trace]));
-  const expected = safePlan.arms.flatMap((arm) => selectedTraceIds(safePlan).flatMap((traceId) => {
-    const stages: Array<[FixedTraceRawLedgerEntry['stage'], FixedTracePlannedStage]> = [];
-    if (arm.router) stages.push(['router', arm.router]);
-    if (arm.generation) stages.push(['generation', arm.generation]);
-    for (const judge of arm.judges ?? []) stages.push(['judge', judge]);
-    return stages.map(([stage, configuredStage]) => ({ arm, traceId, stage, configuredStage }));
-  }));
-  if (safeLedger.entries.length !== expected.length) throw new Error('Raw ledger lacks complete planned-stage coverage');
-  for (const [index, entry] of safeLedger.entries.entries()) {
-    assertExactKeys(entry, [
-      'sequence', 'phaseId', 'armId', 'repetitionIndex', 'traceId', 'stage', 'callIndex', 'dispatched',
-      'requestedProvider', 'requestedModel', 'returnedProvider', 'returnedModel',
-      'promptSha256', 'providerRequestSha256', 'responseSha256', 'rawRequestArtifact',
-      'rawResponseArtifact', 'exactToolNames', 'caseControlSha256', 'executionEnvelopeSha256',
-      'directAdmissionSha256', 'maxOutputTokens', 'timeoutMs', 'maxIterations',
-      'transportRetries', 'reasoningEffort', 'samplingMode', 'cacheMode', 'status',
-      'finishReason', 'usage', 'estimatedCostUsd',
-    ], `raw ledger entry ${index + 1}`);
-    const want = expected[index]!;
-    if (entry.sequence !== index + 1 || entry.phaseId !== want.arm.screeningStage || entry.armId !== want.arm.id || entry.repetitionIndex !== want.arm.repetitionIndex || entry.traceId !== want.traceId || entry.stage !== want.stage || entry.callIndex !== 1) {
-      throw new Error('Raw ledger sequence does not exactly match the planned stages');
-    }
-    const trace = traceById.get(entry.traceId);
-    const exactToolNames: readonly string[] = trace ? trace.toolFixtures.map((fixture) => fixture.name) : [];
-    if (!trace || !Array.isArray(entry.exactToolNames) || entry.exactToolNames.length !== exactToolNames.length || entry.exactToolNames.some((name: string, toolIndex: number) => name !== exactToolNames[toolIndex])) {
-      throw new Error('Raw ledger tool names do not exactly match the trace fixtures');
-    }
-    if (
-      entry.dispatched !== false || entry.status !== 'not_dispatched' || entry.finishReason !== null
-      || entry.usage !== null || entry.estimatedCostUsd !== null || entry.returnedProvider !== null
-      || entry.returnedModel !== null || entry.providerRequestSha256 !== null || entry.responseSha256 !== null
-      || entry.rawRequestArtifact !== null || entry.rawResponseArtifact !== null
-    ) throw new Error('Offline raw ledger contains dispatch, response, usage, or cost evidence');
-    if (entry.requestedProvider !== want.configuredStage.provider || entry.requestedModel !== want.configuredStage.model) {
-      throw new Error('Raw ledger requested provider/model does not match its planned stage');
-    }
-    for (const [label, value] of Object.entries({
-      promptSha256: entry.promptSha256,
-      caseControlSha256: entry.caseControlSha256,
-      executionEnvelopeSha256: entry.executionEnvelopeSha256,
-      directAdmissionSha256: entry.directAdmissionSha256,
-    })) requireHash(value, `raw ledger ${label}`);
-    if (
-      entry.maxOutputTokens !== want.configuredStage.maxOutputTokens
-      || entry.timeoutMs !== want.configuredStage.timeoutMs
-      || entry.maxIterations !== want.configuredStage.maxIterations
-      || entry.transportRetries !== 0 || entry.reasoningEffort !== want.configuredStage.reasoningEffort
-      || entry.samplingMode !== want.configuredStage.samplingMode || entry.cacheMode !== 'disabled'
-    ) throw new Error('Raw ledger entry does not match its planned stage controls');
-  }
+  // Do not bless syntax-shaped caller evidence. Exact expected prompts,
+  // tool surface/order, request/envelope/admission hashes, simulator
+  // provenance, per-invocation attempts, returned identity, usage, pricing,
+  // cost, and failure denominator must be bound by a trusted coordinator
+  // before dispatch. That coordinator is deliberately not authorized here.
+  void plan;
+  void ledger;
+  void expectedTrustedManifestSha256;
+  throw new Error('Raw-ledger validation is unavailable pending a trusted evaluator-owned coordinator');
 }
 
 /**
@@ -607,9 +568,8 @@ export function fixedTraceExperimentRunnerBinding(
   plan: FixedTraceExperimentPlan,
   resolver: FixedTraceTrustedManifestResolver,
   armId: string,
-  holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver,
 ): FixedTraceExperimentRunnerBinding {
-  assertFixedTraceExperimentPlan(plan, resolver, holdoutFinalizationResolver);
+  assertFixedTraceExperimentPlan(plan, resolver);
   const arm = plan.arms.find((candidate) => candidate.id === armId);
   if (!arm) throw new Error(`Experiment plan has no arm: ${armId}`);
   const manifest = resolveTrustedManifest(plan, resolver);
@@ -631,7 +591,7 @@ export function fixedTraceExperimentRunnerBinding(
   });
 }
 
-/** Omits only execution partition/finalization state so an approved candidate cannot drift at unlock. */
+/** Omits partition selection so a candidate description cannot be restamped as a different development split. */
 export function fixedTraceCandidatePlanFingerprint(plan: FixedTraceExperimentPlan): string {
   const snapshot = validatedPlanSnapshot(plan);
   const { partition, ...candidatePlan } = snapshot;
@@ -644,52 +604,22 @@ export function fixedTraceCandidatePlanFingerprint(plan: FixedTraceExperimentPla
   });
 }
 
-function assertHoldoutFinalization(
-  plan: FixedTraceExperimentPlan,
-  resolver: FixedTraceHoldoutFinalizationResolver | undefined,
-): void {
-  if (plan.partition.selected !== 'holdout') return;
-  assertHoldoutFinalizationGateShape(plan);
-  const gate = plan.partition.finalizationGate!;
-  if (!resolver) throw new Error('Holdout is locked; an externally resolved finalization record is required');
-  const record = resolver(gate.recordId);
-  if (!record) throw new Error(`Holdout finalization record is unavailable: ${gate.recordId}`);
-  if (
-    record.version !== FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION
-    || record.trustedManifestId !== plan.trustedManifestId
-    || record.frozenCandidatePlanFingerprint !== fixedTraceCandidatePlanFingerprint(plan)
-  ) throw new Error('Holdout finalization record does not match the frozen candidate plan');
-  if (record.consumed) throw new Error('Holdout finalization record has already been consumed');
-}
-
-/** Shape validation is resolver-free so candidate fingerprints cannot recurse. */
-function assertHoldoutFinalizationGateShape(plan: FixedTraceExperimentPlan): void {
-  const gate = plan.partition.finalizationGate;
-  if (!gate || gate.version !== FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION) {
-    throw new Error('Holdout is locked; an explicit versioned finalization gate is required');
-  }
-}
-
 export function assertFixedTraceExperimentPlan(
   plan: FixedTraceExperimentPlan,
   resolver: FixedTraceTrustedManifestResolver,
-  holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver,
 ): void {
   const snapshot = validatedPlanSnapshot(plan);
-  if (snapshot.partition.selected === 'holdout') assertHoldoutFinalization(snapshot, holdoutFinalizationResolver);
   resolveTrustedManifest(snapshot, resolver);
 }
 
-export function fixedTraceExperimentPlanFingerprint(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver, holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver): string {
+export function fixedTraceExperimentPlanFingerprint(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver): string {
   void resolver;
-  void holdoutFinalizationResolver;
   return validateFixedTraceExperimentPlanOffline(plan).planFingerprint;
 }
 
 /** Deterministic permutation based on a recorded seed, never provider input order. */
-export function fixedTraceExperimentExecutionOrder(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver, holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver): readonly string[] {
+export function fixedTraceExperimentExecutionOrder(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver): readonly string[] {
   void resolver;
-  void holdoutFinalizationResolver;
   const snapshot = validatedPlanSnapshot(plan);
   return Object.freeze([...snapshot.arms]
     .sort((left, right) => sha256({ seed: snapshot.ordering.seed, arm: left.id, repetition: left.repetitionIndex })
@@ -718,9 +648,8 @@ function reservation(
  * Pure pre-dispatch ceiling. It reports no expected spend because neither
  * provider tokenization nor observed tool-loop length may be assumed.
  */
-export function estimateFixedTraceExperiment(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver, holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver): FixedTraceDryRunEstimate {
+export function estimateFixedTraceExperiment(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver): FixedTraceDryRunEstimate {
   void resolver;
-  void holdoutFinalizationResolver;
   const snapshot = validatedPlanSnapshot(plan);
   const candidate: FixedTraceStageReservation[] = [];
   const judges: FixedTraceStageReservation[] = [];
@@ -756,30 +685,17 @@ export function estimateFixedTraceExperiment(plan: FixedTraceExperimentPlan, res
   });
 }
 
-/** ID-only audit output; callers must not load holdout expectations into prompts. */
-export function fixedTraceExperimentPartitionAudit(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver, holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver): { selected: 'development' | 'holdout'; traceIds: readonly string[]; manifestSha256: string; blindingLimitation: typeof FIXED_TRACE_HOLDOUT_LIMITATION } {
-  assertFixedTraceExperimentPlan(plan, resolver, holdoutFinalizationResolver);
-  return Object.freeze({ selected: plan.partition.selected, traceIds: Object.freeze([...selectedTraceIds(plan)]), manifestSha256: FIXED_TRACE_PARTITION_MANIFEST_SHA256, blindingLimitation: FIXED_TRACE_HOLDOUT_LIMITATION });
-}
-
-/** Development selection artifacts cannot contain holdout metrics or IDs. */
-export function fixedTraceDevelopmentSelectionArtifact(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver): { planFingerprint: string; developmentTraceIds: readonly string[]; holdoutMetricsIncluded: false; blindingLimitation: typeof FIXED_TRACE_HOLDOUT_LIMITATION } {
+/** This is an ID-only development-validation audit, never a secret holdout. */
+export function fixedTraceExperimentPartitionAudit(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver): { selected: 'development' | 'repository_visible_development_validation'; traceIds: readonly string[]; manifestSha256: string; limitation: typeof FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION } {
   assertFixedTraceExperimentPlan(plan, resolver);
-  if (plan.partition.selected !== 'development') throw new Error('Holdout results cannot be emitted as a development selection artifact');
-  return Object.freeze({ planFingerprint: fixedTraceExperimentPlanFingerprint(plan, resolver), developmentTraceIds: Object.freeze([...FIXED_TRACE_PARTITION_MANIFEST.development]), holdoutMetricsIncluded: false, blindingLimitation: FIXED_TRACE_HOLDOUT_LIMITATION });
+  return Object.freeze({ selected: plan.partition.selected, traceIds: Object.freeze([...selectedTraceIds(plan)]), manifestSha256: FIXED_TRACE_PARTITION_MANIFEST_SHA256, limitation: FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION });
 }
 
-/** Must be called by a future dispatcher immediately before the first holdout dispatch. */
-export function consumeFixedTraceHoldoutFinalization(
-  plan: FixedTraceExperimentPlan,
-  resolver: FixedTraceTrustedManifestResolver,
-  finalizationResolver: FixedTraceHoldoutFinalizationResolver,
-  consumer: FixedTraceHoldoutFinalizationConsumer,
-): void {
-  assertFixedTraceExperimentPlan(plan, resolver, finalizationResolver);
-  if (plan.partition.selected !== 'holdout') throw new Error('Only a holdout plan can consume finalization');
-  const recordId = plan.partition.finalizationGate!.recordId;
-  if (!consumer(recordId, fixedTraceCandidatePlanFingerprint(plan))) throw new Error('Holdout finalization record could not be consumed');
+/** Development selection artifacts cannot claim any confirmatory final metrics. */
+export function fixedTraceDevelopmentSelectionArtifact(plan: FixedTraceExperimentPlan, resolver: FixedTraceTrustedManifestResolver): { planFingerprint: string; developmentTraceIds: readonly string[]; confirmatoryMetricsIncluded: false; limitation: typeof FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION } {
+  assertFixedTraceExperimentPlan(plan, resolver);
+  if (plan.partition.selected !== 'development') throw new Error('Repository-visible validation cannot be emitted as a development selection artifact');
+  return Object.freeze({ planFingerprint: fixedTraceExperimentPlanFingerprint(plan, resolver), developmentTraceIds: Object.freeze([...FIXED_TRACE_PARTITION_MANIFEST.development]), confirmatoryMetricsIncluded: false, limitation: FIXED_TRACE_REPOSITORY_VISIBLE_VALIDATION_LIMITATION });
 }
 
 /**
@@ -792,76 +708,12 @@ export function assertFixedTraceRawAuditableLedger(
   resolver: FixedTraceTrustedManifestResolver,
   ledger: FixedTraceRawAuditableLedger,
   artifactResolver: FixedTraceRawArtifactResolver,
-  holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver,
 ): void {
-  const manifest = resolveTrustedManifest(plan, resolver);
-  assertFixedTraceExperimentPlan(plan, resolver, holdoutFinalizationResolver);
-  if (ledger.version !== FIXED_TRACE_RAW_LEDGER_VERSION) throw new Error('Unsupported raw fixed-trace ledger version');
-  if (ledger.trustedManifestSha256 !== fixedTraceTrustedManifestFingerprint(manifest)) throw new Error('Raw ledger trusted manifest mismatch');
-  if (ledger.planFingerprint !== fixedTraceExperimentPlanFingerprint(plan, resolver, holdoutFinalizationResolver)) throw new Error('Raw ledger plan fingerprint mismatch');
-  if (ledger.budgetIdentitySha256 !== estimateFixedTraceExperiment(plan, resolver, holdoutFinalizationResolver).budgetIdentitySha256) {
-    throw new Error('Raw ledger budget identity mismatch');
-  }
-  const knownArms = new Map(plan.arms.map((arm) => [arm.id, arm]));
-  const knownTraces = new Set(selectedTraceIds(plan));
-  const expectedEntries = new Set<string>();
-  for (const arm of plan.arms) for (const traceId of selectedTraceIds(plan)) {
-    if (arm.router) expectedEntries.add(`${arm.id}\0${arm.repetitionIndex}\0${traceId}\0router`);
-    if (arm.generation) expectedEntries.add(`${arm.id}\0${arm.repetitionIndex}\0${traceId}\0generation`);
-    for (const judge of arm.judges ?? []) expectedEntries.add(`${arm.id}\0${arm.repetitionIndex}\0${traceId}\0judge\0${judge.provider}\0${judge.model}`);
-  }
-  const entries = new Set<string>();
-  for (const entry of ledger.entries) {
-    requirePositiveInteger(entry.sequence, 'raw ledger sequence');
-    const arm = knownArms.get(entry.armId);
-    if (!arm || arm.repetitionIndex !== entry.repetitionIndex || !knownTraces.has(entry.traceId)) throw new Error('Raw ledger entry is outside its trusted plan');
-    const configuredStage = entry.stage === 'router' ? arm.router
-      : entry.stage === 'generation' ? arm.generation
-        : (arm.judges ?? []).find((judge) => judge.provider === entry.requestedProvider && judge.model === entry.requestedModel);
-    if (!configuredStage) throw new Error('Raw ledger entry has an unplanned stage identity');
-    const key = `${entry.armId}\0${entry.repetitionIndex}\0${entry.traceId}\0${entry.stage}${entry.stage === 'judge' ? `\0${configuredStage.provider}\0${configuredStage.model}` : ''}`;
-    if (!expectedEntries.has(key)) throw new Error('Raw ledger entry is outside its trusted plan');
-    if (entries.has(key)) throw new Error('Duplicate raw ledger entry');
-    entries.add(key);
-    requireHash(entry.promptSha256, 'raw ledger promptSha256');
-    requireHash(entry.caseControlSha256, 'raw ledger caseControlSha256');
-    requireHash(entry.executionEnvelopeSha256, 'raw ledger executionEnvelopeSha256');
-    requireHash(entry.directAdmissionSha256, 'raw ledger directAdmissionSha256');
-    if (entry.dispatched && (!entry.requestedProvider || !entry.requestedModel || !entry.providerRequestSha256)) {
-      throw new Error('Dispatched raw ledger entry lacks requested identity or request digest');
-    }
-    if ((entry.returnedProvider === null) !== (entry.returnedModel === null)) throw new Error('Raw ledger returned identity is incomplete');
-    if (entry.providerRequestSha256 !== null) requireHash(entry.providerRequestSha256, 'raw ledger providerRequestSha256');
-    if (entry.responseSha256 !== null) requireHash(entry.responseSha256, 'raw ledger responseSha256');
-    const validateRawArtifact = (artifact: { sha256: string; byteLength: number; storageKey: string } | null, label: string) => {
-      if (!artifact || !artifact.storageKey.trim()) throw new Error(`Raw ledger ${label} artifact is required`);
-      requireHash(artifact.sha256, `raw ledger ${label} artifact`);
-      requirePositiveInteger(artifact.byteLength, `raw ledger ${label} artifact byteLength`);
-      const trustedArtifact = artifactResolver(artifact.storageKey);
-      if (!trustedArtifact) throw new Error(`Raw ledger ${label} artifact is unavailable`);
-      if (trustedArtifact.sha256 !== artifact.sha256 || trustedArtifact.byteLength !== artifact.byteLength) {
-        throw new Error(`Raw ledger ${label} artifact does not match its trusted bytes`);
-      }
-    };
-    if (entry.dispatched) {
-      validateRawArtifact(entry.rawRequestArtifact, 'request');
-      if (entry.rawRequestArtifact!.sha256 !== entry.providerRequestSha256) throw new Error('Raw request artifact digest mismatch');
-    } else if (entry.rawRequestArtifact !== null) validateRawArtifact(entry.rawRequestArtifact, 'request');
-    if (entry.responseSha256 !== null) {
-      validateRawArtifact(entry.rawResponseArtifact, 'response');
-      if (entry.rawResponseArtifact!.sha256 !== entry.responseSha256) throw new Error('Raw response artifact digest mismatch');
-    } else if (entry.rawResponseArtifact !== null) validateRawArtifact(entry.rawResponseArtifact, 'response');
-    if (
-      entry.requestedProvider !== configuredStage.provider
-      || entry.requestedModel !== configuredStage.model
-      || entry.maxOutputTokens !== configuredStage.maxOutputTokens
-      || entry.timeoutMs !== configuredStage.timeoutMs
-      || entry.maxIterations !== configuredStage.maxIterations
-      || entry.transportRetries !== configuredStage.transportRetries
-      || entry.reasoningEffort !== configuredStage.reasoningEffort
-      || entry.samplingMode !== configuredStage.samplingMode
-      || entry.cacheMode !== configuredStage.cacheMode
-    ) throw new Error('Raw ledger entry does not match its planned stage controls');
-  }
-  if (entries.size !== expectedEntries.size) throw new Error('Raw ledger lacks complete planned-stage coverage');
+  // No caller-provided ledger can be evidence until the missing coordinator
+  // constructs and authenticates exact expected invocation records.
+  void plan;
+  void resolver;
+  void ledger;
+  void artifactResolver;
+  throw new Error('Raw-ledger validation is unavailable pending a trusted evaluator-owned coordinator');
 }

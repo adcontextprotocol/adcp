@@ -15,10 +15,19 @@ import {
   GOOGLE_ROUTER_MODEL,
   isGoogleRouterModelRevision,
 } from './model-providers/google-generate-content-provider.js';
+import { OPENAI_ROUTER_MODEL } from './model-providers/openai-responses-provider.js';
 import type { ModelProviderId, ModelUsage } from './model-providers/model-provider.js';
 
 export const GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION =
   'google-gemini-3.7-flash-through-2026-12-31' as const;
+
+/**
+ * This is the existing, reviewed Luna router price identity used by the
+ * shadow/canary controls. Keep it literal: Terra and Sol have no adapter or
+ * reviewed price entry and must not inherit Luna's availability or rate.
+ */
+export const OPENAI_GPT_5_6_LUNA_PRICING_VERSION =
+  'openai-gpt-5.6-luna-2026-08-26' as const;
 
 export interface ModelCostPricing {
   provider: ModelProviderId;
@@ -50,6 +59,19 @@ export function resolveModelCostPricing(
   provider: ModelProviderId | string,
   model: string,
 ): ModelCostPricing | null {
+  if (provider === 'openai' && model === OPENAI_ROUTER_MODEL) {
+    return {
+      provider: 'openai',
+      model: OPENAI_ROUTER_MODEL,
+      version: OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
+      validBefore: null,
+      // Official standard pricing checked 2026-08-26:
+      // https://developers.openai.com/api/docs/models/gpt-5.6-luna
+      estimateCostMicros: (usage) => Math.ceil(
+        usage.inputTokens * 0.2 + usage.outputTokens * 1.2,
+      ),
+    };
+  }
   const canonicalAnthropicModel = provider === 'anthropic'
     ? resolveKnownClaudePricingModel(model)
     : null;
