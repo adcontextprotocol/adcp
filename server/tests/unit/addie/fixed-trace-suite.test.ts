@@ -33,6 +33,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import {
   candidateVisibleMarkerOverlap,
+  canonicalFixedTraceText,
   validateFixedTraceCorpusSemanticAuthority,
   validateFixedTraceCorpusToolContracts,
 } from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
@@ -372,6 +373,11 @@ describe('fixed cross-provider trace suite', () => {
       'brian o__kelley', 'scope_3', 'the_trade_desk', 'brian\t o   kelley',
       'nytimes[dot]com', 'u_0123456789', 'org.real.123456', 'org_real_１２３４５６',
       'brіan o kelley',
+      'brian%20o%20kelley', 'brian%2520o%2520kelley', 'brі%D0%B0n%20o%20k%D0%B5lley',
+      'https%3A%2F%2Funreviewed%2Eai%2Fagent', 'https%253A%252F%252Funreviewed%252Eai%252Fagent',
+      'org%5Freal%5F123456', 'org%255Freal%255F123456', 'brian%2Go%20kelley',
+      'https://nytimes%2ecom/x', 'the%5ftrade%5fdesk', 'u%5f0123456789', 'org%2ereal%2e123456',
+      'Brіan O Кelley',
     ]) {
       const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
       realIdentity[0].request.message = substitution;
@@ -379,6 +385,10 @@ describe('fixed cross-provider trace suite', () => {
         `identity_leakage:${realIdentity[0].id}`,
       ]));
     }
+
+    expect(canonicalFixedTraceText('read_google_doc')).toMatchObject({
+      compact: 'readgoogledoc', malformedPercentEncoding: false,
+    });
 
     const reviewedLock = {
       version: 'externally-reviewed-v32',
@@ -433,6 +443,44 @@ describe('fixed cross-provider trace suite', () => {
     expect(validateFixedTraceCorpusToolContracts(unreachable)).toEqual(expect.arrayContaining([
       'unreachable_fixture:tune-provider-timeout-boundary',
     ]));
+  });
+
+  it('fails closed without invoking accessors, proxy traps, or non-finite corpus values', () => {
+    for (const maxWords of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const nonFinite = structuredClone(FIXED_TRACE_CORPUS);
+      nonFinite.find((trace) => trace.id === 'tune-property-catalog-resolution')!.expectation.maxWords = maxWords;
+      expect(validateFixedTraceCorpus(nonFinite)).toEqual(['unsafe_corpus_snapshot:non_finite_number']);
+      expect(validateFixedTraceCorpusSemanticAuthority(nonFinite)).toEqual(['unsafe_semantic_authority_input:non_finite_number']);
+    }
+
+    const nonEnumerableAccessor = structuredClone(FIXED_TRACE_CORPUS);
+    const accessorTrace = nonEnumerableAccessor.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    let accessorReads = 0;
+    Object.defineProperty(accessorTrace.request, 'message', {
+      enumerable: false,
+      get: () => { accessorReads++; return 'forged-after-validation'; },
+    });
+    expect(validateFixedTraceCorpus(nonEnumerableAccessor)).toEqual(['unsafe_corpus_snapshot:non_enumerable']);
+    expect(validateFixedTraceCorpusSemanticAuthority(nonEnumerableAccessor)).toEqual(['unsafe_semantic_authority_input:non_enumerable']);
+    expect(accessorReads).toBe(0);
+
+    let proxyTraps = 0;
+    const proxySuite = new Proxy(FIXED_TRACE_CORPUS, {
+      get(target, property, receiver) { proxyTraps++; return Reflect.get(target, property, receiver); },
+      ownKeys(target) { proxyTraps++; return Reflect.ownKeys(target); },
+      getOwnPropertyDescriptor(target, property) { proxyTraps++; return Reflect.getOwnPropertyDescriptor(target, property); },
+    });
+    expect(validateFixedTraceCorpus(proxySuite)).toEqual(['unsafe_corpus_snapshot:proxy']);
+    expect(validateFixedTraceCorpusSemanticAuthority(proxySuite)).toEqual(['unsafe_semantic_authority_input:proxy']);
+    expect(proxyTraps).toBe(0);
+
+    const symbolic = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(symbolic, Symbol('unreviewed'), { value: 'unreviewed', enumerable: true });
+    expect(validateFixedTraceCorpus(symbolic)).toEqual(['unsafe_corpus_snapshot:symbol_key']);
+
+    const arrayExtra = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(arrayExtra, 'unreviewed', { value: 'unreviewed', enumerable: true });
+    expect(validateFixedTraceCorpus(arrayExtra)).toEqual(['unsafe_corpus_snapshot:array_extra_property']);
   });
 
   it('rejects replay-semantic mutations against the separate reviewer authority', () => {
@@ -600,6 +648,14 @@ describe('fixed cross-provider trace suite', () => {
       `candidate_input_leakage:${leaked.find((trace) => trace.phase === 'tuning')!.id}`,
     ]));
 
+    for (const value of ['This is public.', 'This is prіvate.', 'The record has access%20details.']) {
+      const classified = structuredClone(FIXED_TRACE_CORPUS);
+      classified.find((trace) => trace.phase === 'tuning')!.request.message = value;
+      expect(validateFixedTraceCorpus(classified)).toEqual(expect.arrayContaining([
+        `candidate_input_leakage:${classified.find((trace) => trace.phase === 'tuning')!.id}`,
+      ]));
+    }
+
     for (const id of ['tune-long-doc-bounded', 'tune-long-channel-injection', 'tune-long-provider-degraded']) {
       const trace = FIXED_TRACE_CORPUS.find((candidate) => candidate.id === id)!;
       expect(candidateVisibleMarkerOverlap(candidateVisibleTraceInput(trace),
@@ -612,7 +668,10 @@ describe('fixed cross-provider trace suite', () => {
     expect(validateFixedTraceCorpus(markerLeak)).toEqual(expect.arrayContaining([
       'candidate_marker_overlap:tune-long-doc-bounded:typed receipt',
     ]));
-    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing']) {
+    expect(candidateVisibleMarkerOverlap({ message: 'typed%20receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'agenda%2etiming' }, ['agenda timing'])).toEqual(['agenda timing']);
+    expect(candidateVisibleMarkerOverlap({ message: 'typed receipт' }, ['typed receipt'])).toEqual(['typed receipt']);
+    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing', 'typed%20receipt', 'typed%2520receipt', 'agenda%2etiming', 'typed receipт', 'typ%D0%B5d%20r%D0%B5ceipt', 'typed%2Greceipt']) {
       const escapedMarkerLeak = structuredClone(FIXED_TRACE_CORPUS);
       const id = value.startsWith('agenda') ? 'tune-long-channel-injection' : 'tune-long-doc-bounded';
       escapedMarkerLeak.find((trace) => trace.id === id)!.request.message += ` ${value}`;
