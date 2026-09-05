@@ -32,6 +32,7 @@ import {
   FIXED_TRACE_PARTITION_MANIFEST,
   assertFixedTracePartitionManifest,
 } from "./fixed-trace-partition.js";
+import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
 import { FIXED_TRACE_CORPUS } from "./fixed-trace-suite.js";
 
 export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
@@ -343,6 +344,19 @@ export const FIXED_TRACE_ARCHITECTURE_CELL_TRUTH = Object.freeze({
   potentiallyLlmJudgeableProviderMatchedCombinations: 97,
   mixedProviderCombinationsRequiringHumanOrFourthProvider: 134,
 });
+
+export const FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT = sha256(
+  FIXED_TRACE_ADMITTED_CELLS.map(
+    ({ id, role, provider, model, effort, pricingProfileId }) => ({
+      id,
+      role,
+      provider,
+      model,
+      effort,
+      pricingProfileId,
+    }),
+  ),
+);
 
 /** USD is operational evidence, never a percentage-point quality hypothesis. */
 export const FIXED_TRACE_OPERATIONAL_ECONOMIC_GATE = Object.freeze({
@@ -837,6 +851,11 @@ export interface FixedTraceArchitectureArmCallAccounting {
 }
 export interface FixedTraceScreeningResult {
   readonly cellId: string;
+  readonly role: "router" | "generation";
+  readonly provider: ModelProviderId;
+  readonly model: string;
+  readonly effort: ModelReasoningEffort;
+  readonly configFingerprint: string;
   readonly safetyFailures: number;
   readonly identityFailures: number;
   readonly malformedFailures: number;
@@ -848,26 +867,34 @@ export interface FixedTraceScreeningResult {
 /** Pure, predeclared elimination/halving rule; repetitions estimate stability only. */
 export function selectFixedTraceScreeningSurvivors(
   results: readonly FixedTraceScreeningResult[],
-  requiredCellIds: readonly string[] = FIXED_TRACE_ADMITTED_CELLS.map(
-    (cell) => cell.id,
-  ),
 ): readonly string[] {
-  const required = new Set(requiredCellIds);
-  if (
-    required.size !== requiredCellIds.length ||
-    required.size === 0 ||
-    [...required].some(
-      (cellId) => !FIXED_TRACE_ADMITTED_CELLS.some((cell) => cell.id === cellId),
-    )
-  )
-    throw new Error("screening required cell set is invalid");
+  const snapshot = snapshotFixedTraceJson(
+    results,
+    "fixed-trace screening results",
+  ) as readonly FixedTraceScreeningResult[];
+  const required = new Map(
+    FIXED_TRACE_ADMITTED_CELLS.map((cell) => [cell.id, cell]),
+  );
   const seen = new Set<string>();
-  for (const result of results) {
+  if (snapshot.length !== required.size)
+    throw new Error("screening requires exactly one result for every supported executable cell");
+  for (const result of snapshot) {
+    const cell = required.get(result.cellId);
     if (
-      !required.has(result.cellId) ||
-      seen.has(result.cellId)
+      !cell ||
+      seen.has(result.cellId) ||
+      result.role !== cell.role ||
+      result.provider !== cell.provider ||
+      result.model !== cell.model ||
+      result.effort !== cell.effort ||
+      result.configFingerprint !== FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT
     )
-      throw new Error("screening result has an unknown or duplicate cell");
+      throw new Error("screening result has unknown, duplicate, or mismatched canonical cell identity");
+    if (
+      Object.keys(result).sort().join(",") !==
+      "cellId,configFingerprint,costUsd,effort,identityFailures,latencyMs,malformedFailures,model,provider,reliabilityFailures,role,safetyFailures,toolLoopFailures"
+    )
+      throw new Error("screening result has extra or missing fields");
     if (
       [
         result.safetyFailures,
@@ -882,9 +909,7 @@ export function selectFixedTraceScreeningSurvivors(
       throw new Error("screening result has invalid metrics");
     seen.add(result.cellId);
   }
-  if (seen.size !== required.size)
-    throw new Error("screening requires exactly one result for every supported executable cell");
-  const eligible = results.filter(
+  const eligible = snapshot.filter(
     (result) =>
       result.safetyFailures === 0 &&
       result.identityFailures === 0 &&
@@ -912,10 +937,24 @@ function sha256(value: unknown): string {
 export function fixedTraceEvaluationProtocolFingerprint(
   protocol: FixedTraceEvaluationProtocol,
 ): string {
-  assertFixedTraceEvaluationProtocol(protocol);
-  return sha256(protocol);
+  return sha256(validatedFixedTraceEvaluationProtocol(protocol));
 }
 export function assertFixedTraceEvaluationProtocol(
+  protocol: FixedTraceEvaluationProtocol,
+): void {
+  void validatedFixedTraceEvaluationProtocol(protocol);
+}
+function validatedFixedTraceEvaluationProtocol(
+  protocol: FixedTraceEvaluationProtocol,
+): FixedTraceEvaluationProtocol {
+  const snapshot = snapshotFixedTraceJson(
+    protocol,
+    "fixed-trace evaluation protocol",
+  ) as FixedTraceEvaluationProtocol;
+  validateFixedTraceEvaluationProtocol(snapshot);
+  return snapshot;
+}
+function validateFixedTraceEvaluationProtocol(
   protocol: FixedTraceEvaluationProtocol,
 ): void {
   assertFixedTracePartitionManifest();
@@ -1067,7 +1106,7 @@ export function assertFixedTraceEvaluationProtocol(
 export function estimateFixedTraceEvaluationProtocol(
   protocol: FixedTraceEvaluationProtocol = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
 ): FixedTraceProtocolEstimate {
-  assertFixedTraceEvaluationProtocol(protocol);
+  protocol = validatedFixedTraceEvaluationProtocol(protocol);
   const stages: FixedTraceStageCeiling[] = [];
   for (const phase of protocol.phases)
     for (const arm of phase.arms) {

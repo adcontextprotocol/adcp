@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  FIXED_TRACE_MIN_INDEPENDENT_JUDGES,
+  FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION,
   buildFixedTraceJudgeRequest,
   judgeFixedTraceObservation,
   runIndependentFixedTraceJudges,
@@ -124,10 +124,18 @@ function stage(provider: ModelProviderId): FixedTraceModelStageMetadata {
   return {
     source: "provider",
     dispatched: true,
+    dispatchedCalls: 1,
     requestedProvider: provider,
     requestedModel: `${provider}-candidate-secret-model`,
     returnedProvider: provider,
     returnedModel: `${provider}-candidate-secret-model`,
+    providerExposures: [{
+      attempt: 1,
+      preparedProvider: provider,
+      preparedModel: `${provider}-candidate-secret-model`,
+      returnedProvider: provider,
+      returnedModel: `${provider}-candidate-secret-model`,
+    }],
     modelResolution: "exact",
     promptSha256: "a".repeat(64),
     providerRequestSha256: "b".repeat(64),
@@ -234,7 +242,7 @@ describe("fixed-trace independent judge", () => {
     });
   });
 
-  it("accepts a strict, internally consistent verdict with complete provenance", async () => {
+  it("does not dispatch even a strict verdict without custodied calibration", async () => {
     const provider = new ScriptedJudgeProvider(
       "openai",
       '{"pass":true,"score":4,"reason":"correct","finding":"The answer matches the executed tool evidence."}',
@@ -245,32 +253,27 @@ describe("fixed-trace independent judge", () => {
       config(provider),
     );
     expect(result).toMatchObject({
-      status: "judged",
-      failureReason: null,
-      verdict: {
-        pass: true,
-        score: 4,
-        reason: "correct",
-        finding: "The answer matches the executed tool evidence.",
-      },
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
+      verdict: null,
       metadata: {
         candidateIdentityMetadataExposed: false,
         requestedProvider: "openai",
-        returnedProvider: "openai",
-        usageKnown: true,
+        returnedProvider: null,
+        usageKnown: false,
         maxIterations: 1,
         transportRetries: 0,
         samplingMode: "provider_no_sampling_control",
         temperature: null,
       },
     });
-    expect(result.metadata.promptSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.metadata.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.metadata.responseSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.metadata.estimatedCostUsd).toBeCloseTo(0.000044);
+    expect(provider.dispatches).toBe(0);
+    expect(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION).toBe(
+      "not_admitted_missing_privileged_custodied_calibration",
+    );
   });
 
-  it("joins a valid verdict split across provider text blocks", async () => {
+  it("does not process provider text before calibration admission", async () => {
     const provider = new ScriptedJudgeProvider("openai", [
       '{"pass":true,',
       '"score":3,"reason":"correct","finding":"The answer is supported."}',
@@ -282,12 +285,12 @@ describe("fixed-trace independent judge", () => {
         config(provider),
       ),
     ).resolves.toMatchObject({
-      status: "judged",
-      verdict: { pass: true, score: 3, reason: "correct" },
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
     });
   });
 
-  it("accepts a verdict accompanied only by authenticated provider thinking state", async () => {
+  it("does not process provider state before calibration admission", async () => {
     const provider = new ScriptedJudgeProvider(
       "anthropic",
       '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}',
@@ -301,12 +304,12 @@ describe("fixed-trace independent judge", () => {
         config(provider),
       ),
     ).resolves.toMatchObject({
-      status: "judged",
-      verdict: { pass: true, score: 4, reason: "correct" },
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
     });
   });
 
-  it("rejects inconsistent or truncated judge output", async () => {
+  it("does not dispatch malformed candidate verdicts before calibration admission", async () => {
     const inconsistent = new ScriptedJudgeProvider(
       "openai",
       '{"pass":true,"score":2,"reason":"correct"}',
@@ -323,8 +326,8 @@ describe("fixed-trace independent judge", () => {
         config(inconsistent),
       ),
     ).resolves.toMatchObject({
-      status: "invalid",
-      failureReason: "judge_output_invalid",
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
     });
     await expect(
       judgeFixedTraceObservation(
@@ -333,12 +336,12 @@ describe("fixed-trace independent judge", () => {
         config(truncated),
       ),
     ).resolves.toMatchObject({
-      status: "invalid",
-      failureReason: "judge_output_truncated",
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
     });
   });
 
-  it("requires a bounded audit finding in every verdict", async () => {
+  it("does not dispatch malformed audit findings before calibration admission", async () => {
     const missing = new ScriptedJudgeProvider(
       "openai",
       '{"pass":true,"score":4,"reason":"correct"}',
@@ -364,8 +367,8 @@ describe("fixed-trace independent judge", () => {
           config(provider),
         ),
       ).resolves.toMatchObject({
-        status: "invalid",
-        failureReason: "judge_output_invalid",
+        status: "skipped",
+        failureReason: "judge_calibration_not_admitted",
       });
     }
   });
@@ -393,6 +396,13 @@ describe("fixed-trace independent judge", () => {
     candidate.metadata.generation.returnedModel =
       "google-fallback-secret-model";
     candidate.metadata.generation.modelResolution = "provider_canonicalized";
+    candidate.metadata.generation.providerExposures = [{
+      attempt: 1,
+      preparedProvider: "anthropic",
+      preparedModel: "anthropic-candidate-secret-model",
+      returnedProvider: "google",
+      returnedModel: "google-fallback-secret-model",
+    }];
     const provider = new ScriptedJudgeProvider(
       "google",
       '{"pass":true,"score":4,"reason":"correct"}',
@@ -412,10 +422,26 @@ describe("fixed-trace independent judge", () => {
   it("unions requested and returned router and generator providers for pipeline exclusion", async () => {
     const candidate = observation(trace.id, "anthropic");
     candidate.metadata.router.returnedProvider = "openai";
+    candidate.metadata.router.requestedModel = "anthropic-router";
     candidate.metadata.router.returnedModel = "openai-router-fallback";
     candidate.metadata.generation.requestedProvider = "google";
+    candidate.metadata.generation.requestedModel = "google-generator";
     candidate.metadata.generation.returnedProvider = "google";
     candidate.metadata.generation.returnedModel = "google-generator-fallback";
+    candidate.metadata.router.providerExposures = [{
+      attempt: 1,
+      preparedProvider: "anthropic",
+      preparedModel: "anthropic-router",
+      returnedProvider: "openai",
+      returnedModel: "openai-router-fallback",
+    }];
+    candidate.metadata.generation.providerExposures = [{
+      attempt: 1,
+      preparedProvider: "google",
+      preparedModel: "google-generator",
+      returnedProvider: "google",
+      returnedModel: "google-generator-fallback",
+    }];
     const onlyRemainingProvider = new ScriptedJudgeProvider(
       "openai",
       '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}',
@@ -428,12 +454,47 @@ describe("fixed-trace independent judge", () => {
       .resolves.toMatchObject({ status: "skipped", failureReason: "judge_not_independent" });
     await expect(runIndependentFixedTraceJudges(
       [trace], [candidate], [config(onlyRemainingProvider)],
-    )).rejects.toThrow("requires at least two independent judge providers");
+    )).rejects.toThrow("privileged custodied calibration");
     expect(sameRouterProvider.dispatches).toBe(0);
     expect(onlyRemainingProvider.dispatches).toBe(0);
   });
 
-  it("attributes a budget rejection without dispatching the judge", async () => {
+  it("fails closed when an LLM-contributing stage has no exposure ledger", async () => {
+    const candidate = observation(trace.id);
+    delete candidate.metadata.router.providerExposures;
+    const provider = new ScriptedJudgeProvider(
+      "openai",
+      '{"pass":true,"score":4,"reason":"correct","finding":"must not dispatch"}',
+    );
+    await expect(judgeFixedTraceObservation(trace, candidate, config(provider)))
+      .resolves.toMatchObject({
+        status: "skipped",
+        failureReason: "candidate_not_judgeable",
+      });
+    expect(provider.dispatches).toBe(0);
+  });
+
+  it("fails closed when a terminal or exposure provider identity is unknown or unledgered", async () => {
+    const terminalMismatch = observation(trace.id);
+    terminalMismatch.metadata.router.returnedProvider = "openai";
+    terminalMismatch.metadata.router.returnedModel = "openai-hidden-fallback";
+    const unknownExposure = observation(trace.id) as any;
+    unknownExposure.metadata.generation.providerExposures[0].returnedProvider = "unknown";
+    const provider = new ScriptedJudgeProvider(
+      "google",
+      '{"pass":true,"score":4,"reason":"correct","finding":"must not dispatch"}',
+    );
+    for (const candidate of [terminalMismatch, unknownExposure]) {
+      await expect(judgeFixedTraceObservation(trace, candidate, config(provider)))
+        .resolves.toMatchObject({
+          status: "skipped",
+          failureReason: "candidate_not_judgeable",
+        });
+    }
+    expect(provider.dispatches).toBe(0);
+  });
+
+  it("blocks a budgeted judge before any provider exposure without calibration", async () => {
     const delegate = new ScriptedJudgeProvider(
       "openai",
       '{"pass":true,"score":4,"reason":"correct"}',
@@ -451,15 +512,14 @@ describe("fixed-trace independent judge", () => {
       config(provider),
     );
     expect(result).toMatchObject({
-      status: "not_dispatched_budget",
-      failureReason: "judge_budget_rejected",
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
       metadata: { usageKnown: false, estimatedCostUsd: 0 },
     });
-    expect(result.metadata.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(delegate.dispatches).toBe(0);
   });
 
-  it("requires and summarizes two distinct non-candidate judge providers", async () => {
+  it("blocks an otherwise independent panel without custodied calibration", async () => {
     const candidate = observation(trace.id);
     const openai = new ScriptedJudgeProvider(
       "openai",
@@ -469,24 +529,21 @@ describe("fixed-trace independent judge", () => {
       "google",
       '{"pass":true,"score":3,"reason":"correct","finding":"The answer is supported."}',
     );
-    const judgments = await runIndependentFixedTraceJudges(
-      [trace],
-      [candidate],
-      [config(openai), config(google)],
-    );
-    expect(judgments).toHaveLength(FIXED_TRACE_MIN_INDEPENDENT_JUDGES);
+    await expect(runIndependentFixedTraceJudges(
+      [trace], [candidate], [config(openai), config(google)],
+    )).rejects.toThrow("privileged custodied calibration");
     expect(
-      summarizeFixedTraceJudges([trace], [candidate], judgments),
+      summarizeFixedTraceJudges([trace], [candidate], []),
     ).toMatchObject({
       expectedCases: 1,
       expectedJudgments: 2,
-      observedJudgments: 2,
-      judgedJudgments: 2,
-      complete: true,
-      judgmentCoverageRate: 1,
-      consensusPassRate: 1,
-      disagreementRate: 0,
-      comparisonEligible: true,
+      observedJudgments: 0,
+      judgedJudgments: 0,
+      complete: false,
+      judgmentCoverageRate: 0,
+      consensusPassRate: null,
+      disagreementRate: null,
+      comparisonEligible: false,
     });
   });
 
@@ -501,11 +558,11 @@ describe("fixed-trace independent judge", () => {
         [observation(trace.id)],
         [config(openai)],
       ),
-    ).rejects.toThrow("requires at least two independent judge providers");
+    ).rejects.toThrow("privileged custodied calibration");
     expect(openai.dispatches).toBe(0);
   });
 
-  it("records disagreement as a failed consensus without hiding completed coverage", async () => {
+  it("does not score disagreement without custodied calibration", async () => {
     const candidate = observation(trace.id);
     const openai = new ScriptedJudgeProvider(
       "openai",
@@ -515,18 +572,16 @@ describe("fixed-trace independent judge", () => {
       "google",
       '{"pass":false,"score":2,"reason":"incomplete","finding":"The answer omits a required criterion."}',
     );
-    const judgments = await runIndependentFixedTraceJudges(
-      [trace],
-      [candidate],
-      [config(openai), config(google)],
-    );
+    await expect(runIndependentFixedTraceJudges(
+      [trace], [candidate], [config(openai), config(google)],
+    )).rejects.toThrow("privileged custodied calibration");
     expect(
-      summarizeFixedTraceJudges([trace], [candidate], judgments),
+      summarizeFixedTraceJudges([trace], [candidate], []),
     ).toMatchObject({
-      judgmentCoverageRate: 1,
-      consensusPassRate: 0,
-      disagreementRate: 1,
-      comparisonEligible: true,
+      judgmentCoverageRate: 0,
+      consensusPassRate: null,
+      disagreementRate: null,
+      comparisonEligible: false,
     });
   });
 });

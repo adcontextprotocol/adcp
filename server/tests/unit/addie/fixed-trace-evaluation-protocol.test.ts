@@ -10,10 +10,12 @@ import {
   FIXED_TRACE_OPERATIONAL_ECONOMIC_GATE,
   FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
   FIXED_TRACE_PROTOCOL_PRICING,
+  FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT,
   FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES,
   assertPromotionGradeDualJudgeFeasibility,
   assertFixedTraceEvaluationProtocol,
   estimateFixedTraceEvaluationProtocol,
+  fixedTraceEvaluationProtocolFingerprint,
   providerExcludingCalibratedJudges,
   selectFixedTraceScreeningSurvivors,
   semanticJudgeCandidateProviders,
@@ -23,6 +25,22 @@ import {
   assertFixedTracePartitionManifest,
 } from "../../../src/addie/eval/fixed-trace-partition.js";
 import { resolveModelCostPricing } from "../../../src/addie/model-cost-pricing.js";
+
+const screeningResult = (cell = FIXED_TRACE_ADMITTED_CELLS[0]!, index = 0) => ({
+  cellId: cell.id,
+  role: cell.role,
+  provider: cell.provider,
+  model: cell.model,
+  effort: cell.effort,
+  configFingerprint: FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT,
+  safetyFailures: 0,
+  identityFailures: 0,
+  malformedFailures: 0,
+  toolLoopFailures: 0,
+  reliabilityFailures: index,
+  latencyMs: 100 + index,
+  costUsd: index,
+});
 
 describe("fixed-trace staged protocol", () => {
   it("derives the complete 46 development / 36 tuning partitions from corpus authority", () => {
@@ -270,46 +288,48 @@ describe("fixed-trace staged protocol", () => {
     );
   });
   it("applies hard elimination and successive halving deterministically", () => {
-    const results = FIXED_TRACE_ADMITTED_CELLS.slice(0, 4).map(
-      (cell, index) => ({
-        cellId: cell.id,
-        safetyFailures: index === 3 ? 1 : 0,
-        identityFailures: 0,
-        malformedFailures: 0,
-        toolLoopFailures: 0,
-        reliabilityFailures: index,
-        latencyMs: 10 - index,
-        costUsd: index,
-      }),
+    const results = FIXED_TRACE_ADMITTED_CELLS.map(screeningResult);
+    results[20]!.safetyFailures = 1;
+    expect(selectFixedTraceScreeningSurvivors(results)).toEqual(
+      results.slice(0, 10).map((result) => result.cellId),
     );
-    const required = results.map((result) => result.cellId);
-    expect(selectFixedTraceScreeningSurvivors(results, required)).toEqual([
-      results[0]!.cellId,
-      results[1]!.cellId,
-    ]);
-    expect(selectFixedTraceScreeningSurvivors([...results].reverse(), required)).toEqual([
-      results[0]!.cellId,
-      results[1]!.cellId,
-    ]);
+    expect(selectFixedTraceScreeningSurvivors([...results].reverse())).toEqual(
+      results.slice(0, 10).map((result) => result.cellId),
+    );
   });
   it("rejects partial and hostile screening result sets", () => {
-    const result = {
-      cellId: FIXED_TRACE_ADMITTED_CELLS[0]!.id,
-      safetyFailures: 0, identityFailures: 0, malformedFailures: 0,
-      toolLoopFailures: 0, reliabilityFailures: 0, latencyMs: 1, costUsd: 1,
-    };
+    const result = screeningResult();
     expect(() => selectFixedTraceScreeningSurvivors([result])).toThrow(
       "exactly one result for every supported executable cell",
     );
+    const complete = FIXED_TRACE_ADMITTED_CELLS.map(screeningResult);
     expect(() => selectFixedTraceScreeningSurvivors(
-      [{ ...result, latencyMs: Number.NaN }], [result.cellId],
-    )).toThrow("invalid metrics");
+      complete.map((entry, index) => index === 0 ? { ...entry, latencyMs: Number.NaN } : entry),
+    )).toThrow("non-finite number");
     expect(() => selectFixedTraceScreeningSurvivors(
-      [result, result], [result.cellId],
-    )).toThrow("unknown or duplicate");
+      [...complete.slice(0, -1), complete[0]!],
+    )).toThrow("unknown, duplicate, or mismatched canonical cell identity");
     expect(() => selectFixedTraceScreeningSurvivors(
-      [result], ["unknown"],
-    )).toThrow("required cell set is invalid");
+      complete.map((entry, index) => index === 0 ? { ...entry, provider: "google" } : entry),
+    )).toThrow("mismatched canonical cell identity");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      complete.map((entry, index) => index === 0 ? { ...entry, role: "generation" } : entry),
+    )).toThrow("mismatched canonical cell identity");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      complete.map((entry, index) => index === 0 ? { ...entry, model: "forged-model" } : entry),
+    )).toThrow("mismatched canonical cell identity");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      complete.map((entry, index) => index === 0 ? { ...entry, effort: "high" } : entry),
+    )).toThrow("mismatched canonical cell identity");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      complete.map((entry, index) => index === 0 ? { ...entry, cellId: "alias" } : entry),
+    )).toThrow("mismatched canonical cell identity");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      complete.map((entry, index) => index === 0 ? { ...entry, configFingerprint: "forged" } : entry),
+    )).toThrow("mismatched canonical cell identity");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      complete.map((entry, index) => index === 0 ? { ...entry, forged: true } : entry),
+    )).toThrow("extra or missing fields");
   });
   it.each([
     (protocol: any) => { protocol.finalProtocol.familywiseAlpha = 0.5; },
@@ -323,6 +343,37 @@ describe("fixed-trace staged protocol", () => {
     const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
     mutate(protocol);
     expect(() => assertFixedTraceEvaluationProtocol(protocol)).toThrow();
+  });
+  it("rejects getters and proxies before protocol validation, fingerprinting, or budgeting", () => {
+    const getterProtocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    Object.defineProperty(getterProtocol.adaptiveRule, "repeats", {
+      enumerable: true,
+      get: () => "stability_only_not_new_cases",
+    });
+    for (const action of [
+      () => assertFixedTraceEvaluationProtocol(getterProtocol),
+      () => fixedTraceEvaluationProtocolFingerprint(getterProtocol),
+      () => estimateFixedTraceEvaluationProtocol(getterProtocol),
+    ]) expect(action).toThrow("own enumerable data property");
+    const proxy = new Proxy(structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL), {});
+    expect(() => estimateFixedTraceEvaluationProtocol(proxy)).toThrow("must not contain a Proxy");
+    const togglingProtocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    let reads = 0;
+    Object.defineProperty(togglingProtocol.adaptiveRule, "repeats", {
+      enumerable: true,
+      get: () => (++reads === 1 ? "stability_only_not_new_cases" : "999"),
+    });
+    expect(() => fixedTraceEvaluationProtocolFingerprint(togglingProtocol))
+      .toThrow("own enumerable data property");
+    expect(reads).toBe(0);
+  });
+  it("uses a detached protocol snapshot rather than a later nested mutation", () => {
+    const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
+    const estimate = estimateFixedTraceEvaluationProtocol(protocol);
+    protocol.phases[5].repetitions = 999;
+    expect(estimate.stages.find((stage) => stage.phaseId === "stage_4_tuning")?.calls)
+      .not.toBe(36 * 999);
+    expect(() => estimateFixedTraceEvaluationProtocol(protocol)).toThrow("pinned declaration");
   });
   it("uses canonical Luna subset-cache pricing and leaves Terra/Sol inert", () => {
     const luna = FIXED_TRACE_PROTOCOL_PRICING.find(

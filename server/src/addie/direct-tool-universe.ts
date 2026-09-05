@@ -166,6 +166,7 @@ function captureFixedTraceEvaluatorToolUniverse(): CapturedDirectToolUniverse {
  */
 export const FIXED_TRACE_DIRECT_TOOL_UNIVERSE = captureFixedTraceEvaluatorToolUniverse();
 
-export const FIXED_TRACE_DIRECT_TOOL_HANDLERS = createSyntheticDirectToolReceiptHandlers(
-  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
-);
+/** Construct inert handlers only when a direct replay explicitly asks for them. */
+export function fixedTraceDirectToolHandlers(): Map<string, ToolHandler> {
+  return createSyntheticDirectToolReceiptHandlers(FIXED_TRACE_DIRECT_TOOL_UNIVERSE);
+}

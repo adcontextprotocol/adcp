@@ -1,8 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { types } from "node:util";
 import type {
   ModelProviderId,
   ModelReasoningEffort,
 } from "../model-providers/model-provider.js";
+import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
 
 /**
  * Diagnostic integrity only. An importer supplies this module's key, so this
@@ -122,6 +124,10 @@ export interface FixedTraceEvidenceLedger {
 
 const DIAGNOSTIC_ADMISSION =
   "not_admitted_diagnostic_hmac_without_privileged_durable_authority" as const;
+const hasExactKeys = (value: unknown, keys: readonly string[]) =>
+  typeof value === "object" &&
+  value !== null &&
+  Object.keys(value).sort().join(",") === [...keys].sort().join(",");
 
 function canonical(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "string")
@@ -142,13 +148,71 @@ function canonical(value: unknown): string {
   throw new Error("non-JSON evaluator ledger value");
 }
 function deepSnapshot<T>(value: T): T {
-  const copy = structuredClone(value);
-  const freeze = (nested: unknown): unknown => {
-    if (nested === null || typeof nested !== "object" || Object.isFrozen(nested)) return nested;
-    for (const child of Object.values(nested as Record<string, unknown>)) freeze(child);
-    return Object.freeze(nested);
-  };
-  return freeze(copy) as T;
+  return snapshotFixedTraceJson(value, "fixed-trace evaluator coordinator") as T;
+}
+function snapshotCoordinatorConfig(value: unknown): {
+  readonly hmacKey: Uint8Array;
+  readonly keyId: string;
+} {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    types.isProxy(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  )
+    throw new Error("evaluator coordinator configuration must be a plain non-proxy object");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Object.keys(descriptors).sort().join(",") !== "hmacKey,keyId")
+    throw new Error("evaluator coordinator configuration has extra or missing fields");
+  const key = descriptors.hmacKey;
+  const keyId = descriptors.keyId;
+  if (!key || !("value" in key) || !keyId || !("value" in keyId))
+    throw new Error("evaluator coordinator configuration must use data properties");
+  if (
+    types.isProxy(key.value) ||
+    !(key.value instanceof Uint8Array) ||
+    key.value.byteLength < 32 ||
+    typeof keyId.value !== "string" ||
+    !keyId.value.trim()
+  )
+    throw new Error("evaluator-owned HMAC custody configuration is required");
+  return Object.freeze({ hmacKey: new Uint8Array(key.value), keyId: keyId.value });
+}
+const isProvider = (value: unknown): value is ModelProviderId =>
+  value === "anthropic" || value === "openai" || value === "google";
+const isEffort = (value: unknown): value is ModelReasoningEffort =>
+  value === "provider_default" || value === "none" || value === "low" || value === "medium" || value === "high";
+const isNonemptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+function assertExpectedInvocation(entry: FixedTraceExpectedInvocation, runId: string): void {
+  if (!hasExactKeys(entry, [
+    "runId", "phaseId", "caseId", "armId", "stage", "invocation", "attempt", "requested", "controls",
+  ])) throw new Error("expected sequence entry has extra or missing fields");
+  if (
+    entry.runId !== runId ||
+    !isNonemptyString(entry.phaseId) ||
+    !isNonemptyString(entry.caseId) ||
+    !isNonemptyString(entry.armId) ||
+    !["router", "generation", "judge", "simulator"].includes(entry.stage) ||
+    !Number.isSafeInteger(entry.invocation) || entry.invocation < 1 ||
+    !Number.isSafeInteger(entry.attempt) || entry.attempt < 1
+  ) throw new Error("expected sequence entry has invalid cross-field identity");
+  if (!hasExactKeys(entry.requested, ["provider", "model", "effort", "identityPolicy"]) ||
+    !isProvider(entry.requested.provider) || !isNonemptyString(entry.requested.model) ||
+    !isEffort(entry.requested.effort) || !isNonemptyString(entry.requested.identityPolicy))
+    throw new Error("expected sequence entry has invalid requested identity");
+  const controls = entry.controls;
+  if (!hasExactKeys(controls, [
+    "promptSha256", "systemSha256", "messagesSha256", "toolSchemaSha256", "providerRequestSha256",
+    "presentedToolNames", "presentedToolOrderSha256", "simulatorReceiptProvenanceSha256",
+    "simulatorControlsSha256", "architectureSha256", "admissionSha256", "configSha256", "pricingSha256",
+    "limitsSha256", "retryCacheSamplingSha256", "failureDenominatorId",
+  ]) ||
+    !Object.entries(controls).every(([key, value]) => key === "presentedToolNames"
+      ? Array.isArray(value) && value.every(isNonemptyString)
+      : isNonemptyString(value)))
+    throw new Error("expected sequence entry has invalid controls");
 }
 const invocationKey = (
   entry: Pick<
@@ -212,19 +276,21 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
   readonly hmacKey: Uint8Array;
   readonly keyId: string;
 }) {
-  if (
-    !(evaluatorConfig.hmacKey instanceof Uint8Array) ||
-    evaluatorConfig.hmacKey.byteLength < 32 ||
-    !evaluatorConfig.keyId.trim()
-  )
-    throw new Error("evaluator-owned HMAC custody configuration is required");
+  const detachedConfig = snapshotCoordinatorConfig(evaluatorConfig);
   const sign = (projection: string) =>
-    createHmac("sha256", evaluatorConfig.hmacKey)
+    createHmac("sha256", detachedConfig.hmacKey)
       .update(
-        `${FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION}\u0000${evaluatorConfig.keyId}\u0000${projection}`,
+        `${FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION}\u0000${detachedConfig.keyId}\u0000${projection}`,
       )
       .digest("hex");
   const verify = (contract: FixedTraceExpectedSequenceContract) => {
+    if (!hasExactKeys(contract, [
+      "version", "keyId", "runId", "protocolFingerprint", "manifestFingerprint", "entries", "signature",
+    ]))
+      throw new FixedTraceLedgerValidationError(
+        "authentication",
+        "expected sequence contract has extra or missing fields",
+      );
     const projection = contractProjection({
       version: contract.version,
       keyId: contract.keyId,
@@ -237,7 +303,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
     const supplied = Buffer.from(contract.signature, "hex");
     if (
       contract.version !== FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION ||
-      contract.keyId !== evaluatorConfig.keyId ||
+      contract.keyId !== detachedConfig.keyId ||
       expected.length !== supplied.length ||
       !timingSafeEqual(expected, supplied)
     )
@@ -254,6 +320,9 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
         "version" | "keyId" | "signature"
       >,
     ): FixedTraceExpectedSequenceContract {
+      input = deepSnapshot(input);
+      if (!hasExactKeys(input, ["runId", "protocolFingerprint", "manifestFingerprint", "entries"]))
+        throw new Error("expected sequence has extra or missing fields");
       if (
         !input.runId.trim() ||
         !input.protocolFingerprint.trim() ||
@@ -265,6 +334,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
         );
       const keys = new Set<string>();
       for (const entry of input.entries) {
+        assertExpectedInvocation(entry, input.runId);
         const key = invocationKey(entry);
         if (entry.runId !== input.runId || keys.has(key))
           throw new Error(
@@ -274,7 +344,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
       }
       const unsigned = deepSnapshot({
         version: FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION,
-        keyId: evaluatorConfig.keyId,
+        keyId: detachedConfig.keyId,
         ...input,
         entries: deepSnapshot(input.entries),
       } as const);

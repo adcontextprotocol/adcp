@@ -481,6 +481,12 @@ describe('fixed trace artifact runner', () => {
     expect(ambiguous.terminalStage).toBe('generation');
     expect(ambiguousRouter.respondCalls).toHaveLength(1);
     expect(ambiguousGeneration.respondCalls).toHaveLength(1);
+    expect(ambiguous.metadata.router.providerExposures).toEqual([
+      expect.objectContaining({ attempt: 1, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+    ]);
+    expect(ambiguous.metadata.generation.providerExposures).toEqual([
+      expect.objectContaining({ attempt: 1, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+    ]);
   });
 
   it('fails hybrid admission safe for tool-bearing, admin, thread, and unknown-privacy cases', () => {
@@ -755,6 +761,10 @@ describe('fixed trace artifact runner', () => {
       estimatedCostUsd: 0.00007,
     });
     expect(observation.metadata.generation.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(observation.metadata.generation.providerExposures).toEqual([
+      expect.objectContaining({ attempt: 1, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+      expect.objectContaining({ attempt: 2, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+    ]);
     expect(generation.respondCalls).toHaveLength(2);
     expect(generation.respondCalls[0].toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
     expect(generation.respondCalls[1].toolChoice).toBeUndefined();

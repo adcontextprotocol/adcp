@@ -130,6 +130,35 @@ describe("fixed-trace evaluator-owned evidence coordinator", () => {
     expect(arbitraryImporter.validate(issued, [actual(issued.entries[0]!)]).admission)
       .toBe("not_admitted_diagnostic_hmac_without_privileged_durable_authority");
   });
+  it("rejects getter/proxy inputs and detaches mutable key material", () => {
+    const key = new Uint8Array(32).fill(3);
+    const config = { hmacKey: key, keyId: "detached-key" };
+    const detached = createFixedTraceEvaluatorCoordinator(config);
+    key.fill(4);
+    config.keyId = "rewritten-key";
+    const issued = detached.issueExpectedSequence({
+      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest",
+      entries: [expected("case-a", 1)],
+    });
+    expect(issued.keyId).toBe("detached-key");
+    expect(detached.validate(issued, [actual(issued.entries[0]!)]).complete).toBe(true);
+    const getterInput = {
+      protocolFingerprint: "protocol", manifestFingerprint: "manifest", entries: [expected("case-a", 1)],
+    } as Record<string, unknown>;
+    let reads = 0;
+    Object.defineProperty(getterInput, "runId", {
+      enumerable: true,
+      get: () => (++reads === 1 ? "run-1" : "run-2"),
+    });
+    expect(() => detached.issueExpectedSequence(getterInput as any)).toThrow("own enumerable data property");
+    expect(reads).toBe(0);
+    expect(() => createFixedTraceEvaluatorCoordinator(new Proxy(config, {}))).toThrow("non-proxy");
+    expect(() => detached.issueExpectedSequence(new Proxy({
+      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest", entries: [expected("case-a", 1)],
+    }, {}))).toThrow("must not contain a Proxy");
+    const actualEntries = [actual(issued.entries[0]!)];
+    expect(() => detached.validate(issued, new Proxy(actualEntries, {}))).toThrow("must not contain a Proxy");
+  });
   it.each([
     [
       "omission",

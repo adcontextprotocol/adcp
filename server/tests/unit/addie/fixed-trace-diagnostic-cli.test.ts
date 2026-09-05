@@ -51,16 +51,9 @@ describe("fixed-trace diagnostic CLI parser", () => {
         env: { PATH: process.env.PATH ?? "" },
       },
     );
-    const validated = result
-      .split("\n")
-      .map((line) => {
-        try {
-          return JSON.parse(line) as Record<string, unknown>;
-        } catch {
-          return null;
-        }
-      })
-      .find((line) => line?.diagnosticOnly === true);
+    const lines = result.trim().split("\n");
+    expect(lines).toHaveLength(1);
+    const validated = JSON.parse(lines[0]!) as Record<string, unknown>;
     expect(validated).toMatchObject({
       diagnosticOnly: true,
       dispatchable: false,

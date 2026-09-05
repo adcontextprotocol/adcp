@@ -1,10 +1,5 @@
 /** Planning-only manual entrypoint: it has no dispatch or output path. */
 import { parseFixedTraceDiagnosticCliArguments } from "../../src/addie/eval/fixed-trace-diagnostic-cli.js";
-import {
-  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
-  assertFixedTraceEvaluationProtocol,
-  estimateFixedTraceEvaluationProtocol,
-} from "../../src/addie/eval/fixed-trace-evaluation-protocol.js";
 
 const arguments_ = parseFixedTraceDiagnosticCliArguments(process.argv.slice(2));
 if (!arguments_.validateOnly)
@@ -15,6 +10,16 @@ if (arguments_.output !== undefined)
   throw new Error(
     "--output is unavailable in validate-only mode; no artifact may be written",
   );
+// This entrypoint is deliberately data-only. Some transitive corpus modules
+// initialize diagnostic loggers while their immutable declarations load; keep
+// those process-local diagnostics isolated from the one-machine-readable-line
+// validate-only contract.
+process.env.LOG_LEVEL = "silent";
+const {
+  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+  assertFixedTraceEvaluationProtocol,
+  estimateFixedTraceEvaluationProtocol,
+} = await import("../../src/addie/eval/fixed-trace-evaluation-protocol.js");
 assertFixedTraceEvaluationProtocol(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
 const estimate = estimateFixedTraceEvaluationProtocol(
   FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,

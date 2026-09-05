@@ -305,6 +305,14 @@ export interface FixedTraceModelStageMetadata {
   requestedModel: string | null;
   returnedProvider: ModelProviderId | null;
   returnedModel: string | null;
+  /** Identity-only ledger of every prepared attempt; never contains payloads. */
+  providerExposures?: readonly {
+    attempt: number;
+    preparedProvider: ModelProviderId;
+    preparedModel: string;
+    returnedProvider: ModelProviderId | null;
+    returnedModel: string | null;
+  }[];
   modelResolution: 'exact' | 'provider_canonicalized' | 'local' | null;
   promptSha256: string | null;
   providerRequestSha256: string | null;
