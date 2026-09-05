@@ -22,10 +22,8 @@ import { accountScopeFromRef } from './account-scope.js';
 import { validateSourceSchema } from './source-schema.js';
 import type { AccountRef } from './types.js';
 
-// The training agent tracks the unreleased Reliable Reporting additions while
-// the published SDK remains on the preceding experimental schema snapshot.
-// Keep the compatibility surface explicit so callers and tests do not need to
-// hide the new wire fields behind ad-hoc casts.
+// Keep the training aliases explicit at the handler boundary: the runtime
+// serves the published RC.1 schema while retaining the frozen RC.0 projection.
 export type TrainingGetReportingStatusRequest = GetReportingStatusRequest & {
   changes_after?: string;
 };
@@ -49,7 +47,9 @@ export interface TrainingReportingAdjustment {
   created_at: string;
 }
 
-/** Validate the unreleased Reliable Reporting wire shape at the handler seam. */
+type PendingReportingRevision = Omit<ReportingRevision, 'revision_content_sha256'>;
+
+/** Validate the RC.1 Reliable Reporting wire shape at the handler seam. */
 export function validateReliableReportingResponse(
   value: unknown,
 ): TrainingGetReportingStatusResponse {
@@ -1225,10 +1225,10 @@ export function publishReportingCoreLifecycleProbeRows(
     row_count: rows.length,
     control_totals: revisionMetadata.control_totals
       ?? [{ name: 'impressions', value: String(impressions), value_type: 'integer', unit: 'impressions' }],
-  } as ReportingRevision, rows);
+  }, rows);
   ledger.publishedRevisions.set(obligation, revision);
   ledger.version += 1;
-  return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: (revision as unknown as { revision_content_sha256: string }).revision_content_sha256 };
+  return { reporting_revision_id: revision.reporting_revision_id, row_count: revision.row_count, revision_content_sha256: revision.revision_content_sha256 };
 }
 
 /**
@@ -1382,7 +1382,7 @@ export function publishReliableReportingCoreIntegrityCorrection(
   const record = ledger.integrityRecords?.[0];
   if (!record) throw new Error('Prepare reliable_reporting_core_integrity_probe before publication.');
   const revisionIdValue = stableId('reporting-revision', [record.obligation.reporting_obligation_id, 'official-v1']);
-  const revision: ReportingRevision = {
+  const revision: PendingReportingRevision = {
     reporting_revision_id: revisionIdValue,
     report_definition_id: record.obligation.report_definition_id,
     report_definition_uri: TRAINING_SOURCE_CALENDAR_DEFINITION_URI,
@@ -1454,7 +1454,7 @@ function prepareReliableReportingOptionalTierProbe(
   reporting_revision_id: string;
   reporting_materialization_id: string;
   destination_ref: string;
-  canonical_content_digest?: Record<string, unknown>;
+  canonical_content_digest?: ReportingRevision['canonical_content_digest'];
 } {
   const reconciled = tier === 'reconciled';
   const config: CoreConfig = {
@@ -1489,7 +1489,7 @@ function prepareReliableReportingOptionalTierProbe(
   const revisionIdValue = stableId('reporting-revision', [obligationIdValue, 'official-v1']);
   const materializationId = stableId('reporting-materialization', [revisionIdValue, tier]);
   const destinationRef = reconciled ? 'rr-billing-destination' : 'rr-managed-dataset';
-  const digest = {
+  const digest: NonNullable<ReportingRevision['canonical_content_digest']> = {
     algorithm: 'sha256',
     value: 'bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4',
     canonicalization_id: 'billing-rows-v1',
@@ -1497,7 +1497,7 @@ function prepareReliableReportingOptionalTierProbe(
     canonicalization_sha256: TRAINING_CANONICALIZATION_SHA256,
   };
   const coverage = emptyCoverage(period.end, []);
-  const revision = {
+  const revision: PendingReportingRevision = {
     reporting_revision_id: revisionIdValue,
     report_definition_id: config.report_definition_id,
     report_definition_uri: TRAINING_DEFINITION_URI,
@@ -1526,7 +1526,7 @@ function prepareReliableReportingOptionalTierProbe(
     ] : [],
     ...(reconciled && { canonical_content_digest: digest }),
     created_at: '2026-08-27T04:00:01.000Z',
-  } as ReportingRevision;
+  };
   const materialization: Record<string, unknown> = {
     reporting_materialization_id: materializationId,
     reporting_revision_id: revisionIdValue,
@@ -1568,6 +1568,16 @@ function prepareReliableReportingOptionalTierProbe(
     },
     created_at: '2026-08-27T04:00:00.000Z',
   };
+  const stored: StoredConfig = { config, activatedAt: period.start, activeWindows: [{ start: period.start }] };
+  const ledger = emptyLedger();
+  ledger.version = (ledgers.get(callerScope(principal, accountId))?.version ?? 0) + 1;
+  ledger.configs.set(generationKey(config), stored);
+  ledger.history.push(stored);
+  ledger.virtualNow = '2026-08-27T04:01:00.000Z';
+  const committedRevision = commitRevisionContent(ledger, revision, reconciled ? [
+    { period_start: period.start, period_end: period.end, impressions: 2 },
+    { period_start: period.start, period_end: period.end, impressions: 3 },
+  ] : []);
   const record: LedgerRecord = {
     obligation: {
       reporting_obligation_id: obligationIdValue,
@@ -1598,20 +1608,9 @@ function prepareReliableReportingOptionalTierProbe(
       issues: [],
       resource_retained_until: '2026-09-27T04:00:02.000Z',
     } as ReportingObligation,
-    revision,
+    revision: committedRevision,
   };
-  const stored: StoredConfig = { config, activatedAt: period.start, activeWindows: [{ start: period.start }] };
-  const ledger = emptyLedger();
-  ledger.version = (ledgers.get(callerScope(principal, accountId))?.version ?? 0) + 1;
-  ledger.configs.set(generationKey(config), stored);
-  ledger.history.push(stored);
-  ledger.virtualNow = '2026-08-27T04:01:00.000Z';
   ledger.integrityRecords = [record];
-  const committedRevision = commitRevisionContent(ledger, revision, reconciled ? [
-    { period_start: period.start, period_end: period.end, impressions: 2 },
-    { period_start: period.start, period_end: period.end, impressions: 3 },
-  ] : []);
-  record.revision = committedRevision;
   ledger.publishedRevisions.set(obligationIdValue, committedRevision);
   ledger.materializations = [materialization];
   ledger.managedResourceReadable = true;
@@ -2231,7 +2230,7 @@ function recordsFor(
   return records.sort((a, b) => a.obligation.period.start.localeCompare(b.obligation.period.start));
 }
 
-function zeroRowRevision(obligation: ReportingObligation, nowMs: number): ReportingRevision {
+function zeroRowRevision(obligation: ReportingObligation, nowMs: number): PendingReportingRevision {
   return {
     reporting_revision_id: revisionId(obligation.reporting_obligation_id),
     report_definition_id: obligation.report_definition_id,
@@ -2259,7 +2258,7 @@ function zeroRowRevision(obligation: ReportingObligation, nowMs: number): Report
 
 function commitRevisionContent(
   ledger: ReportingLedger,
-  revision: ReportingRevision,
+  revision: PendingReportingRevision,
   rows: Array<Record<string, unknown>>,
 ): ReportingRevision {
   const bindingSha256 = createHash('sha256').update(canonicalize({
@@ -2269,7 +2268,7 @@ function commitRevisionContent(
     reporting_rows: rows,
   })).digest('hex');
   const existing = ledger.revisionContents.get(revision.reporting_revision_id);
-  const committed = { ...structuredClone(revision), revision_content_sha256: bindingSha256 } as ReportingRevision;
+  const committed: ReportingRevision = { ...structuredClone(revision), revision_content_sha256: bindingSha256 };
   if (existing) {
     // Identity binds the complete metadata, authoritative rows, and binding
     // digest. Exact retries return the originally committed revision bytes.

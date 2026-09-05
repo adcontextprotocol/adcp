@@ -9,10 +9,9 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 release c
 
 <Warning>
 **3.2 is in release candidate.** RC.1 is the current signed protocol
-checkpoint and has no matched SDK yet. TypeScript
-`@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed RC.0 exactly;
-Python higher-level helpers remain partial. Go `adcp/v3@v3.2.0` remains
-generated from protocol beta.9. Keep production traffic pinned to `"3.1"`
+checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, and
+Go `adcp/v3@v3.2.1` embed it exactly; Python and Go higher-level coverage
+remains role-dependent. Keep production traffic pinned to `"3.1"`
 while validating an exact 3.2 checkpoint in staging.
 </Warning>
 
@@ -54,7 +53,7 @@ surfaces by hand.
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test RC.1 from its signed assets. For SDK-backed RC.0 testing, pair `@adcp/sdk@14.0.0-beta.31` or Python `adcp==8.0.0b13` with exact RC.0. Retain the exact package and wire versions. |
+| 8 | Compliance operators | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain the exact package and wire versions. |
 | 9 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
 
 ## Required to claim 3.2 behavior
@@ -223,7 +222,7 @@ See [Cross-role governance enforcement](/docs/reference/migration/cross-role-gov
 | Signals or measurement agent | Exact prerelease pin and only the attestation, targeting, or feedback capabilities actually implemented. |
 | Governance provider/service | Exact prerelease pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
 | SDK maintainer | Signed RC.1 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the next prerelease. |
-| Compliance operator | Matching assets and wire pin end to end; no 3.2 badge from a prerelease checkpoint. RC.1 has no matched SDK yet. |
+| Compliance operator | Matching assets, SDK package, and wire pin end to end; no 3.2 badge from a prerelease checkpoint. |
 
 ## Rollback
 
