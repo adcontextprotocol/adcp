@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
-import { isolateInteriorRoots, maximizePolynomial } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { interval, isolateInteriorRoots, maximizePolynomial } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
@@ -12,7 +12,7 @@ import {
   restrictedPhiInterval,
   restrictedScoreEM,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
-import { polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
+import { polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
 import { add, choose, compare, decimal, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
@@ -62,6 +62,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => enumerateReducedStates(100_000)).toThrow(/n in \[1, 25\]/);
     expect(() => restrictedPhiInterval({ n: 5, x: 6, t: 5 }, margin)).toThrow(/0 <= x <= t <= n/);
     expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, -1)).toThrow(/\[1, 64\]/);
+    expect(() => interval({ numerator: 2n, denominator: 2n }, ONE)).toThrow(/normalized/);
+    expect(() => polynomial([{ numerator: 2n, denominator: 2n }])).toThrow(/normalized/);
   });
 
   it('exhaustively reduces four-cell null probabilities for every small table', () => {
@@ -136,6 +138,13 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(size.status).toBe('indeterminate');
     expect(size.reason).toBe('size_complexity_ceiling');
     expect(size.indeterminateStates).toHaveLength(55);
+  });
+
+  it('converts an accepted precision that exceeds algebraic work bounds into indeterminacy', () => {
+    const tinyMargin = decimal(`0.${'0'.repeat(74)}1`);
+    const envelope = nullBoundarySizeEnvelope(8, tinyMargin, alpha);
+    expect(envelope.status).toBe('indeterminate');
+    expect(envelope.reason).toBe('size_complexity_ceiling');
   });
 
   it('conservatively propagates a real overlapping p-value matrix into upper envelopes', () => {

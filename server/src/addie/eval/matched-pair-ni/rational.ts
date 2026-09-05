@@ -5,6 +5,7 @@ export const MAX_EXTERNAL_RATIONAL_BITS = 256;
 export const MAX_EXTERNAL_DECIMAL_CHARACTERS = 80;
 /** Absolute guard for direct-module arithmetic and intermediate certificates. */
 export const MAX_RATIONAL_BITS = 8_192;
+const normalizedRationals = new WeakSet<object>();
 
 function gcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left;
@@ -21,15 +22,20 @@ export function rational(numerator: bigint | number, denominator: bigint | numbe
   if (n === 0n) return ZERO;
   if (d < 0n) [n, d] = [-n, -d];
   const divisor = gcd(n, d);
-  return Object.freeze({ numerator: n / divisor, denominator: d / divisor });
+  const result = Object.freeze({ numerator: n / divisor, denominator: d / divisor });
+  normalizedRationals.add(result);
+  return result;
 }
 
 export const ZERO: Rational = Object.freeze({ numerator: 0n, denominator: 1n });
 export const ONE: Rational = Object.freeze({ numerator: 1n, denominator: 1n });
 export const TWO: Rational = Object.freeze({ numerator: 2n, denominator: 1n });
+normalizedRationals.add(ZERO); normalizedRationals.add(ONE); normalizedRationals.add(TWO);
 
 export function validateBoundedRational(value: Rational, name: string): void {
+  if (typeof value === 'object' && value !== null && normalizedRationals.has(value)) return;
   if (typeof value?.numerator !== 'bigint' || typeof value?.denominator !== 'bigint' || value.denominator <= 0n || bitLength(value.numerator) > MAX_RATIONAL_BITS || bitLength(value.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${name} exceeds the rational arithmetic ceiling`);
+  if ((value.numerator === 0n && value.denominator !== 1n) || (value.numerator !== 0n && gcd(value.numerator, value.denominator) !== 1n)) throw new RangeError(`${name} must be normalized`);
 }
 export function add(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator); }
 export function subtract(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.denominator - b.numerator * a.denominator, a.denominator * b.denominator); }

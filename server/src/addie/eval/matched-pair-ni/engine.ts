@@ -269,9 +269,14 @@ export function restrictedScoreEM(input: MatchedPairNiInput): MatchedPairNiResul
     const p = conditionalMcNemarPValue(observed);
     return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, input.alpha) <= 0, pValue: Object.freeze({ lower: p, upper: p }) }) });
   }
-  const states = enumerateReducedStates(observed.n);
-  const eStep = buildEStep(states, input.margin);
-  return restrictedScoreEMReduced(observed, input.margin, input.alpha, states, eStep);
+  try {
+    const states = enumerateReducedStates(observed.n);
+    const eStep = buildEStep(states, input.margin);
+    return restrictedScoreEMReduced(observed, input.margin, input.alpha, states, eStep);
+  } catch (error) {
+    if (error instanceof RangeError && /ceiling/.test(error.message)) return indeterminate('complexity_ceiling');
+    throw error;
+  }
 }
 function restrictedScoreEMReduced(
   observed: ReducedMatchedPairState, margin: Rational, alpha: Rational,
@@ -327,25 +332,40 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
     for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, margin));
     return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, reason: 'size_complexity_ceiling' });
   }
-  const eStep = buildEStep(states, margin);
+  let eStep: ReturnType<typeof buildEStep>;
+  try {
+    eStep = buildEStep(states, margin);
+  } catch (error) {
+    if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
+    let upper = constant(ZERO);
+    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, margin));
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, reason: 'size_complexity_ceiling' });
+  }
   let lower = constant(ZERO); let upper = constant(ZERO);
   const indeterminateStates: ReducedMatchedPairState[] = [];
-  for (const state of states) {
-    const counts = { n11: n - state.t, n10: state.x, n01: state.t - state.x, n00: 0 };
-    const outcome = restrictedScoreEMReduced(reduceMatchedPairCounts(counts), margin, alpha, states, eStep);
-    const probability = reducedStateProbabilityPolynomial(state, margin);
-    if (outcome.diagnostic.indeterminate) {
-      upper = polynomialAdd(upper, probability);
-      indeterminateStates.push(state);
-    } else if (outcome.diagnostic.statisticalRejectNull) {
-      lower = polynomialAdd(lower, probability);
-      upper = polynomialAdd(upper, probability);
-    } else if (compare(outcome.diagnostic.pValue.lower, alpha) <= 0) {
-      // The actual p-value could be <= alpha inside its certified enclosure.
-      // Include it only in the upper size region and advertise the uncertainty.
-      upper = polynomialAdd(upper, probability);
-      indeterminateStates.push(state);
+  try {
+    for (const state of states) {
+      const counts = { n11: n - state.t, n10: state.x, n01: state.t - state.x, n00: 0 };
+      const outcome = restrictedScoreEMReduced(reduceMatchedPairCounts(counts), margin, alpha, states, eStep);
+      const probability = reducedStateProbabilityPolynomial(state, margin);
+      if (outcome.diagnostic.indeterminate) {
+        upper = polynomialAdd(upper, probability);
+        indeterminateStates.push(state);
+      } else if (outcome.diagnostic.statisticalRejectNull) {
+        lower = polynomialAdd(lower, probability);
+        upper = polynomialAdd(upper, probability);
+      } else if (compare(outcome.diagnostic.pValue.lower, alpha) <= 0) {
+        // The actual p-value could be <= alpha inside its certified enclosure.
+        // Include it only in the upper size region and advertise the uncertainty.
+        upper = polynomialAdd(upper, probability);
+        indeterminateStates.push(state);
+      }
     }
+  } catch (error) {
+    if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
+    let fallbackUpper = constant(ZERO);
+    for (const state of states) fallbackUpper = polynomialAdd(fallbackUpper, reducedStateProbabilityPolynomial(state, margin));
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: fallbackUpper, indeterminateStates: states, reason: 'size_complexity_ceiling' });
   }
   return Object.freeze({
     status: indeterminateStates.length === 0 ? 'certified' : 'indeterminate', lower, upper,
