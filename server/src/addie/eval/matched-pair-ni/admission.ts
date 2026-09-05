@@ -7,7 +7,7 @@ export const MATCHED_PAIR_NI_ADMISSION = Object.freeze({
   reasons: Object.freeze([
     'missing_independent_reference_match',
     'continuous_type_i_certificate_review_required',
-    'supported_n_below_confirmatory_requirement',
+    'supported_n_has_no_confirmatory_sample_size_validation',
     'unvalidated_adaptive_reestimation',
   ] as const),
 });

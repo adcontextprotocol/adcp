@@ -1,4 +1,4 @@
-import { add, compare, divide, midpoint, multiply, negate, pow, rational, subtract, type Rational, ONE, ZERO } from './rational.js';
+import { add, compare, divide, midpoint, multiply, negate, pow, rational, subtract, type Rational, validateExternalRational, ONE, ZERO } from './rational.js';
 import { degree, derivative, divideWithRemainder, evaluate, isZero, polynomialNegate, polynomialScale, type RationalPolynomial } from './polynomial.js';
 
 function integerGcd(left: bigint, right: bigint): bigint {
@@ -13,6 +13,13 @@ function primitive(value: RationalPolynomial): RationalPolynomial {
   const integers = value.map((coefficient) => coefficient.numerator * (common / coefficient.denominator));
   const content = integers.reduce((result, coefficient) => integerGcd(result, coefficient), 0n) || 1n;
   return Object.freeze(integers.map((coefficient) => rational(coefficient / content)));
+}
+const MAX_ALGEBRAIC_DEGREE = 25;
+function validateAlgebraicPolynomial(value: RationalPolynomial): void {
+  if (!Array.isArray(value) || value.length === 0 || degree(value) > MAX_ALGEBRAIC_DEGREE) {
+    throw new RangeError(`Algebraic polynomial degree must be in [0, ${MAX_ALGEBRAIC_DEGREE}]`);
+  }
+  for (const coefficient of value) validateExternalRational(coefficient, 'Polynomial coefficient');
 }
 
 export interface RationalInterval { readonly lower: Rational; readonly upper: Rational; }
@@ -45,6 +52,7 @@ function variations(sequence: readonly RationalPolynomial[], at: Rational): numb
 }
 /** Exact Sturm sequence; no floating arithmetic is used in root enumeration. */
 export function sturmSequence(value: RationalPolynomial): readonly RationalPolynomial[] {
+  validateAlgebraicPolynomial(value);
   if (isZero(value)) throw new RangeError('Sturm sequence requires a nonzero polynomial');
   const sequence: RationalPolynomial[] = [primitive(value), primitive(derivative(value))];
   while (!isZero(sequence[sequence.length - 1]!)) {
@@ -54,6 +62,24 @@ export function sturmSequence(value: RationalPolynomial): readonly RationalPolyn
   }
   return Object.freeze(sequence);
 }
+/** Exact Euclidean gcd, scaled only by positive content. */
+function polynomialGcd(left: RationalPolynomial, right: RationalPolynomial): RationalPolynomial {
+  let a = primitive(left); let b = primitive(right);
+  while (!isZero(b)) {
+    const [, remainder] = divideWithRemainder(a, b);
+    a = b; b = isZero(remainder) ? remainder : primitive(remainder);
+  }
+  return a;
+}
+/** Distinct roots only: repeated endpoint roots must not corrupt Sturm signs. */
+function squareFree(value: RationalPolynomial): RationalPolynomial {
+  const slope = derivative(value);
+  if (isZero(slope)) return value;
+  const divisor = polynomialGcd(value, slope);
+  const [quotient, remainder] = divideWithRemainder(value, divisor);
+  if (!isZero(remainder)) throw new RangeError('Polynomial square-free division was not exact');
+  return primitive(quotient);
+}
 function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: RationalPolynomial, lower: Rational, upper: Rational): number {
   const inclusiveUpper = variations(sequence, lower) - variations(sequence, upper);
   return inclusiveUpper - (compare(evaluate(polynomial, upper), ZERO) === 0 ? 1 : 0);
@@ -61,13 +87,17 @@ function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: Ration
 export interface RootIsolation { readonly exact: readonly Rational[]; readonly intervals: readonly RationalInterval[]; readonly unresolved: boolean; }
 /** Isolate every distinct interior root using Sturm counts and dyadic bisection. */
 export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits = 96): RootIsolation {
+  validateAlgebraicPolynomial(value); validateExternalRational(lower, 'Root lower bound'); validateExternalRational(upper, 'Root upper bound');
+  if (compare(lower, upper) > 0) throw new RangeError('Root lower bound must not exceed upper bound');
   if (degree(value) <= 0) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: false });
-  const sequence = sturmSequence(value);
+  if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > 64) throw new RangeError('Root refinement bits must be an integer in [1, 64]');
+  const distinct = squareFree(value);
+  const sequence = sturmSequence(distinct);
   const exact: Rational[] = [];
   const intervals: RationalInterval[] = [];
   let unresolved = false;
   const visit = (left: Rational, right: Rational, depth: number): void => {
-    const count = rootsInOpen(sequence, value, left, right);
+    const count = rootsInOpen(sequence, distinct, left, right);
     if (count <= 0) return;
     // A singleton interval is an exact proof object. More than one root at
     // the hard refinement ceiling cannot be ordered safely, so fail closed.
@@ -102,6 +132,8 @@ export function maximizePolynomial(
   value: RationalPolynomial, lower: Rational, upper: Rational, maxSplits = 24,
   encloseAt: ((at: RationalInterval) => RationalInterval) | undefined = undefined,
 ): MaximumCertificate {
+  validateAlgebraicPolynomial(value); validateExternalRational(lower, 'Maximum lower bound'); validateExternalRational(upper, 'Maximum upper bound');
+  if (!Number.isSafeInteger(maxSplits) || maxSplits < 1 || maxSplits > 64) throw new RangeError('Maximum root refinement must be an integer in [1, 64]');
   const roots = isolateInteriorRoots(derivative(value), lower, upper, maxSplits);
   let minimum = evaluate(value, lower);
   let maximum = minimum;
@@ -120,6 +152,8 @@ export function maximizePolynomial(
 
 /** Positive square-root enclosure by rational bisection. */
 export function sqrtInterval(value: Rational, rounds = 56): RationalInterval {
+  validateExternalRational(value, 'Square-root value');
+  if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 256) throw new RangeError('Square-root rounds must be an integer in [1, 256]');
   if (compare(value, ZERO) < 0) throw new RangeError('Square root requires a nonnegative rational');
   if (compare(value, ZERO) === 0) return interval(ZERO, ZERO);
   let lower = ZERO;

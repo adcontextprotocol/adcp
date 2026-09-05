@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
-import { maximizePolynomial } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { isolateInteriorRoots, maximizePolynomial } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
   enumerateReducedStates,
-  nullBoundarySizePolynomial,
+  nullBoundarySizeEnvelope,
   MATCHED_PAIR_NI_NO_ROOT_PROMOTION_FIELD,
   parseMatchedPairNiDecimal,
   reducedStateProbabilityPolynomial,
+  restrictedPhiInterval,
   restrictedScoreEM,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
 import { polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
@@ -53,11 +54,14 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   it('handles zero discordance and rejects malformed/infeasible inputs', () => {
     expect(restrictedScoreEM({ counts: { n11: 3, n10: 0, n01: 0, n00: 2 }, margin, alpha }).diagnostic.pValue.upper).toBeDefined();
     expect(() => restrictedScoreEM({ counts: { n11: 0, n10: -1, n01: 1, n00: 1 }, margin, alpha })).toThrow(/nonnegative/);
-    expect(() => restrictedScoreEM({ counts: { n11: 0, n10: 26, n01: 0, n00: 0 }, margin, alpha })).toThrow(/n <= 25/);
+    expect(() => restrictedScoreEM({ counts: { n11: 0, n10: 26, n01: 0, n00: 0 }, margin, alpha })).toThrow(/\[1, 25\]/);
     expect(() => restrictedScoreEM({
       counts: { n11: 1, n10: 0, n01: 0, n00: 0 }, alpha,
       margin: { numerator: 1n << 257n, denominator: 1n },
     })).toThrow(/256-bit/);
+    expect(() => enumerateReducedStates(100_000)).toThrow(/n in \[1, 25\]/);
+    expect(() => restrictedPhiInterval({ n: 5, x: 6, t: 5 }, margin)).toThrow(/0 <= x <= t <= n/);
+    expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, -1)).toThrow(/\[1, 64\]/);
   });
 
   it('exhaustively reduces four-cell null probabilities for every small table', () => {
@@ -83,8 +87,9 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     for (const [n, candidateMargin, candidateAlpha] of [[3, '0.10', '0.05'], [4, '0.10', '0.05'], [3, '0.20', '0.10']] as const) {
       const parsedMargin = decimal(candidateMargin);
       const parsedAlpha = decimal(candidateAlpha);
-      const size = nullBoundarySizePolynomial(n, parsedMargin, parsedAlpha);
-      const certificate = maximizePolynomial(size, parsedMargin, ONE);
+      const size = nullBoundarySizeEnvelope(n, parsedMargin, parsedAlpha);
+      expect(size.status).toBe('certified');
+      const certificate = maximizePolynomial(size.upper, parsedMargin, ONE);
       expect(certificate.indeterminate).toBe(false);
       expect(compare(certificate.upper, parsedAlpha)).toBeLessThanOrEqual(0);
     }
@@ -99,12 +104,37 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(interiorOnly.stationaryPointCount).toBeGreaterThan(0);
   });
 
+  it('finds the published-review repeated-endpoint Sturm counterexample interior maximum', () => {
+    const outcome = restrictedScoreEM({
+      counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: decimal('0.07'), alpha,
+    });
+    expect(outcome.diagnostic.statisticalRejectNull).toBe(false);
+    expect(outcome.diagnostic.certificate?.stationaryPointCount).toBeGreaterThan(0);
+    expect(compare(outcome.diagnostic.pValue.lower, decimal('0.05888'))).toBeGreaterThan(0);
+    expect(compare(outcome.diagnostic.pValue.upper, decimal('0.05889'))).toBeLessThan(0);
+  });
+
+  it('propagates no n=5,m=.20 state uncertainty into a size envelope', () => {
+    const size = nullBoundarySizeEnvelope(5, decimal('0.20'), alpha);
+    expect(size.status).toBe('certified');
+    expect(size.indeterminateStates).toEqual([]);
+    const maximum = maximizePolynomial(size.upper, decimal('0.20'), ONE);
+    expect(compare(maximum.upper, decimal('0.0420'))).toBeLessThan(0);
+  });
+
+  it('returns an explicitly indeterminate envelope at the size-work ceiling', () => {
+    const size = nullBoundarySizeEnvelope(9, margin, alpha);
+    expect(size.status).toBe('indeterminate');
+    expect(size.reason).toBe('size_complexity_ceiling');
+    expect(size.indeterminateStates).toHaveLength(55);
+  });
+
   it('has a hard-coded, non-overridable non-admission declaration', () => {
     expect(matchedPairNiAdmission()).toBe(MATCHED_PAIR_NI_ADMISSION);
     expect(MATCHED_PAIR_NI_ADMISSION.admitted).toBe(false);
     expect(MATCHED_PAIR_NI_ADMISSION.reasons).toEqual(expect.arrayContaining([
       'missing_independent_reference_match', 'continuous_type_i_certificate_review_required',
-      'supported_n_below_confirmatory_requirement', 'unvalidated_adaptive_reestimation',
+      'supported_n_has_no_confirmatory_sample_size_validation', 'unvalidated_adaptive_reestimation',
     ]));
   });
 
