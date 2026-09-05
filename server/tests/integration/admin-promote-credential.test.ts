@@ -26,8 +26,10 @@ vi.mock('../../src/auth/workos-client.js', () => {
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const mockedRequireAuth = (req: any, _res: any, next: any) => {
+    req.adminAccessMechanism = req.headers['x-test-admin-access-mechanism'] || undefined;
     req.user = {
       id: 'user_test_admin_promote',
+      authWorkosUserId: 'user_test_admin_promote_credential',
       email: 'admin@test.local',
       emailVerified: true,
       createdAt: new Date().toISOString(),
@@ -246,12 +248,78 @@ describe('admin promote credential to primary', () => {
     expect(bindings.rows.find(r => r.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(true);
   });
 
+  it('requires an identity-bearing admin to confirm destructive promotion', async () => {
+    await setupOverlappingPair();
+
+    const response = await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
+      .set('X-Test-Admin-Access-Mechanism', 'static_admin_api_key')
+      .send({ consolidate: true })
+      .expect(403);
+    expect(response.body.error).toBe('identity_bearing_admin_required');
+  });
+
   it('promotes without confirmation when the memberships do not overlap', async () => {
     await setupBoundPair();
 
     await request(app)
       .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
       .expect(200);
+  });
+
+  it('blocks promotion away from a corporate primary after a personal credential was bound', async () => {
+    await pool.query(
+      `UPDATE organizations
+          SET is_personal = false, membership_tier = 'company_standard', subscription_status = 'active'
+        WHERE workos_organization_id = $1`,
+      [HOST_ORG_ID],
+    );
+    await pool.query(
+      `UPDATE organizations
+          SET is_personal = true, membership_tier = 'individual_professional', subscription_status = 'active'
+        WHERE workos_organization_id = $1`,
+      [TARGET_ORG_ID],
+    );
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, 'host@test.example', 'member', NOW(), NOW()),
+              ($3, $4, 'target@test.example', 'member', NOW(), NOW())`,
+      [HOST_USER_ID, HOST_ORG_ID, TARGET_USER_ID, TARGET_ORG_ID],
+    );
+
+    // This is the supported direction: the corporate credential remains
+    // primary when the personal credential is bound.
+    await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
+      .send({ workos_user_id: TARGET_USER_ID, consolidate: true })
+      .expect(201);
+
+    const response = await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
+      .expect(409);
+    expect(response.body).toMatchObject({
+      error: 'corporate_membership_primary_required',
+      corporate_memberships: [{
+        workos_organization_id: HOST_ORG_ID,
+        membership_tier: 'company_standard',
+      }],
+    });
+
+    const [corporateMembership, bindings] = await Promise.all([
+      pool.query(
+        `SELECT workos_user_id FROM organization_memberships
+          WHERE workos_organization_id = $1`,
+        [HOST_ORG_ID],
+      ),
+      pool.query<{ workos_user_id: string; is_primary: boolean }>(
+        `SELECT workos_user_id, is_primary FROM identity_workos_users
+          WHERE workos_user_id IN ($1, $2)`,
+        [HOST_USER_ID, TARGET_USER_ID],
+      ),
+    ]);
+    expect(corporateMembership.rows).toEqual([{ workos_user_id: HOST_USER_ID }]);
+    expect(bindings.rows.find((row) => row.workos_user_id === HOST_USER_ID)?.is_primary).toBe(true);
+    expect(bindings.rows.find((row) => row.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(false);
   });
 
   it('writes a promote_credential_to_primary audit row', async () => {

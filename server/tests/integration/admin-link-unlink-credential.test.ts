@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Pool } from 'pg';
+import { readFileSync } from 'node:fs';
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY ??= 'sk_test_mock_key';
@@ -28,8 +29,10 @@ vi.mock('../../src/auth/workos-client.js', () => {
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const mockedRequireAuth = (req: any, _res: any, next: any) => {
+    req.adminAccessMechanism = req.headers['x-test-admin-access-mechanism'] || undefined;
     req.user = {
       id: 'user_test_admin_link',
+      authWorkosUserId: 'user_test_admin_link_credential',
       email: 'admin@test.local',
       emailVerified: true,
       createdAt: new Date().toISOString(),
@@ -99,6 +102,24 @@ describe('admin link / unlink credential', () => {
   }
 
   describe('POST /credentials (bind existing)', () => {
+    it('keeps the declared global-admin and people-UI confirmation contracts', () => {
+      const routeSource = readFileSync(
+        new URL('../../src/routes/admin/users.ts', import.meta.url),
+        'utf8',
+      );
+      const bindRoute = routeSource.match(
+        /router\.post\('\/:userId\/credentials', \.\.\.requireGlobalAdmin, async \(req, res\) => \{[\s\S]*?\n  \}\);/
+      )?.[0];
+      expect(bindRoute).toContain('...requireGlobalAdmin');
+
+      const peopleUi = readFileSync(
+        new URL('../../public/admin-people.html', import.meta.url),
+        'utf8',
+      );
+      expect(peopleUi).toContain('data.consolidate_confirmation_required');
+      expect(peopleUi).toContain('JSON.stringify({ workos_user_id: trimmed, consolidate: true })');
+    });
+
     it('binds an existing WorkOS user (already in local users) under host\'s identity', async () => {
       // Insert the target locally so the trigger creates its singleton identity
       await pool.query(
@@ -244,6 +265,17 @@ describe('admin link / unlink credential', () => {
         expect(refused.body.consolidate_confirmation_required).toBe(true);
         expect(refused.body.message).toMatch(/consolidate/i);
 
+        // A static global-admin key has no person-level principal, so it may
+        // observe the preflight but cannot acknowledge a destructive merge.
+        await request(app)
+          .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
+          .set('X-Test-Admin-Access-Mechanism', 'static_admin_api_key')
+          .send({ workos_user_id: TARGET_USER_ID, consolidate: true })
+          .expect(403)
+          .expect(({ body }) => {
+            expect(body.error).toBe('identity_bearing_admin_required');
+          });
+
         // Same call with consolidate: true succeeds and moves the membership
         await request(app)
           .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
@@ -256,9 +288,113 @@ describe('admin link / unlink credential', () => {
         );
         expect(moved.rows).toHaveLength(1);
         expect(moved.rows[0].workos_user_id).toBe(HOST_USER_ID);
+
+        // The destructive, server-confirmed consolidation is attributed to
+        // the authenticated global admin by mergeUsers' audit record.
+        const audit = await pool.query<{ workos_user_id: string; details: any }>(
+          `SELECT workos_user_id, details
+             FROM registry_audit_log
+            WHERE action = 'merge_user' AND resource_id = $1
+            ORDER BY created_at DESC LIMIT 1`,
+          [TARGET_USER_ID],
+        );
+        expect(audit.rows).toHaveLength(1);
+        expect(audit.rows[0].workos_user_id).toBe('user_test_admin_link');
+        expect(audit.rows[0].details).toMatchObject({
+          primary_user_id: HOST_USER_ID,
+          secondary_user_id: TARGET_USER_ID,
+          audit_context: {
+            acting_workos_user_id: 'user_test_admin_link_credential',
+            consolidation_confirmed: true,
+          },
+        });
       } finally {
         await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id = $1`, [orgId]);
         await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [orgId]);
+      }
+    });
+
+    it('blocks a corporate-tier credential from being absorbed by an individual-tier host', async () => {
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
+                            workos_created_at, workos_updated_at, created_at, updated_at)
+         VALUES ($1, 'corporate@test.example', 'Corporate', 'User', true, NOW(), NOW(), NOW(), NOW())`,
+        [TARGET_USER_ID],
+      );
+      const personalOrgId = 'org_test_link_personal_tier';
+      const corporateOrgId = 'org_test_link_corporate_tier';
+      await pool.query(
+        `INSERT INTO organizations
+           (workos_organization_id, name, is_personal, membership_tier, subscription_status, created_at, updated_at)
+         VALUES
+           ($1, 'Personal test workspace', true, 'individual_professional', 'active', NOW(), NOW()),
+           ($2, 'Corporate test workspace', false, NULL, 'active', NOW(), NOW())`,
+        [personalOrgId, corporateOrgId],
+      );
+      await pool.query(
+        `UPDATE organizations
+            SET subscription_price_lookup_key = 'aao_membership_member'
+          WHERE workos_organization_id = $1`,
+        [corporateOrgId],
+      );
+      await pool.query(
+        `INSERT INTO organization_memberships
+           (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+         VALUES
+           ($1, $2, 'host@test.example', 'member', NOW(), NOW()),
+           ($3, $4, 'corporate@test.example', 'member', NOW(), NOW())`,
+        [HOST_USER_ID, personalOrgId, TARGET_USER_ID, corporateOrgId],
+      );
+
+      try {
+        for (const body of [
+          { workos_user_id: TARGET_USER_ID },
+          { workos_user_id: TARGET_USER_ID, consolidate: true },
+        ]) {
+          const response = await request(app)
+            .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
+            .send(body)
+            .expect(409);
+          expect(response.body).toMatchObject({
+            error: 'corporate_membership_personal_host_conflict',
+            corporate_memberships: [{
+              workos_organization_id: corporateOrgId,
+              membership_tier: 'company_icl',
+            }],
+            personal_memberships: [{
+              workos_organization_id: personalOrgId,
+              membership_tier: 'individual_professional',
+            }],
+          });
+        }
+
+        const [membership, bindings] = await Promise.all([
+          pool.query(
+            `SELECT workos_user_id FROM organization_memberships
+              WHERE workos_organization_id = $1`,
+            [corporateOrgId],
+          ),
+          pool.query<{ identity_id: string }>(
+            `SELECT identity_id FROM identity_workos_users
+              WHERE workos_user_id IN ($1, $2)
+              ORDER BY workos_user_id`,
+            [HOST_USER_ID, TARGET_USER_ID],
+          ),
+        ]);
+        expect(membership.rows).toEqual([{ workos_user_id: TARGET_USER_ID }]);
+        expect(bindings.rows).toHaveLength(2);
+        expect(bindings.rows[0].identity_id).not.toBe(bindings.rows[1].identity_id);
+      } finally {
+        await pool.query(
+          `DELETE FROM organization_memberships
+            WHERE workos_organization_id IN ($1, $2)`,
+          [personalOrgId, corporateOrgId],
+        );
+        await pool.query(
+          `DELETE FROM organizations
+            WHERE workos_organization_id IN ($1, $2)`,
+          [personalOrgId, corporateOrgId],
+        );
       }
     });
   });
