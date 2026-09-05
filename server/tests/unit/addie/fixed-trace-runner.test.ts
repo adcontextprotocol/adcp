@@ -1015,6 +1015,31 @@ describe('fixed trace artifact runner', () => {
     expect(router.respondCalls).toHaveLength(1);
   });
 
+  it.each([
+    ['blank run ID', (runConfig: FixedTraceRunnerConfig) => { runConfig.runId = '   '; }],
+    ['blank prompt config version', (runConfig: FixedTraceRunnerConfig) => { runConfig.promptConfigVersion = ' '; }],
+    ['malformed source bundle hash', (runConfig: FixedTraceRunnerConfig) => { runConfig.sourceBundleSha256 = 'not-a-hash'; }],
+    ['malformed git commit', (runConfig: FixedTraceRunnerConfig) => { runConfig.gitCommit = 'BAD!'; }],
+    ['non-boolean dirty flag', (runConfig: FixedTraceRunnerConfig) => { (runConfig as unknown as { gitDirty: unknown }).gitDirty = 'yes'; }],
+    ['invalid repetition', (runConfig: FixedTraceRunnerConfig) => { runConfig.repetition = 0; }],
+    ['invalid definition provenance', (runConfig: FixedTraceRunnerConfig) => {
+      (runConfig as unknown as { toolDefinitionProvenance: unknown }).toolDefinitionProvenance = 'forged';
+    }],
+    ['non-boolean degradation injection', (runConfig: FixedTraceRunnerConfig) => {
+      (runConfig as unknown as { injectProviderDegradation: unknown }).injectProviderDegradation = 1;
+    }],
+  ])('rejects %s run provenance before any provider dispatch', async (_name, mutate) => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    const runConfig = config(router, generation);
+    mutate(runConfig);
+
+    await expect(runFixedTraceCase(trace('knowledge-task-model'), runConfig))
+      .rejects.toThrow('Fixed trace runner');
+    expect(router.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(0);
+  });
+
   it('revalidates execution identity before a tool-loop continuation dispatch', async () => {
     const selectedTrace = trace('knowledge-task-model');
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);

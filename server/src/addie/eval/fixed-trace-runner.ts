@@ -180,6 +180,41 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
   ) throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
 }
 
+/**
+ * These values are evaluator-owned run provenance, not provider telemetry.
+ * Refuse malformed values before snapshotting or dispatch so an observation
+ * can never be created with a run contract that was invalid from the start.
+ */
+function validateRunProvenance(config: FixedTraceRunnerConfig): void {
+  if (typeof config.runId !== 'string' || config.runId.trim().length === 0) {
+    throw new Error('Fixed trace runner runId must be nonblank');
+  }
+  if (typeof config.sourceBundleSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(config.sourceBundleSha256)) {
+    throw new Error('Fixed trace runner sourceBundleSha256 must be a lowercase SHA-256');
+  }
+  if (typeof config.gitCommit !== 'string' || !/^[a-f0-9]{7,64}$/.test(config.gitCommit)) {
+    throw new Error('Fixed trace runner gitCommit must be a lowercase abbreviated SHA');
+  }
+  if (typeof config.gitDirty !== 'boolean') {
+    throw new Error('Fixed trace runner gitDirty must be boolean');
+  }
+  if (typeof config.promptConfigVersion !== 'string' || config.promptConfigVersion.trim().length === 0) {
+    throw new Error('Fixed trace runner promptConfigVersion must be nonblank');
+  }
+  if (config.repetition !== undefined && (!Number.isSafeInteger(config.repetition) || config.repetition < 1)) {
+    throw new Error('Fixed trace runner repetition must be a positive safe integer');
+  }
+  if (
+    config.toolDefinitionProvenance !== undefined
+    && !['fixture_local', 'authorized_definition_handler_intersection'].includes(config.toolDefinitionProvenance)
+  ) {
+    throw new Error('Fixed trace runner toolDefinitionProvenance is invalid');
+  }
+  if (config.injectProviderDegradation !== undefined && typeof config.injectProviderDegradation !== 'boolean') {
+    throw new Error('Fixed trace runner injectProviderDegradation must be boolean when supplied');
+  }
+}
+
 function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
   return sha256({
     runId: config.runId,
@@ -195,6 +230,7 @@ function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
 }
 
 function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionIdentity {
+  validateRunProvenance(config);
   assertTraceSuiteIdentity(config);
   assertFixtureDefinitionUniverse(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
