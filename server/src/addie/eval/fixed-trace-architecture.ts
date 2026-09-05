@@ -347,18 +347,12 @@ export function fixedTraceArchitectureArm(
 
 export type FixedTraceToolDefinitionProvenance =
   | 'fixture_local'
-  | 'authorized_definition_handler_intersection'
   | 'evaluator_owned_production_definitions_simulated_receipts';
 
-/**
- * Records what selected the candidate's visible tools.  The production
- * definition/handler intersection is authorization-aware, but it is currently
- * wider than the bounded routed surface and is not exposed by this evaluator.
- */
+/** Records what selected the candidate's visible tools for diagnostic replay. */
 export interface FixedTraceToolUniverseProvenance {
   source:
     | 'fixture_local_routed_replay'
-    | 'authorized_definition_handler_intersection_not_captured'
     | 'evaluator_owned_production_definitions_simulated_receipts'
     | 'fixture_oracle';
   intentNarrowing: 'llm_router' | 'production_quick_match_or_llm_router' | 'not_applied' | 'fixture_oracle';
@@ -498,8 +492,6 @@ export function fixedTraceToolUniverseProvenance(
 
 export type FixedTraceDirectArmAdmissionReason =
   | 'fixture_local_tool_definitions'
-  | 'authorized_tool_intersection_not_captured'
-  | 'authorized_tool_universe_unbounded'
   | 'request_thread_execution_envelope_not_captured'
   | 'production_binding_contract_not_captured'
   | 'request_thread_facts_not_authenticated'

@@ -1356,12 +1356,12 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     toolUniverse: cohortToolUniverse,
     executionEnvelope: metadata.executionEnvelope,
     requestThreadFacts: metadata.requestThreadFacts,
-    // A direct (or fixture-oracle) arm has no router dispatch. Retaining an
-    // unexecuted router's provider/model/price controls in its identity would
-    // let an irrelevant config alter the candidate fingerprint.
-    routerControl: metadata.architectureArm.id === 'two_stage_llm_router'
-      ? metadata.routerControl
-      : { status: 'not_run' },
+    // Direct and fixture-oracle arms never route. The hybrid retains the
+    // incumbent router as its fallback, so its router controls remain part of
+    // the candidate fingerprint.
+    routerControl: ['direct_generation', 'oracle_route_diagnostic'].includes(metadata.architectureArm.id)
+      ? { status: 'not_run' }
+      : metadata.routerControl,
     generationControl: metadata.generationControl,
     providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
   };
@@ -1589,7 +1589,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   if (!metadata.promptConfigVersion.trim()) failures.push('prompt_config_version_missing');
   if (!Number.isSafeInteger(metadata.repetition) || metadata.repetition < 1) failures.push('repetition_invalid');
   if (metadata.stageControlVersion !== FIXED_TRACE_STAGE_CONTROL_VERSION) failures.push('stage_control_version_mismatch');
-  if (!['fixture_local', 'authorized_definition_handler_intersection', 'evaluator_owned_production_definitions_simulated_receipts'].includes(metadata.toolDefinitionProvenance)) {
+  if (!['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts'].includes(metadata.toolDefinitionProvenance)) {
     failures.push('tool_definition_provenance_invalid');
   }
   if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');

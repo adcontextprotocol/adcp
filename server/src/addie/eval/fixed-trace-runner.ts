@@ -33,7 +33,6 @@ import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
   MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
-  validateFixedTraceToolLoopEnvironment,
   validateFixedTraceToolLoopFixtures,
 } from './fixed-trace-tool-loop.js';
 import {
@@ -43,10 +42,7 @@ import {
   fixedTraceResponsePricingPolicy,
   fixedTraceResponseUsesPricingPolicy,
 } from './fixed-trace-budget.js';
-import {
-  FIXED_TRACE_DIRECT_TOOL_HANDLERS,
-  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
-} from '../direct-tool-universe.js';
+import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import {
   admitFixedTraceDirectArm,
   decideFixedTraceHybridRoute,
@@ -193,24 +189,6 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
   ) throw new Error('Fixed trace routed/hybrid/oracle definitions must exactly match configured suite fixtures');
 }
 
-function fixedTraceDirectToolEnvironment() {
-  return {
-    tools: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => {
-      const handler = FIXED_TRACE_DIRECT_TOOL_HANDLERS.get(tool.definition.name);
-      if (!handler) throw new Error(`Missing direct evaluator handler: ${tool.definition.name}`);
-      return {
-        definition: tool.definition,
-        handler,
-        effect: 'read' as const,
-        resultStatus: 'ok' as const,
-      };
-    }),
-    // The evaluator universe is read-only. No fixture claim is ever used to
-    // authorize a mutation under a production identity.
-    authorize: () => ({ allowed: false as const, reason: 'mutation_confirmation_required' as const }),
-  };
-}
-
 function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
   // Direct is admission-only: it must not derive a fake executable universe
   // from fixture-local definitions. Routed, hybrid, and oracle replay use this exact
@@ -265,7 +243,7 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
   }
   if (
     config.toolDefinitionProvenance !== undefined
-    && !['fixture_local', 'authorized_definition_handler_intersection'].includes(config.toolDefinitionProvenance)
+    && !['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts'].includes(config.toolDefinitionProvenance)
   ) {
     throw new Error('Fixed trace runner toolDefinitionProvenance is invalid');
   }
@@ -281,7 +259,7 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
 
 function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
   const toolDefinitionProvenance = fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation'
-    ? 'authorized_definition_handler_intersection'
+    ? 'evaluator_owned_production_definitions_simulated_receipts'
     : config.toolDefinitionProvenance ?? 'fixture_local';
   return sha256({
     runId: config.runId,
@@ -1055,15 +1033,12 @@ export async function runFixedTraceCase(
     };
   }
 
-  const definitions = architectureArm.id === 'direct_generation'
-    ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => tool.definition)
-    : resolveTraceDefinitions(executionTrace, executionConfig.toolDefinitions);
+  const definitions = resolveTraceDefinitions(executionTrace, executionConfig.toolDefinitions);
   const generationRequest = buildFixedTraceGenerationRequest(
     executionTrace,
     routed.plan,
     definitions,
     generationConfig,
-    null,
   );
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
@@ -1117,9 +1092,6 @@ export async function runFixedTraceCase(
           assertBeforeDispatch();
           prepareFixedTraceRequest('generation', generationConfig, request);
         },
-        ...(architectureArm.id === 'direct_generation' && {
-          evaluatorToolEnvironment: fixedTraceDirectToolEnvironment(),
-        }),
         beforeDispatch: (prepared) => {
           assertBeforeDispatch();
           dispatched = true;

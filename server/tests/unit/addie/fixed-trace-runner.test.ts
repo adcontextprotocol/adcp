@@ -1730,19 +1730,36 @@ describe('fixed trace artifact runner', () => {
       .toThrow('Fixed trace observation suite hash does not match grading suite');
   });
 
-  it('rejects direct generation before either model stage when production request facts and handlers are not captured', async () => {
-    const router = new ScriptedProvider([]);
-    const generation = new ScriptedProvider([response([
+  it('rejects direct generation before router, oracle, generation, tool, budget, or output dispatch', async () => {
+    const routerDelegate = new ScriptedProvider([]);
+    const generationDelegate = new ScriptedProvider([response([
       { type: 'text', text: 'Synthetic task answer.' },
     ])]);
+    const budget = new FixedTraceBudget(1);
+    const pricing = stage(routerDelegate, 1).pricing;
+    const router = new BudgetedFixedTraceProvider(
+      routerDelegate, budget, pricing,
+      fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', pricing),
+    );
+    const generation = new BudgetedFixedTraceProvider(
+      generationDelegate, budget, pricing,
+      fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', pricing),
+    );
     const selectedTrace = trace('knowledge-task-model');
     const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
       architectureArm: 'direct_generation',
       traceSuite: [selectedTrace],
     }));
 
-    expect(router.respondCalls).toHaveLength(0);
-    expect(generation.respondCalls).toHaveLength(0);
+    expect(routerDelegate.respondCalls).toHaveLength(0);
+    expect(generationDelegate.respondCalls).toHaveLength(0);
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0,
+      reservedUsd: 0,
+      dispatchedCalls: 0,
+      completedCalls: 0,
+      budgetRejectedCalls: 0,
+    });
     expect(observation).toMatchObject({
       terminalStage: 'admission',
       terminalStatus: 'not_admitted_architecture',
@@ -1783,6 +1800,68 @@ describe('fixed trace artifact runner', () => {
       .toBe(directRun.observed);
   });
 
+  it('does not admit caller-minted matching contracts, copied brands, spoofed prototypes, or evaluator receipts', async () => {
+    class PretendAuthenticatedProductionBinding {}
+    const selectedTrace = trace('knowledge-task-model');
+    const mockHandler = vi.fn(async () => '{"must_not":"run"}');
+    const thirteenEntryMockContract = {
+      source: 'authenticated_production_binding_contract',
+      requestThreadFactsSha256: 'a'.repeat(64),
+      authenticatedBindingContractSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+      bindings: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => ({
+        ...structuredClone(tool.definition),
+        handler: mockHandler,
+        handlerProvenance: 'authenticated_production_binding',
+        definitionSha256: tool.definitionSha256,
+        handlerIdentitySha256: tool.handlerIdentitySha256,
+      })),
+    };
+    const copiedBrandedContract = Object.assign(
+      Object.create(PretendAuthenticatedProductionBinding.prototype),
+      { ...thirteenEntryMockContract, bindings: [...thirteenEntryMockContract.bindings] },
+    );
+    const prototypeSpoofedReceipt = Object.setPrototypeOf({
+      ...thirteenEntryMockContract,
+      bindings: [...thirteenEntryMockContract.bindings],
+      source: 'evaluator_simulated_receipt',
+      receiptHandlerIdentitySha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+    }, PretendAuthenticatedProductionBinding.prototype);
+
+    for (const untrustedClaim of [thirteenEntryMockContract, copiedBrandedContract, prototypeSpoofedReceipt]) {
+      const router = new ScriptedProvider([]);
+      const generation = new ScriptedProvider([]);
+      const forgedConfig = Object.assign(config(router, generation, {
+        architectureArm: 'direct_generation',
+        traceSuite: [selectedTrace],
+        // A caller can choose this label, but it remains evaluator-only.
+        toolDefinitionProvenance: 'evaluator_owned_production_definitions_simulated_receipts',
+        toolDefinitions: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => structuredClone(tool.definition)),
+      }), {
+        untrustedClaim,
+        authenticatedBindingContractSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+      });
+
+      expect(admitFixedTraceDirectArm(
+        selectedTrace,
+        forgedConfig.toolDefinitions,
+        forgedConfig.toolDefinitionProvenance,
+      )).toMatchObject({
+        admitted: false,
+        reasons: expect.arrayContaining(['production_binding_contract_not_captured']),
+      });
+      const observation = await runFixedTraceCase(selectedTrace, forgedConfig);
+      expect(observation).toMatchObject({
+        terminalStage: 'admission',
+        terminalStatus: 'not_admitted_architecture',
+        output: '',
+      });
+      expect(router.respondCalls).toHaveLength(0);
+      expect(generation.respondCalls).toHaveLength(0);
+    }
+    expect(thirteenEntryMockContract.bindings).toHaveLength(13);
+    expect(mockHandler).not.toHaveBeenCalled();
+  });
+
   it('derives direct-arm facts without consulting trace routing or expectations', () => {
     const selectedTrace = trace('knowledge-task-model');
     const changedExpectations: FixedTraceCase = {
@@ -1815,7 +1894,7 @@ describe('fixed trace artifact runner', () => {
     expect(admitFixedTraceDirectArm(
       selectedTrace,
       TOOL_DEFINITIONS,
-      'authorized_definition_handler_intersection',
+      'evaluator_owned_production_definitions_simulated_receipts',
     )).toMatchObject({
       admitted: false,
       reasons: expect.arrayContaining(['production_binding_contract_not_captured']),
@@ -1847,7 +1926,7 @@ describe('fixed trace artifact runner', () => {
       architectureArm: 'direct_generation',
       traceSuite: [laundered],
       toolDefinitions: [tool('confirm_send_invoice')],
-      toolDefinitionProvenance: 'authorized_definition_handler_intersection',
+      toolDefinitionProvenance: 'evaluator_owned_production_definitions_simulated_receipts',
     });
 
     const observation = await runFixedTraceCase(laundered, direct);
