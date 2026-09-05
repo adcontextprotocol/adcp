@@ -118,6 +118,7 @@ interface FixedTraceExecutionIdentity {
 }
 
 const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
+const preflightedFixtureRegistrations = new WeakMap<FixedTraceRunnerConfig, string>();
 
 /**
  * An evaluator-owned execution contract changed after its request snapshot was
@@ -192,6 +193,24 @@ function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
   }
 }
 
+function fixturePreflightKey(identity: FixedTraceExecutionIdentity): string {
+  // This cache is keyed by the complete recomputed identity, never merely the
+  // mutable config object. Changed live inputs therefore still cause the
+  // dispatch identity check to abort, without recompiling every schema.
+  return sha256(identity);
+}
+
+function preflightFixtureRegistrations(
+  config: FixedTraceRunnerConfig,
+  identity: FixedTraceExecutionIdentity,
+): void {
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  const key = fixturePreflightKey(identity);
+  if (preflightedFixtureRegistrations.get(config) === key) return;
+  assertFixtureRegistrations(config);
+  preflightedFixtureRegistrations.set(config, key);
+}
+
 /**
  * These values are evaluator-owned run provenance, not provider telemetry.
  * Refuse malformed values before snapshotting or dispatch so an observation
@@ -245,7 +264,6 @@ function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionI
   validateRunProvenance(config);
   assertTraceSuiteIdentity(config);
   assertFixtureDefinitionUniverse(config);
-  assertFixtureRegistrations(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
   return {
     traceSuiteSha256: config.traceSuiteSha256,
@@ -271,6 +289,26 @@ function assertExecutionIdentity(
     || actual.architectureConfigSha256 !== expected.architectureConfigSha256
     || actual.runProvenanceSha256 !== expected.runProvenanceSha256
   ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed before provider dispatch');
+}
+
+/** A deterministic adapter preparation failure, never provider evidence. */
+class FixedTracePreparationError extends Error {
+  constructor(stage: 'router' | 'generation', cause: unknown) {
+    super(`Fixed trace ${stage} request preparation failed`, { cause });
+    this.name = 'FixedTracePreparationError';
+  }
+}
+
+function prepareFixedTraceRequest(
+  stage: 'router' | 'generation',
+  config: FixedTraceProviderStageConfig,
+  request: ModelRequest,
+): PreparedModelInvocation {
+  try {
+    return config.provider.prepare(request);
+  } catch (error) {
+    throw new FixedTracePreparationError(stage, error);
+  }
 }
 
 interface StageInvocationState {
@@ -796,6 +834,10 @@ async function executeRouter(
   let timedOut = false;
   const controller = new AbortController();
   const startedAt = Date.now();
+  // `prepare` is the provider boundary's deterministic validation and request
+  // translation step. Failures here are evaluator configuration failures;
+  // later transport failures remain provider evidence even without a hook.
+  prepareFixedTraceRequest('router', config, request);
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort(new Error('fixed_trace_router_timeout'));
@@ -827,7 +869,7 @@ async function executeRouter(
       return { request, response, plan: null, output, status: 'malformed', metadata };
     }
   } catch (error) {
-    if (error instanceof FixedTraceExecutionIdentityError) throw error;
+    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
     const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
     const status = error instanceof FixedTraceBudgetAdmissionError
@@ -854,6 +896,7 @@ export async function runFixedTraceCase(
   suppliedToolSchemaSha256?: string,
 ): Promise<FixedTraceObservation> {
   const identity = executionIdentity(config);
+  preflightFixtureRegistrations(config, identity);
   if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== identity.toolSchemaSha256) {
     throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
   }
@@ -945,17 +988,19 @@ export async function runFixedTraceCase(
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
   const startedAt = Date.now();
+  const generationPreparationRequest: ModelRequest = {
+    ...generationRequest,
+    tools: buildModelToolDefinitions(definitions),
+    providerTools: [],
+  };
+  const preparedGeneration = prepareFixedTraceRequest(
+    'generation',
+    generationConfig,
+    generationPreparationRequest,
+  );
 
   if (executionTrace.category === 'provider_degradation' && executionConfig.injectProviderDegradation !== false) {
-    try {
-      const prepared = generationConfig.provider.prepare({
-        ...generationRequest,
-        tools: buildModelToolDefinitions(definitions),
-      });
-      invocations.push(prepared);
-    } catch {
-      // Missing prepared provenance intentionally makes the artifact ineligible.
-    }
+    invocations.push(preparedGeneration);
     const metadata = localStageMetadata(generationRequest, generationConfig, {
       invocations,
       dispatched: false,
@@ -1023,7 +1068,7 @@ export async function runFixedTraceCase(
       rejectedToolCalls: [],
     };
   } catch (error) {
-    if (error instanceof FixedTraceExecutionIdentityError) throw error;
+    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
     const checkpoint = error instanceof FixedTraceToolLoopBoundaryError
       ? error.checkpoint
@@ -1063,6 +1108,7 @@ export async function runFixedTraceSuite(
   config: FixedTraceRunnerConfig,
 ): Promise<FixedTraceObservation[]> {
   const identity = executionIdentity(config);
+  preflightFixtureRegistrations(config, identity);
   // Iteration must never follow a caller-mutable suite array. Keep a frozen
   // full plan and still bind the original evaluator-owned config before each
   // case and after finalization, so a post-dispatch mutation aborts instead

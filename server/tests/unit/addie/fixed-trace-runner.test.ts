@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFixedTraceGenerationRequest,
@@ -42,6 +43,7 @@ import type {
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../../../src/addie/model-providers/model-provider.js';
+import { UnsupportedModelCapabilityError } from '../../../src/addie/model-providers/model-provider.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 const HASH = createHash('sha256').update('fixed-trace-runner-test').digest('hex');
@@ -1131,6 +1133,56 @@ describe('fixed trace artifact runner', () => {
       )),
     }))).rejects.toMatchObject({ reason: 'fixture_definition_mismatch' });
     expect(duplicateFixtureRouter.respondCalls).toHaveLength(0);
+  });
+
+  it('preflights fixture schemas once per complete identity, not per provider dispatch', async () => {
+    const expandedTrace = expandedFixtureTrace('preflight-compilation-count');
+    expandedTrace.category = 'knowledge';
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([
+      response([{
+        type: 'tool_call', id: 'preflight-tool', name: 'expanded_fixture_tool', input: { query: 'fixture' },
+      }], 'tool_calls'),
+      response([{ type: 'text', text: 'Synthetic fixture response.' }]),
+    ]);
+    const compile = vi.spyOn(Ajv.prototype, 'compile');
+
+    await runFixedTraceSuite(config(router, generation, {
+      traceSuite: [expandedTrace],
+      toolDefinitions: [tool('expanded_fixture_tool')],
+    }));
+
+    // One compilation at runner preflight and one at actual loop registration.
+    // Router plus two generation dispatches must not multiply this work.
+    expect(compile).toHaveBeenCalledTimes(2);
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(2);
+    compile.mockRestore();
+  });
+
+  it('aborts deterministic provider preparation rather than scoring it as provider evidence', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const routerPreparationFailure = new ScriptedProvider([]);
+    routerPreparationFailure.prepare.mockImplementation(() => {
+      throw new UnsupportedModelCapabilityError('anthropic', 'reasoning');
+    });
+    const unusedGeneration = new ScriptedProvider([]);
+
+    await expect(runFixedTraceCase(selectedTrace, config(routerPreparationFailure, unusedGeneration)))
+      .rejects.toThrow('Fixed trace router request preparation failed');
+    expect(routerPreparationFailure.respondCalls).toHaveLength(0);
+    expect(unusedGeneration.respondCalls).toHaveLength(0);
+
+    const routed = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generationPreparationFailure = new ScriptedProvider([]);
+    generationPreparationFailure.prepare.mockImplementation(() => {
+      throw new Error('synthetic invalid generation request');
+    });
+
+    await expect(runFixedTraceCase(selectedTrace, config(routed, generationPreparationFailure)))
+      .rejects.toThrow('Fixed trace generation request preparation failed');
+    expect(routed.respondCalls).toHaveLength(1);
+    expect(generationPreparationFailure.respondCalls).toHaveLength(0);
   });
 
   it('rejects empty or duplicate-ID evaluator suites before provider dispatch', async () => {
