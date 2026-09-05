@@ -96,8 +96,8 @@ import {
 import { getProviderRetryAfterSeconds } from './model-providers/provider-errors.js';
 import {
   buildModelToolDefinitions,
-  mergeAddieToolDefinitions,
 } from './tool-wire-shape.js';
+import { assembleAddieRequestTools } from './request-tool-assembly.js';
 import { assembleAddieFallbackPrompt } from './prompt-assembly.js';
 import {
   MAX_OUTPUT_LENGTH,
@@ -1224,15 +1224,15 @@ export class AddieClaudeClient {
     const allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : null;
-    const allTools = mergeAddieToolDefinitions(
+    const assembledTools = assembleAddieRequestTools(
       this.tools,
-      requestTools?.tools,
-      options?.allowedToolNames,
+      this.toolHandlers,
+      requestTools,
+      options,
+      allowedToolNames,
     );
-    const allHandlers = new Map(
-      [...this.toolHandlers, ...(requestTools?.handlers || [])]
-        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
-    );
+    const allTools = assembledTools.tools;
+    const allHandlers = assembledTools.handlers;
 
     const promptStart = Date.now();
     const systemBlocks = this.buildSystemBlocks(
