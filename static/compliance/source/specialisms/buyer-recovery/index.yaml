@@ -1,0 +1,232 @@
+id: buyer_recovery
+version: "0.1.0"
+title: "Buyer agent error recovery and resilience"
+protocol: media-buy
+category: buyer_recovery
+summary: "Buyer agent that handles seller offline, auth expiry, stale digest, idempotency collisions, and rate limiting."
+track: media_buy_buyer
+status: preview
+required_tools:
+  - get_products
+  - create_media_buy
+
+narrative: |
+  You are a buyer agent dealing with error conditions. Sellers go offline,
+  auth tokens expire, digests become stale, and idempotency keys collide.
+  This storyboard tests the buyer's resilience and recovery behavior.
+
+  The fixture publisher simulates:
+  1. Seller offline — connection refused or 503
+  2. Auth expiry — 401 with WWW-Authenticate challenge
+  3. Idempotency collision — IDEMPOTENCY_CONFLICT on key reuse with
+     different payload
+  4. Rate limiting — 429 with Retry-After header
+
+  Key behaviors under test:
+  - Graceful degradation: buyer does not crash on seller errors
+  - Auth recovery: buyer re-authenticates on 401 before retrying
+  - Idempotency conflict: buyer generates a new key when IDEMPOTENCY_CONFLICT
+    indicates accidental reuse, not retry semantics
+  - Rate limit compliance: buyer respects Retry-After header
+  - Error reporting: buyer surfaces errors to operator with actionable context
+
+agent:
+  interaction_model: media_buy_buyer
+  capabilities:
+    - buys_media
+    - handles_errors
+  examples:
+    - "Resilient DSP buyer agent"
+    - "Agency orchestrator with error handling"
+
+caller:
+  role: fixture_publisher
+  example: "AdCP fixture publisher (reference sell-side)"
+
+prerequisites:
+  description: |
+    The fixture publisher is configured to return error responses
+    based on scenario triggers in correlation_id.
+
+fixtures:
+  fixture_publisher:
+    capabilities:
+      supported_protocols: ["media_buy"]
+      media_buy:
+        lifecycle_tools: ["list_products", "buy_products", "control_media_buy"]
+      adcp:
+        supported_versions: ["3.1"]
+    products:
+      - product_id: "display_auction"
+        delivery_type: "non_guaranteed"
+        channels: ["display"]
+        pricing_options:
+          - pricing_option_id: "cpm_auction"
+            pricing_model: "cpm"
+            currency: "USD"
+            floor_price: 5.00
+    scenarios:
+      seller_offline:
+        error_code: "SERVICE_UNAVAILABLE"
+        http_status: 503
+      auth_expiry:
+        error_code: "UNAUTHORIZED"
+        http_status: 401
+        www_authenticate: "Bearer realm=\"adcp\", error=\"invalid_token\""
+      idempotency_conflict:
+        error_code: "IDEMPOTENCY_CONFLICT"
+        http_status: 409
+        message: "Key already used with different payload"
+      rate_limited:
+        error_code: "RATE_LIMITED"
+        http_status: 429
+        retry_after: 10
+
+phases:
+  - id: handle_seller_offline
+    title: "Handle seller offline"
+    narrative: |
+      The fixture publisher returns 503 SERVICE_UNAVAILABLE. The buyer
+      must handle this gracefully without crashing.
+
+    steps:
+      - id: seller_unavailable
+        title: "Seller returns 503"
+        narrative: |
+          The buyer attempts get_products but the seller is offline.
+          The buyer must recognize the transient error and not treat
+          it as a permanent discovery failure.
+        task: get_products
+        expected: |
+          The buyer agent:
+          1. Receives 503 SERVICE_UNAVAILABLE
+          2. Does not crash or enter an error loop
+          3. May retry after a backoff period
+          4. Reports the outage to the operator if retries are exhausted
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "buyer_recovery--seller_unavailable"
+        validations:
+          - check: response_handled
+            response_type: "error"
+            description: "Buyer handles 503 without crashing"
+
+  - id: handle_auth_expiry
+    title: "Handle auth token expiry"
+    narrative: |
+      The fixture publisher returns 401 with a WWW-Authenticate challenge.
+      The buyer must re-authenticate before retrying.
+
+    steps:
+      - id: auth_expired
+        title: "Receive 401 on create"
+        narrative: |
+          The buyer attempts create_media_buy but the auth token has
+          expired. The seller returns 401. The buyer must re-authenticate.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The buyer agent:
+          1. Receives 401 UNAUTHORIZED
+          2. Reads WWW-Authenticate header
+          3. Re-authenticates (refresh token or new client_credentials grant)
+          4. Retries with the SAME idempotency_key (auth failure is not cached)
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_recovery_handle_auth_expiry_auth_expired"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          packages:
+            - product_id: "display_auction"
+              budget: 25000
+              pricing_option_id: "cpm_auction"
+          context:
+            correlation_id: "buyer_recovery--auth_expired"
+        validations:
+          - check: response_handled
+            response_type: "error"
+            description: "Buyer handles 401 and re-authenticates"
+
+  - id: handle_idempotency_conflict
+    title: "Handle idempotency conflict"
+    narrative: |
+      The buyer accidentally reuses an idempotency key with a different
+      payload. The seller returns IDEMPOTENCY_CONFLICT. The buyer must
+      generate a new key — not retry with the same key.
+
+    steps:
+      - id: conflict_on_reuse
+        title: "Receive IDEMPOTENCY_CONFLICT"
+        narrative: |
+          The buyer sends create_media_buy with a key that was already
+          used for a different payload. The seller returns 409
+          IDEMPOTENCY_CONFLICT. The buyer must generate a fresh key.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The buyer agent:
+          1. Receives 409 IDEMPOTENCY_CONFLICT
+          2. Understands this means the key was used with different params
+          3. Generates a NEW idempotency_key (not the same one)
+          4. Retries with the new key
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_recovery_handle_idempotency_conflict_conflict_on_reuse"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          packages:
+            - product_id: "display_auction"
+              budget: 25000
+              pricing_option_id: "cpm_auction"
+          context:
+            correlation_id: "buyer_recovery--conflict_on_reuse"
+        validations:
+          - check: response_handled
+            response_type: "error"
+            description: "Buyer handles IDEMPOTENCY_CONFLICT with new key"
+
+  - id: handle_rate_limit
+    title: "Handle rate limiting"
+    narrative: |
+      The fixture publisher returns 429 with Retry-After. The buyer
+      must respect the delay before retrying.
+
+    steps:
+      - id: rate_limited
+        title: "Receive 429 rate limit"
+        narrative: |
+          The buyer sends create_media_buy and gets rate-limited.
+          The buyer must wait at least Retry-After seconds.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The buyer agent:
+          1. Receives 429 RATE_LIMITED with retry_after: 10
+          2. Waits at least 10 seconds before retrying
+          3. Uses the SAME idempotency_key on retry (rate limit is not
+             a payload error — the request was never processed)
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_recovery_handle_rate_limit_rate_limited"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          packages:
+            - product_id: "display_auction"
+              budget: 25000
+              pricing_option_id: "cpm_auction"
+          context:
+            correlation_id: "buyer_recovery--rate_limited"
+        validations:
+          - check: response_handled
+            response_type: "error"
+            description: "Buyer handles 429 and respects Retry-After"
+          - check: retry_delay
+            min_seconds: 10
+            description: "Buyer waits at least retry_after seconds"

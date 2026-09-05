@@ -69,6 +69,16 @@ authored_check_kinds:
   - all_fields_in_context_array
   - upstream_traffic
   - canonical_format_satisfaction
+  - request_field_present
+  - request_field_in
+  - request_field_format
+  - request_field_value
+  - retry_delay
+  - response_handled
+  - task_called
+  - task_not_called_before
+  - output_contains
+  - output_field_present
 
 # Cross-response check kinds — applied across the response set of a
 # step that dispatches multiple requests under a runner contract that

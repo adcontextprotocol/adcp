@@ -279,6 +279,7 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     'protocols/media-buy/scenarios/get_products_async.yaml:$context.submitted_products_idempotency_key',
     'protocols/media-buy/scenarios/proposal_finalize.yaml:$context.finalize_idempotency_key',
     'protocols/media-buy/scenarios/typed_proposal_negotiation.yaml:$context.finalize_idempotency_key',
+    'specialisms/buyer-activation/index.yaml:$generate:uuid_v4#buyer_activation_retry_first',
   ]);
 
   function isGeneratedIdempotencyKey(value, generatedContextNames) {

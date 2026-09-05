@@ -1,0 +1,299 @@
+id: orchestrator_multi_agent
+version: "0.1.0"
+title: "Orchestrator multi-seller fan-out and reconciliation"
+protocol: media-buy
+category: orchestrator_multi_agent
+summary: "Orchestrator agent that coordinates across multiple sellers, handles partial failures, and reconciles cross-agent state."
+track: media_buy_buyer
+status: preview
+required_tools:
+  - get_products
+  - create_media_buy
+
+narrative: |
+  You are an orchestrator agent managing a campaign across multiple sellers.
+  The operator brief spans channels (CTV + display + social) that no single
+  seller covers. You must fan out discovery, compare products across sellers,
+  handle partial failures (one seller offline), and reconcile budget across
+  successful activations.
+
+  The fixture publisher runs TWO seller personas (alpha and beta) on the
+  same endpoint, differentiated by account context. This tests the
+  orchestrator's ability to manage parallel seller interactions.
+
+  Key behaviors under test:
+  - Multi-seller discovery: orchestrator queries multiple sellers and
+    merges product catalogs
+  - Cross-seller comparison: orchestrator compares pricing, format
+    capabilities, and delivery types across sellers
+  - Partial failure handling: one seller fails, orchestrator proceeds
+    with remaining sellers and reports the gap
+  - Budget reconciliation: orchestrator tracks cumulative spend across
+    sellers and ensures total does not exceed campaign budget
+  - Deduplication: orchestrator does not double-count products when
+    a seller appears in multiple discovery paths
+
+agent:
+  interaction_model: media_buy_buyer
+  capabilities:
+    - buys_media
+    - orchestrates_multi_seller
+  examples:
+    - "Multi-seller agency orchestrator"
+    - "Cross-platform DSP"
+
+caller:
+  role: fixture_publisher
+  example: "AdCP fixture publisher (two seller personas)"
+
+prerequisites:
+  description: |
+    The orchestrator has been given a campaign brief spanning multiple
+    channels. Two fixture publisher personas (alpha and beta) are
+    running and reachable.
+
+fixtures:
+  fixture_publisher:
+    capabilities:
+      supported_protocols: ["media_buy"]
+      media_buy:
+        lifecycle_tools: ["list_products", "buy_products", "control_media_buy"]
+      adcp:
+        supported_versions: ["3.1"]
+    seller_personas:
+      alpha:
+        seller_id: "seller_alpha"
+        products:
+          - product_id: "alpha_ctv_guaranteed"
+            name: "Alpha Premium CTV"
+            delivery_type: "guaranteed"
+            channels: ["ctv"]
+            pricing_options:
+              - pricing_option_id: "alpha_cpm_ctv"
+                pricing_model: "cpm"
+                currency: "USD"
+                rate: 35.00
+          - product_id: "alpha_display_auction"
+            name: "Alpha Display RON"
+            delivery_type: "non_guaranteed"
+            channels: ["display"]
+            pricing_options:
+              - pricing_option_id: "alpha_cpm_display"
+                pricing_model: "cpm"
+                currency: "USD"
+                floor_price: 4.00
+      beta:
+        seller_id: "seller_beta"
+        products:
+          - product_id: "beta_display_premium"
+            name: "Beta Premium Display"
+            delivery_type: "non_guaranteed"
+            channels: ["display"]
+            pricing_options:
+              - pricing_option_id: "beta_cpm_display"
+                pricing_model: "cpm"
+                currency: "USD"
+                floor_price: 6.00
+          - product_id: "beta_social_auction"
+            name: "Beta Social Auction"
+            delivery_type: "non_guaranteed"
+            channels: ["social"]
+            pricing_options:
+              - pricing_option_id: "beta_cpm_social"
+                pricing_model: "cpm"
+                currency: "USD"
+                floor_price: 8.00
+    scenarios:
+      alpha_success:
+        response_type: "synchronous"
+        media_buy_status: "pending_creatives"
+      beta_offline:
+        error_code: "SERVICE_UNAVAILABLE"
+        http_status: 503
+    campaign_budget: 100000
+
+phases:
+  - id: multi_seller_discovery
+    title: "Discover products across sellers"
+    narrative: |
+      The orchestrator queries both seller personas and merges their
+      product catalogs into a unified view.
+
+    steps:
+      - id: discover_alpha
+        title: "Discover products from seller alpha"
+        narrative: |
+          The orchestrator queries seller alpha for products.
+          Alpha returns CTV guaranteed + display auction.
+        task: get_products
+        expected: |
+          The orchestrator:
+          1. Queries seller alpha with campaign brief
+          2. Receives and catalogs alpha's products
+          3. Tags products with seller identity for later reference
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "CTV and display for outdoor brand, Q4, $100K total budget"
+          context:
+            correlation_id: "orchestrator_multi_agent--discover_alpha"
+            seller_id: "seller_alpha"
+        validations:
+          - check: request_field_present
+            path: "account"
+            description: "Orchestrator includes account in alpha discovery"
+
+      - id: discover_beta
+        title: "Discover products from seller beta"
+        narrative: |
+          The orchestrator queries seller beta for products.
+          Beta returns display premium + social auction.
+        task: get_products
+        expected: |
+          The orchestrator:
+          1. Queries seller beta with the same campaign brief
+          2. Receives and catalogs beta's products
+          3. Tags products with seller identity
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "CTV and display for outdoor brand, Q4, $100K total budget"
+          context:
+            correlation_id: "orchestrator_multi_agent--discover_beta"
+            seller_id: "seller_beta"
+        validations:
+          - check: request_field_present
+            path: "account"
+            description: "Orchestrator includes account in beta discovery"
+
+  - id: cross_seller_comparison
+    title: "Compare products across sellers"
+    narrative: |
+      The orchestrator compares overlapping products (display from
+      both alpha and beta) and assembles a cross-seller shortlist.
+
+    steps:
+      - id: compare_and_shortlist
+        title: "Build cross-seller candidate shortlist"
+        narrative: |
+          The orchestrator merges discovery results, compares display
+          products from both sellers, and presents a unified shortlist
+          with pricing comparison.
+        expected: |
+          The orchestrator:
+          1. Identifies channel overlap (display from alpha and beta)
+          2. Compares pricing (alpha $4 floor vs beta $6 floor)
+          3. Notes unique inventory (CTV only from alpha, social only from beta)
+          4. Presents a unified shortlist with per-seller attribution
+          5. Does not double-count overlapping channels
+        validations:
+          - check: output_contains
+            field: "cross_seller_shortlist"
+            description: "Orchestrator produces cross-seller comparison"
+          - check: output_field_present
+            path: "cross_seller_shortlist[*].seller_id"
+            description: "Each candidate attributed to a seller"
+
+  - id: partial_failure
+    title: "Handle partial seller failure"
+    narrative: |
+      The orchestrator attempts to activate buys across both sellers.
+      Beta goes offline (503). The orchestrator must proceed with
+      alpha and report the beta gap.
+
+    steps:
+      - id: activate_alpha
+        title: "Create buy with seller alpha (succeeds)"
+        narrative: |
+          The orchestrator creates a buy with seller alpha. It succeeds.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The orchestrator:
+          1. Creates a buy with alpha for CTV + display
+          2. Receives synchronous success
+          3. Records alpha's media_buy_id
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#orchestrator_multi_agent_partial_failure_activate_alpha"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          packages:
+            - product_id: "alpha_ctv_guaranteed"
+              budget: 50000
+              pricing_option_id: "alpha_cpm_ctv"
+          context:
+            correlation_id: "orchestrator_multi_agent--activate_alpha"
+            seller_id: "seller_alpha"
+        validations:
+          - check: request_field_present
+            path: "packages"
+            description: "Orchestrator includes packages for alpha"
+
+      - id: activate_beta_fails
+        title: "Create buy with seller beta (fails 503)"
+        narrative: |
+          The orchestrator attempts to create a buy with seller beta.
+          Beta returns 503. The orchestrator must handle the partial
+          failure without rolling back alpha.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The orchestrator:
+          1. Attempts to create a buy with beta
+          2. Receives 503 SERVICE_UNAVAILABLE
+          3. Does NOT roll back the successful alpha buy
+          4. Reports the beta failure to the operator
+          5. Tracks that the social channel allocation is unfulfilled
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#orchestrator_multi_agent_partial_failure_activate_beta_fails"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          packages:
+            - product_id: "beta_social_auction"
+              budget: 25000
+              pricing_option_id: "beta_cpm_social"
+          context:
+            correlation_id: "orchestrator_multi_agent--activate_beta_fails"
+            seller_id: "seller_beta"
+        validations:
+          - check: response_handled
+            response_type: "error"
+            description: "Orchestrator handles beta 503 without rolling back alpha"
+
+  - id: budget_reconciliation
+    title: "Reconcile budget across sellers"
+    narrative: |
+      After partial activation, the orchestrator reconciles committed
+      spend across sellers against the campaign budget.
+
+    steps:
+      - id: reconcile_budget
+        title: "Reconcile cross-seller budget"
+        narrative: |
+          The orchestrator tallies committed spend (alpha succeeded,
+          beta failed) and reports the budget status to the operator.
+        expected: |
+          The orchestrator:
+          1. Sums committed spend across successful activations
+          2. Identifies unallocated budget from failed activations
+          3. Reports: $50K committed (alpha), $25K unallocated (beta failed),
+             $25K remaining from campaign budget
+          4. Does not over-allocate beyond campaign_budget
+        validations:
+          - check: output_contains
+            field: "budget_reconciliation"
+            description: "Orchestrator produces budget reconciliation"
+          - check: output_field_present
+            path: "budget_reconciliation.committed_spend"
+            description: "Reconciliation includes committed spend"
+          - check: output_field_present
+            path: "budget_reconciliation.unallocated"
+            description: "Reconciliation includes unallocated amount"

@@ -1,0 +1,324 @@
+id: buyer_activation
+version: "0.1.0"
+title: "Buyer agent media buy creation and idempotent activation"
+protocol: media-buy
+category: buyer_activation
+summary: "Buyer agent that creates media buys with correct idempotency keys, handles transient failures with retry, and coordinates creative assignment."
+track: media_buy_buyer
+status: preview
+required_tools:
+  - create_media_buy
+  - sync_creatives
+
+narrative: |
+  You are a buyer agent activating a media buy after product discovery and
+  operator approval. This storyboard tests the commitment and activation path:
+  creating a buy with correct idempotency semantics, handling transient
+  failures, coordinating creative assignment, and confirming the buy reaches
+  an active state.
+
+  The fixture publisher simulates three scenarios:
+  1. Happy path — create succeeds synchronously (non-guaranteed)
+  2. Async path — create returns a submitted task envelope (guaranteed with IO approval)
+  3. Transient failure — create returns a retryable error; the buyer must retry
+     with the same idempotency key
+
+  Key behaviors under test:
+  - Idempotency: buyer generates a UUID v4 idempotency_key per create attempt
+    and reuses the SAME key on retry after transient failure
+  - Async handling: buyer polls get_task_status or configures a webhook when
+    the seller returns a submitted task envelope
+  - Creative coordination: buyer calls sync_creatives after the buy reaches
+    pending_creatives status
+  - Status reading: buyer reads media_buy_status (not the deprecated root status)
+    on create/update responses
+
+agent:
+  interaction_model: media_buy_buyer
+  capabilities:
+    - buys_media
+    - creates_buys
+    - handles_retries
+  examples:
+    - "DSP buyer agent"
+    - "Agency orchestrator with retry logic"
+    - "Automated buying agent"
+
+caller:
+  role: fixture_publisher
+  example: "AdCP fixture publisher (reference sell-side)"
+
+prerequisites:
+  description: |
+    The buyer agent has completed product discovery and the operator has approved
+    a candidate shortlist. The fixture publisher is running and the buyer agent
+    has a valid account.
+
+fixtures:
+  fixture_publisher:
+    capabilities:
+      supported_protocols: ["media_buy"]
+      media_buy:
+        lifecycle_tools: ["list_products", "buy_products", "control_media_buy"]
+      adcp:
+        supported_versions: ["3.1"]
+    products:
+      - product_id: "display_auction"
+        delivery_type: "non_guaranteed"
+        channels: ["display"]
+        pricing_options:
+          - pricing_option_id: "cpm_auction"
+            pricing_model: "cpm"
+            currency: "USD"
+            floor_price: 5.00
+    scenarios:
+      create_success:
+        response_type: "synchronous"
+        media_buy_status: "pending_creatives"
+      create_async:
+        response_type: "submitted"
+        task_id: "task_io_approval_001"
+      create_transient_failure:
+        error_code: "TEMPORARILY_UNAVAILABLE"
+        retry_after: 5
+
+phases:
+  - id: create_non_guaranteed
+    title: "Create non-guaranteed buy (synchronous)"
+    narrative: |
+      The buyer agent creates a non-guaranteed buy. The fixture publisher
+      returns a synchronous success. The buyer must generate a fresh
+      idempotency_key and read media_buy_status from the response.
+
+    steps:
+      - id: create_buy
+        title: "Create media buy with idempotency key"
+        narrative: |
+          The buyer creates a non-guaranteed buy. The request must include
+          a UUID v4 idempotency_key. The response returns synchronously
+          with media_buy_status: pending_creatives.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The buyer agent:
+          1. Generates a UUID v4 idempotency_key (not reused from a prior create)
+          2. Includes account, brand, packages with product_id and pricing_option_id
+          3. Reads media_buy_status from the response (not root status)
+          4. Proceeds to creative assignment on pending_creatives
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_activation_create_buy"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "display_auction"
+              budget: 25000
+              bid_price: 5.00
+              pricing_option_id: "cpm_auction"
+          context:
+            correlation_id: "buyer_activation--create_buy"
+        validations:
+          - check: request_field_present
+            path: "idempotency_key"
+            description: "Buyer includes idempotency_key in create request"
+          - check: request_field_format
+            path: "idempotency_key"
+            format: "uuid_v4"
+            description: "Idempotency key is a valid UUID v4"
+          - check: request_field_present
+            path: "packages"
+            description: "Buyer includes packages in create request"
+          - check: request_field_present
+            path: "packages[0].product_id"
+            description: "Each package references a discovered product_id"
+          - check: request_field_present
+            path: "packages[0].pricing_option_id"
+            description: "Each package references a pricing_option_id"
+
+  - id: retry_on_transient_failure
+    title: "Retry with same idempotency key on transient failure"
+    narrative: |
+      The fixture publisher returns TEMPORARILY_UNAVAILABLE on the first
+      create attempt. The buyer must retry with the SAME idempotency_key,
+      not generate a new one. Generating a new key on retry risks creating
+      duplicate buys.
+
+    steps:
+      - id: create_buy_fails
+        title: "First create attempt fails transiently"
+        narrative: |
+          The fixture publisher returns a retryable error with retry_after.
+          The buyer must not treat this as a permanent failure.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The fixture publisher returns:
+          - error_code: TEMPORARILY_UNAVAILABLE
+          - retry_after: 5 (seconds)
+          The buyer agent recognizes this as retryable and does not give up.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_activation_retry_first"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "display_auction"
+              budget: 25000
+              bid_price: 5.00
+              pricing_option_id: "cpm_auction"
+          context:
+            correlation_id: "buyer_activation--create_buy_fails"
+        validations:
+          - check: request_field_present
+            path: "idempotency_key"
+            description: "First attempt includes idempotency_key"
+
+      - id: create_buy_retry
+        title: "Retry with same idempotency key"
+        narrative: |
+          The buyer retries the create after the retry_after delay. The
+          retry MUST use the same idempotency_key as the failed attempt.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The buyer agent:
+          1. Waits at least retry_after seconds before retrying
+          2. Sends the SAME idempotency_key as the first attempt
+          3. Does not change the request payload (same packages, same account)
+          4. Succeeds on the retry
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_activation_retry_first"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "display_auction"
+              budget: 25000
+              bid_price: 5.00
+              pricing_option_id: "cpm_auction"
+          context:
+            correlation_id: "buyer_activation--create_buy_retry"
+        validations:
+          - check: request_field_present
+            path: "idempotency_key"
+            description: "Retry includes idempotency_key (same alias ensures same value as first attempt)"
+          - check: retry_delay
+            min_seconds: 5
+            description: "Buyer respects retry_after delay before retrying"
+
+  - id: async_create_handling
+    title: "Handle async create (submitted task envelope)"
+    narrative: |
+      The fixture publisher returns a submitted task envelope instead of a
+      synchronous result (guaranteed buy requiring IO approval). The buyer
+      must poll get_task_status or set up a webhook, not treat the submitted
+      response as a failure.
+
+    steps:
+      - id: create_async_buy
+        title: "Create guaranteed buy (returns task envelope)"
+        narrative: |
+          The buyer creates a guaranteed buy. The fixture publisher returns
+          a submitted task with task_id instead of an immediate media_buy_id.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        expected: |
+          The fixture publisher returns a submitted task envelope.
+          The buyer agent:
+          1. Reads the task_id from the submitted response
+          2. Does not treat submitted as an error
+          3. Proceeds to poll or configure a webhook
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_activation_async_create"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2099-10-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "ctv_premium_guaranteed"
+              budget: 50000
+              pricing_option_id: "cpm_guaranteed"
+          context:
+            correlation_id: "buyer_activation--create_async_buy"
+        validations:
+          - check: response_handled
+            response_type: "submitted"
+            description: "Buyer correctly handles submitted task envelope"
+
+      - id: poll_task_status
+        title: "Poll for task completion"
+        narrative: |
+          The buyer polls get_task_status with the task_id from the submitted
+          response. The fixture publisher returns completed after one poll.
+        task: get_task_status
+        schema_ref: "protocol/get-task-status-request.json"
+        scoping: global
+        expected: |
+          The buyer agent:
+          1. Calls get_task_status with the task_id from the submitted response
+          2. Reads the completed result containing media_buy_id
+          3. Proceeds to get_media_buys or creative assignment
+        validations:
+          - check: request_field_present
+            path: "task_id"
+            description: "Buyer includes task_id from submitted response"
+
+  - id: creative_coordination
+    title: "Creative assignment after buy creation"
+    narrative: |
+      After a buy reaches pending_creatives, the buyer must coordinate
+      creative assignment via sync_creatives before the buy can activate.
+
+    steps:
+      - id: sync_creatives
+        title: "Assign creatives to the buy"
+        narrative: |
+          The buyer calls sync_creatives to assign approved creatives to
+          packages on the media buy. The creative must match the format_options
+          declared on the product.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        expected: |
+          The buyer agent:
+          1. Calls sync_creatives with the media_buy_id
+          2. Assigns creatives matching the product's format_options
+          3. Does not assign a 300x250 image creative to a CTV video product
+          4. Reads the response to confirm assignment status
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_activation_creative_coordination_sync_creatives"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          creatives:
+            - creative_id: "creative_display_300x250"
+              package_ids: ["$context.first_package_id"]
+          context:
+            correlation_id: "buyer_activation--sync_creatives"
+        validations:
+          - check: request_field_present
+            path: "media_buy_id"
+            description: "Buyer includes media_buy_id in sync_creatives"
+          - check: request_field_present
+            path: "creatives"
+            description: "Buyer includes creatives to assign"

@@ -31,6 +31,9 @@
 #     Signals:     signal_marketplace | signal_owned
 #     Brand:       brand_rights
 #     Audiences:   audience_sync
+#     Buyer:       buyer_discovery | buyer_activation | buyer_negotiation
+#                  | buyer_monitoring | buyer_recovery
+#     Orchestrator: orchestrator_multi_agent
 #
 #   For *universal / domain-level* storyboards, the category is descriptive
 #   only (not on the wire). Examples in current use: capability_discovery,
@@ -46,7 +49,7 @@
 #   brand_rights/governance_denied, media_buy_seller/provenance_enforcement.
 # summary: string (one-line description for listings)
 # track: enum (optional — compliance track this storyboard contributes to:
-#   core | products | media_buy | creative | reporting | governance |
+#   core | products | media_buy | media_buy_buyer | creative | reporting | governance |
 #   campaign_governance | signals | si | audiences | error_handling | brand | security)
 # required_tools: string[] (optional — tool names the storyboard uses; empty for protocol-level tests.
 #   Lenient any-of: missing all listed tools triggers a coverage-gap skip
@@ -416,7 +419,7 @@
 #   indicator separately rather than splitting `detail` themselves.)
 #
 # agent:
-#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent | tmp_router)
+#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | media_buy_buyer | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent | tmp_router)
 #     Descriptive authoring metadata, not a runner selection gate: agents do not
 #     publish one canonical interaction_model value on the wire. Authors MUST
 #     express executable scope through required_tools, requires_capability,

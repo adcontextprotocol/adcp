@@ -1,0 +1,246 @@
+id: buyer_negotiation
+version: "0.1.0"
+title: "Buyer agent proposal negotiation and terms handling"
+protocol: media-buy
+category: buyer_negotiation
+summary: "Buyer agent that requests proposals, refines terms, handles TERMS_REJECTED, and accepts or declines offers."
+track: media_buy_buyer
+status: preview
+required_tools:
+  - request_proposals
+  - refine_proposals
+
+narrative: |
+  You are a buyer agent negotiating a media buy. After product discovery,
+  you request proposals from the seller, review commercial terms, and either
+  accept, refine, or decline. This storyboard tests the negotiation path:
+  proposal request, term review, counter-offer via refine, TERMS_REJECTED
+  handling, and final acceptance.
+
+  The fixture publisher simulates:
+  1. Happy path — proposal returned, buyer accepts
+  2. Counter-offer — buyer refines, seller returns updated proposal
+  3. Terms rejected — seller rejects buyer's terms, buyer must handle gracefully
+
+  Key behaviors under test:
+  - Proposal immutability: buyer reads proposal_id and does not modify
+    the seller's proposal object directly
+  - Term review: buyer reads commercial_terms.change_terms and
+    understands allowed_statuses and constraints
+  - Refinement: buyer sends refine_proposals with specific term changes
+  - Rejection handling: buyer reads TERMS_REJECTED and does not retry
+    the same terms
+  - Acceptance: buyer calls accept_proposal with the final proposal_id
+
+agent:
+  interaction_model: media_buy_buyer
+  capabilities:
+    - buys_media
+    - negotiates_terms
+  examples:
+    - "DSP buyer agent with negotiation"
+    - "Agency orchestrator"
+
+caller:
+  role: fixture_publisher
+  example: "AdCP fixture publisher (reference sell-side)"
+
+prerequisites:
+  description: |
+    The buyer agent has completed product discovery and selected candidates.
+    The fixture publisher is running with proposal support enabled
+    (media_buy.supports_proposals: true).
+
+fixtures:
+  fixture_publisher:
+    capabilities:
+      supported_protocols: ["media_buy"]
+      media_buy:
+        supports_proposals: true
+        lifecycle_tools: ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "accept_proposal", "buy_products", "control_media_buy"]
+      adcp:
+        supported_versions: ["3.1"]
+    products:
+      - product_id: "ctv_premium_guaranteed"
+        delivery_type: "guaranteed"
+        channels: ["ctv"]
+        pricing_options:
+          - pricing_option_id: "cpm_guaranteed"
+            pricing_model: "cpm"
+            currency: "USD"
+            rate: 35.00
+    scenarios:
+      proposal_returned:
+        proposal_id: "prop_001"
+        commercial_terms:
+          change_terms:
+            - change_term_id: "ct_cancel"
+              allowed_statuses: ["pending_creatives", "paused"]
+              mode: "negotiated_cancellation"
+              processing_sla_hours: 48
+      proposal_refined:
+        proposal_id: "prop_002"
+        revised_rate: 30.00
+      terms_rejected:
+        error_code: "TERMS_REJECTED"
+        rejected_terms: ["ct_cancel"]
+        reason: "Cancellation window too short for guaranteed CTV"
+
+phases:
+  - id: request_proposal
+    title: "Request proposal from seller"
+    narrative: |
+      The buyer requests a proposal for the guaranteed CTV product.
+      The seller returns a proposal with commercial terms.
+
+    steps:
+      - id: request_proposal
+        title: "Request proposal for CTV product"
+        narrative: |
+          The buyer sends request_proposals with product selection and
+          budget parameters. The seller returns a proposal with
+          commercial_terms including change_terms.
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        expected: |
+          The buyer agent:
+          1. Includes product_id and pricing_option_id from discovery
+          2. Includes budget and flight dates
+          3. Reads the returned proposal_id
+          4. Reads commercial_terms.change_terms to understand what
+             actions are available on the buy
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_negotiation_request_proposal_request_proposal"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          products:
+            - product_id: "ctv_premium_guaranteed"
+              pricing_option_id: "cpm_guaranteed"
+              budget: 50000
+          flight:
+            start: "2099-10-01T00:00:00Z"
+            end: "2099-12-31T23:59:59Z"
+          context:
+            correlation_id: "buyer_negotiation--request_proposal"
+        validations:
+          - check: request_field_present
+            path: "products"
+            description: "Buyer includes product selection"
+          - check: request_field_present
+            path: "products[0].product_id"
+            description: "Buyer references discovered product_id"
+
+  - id: refine_terms
+    title: "Refine proposal terms"
+    narrative: |
+      The buyer reviews the proposal and requests a term change via
+      refine_proposals. The seller returns an updated proposal.
+
+    steps:
+      - id: refine_proposal
+        title: "Refine proposal with counter-offer"
+        narrative: |
+          The buyer sends refine_proposals requesting a lower rate.
+          The seller returns a revised proposal.
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        expected: |
+          The buyer agent:
+          1. References the original proposal_id
+          2. Specifies the term changes requested
+          3. Does not modify the proposal object directly
+          4. Reads the new proposal_id from the response
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_negotiation_refine_terms_refine_proposal"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          proposal_id: "$context.proposal_id"
+          refinements:
+            - field: "rate"
+              requested_value: 30.00
+              rationale: "Volume commitment justifies rate reduction"
+          context:
+            correlation_id: "buyer_negotiation--refine_proposal"
+        validations:
+          - check: request_field_present
+            path: "proposal_id"
+            description: "Buyer references original proposal_id"
+          - check: request_field_present
+            path: "refinements"
+            description: "Buyer specifies term changes"
+
+  - id: handle_rejection
+    title: "Handle TERMS_REJECTED"
+    narrative: |
+      The seller rejects the buyer's proposed terms. The buyer must
+      handle the rejection gracefully — not retry the same terms.
+
+    steps:
+      - id: rejected_refine
+        title: "Receive TERMS_REJECTED on refinement"
+        narrative: |
+          The buyer attempts another refinement that the seller rejects.
+          The buyer must read the error, understand which terms were
+          rejected, and not re-send the same request.
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        expected: |
+          The fixture publisher returns TERMS_REJECTED.
+          The buyer agent:
+          1. Reads error_code: TERMS_REJECTED
+          2. Reads rejected_terms to understand what was refused
+          3. Does not retry with the same terms
+          4. Either accepts the seller's last proposal or declines
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_negotiation_handle_rejection_rejected_refine"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          proposal_id: "$context.proposal_id"
+          refinements:
+            - field: "cancellation_window"
+              requested_value: 24
+              rationale: "Need shorter cancellation window"
+          context:
+            correlation_id: "buyer_negotiation--rejected_refine"
+        validations:
+          - check: response_handled
+            response_type: "error"
+            description: "Buyer handles TERMS_REJECTED without retrying same terms"
+
+  - id: accept_proposal
+    title: "Accept final proposal"
+    narrative: |
+      The buyer accepts the seller's proposal, committing to the buy.
+
+    steps:
+      - id: accept
+        title: "Accept proposal and commit"
+        narrative: |
+          The buyer calls accept_proposal with the final proposal_id.
+          This commits the buy under the agreed commercial terms.
+        task: accept_proposal
+        schema_ref: "media-buy/accept-proposal-request.json"
+        expected: |
+          The buyer agent:
+          1. Calls accept_proposal with the correct proposal_id
+          2. Reads the media_buy_id from the acceptance response
+          3. Reads media_buy_status to confirm commitment
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_negotiation_accept_proposal_accept"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          proposal_id: "$context.proposal_id"
+          context:
+            correlation_id: "buyer_negotiation--accept"
+        validations:
+          - check: request_field_present
+            path: "proposal_id"
+            description: "Buyer includes proposal_id in acceptance"
