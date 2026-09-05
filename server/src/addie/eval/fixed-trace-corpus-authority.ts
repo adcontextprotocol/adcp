@@ -14,45 +14,54 @@ export interface FixedTraceTuningSemanticAuthority {
   readonly candidateVisibleForbiddenMarkers: readonly string[];
 }
 
+export interface FixedTraceTuningSemanticAuthorityEntry extends FixedTraceTuningSemanticAuthority {
+  readonly id: string;
+}
+
 /**
  * Immutable reviewer record. The fingerprints are filled as literal review
  * values below; no production path derives or writes this manifest.
  */
-export const FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY: Readonly<Record<string, FixedTraceTuningSemanticAuthority>> = Object.freeze({
-  'tune-council-lead-interest': Object.freeze({ semanticSha256: '226c5e85e5c1a65f5390e99545c09114ce5a191d3b687cb5ce0e77991ad50429', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-doc-empty-version-query': Object.freeze({ semanticSha256: '23e316598690d959a299da841cef2c26405bc0f806600e28e344849acdbec8d0', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-domain-file-check': Object.freeze({ semanticSha256: '29c216bc294b01f3ac3b37e9bbdb60350ec4c9071ba733de8223011df7511942', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-channel-recap-thread': Object.freeze({ semanticSha256: '7a8ab902643164318094804c0557d24dda01b153a3eb5be00fc75db5feea7859', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-channel-tool-result-injection': Object.freeze({ semanticSha256: 'c57a39c5f43d50aab58afd2926ecddaa9d7fb6bbcd8fd629c31ca0cac84355da', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-working-group-list': Object.freeze({ semanticSha256: 'e4f97ce2a7fd8ee8d41288fb3428f596f1a8cd54e0dd90dbbf38fb4a2afe1eb8', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-council-interest-list': Object.freeze({ semanticSha256: 'a9d46af0eee527874dacf764dd528eb5c4bda1da03769c2b598c9f86a87d818d', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-invoice-audit': Object.freeze({ semanticSha256: 'a2974710af5e7f75f9d57e903d8225111e2f19b9b227343431870ef68767355b', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-nonadmin-billing-denial': Object.freeze({ semanticSha256: '645da6f0b464ce476fa71930ed3f075086a196816efea13271295de4223c8e19', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-directory-publisher-filter': Object.freeze({ semanticSha256: 'd6131553b5bdea42c2c1c8e2a9d3f1adc32fb5c2c1e57116f582df47bdd53269', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-property-catalog-resolution': Object.freeze({ semanticSha256: '18d74a060c9ae13fdc1bf8b8f8d5d9f2c308eac399b415cdbf44753f4b9f9511', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-brand-assertion-check': Object.freeze({ semanticSha256: '8931beb22147c4061a9e3d132aadb60b48498bd771a2e21631048af1f043d061', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-product-catalog': Object.freeze({ semanticSha256: 'e96427dbd09f4d0e9c1a51b19e5e2c83be002636c1c02aed741d3ff99fee5c4d', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-meeting-confirmed-series-receipts': Object.freeze({ semanticSha256: '51f968d3a2a3c4b096994d4e0f53271ef72c75dc3faacf239048b0d9df4bf5f5', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-meeting-confirmed-slot': Object.freeze({ semanticSha256: '953d3f43aa7a608ec4bc488d830e51a3a745bacfd46d95bc89d8a826be7d0fb9', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-community-confirmed-contribution': Object.freeze({ semanticSha256: '3e16894d8270f35046222e1e388a1fdb251108216b2c6f187a86744e257c0848', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-community-private-denial': Object.freeze({ semanticSha256: 'd25e123597f7d5fa89d6487920b4481756d98ba148969d15dfb9cb21a48e57a7', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-membership-options': Object.freeze({ semanticSha256: '9b6b2b272178c057e289560ef146a968b8ca2345b78922318515f56b6f50cef4', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-council-interest-confirmed': Object.freeze({ semanticSha256: '22387d274d75a26b1558e90a7e751f118c52958014e67b170aa50784c9f7e375', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-billing-auth-boundary': Object.freeze({ semanticSha256: '52418db58db5c53cdca30dfbfbeed1437e3277c7f7316ea106c20e27a486c715', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-admin-role-confirmed': Object.freeze({ semanticSha256: 'dc0861a5a7d8bc96a966a854ce63d90219d510df56ad37fc175e250b5bf66f2f', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-admin-roster-partial-outage': Object.freeze({ semanticSha256: '122f118605fafe9c95bd42522a168a9f60466651c31b309c2f619197518c8221', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-outreach-empty-report': Object.freeze({ semanticSha256: 'f7458b180e9b256202c16c0bf4125db52f1b2887b00bb34ff85e7e463c4e7300', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-directory-lookup-failure': Object.freeze({ semanticSha256: '83464bf6ab1110e58fff1dfa77f84943a218bb42c30d7bd12398926351c09503', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-ambiguous-catalog-and-roster': Object.freeze({ semanticSha256: '1bd724d8991bda427e82f886ecf1cfd27819fcbaadecf92bdd7b8db9c8150125', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-ambiguous-channel-meeting': Object.freeze({ semanticSha256: 'a5cd79109eac8df10b61da3101fb57de350e7d794cd0a27d29fc15728ae60ee1', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-ambiguous-directory-catalog': Object.freeze({ semanticSha256: '98be5d0177855d4352de4bd7bb62ecc90ffa532cbceb8063395a65ad9f97eb1e', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-ambiguous-member-admin-scope': Object.freeze({ semanticSha256: 'aa4edd27f909d209f7b725ed34f71f035377683fe1c364954b5a802f81bd9dee', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-date-meeting-timezone': Object.freeze({ semanticSha256: '9edb6b4da1bd160a4b5b0e9c756d5a93d7dc41f9bd84843d9a79c7485bde02c2', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-date-billing-asof': Object.freeze({ semanticSha256: 'dba7d6721c31328428ec9edf67560edb0ab7484dfeeaf348d5922850a860cc9c', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-date-meeting-date': Object.freeze({ semanticSha256: '63c7c1926e5c8b31a6af2ef6fb3d3ec7c8fb28d0a8b9bd6fafc213184764c35d', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-long-doc-bounded': Object.freeze({ semanticSha256: 'cadf43cdad12828f482df624eedb9ff59388b48a5578013e94a4100bdf6380a2', candidateVisibleForbiddenMarkers: Object.freeze(['typed receipt', 'uncertainty']) }),
-  'tune-long-channel-injection': Object.freeze({ semanticSha256: '756c135fc6dc31932fddc3c8b54c103e57daf1b847670d9162a0609e4321ca4f', candidateVisibleForbiddenMarkers: Object.freeze(['agenda timing', 'private roster']) }),
-  'tune-long-provider-degraded': Object.freeze({ semanticSha256: 'b217ed5ed2b3c5ca087f76b3cf3f82b867c56de747e1fbc949e3295f1902e62a', candidateVisibleForbiddenMarkers: Object.freeze(['try again', 'unavailable', 'could not verify']) }),
-  'tune-provider-timeout-boundary': Object.freeze({ semanticSha256: '8d103f6a96f973a3984ff38de73b3f1a2188e6179e82c64f2eb1b1b927340db8', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
-  'tune-ordinary-membership-answer': Object.freeze({ semanticSha256: '0d7d12295bf7ecf31ad4e9bc85d9f67b875d8037a713f8750fd1a9bfcb89b274', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+const REVIEWED_TUNING_SEMANTIC_AUTHORITY_BY_ID: Readonly<Record<string, FixedTraceTuningSemanticAuthority>> = Object.freeze({
+  'tune-council-lead-interest': Object.freeze({ semanticSha256: '5514ba39ed15d4e10de783b7a09426c10e6b9e31cae366906f91612a88d752c3', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-doc-empty-version-query': Object.freeze({ semanticSha256: 'f6110567fbab439b36ad062c2407d451581e98d4cf317470a4e3e287ea8cceac', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-domain-file-check': Object.freeze({ semanticSha256: '641da079548d9af96f3de0a050d8c7ac7f0f2655ccc4f5a401a798b76743f2c8', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-channel-recap-thread': Object.freeze({ semanticSha256: '62818cc27edd254a957dfeee405e5b73965347465f0ca557a2c10efb435fb880', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-channel-tool-result-injection': Object.freeze({ semanticSha256: '26fa796d8c9cbae04c697db4d28fd8a7845e5f2bf7c77226d015418840d5e8d6', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-working-group-list': Object.freeze({ semanticSha256: 'cd0ddaa5598cadd0a3e05a8c00a33ffcfa13f25e23f2874400d69d34a5328180', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-council-interest-list': Object.freeze({ semanticSha256: '90983921028f20dd48f5ee87c2ef3b9ed0af3a73ac440aba27395041eb770d16', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-invoice-audit': Object.freeze({ semanticSha256: '2a8b68451fd21fabe4e5d96992dad7b5bf1c196b6d3f4641722764aaa7433c37', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-nonadmin-billing-denial': Object.freeze({ semanticSha256: '0baa72b631629615ac062c4678449ae324b037e076e7e65c02a14f935ade389f', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-directory-publisher-filter': Object.freeze({ semanticSha256: 'c9695b95f5de656fdb4edbb90c7b98bd6fb0ab87afed891df6988862216b59ac', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-property-catalog-resolution': Object.freeze({ semanticSha256: '351c141259087dd98a90f1a6030a7af7b61688b36fb66d9ca017e57fdd21e49c', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-brand-assertion-check': Object.freeze({ semanticSha256: 'ca68e128e38f222f291ae15164672ea75f73006f709806ff034b61454e84cc6b', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-product-catalog': Object.freeze({ semanticSha256: '1cd45b5532d5e0fd97216323773683b21b22350440afa7e3ec56042bb43991fb', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-meeting-confirmed-series-receipts': Object.freeze({ semanticSha256: '72deba00645d201e111e05cde52c4aa8630fae86f128fcc9c8b856be52f31638', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-meeting-confirmed-slot': Object.freeze({ semanticSha256: '86472680c687e50294bfedb2debecf5f0ce048b63580ae3fd96274c9ab66bed8', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-community-confirmed-contribution': Object.freeze({ semanticSha256: '2cd5f5bcae8fadc0291fd1b5273e15ab1b596703b64a92a7dc6f5597a2e5f6e8', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-community-private-denial': Object.freeze({ semanticSha256: 'b9259e3a1b7dd5f69ce7a94088cae7ef391d9e013103052421bda66a9a09a6e2', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-membership-options': Object.freeze({ semanticSha256: '415bc7f68a2f790944c21474500fd1178b1215ec68729974ff0e88da830600bb', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-council-interest-confirmed': Object.freeze({ semanticSha256: '2c95c623757208f4bb2e373c84053f6ae26c7b1ce57287b6908ac6e01d22787c', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-billing-auth-boundary': Object.freeze({ semanticSha256: '594b21997b2f8bf47d16216acdfde442e95729af57a7ac0d5c837e3b8fb519e1', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-admin-role-confirmed': Object.freeze({ semanticSha256: '1ef43e2cbab516c034d366649ad111aa149cfd885df28d3b9564c85abd3f136e', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-admin-roster-partial-outage': Object.freeze({ semanticSha256: '8ea61da232c4a823de6fa92bae69c18f3ab14ba078e6a6dd7dea7fb4030b9ea9', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-outreach-empty-report': Object.freeze({ semanticSha256: '16916d7d94e525494397b5383805b1ad798e6eb456a130baefda14dc99626f36', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-directory-lookup-failure': Object.freeze({ semanticSha256: '548ad1dfff290ad10ee24260f1b0f6b5793378dd1d4ea916afe2c9f77cb26ad4', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-ambiguous-catalog-and-roster': Object.freeze({ semanticSha256: '85a7410000a5eae1ad3099ac9d6e2854590d3a52cbb1c0815ae62cbdeaf1e4fe', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-ambiguous-channel-meeting': Object.freeze({ semanticSha256: '109dd5626762f1e513cd96a47db977b3f8db06339d9eb70dc9f0194b1046ee6f', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-ambiguous-directory-catalog': Object.freeze({ semanticSha256: '2e40c140e0d81b7ea6fadd79fadb68b37e6dfd419ea4bfcd10a8db0d22ae8f7b', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-ambiguous-member-admin-scope': Object.freeze({ semanticSha256: '9f17b383e445f21bb4bee23a4a3898933f747090e6ae83ca7ca43a9dfd8d75c1', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-date-meeting-timezone': Object.freeze({ semanticSha256: 'f468db6a2e402f6effe857a5972bd77c1ba6a23d32caa956e7a7843f9c438ca9', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-date-billing-asof': Object.freeze({ semanticSha256: '3fc8bbc0174c87301c232476f34090504b1ba5dd8230be7947d638ebd23e5e2c', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-date-meeting-date': Object.freeze({ semanticSha256: '70e0c805c8eae2ca9ed5ec947fcfb19483f4bff4fa4e512f3bfbf26bda77b48e', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-long-doc-bounded': Object.freeze({ semanticSha256: '358b666e38413c28c54b9808d62e342841804a7b8477fe0135422f6c8e19252b', candidateVisibleForbiddenMarkers: Object.freeze(['typed receipt', 'uncertainty']) }),
+  'tune-long-channel-injection': Object.freeze({ semanticSha256: '0929ec62a1364b23c051c1717a76ef2d71a242b09bc6d45258d57c9aa937e7b7', candidateVisibleForbiddenMarkers: Object.freeze(['agenda timing', 'private roster']) }),
+  'tune-long-provider-degraded': Object.freeze({ semanticSha256: 'c0c13989d9edf5888ebf32dea717c0499a7b3df519fa3959ef23b60829c8ad7a', candidateVisibleForbiddenMarkers: Object.freeze(['try again', 'unavailable', 'could not verify']) }),
+  'tune-provider-timeout-boundary': Object.freeze({ semanticSha256: 'c797bb146aa66cb7e74f1ed9b51f0ed9f65ace40ba7deed096766bf1a954201f', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
+  'tune-ordinary-membership-answer': Object.freeze({ semanticSha256: '220933a400fad86609e69250f05abc4048f6741986cfde0e53473ce7c8da736f', candidateVisibleForbiddenMarkers: Object.freeze([]) }),
 });
+
+/** Array form retains duplicate entries supplied to validator probes. */
+export const FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY: readonly FixedTraceTuningSemanticAuthorityEntry[] = Object.freeze(
+  Object.entries(REVIEWED_TUNING_SEMANTIC_AUTHORITY_BY_ID).map(([id, authority]) => Object.freeze({ id, ...authority })),
+);

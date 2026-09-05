@@ -14,7 +14,11 @@ import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
 import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
 import type { AddieTool } from '../types.js';
 import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
-import { FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY } from './fixed-trace-corpus-authority.js';
+import {
+  FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
+  type FixedTraceTuningSemanticAuthorityEntry,
+} from './fixed-trace-corpus-authority.js';
+import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -30,67 +34,76 @@ function canonicalJson(value: unknown): string {
   throw new Error('Fixed trace authority contains a non-JSON value');
 }
 
-/** A complete semantic snapshot is compared with a literal reviewer manifest. */
+/**
+ * A complete canonical trace is compared with a literal reviewer manifest.
+ * Do not reduce this to selected fields: routing, grading, candidate input,
+ * and evaluator controls are all behavior-defining corpus semantics.
+ */
 export function fixedTraceTuningSemanticSha256(trace: FixedTraceCorpusCase): string {
-  const contract = trace.toolContract;
-  return createHash('sha256').update(canonicalJson({
-    id: trace.id,
-    caseControl: trace.caseControl,
-    terminalStatuses: trace.expectation.terminalStatuses,
-    toolFixtures: trace.toolFixtures.map((fixture) => ({
-      name: fixture.name,
-      effect: fixture.effect,
-      resultStatus: fixture.resultStatus,
-      resultSha256: createHash('sha256').update(fixture.result, 'utf8').digest('hex'),
-    })),
-    toolContract: contract && {
-      orderedCalls: contract.orderedCalls.map((call) => ({
-        name: call.name,
-        input: call.input,
-        execution: call.execution,
-        policyDisposition: call.policyDisposition,
-        resultStatus: call.resultStatus,
-        dependsOn: call.dependsOn ?? null,
-      })),
-      callBudget: contract.callBudget,
-      terminalBoundary: contract.terminalBoundary,
-      requiredReceiptDependencies: contract.requiredReceiptDependencies,
-      negativeFixtureScenario: contract.negativeFixtureScenario ?? null,
-    },
-  }), 'utf8').digest('hex');
+  const detached = detachFixedTraceSnapshot(trace);
+  if (!detached.snapshot) throw new Error(`Unsafe tuning semantic input: ${detached.error}`);
+  return createHash('sha256').update(canonicalJson(detached.snapshot), 'utf8').digest('hex');
 }
 
-/** Compact normalization makes punctuation/case variants of evaluator markers visible. */
-export function candidateVisibleMarkerOverlap(value: string, markers: readonly string[]): string[] {
-  const normalized = value.normalize('NFKD').toLocaleLowerCase('en-US').replace(/[^a-z0-9]+/g, '');
+const MARKER_CONFUSABLES: Readonly<Record<string, string>> = Object.freeze({
+  '\u0430': 'a', '\u0435': 'e', '\u0456': 'i', '\u0458': 'j', '\u043e': 'o', '\u0440': 'p', '\u0441': 'c', '\u0445': 'x', '\u0443': 'y',
+  '\u0391': 'a', '\u0395': 'e', '\u0399': 'i', '\u039a': 'k', '\u039f': 'o', '\u03a1': 'p', '\u03a4': 't', '\u03a5': 'y', '\u03a7': 'x',
+});
+
+function rawStringLeaves(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(rawStringLeaves);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(rawStringLeaves);
+  return [];
+}
+
+function normalizeMarker(value: string): string {
+  let normalized = value.normalize('NFKD').toLocaleLowerCase('en-US').replace(/\p{M}/gu, '');
+  for (const [confusable, replacement] of Object.entries(MARKER_CONFUSABLES)) normalized = normalized.replaceAll(confusable, replacement);
+  return normalized.replace(/[^a-z0-9]+/g, '');
+}
+
+/** Normalize raw candidate leaves, never a JSON-escaped aggregate. */
+export function candidateVisibleMarkerOverlap(value: unknown, markers: readonly string[]): string[] {
+  const normalizedValues = rawStringLeaves(value).map(normalizeMarker);
   return markers.filter((marker) => {
-    const normalizedMarker = marker.normalize('NFKD').toLocaleLowerCase('en-US').replace(/[^a-z0-9]+/g, '');
-    return normalizedMarker.length >= 5 && normalized.includes(normalizedMarker);
+    const normalizedMarker = normalizeMarker(marker);
+    return normalizedMarker.length >= 5 && normalizedValues.some((candidate) => candidate.includes(normalizedMarker));
   });
 }
 
 /** The corpus cannot authorize its own semantics: all tuning cases need a reviewer record. */
 export function validateFixedTraceCorpusSemanticAuthority(
   suite: ReadonlyArray<FixedTraceCorpusCase>,
+  authority: readonly FixedTraceTuningSemanticAuthorityEntry[] = FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
 ): string[] {
   const failures: string[] = [];
-  const tuning = suite.filter((trace) => trace.phase === 'tuning');
+  const detachedSuite = detachFixedTraceSnapshot(suite);
+  if (!detachedSuite.snapshot) return [`unsafe_semantic_authority_input:${detachedSuite.error}`];
+  const detachedAuthority = detachFixedTraceSnapshot(authority);
+  if (!detachedAuthority.snapshot) return [`unsafe_semantic_authority_manifest:${detachedAuthority.error}`];
+  const authorityById = new Map<string, FixedTraceTuningSemanticAuthorityEntry>();
+  for (const entry of detachedAuthority.snapshot) {
+    if (authorityById.has(entry.id)) failures.push(`duplicate_semantic_authority:${entry.id}`);
+    else authorityById.set(entry.id, entry);
+  }
+  const tuning = detachedSuite.snapshot.filter((trace) => trace.phase === 'tuning');
   const seen = new Set<string>();
   for (const trace of tuning) {
-    const authority = FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY[trace.id];
-    if (!authority) {
+    const authorityEntry = authorityById.get(trace.id);
+    if (!authorityEntry) {
       failures.push(`missing_semantic_authority:${trace.id}`);
       continue;
     }
     seen.add(trace.id);
-    if (fixedTraceTuningSemanticSha256(trace) !== authority.semanticSha256) {
+    if (fixedTraceTuningSemanticSha256(trace) !== authorityEntry.semanticSha256) {
       failures.push(`semantic_authority_mismatch:${trace.id}`);
     }
-    for (const marker of candidateVisibleMarkerOverlap(JSON.stringify(trace.request), authority.candidateVisibleForbiddenMarkers)) {
+    for (const marker of candidateVisibleMarkerOverlap(trace.request, authorityEntry.candidateVisibleForbiddenMarkers)) {
       failures.push(`candidate_marker_overlap:${trace.id}:${marker}`);
     }
   }
-  for (const id of Object.keys(FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY)) {
+  for (const id of authorityById.keys()) {
     if (!seen.has(id)) failures.push(`orphan_semantic_authority:${id}`);
   }
   return failures;
@@ -124,6 +137,9 @@ export function validateFixedTraceCorpusToolContracts(
   suite: ReadonlyArray<FixedTraceCorpusCase>,
 ): string[] {
   const failures: string[] = [];
+  const detachedSuite = detachFixedTraceSnapshot(suite);
+  if (!detachedSuite.snapshot) return [`unsafe_tool_contract_input:${detachedSuite.error}`];
+  suite = detachedSuite.snapshot;
   const definitions = canonicalDefinitions(suite);
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);

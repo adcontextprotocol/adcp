@@ -21,6 +21,7 @@ import {
   toolInputConstraintFailures,
   validateFixedTraceCorpus,
   type FixedTraceCase,
+  type FixedTraceCorpusCase,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
   type FixedTraceRunMetadata,
@@ -30,6 +31,7 @@ import {
   validateFixedTraceCorpusSemanticAuthority,
   validateFixedTraceCorpusToolContracts,
 } from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
+import { FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY } from '../../../src/addie/eval/fixed-trace-corpus-authority.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 
@@ -280,6 +282,11 @@ describe('fixed cross-provider trace suite', () => {
       'Brian O’Kelley at Scope3', 'nytimes.com', 'Satya Nadella',
       'brian o..kelley', 'scope-3', 'nytimes[.]com', 'satya_nadella',
       'the trade desk', 'https://unreviewed.ai/agent', 'u0123456789', 'org_real_123456',
+      'Brian\tO’Kelley', 'Brian\nO’Kelley', 'Ｂｒｉａｎ Ｏ’Ｋｅｌｌｅｙ', 'Brіan O’Kelley',
+      'scope—3', 'https://unreviewed[.]ai/agent', 'u-0123456789', 'org-real-123456',
+      'brian o__kelley', 'scope_3', 'the_trade_desk', 'brian\t o   kelley',
+      'nytimes[dot]com', 'u_0123456789', 'org.real.123456', 'org_real_１２３４５６',
+      'brіan o kelley',
     ]) {
       const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
       realIdentity[0].request.message = substitution;
@@ -344,6 +351,65 @@ describe('fixed cross-provider trace suite', () => {
   });
 
   it('rejects replay-semantic mutations against the separate reviewer authority', () => {
+    expect(FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY).toHaveLength(36);
+    expect(new Set(FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY.map((entry) => entry.id)).size).toBe(36);
+    const authorityRejects = (mutate: (trace: FixedTraceCorpusCase) => void) => {
+      const cases = structuredClone(FIXED_TRACE_CORPUS);
+      const trace = cases.find((candidate) => candidate.id === 'tune-property-catalog-resolution')!;
+      mutate(trace);
+      expect(validateFixedTraceCorpus(cases)).toEqual(expect.arrayContaining([
+        'semantic_authority_mismatch:tune-property-catalog-resolution',
+      ]));
+      expect(validateFixedTraceCorpusSemanticAuthority(cases)).toEqual(expect.arrayContaining([
+        'semantic_authority_mismatch:tune-property-catalog-resolution',
+      ]));
+    };
+
+    authorityRejects((trace) => { trace.request.message = 'A different fictional request.'; });
+    authorityRejects((trace) => { trace.request.threadContext = [{ user: 'member', text: 'Different context.' }]; });
+    authorityRejects((trace) => { trace.privacy = 'non_synthetic' as typeof trace.privacy; });
+    authorityRejects((trace) => { trace.category = 'knowledge'; });
+    authorityRejects((trace) => { trace.routing.toolSets = ['member_billing']; });
+    authorityRejects((trace) => { trace.expectation.requiredTools = ['browse_catalog']; });
+    authorityRejects((trace) => { trace.expectation.allowedTools = ['browse_catalog']; });
+    authorityRejects((trace) => { trace.expectation.forbiddenTools = ['save_brand']; });
+    authorityRejects((trace) => { trace.expectation.requiredTextAny = [['different marker']]; });
+    authorityRejects((trace) => { trace.expectation.maxWords = 999; });
+    authorityRejects((trace) => { trace.expectation.mutationAuthorization = 'none'; });
+    authorityRejects((trace) => { trace.answerRubric = ['A different rubric.']; });
+    authorityRejects((trace) => { trace.incident = { latePromptMarkers: ['late'], requiredDeliveredMarkers: ['delivered'], minimumDeliveredCharacters: 1 }; });
+    authorityRejects((trace) => { trace.toolFixtures[0].result = 'Different fixture payload.'; });
+    authorityRejects((trace) => { trace.toolFixtures[0].effect = 'preview'; });
+
+    const phaseChanged = structuredClone(FIXED_TRACE_CORPUS);
+    phaseChanged.find((trace) => trace.id === 'tune-property-catalog-resolution')!.phase = 'development';
+    expect(validateFixedTraceCorpusSemanticAuthority(phaseChanged)).toEqual(expect.arrayContaining([
+      'orphan_semantic_authority:tune-property-catalog-resolution',
+    ]));
+
+    const duplicateAuthority = [...FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
+      { ...FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY[0] }];
+    expect(validateFixedTraceCorpusSemanticAuthority(FIXED_TRACE_CORPUS, duplicateAuthority)).toEqual(expect.arrayContaining([
+      `duplicate_semantic_authority:${FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY[0].id}`,
+    ]));
+    const missingAuthority = FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY
+      .filter((entry) => entry.id !== 'tune-ordinary-membership-answer');
+    expect(validateFixedTraceCorpusSemanticAuthority(FIXED_TRACE_CORPUS, missingAuthority)).toEqual(expect.arrayContaining([
+      'missing_semantic_authority:tune-ordinary-membership-answer',
+    ]));
+
+    const accessorAttack = structuredClone(FIXED_TRACE_CORPUS);
+    const accessorTrace = accessorAttack.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    let accessorReads = 0;
+    Object.defineProperty(accessorTrace.request, 'message', {
+      enumerable: true,
+      get: () => { accessorReads++; return 'forged-after-validation'; },
+    });
+    Object.freeze(accessorTrace.request);
+    expect(validateFixedTraceCorpus(accessorAttack)).toEqual(['unsafe_corpus_snapshot:accessor']);
+    expect(validateFixedTraceCorpusSemanticAuthority(accessorAttack)).toEqual(['unsafe_semantic_authority_input:accessor']);
+    expect(accessorReads).toBe(0);
+
     const missingDependency = structuredClone(FIXED_TRACE_CORPUS);
     const receiptTrace = missingDependency.find((trace) => trace.id === 'tune-meeting-confirmed-series-receipts')!;
     delete receiptTrace.toolContract!.orderedCalls[1].dependsOn;
@@ -451,7 +517,7 @@ describe('fixed cross-provider trace suite', () => {
 
     for (const id of ['tune-long-doc-bounded', 'tune-long-channel-injection', 'tune-long-provider-degraded']) {
       const trace = FIXED_TRACE_CORPUS.find((candidate) => candidate.id === id)!;
-      expect(candidateVisibleMarkerOverlap(JSON.stringify(candidateVisibleTraceInput(trace)),
+      expect(candidateVisibleMarkerOverlap(candidateVisibleTraceInput(trace),
         id === 'tune-long-doc-bounded' ? ['typed receipt', 'uncertainty']
           : id === 'tune-long-channel-injection' ? ['agenda timing', 'private roster']
             : ['try again', 'unavailable', 'could not verify'])).toEqual([]);
@@ -461,6 +527,16 @@ describe('fixed cross-provider trace suite', () => {
     expect(validateFixedTraceCorpus(markerLeak)).toEqual(expect.arrayContaining([
       'candidate_marker_overlap:tune-long-doc-bounded:typed receipt',
     ]));
+    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing']) {
+      const escapedMarkerLeak = structuredClone(FIXED_TRACE_CORPUS);
+      const id = value.startsWith('agenda') ? 'tune-long-channel-injection' : 'tune-long-doc-bounded';
+      escapedMarkerLeak.find((trace) => trace.id === id)!.request.message += ` ${value}`;
+      expect(validateFixedTraceCorpus(escapedMarkerLeak)).toEqual(expect.arrayContaining([
+        id === 'tune-long-channel-injection'
+          ? 'candidate_marker_overlap:tune-long-channel-injection:agenda timing'
+          : 'candidate_marker_overlap:tune-long-doc-bounded:typed receipt',
+      ]));
+    }
   });
 
   it('detects structural duplicates without relying on entity values, inputs, or word limits', () => {
