@@ -17,6 +17,11 @@ import {
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
+import {
+  fixedTraceArchitectureArm,
+  fixedTraceExecutionEnvelopeProvenance,
+  fixedTraceToolUniverseProvenance,
+} from '../../../src/addie/eval/fixed-trace-architecture.js';
 
 const HASH = createHash('sha256').update('fixture').digest('hex');
 
@@ -60,6 +65,13 @@ function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRun
     addieCodeVersion: CODE_VERSION,
     promptConfigVersion: 'synthetic-config-v1',
     toolSchemaSha256: HASH,
+    architectureConfigSha256: HASH,
+    repetition: 1,
+    architectureArm: fixedTraceArchitectureArm(),
+    toolUniverse: fixedTraceToolUniverseProvenance(),
+    executionEnvelope: fixedTraceExecutionEnvelopeProvenance(),
+    directArmAdmission: null,
+    caseControl: null,
     router: stage(),
     generation: stage(),
     ...overrides,
@@ -104,10 +116,17 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
           pricingSource: null,
           latencyMs: 0,
         })
-      : stage();
+      : stage(trace.caseControl ? { maxOutputTokens: trace.caseControl.maxOutputTokens } : {});
   return {
     traceId: trace.id,
-    metadata: metadata({ generation }),
+    metadata: metadata({
+      generation,
+      caseControl: trace.caseControl ?? null,
+      toolUniverse: {
+        ...fixedTraceToolUniverseProvenance(),
+        toolNames: [...trace.toolFixtures.map((fixture) => fixture.name)].sort(),
+      },
+    }),
     terminalStage: ['ignored', 'reacted'].includes(terminalStatus) ? 'surface' : 'generation',
     terminalStatus,
     boundaryReason: null,
@@ -155,7 +174,7 @@ describe('fixed cross-provider trace suite', () => {
   });
 
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v31');
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v32');
     expect(FIXED_TRACE_SUITE).toHaveLength(32);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
@@ -163,6 +182,8 @@ describe('fixed cross-provider trace suite', () => {
       'tool_error', 'prompt_injection', 'date_sensitive', 'truncation', 'long_form_incident', 'provider_degradation',
     ]));
     expect(FIXED_TRACE_SUITE.every((trace) => trace.privacy === 'synthetic')).toBe(true);
+    expect(FIXED_TRACE_SUITE.find((trace) => trace.id === 'bounded-truncation')?.caseControl)
+      .toEqual({ kind: 'bounded_generation_output', maxOutputTokens: 32 });
     const serialized = JSON.stringify(FIXED_TRACE_SUITE);
     expect(serialized).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
     expect(serialized).not.toMatch(/\b[UW][A-Z0-9]{8,}\b/);
@@ -172,6 +193,9 @@ describe('fixed cross-provider trace suite', () => {
   it('has a stable version-bound fingerprint and no duplicate tool contracts', () => {
     expect(fixedTraceSuiteSha256()).toMatch(/^[a-f0-9]{64}$/);
     expect(fixedTraceSuiteSha256()).toBe(fixedTraceSuiteSha256(structuredClone(FIXED_TRACE_SUITE)));
+    const alteredControl = structuredClone(FIXED_TRACE_SUITE);
+    alteredControl.find((trace) => trace.id === 'bounded-truncation')!.caseControl!.maxOutputTokens = 64;
+    expect(fixedTraceSuiteSha256(alteredControl)).not.toBe(fixedTraceSuiteSha256());
     for (const trace of FIXED_TRACE_SUITE) {
       expect(new Date(trace.request.nowUtc).toISOString(), trace.id).toBe(trace.request.nowUtc);
       expect(trace.expectation.terminalStatuses.length, trace.id).toBeGreaterThan(0);
@@ -525,13 +549,19 @@ describe('fixed cross-provider trace suite', () => {
     });
     expect(summary.terminalFailureRate).toBeCloseTo(2 / 32);
     expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.031);
-    expect(summary.comparisonEligible).toBe(true);
+    expect(summary).toMatchObject({
+      diagnosticOnly: true,
+      promotionBlocker: 'trusted_evaluator_context_unavailable',
+      comparisonEligible: false,
+    });
     expect(summary.terminalStatusCounts).toMatchObject({
       complete: 29,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
     });
+    expect(Object.values(summary.terminalStatusCounts).reduce((total, count) => total + count, 0))
+      .toBe(summary.observed);
   });
 
   it('keeps billing inputs executable and accepts equivalent authoritative UTC date formats', () => {
@@ -679,6 +709,21 @@ describe('fixed cross-provider trace suite', () => {
     expect(summary).toMatchObject({ expected: 32, observed: 3, omitted: 29, complete: false });
   });
 
+  it('rejects a deserialized truncation observation whose control differs from the versioned trace', () => {
+    const truncation = FIXED_TRACE_SUITE.find((trace) => trace.id === 'bounded-truncation')!;
+    const observation = passingObservation(truncation);
+    expect(observation.metadata).toMatchObject({
+      caseControl: { kind: 'bounded_generation_output', maxOutputTokens: 32 },
+      generation: { maxOutputTokens: 32 },
+    });
+    observation.metadata.caseControl = { kind: 'bounded_generation_output', maxOutputTokens: 64 };
+    observation.metadata.generation.maxOutputTokens = 64;
+
+    expect(gradeFixedTrace(truncation, observation).failures).toContain('case_control_mismatch');
+    expect(() => summarizeFixedTraceRun([observation], [truncation]))
+      .toThrow('Fixed trace case control mismatch: bounded-truncation');
+  });
+
   it('rejects duplicate and unknown observations', () => {
     const observation = passingObservation(FIXED_TRACE_SUITE[0]);
     expect(() => summarizeFixedTraceRun([observation, observation])).toThrow('Duplicate fixed trace observation');
@@ -697,6 +742,24 @@ describe('fixed cross-provider trace suite', () => {
     const second = passingObservation(FIXED_TRACE_SUITE[1]);
     second.metadata = metadata({ toolSchemaSha256: createHash('sha256').update('other-schema').digest('hex') });
     expect(() => summarizeFixedTraceRun([first, second])).toThrow('Mixed fixed trace run metadata');
+  });
+
+  it('rejects observations combined from different architecture arms', () => {
+    const first = passingObservation(FIXED_TRACE_SUITE[0]);
+    const second = passingObservation(FIXED_TRACE_SUITE[1]);
+    second.metadata = metadata({
+      architectureArm: fixedTraceArchitectureArm('oracle_route_diagnostic'),
+      toolUniverse: fixedTraceToolUniverseProvenance('oracle_route_diagnostic'),
+    });
+    expect(() => summarizeFixedTraceRun([first, second])).toThrow('Mixed fixed trace run metadata');
+  });
+
+  it('aggregates per-trace tool-universe names independently of observation order', () => {
+    const first = passingObservation(FIXED_TRACE_SUITE[0]);
+    const second = passingObservation(FIXED_TRACE_SUITE[1]);
+    const forward = summarizeFixedTraceRun([first, second]).summary.cohort.toolUniverse.toolNames;
+    const reverse = summarizeFixedTraceRun([second, first]).summary.cohort.toolUniverse.toolNames;
+    expect(forward).toEqual(reverse);
   });
 
   it('accepts an explicitly attributed malformed router result', () => {

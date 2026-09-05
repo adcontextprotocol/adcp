@@ -2,7 +2,7 @@ import type { FixedTraceBudgetSnapshot } from './fixed-trace-budget.js';
 import type { FixedTraceJudgeSummary } from './fixed-trace-judge.js';
 import type { FixedTraceSummary } from './fixed-trace-suite.js';
 
-export const FIXED_TRACE_ROLLOUT_POLICY_VERSION = 'addie-cross-provider-rollout-v1';
+export const FIXED_TRACE_ROLLOUT_POLICY_VERSION = 'addie-cross-provider-rollout-v2';
 
 export const FIXED_TRACE_ROLLOUT_THRESHOLDS = Object.freeze({
   deterministicPassRate: 1,
@@ -22,6 +22,7 @@ export const FIXED_TRACE_ROLLOUT_THRESHOLDS = Object.freeze({
 } as const);
 
 export type FixedTraceRolloutDimension =
+  | 'trusted_evaluator_context_unavailable'
   | 'candidate_eligible'
   | 'budget_exposure'
   | 'deterministic'
@@ -103,6 +104,9 @@ export function evaluateFixedTraceRollout(
     ? null
     : summary.totalEstimatedCostUsd + judges.totalEstimatedCostUsd;
   const checks: FixedTraceRolloutCheck[] = [
+    // This summary contract carries only serializable diagnostics. No value a
+    // caller can put on it can constitute evaluator-owned promotion evidence.
+    equals('trusted_evaluator_context_unavailable', false, true),
     equals('candidate_eligible', summary.comparisonEligible, true),
     equals('budget_exposure', !budget.exposureUnknown && !budget.admissionClosed, true),
     atLeast('deterministic', summary.deterministicPassRate, FIXED_TRACE_ROLLOUT_THRESHOLDS.deterministicPassRate),

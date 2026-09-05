@@ -6,14 +6,23 @@
  * The required shared soft budget admits each exact prepared request before
  * dispatch and halts after unknown spend exposure.
  *
+ * `--architecture-arm=direct_generation` is intentionally admission-only.
+ * Production builds an authorization-aware definition/handler intersection
+ * before intent narrowing, but this harness neither captures that intersection
+ * nor bounds it independently; fixture-local schemas must not stand in for it.
+ * `oracle_route_diagnostic` may execute generation with fixture routing.
+ * Every arm is diagnostic-only in this foundation: independent judging,
+ * comparison, and rollout are blocked until an evaluator-owned run-context
+ * and raw-ledger coordinator can authenticate serialized artifacts.
+ *
  * Example:
  * DOTENV_CONFIG_PATH=.env.local npm run eval:addie-fixed-traces -- \
  *   --soft-max-usd=1 --output=.context/evals/fixed-traces.json
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { ModelConfig } from '../../src/config/models.js';
 import { CODE_VERSION, computeRouterRulesHash } from '../../src/addie/config-version.js';
 import {
@@ -28,25 +37,21 @@ import {
   type FixedTraceRunnerConfig,
 } from '../../src/addie/eval/fixed-trace-runner.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed-trace-tool-loop.js';
+import { parseFixedTraceDiagnosticCliArguments } from '../../src/addie/eval/fixed-trace-diagnostic-cli.js';
+import { reserveFixedTraceDiagnosticOutput } from '../../src/addie/eval/fixed-trace-diagnostic-output.js';
 import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
+import {
+  fixedTraceArchitectureArm,
+  fixedTraceExecutionEnvelopeProvenance,
+  fixedTraceToolUniverseProvenance,
+  type FixedTraceArchitectureArmId,
+} from '../../src/addie/eval/fixed-trace-architecture.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
   summarizeFixedTraceRun,
 } from '../../src/addie/eval/fixed-trace-suite.js';
-import {
-  FIXED_TRACE_JUDGE_PROMPT_VERSION,
-  FIXED_TRACE_MIN_INDEPENDENT_JUDGES,
-  runIndependentFixedTraceJudges,
-  summarizeFixedTraceJudges,
-  type FixedTraceJudgeConfig,
-} from '../../src/addie/eval/fixed-trace-judge.js';
-import {
-  FIXED_TRACE_ROLLOUT_POLICY_VERSION,
-  FIXED_TRACE_ROLLOUT_THRESHOLDS,
-  evaluateFixedTraceRollout,
-} from '../../src/addie/eval/fixed-trace-rollout.js';
 import { AnthropicRouterProvider } from '../../src/addie/model-providers/anthropic-router-provider.js';
 import { AnthropicModelProvider } from '../../src/addie/model-providers/anthropic-provider.js';
 import type {
@@ -70,7 +75,6 @@ interface ProviderPlan {
   name: ProviderName;
   router: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
   generation: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
-  judge: FixedTraceJudgeConfig;
 }
 
 const PRICING = {
@@ -96,9 +100,10 @@ const PRICING = {
   },
 } satisfies Record<string, FixedTraceBudgetPricing>;
 
+const cliArguments = parseFixedTraceDiagnosticCliArguments(process.argv.slice(2));
+
 function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return process.argv.find((value) => value.startsWith(prefix))?.slice(prefix.length);
+  return cliArguments[{ providers: 'providers', 'architecture-arm': 'architectureArm', 'soft-max-usd': 'softMaxUsd', output: 'output' }[name] as keyof typeof cliArguments] as string | undefined;
 }
 
 function sha256(value: string): string {
@@ -113,9 +118,8 @@ function sourceBundle(): { sha256: string; files: string[] } {
   const files = [...new Set([
     ...trackedFiles,
     'server/src/addie/eval/fixed-trace-budget.ts',
-    'server/src/addie/eval/fixed-trace-judge.ts',
+    'server/src/addie/eval/fixed-trace-architecture.ts',
     'server/src/addie/eval/fixed-trace-runner.ts',
-    'server/src/addie/eval/fixed-trace-rollout.ts',
     'server/tests/manual/fixed-trace-provider-eval.ts',
   ])].sort();
   const hash = createHash('sha256');
@@ -184,14 +188,6 @@ function providerPlans(
         MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
         PRICING.anthropicGeneration,
       ),
-      judge: {
-        provider: budgetedGeneration,
-        model: ModelConfig.primary,
-        reasoningEffort: 'provider_default',
-        maxOutputTokens: 900,
-        timeoutMs: 60_000,
-        pricing: PRICING.anthropicGeneration,
-      },
     });
   }
   if (names.includes('openai')) {
@@ -216,14 +212,6 @@ function providerPlans(
         MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
         PRICING.openai,
       ),
-      judge: {
-        provider: budgetedProvider,
-        model: OPENAI_ROUTER_MODEL,
-        reasoningEffort: 'none',
-        maxOutputTokens: 300,
-        timeoutMs: 60_000,
-        pricing: PRICING.openai,
-      },
     });
   }
   if (names.includes('google')) {
@@ -248,14 +236,6 @@ function providerPlans(
         MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
         PRICING.google,
       ),
-      judge: {
-        provider: budgetedProvider,
-        model: GOOGLE_ROUTER_MODEL,
-        reasoningEffort: 'low',
-        maxOutputTokens: 600,
-        timeoutMs: 60_000,
-        pricing: PRICING.google,
-      },
     });
   }
   return plans;
@@ -268,17 +248,9 @@ if (providerNames.some((name) => !['anthropic', 'openai', 'google'].includes(nam
 if (new Set(providerNames).size !== providerNames.length || providerNames.length === 0) {
   throw new Error('--providers must contain one or more unique providers');
 }
-const judgeProviderNames = (argument('judge-providers') ?? 'anthropic,openai,google').split(',') as ProviderName[];
-if (judgeProviderNames.some((name) => !['anthropic', 'openai', 'google'].includes(name))) {
-  throw new Error('Unknown --judge-providers value');
-}
-if (new Set(judgeProviderNames).size !== judgeProviderNames.length) {
-  throw new Error('--judge-providers must contain unique providers');
-}
-for (const candidate of providerNames) {
-  if (judgeProviderNames.filter((judge) => judge !== candidate).length < FIXED_TRACE_MIN_INDEPENDENT_JUDGES) {
-    throw new Error(`Candidate ${candidate} requires at least two non-candidate --judge-providers`);
-  }
+const architectureArm = (argument('architecture-arm') ?? 'two_stage_llm_router') as FixedTraceArchitectureArmId;
+if (!(architectureArm in { two_stage_llm_router: true, direct_generation: true, oracle_route_diagnostic: true })) {
+  throw new Error('Unknown --architecture-arm value');
 }
 const softMaxUsd = Number(argument('soft-max-usd'));
 if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
@@ -287,6 +259,23 @@ if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
 const outputArgument = argument('output');
 if (!outputArgument?.trim()) throw new Error('--output is required');
 const outputPath = resolve(outputArgument);
+if (cliArguments.validateOnly) {
+  console.log(JSON.stringify({
+    diagnosticOnly: true,
+    judgeDispatch: 'blocked_pending_trusted_evaluator_owned_coordinator',
+    validated: {
+      providers: providerNames,
+      architectureArm,
+      softMaxUsd,
+      outputPath,
+    },
+  }));
+  process.exit(0);
+}
+// This exclusive create happens before source inspection, credentials,
+// provider construction, or dispatch. Never unlink it: an empty file is the
+// truthful crash/incomplete marker if later setup fails.
+const outputReservation = reserveFixedTraceDiagnosticOutput(outputPath);
 
 const gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const gitDirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0;
@@ -300,9 +289,7 @@ const promptConfigVersion = sha256(JSON.stringify({
 const toolDefinitions = canonicalFixedTraceToolDefinitions();
 const toolSchemaSha256 = fixedTraceToolSchemaSha256(toolDefinitions);
 const budget = new FixedTraceBudget(softMaxUsd);
-const allProviderNames = [...new Set([...providerNames, ...judgeProviderNames])];
-const allPlans = providerPlans(allProviderNames, budget);
-const plans = providerNames.map((name) => allPlans.find((plan) => plan.name === name)!);
+const plans = providerPlans(providerNames, budget);
 const runStartedAt = new Date().toISOString();
 const runRootId = `fixed-trace-${runStartedAt}-${randomUUID()}`;
 const candidateRuns = [];
@@ -315,18 +302,14 @@ for (const plan of plans) {
     gitDirty,
     promptConfigVersion,
     toolDefinitions,
+    toolDefinitionProvenance: 'fixture_local',
+    architectureArm,
     router: plan.router,
     generation: plan.generation,
   };
   const observations = [];
   for (const trace of FIXED_TRACE_SUITE) {
-    const traceConfig = trace.category === 'truncation'
-      ? {
-          ...baseConfig,
-          generation: { ...baseConfig.generation, maxOutputTokens: 32 },
-        }
-      : baseConfig;
-    observations.push(await runFixedTraceCase(trace, traceConfig, toolSchemaSha256));
+    observations.push(await runFixedTraceCase(trace, baseConfig, toolSchemaSha256));
   }
   const evaluated = summarizeFixedTraceRun(observations);
   candidateRuns.push({
@@ -357,50 +340,16 @@ for (const plan of plans) {
   });
 }
 
-const judgedRuns = [];
-for (const run of candidateRuns) {
-  const judgeConfigs = judgeProviderNames
-    .filter((name) => name !== run.provider)
-    .map((name) => allPlans.find((plan) => plan.name === name)!.judge);
-  const judgments = await runIndependentFixedTraceJudges(
-    FIXED_TRACE_SUITE,
-    run.observations,
-    judgeConfigs,
-  );
-  const judgeSummary = summarizeFixedTraceJudges(
-    FIXED_TRACE_SUITE,
-    run.observations,
-    judgments,
-  );
-  judgedRuns.push({
-    ...run,
-    requestedConfig: {
-      ...run.requestedConfig,
-      judges: judgeConfigs.map((judge) => ({
-        provider: judge.provider.id,
-        model: judge.model,
-        reasoningEffort: judge.reasoningEffort,
-        maxOutputTokens: judge.maxOutputTokens,
-        timeoutMs: judge.timeoutMs,
-        maxIterations: 1,
-        transportRetries: 0,
-        samplingMode: 'provider_no_sampling_control',
-        temperature: null,
-        pricing: judge.pricing,
-      })),
-    },
-    judgeSummary,
-    judgments,
-  });
-}
-
 const budgetState = budget.snapshot();
-const runs = judgedRuns.map((run) => ({
+const runs = candidateRuns.map((run) => ({
   ...run,
-  rollout: evaluateFixedTraceRollout(run.summary, run.judgeSummary, budgetState),
+  diagnosticOnly: true,
+  promotionBlocker: 'trusted_evaluator_context_unavailable',
+  promotionEvidenceEligible: false,
+  rollout: null,
 }));
 const artifact = {
-  artifactVersion: 'fixed_trace_provider_eval_v3',
+  artifactVersion: 'fixed_trace_provider_eval_v4',
   runRootId,
   runStartedAt,
   runCompletedAt: new Date().toISOString(),
@@ -414,28 +363,36 @@ const artifact = {
   addieCodeVersion: CODE_VERSION,
   promptConfigVersion,
   toolSchemaSha256,
+  architectureConfigSha256ByProvider: Object.fromEntries(runs.map((run) => [
+    run.provider,
+    run.observations[0]?.metadata.architectureConfigSha256 ?? null,
+  ])),
+  architectureArm: fixedTraceArchitectureArm(architectureArm),
+  toolUniverse: fixedTraceToolUniverseProvenance(architectureArm),
+  executionEnvelope: fixedTraceExecutionEnvelopeProvenance(architectureArm),
   requestedProviders: providerNames,
-  requestedJudgeProviders: judgeProviderNames,
-  judgePromptVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION,
-  rolloutPolicyVersion: FIXED_TRACE_ROLLOUT_POLICY_VERSION,
-  rolloutThresholds: FIXED_TRACE_ROLLOUT_THRESHOLDS,
+  requestedArchitectureArm: architectureArm,
+  repetition: 1,
+  diagnosticOnly: true,
+  promotionBlocker: 'trusted_evaluator_context_unavailable',
+  judgeDispatch: 'blocked_pending_trusted_evaluator_owned_coordinator',
   budget: budgetState,
+  promotionEvidenceEligible: false,
+  promotionBudget: null,
+  diagnosticBudget: budgetState,
   budgetNote: 'Soft admission target: exact prepared-request bytes and the full output allowance are reserved before each dispatch. Remote work may continue after a client timeout; any dispatched call without terminal usage marks exposure unknown and blocks every later dispatch.',
-  complete: runs.every((run) => run.summary.complete && run.judgeSummary.complete),
-  comparisonEligible: runs.every((run) => run.summary.comparisonEligible && run.judgeSummary.comparisonEligible)
-    && !budgetState.exposureUnknown
-    && !budgetState.admissionClosed,
-  rolloutPass: runs.every((run) => run.rollout.pass),
+  complete: runs.every((run) => run.summary.complete),
+  comparisonEligible: false,
+  promotionRunCount: 0,
+  rolloutPass: false,
   runs,
 };
 
-mkdirSync(dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, `${JSON.stringify(artifact, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+outputReservation.finalize(`${JSON.stringify(artifact, null, 2)}\n`);
 console.log(JSON.stringify({
   outputPath,
   runRootId,
   providers: providerNames,
-  judgeProviders: judgeProviderNames,
   comparisonEligible: artifact.comparisonEligible,
   rolloutPass: artifact.rolloutPass,
   budget: budgetState,
