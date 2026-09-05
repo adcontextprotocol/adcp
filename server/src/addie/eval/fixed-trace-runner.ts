@@ -33,7 +33,9 @@ import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
   MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
+  validateFixedTraceToolLoopEnvironment,
   validateFixedTraceToolLoopFixtures,
+  type FixedTraceEvaluatorToolEnvironment,
 } from './fixed-trace-tool-loop.js';
 import {
   FixedTraceBudgetAdmissionError,
@@ -42,11 +44,15 @@ import {
   fixedTraceResponsePricingPolicy,
   fixedTraceResponseUsesPricingPolicy,
 } from './fixed-trace-budget.js';
-import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
+import {
+  FIXED_TRACE_DIRECT_TOOL_HANDLERS,
+  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
+} from '../direct-tool-universe.js';
 import {
   admitFixedTraceDirectArm,
   decideFixedTraceHybridRoute,
   fixedTraceArchitectureArm,
+  fixedTraceCommonToolDefinitions,
   fixedTraceExecutionEnvelopeProvenance,
   fixedTraceHybridPolicy,
   fixedTraceRequestThreadFactsProvenance,
@@ -128,6 +134,32 @@ interface FixedTraceExecutionIdentity {
 const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
 const preflightedFixtureRegistrations = new WeakMap<FixedTraceRunnerConfig, string>();
 
+function usesCommonToolUniverse(config: FixedTraceRunnerConfig): boolean {
+  return config.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe'
+    && fixedTraceArchitectureArm(config.architectureArm).id !== 'oracle_route_diagnostic';
+}
+
+/**
+ * This is deliberately evaluator-owned and contains no production handlers.
+ * The direct-safe-fallback registry supplies only neutral definitions; every
+ * callable entry returns an inert synthetic receipt and mutations are refused.
+ */
+function fixedTraceCommonToolEnvironment(): FixedTraceEvaluatorToolEnvironment {
+  return Object.freeze({
+    tools: Object.freeze(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => {
+    const handler = FIXED_TRACE_DIRECT_TOOL_HANDLERS.get(tool.definition.name);
+    if (!handler) throw new Error(`Missing evaluator receipt handler: ${tool.definition.name}`);
+    return Object.freeze({
+      definition: tool.definition,
+      handler,
+      effect: tool.definition.replaySafety === 'mutation' ? 'mutation' as const : 'read' as const,
+      resultStatus: 'ok' as const,
+    });
+    })),
+    authorize: ({ isMutation }: { toolName: string; toolCallId: string; isMutation: boolean }) => ({ allowed: !isMutation }),
+  });
+}
+
 /**
  * An evaluator-owned execution contract changed after its request snapshot was
  * made. This is neither a provider failure nor a scored terminal outcome.
@@ -177,6 +209,13 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
   // list would make the declared config differ from executable inputs. Direct
   // has its own evaluator-owned request-fact universe below.
   if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  if (usesCommonToolUniverse(config)) {
+    validateFixedTraceToolLoopEnvironment(
+      fixedTraceCommonToolDefinitions(fixedTraceArchitectureArm(config.architectureArm).id),
+      fixedTraceCommonToolEnvironment(),
+    );
+    return;
+  }
   if (!Array.isArray(config.toolDefinitions)) {
     throw new Error('Fixed trace routed/hybrid/oracle definitions must exactly match configured suite fixtures');
   }
@@ -195,6 +234,7 @@ function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
   // registration primitive at generation time, so validate it before router
   // dispatch as well.
   if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  if (usesCommonToolUniverse(config)) return;
   for (const trace of config.traceSuite) {
     validateFixedTraceToolLoopFixtures(trace, resolveTraceDefinitions(trace, config.toolDefinitions));
   }
@@ -223,6 +263,7 @@ function preflightFixtureRegistrations(
  * can never be created with a run contract that was invalid from the start.
  */
 function validateRunProvenance(config: FixedTraceRunnerConfig): void {
+  const architectureArm = fixedTraceArchitectureArm(config.architectureArm);
   if (typeof config.runId !== 'string' || config.runId.trim().length === 0) {
     throw new Error('Fixed trace runner runId must be nonblank');
   }
@@ -243,9 +284,15 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
   }
   if (
     config.toolDefinitionProvenance !== undefined
-    && !['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts'].includes(config.toolDefinitionProvenance)
+    && !['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe'].includes(config.toolDefinitionProvenance)
   ) {
     throw new Error('Fixed trace runner toolDefinitionProvenance is invalid');
+  }
+  if (
+    architectureArm.id === 'oracle_route_diagnostic'
+    && config.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe'
+  ) {
+    throw new Error('Fixed trace fixture oracle cannot claim the common candidate tool universe');
   }
   if (config.injectProviderDegradation !== undefined && typeof config.injectProviderDegradation !== 'boolean') {
     throw new Error('Fixed trace runner injectProviderDegradation must be boolean when supplied');
@@ -258,7 +305,9 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
 }
 
 function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
-  const toolDefinitionProvenance = fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation'
+  const toolDefinitionProvenance = usesCommonToolUniverse(config)
+    ? 'evaluator_owned_common_tool_universe'
+    : fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation'
     ? 'evaluator_owned_production_definitions_simulated_receipts'
     : config.toolDefinitionProvenance ?? 'fixture_local';
   return sha256({
@@ -617,7 +666,7 @@ export function fixedTraceToolSchemaSha256(
  * same suite-validated execution identity as routed replay.
  */
 function toolSchemaForConfig(config: FixedTraceRunnerConfig): string {
-  return fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation'
+  return usesCommonToolUniverse(config) || fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation'
     ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256
     : fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
 }
@@ -644,15 +693,35 @@ export function fixedTraceArchitectureConfigSha256(
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
-    toolDefinitionProvenance: arm.id === 'direct_generation'
+    toolDefinitionProvenance: usesCommonToolUniverse(config)
+      ? 'evaluator_owned_common_tool_universe'
+      : arm.id === 'direct_generation'
       ? 'evaluator_owned_production_definitions_simulated_receipts'
       : config.toolDefinitionProvenance ?? 'fixture_local',
     architectureArm: arm,
     hybridPolicy: arm.id === 'deterministic_policy_llm_fallback_hybrid'
       ? fixedTraceHybridPolicy(config.hybridPolicy)
       : null,
-    toolUniverse: fixedTraceToolUniverseProvenance(arm.id),
-    executionEnvelope: fixedTraceExecutionEnvelopeProvenance(arm.id),
+    toolUniverse: usesCommonToolUniverse(config)
+      ? {
+          source: 'evaluator_owned_common_tool_universe',
+          intentNarrowing: 'not_applied',
+          bounded: true,
+          deployable: false,
+          toolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
+          toolNamesSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256,
+          toolSchemaSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256,
+          definitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+          commonUniverseAdmission: 'blocked_missing_authenticated_definition_handler_intersection',
+          commonUniverseMissingPrerequisites: [
+            'authenticated_definition_handler_intersection',
+            'shared_request_thread_execution_envelope',
+          ],
+        }
+      : fixedTraceToolUniverseProvenance(arm.id),
+    executionEnvelope: usesCommonToolUniverse(config)
+      ? { source: 'evaluator_owned_synthetic_receipt_envelope', deployable: false }
+      : fixedTraceExecutionEnvelopeProvenance(arm.id),
     requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, arm.id),
     routerControl: cohortStageControl(config.router),
     generationControl: cohortStageControl(config.generation),
@@ -734,7 +803,9 @@ function baseMetadata(
     addieCodeVersion: CODE_VERSION,
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
-    toolDefinitionProvenance: architectureArm.id === 'direct_generation'
+    toolDefinitionProvenance: usesCommonToolUniverse(config)
+      ? 'evaluator_owned_common_tool_universe'
+      : architectureArm.id === 'direct_generation'
       ? 'evaluator_owned_production_definitions_simulated_receipts'
       : config.toolDefinitionProvenance ?? 'fixture_local',
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
@@ -745,13 +816,31 @@ function baseMetadata(
     hybridPolicy: architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
       ? fixedTraceHybridPolicy(config.hybridPolicy)
       : null,
-    toolUniverse: {
-      ...fixedTraceToolUniverseProvenance(architectureArm.id),
-      toolNames: architectureArm.id === 'direct_generation'
-        ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames
-        : [...trace.toolFixtures.map((fixture) => fixture.name)].sort(),
-    },
-    executionEnvelope: fixedTraceExecutionEnvelopeProvenance(architectureArm.id),
+    toolUniverse: usesCommonToolUniverse(config)
+      ? {
+          source: 'evaluator_owned_common_tool_universe',
+          intentNarrowing: 'not_applied',
+          bounded: true,
+          deployable: false,
+          toolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
+          toolNamesSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256,
+          toolSchemaSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256,
+          definitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+          commonUniverseAdmission: 'blocked_missing_authenticated_definition_handler_intersection',
+          commonUniverseMissingPrerequisites: [
+            'authenticated_definition_handler_intersection',
+            'shared_request_thread_execution_envelope',
+          ],
+        }
+      : {
+          ...fixedTraceToolUniverseProvenance(architectureArm.id),
+          toolNames: architectureArm.id === 'direct_generation'
+            ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames
+            : [...trace.toolFixtures.map((fixture) => fixture.name)].sort(),
+        },
+    executionEnvelope: usesCommonToolUniverse(config)
+      ? { source: 'evaluator_owned_synthetic_receipt_envelope', deployable: false }
+      : fixedTraceExecutionEnvelopeProvenance(architectureArm.id),
     requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, architectureArm.id),
     directArmAdmission: admission,
     caseControl: trace.caseControl ?? null,
@@ -1033,7 +1122,12 @@ export async function runFixedTraceCase(
     };
   }
 
-  const definitions = resolveTraceDefinitions(executionTrace, executionConfig.toolDefinitions);
+  // Only an explicitly provenance-bound comparison may use this evaluator
+  // universe. It has no trace input, so expected tool calls/selections cannot
+  // affect candidate-visible definitions.
+  const definitions = usesCommonToolUniverse(executionConfig)
+    ? fixedTraceCommonToolDefinitions(architectureArm.id)
+    : resolveTraceDefinitions(executionTrace, executionConfig.toolDefinitions);
   const generationRequest = buildFixedTraceGenerationRequest(
     executionTrace,
     routed.plan,
@@ -1086,6 +1180,9 @@ export async function runFixedTraceCase(
       executionTrace,
       definitions,
       {
+        ...(usesCommonToolUniverse(executionConfig)
+          ? { evaluatorToolEnvironment: fixedTraceCommonToolEnvironment() }
+          : {}),
         signal: controller.signal,
         maxIterations: generationConfig.maxIterations,
         beforePrepare: (request) => {

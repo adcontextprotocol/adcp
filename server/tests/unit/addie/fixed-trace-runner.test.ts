@@ -31,6 +31,7 @@ import {
   admitFixedTraceDirectArm,
   decideFixedTraceHybridRoute,
   deriveFixedTraceDirectToolUniverse,
+  fixedTraceCommonToolDefinitions,
   FixedTraceHybridAdmissionSnapshotError,
   fixedTraceHybridPolicy,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
@@ -1395,13 +1396,17 @@ describe('fixed trace artifact runner', () => {
     expect(router.respondCalls).toHaveLength(1);
   });
 
-  it('does not construct a manual diagnostic candidate summary after final-response identity mutation', async () => {
+  it('does not construct a manual diagnostic candidate summary after final-response identity mutation under a valid neutral universe', async () => {
     const selectedTrace = trace('knowledge-task-model');
     let runConfig!: FixedTraceRunnerConfig;
     const router = new MutatingResponseProvider([routeResponse('ignore')], () => {
       runConfig.runId = 'mutated-after-final-response';
     });
-    runConfig = config(router, new ScriptedProvider([]), { traceSuite: [selectedTrace] });
+    runConfig = config(router, new ScriptedProvider([]), {
+      traceSuite: [selectedTrace],
+      toolDefinitions: fixedTraceCommonToolDefinitions('two_stage_llm_router'),
+      toolDefinitionProvenance: 'evaluator_owned_common_tool_universe',
+    });
 
     await expect(runFixedTraceDiagnosticCandidate(runConfig))
       .rejects.toThrow('Fixed trace runner execution identity changed before provider dispatch');

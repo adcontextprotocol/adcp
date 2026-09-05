@@ -2482,6 +2482,8 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     toolNamesSha256: metadata.toolUniverse.toolNamesSha256 ?? null,
     toolSchemaSha256: metadata.toolUniverse.toolSchemaSha256 ?? null,
     definitionHandlerSha256: metadata.toolUniverse.definitionHandlerSha256 ?? null,
+    commonUniverseAdmission: metadata.toolUniverse.commonUniverseAdmission ?? null,
+    commonUniverseMissingPrerequisites: metadata.toolUniverse.commonUniverseMissingPrerequisites ?? null,
   };
   return {
     traceSuiteSha256: metadata.traceSuiteSha256,
@@ -2735,7 +2737,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   if (!metadata.promptConfigVersion.trim()) failures.push('prompt_config_version_missing');
   if (!Number.isSafeInteger(metadata.repetition) || metadata.repetition < 1) failures.push('repetition_invalid');
   if (metadata.stageControlVersion !== FIXED_TRACE_STAGE_CONTROL_VERSION) failures.push('stage_control_version_mismatch');
-  if (!['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts'].includes(metadata.toolDefinitionProvenance)) {
+  if (!['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe'].includes(metadata.toolDefinitionProvenance)) {
     failures.push('tool_definition_provenance_invalid');
   }
   if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');
@@ -2784,7 +2786,20 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('direct_arm_admission_unexpected');
   }
   const toolUniverse = metadata.toolUniverse;
-  if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_definitions_simulated_receipts', 'fixture_oracle'].includes(toolUniverse.source)) {
+  if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe', 'fixture_oracle'].includes(toolUniverse.source)) {
+    failures.push('tool_universe_provenance_invalid');
+  } else if (
+    metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe'
+    && (toolUniverse.source !== 'evaluator_owned_common_tool_universe' || toolUniverse.intentNarrowing !== 'not_applied' || !toolUniverse.bounded || toolUniverse.deployable
+      || toolUniverse.toolNamesSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256
+      || toolUniverse.toolSchemaSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256
+      || toolUniverse.definitionHandlerSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256
+      || toolUniverse.commonUniverseAdmission !== 'blocked_missing_authenticated_definition_handler_intersection'
+      || canonicalJson(toolUniverse.commonUniverseMissingPrerequisites) !== canonicalJson([
+        'authenticated_definition_handler_intersection',
+        'shared_request_thread_execution_envelope',
+      ]))
+  ) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
@@ -2810,7 +2825,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   ) {
     failures.push('tool_universe_provenance_invalid');
   }
-  const expectedToolNames = arm?.id === 'direct_generation'
+  const expectedToolNames = metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe' || arm?.id === 'direct_generation'
     ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames
     : [...trace.toolFixtures.map((fixture) => fixture.name)].sort();
   if (!sameToolUniverseNames(toolUniverse?.toolNames ?? null, expectedToolNames)) {
@@ -2837,7 +2852,12 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('request_thread_facts_provenance_invalid');
   }
   const executionEnvelope = metadata.executionEnvelope;
-  if (!executionEnvelope || !['fixture_expectation', 'evaluator_owned_shared_request_thread_envelope', 'fixture_oracle'].includes(executionEnvelope.source)) {
+  if (!executionEnvelope || !['fixture_expectation', 'evaluator_owned_shared_request_thread_envelope', 'evaluator_owned_synthetic_receipt_envelope', 'fixture_oracle'].includes(executionEnvelope.source)) {
+    failures.push('execution_envelope_provenance_invalid');
+  } else if (
+    metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe'
+    && (executionEnvelope.source !== 'evaluator_owned_synthetic_receipt_envelope' || executionEnvelope.deployable)
+  ) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
@@ -3186,6 +3206,8 @@ export function assertFixedTraceRunContract(
       || candidate.toolUniverse.toolNamesSha256 !== runContract.toolUniverse.toolNamesSha256
       || candidate.toolUniverse.toolSchemaSha256 !== runContract.toolUniverse.toolSchemaSha256
       || candidate.toolUniverse.definitionHandlerSha256 !== runContract.toolUniverse.definitionHandlerSha256
+      || candidate.toolUniverse.commonUniverseAdmission !== runContract.toolUniverse.commonUniverseAdmission
+      || canonicalJson(candidate.toolUniverse.commonUniverseMissingPrerequisites ?? null) !== canonicalJson(runContract.toolUniverse.commonUniverseMissingPrerequisites ?? null)
       || candidate.executionEnvelope.source !== runContract.executionEnvelope.source
       || candidate.executionEnvelope.deployable !== runContract.executionEnvelope.deployable
       || canonicalJson(candidate.requestThreadFacts) !== canonicalJson(runContract.requestThreadFacts)
@@ -3306,6 +3328,8 @@ export function summarizeFixedTraceRun(
           toolNamesSha256: runContract.toolUniverse.toolNamesSha256 ?? null,
           toolSchemaSha256: runContract.toolUniverse.toolSchemaSha256 ?? null,
           definitionHandlerSha256: runContract.toolUniverse.definitionHandlerSha256 ?? null,
+          commonUniverseAdmission: runContract.toolUniverse.commonUniverseAdmission,
+          commonUniverseMissingPrerequisites: runContract.toolUniverse.commonUniverseMissingPrerequisites,
         },
         executionEnvelope: runContract.executionEnvelope,
         requestThreadFacts: runContract.requestThreadFacts,
