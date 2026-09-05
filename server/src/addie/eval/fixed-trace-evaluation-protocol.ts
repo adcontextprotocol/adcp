@@ -351,6 +351,9 @@ function positiveInteger(value: number, label: string): void {
 
 function assertExactKeys(value: object, keys: readonly string[], label: string): void {
   const actual = Object.keys(value).sort();
+  if (actual.some((key) => key === '__proto__' || key === 'prototype' || key === 'constructor')) {
+    throw new Error(`${label} contains a dangerous prototype key`);
+  }
   const expected = [...keys].sort();
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     throw new Error(`${label} has unknown, missing, or inherited fields`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, estimateFixedTraceExperiment, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
+import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, estimateFixedTraceExperiment, fixedTraceCandidatePlanFingerprint, fixedTraceExperimentPlanFingerprint, fixedTraceTrustedManifestFingerprint, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
 import { FIXED_TRACE_PARTITION_MANIFEST, FIXED_TRACE_PARTITION_MANIFEST_SHA256, FIXED_TRACE_PARTITION_MANIFEST_VERSION } from '../../../src/addie/eval/fixed-trace-partition.js';
 import { CLAUDE_PRICING_VERSION } from '../../../src/addie/claude-pricing.js';
 import { CODE_VERSION } from '../../../src/addie/config-version.js';
@@ -26,6 +26,19 @@ describe('fixed-trace experiment plan offline boundary', () => {
     const terra = plan(); terra.arms[0].router!.model = 'gpt-5.6-terra';
     expect(() => validateFixedTraceExperimentPlanOffline(terra)).toThrow('Unavailable immutable pricing');
   });
+  it('does not lose prototype-pollution keys at plan and raw-ledger boundaries', () => {
+    for (const key of ['__proto__', 'prototype', 'constructor']) {
+      const hostile = plan() as any;
+      Object.defineProperty(hostile, key, { enumerable: true, value: { poisoned: true } });
+      expect(() => fixedTraceExperimentPlanFingerprint(hostile, () => null)).toThrow('dangerous prototype key');
+      expect(() => fixedTraceCandidatePlanFingerprint(hostile)).toThrow('dangerous prototype key');
+    }
+    const manifest = { id: 'clean' } as any;
+    const hostileManifest = { id: 'clean' } as any;
+    Object.defineProperty(hostileManifest, '__proto__', { enumerable: true, value: { poisoned: true } });
+    expect(fixedTraceTrustedManifestFingerprint(hostileManifest))
+      .not.toBe(fixedTraceTrustedManifestFingerprint(manifest));
+  });
   it('does not invoke a hostile getter before rejecting it, and detaches estimates', () => {
     const hostile = plan() as any;
     let reads = 0;
@@ -45,6 +58,9 @@ describe('fixed-trace experiment plan offline boundary', () => {
     const entries = FIXED_TRACE_PARTITION_MANIFEST.development.map((traceId, index) => ({ sequence: index + 1, phaseId: 'router_only_screen' as const, armId: 'router-r1', repetitionIndex: 1, traceId, stage: 'router' as const, callIndex: 1 as const, dispatched: false, requestedProvider: 'anthropic' as const, requestedModel: 'claude-haiku-4-5', returnedProvider: null, returnedModel: null, promptSha256: HASH, providerRequestSha256: null, responseSha256: null, rawRequestArtifact: null, rawResponseArtifact: null, exactToolNames: FIXED_TRACE_SUITE.find((item) => item.id === traceId)!.toolFixtures.map((fixture) => fixture.name), caseControlSha256: HASH, executionEnvelopeSha256: HASH, directAdmissionSha256: HASH, maxOutputTokens: 10, timeoutMs: 1_000, maxIterations: 1, transportRetries: 0 as const, reasoningEffort: 'provider_default' as const, samplingMode: 'provider_no_sampling_control' as const, cacheMode: 'disabled' as const, status: 'not_dispatched' as const, finishReason: null, usage: null, estimatedCostUsd: null }));
     const ledger = { version: 'addie-fixed-trace-raw-ledger-v1' as const, trustedManifestSha256: HASH, planFingerprint: validateFixedTraceExperimentPlanOffline(current).planFingerprint, budgetIdentitySha256: estimateFixedTraceExperiment(current, () => null).budgetIdentitySha256, entries };
     expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).not.toThrow();
+    const hostileLedger = { ...ledger } as any;
+    Object.defineProperty(hostileLedger, '__proto__', { enumerable: true, value: { poisoned: true } });
+    expect(() => validateFixedTraceRawAuditableLedgerOffline(current, hostileLedger, HASH)).toThrow('dangerous prototype key');
     ledger.entries[1].sequence = 1;
     expect(() => validateFixedTraceRawAuditableLedgerOffline(current, ledger, HASH)).toThrow('sequence');
     ledger.entries[1].sequence = 2; ledger.entries[0].exactToolNames = ['tampered'];

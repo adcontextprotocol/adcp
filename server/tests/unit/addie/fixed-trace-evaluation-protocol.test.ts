@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { fixedTraceEstimatedCostUsd } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { FIXED_TRACE_CONFIRMATORY_POWER_GATE, FIXED_TRACE_PROTOCOL_PRICING, FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES, assertFixedTraceEvaluationProtocol, assertFixedTraceEvaluationProtocolTrusted, estimateFixedTraceEvaluationProtocol, evaluateFixedTraceConfirmatoryClaim, fixedTraceEvaluationProtocolFingerprint, fixedTraceEvaluationProtocolRunnerBinding } from '../../../src/addie/eval/fixed-trace-evaluation-protocol.js';
+import { snapshotFixedTraceJson } from '../../../src/addie/eval/fixed-trace-safe-snapshot.js';
 
 function historicalOwnEnumerableFingerprint(value: unknown): string {
   const canonical = (current: unknown): string => {
@@ -126,6 +127,53 @@ describe('fixed-trace evaluation protocol projection', () => {
         }
       }
     }
+  });
+
+  it('keeps prototype-shaped JSON as visible data and rejects it at every protocol fingerprint boundary', () => {
+    const hostile = JSON.parse('{"__proto__":{"polluted":true}}');
+    const detached = snapshotFixedTraceJson(hostile, 'hostile JSON') as Record<string, unknown>;
+    expect(Object.getPrototypeOf(detached)).toBe(null);
+    expect(Object.keys(detached)).toEqual(['__proto__']);
+    expect(Object.getOwnPropertyDescriptor(detached, '__proto__')?.value).toEqual({ polluted: true });
+    expect(JSON.stringify(detached)).toBe('{"__proto__":{"polluted":true}}');
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+
+    for (const key of ['__proto__', 'prototype', 'constructor']) {
+      const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+      Object.defineProperty(protocol, key, { enumerable: true, value: { poisoned: true } });
+      expect(() => fixedTraceEvaluationProtocolFingerprint(protocol)).toThrow('dangerous prototype key');
+    }
+  });
+
+  it('rejects inherited keys, symbols, accessors, Proxies, array extras, and cycles without mutating the snapshot', () => {
+    const inherited = Object.create({ inherited: true });
+    expect(() => snapshotFixedTraceJson(inherited, 'inherited')).toThrow('plain object');
+
+    const symbol = { safe: true };
+    Object.defineProperty(symbol, Symbol('hidden'), { enumerable: true, value: true });
+    expect(() => snapshotFixedTraceJson(symbol, 'symbol')).toThrow('without symbols');
+
+    let reads = 0;
+    const accessor = {};
+    Object.defineProperty(accessor, 'value', { enumerable: true, get() { reads += 1; return true; } });
+    expect(() => snapshotFixedTraceJson(accessor, 'accessor')).toThrow('own enumerable data');
+    expect(reads).toBe(0);
+    expect(() => snapshotFixedTraceJson(new Proxy({}, {}), 'proxy')).toThrow('Proxy');
+
+    const arrayExtra: any[] & { extra?: boolean } = [true];
+    arrayExtra.extra = true;
+    expect(() => snapshotFixedTraceJson(arrayExtra, 'array extra')).toThrow('extra array property');
+
+    const cycle: { self?: unknown } = {};
+    cycle.self = cycle;
+    expect(() => snapshotFixedTraceJson(cycle, 'cycle')).toThrow('cycle');
+
+    const mutable = { nested: { value: 1 } };
+    const detached = snapshotFixedTraceJson(mutable, 'mutable') as { nested: { value: number } };
+    mutable.nested.value = 2;
+    expect(detached.nested.value).toBe(1);
+    expect(Object.isFrozen(detached)).toBe(true);
+    expect(Object.isFrozen(detached.nested)).toBe(true);
   });
 
   it('uses a detached closed snapshot for validation, hashing, and estimates', () => {
