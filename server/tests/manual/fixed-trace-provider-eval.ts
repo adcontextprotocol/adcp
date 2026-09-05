@@ -1,5 +1,5 @@
 /**
- * Live synthetic fixed-trace replay across normalized providers.
+ * Fixed-trace experiment-plan dry run.
  *
  * Production handlers and production messages are never loaded into the
  * executor: every tool result comes from the immutable fixed-trace fixtures.
@@ -15,9 +15,15 @@
  * comparison, and rollout are blocked until an evaluator-owned run-context
  * and raw-ledger coordinator can authenticate serialized artifacts.
  *
+ * This legacy entrypoint is intentionally planning-only while the execution
+ * adapter is being separated from the production path. It never constructs a
+ * provider or reads credentials. A live replay must be added as a separately
+ * reviewed consumer of the versioned plan contract.
+ *
  * Example:
- * DOTENV_CONFIG_PATH=.env.local npm run eval:addie-fixed-traces -- \
- *   --soft-max-usd=1 --output=.context/evals/fixed-traces.json
+ * npm run eval:addie-fixed-traces -- \
+ *   --experiment-plan=.context/evals/plan.json \
+ *   --trusted-manifest=.context/evals/trusted-manifest.json
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -63,6 +69,12 @@ import {
   GOOGLE_ROUTER_MODEL,
 } from '../../src/addie/model-providers/google-generate-content-provider.js';
 import { loadResponseStyle, loadRules } from '../../src/addie/rules/index.js';
+import {
+  estimateFixedTraceExperiment,
+  fixedTraceExperimentPartitionAudit,
+  type FixedTraceExperimentPlan,
+  type FixedTraceTrustedManifest,
+} from '../../src/addie/eval/fixed-trace-experiment-plan.js';
 
 type ProviderName = ModelProviderId;
 
@@ -116,6 +128,25 @@ const cliArguments = parseFixedTraceDiagnosticCliArguments(process.argv.slice(2)
 function argument(name: string): string | undefined {
   return cliArguments[{ providers: 'providers', 'architecture-arm': 'architectureArm', 'soft-max-usd': 'softMaxUsd', output: 'output' }[name] as keyof typeof cliArguments] as string | undefined;
 }
+
+const experimentPlanArgument = argument('experiment-plan');
+if (!experimentPlanArgument?.trim()) {
+  throw new Error('--experiment-plan is required; live fixed-trace replay is disabled pending an execution-contract review');
+}
+const trustedManifestArgument = argument('trusted-manifest');
+if (!trustedManifestArgument?.trim()) {
+  throw new Error('--trusted-manifest is required; a plan file cannot self-attest its inputs');
+}
+const experimentPlan = JSON.parse(readFileSync(resolve(experimentPlanArgument), 'utf8')) as FixedTraceExperimentPlan;
+const trustedManifest = JSON.parse(readFileSync(resolve(trustedManifestArgument), 'utf8')) as FixedTraceTrustedManifest;
+const resolveTrustedManifest = (id: string) => id === trustedManifest.id ? trustedManifest : null;
+const dryRun = estimateFixedTraceExperiment(experimentPlan, resolveTrustedManifest);
+console.log(JSON.stringify({
+  mode: 'dry_run_no_network',
+  partition: fixedTraceExperimentPartitionAudit(experimentPlan, resolveTrustedManifest),
+  estimate: dryRun,
+}, null, 2));
+process.exit(0);
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
