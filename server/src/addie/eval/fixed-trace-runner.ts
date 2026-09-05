@@ -33,6 +33,7 @@ import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
   MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
+  validateFixedTraceToolLoopFixtures,
 } from './fixed-trace-tool-loop.js';
 import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
 import { fixedTraceEstimatedCostUsd } from './fixed-trace-budget.js';
@@ -180,6 +181,17 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
   ) throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
 }
 
+function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
+  // Direct is admission-only: it must not derive a fake executable universe
+  // from fixture-local definitions. Routed and oracle replay use this exact
+  // registration primitive at generation time, so validate it before router
+  // dispatch as well.
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  for (const trace of config.traceSuite) {
+    validateFixedTraceToolLoopFixtures(trace, resolveTraceDefinitions(trace, config.toolDefinitions));
+  }
+}
+
 /**
  * These values are evaluator-owned run provenance, not provider telemetry.
  * Refuse malformed values before snapshotting or dispatch so an observation
@@ -233,6 +245,7 @@ function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionI
   validateRunProvenance(config);
   assertTraceSuiteIdentity(config);
   assertFixtureDefinitionUniverse(config);
+  assertFixtureRegistrations(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
   return {
     traceSuiteSha256: config.traceSuiteSha256,
@@ -1049,10 +1062,17 @@ export async function runFixedTraceCase(
 export async function runFixedTraceSuite(
   config: FixedTraceRunnerConfig,
 ): Promise<FixedTraceObservation[]> {
-  const { toolSchemaSha256 } = executionIdentity(config);
+  const identity = executionIdentity(config);
+  // Iteration must never follow a caller-mutable suite array. Keep a frozen
+  // full plan and still bind the original evaluator-owned config before each
+  // case and after finalization, so a post-dispatch mutation aborts instead
+  // of silently omitting a tail of the suite.
+  const iterationPlan = deepFreeze(structuredClone(config.traceSuite));
   const observations: FixedTraceObservation[] = [];
-  for (const trace of config.traceSuite) {
-    observations.push(await runFixedTraceCase(trace, config, toolSchemaSha256));
+  for (const trace of iterationPlan) {
+    assertExecutionIdentity(config, identity);
+    observations.push(await runFixedTraceCase(trace, config, identity.toolSchemaSha256));
   }
+  assertExecutionIdentity(config, identity);
   return observations;
 }

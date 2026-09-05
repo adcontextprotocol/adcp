@@ -133,6 +133,19 @@ function registerFixtures(
   return registered;
 }
 
+/**
+ * Validate the exact fixture/definition registration contract without making
+ * a model request. The runner invokes this before routing so deterministic
+ * schema and fixture errors cannot spend a router call; execution uses the
+ * same registration primitive again against its frozen request snapshot.
+ */
+export function validateFixedTraceToolLoopFixtures(
+  trace: FixedTraceCase,
+  definitions: readonly AddieTool[],
+): void {
+  void registerFixtures(trace, definitions);
+}
+
 function safeIterationLimit(trace: FixedTraceCase, requested?: number): number {
   const limit = requested ?? Math.max(1, trace.toolFixtures.length + 1);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS) {

@@ -163,6 +163,33 @@ class DeferredContinuationProvider extends ScriptedProvider {
   }
 }
 
+class MutatingResponseProvider extends ScriptedProvider {
+  constructor(
+    script: Array<ModelResponse | Error>,
+    private readonly mutateAfterDispatch: () => void,
+  ) {
+    super(script);
+  }
+
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    this.mutateAfterDispatch();
+    const next = this.script.shift();
+    if (!next) throw new Error('Script exhausted');
+    if (next instanceof Error) throw next;
+    yield { type: 'response_start', provider: this.id, model: next.model, id: next.id };
+    for (const [index, item] of next.content.entries()) {
+      if (item.type === 'text') yield { type: 'text_delta', index, text: item.text };
+    }
+    yield { type: 'response_complete', response: next };
+  }
+}
+
 function response(
   content: ModelResponse['content'],
   finishReason: ModelResponse['finishReason'] = 'stop',
@@ -1059,6 +1086,51 @@ describe('fixed trace artifact runner', () => {
       .rejects.toThrow('Fixed trace runner execution identity became invalid before provider dispatch');
     expect(router.respondCalls).toHaveLength(1);
     expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('rejects a suite truncated after a completed case instead of silently omitting its tail', async () => {
+    const first = trace('knowledge-task-model');
+    const second = trace('community-discussion-search-read-only');
+    let runConfig!: FixedTraceRunnerConfig;
+    const router = new MutatingResponseProvider([
+      routeResponse('ignore'),
+    ], () => {
+      (runConfig.traceSuite as FixedTraceCase[]).splice(1);
+    });
+    runConfig = config(router, new ScriptedProvider([]), { traceSuite: [first, second] });
+
+    await expect(runFixedTraceSuite(runConfig))
+      .rejects.toThrow('Fixed trace runner execution identity became invalid before provider dispatch');
+    expect(router.respondCalls).toHaveLength(1);
+  });
+
+  it('preflights duplicate fixture registration and invalid executable schemas before router dispatch', async () => {
+    const expandedTrace = expandedFixtureTrace('expanded-invalid-schema');
+    const invalidDefinition = structuredClone(tool('expanded_fixture_tool'));
+    invalidDefinition.input_schema = {
+      type: 'object',
+      properties: { impossible: { type: 'not-a-json-schema-type' } },
+    };
+    const invalidSchemaRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(expandedTrace, config(invalidSchemaRouter, new ScriptedProvider([]), {
+      traceSuite: [expandedTrace],
+      toolDefinitions: [invalidDefinition],
+    }))).rejects.toMatchObject({ reason: 'tool_schema_invalid' });
+    expect(invalidSchemaRouter.respondCalls).toHaveLength(0);
+
+    const duplicateFixtureTrace = structuredClone(trace('knowledge-task-model'));
+    duplicateFixtureTrace.toolFixtures = [
+      ...duplicateFixtureTrace.toolFixtures,
+      structuredClone(duplicateFixtureTrace.toolFixtures[0]),
+    ];
+    const duplicateFixtureRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(duplicateFixtureTrace, config(duplicateFixtureRouter, new ScriptedProvider([]), {
+      traceSuite: [duplicateFixtureTrace],
+      toolDefinitions: TOOL_DEFINITIONS.filter((definition) => duplicateFixtureTrace.toolFixtures.some(
+        (fixture) => fixture.name === definition.name,
+      )),
+    }))).rejects.toMatchObject({ reason: 'fixture_definition_mismatch' });
+    expect(duplicateFixtureRouter.respondCalls).toHaveLength(0);
   });
 
   it('rejects empty or duplicate-ID evaluator suites before provider dispatch', async () => {
