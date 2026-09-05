@@ -1769,7 +1769,7 @@ describe('fixed trace artifact runner', () => {
       effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
     });
     expect(observation.metadata.generation).toMatchObject({
-      source: 'provider', requestedProvider: 'anthropic', requestedModel: 'test-model',
+      source: 'provider', requestedProvider: 'anthropic', requestedModel: 'claude-haiku-4-5',
     });
     const directRun = summarizeFixedTraceRun([observation], [selectedTrace]).summary;
     expect(directRun.comparisonEligible).toBe(false);
