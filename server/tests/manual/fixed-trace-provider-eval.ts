@@ -31,6 +31,7 @@ import {
 } from '../../src/addie/eval/fixed-trace-budget.js';
 import {
   fixedTraceToolSchemaSha256,
+  fixedTraceResponseUsesRecordedPricing,
   runFixedTraceCase,
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
@@ -79,31 +80,43 @@ interface ProviderPlan {
 
 const PRICING = {
   anthropicRouter: {
+    profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
     inputUsdPerMillionTokens: 1,
     outputUsdPerMillionTokens: 5,
     cacheReadUsdPerMillionTokens: 0.1,
     cacheWriteUsdPerMillionTokens: 1.25,
+    cacheReadAccounting: 'additive',
+    cacheWriteAccounting: 'additive',
     source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
   },
   anthropicGeneration: {
+    profileId: 'anthropic-standard-2026-08:claude-sonnet-5',
     inputUsdPerMillionTokens: 3,
     outputUsdPerMillionTokens: 15,
     cacheReadUsdPerMillionTokens: 0.3,
     cacheWriteUsdPerMillionTokens: 3.75,
+    cacheReadAccounting: 'additive',
+    cacheWriteAccounting: 'additive',
     source: 'Repository Anthropic pricing table: Claude Sonnet 5 standard, refreshed August 2026.',
   },
   openai: {
+    profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
     inputUsdPerMillionTokens: 0.2,
     outputUsdPerMillionTokens: 1.2,
     cacheReadUsdPerMillionTokens: 0.02,
     cacheWriteUsdPerMillionTokens: null,
+    cacheReadAccounting: 'subset',
+    cacheWriteAccounting: 'unsupported',
     source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
   },
   google: {
+    profileId: 'google-gemini-3.7-flash-through-2026-12-31',
     inputUsdPerMillionTokens: 0.75,
     outputUsdPerMillionTokens: 3.75,
     cacheReadUsdPerMillionTokens: 0.075,
-    cacheWriteUsdPerMillionTokens: null,
+    cacheWriteUsdPerMillionTokens: 0.75,
+    cacheReadAccounting: 'subset',
+    cacheWriteAccounting: 'additive',
     source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
   },
 } satisfies Record<string, FixedTracePricing>;
@@ -159,6 +172,16 @@ function stage(
   };
 }
 
+function budgetedStageProvider(
+  provider: ModelProvider,
+  budget: FixedTraceBudget,
+  model: string,
+  pricing: FixedTracePricing,
+): BudgetedFixedTraceProvider {
+  return new BudgetedFixedTraceProvider(provider, budget, pricing, (response) =>
+    fixedTraceResponseUsesRecordedPricing(provider.id, model, pricing.profileId, response));
+}
+
 function providerPlans(
   names: readonly ProviderName[],
   budget: FixedTraceBudget,
@@ -174,15 +197,11 @@ function providerPlans(
       undefined,
       { transportMaxRetries: 0 },
     );
-    const budgetedGeneration = new BudgetedFixedTraceProvider(
-      generation,
-      budget,
-      PRICING.anthropicGeneration,
-    );
+    const budgetedGeneration = budgetedStageProvider(generation, budget, ModelConfig.primary, PRICING.anthropicGeneration);
     plans.push({
       name: 'anthropic',
       router: stage(
-        new BudgetedFixedTraceProvider(router, budget, PRICING.anthropicRouter),
+        budgetedStageProvider(router, budget, ModelConfig.fast, PRICING.anthropicRouter),
         ModelConfig.fast,
         'provider_default',
         300,
@@ -202,7 +221,7 @@ function providerPlans(
   if (names.includes('openai')) {
     if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
     const provider = new OpenAIResponsesProvider(process.env.OPENAI_API_KEY);
-    const budgetedProvider = new BudgetedFixedTraceProvider(provider, budget, PRICING.openai);
+    const budgetedProvider = budgetedStageProvider(provider, budget, OPENAI_ROUTER_MODEL, PRICING.openai);
     plans.push({
       name: 'openai',
       router: stage(
@@ -226,7 +245,7 @@ function providerPlans(
   if (names.includes('google')) {
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is required');
     const provider = new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY);
-    const budgetedProvider = new BudgetedFixedTraceProvider(provider, budget, PRICING.google);
+    const budgetedProvider = budgetedStageProvider(provider, budget, GOOGLE_ROUTER_MODEL, PRICING.google);
     plans.push({
       name: 'google',
       router: stage(

@@ -54,6 +54,7 @@ function stage(
     usage: { inputTokens: 100, outputTokens: 20 },
     estimatedCostUsd: 0.0002,
     pricingSource: 'synthetic test rate',
+    pricingProfileId: 'synthetic-requested-model-v1',
     latencyMs: 5,
     ...overrides,
   };
@@ -70,11 +71,15 @@ function control(): FixedTraceCohortStageControl {
     transportRetries: 0,
     samplingMode: 'temperature_zero',
     temperature: 0,
+    modelResolutionPolicy: 'exact_model_identity_v1',
     pricing: {
+      profileId: 'synthetic-requested-model-v1',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
       cacheReadUsdPerMillionTokens: null,
       cacheWriteUsdPerMillionTokens: null,
+      cacheReadAccounting: 'unsupported',
+      cacheWriteAccounting: 'unsupported',
       source: 'synthetic test rate',
     },
   };
@@ -126,6 +131,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
         returnedProvider: null,
         returnedModel: null,
         modelResolution: null,
+        promptSha256: null,
         reasoningEffort: null,
         providerRequestSha256: null,
         effectiveMaxOutputTokens: null,
@@ -138,6 +144,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
         usage: null,
         estimatedCostUsd: 0,
         pricingSource: null,
+        pricingProfileId: null,
         latencyMs: 0,
       })
     : terminalStatus === 'provider_error'
@@ -151,6 +158,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
           usage: null,
           estimatedCostUsd: 0,
           pricingSource: null,
+          pricingProfileId: 'synthetic-requested-model-v1',
           latencyMs: 0,
         })
       : stage(trace.caseControl ? { effectiveMaxOutputTokens: trace.caseControl.maxOutputTokens } : {});
@@ -799,6 +807,13 @@ describe('fixed cross-provider trace suite', () => {
     changedSource.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(changedSource.metadata);
     expect(gradeFixedTrace(normalTrace, changedSource).failures).toContain('router_pricing_source_mismatch');
 
+    const changedCacheFormula = passingObservation(normalTrace);
+    const originalFingerprint = changedCacheFormula.metadata.architectureConfigSha256;
+    changedCacheFormula.metadata.routerControl.pricing.cacheReadUsdPerMillionTokens = 0.25;
+    changedCacheFormula.metadata.routerControl.pricing.cacheReadAccounting = 'additive';
+    changedCacheFormula.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(changedCacheFormula.metadata);
+    expect(changedCacheFormula.metadata.architectureConfigSha256).not.toBe(originalFingerprint);
+
     const changedUsage = passingObservation(normalTrace);
     changedUsage.metadata.router.usage = { inputTokens: 101, outputTokens: 20 };
     expect(gradeFixedTrace(normalTrace, changedUsage).failures).toContain('router_estimated_cost_mismatch');
@@ -806,10 +821,12 @@ describe('fixed cross-provider trace suite', () => {
     const cacheAccounted = passingObservation(normalTrace);
     cacheAccounted.metadata.routerControl.pricing.cacheReadUsdPerMillionTokens = 0.25;
     cacheAccounted.metadata.routerControl.pricing.cacheWriteUsdPerMillionTokens = 2;
+    cacheAccounted.metadata.routerControl.pricing.cacheReadAccounting = 'additive';
+    cacheAccounted.metadata.routerControl.pricing.cacheWriteAccounting = 'additive';
     cacheAccounted.metadata.router.usage = {
       inputTokens: 100, outputTokens: 20, cacheReadTokens: 10, cacheWriteTokens: 5,
     };
-    cacheAccounted.metadata.router.estimatedCostUsd = 0.0001975;
+    cacheAccounted.metadata.router.estimatedCostUsd = 0.0002125;
     cacheAccounted.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(cacheAccounted.metadata);
     expect(gradeFixedTrace(normalTrace, cacheAccounted).deterministicPass).toBe(true);
     cacheAccounted.metadata.router.estimatedCostUsd = 0.0002;
@@ -819,6 +836,104 @@ describe('fixed cross-provider trace suite', () => {
     const notRun = passingObservation(ignoredTrace);
     notRun.metadata.generation.effectiveMaxOutputTokens = 1;
     expect(gradeFixedTrace(ignoredTrace, notRun).failures).toContain('generation_not_run_state_invalid');
+  });
+
+  it('enforces the fingerprinted returned-model resolution profile', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.category === 'knowledge')!;
+
+    const unrelated = passingObservation(trace);
+    unrelated.metadata.router.returnedModel = 'claude-unrelated-same-provider';
+    unrelated.metadata.router.modelResolution = 'provider_canonicalized';
+    expect(gradeFixedTrace(trace, unrelated).failures).toContain('router_model_resolution_policy_mismatch');
+
+    const datedGoogle = passingObservation(trace);
+    const googlePricing = {
+      profileId: 'google-gemini-3.7-flash-through-2026-12-31',
+      inputUsdPerMillionTokens: 0.75,
+      outputUsdPerMillionTokens: 3.75,
+      cacheReadUsdPerMillionTokens: 0.075,
+      cacheWriteUsdPerMillionTokens: 0.75,
+      cacheReadAccounting: 'subset' as const,
+      cacheWriteAccounting: 'additive' as const,
+      source: 'reviewed Google router profile',
+    };
+    datedGoogle.metadata.routerControl = {
+      ...datedGoogle.metadata.routerControl,
+      requestedProvider: 'google',
+      requestedModel: 'gemini-3.7-flash',
+      modelResolutionPolicy: 'google_router_dated_revision_v1',
+      pricing: googlePricing,
+    };
+    datedGoogle.metadata.router = {
+      ...datedGoogle.metadata.router,
+      requestedProvider: 'google',
+      requestedModel: 'gemini-3.7-flash',
+      returnedProvider: 'google',
+      returnedModel: 'gemini-3.7-flash-20260801',
+      modelResolution: 'provider_canonicalized',
+      pricingProfileId: googlePricing.profileId,
+      pricingSource: googlePricing.source,
+      estimatedCostUsd: 0.00015,
+    };
+    datedGoogle.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(datedGoogle.metadata);
+    expect(gradeFixedTrace(trace, datedGoogle).failures).not.toContain('router_model_resolution_policy_mismatch');
+
+    const wrongPriceProfile = structuredClone(datedGoogle);
+    wrongPriceProfile.metadata.router.pricingProfileId = 'google-unrelated-profile';
+    expect(gradeFixedTrace(trace, wrongPriceProfile).failures).toContain('router_pricing_profile_mismatch');
+
+    const unpinnedGoogleProfile = structuredClone(datedGoogle);
+    unpinnedGoogleProfile.metadata.routerControl.pricing.profileId = 'google-unrelated-profile';
+    unpinnedGoogleProfile.metadata.router.pricingProfileId = 'google-unrelated-profile';
+    unpinnedGoogleProfile.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(unpinnedGoogleProfile.metadata);
+    expect(gradeFixedTrace(trace, unpinnedGoogleProfile).failures)
+      .toContain('router_configured_model_resolution_policy_invalid');
+  });
+
+  it('requires every inactive local or not-run telemetry field to be null or zero', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'provider-unavailable')!;
+    const inactive = passingObservation(trace);
+    inactive.metadata.generation = stage({
+      source: 'local',
+      dispatched: false,
+      requestedProvider: null,
+      requestedModel: null,
+      returnedProvider: null,
+      returnedModel: null,
+      modelResolution: 'local',
+      promptSha256: null,
+      providerRequestSha256: null,
+      reasoningEffort: null,
+      effectiveMaxOutputTokens: null,
+      timeoutMs: null,
+      maxIterations: null,
+      transportRetries: null,
+      samplingMode: null,
+      temperature: null,
+      usageKnown: false,
+      usage: null,
+      estimatedCostUsd: 0,
+      pricingSource: null,
+      pricingProfileId: null,
+      latencyMs: 0,
+    });
+    expect(gradeFixedTrace(trace, inactive).failures).not.toContain('generation_local_config_invalid');
+
+    for (const mutate of [
+      (stage: FixedTraceModelStageMetadata) => { stage.reasoningEffort = 'none'; },
+      (stage: FixedTraceModelStageMetadata) => { stage.returnedProvider = 'anthropic'; stage.returnedModel = 'requested-model'; },
+      (stage: FixedTraceModelStageMetadata) => { stage.promptSha256 = HASH; },
+      (stage: FixedTraceModelStageMetadata) => { stage.providerRequestSha256 = HASH; },
+      (stage: FixedTraceModelStageMetadata) => { stage.timeoutMs = 1; },
+      (stage: FixedTraceModelStageMetadata) => { stage.pricingProfileId = 'forged'; },
+      (stage: FixedTraceModelStageMetadata) => { stage.usageKnown = true; stage.usage = { inputTokens: 1, outputTokens: 1 }; },
+      (stage: FixedTraceModelStageMetadata) => { stage.estimatedCostUsd = 1; stage.pricingSource = 'forged'; },
+      (stage: FixedTraceModelStageMetadata) => { stage.latencyMs = 1; },
+    ]) {
+      const hostile = structuredClone(inactive);
+      mutate(hostile.metadata.generation);
+      expect(gradeFixedTrace(trace, hostile).metadataPass).toBe(false);
+    }
   });
 
   it('enforces versioned semantic tool dependencies despite renumbered receipts', () => {
@@ -936,6 +1051,7 @@ describe('fixed cross-provider trace suite', () => {
         returnedProvider: null,
         returnedModel: null,
         modelResolution: null,
+        promptSha256: null,
         reasoningEffort: null,
         providerRequestSha256: null,
         effectiveMaxOutputTokens: null,

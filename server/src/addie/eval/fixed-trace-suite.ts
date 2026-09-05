@@ -12,6 +12,11 @@ import type {
   ModelProviderId,
   ModelUsage,
 } from '../model-providers/model-provider.js';
+import {
+  GOOGLE_ROUTER_MODEL,
+  isGoogleRouterModelRevision,
+} from '../model-providers/google-generate-content-provider.js';
+import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
 import type { RouterAction } from '../router.js';
 import type {
   FixedTraceArchitectureArmProvenance,
@@ -23,7 +28,7 @@ import type {
 
 export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v32';
 /** Versioned separately from corpus content: this binds candidate controls. */
-export const FIXED_TRACE_STAGE_CONTROL_VERSION = 'fixed-trace-stage-controls-v1';
+export const FIXED_TRACE_STAGE_CONTROL_VERSION = 'fixed-trace-stage-controls-v2';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -182,11 +187,25 @@ export interface FixedTraceRejectedToolCall {
 }
 
 export interface FixedTracePricing extends FixedTraceBudgetPricing {
+  /** Immutable name of the reviewed numeric pricing profile used by this run. */
+  profileId: string;
   /** Null explicitly records that separately billed cache reads are unsupported. */
   cacheReadUsdPerMillionTokens: number | null;
   /** Null explicitly records that separately billed cache writes are unsupported. */
   cacheWriteUsdPerMillionTokens: number | null;
+  /** Cache accounting is part of the recorded pricing formula, not inferred at grading time. */
+  cacheReadAccounting: 'additive' | 'subset' | 'unsupported';
+  cacheWriteAccounting: 'additive' | 'subset' | 'unsupported';
 }
+
+/**
+ * A closed response-model policy. Most profiles require literal model identity;
+ * the Google router profile is the one reviewed exception for its dated model
+ * revisions. The policy is fingerprinted with the requested controls.
+ */
+export type FixedTraceModelResolutionPolicy =
+  | 'exact_model_identity_v1'
+  | 'google_router_dated_revision_v1';
 
 /** Immutable requested settings for one stage in every member of a cohort. */
 export interface FixedTraceCohortStageControl {
@@ -200,6 +219,7 @@ export interface FixedTraceCohortStageControl {
   transportRetries: 0;
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control';
   temperature: 0 | null;
+  modelResolutionPolicy: FixedTraceModelResolutionPolicy;
   pricing: FixedTracePricing;
 }
 
@@ -211,7 +231,7 @@ export interface FixedTraceModelStageMetadata {
   returnedProvider: ModelProviderId | null;
   returnedModel: string | null;
   modelResolution: 'exact' | 'provider_canonicalized' | 'local' | null;
-  promptSha256: string;
+  promptSha256: string | null;
   providerRequestSha256: string | null;
   reasoningEffort: 'provider_default' | 'none' | 'low' | 'medium' | 'high' | null;
   /** Actual per-call limit, distinct from the immutable cohort configured limit. */
@@ -225,6 +245,8 @@ export interface FixedTraceModelStageMetadata {
   usage: ModelUsage | null;
   estimatedCostUsd: number | null;
   pricingSource: string | null;
+  /** Must equal the hashed cohort pricing profile whenever stage controls are active. */
+  pricingProfileId: string | null;
   latencyMs: number;
 }
 
@@ -1286,12 +1308,31 @@ function cohortControlFailures(
   if (control.samplingMode === 'provider_no_sampling_control' && control.temperature !== null) fail('configured_sampling_invalid');
   const pricing = control.pricing;
   if (
+    typeof pricing.profileId !== 'string' || !pricing.profileId.trim()
+    ||
     !Number.isFinite(pricing.inputUsdPerMillionTokens) || pricing.inputUsdPerMillionTokens < 0
     || !Number.isFinite(pricing.outputUsdPerMillionTokens) || pricing.outputUsdPerMillionTokens < 0
     || !pricing.source.trim()
     || (pricing.cacheReadUsdPerMillionTokens !== null && (!Number.isFinite(pricing.cacheReadUsdPerMillionTokens) || pricing.cacheReadUsdPerMillionTokens < 0))
     || (pricing.cacheWriteUsdPerMillionTokens !== null && (!Number.isFinite(pricing.cacheWriteUsdPerMillionTokens) || pricing.cacheWriteUsdPerMillionTokens < 0))
+    || !['additive', 'subset', 'unsupported'].includes(pricing.cacheReadAccounting)
+    || !['additive', 'subset', 'unsupported'].includes(pricing.cacheWriteAccounting)
+    || (pricing.cacheReadAccounting === 'unsupported' && pricing.cacheReadUsdPerMillionTokens !== null)
+    || (pricing.cacheWriteAccounting === 'unsupported' && pricing.cacheWriteUsdPerMillionTokens !== null)
+    || (pricing.cacheReadAccounting !== 'unsupported' && pricing.cacheReadUsdPerMillionTokens === null)
+    || (pricing.cacheWriteAccounting !== 'unsupported' && pricing.cacheWriteUsdPerMillionTokens === null)
   ) fail('configured_pricing_invalid');
+  if (!['exact_model_identity_v1', 'google_router_dated_revision_v1'].includes(control.modelResolutionPolicy)) {
+    fail('configured_model_resolution_policy_invalid');
+  }
+  if (
+    control.modelResolutionPolicy === 'google_router_dated_revision_v1'
+    && (
+      control.requestedProvider !== 'google'
+      || control.requestedModel !== GOOGLE_ROUTER_MODEL
+      || control.pricing.profileId !== GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
+    )
+  ) fail('configured_model_resolution_policy_invalid');
   return failures;
 }
 
@@ -1309,7 +1350,7 @@ function stageMetadataFailures(
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
-  if (!isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
+  if (stage.promptSha256 !== null && !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
   if ((stage.requestedProvider === null) !== (stage.requestedModel === null)) fail('requested_identity_incomplete');
   if (stage.requestedModel !== null && !stage.requestedModel.trim()) fail('requested_model_missing');
   if ((stage.returnedProvider === null) !== (stage.returnedModel === null)) fail('returned_identity_incomplete');
@@ -1354,9 +1395,11 @@ function stageMetadataFailures(
   if (stage.source === 'provider') {
     if (!stage.dispatched) fail('dispatch_state_invalid');
     if (stage.requestedProvider === null || stage.returnedProvider === null) fail('provider_identity_missing');
+    if (stage.promptSha256 === null || !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
     if (stage.providerRequestSha256 === null || !isSha256(stage.providerRequestSha256)) fail('provider_request_hash_invalid');
     if (stage.requestedProvider !== control.requestedProvider || stage.requestedModel !== control.requestedModel) fail('configured_identity_mismatch');
     if (stage.reasoningEffort !== control.reasoningEffort) fail('configured_reasoning_mismatch');
+    if (stage.pricingProfileId !== control.pricing.profileId) fail('pricing_profile_mismatch');
     if (stage.effectiveMaxOutputTokens !== expectedEffectiveMaxOutputTokens) fail('effective_max_output_tokens_mismatch');
     if (stage.timeoutMs !== control.timeoutMs) fail('configured_timeout_mismatch');
     if (stage.maxIterations !== control.maxIterations) fail('configured_max_iterations_mismatch');
@@ -1367,12 +1410,25 @@ function stageMetadataFailures(
     if (stage.modelResolution === null || stage.modelResolution === 'local') fail('model_resolution_invalid');
     if (stage.returnedProvider !== stage.requestedProvider) fail('provider_identity_mismatch');
     if (stage.modelResolution === 'exact' && stage.returnedModel !== stage.requestedModel) fail('exact_model_identity_mismatch');
+    if (stage.modelResolution === 'provider_canonicalized' && (
+      control.modelResolutionPolicy !== 'google_router_dated_revision_v1'
+      || stage.returnedProvider !== 'google'
+      || stage.requestedModel !== GOOGLE_ROUTER_MODEL
+      || stage.returnedModel === null
+      || !isGoogleRouterModelRevision(stage.returnedModel)
+      || stage.returnedModel === stage.requestedModel
+    )) fail('model_resolution_policy_mismatch');
+    if (stage.modelResolution === 'exact' && control.modelResolutionPolicy === 'exact_model_identity_v1' && stage.returnedModel !== control.requestedModel) {
+      fail('model_resolution_policy_mismatch');
+    }
   } else if (stage.source === 'local') {
     if (stage.returnedProvider !== null || stage.modelResolution !== 'local') fail('local_identity_invalid');
     if (stage.requestedProvider !== null) {
+      if (stage.promptSha256 === null || !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
       if (stage.providerRequestSha256 === null || !isSha256(stage.providerRequestSha256)) fail('provider_request_hash_invalid');
       if (stage.requestedProvider !== control.requestedProvider || stage.requestedModel !== control.requestedModel) fail('configured_identity_mismatch');
       if (stage.reasoningEffort !== control.reasoningEffort) fail('configured_reasoning_mismatch');
+      if (stage.pricingProfileId !== control.pricing.profileId) fail('pricing_profile_mismatch');
       if (stage.effectiveMaxOutputTokens !== expectedEffectiveMaxOutputTokens) fail('effective_max_output_tokens_mismatch');
       if (stage.timeoutMs !== control.timeoutMs) fail('configured_timeout_mismatch');
       if (stage.maxIterations !== control.maxIterations) fail('configured_max_iterations_mismatch');
@@ -1380,12 +1436,16 @@ function stageMetadataFailures(
       if (stage.samplingMode !== control.samplingMode || stage.temperature !== control.temperature) fail('configured_sampling_mismatch');
     } else if (
       stage.dispatched
+      || stage.promptSha256 !== null
       || stage.providerRequestSha256 !== null
+      || stage.reasoningEffort !== null
+      || stage.pricingProfileId !== null
       || stage.effectiveMaxOutputTokens !== null
       || stage.timeoutMs !== null
       || stage.maxIterations !== null
       || stage.transportRetries !== null
       || stage.samplingMode !== null
+      || stage.latencyMs !== 0
     ) {
       fail('local_config_invalid');
     }
@@ -1394,8 +1454,11 @@ function stageMetadataFailures(
       stage.requestedProvider !== null
       || stage.requestedModel !== null
       || stage.returnedProvider !== null
+      || stage.returnedModel !== null
       || stage.modelResolution !== null
+      || stage.promptSha256 !== null
       || stage.providerRequestSha256 !== null
+      || stage.pricingProfileId !== null
       || stage.effectiveMaxOutputTokens !== null
       || stage.timeoutMs !== null
       || stage.maxIterations !== null

@@ -37,6 +37,11 @@ import {
 import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
 import { fixedTraceEstimatedCostUsd } from './fixed-trace-budget.js';
 import {
+  GOOGLE_ROUTER_MODEL,
+  isGoogleRouterModelRevision,
+} from '../model-providers/google-generate-content-provider.js';
+import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+import {
   admitFixedTraceDirectArm,
   fixedTraceArchitectureArm,
   fixedTraceExecutionEnvelopeProvenance,
@@ -52,6 +57,7 @@ import {
   fixedTraceSuiteSha256,
   type FixedTraceCase,
   type FixedTraceCohortStageControl,
+  type FixedTraceModelResolutionPolicy,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
   type FixedTracePricing,
@@ -159,7 +165,23 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
       !Number.isFinite(config.pricing.cacheWriteUsdPerMillionTokens)
       || config.pricing.cacheWriteUsdPerMillionTokens < 0
     ))
+    || !config.pricing.profileId.trim()
+    || !['additive', 'subset', 'unsupported'].includes(config.pricing.cacheReadAccounting)
+    || !['additive', 'subset', 'unsupported'].includes(config.pricing.cacheWriteAccounting)
+    || (config.pricing.cacheReadAccounting === 'unsupported' && config.pricing.cacheReadUsdPerMillionTokens !== null)
+    || (config.pricing.cacheWriteAccounting === 'unsupported' && config.pricing.cacheWriteUsdPerMillionTokens !== null)
+    || (config.pricing.cacheReadAccounting !== 'unsupported' && config.pricing.cacheReadUsdPerMillionTokens === null)
+    || (config.pricing.cacheWriteAccounting !== 'unsupported' && config.pricing.cacheWriteUsdPerMillionTokens === null)
   ) throw new Error(`${name} pricing configuration is invalid`);
+}
+
+export function fixedTraceModelResolutionPolicy(
+  provider: ModelProvider['id'],
+  model: string,
+): FixedTraceModelResolutionPolicy {
+  return provider === 'google' && model === GOOGLE_ROUTER_MODEL
+    ? 'google_router_dated_revision_v1'
+    : 'exact_model_identity_v1';
 }
 
 function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCohortStageControl {
@@ -173,6 +195,7 @@ function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCo
     transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
+    modelResolutionPolicy: fixedTraceModelResolutionPolicy(config.provider.id, config.model),
     pricing: { ...config.pricing },
   };
 }
@@ -182,10 +205,44 @@ function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'rea
 }
 
 function modelResolution(
-  requestedModel: string,
+  config: FixedTraceProviderStageConfig,
   response: ModelResponse,
 ): 'exact' | 'provider_canonicalized' {
-  return response.model === requestedModel ? 'exact' : 'provider_canonicalized';
+  if (response.model === config.model) return 'exact';
+  // Preserve the provider-returned identity verbatim. Validation uses the
+  // fingerprinted policy to admit only the one reviewed Google revision form.
+  return 'provider_canonicalized';
+}
+
+/** The only non-literal returned model accepted by this diagnostic profile. */
+function returnedModelUsesRecordedPricing(
+  config: FixedTraceProviderStageConfig,
+  response: ModelResponse,
+): boolean {
+  return fixedTraceResponseUsesRecordedPricing(
+    config.provider.id,
+    config.model,
+    config.pricing.profileId,
+    response,
+  );
+}
+
+/**
+ * Shared by runner metadata and the budget decorator's response edge. Exact
+ * policies accept only literal identity. The Google dated-revision exception
+ * is tied to its one reviewed price-profile version.
+ */
+export function fixedTraceResponseUsesRecordedPricing(
+  requestedProvider: ModelProvider['id'],
+  requestedModel: string,
+  pricingProfileId: string,
+  response: ModelResponse,
+): boolean {
+  if (response.provider !== requestedProvider) return false;
+  if (response.model === requestedModel) return true;
+  return fixedTraceModelResolutionPolicy(requestedProvider, requestedModel) === 'google_router_dated_revision_v1'
+    && pricingProfileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
+    && isGoogleRouterModelRevision(response.model);
 }
 
 function providerStageMetadata(
@@ -195,6 +252,7 @@ function providerStageMetadata(
   usage: ModelUsage,
   state: StageInvocationState,
 ): FixedTraceModelStageMetadata {
+  const resolvedPricing = returnedModelUsesRecordedPricing(config, response);
   return {
     source: 'provider',
     dispatched: state.dispatched,
@@ -202,7 +260,7 @@ function providerStageMetadata(
     requestedModel: config.model,
     returnedProvider: response.provider,
     returnedModel: response.model,
-    modelResolution: modelResolution(config.model, response),
+    modelResolution: modelResolution(config, response),
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
     reasoningEffort: config.reasoningEffort,
@@ -214,8 +272,12 @@ function providerStageMetadata(
     temperature: config.temperature,
     usageKnown: true,
     usage,
-    estimatedCostUsd: fixedTraceEstimatedCostUsd(usage, config.pricing),
-    pricingSource: config.pricing.source,
+    // A same-provider but unapproved model ID has no trusted rate in this
+    // cohort. Keep usage for diagnostics, but never charge it at the
+    // requested profile's rates.
+    estimatedCostUsd: resolvedPricing ? fixedTraceEstimatedCostUsd(usage, config.pricing) : null,
+    pricingSource: resolvedPricing ? config.pricing.source : null,
+    pricingProfileId: resolvedPricing ? config.pricing.profileId : null,
     latencyMs: state.latencyMs,
   };
 }
@@ -249,6 +311,7 @@ function localStageMetadata(
       ? fixedTraceEstimatedCostUsd(usage, config.pricing)
       : state.dispatched ? null : 0,
     pricingSource: usage ? config.pricing.source : null,
+    pricingProfileId: config.pricing.profileId,
     latencyMs: state.latencyMs,
   };
 }
@@ -262,7 +325,7 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     returnedProvider: null,
     returnedModel: null,
     modelResolution: null,
-    promptSha256: sha256({ traceId: trace.id, stage: 'not_run' }),
+    promptSha256: null,
     providerRequestSha256: null,
     reasoningEffort: null,
     effectiveMaxOutputTokens: null,
@@ -275,6 +338,7 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     usage: null,
     estimatedCostUsd: 0,
     pricingSource: null,
+    pricingProfileId: null,
     latencyMs: 0,
   };
 }

@@ -237,10 +237,13 @@ function stage(provider: ModelProvider, maxIterations: number): FixedTraceProvid
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
     pricing: {
+      profileId: 'synthetic-test-model-v1',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
       cacheReadUsdPerMillionTokens: null,
       cacheWriteUsdPerMillionTokens: null,
+      cacheReadAccounting: 'unsupported',
+      cacheWriteAccounting: 'unsupported',
       source: 'Synthetic test pricing.',
     },
   };
@@ -271,6 +274,25 @@ function trace(id: string): FixedTraceCase {
 }
 
 describe('fixed trace artifact runner', () => {
+  it('keeps an unapproved same-provider returned model unpriced for failure telemetry', async () => {
+    const router = new ScriptedProvider([{ ...routeResponse('respond', ['knowledge']), model: 'other-anthropic-model' }]);
+    const generation = new ScriptedProvider([
+      response([{ type: 'text', text: 'Synthetic protocol explanation.' }]),
+    ]);
+    const observation = await runFixedTraceCase(trace('knowledge-task-model'), config(router, generation));
+
+    expect(observation.metadata.router).toMatchObject({
+      returnedProvider: 'anthropic',
+      returnedModel: 'other-anthropic-model',
+      modelResolution: 'provider_canonicalized',
+      estimatedCostUsd: null,
+      pricingSource: null,
+      pricingProfileId: null,
+    });
+    expect(gradeFixedTrace(trace('knowledge-task-model'), observation).failures)
+      .toEqual(expect.arrayContaining(['router_model_resolution_policy_mismatch', 'router_cost_provenance_missing']));
+  });
+
   it('records complete router and multi-turn generation provenance', async () => {
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const generation = new ScriptedProvider([

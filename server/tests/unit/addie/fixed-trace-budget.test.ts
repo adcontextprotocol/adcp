@@ -3,8 +3,10 @@ import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
   FixedTraceBudgetAdmissionError,
+  fixedTraceEstimatedCostUsd,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
+import { fixedTraceResponseUsesRecordedPricing } from '../../../src/addie/eval/fixed-trace-runner.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -82,10 +84,77 @@ class BudgetScriptedProvider implements ModelProvider {
 }
 
 describe('fixed trace provider budget', () => {
+  it('prices Google-style subset reads plus additive writes explicitly', () => {
+    expect(fixedTraceEstimatedCostUsd({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 40, cacheWriteTokens: 20 }, {
+      ...PRICING,
+      cacheReadUsdPerMillionTokens: 0.5,
+      cacheWriteUsdPerMillionTokens: 1,
+      cacheReadAccounting: 'subset',
+      cacheWriteAccounting: 'additive',
+    })).toBeCloseTo(0.00015);
+  });
+
+  it('prices additive Anthropic cache buckets without treating them as input subsets', () => {
+    expect(fixedTraceEstimatedCostUsd({
+      inputTokens: 10,
+      outputTokens: 0,
+      cacheReadTokens: 20,
+      cacheWriteTokens: 30,
+    }, {
+      ...PRICING,
+      cacheReadUsdPerMillionTokens: 2,
+      cacheWriteUsdPerMillionTokens: 3,
+      cacheReadAccounting: 'additive',
+      cacheWriteAccounting: 'additive',
+    })).toBeCloseTo(0.00014);
+  });
+
+  it('fails closed when a nonzero cache bucket has no recorded formula', () => {
+    expect(() => fixedTraceEstimatedCostUsd({ inputTokens: 10, outputTokens: 0, cacheReadTokens: 1 }, PRICING))
+      .toThrow('cache read accounting is unavailable');
+  });
+
+  it('closes shared admission rather than settling an unapproved returned model at requested rates', async () => {
+    const mismatched = { ...RESPONSE, model: 'other-openai-model' };
+    const delegate = new BudgetScriptedProvider([mismatched, RESPONSE]);
+    const budget = new FixedTraceBudget(1);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, (response) =>
+      fixedTraceResponseUsesRecordedPricing('openai', 'budget-model', 'openai-budget-model-v1', response));
+
+    await expect(collectModelResponse(provider.respond(REQUEST))).resolves.toEqual(mismatched);
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0,
+      dispatchedCalls: 1,
+      completedCalls: 0,
+      exposureUnknown: true,
+    });
+    await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toMatchObject({
+      name: 'FixedTraceBudgetAdmissionError', reason: 'budget_exposure_unknown',
+    });
+    expect(delegate.dispatches).toHaveBeenCalledTimes(1);
+  });
+
+  it('reserves an additive cache-write worst case before dispatch', () => {
+    const delegate = new BudgetScriptedProvider([RESPONSE]);
+    const budget = new FixedTraceBudget(10_000);
+    const reservation = budget.reserve(delegate.prepare(REQUEST), 1, {
+      inputUsdPerMillionTokens: 0,
+      outputUsdPerMillionTokens: 0,
+      cacheReadUsdPerMillionTokens: null,
+      cacheWriteUsdPerMillionTokens: 1_000_000,
+      cacheReadAccounting: 'unsupported',
+      cacheWriteAccounting: 'additive',
+      source: 'synthetic additive cache-write worst case',
+    });
+    // The cache-write rate is deliberately much larger than input. A reserve
+    // that only charged base input would be zero here.
+    expect(budget.snapshot().reservedUsd).toBeGreaterThan(1);
+    budget.cancel(reservation);
+  });
   it('rejects over-budget work before provider dispatch', async () => {
     const delegate = new BudgetScriptedProvider([RESPONSE]);
     const budget = new FixedTraceBudget(0.000001);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toMatchObject({
       name: 'FixedTraceBudgetAdmissionError',
@@ -106,7 +175,7 @@ describe('fixed trace provider budget', () => {
   it('releases the reserve and accounts terminal usage', async () => {
     const delegate = new BudgetScriptedProvider([RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).resolves.toEqual(RESPONSE);
     expect(budget.snapshot()).toMatchObject({
@@ -122,7 +191,7 @@ describe('fixed trace provider budget', () => {
   it('halts later calls after a dispatched response has unknown usage', async () => {
     const delegate = new BudgetScriptedProvider([new Error('transport failed'), RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow('transport failed');
     expect(budget.snapshot()).toMatchObject({
@@ -143,7 +212,7 @@ describe('fixed trace provider budget', () => {
       usage: { inputTokens: -1, outputTokens: 5 },
     }]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow(
       'Fixed trace budget usage is invalid',
@@ -160,7 +229,7 @@ describe('fixed trace provider budget', () => {
   it('does not mark exposure unknown when the caller hook blocks dispatch', async () => {
     const delegate = new BudgetScriptedProvider([RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
 
     await expect(collectModelResponse(provider.respond(REQUEST, {
       beforeDispatch: () => { throw new Error('local policy rejected'); },

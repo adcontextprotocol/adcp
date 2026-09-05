@@ -1,6 +1,7 @@
 import type {
   ModelProvider,
   ModelRequest,
+  ModelResponse,
   ModelRespondOptions,
   ModelUsage,
   NormalizedModelEvent,
@@ -14,6 +15,9 @@ export interface FixedTraceBudgetPricing {
   cacheReadUsdPerMillionTokens?: number | null;
   /** Null means this provider does not expose a separately billable cache write rate. */
   cacheWriteUsdPerMillionTokens?: number | null;
+  /** Cache reads and writes have independently recorded provider semantics. */
+  cacheReadAccounting?: 'additive' | 'subset' | 'unsupported';
+  cacheWriteAccounting?: 'additive' | 'subset' | 'unsupported';
   source: string;
 }
 
@@ -46,6 +50,13 @@ export interface FixedTraceBudgetSnapshot {
   exposureUnknown: boolean;
 }
 
+/**
+ * The caller supplies the stage's closed returned-model policy. A missing
+ * policy fails closed: a completed response may be observed, but its cost is
+ * not settled at a requested-model rate and no later dispatch is admitted.
+ */
+export type FixedTraceResponsePricingApproval = (response: ModelResponse) => boolean;
+
 interface Reservation {
   readonly usd: number;
   active: boolean;
@@ -71,11 +82,9 @@ function requestBytes(prepared: PreparedModelInvocation): number {
 }
 
 /**
- * The production evaluator's single cost formula. `inputTokens` is the
- * provider-reported total input, including cache reads and cache writes.
- * Those buckets are disjoint subsets of input and replace (rather than add
- * to) standard-input billing. A non-zero cache bucket requires its explicit
- * rate; a null/omitted rate represents an unsupported bucket.
+ * Cache usage is provider-profiled: Anthropic reports additive cache buckets,
+ * while some providers report buckets contained in input. Unknown semantics
+ * fail closed instead of applying a provider-specific subtraction globally.
  */
 export function fixedTraceEstimatedCostUsd(
   usage: ModelUsage,
@@ -94,8 +103,17 @@ export function fixedTraceEstimatedCostUsd(
   if (
     !Number.isSafeInteger(cacheReadTokens) || cacheReadTokens < 0
     || !Number.isSafeInteger(cacheWriteTokens) || cacheWriteTokens < 0
-    || cacheReadTokens + cacheWriteTokens > inputTokens
   ) throw new Error('Fixed trace cache usage is invalid');
+  const readAccounting = pricing.cacheReadAccounting ?? 'unsupported';
+  const writeAccounting = pricing.cacheWriteAccounting ?? 'unsupported';
+  if (cacheReadTokens > 0 && readAccounting === 'unsupported') throw new Error('Fixed trace cache read accounting is unavailable');
+  if (cacheWriteTokens > 0 && writeAccounting === 'unsupported') throw new Error('Fixed trace cache write accounting is unavailable');
+  if (readAccounting === 'subset' && cacheReadTokens > inputTokens) throw new Error('Fixed trace subset cache read usage is invalid');
+  // A subset read and additive write (Google's profile) is valid. Two subset
+  // buckets must jointly fit the provider's normalized input total.
+  if (readAccounting === 'subset' && writeAccounting === 'subset' && cacheReadTokens + cacheWriteTokens > inputTokens) {
+    throw new Error('Fixed trace subset cache usage is invalid');
+  }
   if (cacheReadTokens > 0 && pricing.cacheReadUsdPerMillionTokens == null) {
     throw new Error('Fixed trace cache read pricing is unavailable');
   }
@@ -103,7 +121,9 @@ export function fixedTraceEstimatedCostUsd(
     throw new Error('Fixed trace cache write pricing is unavailable');
   }
   return (
-    (inputTokens - cacheReadTokens - cacheWriteTokens) * pricing.inputUsdPerMillionTokens
+    (inputTokens
+      - (readAccounting === 'subset' ? cacheReadTokens : 0)
+      - (writeAccounting === 'subset' ? cacheWriteTokens : 0)) * pricing.inputUsdPerMillionTokens
     + outputTokens * pricing.outputUsdPerMillionTokens
     + cacheReadTokens * (pricing.cacheReadUsdPerMillionTokens ?? 0)
     + cacheWriteTokens * (pricing.cacheWriteUsdPerMillionTokens ?? 0)
@@ -149,10 +169,18 @@ export class FixedTraceBudget {
       this.budgetRejectedCalls++;
       throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
     }
-    const usd = fixedTraceEstimatedCostUsd(
-      { inputTokens: requestBytes(prepared), outputTokens: maxOutputTokens },
-      pricing,
-    );
+    // Request bytes are a deliberately high token bound for the request. An
+    // additive cache bucket is separately billable, so reserve that same
+    // bound for each such bucket as well. Subset buckets are already covered
+    // by inputTokens. This keeps the pre-dispatch reserve conservative under
+    // the recorded, fingerprinted cache formula.
+    const inputTokens = requestBytes(prepared);
+    const usd = fixedTraceEstimatedCostUsd({
+      inputTokens,
+      outputTokens: maxOutputTokens,
+      cacheReadTokens: pricing.cacheReadAccounting === 'additive' ? inputTokens : 0,
+      cacheWriteTokens: pricing.cacheWriteAccounting === 'additive' ? inputTokens : 0,
+    }, pricing);
     if (this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
       this.admissionClosed = true;
       this.budgetRejectedCalls++;
@@ -225,6 +253,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     private readonly delegate: ModelProvider,
     private readonly budget: FixedTraceBudget,
     private readonly pricing: FixedTraceBudgetPricing,
+    private readonly responsePricingApproved: FixedTraceResponsePricingApproval = () => false,
   ) {
     validateFixedTracePricing(pricing);
     this.id = delegate.id;
@@ -265,7 +294,15 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
           if (!reservation || !dispatchStarted) {
             throw new Error('Fixed trace provider completed without dispatch admission');
           }
-          this.budget.complete(reservation, event.response.usage, this.pricing);
+          if (this.responsePricingApproved(event.response)) {
+            this.budget.complete(reservation, event.response.usage, this.pricing);
+          } else {
+            // Do not settle an unapproved returned identity at the requested
+            // model's rate. The response remains visible to the runner, which
+            // records unknown cost and fails its stage contract; the shared
+            // ledger closes before any subsequent provider call.
+            this.budget.markExposureUnknown(reservation);
+          }
           settled = true;
         }
         yield event;
