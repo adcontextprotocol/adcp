@@ -46,12 +46,72 @@ export function fixedTraceTuningSemanticSha256(trace: FixedTraceCorpusCase): str
 }
 
 const TEXT_CONFUSABLES: Readonly<Record<string, string>> = Object.freeze({
-  '\u0430': 'a', '\u0435': 'e', '\u0456': 'i', '\u0458': 'j', '\u043a': 'k', '\u043e': 'o', '\u0440': 'p', '\u0441': 'c', '\u0442': 't', '\u0445': 'x', '\u0443': 'y',
+  '\u0430': 'a', '\u0435': 'e', '\u0456': 'i', '\u0458': 'j', '\u043a': 'k', '\u043e': 'o', '\u043f': 'n', '\u0440': 'p', '\u0441': 'c', '\u0442': 't', '\u0445': 'x', '\u0443': 'y',
   '\u0432': 'b', '\u0455': 's', '\u04cf': 'l',
+  '\u0131': 'i',
   '\u03b1': 'a', '\u03b2': 'b', '\u03b5': 'e', '\u03b7': 'n', '\u03b9': 'i', '\u03ba': 'k', '\u03bf': 'o', '\u03c1': 'p', '\u03c4': 't', '\u03c5': 'y', '\u03c7': 'x',
 });
 
 const MAX_PERCENT_DECODE_ROUNDS = 2;
+const SAFE_HTML_ENTITIES: Readonly<Record<string, string>> = Object.freeze({
+  amp: '&', nbsp: ' ', period: '.', dot: '.',
+});
+
+function decodePercentEscapes(value: string): { value: string; changed: boolean; malformed: boolean } {
+  let output = '';
+  let changed = false;
+  let malformed = false;
+  for (let index = 0; index < value.length;) {
+    if (value[index] !== '%') {
+      output += value[index++];
+      continue;
+    }
+    const encoded = value.slice(index, index + 3);
+    if (/^%[0-9a-f]{2}$/i.test(encoded)) {
+      let end = index + 3;
+      while (/^%[0-9a-f]{2}$/i.test(value.slice(end, end + 3))) end += 3;
+      try {
+        output += decodeURIComponent(value.slice(index, end));
+        changed = true;
+      } catch {
+        malformed = true;
+        output += value.slice(index, end);
+      }
+      index = end;
+      continue;
+    }
+    // Literal percentages are ordinary text (for example, "50% discount").
+    // A percent followed by an alphanumeric token is an attempted, malformed
+    // escape and must not silently bypass a protected value check.
+    if (/^[a-z0-9]$/i.test(value[index + 1] ?? '')) malformed = true;
+    output += value[index++];
+  }
+  return { value: output, changed, malformed };
+}
+
+function decodeHtmlEntities(value: string): { value: string; changed: boolean; malformed: boolean } {
+  let changed = false;
+  let malformed = false;
+  let decoded = value.replace(/&#(?:x[0-9a-f]{1,6}|[0-9]{1,7});/gi, (entity) => {
+    const numeric = entity.slice(2, -1);
+    const codePoint = numeric[0].toLowerCase() === 'x'
+      ? Number.parseInt(numeric.slice(1), 16) : Number.parseInt(numeric, 10);
+    if (codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+      malformed = true;
+      return entity;
+    }
+    changed = true;
+    return String.fromCodePoint(codePoint);
+  });
+  // Deliberately small named-entity set: only separators that can conceal a
+  // protected identity, domain, or evaluator marker are decoded.
+  decoded = decoded.replace(/&(amp|nbsp|period|dot);/gi, (entity, name: string) => {
+    changed = true;
+    return SAFE_HTML_ENTITIES[name.toLowerCase()]!;
+  });
+  if (/&#(?:x[0-9a-z]{0,8}|[0-9a-z]{0,8});?/i.test(decoded)) malformed = true;
+  return { value: decoded, changed, malformed };
+}
 
 export interface FixedTraceCanonicalText {
   /** Lowercase, deobfuscated text suitable for bounded policy matching. */
@@ -70,23 +130,20 @@ export interface FixedTraceCanonicalText {
 export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText {
   let text = value.normalize('NFKC');
   let malformedPercentEncoding = false;
-  for (let round = 0; round < MAX_PERCENT_DECODE_ROUNDS && text.includes('%'); round++) {
-    if (/%(?![0-9a-fA-F]{2})/.test(text)) {
-      malformedPercentEncoding = true;
-      break;
-    }
-    try {
-      const decoded = decodeURIComponent(text);
-      if (decoded === text) break;
-      text = decoded;
-    } catch {
-      malformedPercentEncoding = true;
-      break;
-    }
+  for (let round = 0; round < MAX_PERCENT_DECODE_ROUNDS; round++) {
+    const percent = decodePercentEscapes(text);
+    const entities = decodeHtmlEntities(percent.value);
+    text = entities.value;
+    malformedPercentEncoding ||= percent.malformed || entities.malformed;
+    if (!percent.changed && !entities.changed) break;
   }
   // A third encoding layer is intentionally unsupported rather than silently
   // accepted. It might otherwise conceal an evaluator marker or identity.
-  if (text.includes('%')) malformedPercentEncoding = true;
+  const unresolvedPercent = decodePercentEscapes(text);
+  const unresolvedEntity = decodeHtmlEntities(text);
+  if (unresolvedPercent.changed || unresolvedPercent.malformed || unresolvedEntity.changed || unresolvedEntity.malformed) {
+    malformedPercentEncoding = true;
+  }
 
   text = text.normalize('NFKD').toLocaleLowerCase('en-US').replace(/\p{M}/gu, '');
   for (const [confusable, replacement] of Object.entries(TEXT_CONFUSABLES)) text = text.replaceAll(confusable, replacement);
@@ -94,6 +151,7 @@ export function canonicalFixedTraceText(value: string): FixedTraceCanonicalText 
     .replace(/[\u200b-\u200d\ufeff]/g, '')
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
     .replace(/\[\s*(?:\.|dot)\s*\]|\(\s*(?:\.|dot)\s*\)|\{\s*(?:\.|dot)\s*\}/g, '.')
+    .replace(/\b(?:dot|period)\b/g, '.')
     .replace(/[\[\]{}()]/g, '');
   return {
     text,
