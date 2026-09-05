@@ -7,10 +7,24 @@ import {
   fixedTraceEvaluationProtocolFingerprint,
   fixedTraceEvaluationProtocolRunnerBinding,
   type FixedTraceEvaluationProtocol,
+  type FixedTraceProtocolPhaseId,
 } from '../../../src/addie/eval/fixed-trace-evaluation-protocol.js';
+import {
+  FIXED_TRACE_SUITE,
+  fixedTraceSuiteSha256,
+  type FixedTraceCase,
+} from '../../../src/addie/eval/fixed-trace-suite.js';
 
 function protocol(): FixedTraceEvaluationProtocol {
   return structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
+}
+
+function evaluatorOwnedSuite(phaseId: FixedTraceProtocolPhaseId, count: number): FixedTraceCase[] {
+  const template = FIXED_TRACE_SUITE[0]!;
+  return Array.from({ length: count }, (_, index) => ({
+    ...structuredClone(template),
+    id: `externally-owned-${phaseId}-${index + 1}`,
+  }));
 }
 
 describe('fixed-trace evaluation protocol projection', () => {
@@ -72,27 +86,50 @@ describe('fixed-trace evaluation protocol projection', () => {
     const current = protocol();
     const fingerprint = fixedTraceEvaluationProtocolFingerprint(current);
     expect(() => assertFixedTraceEvaluationProtocolTrusted(current, () => null)).toThrow('Trusted evaluation manifest is unavailable');
+    const suites = Object.fromEntries(current.phases.map((phase) => [
+      phase.id,
+      evaluatorOwnedSuite(phase.id, phase.uniqueCaseCount),
+    ])) as Record<FixedTraceProtocolPhaseId, FixedTraceCase[]>;
+    const traceSuiteSha256ByPhase = Object.fromEntries(current.phases.map((phase) => [
+      phase.id,
+      fixedTraceSuiteSha256(suites[phase.id]),
+    ])) as Record<FixedTraceProtocolPhaseId, string>;
     const trusted = {
       id: current.trustedManifestId,
       protocolFingerprint: fingerprint,
       sourceId: 'externally-sealed-addie-v120',
       sourceRevision: 'sealed-revision-1',
-      traceSuiteSha256: 'b'.repeat(64),
+      traceSuiteSha256ByPhase,
       tracePackSha256: 'a'.repeat(64),
       rawLedgerVersion: 'addie-fixed-trace-raw-ledger-v2',
       partitions: Object.fromEntries(current.phases.map((phase) => [phase.id, phase.uniqueCaseCount])),
       verifiedAdmissions: ['planning_only', 'requires_verified_hybrid_contract', 'requires_verified_direct_contract'] as const,
     };
     expect(assertFixedTraceEvaluationProtocolTrusted(current, (id) => id === trusted.id ? trusted : null)).toBe(trusted);
-    expect(fixedTraceEvaluationProtocolRunnerBinding(current, (id) => id === trusted.id ? trusted : null)).toEqual({
+    expect(fixedTraceEvaluationProtocolRunnerBinding(
+      current,
+      (id) => id === trusted.id ? trusted : null,
+      'router_screen',
+      suites.router_screen,
+    )).toEqual({
       trustedManifestId: trusted.id,
       protocolFingerprint: fingerprint,
-      traceSuiteSha256: 'b'.repeat(64),
+      phaseId: 'router_screen',
+      traceSuite: suites.router_screen,
+      traceSuiteSha256: traceSuiteSha256ByPhase.router_screen,
     });
+    const forgedSuite = structuredClone(suites.router_screen);
+    forgedSuite[0]!.id = 'forged-suite-case';
+    expect(() => fixedTraceEvaluationProtocolRunnerBinding(
+      current,
+      (id) => id === trusted.id ? trusted : null,
+      'router_screen',
+      forgedSuite,
+    )).toThrow('does not match trusted manifest');
     trusted.partitions.sealed_final = 37;
     expect(() => assertFixedTraceEvaluationProtocolTrusted(current, (id) => id === trusted.id ? trusted : null)).toThrow('count mismatch');
     trusted.partitions.sealed_final = 38;
-    trusted.traceSuiteSha256 = 'not-a-digest';
-    expect(() => assertFixedTraceEvaluationProtocolTrusted(current, (id) => id === trusted.id ? trusted : null)).toThrow('does not bind');
+    trusted.traceSuiteSha256ByPhase.router_screen = 'not-a-digest';
+    expect(() => assertFixedTraceEvaluationProtocolTrusted(current, (id) => id === trusted.id ? trusted : null)).toThrow('suite hash is unavailable');
   });
 });

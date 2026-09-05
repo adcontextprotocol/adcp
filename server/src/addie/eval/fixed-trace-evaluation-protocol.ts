@@ -10,7 +10,11 @@ import {
   fixedTraceEstimatedCostUsd,
   validateFixedTracePricing,
 } from './fixed-trace-budget.js';
-import type { FixedTracePricing } from './fixed-trace-suite.js';
+import {
+  fixedTraceSuiteSha256,
+  type FixedTraceCase,
+  type FixedTracePricing,
+} from './fixed-trace-suite.js';
 
 /**
  * A planning-only contract. It has no dispatcher and is deliberately unable
@@ -167,12 +171,12 @@ export interface FixedTraceProtocolTrustedManifest {
   sourceId: string;
   sourceRevision: string;
   /**
-   * Evaluator-owned digest of the actual subset passed to the runner. It is
-   * not a canonical-suite constant and must be supplied as the repaired
-   * runner's `traceSuiteSha256` config before dispatch; post-hoc observation
-   * restamping is forbidden.
+   * Evaluator-owned digests of the actual subsets passed to the runner. They
+   * are not canonical-suite constants and must be supplied as the repaired
+   * runner's `traceSuite` and `traceSuiteSha256` config before dispatch;
+   * post-hoc observation restamping is forbidden.
    */
-  traceSuiteSha256: string;
+  traceSuiteSha256ByPhase: Readonly<Record<FixedTraceProtocolPhaseId, string>>;
   tracePackSha256: string;
   rawLedgerVersion: string;
   partitions: Readonly<Record<FixedTraceProtocolPhaseId, number>>;
@@ -190,6 +194,9 @@ export type FixedTraceProtocolTrustedManifestResolver =
 export interface FixedTraceProtocolRunnerBinding {
   trustedManifestId: string;
   protocolFingerprint: string;
+  phaseId: FixedTraceProtocolPhaseId;
+  /** Evaluator-owned subset, passed unchanged to the repaired runner. */
+  traceSuite: ReadonlyArray<FixedTraceCase>;
   /** Matches the repaired runner's required `traceSuiteSha256` config field. */
   traceSuiteSha256: string;
 }
@@ -377,13 +384,15 @@ export function assertFixedTraceEvaluationProtocolTrusted(
     || trusted.protocolFingerprint !== fixedTraceEvaluationProtocolFingerprint(protocol)
     || !trusted.sourceId.trim()
     || !trusted.sourceRevision.trim()
-    || !/^[a-f0-9]{64}$/.test(trusted.traceSuiteSha256)
     || !/^[a-f0-9]{64}$/.test(trusted.tracePackSha256)
     || !trusted.rawLedgerVersion.trim()
   ) throw new Error('Trusted evaluation manifest does not bind this protocol');
   for (const phase of protocol.phases) {
     if (trusted.partitions[phase.id] !== phase.uniqueCaseCount) {
       throw new Error(`Trusted evaluation manifest count mismatch for ${phase.id}`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(trusted.traceSuiteSha256ByPhase[phase.id])) {
+      throw new Error(`Trusted evaluation manifest suite hash is unavailable for ${phase.id}`);
     }
     if (phase.arms.some((arm) => arm.admission !== 'planning_only' && !trusted.verifiedAdmissions.includes(arm.admission))) {
       throw new Error(`Trusted evaluation manifest lacks an execution admission for ${phase.id}`);
@@ -395,12 +404,27 @@ export function assertFixedTraceEvaluationProtocolTrusted(
 export function fixedTraceEvaluationProtocolRunnerBinding(
   protocol: FixedTraceEvaluationProtocol,
   resolver: FixedTraceProtocolTrustedManifestResolver,
+  phaseId: FixedTraceProtocolPhaseId,
+  traceSuite: readonly FixedTraceCase[],
 ): FixedTraceProtocolRunnerBinding {
   const trusted = assertFixedTraceEvaluationProtocolTrusted(protocol, resolver);
+  const expectedCaseCount = trusted.partitions[phaseId];
+  if (
+    !Array.isArray(traceSuite)
+    || traceSuite.length !== expectedCaseCount
+    || traceSuite.some((trace) => typeof trace.id !== 'string' || !trace.id.trim())
+    || new Set(traceSuite.map((trace) => trace.id)).size !== traceSuite.length
+  ) throw new Error(`Evaluator-owned suite is invalid for ${phaseId}`);
+  const traceSuiteSha256 = fixedTraceSuiteSha256(traceSuite);
+  if (traceSuiteSha256 !== trusted.traceSuiteSha256ByPhase[phaseId]) {
+    throw new Error(`Evaluator-owned suite hash does not match trusted manifest for ${phaseId}`);
+  }
   return Object.freeze({
     trustedManifestId: trusted.id,
     protocolFingerprint: trusted.protocolFingerprint,
-    traceSuiteSha256: trusted.traceSuiteSha256,
+    phaseId,
+    traceSuite: Object.freeze([...traceSuite]),
+    traceSuiteSha256,
   });
 }
 
