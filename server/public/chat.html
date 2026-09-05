@@ -4721,7 +4721,7 @@
 
       async function submitFeedback(messageId, rating, category, tags, suggestion) {
         try {
-          await authFetch(`/api/addie/chat/${conversationId}/feedback`, {
+          await authFetch(`/api/addie/chat/${encodeURIComponent(conversationId)}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4791,7 +4791,7 @@
           btn.addEventListener('click', async () => {
             const rating = parseInt(btn.dataset.rating);
             try {
-              await authFetch(`/api/addie/chat/${conversationId}/feedback`, {
+              await authFetch(`/api/addie/chat/${encodeURIComponent(conversationId)}/feedback`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

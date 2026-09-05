@@ -887,6 +887,44 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(withFrag.status).toBe(400);
   });
 
+  it.each(['javascript:alert(1)', 'data:text/plain,agent', 'file:///tmp/agent'])(
+    'POST returns 400 for non-network agent URL %s',
+    async (url) => {
+      const orgId = `${TEST_PREFIX}_scheme_${url.slice(0, 4)}`;
+      const userId = `${orgId}_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, `scheme${url.slice(0, 4)}`);
+
+      (app as any).setCurrentUser(userId);
+      const res = await request(app)
+        .post('/api/me/agents')
+        .send({ url, type: 'sales' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('url must be a valid http or https URL');
+    },
+  );
+
+  it('POST returns 400 when url contains embedded credentials', async () => {
+    const orgId = `${TEST_PREFIX}_url_credentials`;
+    const userId = `${orgId}_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'urlcredentials');
+
+    (app as any).setCurrentUser(userId);
+    const credentialedUrl = new URL('https://agent.example.test/mcp');
+    credentialedUrl.username = 'test-user';
+    credentialedUrl.password = 'test-password';
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: credentialedUrl.toString(), type: 'sales' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('url must not contain credentials');
+  });
+
   it('POST returns 400 when url contains an embedded wildcard', async () => {
     const orgId = `${TEST_PREFIX}_canon_wild`;
     const userId = `${TEST_PREFIX}_canon_wild_user`;

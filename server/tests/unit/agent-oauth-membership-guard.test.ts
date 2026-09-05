@@ -128,6 +128,10 @@ const TEST_ORG_ID = 'org_123';
 const AGENT_CONTEXT_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_AGENT_URL = 'https://agent.example.com/mcp';
 
+function stateBinding(state: string): string {
+  return `v1.${Buffer.from(state, 'utf8').toString('base64url')}`;
+}
+
 function makeApp(stateCookie?: string) {
   const app = express();
   if (stateCookie) {
@@ -266,6 +270,11 @@ describe('GET /api/oauth/agent/start durable scope hint', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('https://auth.example.com/authorize');
+    const stateCookie = res.headers['set-cookie']?.find((cookie: string) =>
+      cookie.startsWith('adcp_oauth_state='),
+    );
+    expect(stateCookie).toContain(`adcp_oauth_state=${stateBinding('state_123')}`);
+    expect(stateCookie).not.toContain('adcp_oauth_state=state_123');
     expect(mcpAuthMocks.discoverOAuthProtectedResourceMetadata).toHaveBeenCalledWith(
       TEST_AGENT_URL,
       undefined,
@@ -360,7 +369,7 @@ describe('agent OAuth safe fetch injection', () => {
       persisted: true,
     });
 
-    await request(makeApp('state_123'))
+    await request(makeApp(stateBinding('state_123')))
       .get('/api/oauth/agent/callback')
       .query({ code: 'code_123', state: 'state_123' })
       .expect(302);
@@ -371,6 +380,49 @@ describe('agent OAuth safe fetch injection', () => {
       expectedState: 'state_123',
       fetch: oauthSafeFetch,
     }));
+  });
+
+  it('rejects a callback whose state does not match the browser binding', async () => {
+    const response = await request(makeApp(stateBinding('different_state')))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'code_123', state: 'state_123' })
+      .expect(302);
+
+    expect(response.headers.location).toContain('code=state_mismatch');
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+  });
+
+  it('rejects the legacy clear-text state cookie even when it matches the callback', async () => {
+    const response = await request(makeApp('state_123'))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'code_123', state: 'state_123' })
+      .expect(302);
+
+    expect(response.headers.location).toContain('code=state_mismatch');
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+  });
+
+  it('requires browser-bound state on provider error callbacks', async () => {
+    const response = await request(makeApp(stateBinding('different_state')))
+      .get('/api/oauth/agent/callback')
+      .query({ error: 'access_denied', state: 'state_123' })
+      .expect(302);
+
+    expect(response.headers.location).toContain('code=state_mismatch');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+  });
+
+  it('accepts a provider error callback with browser-bound state', async () => {
+    const response = await request(makeApp(stateBinding('state_123')))
+      .get('/api/oauth/agent/callback')
+      .query({ error: 'access_denied', error_description: 'User denied access', state: 'state_123' })
+      .expect(302);
+
+    expect(response.headers.location).toContain('success=false');
+    expect(response.headers.location).toContain('User%20denied%20access');
+    expect(response.headers['set-cookie']?.[0]).toContain('adcp_oauth_state=;');
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
   });
 
   it('passes the scoped fetcher to status discovery', async () => {
