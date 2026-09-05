@@ -33,7 +33,14 @@ import { deliverAndRecordDirectMessage, prepareSlackDirectMessagePost } from './
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type ProcessMessageOptions, type UserScopedToolsResult } from './claude-client.js';
+import {
+  AddieClaudeClient,
+  ADMIN_MAX_ITERATIONS,
+  CERTIFICATION_MAX_ITERATIONS,
+  type AddieResponse,
+  type ProcessMessageOptions,
+  type UserScopedToolsResult,
+} from './claude-client.js';
 import {
   buildSlackCostOptions,
   SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
@@ -3776,9 +3783,7 @@ export async function buildChannelResponseInvocation(input: {
     }
   }
 
-  return {
-    requestTools: profileTools,
-    processOptions: {
+  const processOptions: ProcessMessageOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
@@ -3800,7 +3805,30 @@ export async function buildChannelResponseInvocation(input: {
             maxIterations: 4,
           }
         : {}),
-    },
+      ...(officialDocsProfile && channelContext?.viewing_channel_is_private === false
+        ? {
+            // The private client assembly will mint an opaque capability from
+            // these authenticated channel facts. It has no dispatch consumer
+            // in this PR and is deliberately absent from persisted traces.
+            directReplayContractFacts: {
+              surface: 'slack_channel',
+              isAdmin: userIsAdmin,
+              threadId,
+              channelPrivacy: 'public',
+              replayPrincipal: userId,
+              caseId: threadId,
+              requestId: `${threadId}:${userId}`,
+              selectedToolSetNames: selectedToolSets,
+              selectedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+              expiresAt: Date.now() + 60_000,
+            },
+          }
+        : {}),
+    };
+
+  return {
+    requestTools: profileTools,
+    processOptions,
     effectiveModel,
     selectedToolSets,
     isAdmin: userIsAdmin,
