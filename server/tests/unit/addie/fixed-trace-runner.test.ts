@@ -423,7 +423,16 @@ describe('fixed trace artifact runner', () => {
       answerRubric: ['different grade label'],
     };
 
-    expect(decide(answerLeakingChanges)).toMatchObject(decide(obvious));
+    // `quickMatchRoutingContext` intentionally reports measured local latency.
+    // The routing decision must remain fixture-independent, but wall-clock
+    // timing is not part of that stable decision contract.
+    const withoutLatency = (decision: ReturnType<typeof decideFixedTraceHybridRoute>) => ({
+      ...decision,
+      plan: decision.plan === null
+        ? null
+        : (({ latency_ms: _latencyMs, ...plan }) => plan)(decision.plan),
+    });
+    expect(withoutLatency(decide(answerLeakingChanges))).toEqual(withoutLatency(decide(obvious)));
     expect(decide(obvious)).toMatchObject({
       mode: 'local_terminal', reason: 'production_quick_match_terminal', plan: { action: 'ignore' },
     });
