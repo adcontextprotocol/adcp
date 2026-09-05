@@ -208,34 +208,14 @@ describe("fixed-trace independent judge", () => {
     (candidate) => candidate.id === "knowledge-task-model",
   )!;
 
-  it("builds a blinded request without candidate model, provider, or run identity", () => {
-    const candidate = observation(trace.id);
-    const request = buildFixedTraceJudgeRequest(trace, candidate, {
-      model: "judge-model",
-      reasoningEffort: "none",
-      maxOutputTokens: 200,
+  it("refuses a blinded-request build before hostile candidate values are read", () => {
+    let reads = 0;
+    const candidate = new Proxy({}, {
+      get: () => { reads += 1; throw new Error("candidate getter must not run"); },
     });
-    const serialized = JSON.stringify(request);
-    expect(serialized).not.toContain("candidate-secret");
-    expect(serialized).not.toContain("anthropic");
-    expect(serialized).not.toContain(
-      "Official task lifecycle: if work is asynchronous",
-    );
-    expect(serialized).toContain("candidate_answer");
-    expect(serialized).toContain("Search synthetic official documentation.");
-    expect(serialized).toContain("task model");
-    expect(request.requestMetadata).toEqual({
-      purpose: "fixed_trace_blinded_judge",
-      trace_id: trace.id,
-    });
-    expect(request.outputSchema).toMatchObject({
-      name: "fixed_trace_judge_verdict",
-      strict: true,
-      schema: {
-        required: ["pass", "score", "reason", "finding"],
-        additionalProperties: false,
-      },
-    });
+    expect(() => buildFixedTraceJudgeRequest(new Proxy({}, {}) as FixedTraceCase, candidate as any, new Proxy({}, {}) as any))
+      .toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
+    expect(reads).toBe(0);
   });
 
   it("does not dispatch even a strict verdict without custodied calibration", async () => {
@@ -282,6 +262,19 @@ describe("fixed-trace independent judge", () => {
       status: "skipped",
       failureReason: "judge_calibration_not_admitted",
     });
+    expect(reads).toBe(0);
+  });
+
+  it("gates every exported judge entry before reading a proxy", async () => {
+    let reads = 0;
+    const hostile = new Proxy({}, {
+      get: () => { reads += 1; throw new Error("must not read caller data"); },
+      ownKeys: () => { reads += 1; throw new Error("must not enumerate caller data"); },
+    });
+    await expect(runIndependentFixedTraceJudges(hostile as any, hostile as any, hostile as any))
+      .rejects.toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
+    expect(() => summarizeFixedTraceJudges(hostile as any, hostile as any, hostile as any))
+      .toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
     expect(reads).toBe(0);
   });
 
@@ -466,7 +459,7 @@ describe("fixed-trace independent judge", () => {
       .resolves.toMatchObject({ status: "skipped", failureReason: "judge_calibration_not_admitted" });
     await expect(runIndependentFixedTraceJudges(
       [trace], [candidate], [config(onlyRemainingProvider)],
-    )).rejects.toThrow("privileged custodied calibration");
+    )).rejects.toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
     expect(sameRouterProvider.dispatches).toBe(0);
     expect(onlyRemainingProvider.dispatches).toBe(0);
   });
@@ -518,20 +511,9 @@ describe("fixed-trace independent judge", () => {
     );
     await expect(runIndependentFixedTraceJudges(
       [trace], [candidate], [config(openai), config(google)],
-    )).rejects.toThrow("privileged custodied calibration");
-    expect(
-      summarizeFixedTraceJudges([trace], [candidate], []),
-    ).toMatchObject({
-      expectedCases: 1,
-      expectedJudgments: 2,
-      observedJudgments: 0,
-      judgedJudgments: 0,
-      expectedRecordCountObserved: false,
-      judgmentCoverageRate: 0,
-      consensusPassRate: null,
-      disagreementRate: null,
-      comparisonEligible: false,
-    });
+    )).rejects.toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
+    expect(() => summarizeFixedTraceJudges([trace], [candidate], []))
+      .toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
   });
 
   it("rejects an incomplete independent judge panel before any judge dispatch", async () => {
@@ -545,7 +527,7 @@ describe("fixed-trace independent judge", () => {
         [observation(trace.id)],
         [config(openai)],
       ),
-    ).rejects.toThrow("privileged custodied calibration");
+    ).rejects.toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
     expect(openai.dispatches).toBe(0);
   });
 
@@ -561,14 +543,8 @@ describe("fixed-trace independent judge", () => {
     );
     await expect(runIndependentFixedTraceJudges(
       [trace], [candidate], [config(openai), config(google)],
-    )).rejects.toThrow("privileged custodied calibration");
-    expect(
-      summarizeFixedTraceJudges([trace], [candidate], []),
-    ).toMatchObject({
-      judgmentCoverageRate: 0,
-      consensusPassRate: null,
-      disagreementRate: null,
-      comparisonEligible: false,
-    });
+    )).rejects.toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
+    expect(() => summarizeFixedTraceJudges([trace], [candidate], []))
+      .toThrow(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
   });
 });

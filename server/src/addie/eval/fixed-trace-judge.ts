@@ -19,6 +19,10 @@ import type {
   FixedTraceCase,
   FixedTraceObservation,
 } from './fixed-trace-suite.js';
+import {
+  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+  fixedTraceEvaluationProtocolFingerprint,
+} from './fixed-trace-evaluation-protocol.js';
 
 export const FIXED_TRACE_JUDGE_PROMPT_VERSION = 'addie-fixed-trace-blinded-judge-v2';
 export const FIXED_TRACE_MIN_INDEPENDENT_JUDGES = 2;
@@ -34,8 +38,37 @@ export class FixedTraceJudgeAdmissionError extends Error {
     this.name = 'FixedTraceJudgeAdmissionError';
   }
 }
-function hasPrivilegedCustodiedCalibration(): boolean {
-  return false;
+/**
+ * Snapshot the A-owned admission prerequisites at module initialization. This
+ * slice owns no schedule, dated price cohort, evaluator custody, or calibrated
+ * judge authority. Any later issuer must replace this refusal with a sealed
+ * capability after validating the same unified A record, not caller booleans.
+ */
+const FIXED_TRACE_JUDGE_PREREQUISITE = Object.freeze({
+  protocolFingerprint: fixedTraceEvaluationProtocolFingerprint(
+    FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+  ),
+  finalProtocolStatus: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.status,
+  sizingPilotStatus: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.sizingPilot.status,
+  calibrationStatus: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.judgeCalibration.status,
+  pricingCohortDigest: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.prospectivePricingCohort.digest,
+  scheduleDigest: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.finalRandomization.scheduleDigest,
+  custodyStatus: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.externalPackCustody.status,
+} as const);
+
+function assertFixedTraceJudgePrerequisite(): void {
+  const finalProtocol = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol;
+  const drifted =
+    fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL)
+      !== FIXED_TRACE_JUDGE_PREREQUISITE.protocolFingerprint
+    || finalProtocol.status !== FIXED_TRACE_JUDGE_PREREQUISITE.finalProtocolStatus
+    || finalProtocol.sizingPilot.status !== FIXED_TRACE_JUDGE_PREREQUISITE.sizingPilotStatus
+    || finalProtocol.judgeCalibration.status !== FIXED_TRACE_JUDGE_PREREQUISITE.calibrationStatus
+    || finalProtocol.prospectivePricingCohort.digest !== FIXED_TRACE_JUDGE_PREREQUISITE.pricingCohortDigest
+    || finalProtocol.finalRandomization.scheduleDigest !== FIXED_TRACE_JUDGE_PREREQUISITE.scheduleDigest
+    || finalProtocol.externalPackCustody.status !== FIXED_TRACE_JUDGE_PREREQUISITE.custodyStatus;
+  if (drifted) throw new FixedTraceJudgeAdmissionError();
+  throw new FixedTraceJudgeAdmissionError();
 }
 
 const MAX_JUDGE_INPUT_BYTES = 24 * 1024;
@@ -222,6 +255,9 @@ export function buildFixedTraceJudgeRequest(
   candidate: Pick<FixedTraceObservation, 'output' | 'tools'>,
   config: Pick<FixedTraceJudgeConfig, 'model' | 'reasoningEffort' | 'maxOutputTokens'>,
 ): ModelRequest {
+  // This exported planning helper must not become an oracle for hostile
+  // caller objects while judge admission is unavailable.
+  assertFixedTraceJudgePrerequisite();
   const request: ModelRequest = {
     model: config.model,
     system: [{
@@ -388,60 +424,12 @@ function validateConfig(config: FixedTraceJudgeConfig): void {
   ) throw new Error('Judge pricing is invalid');
 }
 
+// Exposure interpretation belongs to C's sealed, authenticated evidence
+// boundary. B deliberately has no local cast or fallback interpretation.
 function candidateProviders(
-  observation: FixedTraceObservation,
+  _observation: FixedTraceObservation,
 ): ReadonlySet<ModelProviderId> | null {
-  const stages = [observation.metadata.router, observation.metadata.generation];
-  const providers = new Set<ModelProviderId>();
-  for (const stage of stages) {
-    // The suite ledger is populated by the runner layer.  Keep this evidence
-    // layer structurally independent of that optional metadata declaration so
-    // it can fail closed when an older or incomplete observation is supplied.
-    const exposureStage = stage as typeof stage & {
-      providerExposures?: readonly {
-        attempt: number;
-        preparedProvider: ModelProviderId;
-        preparedModel: string;
-        returnedProvider: ModelProviderId | null;
-        returnedModel: string | null;
-      }[];
-    };
-    const dispatchedCalls = stage.dispatchedCalls ?? 0;
-    if (!exposureStage.providerExposures) return null;
-    if (stage.source === 'provider' && exposureStage.providerExposures.length === 0) return null;
-    if (exposureStage.providerExposures.length !== dispatchedCalls) return null;
-    const attempts = new Set<number>();
-    const preparedIdentities = new Set<string>();
-    const returnedIdentities = new Set<string>();
-    for (const exposure of exposureStage.providerExposures) {
-      if (
-        !Number.isSafeInteger(exposure.attempt) ||
-        exposure.attempt < 1 ||
-        !exposure.preparedModel ||
-        exposure.attempt > dispatchedCalls ||
-        !isModelProviderId(exposure.preparedProvider) ||
-        (exposure.returnedProvider === null) !== (exposure.returnedModel === null) ||
-        (exposure.returnedProvider !== null && !isModelProviderId(exposure.returnedProvider)) ||
-        (exposure.returnedModel !== null && !exposure.returnedModel)
-      ) return null;
-      const preparedIdentity = `${exposure.preparedProvider}\u0000${exposure.preparedModel}`;
-      if (attempts.has(exposure.attempt)) return null;
-      attempts.add(exposure.attempt);
-      preparedIdentities.add(preparedIdentity);
-      providers.add(exposure.preparedProvider);
-      if (exposure.returnedProvider) {
-        returnedIdentities.add(`${exposure.returnedProvider}\u0000${exposure.returnedModel}`);
-        providers.add(exposure.returnedProvider);
-      }
-    }
-    if (
-      (stage.requestedProvider === null) !== (stage.requestedModel === null) ||
-      (stage.returnedProvider === null) !== (stage.returnedModel === null) ||
-      (stage.requestedProvider !== null && !preparedIdentities.has(`${stage.requestedProvider}\u0000${stage.requestedModel}`)) ||
-      (stage.returnedProvider !== null && !returnedIdentities.has(`${stage.returnedProvider}\u0000${stage.returnedModel}`))
-    ) return null;
-  }
-  return providers.size ? providers : null;
+  return null;
 }
 
 export async function judgeFixedTraceObservation(
@@ -451,7 +439,11 @@ export async function judgeFixedTraceObservation(
 ): Promise<FixedTraceJudgment> {
   // This integration draft has no custodied calibration authority. Refuse
   // before touching any caller-provided trace, observation, or adapter.
-  if (!hasPrivilegedCustodiedCalibration()) return notAdmittedJudgeResult();
+  try {
+    assertFixedTraceJudgePrerequisite();
+  } catch {
+    return notAdmittedJudgeResult();
+  }
   validateConfig(config);
   const startedAt = Date.now();
   let request: ModelRequest;
@@ -564,8 +556,7 @@ export async function runIndependentFixedTraceJudges(
   observations: ReadonlyArray<FixedTraceObservation>,
   judgeConfigs: ReadonlyArray<FixedTraceJudgeConfig>,
 ): Promise<FixedTraceJudgment[]> {
-  if (!hasPrivilegedCustodiedCalibration())
-    throw new Error('independent judge dispatch is not admitted without privileged custodied calibration');
+  assertFixedTraceJudgePrerequisite();
   const configsByProvider = new Map<ModelProviderId, FixedTraceJudgeConfig>();
   for (const config of judgeConfigs) {
     if (configsByProvider.has(config.provider.id)) throw new Error('Independent judges must use unique providers');
@@ -595,6 +586,7 @@ export function summarizeFixedTraceJudges(
   observations: ReadonlyArray<FixedTraceObservation>,
   judgments: ReadonlyArray<FixedTraceJudgment>,
 ): FixedTraceJudgeSummary {
+  assertFixedTraceJudgePrerequisite();
   const applicable = suite.filter((trace) => (trace.answerRubric?.length ?? 0) > 0);
   const applicableIds = new Set(applicable.map((trace) => trace.id));
   const candidateProviderIds = new Map(observations.map((observation) => [
@@ -639,7 +631,6 @@ export function summarizeFixedTraceJudges(
   const ratio = (count: number, denominator: number) => denominator === 0 ? 0 : count / denominator;
   const judgedJudgments = judgments.filter((judgment) => judgment.status === 'judged').length;
   const comparisonEligible = applicable.length > 0
-    && hasPrivilegedCustodiedCalibration()
     && completeCases.every(Boolean)
     && judgments.length === expectedJudgments
     && totalEstimatedCostUsd !== null;
