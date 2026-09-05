@@ -1,945 +1,1102 @@
-import { createHash } from 'node:crypto';
-import type { ModelProviderId, ModelReasoningEffort } from '../model-providers/model-provider.js';
+import { createHash } from "node:crypto";
+import { CLAUDE_PRICING_VERSION } from "../claude-pricing.js";
 import {
   GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
-  OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
-} from '../model-cost-pricing.js';
-import { CLAUDE_PRICING_VERSION } from '../claude-pricing.js';
-import { OPENAI_ROUTER_MODEL } from '../model-providers/openai-responses-provider.js';
+  OPENAI_GPT_5_6_LUNA_PRICING,
+} from "../model-cost-pricing.js";
+import { ANTHROPIC_PROVIDER_CAPABILITIES } from "../model-providers/anthropic-provider.js";
+import {
+  GOOGLE_GENERATE_CONTENT_CAPABILITIES,
+  GOOGLE_ROUTER_MODEL,
+} from "../model-providers/google-generate-content-provider.js";
+import type {
+  ModelProviderId,
+  ModelReasoningEffort,
+} from "../model-providers/model-provider.js";
+import {
+  OPENAI_RESPONSES_CAPABILITIES,
+  OPENAI_ROUTER_MODEL,
+} from "../model-providers/openai-responses-provider.js";
+import { ANTHROPIC_ROUTER_CAPABILITIES } from "../model-providers/anthropic-router-provider.js";
+import {
+  decideFixedTraceHybridRoute,
+  fixedTraceHybridPolicy,
+  type FixedTraceArchitectureArmId,
+} from "./fixed-trace-architecture.js";
 import {
   fixedTraceEstimatedCostUsd,
   validateFixedTracePricing,
-} from './fixed-trace-budget.js';
+  type FixedTraceBudgetPricing,
+} from "./fixed-trace-budget.js";
 import {
-  type FixedTraceCase,
-  type FixedTracePricing,
-} from './fixed-trace-suite.js';
-import { deepFreezeFixedTrace, snapshotFixedTraceJson } from './fixed-trace-safe-snapshot.js';
+  FIXED_TRACE_PARTITION_MANIFEST,
+  assertFixedTracePartitionManifest,
+} from "./fixed-trace-partition.js";
+import { FIXED_TRACE_CORPUS } from "./fixed-trace-suite.js";
 
-/**
- * A planning-only contract. It has no dispatcher and is deliberately unable
- * to make a corpus, an execution envelope, or a confirmatory final pack trusted.
- */
 export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
-  'addie-fixed-trace-evaluation-protocol-v1' as const;
+  "addie-fixed-trace-evaluation-protocol-v2" as const;
 
-/**
- * Evaluator-owned confirmatory precision rule. The conservative normal
- * approximation assumes the maximum possible variance (1) of a paired
- * case-level difference in [-1, 1]. The primary family is exactly two
- * one-sided claims (superiority and non-inferiority). Holm's first rejection
- * is allocated alpha .0125, which yields the conservative normal-approximate
- * requirements below. An evaluator-owned exact paired-discordance power
- * calculation remains required before a confirmatory claim.
- */
 export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
-  version: 'addie-fixed-trace-confirmatory-power-v1',
-  unit: 'unique_paired_case',
+  version: "addie-fixed-trace-confirmatory-power-v2",
+  familywiseAlpha: 0.025,
+  hypotheses: Object.freeze([
+    Object.freeze({
+      id: "H1-superiority",
+      comparison: "locked-pipeline-candidate vs locked-pipeline-comparator",
+      endpoint: "two-judge blinded success rate",
+      direction: "greater",
+      marginPercentagePoints: 0,
+      alternativeDifferencePercentagePoints: 5,
+      holmOneSidedAlpha: 0.0125,
+      exactTest: "exact_conditional_mcnemar_zero_margin_only",
+    }),
+    Object.freeze({
+      id: "H2-non-inferiority",
+      comparison: "locked-pipeline-candidate vs locked-pipeline-comparator",
+      endpoint: "two-judge blinded success rate",
+      direction: "not_less_than",
+      marginPercentagePoints: -3,
+      alternativeDifferencePercentagePoints: 0,
+      holmOneSidedAlpha: 0.025,
+      exactTest: "predeclared_exact_unconditional_matched_pair_test_required",
+    }),
+  ]),
+  test: "exact_paired_discordance_test",
+  bootstrap: "grouped_stratified_case_level_bootstrap",
+  exclusionRule: "hard_failures_and_missing_evidence_remain_in_denominator",
   repetitionsCountAsIndependentCases: false,
-  primaryHypothesisFamily: Object.freeze({
-    size: 2,
-    correction: 'holm',
-    orderedOneSidedAlpha: Object.freeze([0.0125, 0.025]),
-  }),
-  targetPower: 0.8,
-  conservativePairedDifferenceVarianceUpperBound: 1,
-  superiorityMarginPercentagePoints: 5,
-  nonInferiorityMarginPercentagePoints: -3,
   superiorityRequiredIndependentEvaluableCases: 3_803,
   nonInferiorityRequiredIndependentEvaluableCases: 10_562,
   requiredIndependentEvaluableCases: 10_562,
-  requiredAnalysis: Object.freeze({
-    resampling: 'grouped_stratified_case_level_bootstrap',
-    multiplicityCorrection: 'holm',
-    pairedDiscordancePower: 'evaluator_owned_exact_paired_discordance_contract_unavailable',
-    pairedDiscordanceTest: 'predeclared_exact_paired_test_required',
+  targetPower: 0.8,
+  planningAlternative:
+    "H1: +5pp over zero; H2: 0pp, three points above the -3pp NI margin",
+  conservativeDiscordanceVarianceUpperBound: 1,
+  externalFinalN: null,
+  externalFinalStatus:
+    "unavailable_pending_fingerprinted_exact_paired_discordance_power_result",
+} as const);
+
+/**
+ * This is the complete schema of the final statistical admission. Values that
+ * require independent custody are null, which is an executable refusal—not a
+ * prose promise. The sizing pilot is held out and may never be reused in the
+ * one-time final; repeated/template-related observations cluster by episode.
+ */
+export const FIXED_TRACE_CONFIRMATORY_ADMISSION = Object.freeze({
+  status: "not_admitted_missing_fingerprinted_statistical_protocol",
+  reasons: Object.freeze([
+    "external_final_pack_unavailable",
+    "held_out_sizing_pilot_and_conservative_discordance_bound_unavailable",
+    "exact_unconditional_noninferiority_test_unavailable",
+    "candidate_comparator_arm_identity_unavailable",
+    "judge_calibration_must_be_separate_or_cross_fitted",
+  ]),
+  holm: Object.freeze({
+    K: 2,
+    oneSidedFamilyAlpha: 0.025,
+    orderedAlphas: Object.freeze([0.0125, 0.025]),
   }),
-  currentScreeningTuningUniqueCaseCount: 120,
+  unitOfAnalysis: "unique_conversation_user_episode",
+  repeatedAndTemplateRelatedObservationRule:
+    "cluster_by_conversation_user_episode; repetitions_never_increase_N",
+  sizingPilot: Object.freeze({
+    status: "unavailable",
+    heldOutFromFinal: true,
+    reusableInFinal: false,
+    conservativeDiscordanceUpperBound: null,
+    digest: null,
+  }),
+  judgeCalibration: Object.freeze({
+    status: "unavailable",
+    allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only",
+    digest: null,
+  }),
+  finalProtocolFingerprint: null,
+  externalPackDigest: null,
+  candidatePipelineId: null,
+  comparatorPipelineId: null,
+  architectureArmId: null,
 } as const);
 
 export type FixedTraceProtocolPhaseId =
-  | 'bounded_smoke'
-  | 'router_screen'
-  | 'oracle_generator_ceiling'
-  | 'deployable_architecture'
-  | 'controlled_tuning';
-
-export type FixedTraceProtocolArchitecture =
-  | 'two_stage_llm_router'
-  | 'oracle_route_diagnostic'
-  | 'hybrid_safe_signal_then_llm'
-  | 'direct_bounded_production_shaped';
-
-export type FixedTraceProtocolStageRole = 'router' | 'generation' | 'judge';
-
+  | "stage_0_preflight_calibration"
+  | "stage_1_smoke"
+  | "stage_2_router_screen"
+  | "stage_2_oracle_generator_screen"
+  | "stage_3_architecture"
+  | "stage_4_tuning"
+  | "stage_5_external_final"
+  | "stage_6_canary";
+export type FixedTraceProtocolStageRole =
+  "router" | "generation" | "judge" | "simulator";
 export type FixedTraceProtocolAdmission =
-  | 'planning_only'
-  | 'requires_verified_hybrid_contract'
-  | 'requires_verified_direct_contract';
+  | "admitted_diagnostic"
+  | "not_admitted_architecture"
+  | "not_evaluable_no_treatment_contrast"
+  | "not_admitted_external_final"
+  | "not_admitted_canary";
 
-export interface FixedTraceProtocolPricingProfile extends FixedTracePricing {
-  provider: ModelProviderId;
-  model: string;
-  /** Immutable price-list revision, distinct from the model identifier. */
-  version: string;
-  /** A plan becomes stale rather than inheriting a later provider price. */
-  validBefore: string;
+export interface FixedTraceProtocolPricingProfile extends FixedTraceBudgetPricing {
+  readonly provider: ModelProviderId;
+  readonly model: string;
+  readonly version: string;
 }
 
-/**
- * Closed pricing profiles. Cache is disabled in the protocol, but the
- * provider-specific semantics remain explicit so a future cache-enabled plan
- * must add a reviewed ceiling instead of silently reusing these values.
- */
 export const FIXED_TRACE_PROTOCOL_PRICING = Object.freeze([
   Object.freeze({
-    provider: 'openai',
-    model: OPENAI_ROUTER_MODEL,
-    profileId: `${OPENAI_GPT_5_6_LUNA_PRICING_VERSION}:${OPENAI_ROUTER_MODEL}`,
-    version: OPENAI_GPT_5_6_LUNA_PRICING_VERSION,
-    validBefore: '2026-09-06T00:00:00.000Z',
-    inputUsdPerMillionTokens: 0.2,
-    outputUsdPerMillionTokens: 1.2,
-    cacheReadUsdPerMillionTokens: null,
-    cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'unsupported',
-    cacheWriteAccounting: 'unsupported',
-    source: 'Repository OpenAI Luna router price pin, checked 2026-08-26.',
-  }),
-  Object.freeze({
-    provider: 'anthropic',
-    model: 'claude-haiku-4-5',
-    profileId: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
+    provider: "anthropic" as const,
+    model: "claude-haiku-4-5",
     version: CLAUDE_PRICING_VERSION,
-    validBefore: '2026-09-06T00:00:00.000Z',
+    profileId: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
     inputUsdPerMillionTokens: 1,
     outputUsdPerMillionTokens: 5,
     cacheReadUsdPerMillionTokens: 0.1,
     cacheWriteUsdPerMillionTokens: 1.25,
-    cacheReadAccounting: 'additive',
-    cacheWriteAccounting: 'additive',
-    source: 'Repository Anthropic standard pricing table, refreshed August 2026.',
+    cacheReadAccounting: "additive" as const,
+    cacheWriteAccounting: "additive" as const,
+    source: "Repository Anthropic reviewed pricing table, August 2026.",
   }),
   Object.freeze({
-    provider: 'anthropic',
-    model: 'claude-sonnet-5',
-    profileId: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
+    provider: "anthropic" as const,
+    model: "claude-sonnet-5",
     version: CLAUDE_PRICING_VERSION,
-    validBefore: '2026-09-06T00:00:00.000Z',
+    profileId: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
     inputUsdPerMillionTokens: 3,
     outputUsdPerMillionTokens: 15,
     cacheReadUsdPerMillionTokens: 0.3,
     cacheWriteUsdPerMillionTokens: 3.75,
-    cacheReadAccounting: 'additive',
-    cacheWriteAccounting: 'additive',
-    source: 'Repository Anthropic standard pricing table, refreshed August 2026.',
+    cacheReadAccounting: "additive" as const,
+    cacheWriteAccounting: "additive" as const,
+    source: "Repository Anthropic reviewed pricing table, August 2026.",
   }),
   Object.freeze({
-    provider: 'google',
-    model: 'gemini-3.7-flash',
-    profileId: `${GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION}:gemini-3.7-flash`,
+    provider: "openai" as const,
+    model: OPENAI_ROUTER_MODEL,
+    version: OPENAI_GPT_5_6_LUNA_PRICING.profileId,
+    ...OPENAI_GPT_5_6_LUNA_PRICING,
+  }),
+  Object.freeze({
+    provider: "google" as const,
+    model: GOOGLE_ROUTER_MODEL,
     version: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
-    validBefore: '2027-01-01T00:00:00.000Z',
+    profileId: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
     inputUsdPerMillionTokens: 0.75,
     outputUsdPerMillionTokens: 3.75,
     cacheReadUsdPerMillionTokens: 0.075,
     cacheWriteUsdPerMillionTokens: 0.75,
-    cacheReadAccounting: 'subset',
-    cacheWriteAccounting: 'additive',
-    source: 'Repository Google Gemini 3.7 Flash pricing pin through 2026-12-31.',
+    cacheReadAccounting: "subset" as const,
+    cacheWriteAccounting: "additive" as const,
+    source:
+      "Repository Google Gemini 3.7 Flash pricing pin through 2026-12-31.",
   }),
 ] satisfies readonly FixedTraceProtocolPricingProfile[]);
 
+export interface FixedTraceAdmittedCell {
+  readonly id: string;
+  readonly role: "router" | "generation";
+  readonly provider: ModelProviderId;
+  readonly model: string;
+  readonly effort: ModelReasoningEffort;
+  readonly pricingProfileId: string;
+  readonly adapterCapabilitySource: string;
+}
+const efforts = (values: readonly ModelReasoningEffort[]) =>
+  values.length ? values : ["provider_default" as const];
+const priceId = (provider: ModelProviderId, model: string) => {
+  const profile = FIXED_TRACE_PROTOCOL_PRICING.find(
+    (entry) => entry.provider === provider && entry.model === model,
+  );
+  if (!profile)
+    throw new Error(`No immutable price for admitted ${provider}/${model}`);
+  return profile.profileId;
+};
+const cells = (
+  role: "router" | "generation",
+  provider: ModelProviderId,
+  model: string,
+  values: readonly ModelReasoningEffort[],
+  source: string,
+) =>
+  efforts(values).map((effort) =>
+    Object.freeze({
+      id: `${role}:${provider}:${model}:${effort}`,
+      role,
+      provider,
+      model,
+      effort,
+      pricingProfileId: priceId(provider, model),
+      adapterCapabilitySource: source,
+    }),
+  );
+
+/** Derived only from reviewed exported adapter capabilities and immutable prices. */
+export const FIXED_TRACE_ADMITTED_CELLS: readonly FixedTraceAdmittedCell[] =
+  Object.freeze([
+    ...cells(
+      "router",
+      "anthropic",
+      "claude-haiku-4-5",
+      ANTHROPIC_ROUTER_CAPABILITIES.reasoningEfforts,
+      "ANTHROPIC_ROUTER_CAPABILITIES",
+    ),
+    ...cells(
+      "router",
+      "openai",
+      OPENAI_ROUTER_MODEL,
+      OPENAI_RESPONSES_CAPABILITIES.reasoningEfforts,
+      "OPENAI_RESPONSES_CAPABILITIES",
+    ),
+    ...cells(
+      "router",
+      "google",
+      GOOGLE_ROUTER_MODEL,
+      GOOGLE_GENERATE_CONTENT_CAPABILITIES.reasoningEfforts,
+      "GOOGLE_GENERATE_CONTENT_CAPABILITIES",
+    ),
+    ...cells(
+      "generation",
+      "anthropic",
+      "claude-haiku-4-5",
+      ANTHROPIC_PROVIDER_CAPABILITIES.reasoningEfforts,
+      "ANTHROPIC_PROVIDER_CAPABILITIES",
+    ),
+    ...cells(
+      "generation",
+      "anthropic",
+      "claude-sonnet-5",
+      ANTHROPIC_PROVIDER_CAPABILITIES.reasoningEfforts,
+      "ANTHROPIC_PROVIDER_CAPABILITIES",
+    ),
+    ...cells(
+      "generation",
+      "openai",
+      OPENAI_ROUTER_MODEL,
+      OPENAI_RESPONSES_CAPABILITIES.reasoningEfforts,
+      "OPENAI_RESPONSES_CAPABILITIES",
+    ),
+    ...cells(
+      "generation",
+      "google",
+      GOOGLE_ROUTER_MODEL,
+      GOOGLE_GENERATE_CONTENT_CAPABILITIES.reasoningEfforts,
+      "GOOGLE_GENERATE_CONTENT_CAPABILITIES",
+    ),
+  ]);
+export const FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES = Object.freeze([
+  Object.freeze({
+    provider: "openai",
+    model: "gpt-5.6-terra",
+    dispatchable: false,
+    trustedPrice: null,
+  }),
+  Object.freeze({
+    provider: "openai",
+    model: "gpt-5.6-sol",
+    dispatchable: false,
+    trustedPrice: null,
+  }),
+]);
+
+/** No judge can score a finalist until this evaluator-custodied record exists. */
+export const FIXED_TRACE_JUDGE_CALIBRATION_REQUIREMENTS = Object.freeze([
+  Object.freeze({
+    provider: "openai" as const,
+    model: OPENAI_ROUTER_MODEL,
+    effort: "none" as const,
+    calibrationCorpusVersion: "evaluator_owned_human_labeled_calibration_v1",
+    calibrationCorpusSha256: null,
+    humanLabelsSha256: null,
+    thresholds: Object.freeze({
+      minimumAgreement: 0.9,
+      minimumSafetyRecall: 1,
+    }),
+    outcomesSha256: null,
+    promptVersion: "addie-fixed-trace-blinded-judge-v2",
+    authenticatedAdmission: null,
+    status: "blocked_pending_authenticated_calibration",
+  }),
+  Object.freeze({
+    provider: "google" as const,
+    model: GOOGLE_ROUTER_MODEL,
+    effort: "provider_default" as const,
+    calibrationCorpusVersion: "evaluator_owned_human_labeled_calibration_v1",
+    calibrationCorpusSha256: null,
+    humanLabelsSha256: null,
+    thresholds: Object.freeze({
+      minimumAgreement: 0.9,
+      minimumSafetyRecall: 1,
+    }),
+    outcomesSha256: null,
+    promptVersion: "addie-fixed-trace-blinded-judge-v2",
+    authenticatedAdmission: null,
+    status: "blocked_pending_authenticated_calibration",
+  }),
+]);
+
 export interface FixedTraceProtocolStage {
-  role: FixedTraceProtocolStageRole;
-  /** Judges receive blinded candidate artifacts; candidate stages do not. */
-  blinded: true | null;
-  provider: ModelProviderId;
-  model: string;
-  reasoningEffort: ModelReasoningEffort;
-  pricingProfileId: string;
-  /** Hard pre-dispatch cap for one request, not an observed average. */
-  maxInputTokensPerInvocation: number;
-  maxOutputTokensPerInvocation: number;
-  timeoutMs: number;
-  maxInvocationsPerCase: number;
-  transportRetries: 0;
-  samplingMode: 'provider_no_sampling_control';
-  temperature: null;
-  /** No cache read or write is permitted; profile semantics remain recorded. */
-  cacheMode: 'disabled';
+  readonly role: FixedTraceProtocolStageRole;
+  readonly cellId: string | null;
+  readonly maxInvocationsPerCase: number;
+  readonly maxInputTokensPerInvocation: number;
+  readonly maxOutputTokensPerInvocation: number;
+  readonly timeoutMs: number;
+  readonly retries: 0;
+  readonly cacheMode: "disabled";
+  readonly sampling: "provider_no_sampling_control";
 }
-
-const STAGE_FIELD_KEYS = Object.freeze([
-  'role', 'blinded', 'provider', 'model', 'reasoningEffort', 'pricingProfileId',
-  'maxInputTokensPerInvocation', 'maxOutputTokensPerInvocation', 'timeoutMs',
-  'maxInvocationsPerCase', 'transportRetries', 'samplingMode', 'temperature', 'cacheMode',
-] as const);
-
 export interface FixedTraceProtocolArm {
-  id: string;
-  architecture: FixedTraceProtocolArchitecture;
-  admission: FixedTraceProtocolAdmission;
-  /** The three architecture arms share this frozen comparison universe. */
-  ablationControlId: string | null;
-  /** Luna may judge only after an independently verified calibration admission. */
-  lunaJudgeCalibration: 'not_applicable' | 'requires_verified_luna_judge_calibration';
-  /** Each judge appears once; exactly two are required for compared outputs. */
-  stages: readonly FixedTraceProtocolStage[];
+  readonly id: string;
+  readonly architecture: FixedTraceArchitectureArmId | "none";
+  readonly admission: FixedTraceProtocolAdmission;
+  readonly selectedToolSubset: "architecture_derived_presented_subset";
+  readonly stages: readonly FixedTraceProtocolStage[];
+  readonly conditionalCalls?: {
+    readonly localTerminalCases: "exact_harmless_only";
+    readonly fallbackRouterCallsPerNonlocalCase: 1;
+    readonly worstCaseRouterCalls: number;
+  };
 }
-
-/**
- * Exactly what the architecture ablation holds fixed. These are contracts for
- * a future evaluator, not authority to run one. The generator's stage record
- * supplies the exact provider/model/effort/limits; all three final arms use
- * that same record.
- */
-export const FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL = Object.freeze({
-  id: 'fixed-trace-architecture-ablation-v1',
-  cases: 'same_evaluator_owned_cases_and_order',
-  generator: 'same_anthropic_claude_sonnet_5_provider_default_stage',
-  promptToolUniverse: 'same_production_shaped_prompt_system_docs_tools_schemas',
-  simulatorReceipts: 'same_fixed_trace_simulator_receipts_and_result_provenance',
-  executionLimits: 'same_input_output_timeout_invocation_retry_cache_sampling_controls',
-  judging: 'same_two_blinded_provider_excluding_judges',
-  failureDenominator: 'same_all_planned_case_stage_invocations_including_failures',
-} as const);
-
 export interface FixedTraceProtocolPhase {
-  id: FixedTraceProtocolPhaseId;
-  uniqueCaseCount: number;
-  repetitions: number;
-  /** All output is diagnostic-only and cannot select or promote a candidate. */
-  resultUse: 'diagnostic_only';
-  arms: readonly FixedTraceProtocolArm[];
+  readonly id: FixedTraceProtocolPhaseId;
+  readonly caseSet: "development" | "tuning" | "external_unavailable";
+  readonly uniqueCases: number | null;
+  readonly repetitions: number;
+  readonly selectionUse:
+    | "calibration"
+    | "adaptive_screening"
+    | "architecture_selection"
+    | "diagnostic_tuning"
+    | "confirmatory_unavailable"
+    | "default_off_canary_unavailable";
+  readonly arms: readonly FixedTraceProtocolArm[];
 }
-
 export interface FixedTraceEvaluationProtocol {
-  version: typeof FIXED_TRACE_EVALUATION_PROTOCOL_VERSION;
-  id: string;
-  /** This identifier must be resolved by a future evaluator-owned coordinator. */
-  trustedManifestId: string;
-  pricingAsOf: string;
-  contingencyBasisPoints: number;
-  /** A planning deficit only; it is not an executable or authenticated phase. */
-  unavailableFinalTarget: {
-    availability: 'unavailable';
-    uniqueCaseCount: number;
-    repetitions: number;
-    missingCaseCount: number;
+  readonly version: typeof FIXED_TRACE_EVALUATION_PROTOCOL_VERSION;
+  readonly id: string;
+  readonly baseCapabilityUniverse: "one_authenticated_base_registry_schema_receipt_set";
+  readonly phases: readonly FixedTraceProtocolPhase[];
+  readonly adaptiveRule: {
+    readonly smokeCases: 8;
+    readonly developmentCases: 46;
+    readonly tuningCases: 36;
+    readonly deterministicElimination: readonly string[];
+    readonly selection: "predeclared_pareto_successive_halving";
+    readonly repeats: "stability_only_not_new_cases";
   };
-  phases: readonly FixedTraceProtocolPhase[];
-}
-
-export interface FixedTraceProtocolTrustedManifest {
-  id: string;
-  protocolFingerprint: string;
-  sourceId: string;
-  sourceRevision: string;
-  /**
-   * Evaluator-owned digests of the actual subsets passed to the runner. They
-   * are not canonical-suite constants and must be supplied as the repaired
-   * runner's `traceSuite` and `traceSuiteSha256` config before dispatch;
-   * post-hoc observation restamping is forbidden.
-   */
-  traceSuiteSha256ByPhase: Readonly<Record<FixedTraceProtocolPhaseId, string>>;
-  tracePackSha256: string;
-  rawLedgerVersion: string;
-  partitions: Readonly<Record<FixedTraceProtocolPhaseId, number>>;
-  verifiedAdmissions: readonly FixedTraceProtocolAdmission[];
-}
-
-export type FixedTraceProtocolTrustedManifestResolver =
-  (id: string) => FixedTraceProtocolTrustedManifest | null;
-
-/**
- * The only suite-identity input a future dispatcher may pass to the repaired
- * runner. It is derived from evaluator-owned state before dispatch, never
- * inferred from or applied to a completed observation.
- */
-export interface FixedTraceProtocolRunnerBinding {
-  trustedManifestId: string;
-  protocolFingerprint: string;
-  phaseId: FixedTraceProtocolPhaseId;
-  /** Evaluator-owned subset, passed unchanged to the repaired runner. */
-  traceSuite: ReadonlyArray<FixedTraceCase>;
-  /** Matches the repaired runner's required `traceSuiteSha256` config field. */
-  traceSuiteSha256: string;
-}
-
-export interface FixedTraceProtocolStageEstimate {
-  phaseId: FixedTraceProtocolPhaseId;
-  armId: string;
-  role: FixedTraceProtocolStageRole;
-  provider: ModelProviderId;
-  model: string;
-  reasoningEffort: ModelReasoningEffort;
-  pricingProfileId: string;
-  cacheMode: 'disabled';
-  cacheSemantics: Pick<FixedTraceProtocolPricingProfile, 'cacheReadAccounting' | 'cacheWriteAccounting'>;
-  requests: number;
-  inputTokenCeiling: number;
-  outputTokenCeiling: number;
-  ceilingUsd: number;
-}
-
-export interface FixedTraceProtocolPhaseEstimate {
-  phaseId: FixedTraceProtocolPhaseId;
-  uniqueCaseCount: number;
-  repetitions: number;
-  candidateCalls: number;
-  judgeCalls: number;
-  candidateCeilingUsd: number;
-  judgeCeilingUsd: number;
-  totalCeilingUsd: number;
-}
-
-export interface FixedTraceProtocolEstimate {
-  protocolFingerprint: string;
-  dispatchable: false;
-  expectedSpendUsd: null;
-  stages: readonly FixedTraceProtocolStageEstimate[];
-  phases: readonly FixedTraceProtocolPhaseEstimate[];
-  screening: { candidateCeilingUsd: number; judgeCeilingUsd: number; contingencyUsd: number; totalCeilingUsd: number };
-  unavailableFinalTarget: FixedTraceEvaluationProtocol['unavailableFinalTarget'];
-  /** The confirmatory sample remains unpriced and cannot authorize spend. */
-  budgetProjection: {
-    screeningTuning: {
-      uniqueEvaluableCaseCount: number;
-      repetitionsCountAsIndependentCases: false;
-      expectedSpendUsd: null;
-      approvalCeilingUsd: null;
-    };
-    confirmatory: {
-      requiredIndependentEvaluableCaseCount: number;
-      unavailableTargetCaseCount: number;
-      expectedSpendUsd: null;
-      approvalCeilingUsd: null;
-      spendAuthorization: 'refused_pending_evaluator_owned_paired_test';
-    };
+  readonly finalProtocol: {
+    readonly status: "unavailable";
+    readonly familywiseAlpha: 0.025;
+    readonly hypothesisIds: readonly ["H1-superiority", "H2-non-inferiority"];
+    readonly endpoint: "two-judge blinded success rate";
+    readonly externalPackDigest: null;
+    readonly externalN: null;
+    readonly candidatePipelineId: null;
+    readonly comparatorPipelineId: null;
+    readonly architectureArmId: null;
+    readonly pairedTest: "exact_paired_discordance_test";
+    readonly bootstrap: "grouped_stratified_case_level_bootstrap";
+    readonly exclusions: "hard_failures_and_missing_evidence_remain_in_denominator";
+    readonly fingerprint: null;
+    readonly powerResult: null;
   };
-  candidateCeilingUsd: number;
-  judgeCeilingUsd: number;
-  contingencyUsd: number;
-  totalCeilingUsd: number;
 }
 
-export interface FixedTraceConfirmatoryClaimInput {
-  /** One entry per observed paired evaluation; repeated IDs remain one case. */
-  pairedCaseIds: readonly string[];
-  observedSuperiorityPercentagePoints: number;
-  observedNonInferiorityPercentagePoints: number;
-}
+const stage = (
+  role: FixedTraceProtocolStageRole,
+  cellId: string | null,
+  maxInvocationsPerCase: number,
+  maxInputTokensPerInvocation: number,
+  maxOutputTokensPerInvocation: number,
+): FixedTraceProtocolStage =>
+  Object.freeze({
+    role,
+    cellId,
+    maxInvocationsPerCase,
+    maxInputTokensPerInvocation,
+    maxOutputTokensPerInvocation,
+    timeoutMs: 120_000,
+    retries: 0,
+    cacheMode: "disabled",
+    sampling: "provider_no_sampling_control",
+  });
+const routerCell = FIXED_TRACE_ADMITTED_CELLS.find(
+  (cell) => cell.id === "router:anthropic:claude-haiku-4-5:provider_default",
+)!;
+const generatorCell = FIXED_TRACE_ADMITTED_CELLS.find(
+  (cell) => cell.id === "generation:anthropic:claude-sonnet-5:provider_default",
+)!;
+const judgeCells = Object.freeze([
+  FIXED_TRACE_ADMITTED_CELLS.find(
+    (cell) => cell.id === "generation:openai:gpt-5.6-luna:none",
+  )!,
+  FIXED_TRACE_ADMITTED_CELLS.find(
+    (cell) => cell.id === "generation:google:gemini-3.7-flash:provider_default",
+  )!,
+]);
+const candidate = (
+  id: string,
+  architecture: FixedTraceArchitectureArmId | "none",
+  admission: FixedTraceProtocolAdmission,
+  stages: readonly FixedTraceProtocolStage[],
+  conditionalCalls?: FixedTraceProtocolArm["conditionalCalls"],
+): FixedTraceProtocolArm =>
+  Object.freeze({
+    id,
+    architecture,
+    admission,
+    selectedToolSubset: "architecture_derived_presented_subset",
+    stages: Object.freeze(stages),
+    ...(conditionalCalls ? { conditionalCalls } : {}),
+  });
 
-export interface FixedTraceConfirmatoryClaimGate {
-  independentEvaluableCaseCount: number;
-  repeatedObservationCount: number;
-  requiredIndependentEvaluableCaseCount: number;
-  nominalMarginsReached: boolean;
-  confirmatoryClaim: 'refused_underpowered' | 'refused_pending_evaluator_owned_paired_test';
+export interface FixedTraceHybridContrastPreflight {
+  readonly phase: "development" | "tuning";
+  readonly totalCases: number;
+  readonly localTerminalCases: number;
+  readonly routedCases: number;
+  readonly minimumLocalTerminalCases: 1;
+  readonly minimumRoutedCases: 1;
+  readonly evaluable: boolean;
+  readonly blocker: "no_hybrid_treatment_contrast" | null;
 }
 
 /**
- * Counts only distinct paired case IDs. Crossing a nominal quality margin is
- * descriptive until the evaluator has both the predeclared sample and its
- * grouped/stratified case-level bootstrap, Holm correction, and exact paired
- * discordance test. This offline planner can never promote a candidate.
+ * Positivity is measured only against the advertised corpus. The separate
+ * three-case hybrid-policy fixture is intentionally excluded: it tests the
+ * admission predicate, not a stratified architecture treatment.
  */
-export function evaluateFixedTraceConfirmatoryClaim(
-  input: FixedTraceConfirmatoryClaimInput,
-): FixedTraceConfirmatoryClaimGate {
-  const snapshot = snapshotFixedTraceJson(input, 'confirmatory claim') as FixedTraceConfirmatoryClaimInput;
-  assertExactKeys(snapshot, [
-    'pairedCaseIds', 'observedSuperiorityPercentagePoints', 'observedNonInferiorityPercentagePoints',
-  ], 'confirmatory claim');
-  const pairedCaseIds = snapshot.pairedCaseIds;
-  if (pairedCaseIds.some((caseId) => typeof caseId !== 'string' || !caseId.trim())) {
-    throw new Error('Confirmatory paired case IDs must be nonblank strings');
-  }
-  if (!Number.isFinite(snapshot.observedSuperiorityPercentagePoints)
-    || !Number.isFinite(snapshot.observedNonInferiorityPercentagePoints)) {
-    throw new Error('Confirmatory observed margins must be finite');
-  }
-  const independentEvaluableCaseCount = new Set(pairedCaseIds).size;
-  const repeatedObservationCount = pairedCaseIds.length - independentEvaluableCaseCount;
-  const nominalMarginsReached = snapshot.observedSuperiorityPercentagePoints
-    >= FIXED_TRACE_CONFIRMATORY_POWER_GATE.superiorityMarginPercentagePoints
-    && snapshot.observedNonInferiorityPercentagePoints
-      >= FIXED_TRACE_CONFIRMATORY_POWER_GATE.nonInferiorityMarginPercentagePoints;
+export function fixedTraceHybridContrastPreflight(
+  phase: "development" | "tuning",
+): FixedTraceHybridContrastPreflight {
+  const traces = FIXED_TRACE_CORPUS.filter((trace) => trace.phase === phase);
+  const localTerminalCases = traces.filter(
+    (trace) =>
+      decideFixedTraceHybridRoute({
+        message: trace.request.message,
+        source: trace.request.source,
+        isAdmin: trace.request.isAdmin,
+        isThread: (trace.request.threadContext?.length ?? 0) > 0,
+        channelPrivacy: trace.request.channelPrivacy,
+        policy: fixedTraceHybridPolicy(),
+      }).mode === "local_terminal",
+  ).length;
+  const routedCases = traces.length - localTerminalCases;
+  const evaluable = localTerminalCases >= 1 && routedCases >= 1;
   return Object.freeze({
-    independentEvaluableCaseCount,
-    repeatedObservationCount,
-    requiredIndependentEvaluableCaseCount: FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredIndependentEvaluableCases,
-    nominalMarginsReached,
-    confirmatoryClaim: independentEvaluableCaseCount
-      < FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredIndependentEvaluableCases
-      ? 'refused_underpowered'
-      : 'refused_pending_evaluator_owned_paired_test',
+    phase,
+    totalCases: traces.length,
+    localTerminalCases,
+    routedCases,
+    minimumLocalTerminalCases: 1,
+    minimumRoutedCases: 1,
+    evaluable,
+    blocker: evaluable ? null : "no_hybrid_treatment_contrast",
   });
 }
 
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new Error('Protocol contains a non-finite number');
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
-  }
-  throw new Error('Protocol contains a non-JSON value');
-}
+export const FIXED_TRACE_HYBRID_CONTRAST_PREFLIGHT = Object.freeze([
+  fixedTraceHybridContrastPreflight("development"),
+  fixedTraceHybridContrastPreflight("tuning"),
+]);
 
-function sha256(value: unknown): string {
-  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
-}
-
-function positiveInteger(value: number, label: string): void {
-  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${label} must be a positive integer`);
-}
-
-function assertExactKeys(value: object, keys: readonly string[], label: string): void {
-  const actual = Object.keys(value).sort();
-  if (actual.some((key) => key === '__proto__' || key === 'prototype' || key === 'constructor')) {
-    throw new Error(`${label} contains a dangerous prototype key`);
-  }
-  const expected = [...keys].sort();
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
-    throw new Error(`${label} has unknown, missing, or inherited fields`);
-  }
-}
-
-function pricing(profileId: string, pricingAsOf: string): FixedTraceProtocolPricingProfile {
-  const profile = FIXED_TRACE_PROTOCOL_PRICING.find((candidate) => candidate.profileId === profileId);
-  if (!profile) throw new Error(`Unavailable immutable pricing profile: ${profileId}`);
-  const asOf = new Date(pricingAsOf);
-  if (Number.isNaN(asOf.getTime()) || asOf >= new Date(profile.validBefore)) {
-    throw new Error(`Stale immutable pricing profile: ${profileId}`);
-  }
-  validateFixedTracePricing(profile);
-  return profile;
-}
-
-function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf: string): FixedTraceProtocolPricingProfile {
-  assertExactKeys(stage, STAGE_FIELD_KEYS, label);
-  positiveInteger(stage.maxInputTokensPerInvocation, `${label}.maxInputTokensPerInvocation`);
-  positiveInteger(stage.maxOutputTokensPerInvocation, `${label}.maxOutputTokensPerInvocation`);
-  positiveInteger(stage.timeoutMs, `${label}.timeoutMs`);
-  positiveInteger(stage.maxInvocationsPerCase, `${label}.maxInvocationsPerCase`);
-  if (stage.transportRetries !== 0 || stage.samplingMode !== 'provider_no_sampling_control' || stage.temperature !== null || stage.cacheMode !== 'disabled') {
-    throw new Error(`${label} has an unsupported execution control`);
-  }
-  if ((stage.role === 'judge' && stage.blinded !== true) || (stage.role !== 'judge' && stage.blinded !== null)) {
-    throw new Error(`${label} has an invalid blinded-judge control`);
-  }
-  const resolved = pricing(stage.pricingProfileId, pricingAsOf);
-  if (
-    resolved.profileId !== stage.pricingProfileId
-    || resolved.provider !== stage.provider
-    || resolved.model !== stage.model
-  ) throw new Error(`${label} pricing profile does not match its requested provider/model`);
-  return resolved;
-}
-
-/**
- * Execution limits are evaluator-owned planning inputs, not caller-selected
- * estimates. Keep this matrix independent of the proposed protocol object so
- * a detached protocol supplied to an offline estimator cannot rewrite its
- * phase, arm, admission, result-use, or execution configuration. The private
- * stage records are the only allowed price-bearing configurations; callers
- * may provide JSON that equals them, but cannot select a price cohort.
- */
-const PRICE = Object.freeze({
-  luna: `${OPENAI_GPT_5_6_LUNA_PRICING_VERSION}:${OPENAI_ROUTER_MODEL}`,
-  haiku: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
-  sonnet: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
-  gemini: `${GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION}:gemini-3.7-flash`,
+export const FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL = Object.freeze({
+  id: "fixed-trace-architecture-ablation-v2",
+  fixed: Object.freeze([
+    "cases_and_order",
+    "locked_generator_finalist",
+    "one_authenticated_base_registry_schema_receipt_set",
+    "rules_prompts_simulator_receipts",
+    "limits_retries_cache_sampling",
+    "two_calibrated_blinded_provider_excluding_judges",
+    "all_planned_failures_denominator",
+  ]),
+  varied: "architecture_derived_tool_selection_and_presented_subset_only",
 });
 
-const router = (
-  provider: ModelProviderId,
-  model: string,
-  reasoningEffort: ModelReasoningEffort,
-  pricingProfileId: string,
-): FixedTraceProtocolStage => Object.freeze({
-  role: 'router', blinded: null, provider, model, reasoningEffort, pricingProfileId,
-  maxInputTokensPerInvocation: 4_096, maxOutputTokensPerInvocation: 300,
-  timeoutMs: 120_000, maxInvocationsPerCase: 1, transportRetries: 0,
-  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
-});
-
-const generation = (
-  provider: ModelProviderId,
-  model: string,
-  reasoningEffort: ModelReasoningEffort,
-  pricingProfileId: string,
-): FixedTraceProtocolStage => Object.freeze({
-  role: 'generation', blinded: null, provider, model, reasoningEffort, pricingProfileId,
-  maxInputTokensPerInvocation: 16_384, maxOutputTokensPerInvocation: 900,
-  timeoutMs: 120_000, maxInvocationsPerCase: 12, transportRetries: 0,
-  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
-});
-
-const judge = (
-  provider: ModelProviderId,
-  model: string,
-  reasoningEffort: ModelReasoningEffort,
-  pricingProfileId: string,
-): FixedTraceProtocolStage => Object.freeze({
-  role: 'judge', blinded: true, provider, model, reasoningEffort, pricingProfileId,
-  maxInputTokensPerInvocation: 16_384, maxOutputTokensPerInvocation: 300,
-  timeoutMs: 120_000, maxInvocationsPerCase: 1, transportRetries: 0,
-  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
-});
-
-const NO_ABLATION = null;
-const NO_LUNA_JUDGE_CALIBRATION = 'not_applicable' as const;
-const LUNA_JUDGE_CALIBRATION = 'requires_verified_luna_judge_calibration' as const;
-const ABLATION = FIXED_TRACE_ARCHITECTURE_ABLATION_CONTROL.id;
-
-const EVALUATOR_OWNED_PHASE_MATRIX = Object.freeze([
+export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProtocol =
   Object.freeze({
-    id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1,
-    arms: Object.freeze([Object.freeze({
-      id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-      stages: Object.freeze([
-        router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
-        generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+    version: FIXED_TRACE_EVALUATION_PROTOCOL_VERSION,
+    id: "addie-fixed-trace-adaptive-plan-v2",
+    baseCapabilityUniverse:
+      "one_authenticated_base_registry_schema_receipt_set",
+    adaptiveRule: Object.freeze({
+      smokeCases: 8,
+      developmentCases: 46,
+      tuningCases: 36,
+      deterministicElimination: Object.freeze([
+        "identity_or_pricing_mismatch",
+        "unauthorized_or_incorrect_mutation",
+        "malformed_empty_or_truncated_output",
+        "tool_loop_or_iteration_boundary",
+        "timeout_or_provider_error",
+        "missing_usage_or_ledger_mismatch",
+        "privacy_violation",
       ]),
-    })]),
-  }),
-  Object.freeze({
-    id: 'router_screen', uniqueCaseCount: 46, repetitions: 3,
-    arms: Object.freeze([Object.freeze({
-      id: 'router-haiku-default', architecture: 'two_stage_llm_router', admission: 'planning_only',
-      ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-      stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]),
-    }), Object.freeze({
-      id: 'router-luna-none', architecture: 'two_stage_llm_router', admission: 'planning_only',
-      ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-      stages: Object.freeze([router('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna)]),
-    })]),
-  }),
-  Object.freeze({
-    id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2,
-    arms: Object.freeze([Object.freeze({
-      id: 'generator-sonnet-default', architecture: 'oracle_route_diagnostic', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-      stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]),
-    }), Object.freeze({
-      id: 'generator-haiku-default', architecture: 'oracle_route_diagnostic', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-      stages: Object.freeze([generation('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]),
-    })]),
-  }),
-  Object.freeze({
-    id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3,
-    arms: Object.freeze([
+      selection: "predeclared_pareto_successive_halving",
+      repeats: "stability_only_not_new_cases",
+    }),
+    finalProtocol: Object.freeze({
+      status: "unavailable",
+      familywiseAlpha: 0.025,
+      hypothesisIds: Object.freeze([
+        "H1-superiority",
+        "H2-non-inferiority",
+      ]) as readonly ["H1-superiority", "H2-non-inferiority"],
+      endpoint: "two-judge blinded success rate",
+      externalPackDigest: null,
+      externalN: null,
+      candidatePipelineId: null,
+      comparatorPipelineId: null,
+      architectureArmId: null,
+      pairedTest: "exact_paired_discordance_test",
+      bootstrap: "grouped_stratified_case_level_bootstrap",
+      exclusions: "hard_failures_and_missing_evidence_remain_in_denominator",
+      fingerprint: null,
+      powerResult: null,
+    }),
+    phases: Object.freeze([
       Object.freeze({
-        id: 'routed-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION,
-        stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
-          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
+        id: "stage_0_preflight_calibration",
+        caseSet: "development",
+        uniqueCases: 8,
+        repetitions: 1,
+        selectionUse: "calibration",
+        arms: Object.freeze([]),
+      }),
+      Object.freeze({
+        id: "stage_1_smoke",
+        caseSet: "development",
+        uniqueCases: 8,
+        repetitions: 1,
+        selectionUse: "adaptive_screening",
+        arms: Object.freeze(
+          FIXED_TRACE_ADMITTED_CELLS.map((cell) =>
+            candidate(`smoke-${cell.id}`, "none", "admitted_diagnostic", [
+              stage(
+                cell.role,
+                cell.id,
+                cell.role === "router" ? 1 : 12,
+                cell.role === "router" ? 4_096 : 16_384,
+                cell.role === "router" ? 300 : 900,
+              ),
+            ]),
+          ),
+        ),
+      }),
+      Object.freeze({
+        id: "stage_2_router_screen",
+        caseSet: "development",
+        uniqueCases: 46,
+        repetitions: 1,
+        selectionUse: "adaptive_screening",
+        arms: Object.freeze(
+          FIXED_TRACE_ADMITTED_CELLS.filter(
+            (cell) => cell.role === "router",
+          ).map((cell) =>
+            candidate(
+              `router-screen-${cell.id}`,
+              "two_stage_llm_router",
+              "admitted_diagnostic",
+              [stage("router", cell.id, 1, 4_096, 300)],
+            ),
+          ),
+        ),
+      }),
+      Object.freeze({
+        id: "stage_2_oracle_generator_screen",
+        caseSet: "development",
+        uniqueCases: 46,
+        repetitions: 1,
+        selectionUse: "adaptive_screening",
+        arms: Object.freeze(
+          FIXED_TRACE_ADMITTED_CELLS.filter(
+            (cell) => cell.role === "generation",
+          ).map((cell) =>
+            candidate(
+              `generator-screen-${cell.id}`,
+              "oracle_route_diagnostic",
+              "admitted_diagnostic",
+              [stage("generation", cell.id, 12, 16_384, 900)],
+            ),
+          ),
+        ),
+      }),
+      Object.freeze({
+        id: "stage_3_architecture",
+        caseSet: "development",
+        uniqueCases: 46,
+        repetitions: 3,
+        selectionUse: "architecture_selection",
+        arms: Object.freeze([
+          candidate(
+            "routed-locked-finalist",
+            "two_stage_llm_router",
+            "admitted_diagnostic",
+            [
+              stage("router", routerCell.id, 1, 4_096, 300),
+              stage("generation", generatorCell.id, 12, 16_384, 900),
+              stage("judge", judgeCells[0].id, 1, 16_384, 300),
+              stage("judge", judgeCells[1].id, 1, 16_384, 300),
+            ],
+          ),
+          candidate(
+            "hybrid-locked-finalist",
+            "deterministic_policy_llm_fallback_hybrid",
+            "not_evaluable_no_treatment_contrast",
+            [
+              stage("router", routerCell.id, 1, 4_096, 300),
+              stage("generation", generatorCell.id, 12, 16_384, 900),
+              stage("judge", judgeCells[0].id, 1, 16_384, 300),
+              stage("judge", judgeCells[1].id, 1, 16_384, 300),
+            ],
+            {
+              localTerminalCases: "exact_harmless_only",
+              fallbackRouterCallsPerNonlocalCase: 1,
+              worstCaseRouterCalls: 46 * 3,
+            },
+          ),
+          candidate(
+            "direct-locked-finalist",
+            "direct_generation",
+            "not_admitted_architecture",
+            [stage("generation", generatorCell.id, 12, 16_384, 900)],
+          ),
         ]),
       }),
       Object.freeze({
-        id: 'safe-hybrid-sonnet', architecture: 'hybrid_safe_signal_then_llm', admission: 'requires_verified_hybrid_contract', ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION,
-        stages: Object.freeze([
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
-          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
+        id: "stage_4_tuning",
+        caseSet: "tuning",
+        uniqueCases: 36,
+        repetitions: 1,
+        selectionUse: "diagnostic_tuning",
+        arms: Object.freeze([
+          candidate(
+            "tuning-locked-pipeline",
+            "two_stage_llm_router",
+            "admitted_diagnostic",
+            [
+              stage("router", routerCell.id, 1, 4_096, 300),
+              stage("generation", generatorCell.id, 12, 16_384, 900),
+            ],
+          ),
         ]),
       }),
       Object.freeze({
-        id: 'bounded-direct-sonnet', architecture: 'direct_bounded_production_shaped', admission: 'requires_verified_direct_contract', ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION,
-        stages: Object.freeze([
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
-          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
+        id: "stage_5_external_final",
+        caseSet: "external_unavailable",
+        uniqueCases: null,
+        repetitions: 1,
+        selectionUse: "confirmatory_unavailable",
+        arms: Object.freeze([
+          candidate(
+            "external-final-unavailable",
+            "none",
+            "not_admitted_external_final",
+            [],
+          ),
+        ]),
+      }),
+      Object.freeze({
+        id: "stage_6_canary",
+        caseSet: "external_unavailable",
+        uniqueCases: null,
+        repetitions: 1,
+        selectionUse: "default_off_canary_unavailable",
+        arms: Object.freeze([
+          candidate("canary-unavailable", "none", "not_admitted_canary", []),
         ]),
       }),
     ]),
-  }),
-  Object.freeze({
-    id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3,
-    arms: Object.freeze([Object.freeze({
-      id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-      stages: Object.freeze([
-        router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
-        generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-      ]),
-    })]),
-  }),
-] as const);
+  });
 
-function matchesEvaluatorOwnedStage(
-  stage: FixedTraceProtocolStage,
-  expected: FixedTraceProtocolStage,
-): boolean {
-  return stage.role === expected.role
-    && stage.blinded === expected.blinded
-    && stage.provider === expected.provider
-    && stage.model === expected.model
-    && stage.reasoningEffort === expected.reasoningEffort
-    && stage.pricingProfileId === expected.pricingProfileId
-    && stage.maxInputTokensPerInvocation === expected.maxInputTokensPerInvocation
-    && stage.maxOutputTokensPerInvocation === expected.maxOutputTokensPerInvocation
-    && stage.timeoutMs === expected.timeoutMs
-    && stage.maxInvocationsPerCase === expected.maxInvocationsPerCase
-    && stage.transportRetries === expected.transportRetries
-    && stage.samplingMode === expected.samplingMode
-    && stage.temperature === expected.temperature
-    && stage.cacheMode === expected.cacheMode;
+export interface FixedTraceStageCeiling {
+  phaseId: FixedTraceProtocolPhaseId;
+  armId: string;
+  role: FixedTraceProtocolStageRole;
+  calls: number;
+  ceilingUsd: number;
 }
-
-function assertEvaluatorOwnedPhaseMatrix(phase: FixedTraceProtocolPhase, index: number): void {
-  const expected = EVALUATOR_OWNED_PHASE_MATRIX[index];
-  if (!expected
-    || phase.id !== expected.id
-    || phase.uniqueCaseCount !== expected.uniqueCaseCount
-    || phase.repetitions !== expected.repetitions
-    || phase.resultUse !== 'diagnostic_only') {
-    throw new Error('Protocol phase does not match the evaluator-owned phase matrix');
+export interface FixedTraceProtocolEstimate {
+  dispatchable: false;
+  approvalCeilingUsd: null;
+  stages: readonly FixedTraceStageCeiling[];
+  candidateCeilingUsd: number;
+  judgeCeilingUsd: number;
+  simulatorCeilingUsd: 0;
+  failedTimeoutUnknownExposureCeilingUsd: number;
+  contingencyUsd: number;
+  totalCeilingUsd: number;
+  hybridWorstCaseRouterCalls: 138;
+  hybridWorstCaseRouterCeilingUsd: number;
+  armCallAccounting: readonly FixedTraceArchitectureArmCallAccounting[];
+  externalFinalN: null;
+}
+export interface FixedTraceArchitectureArmCallAccounting {
+  readonly armId: string;
+  readonly admission: FixedTraceProtocolAdmission;
+  readonly evaluable: boolean;
+  readonly localTerminalCases: number;
+  readonly routedCases: number;
+  readonly routerCalls: number;
+  readonly generationCalls: number;
+  readonly routerCeilingUsd: number;
+  readonly generationCeilingUsd: number;
+}
+export interface FixedTraceScreeningResult {
+  readonly cellId: string;
+  readonly safetyFailures: number;
+  readonly identityFailures: number;
+  readonly malformedFailures: number;
+  readonly toolLoopFailures: number;
+  readonly reliabilityFailures: number;
+  readonly latencyMs: number;
+  readonly costUsd: number;
+}
+/** Pure, predeclared elimination/halving rule; repetitions estimate stability only. */
+export function selectFixedTraceScreeningSurvivors(
+  results: readonly FixedTraceScreeningResult[],
+): readonly string[] {
+  const seen = new Set<string>();
+  for (const result of results) {
+    if (
+      !FIXED_TRACE_ADMITTED_CELLS.some((cell) => cell.id === result.cellId) ||
+      seen.has(result.cellId)
+    )
+      throw new Error("screening result has an unknown or duplicate cell");
+    if (
+      [
+        result.safetyFailures,
+        result.identityFailures,
+        result.malformedFailures,
+        result.toolLoopFailures,
+        result.reliabilityFailures,
+        result.latencyMs,
+        result.costUsd,
+      ].some((value) => !Number.isFinite(value) || value < 0)
+    )
+      throw new Error("screening result has invalid metrics");
+    seen.add(result.cellId);
   }
-  if (phase.arms.length !== expected.arms.length) {
-    throw new Error(`${phase.id} arms do not match the evaluator-owned phase matrix`);
+  const eligible = results.filter(
+    (result) =>
+      result.safetyFailures === 0 &&
+      result.identityFailures === 0 &&
+      result.malformedFailures === 0 &&
+      result.toolLoopFailures === 0,
+  );
+  return Object.freeze(
+    [...eligible]
+      .sort(
+        (left, right) =>
+          left.reliabilityFailures - right.reliabilityFailures ||
+          left.costUsd - right.costUsd ||
+          left.latencyMs - right.latencyMs ||
+          left.cellId.localeCompare(right.cellId),
+      )
+      .slice(0, Math.max(1, Math.ceil(eligible.length / 2)))
+      .map((result) => result.cellId),
+  );
+}
+function sha256(value: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(value), "utf8")
+    .digest("hex");
+}
+export function fixedTraceEvaluationProtocolFingerprint(
+  protocol: FixedTraceEvaluationProtocol,
+): string {
+  assertFixedTraceEvaluationProtocol(protocol);
+  return sha256(protocol);
+}
+export function assertFixedTraceEvaluationProtocol(
+  protocol: FixedTraceEvaluationProtocol,
+): void {
+  assertFixedTracePartitionManifest();
+  if (
+    protocol.version !== FIXED_TRACE_EVALUATION_PROTOCOL_VERSION ||
+    protocol.baseCapabilityUniverse !==
+      "one_authenticated_base_registry_schema_receipt_set"
+  )
+    throw new Error("invalid fixed-trace protocol identity");
+  const expected = [
+    "stage_0_preflight_calibration",
+    "stage_1_smoke",
+    "stage_2_router_screen",
+    "stage_2_oracle_generator_screen",
+    "stage_3_architecture",
+    "stage_4_tuning",
+    "stage_5_external_final",
+    "stage_6_canary",
+  ];
+  if (
+    protocol.phases.length !== expected.length ||
+    protocol.phases.some((phase, index) => phase.id !== expected[index])
+  )
+    throw new Error("protocol phases are not in the exact predeclared order");
+  if (
+    protocol.finalProtocol.status !== "unavailable" ||
+    protocol.finalProtocol.externalN !== null ||
+    protocol.finalProtocol.externalPackDigest !== null ||
+    protocol.finalProtocol.candidatePipelineId !== null ||
+    protocol.finalProtocol.comparatorPipelineId !== null ||
+    protocol.finalProtocol.architectureArmId !== null ||
+    protocol.finalProtocol.fingerprint !== null ||
+    protocol.finalProtocol.powerResult !== null
+  )
+    throw new Error(
+      "external final is unavailable until exact paired-discordance power is fingerprinted",
+    );
+  if (
+    FIXED_TRACE_CONFIRMATORY_ADMISSION.status !==
+      "not_admitted_missing_fingerprinted_statistical_protocol" ||
+    FIXED_TRACE_CONFIRMATORY_ADMISSION.finalProtocolFingerprint !== null ||
+    FIXED_TRACE_CONFIRMATORY_ADMISSION.sizingPilot.digest !== null ||
+    FIXED_TRACE_CONFIRMATORY_ADMISSION.judgeCalibration.digest !== null
+  ) {
+    throw new Error(
+      "confirmatory statistical admission must fail closed until independently custodied",
+    );
   }
-  for (let armIndex = 0; armIndex < phase.arms.length; armIndex += 1) {
-    const arm = phase.arms[armIndex];
-    const expectedArm = expected.arms[armIndex];
-    if (!expectedArm
-      || arm.id !== expectedArm.id
-      || arm.architecture !== expectedArm.architecture
-      || arm.admission !== expectedArm.admission
-      || arm.ablationControlId !== expectedArm.ablationControlId
-      || arm.lunaJudgeCalibration !== expectedArm.lunaJudgeCalibration) {
-      throw new Error(`${phase.id} arm does not match the evaluator-owned arm matrix`);
-    }
-    if (arm.stages.length !== expectedArm.stages.length) {
-      throw new Error(`${phase.id}.${arm.id} does not match the evaluator-owned stage configuration matrix`);
-    }
-    for (let stageIndex = 0; stageIndex < arm.stages.length; stageIndex += 1) {
-      const stage = arm.stages[stageIndex];
-      const expectedStage = expectedArm.stages[stageIndex];
-      assertExactKeys(stage, STAGE_FIELD_KEYS, `${phase.id}.${arm.id}.stage[${stageIndex}]`);
-      if (!expectedStage || !matchesEvaluatorOwnedStage(stage, expectedStage)) {
-        throw new Error(`${phase.id}.${arm.id} does not match the evaluator-owned stage configuration matrix`);
+  for (const phase of protocol.phases) {
+    const expectedCases =
+      phase.caseSet === "development"
+        ? FIXED_TRACE_PARTITION_MANIFEST.development.length
+        : phase.caseSet === "tuning"
+          ? FIXED_TRACE_PARTITION_MANIFEST.tuning.length
+          : null;
+    if (
+      phase.uniqueCases !== null &&
+      phase.uniqueCases !== 8 &&
+      phase.uniqueCases !== expectedCases
+    )
+      throw new Error(
+        `phase ${phase.id} does not use corpus-derived case counts`,
+      );
+    for (const arm of phase.arms) {
+      if (
+        arm.architecture === "direct_generation" &&
+        arm.admission !== "not_admitted_architecture"
+      )
+        throw new Error("direct_generation remains not_admitted_architecture");
+      if (
+        arm.architecture === "deterministic_policy_llm_fallback_hybrid" &&
+        (!arm.conditionalCalls ||
+          !arm.stages.some((item) => item.role === "router"))
+      )
+        throw new Error(
+          "hybrid requires unchanged incumbent router fallback accounting",
+        );
+      if (
+        arm.architecture === "deterministic_policy_llm_fallback_hybrid" &&
+        !FIXED_TRACE_HYBRID_CONTRAST_PREFLIGHT.find(
+          (preflight) => preflight.phase === "development",
+        )!.evaluable &&
+        arm.admission !== "not_evaluable_no_treatment_contrast"
+      ) {
+        throw new Error("hybrid is not evaluable without treatment contrast");
+      }
+      for (const item of arm.stages)
+        if (
+          item.cellId !== null &&
+          !FIXED_TRACE_ADMITTED_CELLS.some((cell) => cell.id === item.cellId)
+        )
+          throw new Error(
+            "stage references an unadmitted provider/model/effort cell",
+          );
+      const judges = arm.stages.filter((item) => item.role === "judge");
+      if (judges.length) {
+        const expectedJudges = assertPromotionGradeDualJudgeFeasibility(
+          arm,
+        ).map((cell) => cell.id);
+        if (
+          judges.length !== 2 ||
+          judges
+            .map((item) => item.cellId)
+            .some((id, index) => id !== expectedJudges[index])
+        )
+          throw new Error(
+            "semantic judges must be the two calibrated providers excluding every pipeline provider",
+          );
       }
     }
   }
 }
-
-function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, pricingAsOf: string): void {
-  assertExactKeys(arm, ['id', 'architecture', 'admission', 'ablationControlId', 'lunaJudgeCalibration', 'stages'], `protocol arm`);
-  if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(arm.id)) throw new Error(`Invalid protocol arm ID: ${arm.id}`);
-  const routers = arm.stages.filter((stage) => stage.role === 'router');
-  const generations = arm.stages.filter((stage) => stage.role === 'generation');
-  const judges = arm.stages.filter((stage) => stage.role === 'judge');
-  if (phase.id === 'router_screen') {
-    if (arm.architecture !== 'two_stage_llm_router' || routers.length !== 1 || generations.length !== 0 || judges.length !== 0) {
-      throw new Error(`${arm.id} is not a router-only screening arm`);
-    }
-    assertStage(routers[0], `${arm.id}.router`, pricingAsOf);
-    return;
-  }
-  if (generations.length !== 1 || routers.length > 1) throw new Error(`${arm.id} requires exactly one generation stage and at most one router`);
-  if (phase.id === 'deployable_architecture') {
-    if (arm.ablationControlId !== ABLATION) throw new Error(`${arm.id} must use the fixed architecture ablation control`);
-    const candidateProviders = new Set([...routers, ...generations].map((stage) => stage.provider));
-    if (candidateProviders.size !== 1) throw new Error(`${arm.id} must be a single-provider candidate pipeline for independent judging`);
-    if (arm.architecture === 'two_stage_llm_router' && (routers.length !== 1 || arm.admission !== 'planning_only')) {
-      throw new Error(`${arm.id} must use its locked routed architecture contract`);
-    }
-    if (arm.architecture === 'hybrid_safe_signal_then_llm' && (routers.length !== 0 || arm.admission !== 'requires_verified_hybrid_contract')) {
-      throw new Error(`${arm.id} requires its verified hybrid admission`);
-    }
-    if (arm.architecture === 'direct_bounded_production_shaped' && (routers.length !== 0 || arm.admission !== 'requires_verified_direct_contract')) {
-      throw new Error(`${arm.id} requires its verified direct admission`);
-    }
-    if (!['two_stage_llm_router', 'hybrid_safe_signal_then_llm', 'direct_bounded_production_shaped'].includes(arm.architecture)) {
-      throw new Error(`${arm.id} is not an architecture-ablation candidate`);
-    }
-    if (judges.length !== 2 || arm.stages.slice(-2).some((stage) => stage.role !== 'judge')) {
-      throw new Error(`${arm.id} requires exactly two trailing blinded judges`);
-    }
-    const judgeProviders = new Set(judges.map((stage) => stage.provider));
-    if (judgeProviders.size !== 2 || [...judgeProviders].some((provider) => candidateProviders.has(provider))) {
-      throw new Error(`${arm.id} judges must be provider-excluding and independent`);
-    }
-    const usesLunaJudge = judges.some((stage) => stage.provider === 'openai' && stage.model === OPENAI_ROUTER_MODEL);
-    if (usesLunaJudge !== (arm.lunaJudgeCalibration === LUNA_JUDGE_CALIBRATION)) {
-      throw new Error(`${arm.id} Luna judge calibration admission is not locked`);
-    }
-  } else if (arm.ablationControlId !== NO_ABLATION || arm.lunaJudgeCalibration !== NO_LUNA_JUDGE_CALIBRATION) {
-    throw new Error(`${arm.id} has architecture-ablation controls outside the ablation phase`);
-  } else if (arm.architecture === 'two_stage_llm_router') {
-    if (routers.length !== 1) throw new Error(`${arm.id} requires a router stage`);
-  } else if (arm.architecture !== 'oracle_route_diagnostic' || routers.length !== 0) {
-    throw new Error(`${arm.id} direct and hybrid substitutions are not admitted`);
-  }
-  if (arm.architecture === 'oracle_route_diagnostic' && phase.id !== 'oracle_generator_ceiling') {
-    throw new Error(`${arm.id} oracle routing is diagnostic-only`);
-  }
-  for (const stage of arm.stages) assertStage(stage, `${arm.id}.${stage.role}`, pricingAsOf);
-  if (phase.id !== 'deployable_architecture' && judges.length !== 0) throw new Error(`${arm.id} judges are blocked outside the architecture ablation`);
-}
-
-function validatedProtocolSnapshot(protocol: FixedTraceEvaluationProtocol): FixedTraceEvaluationProtocol {
-  const snapshot = snapshotFixedTraceJson(protocol, 'evaluation protocol') as FixedTraceEvaluationProtocol;
-  assertFixedTraceEvaluationProtocolStructure(snapshot);
-  return snapshot;
-}
-
-/** Fingerprints the exact detached projection which passed all protocol checks. */
-export function fixedTraceEvaluationProtocolFingerprint(protocol: FixedTraceEvaluationProtocol): string {
-  return sha256(validatedProtocolSnapshot(protocol));
-}
-
-/** Validate the planning projection without loading traces, credentials, or providers. */
-function assertFixedTraceEvaluationProtocolStructure(protocol: FixedTraceEvaluationProtocol): void {
-  assertExactKeys(protocol, [
-    'version', 'id', 'trustedManifestId', 'pricingAsOf', 'contingencyBasisPoints',
-    'unavailableFinalTarget', 'phases',
-  ], 'evaluation protocol');
-  if (protocol.version !== FIXED_TRACE_EVALUATION_PROTOCOL_VERSION || !protocol.id.trim() || !protocol.trustedManifestId.trim()) {
-    throw new Error('Unsupported or incomplete fixed-trace evaluation protocol');
-  }
-  if (!Number.isSafeInteger(protocol.contingencyBasisPoints) || protocol.contingencyBasisPoints < 0 || protocol.contingencyBasisPoints > 10_000) {
-    throw new Error('Protocol contingency basis points are invalid');
-  }
-  const phaseIds = new Set<string>();
-  const armIds = new Set<string>();
-  assertExactKeys(protocol.unavailableFinalTarget, ['availability', 'uniqueCaseCount', 'repetitions', 'missingCaseCount'], 'evaluation protocol.unavailableFinalTarget');
-  if (protocol.unavailableFinalTarget.availability !== 'unavailable'
-    || protocol.unavailableFinalTarget.uniqueCaseCount !== 38
-    || protocol.unavailableFinalTarget.repetitions !== 3
-    || protocol.unavailableFinalTarget.missingCaseCount !== 38) {
-    throw new Error('Protocol unavailable final target is invalid');
-  }
-  if (protocol.phases.length !== EVALUATOR_OWNED_PHASE_MATRIX.length
-    || protocol.phases.some((phase, index) => phase.id !== EVALUATOR_OWNED_PHASE_MATRIX[index]?.id)) {
-    throw new Error('Protocol phases must use the exact required order');
-  }
-  for (const [index, phase] of protocol.phases.entries()) {
-    assertExactKeys(phase, ['id', 'uniqueCaseCount', 'repetitions', 'resultUse', 'arms'], 'protocol phase');
-    if (phaseIds.has(phase.id)) throw new Error(`Duplicate protocol phase: ${phase.id}`);
-    phaseIds.add(phase.id);
-    assertEvaluatorOwnedPhaseMatrix(phase, index);
+export function estimateFixedTraceEvaluationProtocol(
+  protocol: FixedTraceEvaluationProtocol = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+): FixedTraceProtocolEstimate {
+  assertFixedTraceEvaluationProtocol(protocol);
+  const stages: FixedTraceStageCeiling[] = [];
+  for (const phase of protocol.phases)
     for (const arm of phase.arms) {
-      if (armIds.has(arm.id)) throw new Error(`Duplicate protocol arm ID: ${arm.id}`);
-      armIds.add(arm.id);
-      assertArm(phase, arm, protocol.pricingAsOf);
+      if (
+        (arm.admission === "not_admitted_architecture" ||
+          phase.uniqueCases === null) &&
+        arm.architecture !== "deterministic_policy_llm_fallback_hybrid"
+      )
+        continue;
+      const uniqueCases = phase.uniqueCases;
+      if (uniqueCases === null) continue;
+      for (const item of arm.stages) {
+        const cell = FIXED_TRACE_ADMITTED_CELLS.find(
+          (entry) => entry.id === item.cellId,
+        );
+        if (!cell) continue;
+        const profile = FIXED_TRACE_PROTOCOL_PRICING.find(
+          (entry) => entry.profileId === cell.pricingProfileId,
+        )!;
+        validateFixedTracePricing(profile);
+        const calls =
+          uniqueCases * phase.repetitions * item.maxInvocationsPerCase;
+        stages.push({
+          phaseId: phase.id,
+          armId: arm.id,
+          role: item.role,
+          calls,
+          ceilingUsd: fixedTraceEstimatedCostUsd(
+            {
+              inputTokens: calls * item.maxInputTokensPerInvocation,
+              outputTokens: calls * item.maxOutputTokensPerInvocation,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+            profile,
+          ),
+        });
+      }
     }
-  }
-  for (const required of EVALUATOR_OWNED_PHASE_MATRIX) {
-    if (!phaseIds.has(required.id)) throw new Error(`Protocol is missing required phase: ${required.id}`);
-  }
-}
-
-export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluationProtocol): void {
-  void validatedProtocolSnapshot(protocol);
-}
-
-/**
- * Future execution must supply evaluator-owned data. This check intentionally
- * does not make a JSON protocol file trusted by comparing it to itself.
- */
-export function assertFixedTraceEvaluationProtocolTrusted(
-  protocol: FixedTraceEvaluationProtocol,
-  resolver: FixedTraceProtocolTrustedManifestResolver,
-): FixedTraceProtocolTrustedManifest {
-  void protocol;
-  void resolver;
-  throw new Error('Trusted evaluation manifest is locked pending evaluator-owned authentication');
-}
-
-export function fixedTraceEvaluationProtocolRunnerBinding(
-  protocol: FixedTraceEvaluationProtocol,
-  resolver: FixedTraceProtocolTrustedManifestResolver,
-  phaseId: FixedTraceProtocolPhaseId,
-  traceSuite: readonly FixedTraceCase[],
-): FixedTraceProtocolRunnerBinding {
-  void protocol;
-  void resolver;
-  void phaseId;
-  void traceSuite;
-  throw new Error('Fixed-trace execution is locked pending evaluator-owned authentication');
-}
-
-function stageEstimate(
-  phase: FixedTraceProtocolPhase,
-  arm: FixedTraceProtocolArm,
-  stage: FixedTraceProtocolStage,
-  pricingAsOf: string,
-): FixedTraceProtocolStageEstimate {
-  const profile = assertStage(stage, `${phase.id}.${arm.id}.${stage.role}`, pricingAsOf);
-  const requests = phase.uniqueCaseCount * phase.repetitions * stage.maxInvocationsPerCase;
-  const inputTokenCeiling = requests * stage.maxInputTokensPerInvocation;
-  const outputTokenCeiling = requests * stage.maxOutputTokensPerInvocation;
-  const ceilingUsd = fixedTraceEstimatedCostUsd({
-    inputTokens: inputTokenCeiling,
-    outputTokens: outputTokenCeiling,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-  }, profile);
-  return Object.freeze({
-    phaseId: phase.id,
-    armId: arm.id,
-    role: stage.role,
-    provider: stage.provider,
-    model: stage.model,
-    reasoningEffort: stage.reasoningEffort,
-    pricingProfileId: profile.profileId,
-    cacheMode: stage.cacheMode,
-    cacheSemantics: Object.freeze({
-      cacheReadAccounting: profile.cacheReadAccounting,
-      cacheWriteAccounting: profile.cacheWriteAccounting,
-    }),
-    requests,
-    inputTokenCeiling,
-    outputTokenCeiling,
-    ceilingUsd,
-  });
-}
-
-/**
- * Pure deterministic diagnostic projection. It makes no provider calls, reads
- * no trace body, and writes no output. `expectedSpendUsd` stays null because
- * observed tokenization and tool-loop length are deliberately not guessed.
- */
-export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluationProtocol): FixedTraceProtocolEstimate {
-  const snapshot = validatedProtocolSnapshot(protocol);
-  const stages = snapshot.phases.flatMap((phase) => phase.arms.flatMap((arm) =>
-    arm.stages.map((stage) => stageEstimate(phase, arm, stage, snapshot.pricingAsOf))));
-  const phases = snapshot.phases.map((phase) => {
-    const entries = stages.filter((entry) => entry.phaseId === phase.id);
-    const candidate = entries.filter((entry) => entry.role !== 'judge');
-    const judges = entries.filter((entry) => entry.role === 'judge');
-    const candidateCeilingUsd = candidate.reduce((total, entry) => total + entry.ceilingUsd, 0);
-    const judgeCeilingUsd = judges.reduce((total, entry) => total + entry.ceilingUsd, 0);
+  const candidateCeilingUsd = stages
+    .filter((item) => item.role === "router" || item.role === "generation")
+    .reduce((total, item) => total + item.ceilingUsd, 0);
+  const judgeCeilingUsd = stages
+    .filter((item) => item.role === "judge")
+    .reduce((total, item) => total + item.ceilingUsd, 0);
+  const failedTimeoutUnknownExposureCeilingUsd =
+    candidateCeilingUsd + judgeCeilingUsd;
+  const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * 0.1;
+  const hybridRouter = stages.find(
+    (item) =>
+      item.phaseId === "stage_3_architecture" &&
+      item.armId === "hybrid-locked-finalist" &&
+      item.role === "router",
+  )!;
+  const architecturePhase = protocol.phases.find(
+    (phase) => phase.id === "stage_3_architecture",
+  )!;
+  const developmentContrast = FIXED_TRACE_HYBRID_CONTRAST_PREFLIGHT.find(
+    (preflight) => preflight.phase === "development",
+  )!;
+  const armCallAccounting = architecturePhase.arms.map((arm) => {
+    const router = arm.stages.find((item) => item.role === "router");
+    const generation = arm.stages.find((item) => item.role === "generation");
+    const localTerminalCases =
+      arm.architecture === "deterministic_policy_llm_fallback_hybrid"
+        ? developmentContrast.localTerminalCases * architecturePhase.repetitions
+        : 0;
+    const routedCases =
+      arm.architecture === "direct_generation"
+        ? 0
+        : architecturePhase.uniqueCases! * architecturePhase.repetitions -
+          localTerminalCases;
+    const cost = (item: FixedTraceProtocolStage | undefined, calls: number) => {
+      if (!item?.cellId) return 0;
+      const cell = FIXED_TRACE_ADMITTED_CELLS.find(
+        (entry) => entry.id === item.cellId,
+      )!;
+      const profile = FIXED_TRACE_PROTOCOL_PRICING.find(
+        (entry) => entry.profileId === cell.pricingProfileId,
+      )!;
+      return fixedTraceEstimatedCostUsd(
+        {
+          inputTokens: calls * item.maxInputTokensPerInvocation,
+          outputTokens: calls * item.maxOutputTokensPerInvocation,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        profile,
+      );
+    };
+    const routerCalls = router ? routedCases * router.maxInvocationsPerCase : 0;
+    const generationCalls = generation
+      ? routedCases * generation.maxInvocationsPerCase
+      : 0;
     return Object.freeze({
-      phaseId: phase.id,
-      uniqueCaseCount: phase.uniqueCaseCount,
-      repetitions: phase.repetitions,
-      candidateCalls: candidate.reduce((total, entry) => total + entry.requests, 0),
-      judgeCalls: judges.reduce((total, entry) => total + entry.requests, 0),
-      candidateCeilingUsd,
-      judgeCeilingUsd,
-      totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd,
+      armId: arm.id,
+      admission: arm.admission,
+      evaluable:
+        arm.architecture !== "deterministic_policy_llm_fallback_hybrid" ||
+        developmentContrast.evaluable,
+      localTerminalCases,
+      routedCases,
+      routerCalls,
+      generationCalls,
+      routerCeilingUsd: cost(router, routerCalls),
+      generationCeilingUsd: cost(generation, generationCalls),
     });
   });
-  const candidateCeilingUsd = phases.reduce((total, phase) => total + phase.candidateCeilingUsd, 0);
-  const judgeCeilingUsd = phases.reduce((total, phase) => total + phase.judgeCeilingUsd, 0);
-  const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * snapshot.contingencyBasisPoints / 10_000;
-  const summarize = (source: readonly FixedTraceProtocolPhaseEstimate[]) => {
-    const candidateCeilingUsd = source.reduce((total, phase) => total + phase.candidateCeilingUsd, 0);
-    const judgeCeilingUsd = source.reduce((total, phase) => total + phase.judgeCeilingUsd, 0);
-    const contingencyUsd = (candidateCeilingUsd + judgeCeilingUsd) * snapshot.contingencyBasisPoints / 10_000;
-    return Object.freeze({ candidateCeilingUsd, judgeCeilingUsd, contingencyUsd, totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd + contingencyUsd });
-  };
   return Object.freeze({
-    protocolFingerprint: sha256(snapshot),
     dispatchable: false,
-    expectedSpendUsd: null,
+    approvalCeilingUsd: null,
     stages: Object.freeze(stages),
-    phases: Object.freeze(phases),
-    screening: summarize(phases),
-    unavailableFinalTarget: snapshot.unavailableFinalTarget,
-    budgetProjection: Object.freeze({
-      screeningTuning: Object.freeze({
-        uniqueEvaluableCaseCount: FIXED_TRACE_CONFIRMATORY_POWER_GATE.currentScreeningTuningUniqueCaseCount,
-        repetitionsCountAsIndependentCases: false,
-        expectedSpendUsd: null,
-        approvalCeilingUsd: null,
-      }),
-      confirmatory: Object.freeze({
-        requiredIndependentEvaluableCaseCount: FIXED_TRACE_CONFIRMATORY_POWER_GATE.requiredIndependentEvaluableCases,
-        unavailableTargetCaseCount: snapshot.unavailableFinalTarget.uniqueCaseCount,
-        expectedSpendUsd: null,
-        approvalCeilingUsd: null,
-        spendAuthorization: 'refused_pending_evaluator_owned_paired_test',
-      }),
-    }),
     candidateCeilingUsd,
     judgeCeilingUsd,
+    simulatorCeilingUsd: 0,
+    failedTimeoutUnknownExposureCeilingUsd,
     contingencyUsd,
     totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd + contingencyUsd,
+    hybridWorstCaseRouterCalls: 138,
+    hybridWorstCaseRouterCeilingUsd: hybridRouter.ceilingUsd,
+    armCallAccounting: Object.freeze(armCallAccounting),
+    externalFinalN: null,
   });
 }
-
-/** Unsupported model names are inert metadata, never a stage or a price. */
-export const FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES = Object.freeze([
-  Object.freeze({ provider: 'openai' as const, model: 'gpt-5.6-terra', dispatchable: false as const, trustedPrice: null }),
-  Object.freeze({ provider: 'openai' as const, model: 'gpt-5.6-sol', dispatchable: false as const, trustedPrice: null }),
-]);
-
-/** A closed, diagnostic-only projection with no promotion or execution path. */
-export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProtocol = deepFreezeFixedTrace({
-  version: FIXED_TRACE_EVALUATION_PROTOCOL_VERSION,
-  id: 'addie-6842-6846-staged-v1',
-  trustedManifestId: 'externally-owned-addie-fixed-trace-v120',
-  pricingAsOf: '2026-09-05T12:00:00.000Z',
-  // Includes explicit failure/usage accounting contingency in every reported
-  // screening ceiling; it is still a non-authorizing offline projection.
-  contingencyBasisPoints: 2_000,
-  unavailableFinalTarget: {
-    availability: 'unavailable', uniqueCaseCount: 38, repetitions: 3, missingCaseCount: 38,
-  },
-  phases: Object.freeze([
-    Object.freeze({
-      id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1, resultUse: 'diagnostic_only',
-      arms: Object.freeze([Object.freeze({
-        id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only', ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION,
-        stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-        ]),
-      })]),
-    }),
-    Object.freeze({
-      id: 'router_screen', uniqueCaseCount: 46, repetitions: 3, resultUse: 'diagnostic_only',
-      arms: Object.freeze([
-        Object.freeze({ id: 'router-haiku-default', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]) }),
-        Object.freeze({ id: 'router-luna-none', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([router('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna)]) }),
-      ]),
-    }),
-    Object.freeze({
-      id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2, resultUse: 'diagnostic_only',
-      arms: Object.freeze([
-        Object.freeze({ id: 'generator-sonnet-default', architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]) }),
-        Object.freeze({ id: 'generator-haiku-default', architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([generation('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]) }),
-      ]),
-    }),
-    Object.freeze({
-      id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3, resultUse: 'diagnostic_only',
-      arms: Object.freeze([
-        Object.freeze({ id: 'routed-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
-          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
-        ]) }),
-        Object.freeze({ id: 'safe-hybrid-sonnet', architecture: 'hybrid_safe_signal_then_llm' as const, admission: 'requires_verified_hybrid_contract' as const, ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
-          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
-        ]) }),
-        Object.freeze({ id: 'bounded-direct-sonnet', architecture: 'direct_bounded_production_shaped' as const, admission: 'requires_verified_direct_contract' as const, ablationControlId: ABLATION, lunaJudgeCalibration: LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-          judge('openai', OPENAI_ROUTER_MODEL, 'none', PRICE.luna),
-          judge('google', 'gemini-3.7-flash', 'provider_default', PRICE.gemini),
-        ]) }),
-      ]),
-    }),
-    Object.freeze({
-      id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3, resultUse: 'diagnostic_only',
-      arms: Object.freeze([
-        Object.freeze({ id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, ablationControlId: NO_ABLATION, lunaJudgeCalibration: NO_LUNA_JUDGE_CALIBRATION, stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-        ]) }),
-      ]),
-    }),
-  ]),
-});
+/** Promotion-grade semantic inference excludes every LLM used in the pipeline. */
+export function providerExcludingCalibratedJudges(
+  candidatePipelineProviders: readonly ModelProviderId[],
+): readonly FixedTraceAdmittedCell[] {
+  const candidateProviders = new Set(candidatePipelineProviders);
+  if (candidateProviders.size !== 1) {
+    throw new Error(
+      "promotion-grade dual-LLM judging requires a single-provider complete pipeline; mixed finalists require a human-primary path or fourth calibrated provider",
+    );
+  }
+  return Object.freeze(
+    (["anthropic", "openai", "google"] as const)
+      .filter((provider) => !candidateProviders.has(provider))
+      .map((provider) =>
+        FIXED_TRACE_ADMITTED_CELLS.find(
+          (cell) =>
+            cell.role === "generation" &&
+            cell.provider === provider &&
+            (provider === "openai"
+              ? cell.effort === "none"
+              : cell.effort === "provider_default"),
+        )!,
+      ),
+  );
+}
+export function semanticJudgeCandidateProviders(
+  arm: Pick<FixedTraceProtocolArm, "stages">,
+): readonly ModelProviderId[] {
+  const providers = arm.stages
+    .filter((stage) => stage.role === "router" || stage.role === "generation")
+    .map((stage) =>
+      FIXED_TRACE_ADMITTED_CELLS.find((cell) => cell.id === stage.cellId),
+    );
+  if (
+    !providers.some((cell) => cell && cell.role === "generation") ||
+    providers.some((cell) => !cell)
+  )
+    throw new Error(
+      "semantic-scored pipeline must declare an admitted generation provider",
+    );
+  return Object.freeze([...new Set(providers.map((cell) => cell!.provider))]);
+}
+export function assertPromotionGradeDualJudgeFeasibility(
+  arm: Pick<FixedTraceProtocolArm, "stages">,
+): readonly FixedTraceAdmittedCell[] {
+  return providerExcludingCalibratedJudges(
+    semanticJudgeCandidateProviders(arm),
+  );
+}
