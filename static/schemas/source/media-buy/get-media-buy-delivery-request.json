@@ -326,6 +326,10 @@
               "$ref": "/schemas/enums/sort-direction.json",
               "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Opaque cursor from a previous response's by_device_type_pagination to fetch the next page of a truncated by_device_type breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
             }
           },
           "additionalProperties": true
@@ -348,6 +352,10 @@
               "$ref": "/schemas/enums/sort-direction.json",
               "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Opaque cursor from a previous response's by_device_platform_pagination to fetch the next page of a truncated by_device_platform breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
             }
           },
           "additionalProperties": true
@@ -393,6 +401,10 @@
               "$ref": "/schemas/enums/sort-direction.json",
               "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Opaque cursor from a previous response's by_audience_pagination to fetch the next page of a truncated by_audience breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
             }
           },
           "additionalProperties": true
@@ -460,6 +472,10 @@
               "$ref": "/schemas/enums/sort-direction.json",
               "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Opaque cursor from a previous response's by_placement_pagination to fetch the next page of a truncated by_placement breakdown. Omit for the first page. limit, sort_by, and sort_direction MUST be repeated unchanged across paged requests for the same logical query."
             }
           },
           "additionalProperties": true
