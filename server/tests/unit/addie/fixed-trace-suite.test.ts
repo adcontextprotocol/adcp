@@ -5,12 +5,17 @@ import { BILLING_TOOLS } from '../../../src/addie/mcp/billing-tools.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
+  FIXED_TRACE_STAGE_CONTROL_VERSION,
+  fixedTraceArchitectureConfigSha256FromMetadata,
+  assertFixedTraceRunContract,
   fixedTraceSuiteSha256,
+  fixedTraceToolTranscriptSha256,
   gradeFixedTrace,
   mutationInputProvenanceFailures,
   summarizeFixedTraceRun,
   toolInputConstraintFailures,
   type FixedTraceCase,
+  type FixedTraceCohortStageControl,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
   type FixedTraceRunMetadata,
@@ -39,7 +44,7 @@ function stage(
     promptSha256: HASH,
     providerRequestSha256: HASH,
     reasoningEffort: 'none',
-    maxOutputTokens: 300,
+    effectiveMaxOutputTokens: 300,
     timeoutMs: 30_000,
     maxIterations: 4,
     transportRetries: 0,
@@ -47,15 +52,36 @@ function stage(
     temperature: 0,
     usageKnown: true,
     usage: { inputTokens: 100, outputTokens: 20 },
-    estimatedCostUsd: 0.0005,
+    estimatedCostUsd: 0.0002,
     pricingSource: 'synthetic test rate',
     latencyMs: 5,
     ...overrides,
   };
 }
 
-function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRunMetadata {
+function control(): FixedTraceCohortStageControl {
   return {
+    requestedProvider: 'anthropic',
+    requestedModel: 'requested-model',
+    reasoningEffort: 'none',
+    configuredMaxOutputTokens: 300,
+    timeoutMs: 30_000,
+    maxIterations: 4,
+    transportRetries: 0,
+    samplingMode: 'temperature_zero',
+    temperature: 0,
+    pricing: {
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 5,
+      cacheReadUsdPerMillionTokens: null,
+      cacheWriteUsdPerMillionTokens: null,
+      source: 'synthetic test rate',
+    },
+  };
+}
+
+function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRunMetadata {
+  const base = {
     runId: 'run-synthetic-1',
     traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
     traceSuiteSha256: fixedTraceSuiteSha256(),
@@ -65,16 +91,26 @@ function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRun
     addieCodeVersion: CODE_VERSION,
     promptConfigVersion: 'synthetic-config-v1',
     toolSchemaSha256: HASH,
+    toolDefinitionProvenance: 'fixture_local' as const,
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: HASH,
+    providerDegradationInjectionEnabled: true,
     repetition: 1,
     architectureArm: fixedTraceArchitectureArm(),
     toolUniverse: fixedTraceToolUniverseProvenance(),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(),
     directArmAdmission: null,
     caseControl: null,
+    routerControl: control(),
+    generationControl: control(),
     router: stage(),
     generation: stage(),
     ...overrides,
+  };
+  return {
+    ...base,
+    architectureConfigSha256: overrides.architectureConfigSha256
+      ?? fixedTraceArchitectureConfigSha256FromMetadata(base),
   };
 }
 
@@ -90,8 +126,9 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
         returnedProvider: null,
         returnedModel: null,
         modelResolution: null,
+        reasoningEffort: null,
         providerRequestSha256: null,
-        maxOutputTokens: null,
+        effectiveMaxOutputTokens: null,
         timeoutMs: null,
         maxIterations: null,
         transportRetries: null,
@@ -116,7 +153,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
           pricingSource: null,
           latencyMs: 0,
         })
-      : stage(trace.caseControl ? { maxOutputTokens: trace.caseControl.maxOutputTokens } : {});
+      : stage(trace.caseControl ? { effectiveMaxOutputTokens: trace.caseControl.maxOutputTokens } : {});
   return {
     traceId: trace.id,
     metadata: metadata({
@@ -135,9 +172,11 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
     output: outputMarkers.join(' '),
     flagged: trace.expectation.requireFlagged ?? false,
     route: { action: trace.routing.action, toolSets: [...trace.routing.toolSets] },
-    tools: trace.expectation.requiredTools.map((name) => {
+    tools: trace.expectation.requiredTools.map((name, index) => {
       const fixture = trace.toolFixtures.find((candidate) => candidate.name === name);
-      return {
+      const tool = {
+        sequence: index + 1,
+        callId: `${trace.id}-${name}`,
         name,
         description: `Synthetic ${name} fixture.`,
         input: structuredClone(
@@ -152,6 +191,10 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
         policyDisposition: 'allowed',
         resultStatus: fixture?.resultStatus ?? 'ok',
         simulated: true,
+      };
+      return {
+        ...tool,
+        transcriptSha256: fixedTraceToolTranscriptSha256(tool, fixture?.result ?? ''),
       };
     }),
     rejectedToolCalls: [],
@@ -548,7 +591,7 @@ describe('fixed cross-provider trace suite', () => {
       latencyP95Ms: 10,
     });
     expect(summary.terminalFailureRate).toBeCloseTo(2 / 32);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.031);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.0124);
     expect(summary).toMatchObject({
       diagnosticOnly: true,
       promotionBlocker: 'trusted_evaluator_context_unavailable',
@@ -625,6 +668,9 @@ describe('fixed cross-provider trace suite', () => {
       id: observation.traceId,
       expectation: { ...trace.expectation, terminalStatuses: ['complete'] as const },
     }));
+    for (const observation of observations) {
+      observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256(syntheticSuite);
+    }
     const { grades, summary } = summarizeFixedTraceRun(observations, syntheticSuite);
     expect(grades).toHaveLength(4);
     expect(grades.every((grade) => !grade.deterministicPass && grade.terminalFailure)).toBe(true);
@@ -712,16 +758,125 @@ describe('fixed cross-provider trace suite', () => {
   it('rejects a deserialized truncation observation whose control differs from the versioned trace', () => {
     const truncation = FIXED_TRACE_SUITE.find((trace) => trace.id === 'bounded-truncation')!;
     const observation = passingObservation(truncation);
+    observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([truncation]);
     expect(observation.metadata).toMatchObject({
       caseControl: { kind: 'bounded_generation_output', maxOutputTokens: 32 },
-      generation: { maxOutputTokens: 32 },
+      generation: { effectiveMaxOutputTokens: 32 },
     });
     observation.metadata.caseControl = { kind: 'bounded_generation_output', maxOutputTokens: 64 };
-    observation.metadata.generation.maxOutputTokens = 64;
+    observation.metadata.generation.effectiveMaxOutputTokens = 64;
 
     expect(gradeFixedTrace(truncation, observation).failures).toContain('case_control_mismatch');
     expect(() => summarizeFixedTraceRun([observation], [truncation]))
       .toThrow('Fixed trace case control mismatch: bounded-truncation');
+  });
+
+  it('rejects hostile stage-control and cost provenance changes', () => {
+    const observations = FIXED_TRACE_SUITE.map(passingObservation);
+    for (const observation of observations) observation.metadata.generationControl.pricing.source = 'forged pricing source';
+    expect(() => assertFixedTraceRunContract(observations)).toThrow('fingerprint mismatch');
+
+    const mixedControls = FIXED_TRACE_SUITE.map(passingObservation);
+    mixedControls[1]!.metadata.routerControl.timeoutMs = 31_000;
+    mixedControls[1]!.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(mixedControls[1]!.metadata);
+    expect(() => assertFixedTraceRunContract(mixedControls)).toThrow('Mixed fixed trace run metadata');
+
+    const normalTrace = FIXED_TRACE_SUITE.find((trace) => trace.category === 'knowledge')!;
+    const configuredMismatch = passingObservation(normalTrace);
+    configuredMismatch.metadata.generation.effectiveMaxOutputTokens = 301;
+    expect(gradeFixedTrace(normalTrace, configuredMismatch).failures).toContain('generation_effective_max_output_tokens_mismatch');
+
+    const truncationTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'bounded-truncation')!;
+    expect(gradeFixedTrace(truncationTrace, passingObservation(truncationTrace)).deterministicPass).toBe(true);
+
+    const changedRate = passingObservation(normalTrace);
+    changedRate.metadata.routerControl.pricing.inputUsdPerMillionTokens = 2;
+    changedRate.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(changedRate.metadata);
+    expect(gradeFixedTrace(normalTrace, changedRate).failures).toContain('router_estimated_cost_mismatch');
+
+    const changedSource = passingObservation(normalTrace);
+    changedSource.metadata.routerControl.pricing.source = 'different source';
+    changedSource.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(changedSource.metadata);
+    expect(gradeFixedTrace(normalTrace, changedSource).failures).toContain('router_pricing_source_mismatch');
+
+    const changedUsage = passingObservation(normalTrace);
+    changedUsage.metadata.router.usage = { inputTokens: 101, outputTokens: 20 };
+    expect(gradeFixedTrace(normalTrace, changedUsage).failures).toContain('router_estimated_cost_mismatch');
+
+    const cacheAccounted = passingObservation(normalTrace);
+    cacheAccounted.metadata.routerControl.pricing.cacheReadUsdPerMillionTokens = 0.25;
+    cacheAccounted.metadata.routerControl.pricing.cacheWriteUsdPerMillionTokens = 2;
+    cacheAccounted.metadata.router.usage = {
+      inputTokens: 100, outputTokens: 20, cacheReadTokens: 10, cacheWriteTokens: 5,
+    };
+    cacheAccounted.metadata.router.estimatedCostUsd = 0.0001975;
+    cacheAccounted.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(cacheAccounted.metadata);
+    expect(gradeFixedTrace(normalTrace, cacheAccounted).deterministicPass).toBe(true);
+    cacheAccounted.metadata.router.estimatedCostUsd = 0.0002;
+    expect(gradeFixedTrace(normalTrace, cacheAccounted).failures).toContain('router_estimated_cost_mismatch');
+
+    const ignoredTrace = FIXED_TRACE_SUITE.find((trace) => trace.routing.action === 'ignore')!;
+    const notRun = passingObservation(ignoredTrace);
+    notRun.metadata.generation.effectiveMaxOutputTokens = 1;
+    expect(gradeFixedTrace(ignoredTrace, notRun).failures).toContain('generation_not_run_state_invalid');
+  });
+
+  it('enforces versioned semantic tool dependencies despite renumbered receipts', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'meeting-full-administration-confirmed')!;
+    const ordered = passingObservation(trace);
+    const rsvp = ordered.tools.find((tool) => tool.name === 'rsvp_to_meeting')!;
+    rsvp.input = { meeting_id: 'synthetic-meeting-1', response: 'accepted' };
+    rsvp.transcriptSha256 = fixedTraceToolTranscriptSha256(
+      rsvp,
+      trace.toolFixtures.find((fixture) => fixture.name === rsvp.name)!.result,
+    );
+    expect(mutationInputProvenanceFailures(trace, ordered.tools)).toEqual([]);
+
+    const reordered = structuredClone(ordered);
+    reordered.tools = [
+      reordered.tools.find((tool) => tool.name === 'rsvp_to_meeting')!,
+      reordered.tools.find((tool) => tool.name === 'add_meeting_attendee')!,
+      reordered.tools.find((tool) => tool.name === 'schedule_meeting')!,
+      reordered.tools.find((tool) => tool.name === 'update_topic_subscriptions')!,
+    ].map((tool, index) => {
+      tool.sequence = index + 1;
+      tool.transcriptSha256 = fixedTraceToolTranscriptSha256(
+        tool,
+        trace.toolFixtures.find((fixture) => fixture.name === tool.name)!.result,
+      );
+      return tool;
+    });
+    expect(mutationInputProvenanceFailures(trace, reordered.tools)).toContain('rsvp_to_meeting:$.meeting_id');
+    expect(gradeFixedTrace(trace, reordered).failures).toContain('tool_dependency_order_invalid');
+
+    const duplicateCallId = structuredClone(ordered);
+    duplicateCallId.tools[1]!.callId = duplicateCallId.tools[0]!.callId;
+    duplicateCallId.tools[1]!.transcriptSha256 = fixedTraceToolTranscriptSha256(
+      duplicateCallId.tools[1]!,
+      trace.toolFixtures.find((fixture) => fixture.name === duplicateCallId.tools[1]!.name)!.result,
+    );
+    expect(gradeFixedTrace(trace, duplicateCallId).failures).toContain('tool_call_identity_invalid');
+
+    const crossWiredCallId = structuredClone(ordered);
+    [crossWiredCallId.tools[0]!.callId, crossWiredCallId.tools[1]!.callId] = [
+      crossWiredCallId.tools[1]!.callId,
+      crossWiredCallId.tools[0]!.callId,
+    ];
+    expect(gradeFixedTrace(trace, crossWiredCallId).failures).toContain('tool_evidence_invalid');
+
+    const independent = passingObservation(
+      FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'community-group-full-participation-confirmed')!,
+    );
+    [independent.tools[2], independent.tools[3]] = [independent.tools[3]!, independent.tools[2]!];
+    independent.tools.forEach((tool, index) => {
+      tool.sequence = index + 1;
+      const fixture = FIXED_TRACE_SUITE.find((candidate) => candidate.id === independent.traceId)!
+        .toolFixtures.find((entry) => entry.name === tool.name)!;
+      tool.transcriptSha256 = fixedTraceToolTranscriptSha256(tool, fixture.result);
+    });
+    expect(gradeFixedTrace(
+      FIXED_TRACE_SUITE.find((candidate) => candidate.id === independent.traceId)!, independent,
+    ).deterministicPass).toBe(true);
   });
 
   it('rejects duplicate and unknown observations', () => {
@@ -781,8 +936,9 @@ describe('fixed cross-provider trace suite', () => {
         returnedProvider: null,
         returnedModel: null,
         modelResolution: null,
+        reasoningEffort: null,
         providerRequestSha256: null,
-        maxOutputTokens: null,
+        effectiveMaxOutputTokens: null,
         timeoutMs: null,
         maxIterations: null,
         transportRetries: null,

@@ -35,6 +35,7 @@ import {
   MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
 } from './fixed-trace-tool-loop.js';
 import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
+import { fixedTraceEstimatedCostUsd } from './fixed-trace-budget.js';
 import {
   admitFixedTraceDirectArm,
   fixedTraceArchitectureArm,
@@ -45,20 +46,18 @@ import {
 } from './fixed-trace-architecture.js';
 import {
   FIXED_TRACE_SUITE,
+  FIXED_TRACE_STAGE_CONTROL_VERSION,
+  fixedTraceArchitectureConfigSha256FromMetadata,
   FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
   type FixedTraceCase,
+  type FixedTraceCohortStageControl,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
+  type FixedTracePricing,
   type FixedTraceRunMetadata,
   type FixedTraceTerminalStatus,
 } from './fixed-trace-suite.js';
-
-export interface FixedTracePricing {
-  inputUsdPerMillionTokens: number;
-  outputUsdPerMillionTokens: number;
-  source: string;
-}
 
 export interface FixedTraceProviderStageConfig {
   provider: ModelProvider;
@@ -67,6 +66,7 @@ export interface FixedTraceProviderStageConfig {
   maxOutputTokens: number;
   timeoutMs: number;
   maxIterations: number;
+  transportRetries: 0;
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control';
   temperature: 0 | null;
   pricing: FixedTracePricing;
@@ -140,6 +140,7 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
   ) {
     throw new Error(`${name} maxIterations must be between 1 and ${MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS}`);
   }
+  if (config.transportRetries !== 0) throw new Error(`${name} transportRetries must be zero`);
   if (
     config.samplingMode === 'temperature_zero' && config.temperature !== 0
     || config.samplingMode === 'provider_no_sampling_control' && config.temperature !== null
@@ -150,14 +151,30 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
     || !Number.isFinite(config.pricing.outputUsdPerMillionTokens)
     || config.pricing.outputUsdPerMillionTokens < 0
     || !config.pricing.source.trim()
+    || (config.pricing.cacheReadUsdPerMillionTokens !== null && (
+      !Number.isFinite(config.pricing.cacheReadUsdPerMillionTokens)
+      || config.pricing.cacheReadUsdPerMillionTokens < 0
+    ))
+    || (config.pricing.cacheWriteUsdPerMillionTokens !== null && (
+      !Number.isFinite(config.pricing.cacheWriteUsdPerMillionTokens)
+      || config.pricing.cacheWriteUsdPerMillionTokens < 0
+    ))
   ) throw new Error(`${name} pricing configuration is invalid`);
 }
 
-function estimateCostUsd(usage: ModelUsage, pricing: FixedTracePricing): number {
-  return (
-    usage.inputTokens * pricing.inputUsdPerMillionTokens
-    + usage.outputTokens * pricing.outputUsdPerMillionTokens
-  ) / 1_000_000;
+function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCohortStageControl {
+  return {
+    requestedProvider: config.provider.id,
+    requestedModel: config.model,
+    reasoningEffort: config.reasoningEffort,
+    configuredMaxOutputTokens: config.maxOutputTokens,
+    timeoutMs: config.timeoutMs,
+    maxIterations: config.maxIterations,
+    transportRetries: config.transportRetries,
+    samplingMode: config.samplingMode,
+    temperature: config.temperature,
+    pricing: { ...config.pricing },
+  };
 }
 
 function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'reasoning'> | Record<string, never> {
@@ -189,15 +206,15 @@ function providerStageMetadata(
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
     reasoningEffort: config.reasoningEffort,
-    maxOutputTokens: config.maxOutputTokens,
+    effectiveMaxOutputTokens: config.maxOutputTokens,
     timeoutMs: config.timeoutMs,
     maxIterations: config.maxIterations,
-    transportRetries: 0,
+    transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
     usageKnown: true,
     usage,
-    estimatedCostUsd: estimateCostUsd(usage, config.pricing),
+    estimatedCostUsd: fixedTraceEstimatedCostUsd(usage, config.pricing),
     pricingSource: config.pricing.source,
     latencyMs: state.latencyMs,
   };
@@ -220,16 +237,16 @@ function localStageMetadata(
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
     reasoningEffort: config.reasoningEffort,
-    maxOutputTokens: config.maxOutputTokens,
+    effectiveMaxOutputTokens: config.maxOutputTokens,
     timeoutMs: config.timeoutMs,
     maxIterations: config.maxIterations,
-    transportRetries: 0,
+    transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
     usageKnown: usage !== undefined,
     usage: usage ?? null,
     estimatedCostUsd: usage
-      ? estimateCostUsd(usage, config.pricing)
+      ? fixedTraceEstimatedCostUsd(usage, config.pricing)
       : state.dispatched ? null : 0,
     pricingSource: usage ? config.pricing.source : null,
     latencyMs: state.latencyMs,
@@ -247,8 +264,8 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     modelResolution: null,
     promptSha256: sha256({ traceId: trace.id, stage: 'not_run' }),
     providerRequestSha256: null,
-    reasoningEffort: 'provider_default',
-    maxOutputTokens: null,
+    reasoningEffort: null,
+    effectiveMaxOutputTokens: null,
     timeoutMs: null,
     maxIterations: null,
     transportRetries: null,
@@ -320,43 +337,17 @@ export function fixedTraceArchitectureConfigSha256(
   toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions),
 ): string {
   const arm = fixedTraceArchitectureArm(config.architectureArm);
-  return sha256({
-    architectureArm: arm,
-    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+  return fixedTraceArchitectureConfigSha256FromMetadata({
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     promptConfigVersion: config.promptConfigVersion,
+    toolSchemaSha256,
+    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+    architectureArm: arm,
     toolUniverse: fixedTraceToolUniverseProvenance(arm.id),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(arm.id),
-    promptTopology: arm.id === 'two_stage_llm_router'
-      ? 'router_then_generation'
-      : arm.id === 'oracle_route_diagnostic'
-        ? 'oracle_route_then_generation'
-        : 'direct_generation_unadmitted',
-    toolSchemaSha256,
-    router: {
-      provider: config.router.provider.id,
-      model: config.router.model,
-      reasoningEffort: config.router.reasoningEffort,
-      maxOutputTokens: config.router.maxOutputTokens,
-      timeoutMs: config.router.timeoutMs,
-      maxIterations: config.router.maxIterations,
-      samplingMode: config.router.samplingMode,
-      temperature: config.router.temperature,
-      pricing: config.router.pricing,
-    },
-    generation: {
-      provider: config.generation.provider.id,
-      model: config.generation.model,
-      reasoningEffort: config.generation.reasoningEffort,
-      maxOutputTokens: config.generation.maxOutputTokens,
-      timeoutMs: config.generation.timeoutMs,
-      maxIterations: config.generation.maxIterations,
-      samplingMode: config.generation.samplingMode,
-      temperature: config.generation.temperature,
-      pricing: config.generation.pricing,
-    },
-    // This switches the degradation trace between a zero-dispatch synthetic
-    // failure and a real provider attempt, so it is candidate cohort policy.
-    injectProviderDegradation: config.injectProviderDegradation !== false,
+    routerControl: cohortStageControl(config.router),
+    generationControl: cohortStageControl(config.generation),
+    providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
   });
 }
 
@@ -426,7 +417,10 @@ function baseMetadata(
     addieCodeVersion: CODE_VERSION,
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
+    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+    providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     repetition: config.repetition ?? 1,
     architectureArm,
     toolUniverse: {
@@ -440,6 +434,8 @@ function baseMetadata(
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(architectureArm.id),
     directArmAdmission: null,
     caseControl: trace.caseControl ?? null,
+    routerControl: cohortStageControl(config.router),
+    generationControl: cohortStageControl(config.generation),
     router,
     generation,
   };
@@ -451,7 +447,12 @@ function generationConfigForTrace(
 ): FixedTraceProviderStageConfig {
   const control = trace.caseControl;
   if (!control) return config.generation;
-  if (trace.category !== 'truncation') {
+  const canonicalControl = FIXED_TRACE_SUITE.find((candidate) => candidate.id === trace.id)?.caseControl;
+  if (
+    trace.category !== 'truncation'
+    || canonicalControl?.kind !== control.kind
+    || canonicalControl.maxOutputTokens !== control.maxOutputTokens
+  ) {
     throw new Error(`Fixed trace case control ${control.kind} is only valid for truncation traces`);
   }
   if (!Number.isSafeInteger(control.maxOutputTokens) || control.maxOutputTokens < 1) {

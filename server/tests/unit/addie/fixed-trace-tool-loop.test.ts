@@ -6,6 +6,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
   FIXED_TRACE_SUITE,
+  fixedTraceToolTranscriptSha256,
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
@@ -112,8 +113,9 @@ describe('executeFixedTraceToolLoop', () => {
     expect(result.text).toBe('AdCP uses task-based interactions.');
     expect(result.localReplacementReason).toBeNull();
     expect(result.usage).toEqual({ inputTokens: 20, outputTokens: 10 });
-    expect(result.tools).toEqual([{
+    const receipt = {
       sequence: 1,
+      callId: 'tool_1',
       name: 'search_docs',
       description: 'Synthetic search_docs fixture.',
       input: { query: 'task model' },
@@ -121,6 +123,13 @@ describe('executeFixedTraceToolLoop', () => {
       policyDisposition: 'allowed',
       resultStatus: 'ok',
       simulated: true,
+    };
+    expect(result.tools).toEqual([{
+      ...receipt,
+      transcriptSha256: fixedTraceToolTranscriptSha256(
+        receipt,
+        trace('knowledge-task-model').toolFixtures.find((fixture) => fixture.name === 'search_docs')!.result,
+      ),
     }]);
     expect(Object.isFrozen(result.tools[0].input)).toBe(true);
     expect(result.invocations).toHaveLength(2);

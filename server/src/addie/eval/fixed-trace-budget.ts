@@ -10,6 +10,10 @@ import type {
 export interface FixedTraceBudgetPricing {
   inputUsdPerMillionTokens: number;
   outputUsdPerMillionTokens: number;
+  /** Null means this provider does not expose a separately billable cache read rate. */
+  cacheReadUsdPerMillionTokens?: number | null;
+  /** Null means this provider does not expose a separately billable cache write rate. */
+  cacheWriteUsdPerMillionTokens?: number | null;
   source: string;
 }
 
@@ -47,7 +51,7 @@ interface Reservation {
   active: boolean;
 }
 
-function validatePricing(pricing: FixedTraceBudgetPricing): void {
+export function validateFixedTracePricing(pricing: FixedTraceBudgetPricing): void {
   if (
     !Number.isFinite(pricing.inputUsdPerMillionTokens)
     || pricing.inputUsdPerMillionTokens < 0
@@ -55,26 +59,54 @@ function validatePricing(pricing: FixedTraceBudgetPricing): void {
     || pricing.outputUsdPerMillionTokens < 0
     || !pricing.source.trim()
   ) throw new Error('Fixed trace budget pricing is invalid');
+  for (const rate of [pricing.cacheReadUsdPerMillionTokens, pricing.cacheWriteUsdPerMillionTokens]) {
+    if (rate !== undefined && rate !== null && (!Number.isFinite(rate) || rate < 0)) {
+      throw new Error('Fixed trace cache pricing is invalid');
+    }
+  }
 }
 
 function requestBytes(prepared: PreparedModelInvocation): number {
   return Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8');
 }
 
-function costUsd(
-  inputTokens: number,
-  outputTokens: number,
+/**
+ * The production evaluator's single cost formula. `inputTokens` is the
+ * provider-reported total input, including cache reads and cache writes.
+ * Those buckets are disjoint subsets of input and replace (rather than add
+ * to) standard-input billing. A non-zero cache bucket requires its explicit
+ * rate; a null/omitted rate represents an unsupported bucket.
+ */
+export function fixedTraceEstimatedCostUsd(
+  usage: ModelUsage,
   pricing: FixedTraceBudgetPricing,
 ): number {
+  validateFixedTracePricing(pricing);
+  const { inputTokens, outputTokens } = usage;
   if (
     !Number.isSafeInteger(inputTokens)
     || inputTokens < 0
     || !Number.isSafeInteger(outputTokens)
     || outputTokens < 0
   ) throw new Error('Fixed trace budget usage is invalid');
+  const cacheReadTokens = usage.cacheReadTokens ?? 0;
+  const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+  if (
+    !Number.isSafeInteger(cacheReadTokens) || cacheReadTokens < 0
+    || !Number.isSafeInteger(cacheWriteTokens) || cacheWriteTokens < 0
+    || cacheReadTokens + cacheWriteTokens > inputTokens
+  ) throw new Error('Fixed trace cache usage is invalid');
+  if (cacheReadTokens > 0 && pricing.cacheReadUsdPerMillionTokens == null) {
+    throw new Error('Fixed trace cache read pricing is unavailable');
+  }
+  if (cacheWriteTokens > 0 && pricing.cacheWriteUsdPerMillionTokens == null) {
+    throw new Error('Fixed trace cache write pricing is unavailable');
+  }
   return (
-    inputTokens * pricing.inputUsdPerMillionTokens
+    (inputTokens - cacheReadTokens - cacheWriteTokens) * pricing.inputUsdPerMillionTokens
     + outputTokens * pricing.outputUsdPerMillionTokens
+    + cacheReadTokens * (pricing.cacheReadUsdPerMillionTokens ?? 0)
+    + cacheWriteTokens * (pricing.cacheWriteUsdPerMillionTokens ?? 0)
   ) / 1_000_000;
 }
 
@@ -105,7 +137,7 @@ export class FixedTraceBudget {
     maxOutputTokens: number,
     pricing: FixedTraceBudgetPricing,
   ): Reservation {
-    validatePricing(pricing);
+    validateFixedTracePricing(pricing);
     if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) {
       throw new RangeError('Fixed trace output reserve must be a positive integer');
     }
@@ -117,7 +149,10 @@ export class FixedTraceBudget {
       this.budgetRejectedCalls++;
       throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
     }
-    const usd = costUsd(requestBytes(prepared), maxOutputTokens, pricing);
+    const usd = fixedTraceEstimatedCostUsd(
+      { inputTokens: requestBytes(prepared), outputTokens: maxOutputTokens },
+      pricing,
+    );
     if (this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
       this.admissionClosed = true;
       this.budgetRejectedCalls++;
@@ -137,7 +172,7 @@ export class FixedTraceBudget {
     usage: ModelUsage,
     pricing: FixedTraceBudgetPricing,
   ): void {
-    const actualUsd = costUsd(usage.inputTokens, usage.outputTokens, pricing);
+    const actualUsd = fixedTraceEstimatedCostUsd(usage, pricing);
     this.release(reservation);
     this.accountedSpendUsd += actualUsd;
     this.completedCalls++;
@@ -191,7 +226,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     private readonly budget: FixedTraceBudget,
     private readonly pricing: FixedTraceBudgetPricing,
   ) {
-    validatePricing(pricing);
+    validateFixedTracePricing(pricing);
     this.id = delegate.id;
     this.capabilities = delegate.capabilities;
     if (delegate.deriveProviderToolReceipt) {

@@ -20,6 +20,7 @@ import {
   type ToolHandler,
 } from '../model-providers/tool-orchestration.js';
 import { enforceFailedLookupEvidenceBoundary } from '../failed-lookup-evidence.js';
+import { fixedTraceToolTranscriptSha256 } from './fixed-trace-suite.js';
 import type {
   FixedTraceBoundaryReason,
   FixedTraceCase,
@@ -289,8 +290,9 @@ export async function executeFixedTraceToolLoop(
         const entry = registered.get(event.call.name)!;
         const blocked = event.executed.execution.blocked_by_policy === true;
         completedExecutions.push(event.executed.execution);
-        executions.push(Object.freeze({
+        const receipt = {
           sequence: event.sequence,
+          callId: event.executed.result.toolCallId,
           name: event.call.name,
           description: entry.definition.description,
           input: deepFreeze(structuredClone(event.call.input)),
@@ -298,6 +300,10 @@ export async function executeFixedTraceToolLoop(
           policyDisposition: blocked ? 'blocked' : 'allowed',
           resultStatus: entry.fixture.resultStatus,
           simulated: true,
+        } as const;
+        executions.push(Object.freeze({
+          ...receipt,
+          transcriptSha256: fixedTraceToolTranscriptSha256(receipt, entry.fixture.result),
         }));
         results.push(event.executed.result);
       }

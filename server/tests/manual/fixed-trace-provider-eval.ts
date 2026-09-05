@@ -28,7 +28,6 @@ import { CODE_VERSION, computeRouterRulesHash } from '../../src/addie/config-ver
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
-  type FixedTraceBudgetPricing,
 } from '../../src/addie/eval/fixed-trace-budget.js';
 import {
   fixedTraceToolSchemaSha256,
@@ -50,6 +49,7 @@ import {
   FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
   summarizeFixedTraceRun,
+  type FixedTracePricing,
 } from '../../src/addie/eval/fixed-trace-suite.js';
 import { AnthropicRouterProvider } from '../../src/addie/model-providers/anthropic-router-provider.js';
 import { AnthropicModelProvider } from '../../src/addie/model-providers/anthropic-provider.js';
@@ -80,24 +80,32 @@ const PRICING = {
   anthropicRouter: {
     inputUsdPerMillionTokens: 1,
     outputUsdPerMillionTokens: 5,
+    cacheReadUsdPerMillionTokens: 0.1,
+    cacheWriteUsdPerMillionTokens: 1.25,
     source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
   },
   anthropicGeneration: {
     inputUsdPerMillionTokens: 3,
     outputUsdPerMillionTokens: 15,
+    cacheReadUsdPerMillionTokens: 0.3,
+    cacheWriteUsdPerMillionTokens: 3.75,
     source: 'Repository Anthropic pricing table: Claude Sonnet 5 standard, refreshed August 2026.',
   },
   openai: {
     inputUsdPerMillionTokens: 0.2,
     outputUsdPerMillionTokens: 1.2,
+    cacheReadUsdPerMillionTokens: 0.02,
+    cacheWriteUsdPerMillionTokens: null,
     source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
   },
   google: {
     inputUsdPerMillionTokens: 0.75,
     outputUsdPerMillionTokens: 3.75,
+    cacheReadUsdPerMillionTokens: 0.075,
+    cacheWriteUsdPerMillionTokens: null,
     source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
   },
-} satisfies Record<string, FixedTraceBudgetPricing>;
+} satisfies Record<string, FixedTracePricing>;
 
 const cliArguments = parseFixedTraceDiagnosticCliArguments(process.argv.slice(2));
 
@@ -134,7 +142,7 @@ function stage(
   reasoningEffort: ModelReasoningEffort,
   maxOutputTokens: number,
   maxIterations: number,
-  pricing: FixedTraceBudgetPricing,
+  pricing: FixedTracePricing,
 ): FixedTraceProviderStageConfig {
   return {
     provider,
@@ -143,6 +151,7 @@ function stage(
     maxOutputTokens,
     timeoutMs: 120_000,
     maxIterations,
+    transportRetries: 0,
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
     pricing,
