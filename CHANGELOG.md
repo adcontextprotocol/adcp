@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.2.0-rc.1
+
+### Minor Changes
+
+- 4cc68e1: Deprecate cross-buy delivery aggregates and response-wide currency, add media-buy-level currency with a package-grain fallback for mixed-currency external buys, and preserve qualified standard delivery values on each package.
+- 6ce1133: Disambiguate cross-buy reach as deduplicated or summed constituent reach, forbid aggregate frequency for summed reach, and preserve legacy payload validity when the new discriminator is absent.
+- dd6ab0b: Make Reliable Reporting a proper-name AdCP 3.2 capability with explicit version discovery and Core, Managed Delivery, and Reconciled Billing conformance stories. Strengthen it with upstream source-timezone schedules, immutable billing-purpose reporting evidence and control-total adjustments, a health-independent `reporting.ledger_changed` invalidation, checkpointed incremental ledger repair, and evidence-scoped offering reliability statistics.
+- 6cf4e18: Make first-party measurement legible on the vendor-metric surface (#7150). Add the closed `vendor_relationship` enum (`first_party` / `affiliated` / `third_party`, defined on structural ownership/control facts, a relationship disposition rather than a trust ranking) to `reporting_capabilities.vendor_metrics[]` so a seller declares its relationship to the measurement vendor — required whenever the vendor is the seller itself or under common ownership with it, with absence meaning undeclared rather than third-party — and MAY echo it on `vendor_metric_values[]` rows; methodology stays at the vendor catalog's `methodology_url` / `methodology_version` rather than as free text on the row. Add `measurable_plays` and `measurable_play_seconds` coverage denominators to `vendor-metric-value` and `forecast-vendor-metric-value` for play-based channels (DOOH, cinema, place-based) where `impressions` is itself modelled. Add `methodology_version` to vendor-scope `committed_metrics` entries (request and response) so the version pin the measurement catalog already promises exists on the contract. Document that a seller MAY be its own measurement vendor when it publishes the metric catalog like any other vendor and declares `first_party`.
+
+### Patch Changes
+
+- 73a2957: Align the public training agent, reporting compliance examples, Addie certification guidance, and version documentation with the AdCP 3.2 RC.0 wire bundle, `@adcp/sdk@14.0.0-beta.31`, and Python `adcp==8.0.0b13`.
+- 7a470ca: Allow partial reporting coverage to be represented when a media buy has mixed support across reporting slices, and clarify that an explicitly empty denominator is fully covered.
+- 4eaee12: Gate the deterministic SI session follow-up steps on `si_initiate_session` so
+  agents outside the sponsored intelligence domain cascade-skip the phase instead
+  of receiving a false `si_send_message` failure. Reported in adcp-client#2827.
+- 7483a04: Add separate provider-native immutable version references to reporting file entries, and standardize reporting object and version reference bounds for S3-compatible managed delivery.
+- 4461fdb: Share the package delivery metric value schema across pull and webhook reporting so generated SDK types remain unambiguous.
+- 832ebb0: Fix the build-time vendor-metric uniqueness lint so `vendor_metric_values` rows key on `(vendor.domain, vendor.brand_id, metric_id, qualifier)` — the rule `delivery-metrics.json` already states — instead of collapsing qualifier-distinct rows (7-day vs 30-day attribution windows) into false duplicates. Qualifier canonicalization is key-sorted deep equality, matching the structured-qualifier join rule on `committed-metric.json`. `reporting_capabilities.vendor_metrics` declarations keep the 3-tuple. No wire change.
+
 ## 3.2.0-rc.0
 
 ### Minor Changes

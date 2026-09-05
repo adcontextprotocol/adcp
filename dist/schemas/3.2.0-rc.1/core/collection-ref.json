@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/collection-ref.json",
+  "title": "Collection Reference",
+  "description": "Canonical reference to a collection. Collection IDs are scoped to the adagents.json at publisher_domain, so both fields participate in identity.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring this collection is hosted.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "collection_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Collection ID from the publisher's adagents.json collection catalog.",
+      "x-entity": "collection"
+    }
+  },
+  "required": [
+    "publisher_domain",
+    "collection_id"
+  ],
+  "additionalProperties": true
+}

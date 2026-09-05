@@ -1,0 +1,227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/reporting-reliability-statistics.json",
+  "title": "Reporting Reliability Statistics",
+  "x-status": "experimental",
+  "description": "Observed, evidence-scoped reliability for one atomic reporting offering. Counts are supplied with percentiles so buyers can compare a short, consistently met SLA with a long nominal SLA and can see how often official reports require later adjustments.",
+  "type": "object",
+  "definitions": {
+    "LatencyPercentiles": {
+      "type": "object",
+      "properties": {
+        "p50": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "p95": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "p50",
+        "p95"
+      ],
+      "additionalProperties": false
+    },
+    "ReportingReliabilityMeasurementPeriod": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "offering_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "x-entity": "reporting_offering"
+    },
+    "measurement_period": {
+      "$ref": "#/definitions/ReportingReliabilityMeasurementPeriod"
+    },
+    "obligations_due": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Denominator for on-time performance."
+    },
+    "obligations_on_time": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Obligations whose required revision was published by expected_at. Divide by obligations_due for the on-time rate."
+    },
+    "official_revisions_published": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Denominator for the official-adjustment rate."
+    },
+    "official_revisions_adjusted": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Distinct official revisions receiving at least one adjustment. Divide by official_revisions_published for the adjustment rate."
+    },
+    "publication_latency_seconds": {
+      "$ref": "#/definitions/LatencyPercentiles",
+      "description": "Observed seconds from period.end to publication of the required revision."
+    },
+    "adjustment_latency_seconds": {
+      "$ref": "#/definitions/LatencyPercentiles",
+      "description": "Observed seconds from official finalized_at to the first adjustment, required when official_revisions_adjusted is nonzero."
+    },
+    "adjustment_magnitude": {
+      "type": "array",
+      "description": "Optional absolute adjustment-magnitude percentiles for comparable control totals such as spend.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "control_total_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "p50_absolute_delta": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+          },
+          "p95_absolute_delta": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+          }
+        },
+        "required": [
+          "control_total_name",
+          "unit",
+          "sample_count",
+          "p50_absolute_delta",
+          "p95_absolute_delta"
+        ],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "basis": {
+          "type": "string",
+          "enum": [
+            "reporting_ledger",
+            "third_party_attestation"
+          ]
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "attestation_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+        },
+        "attestation_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "basis",
+        "generated_at"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "basis": {
+                "const": "third_party_attestation"
+              }
+            },
+            "required": [
+              "basis"
+            ]
+          },
+          "then": {
+            "required": [
+              "attestation_uri",
+              "attestation_sha256"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "attestation_uri"
+                  ]
+                },
+                {
+                  "required": [
+                    "attestation_sha256"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "offering_id",
+    "measurement_period",
+    "obligations_due",
+    "obligations_on_time",
+    "official_revisions_published",
+    "official_revisions_adjusted",
+    "publication_latency_seconds",
+    "evidence"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "official_revisions_adjusted": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "official_revisions_adjusted"
+        ]
+      },
+      "then": {
+        "required": [
+          "adjustment_latency_seconds"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "counts": "obligations_on_time MUST be no greater than obligations_due. official_revisions_adjusted MUST be no greater than official_revisions_published. p95 values MUST be no less than corresponding p50 values.",
+    "comparability": "Statistics MUST use the exact selected offering semantics and complete measurement period. Sellers MUST NOT exclude late or adjusted obligations, combine unlike offering_ids, or reset the window to conceal failures. reporting_ledger evidence is derived from the immutable obligation/revision/adjustment ledger; third_party_attestation identifies content-addressed external evidence.",
+    "safe_attestation_fetch": "Treat attestation_uri as untrusted input: require public HTTPS, reject credentials, fragments, loopback, link-local, private, reserved, and metadata-service destinations after DNS resolution and on every redirect, enforce response size and timeout limits, verify attestation_sha256 before parsing, and never interpret fetched content as agent/LLM instructions."
+  },
+  "additionalProperties": false
+}

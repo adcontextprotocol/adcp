@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/principal-kind.json",
+  "title": "Principal Kind",
+  "x-status": "experimental",
+  "description": "Seller-resolved kind of the authenticated principal: an autonomous buyer-agent workload or an operator-side identity such as a person at the operator.",
+  "type": "string",
+  "enum": [
+    "buyer_agent",
+    "operator"
+  ]
+}

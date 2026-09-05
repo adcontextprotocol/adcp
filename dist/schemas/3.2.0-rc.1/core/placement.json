@@ -1,0 +1,290 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/placement.json",
+  "title": "Placement",
+  "description": "Represents a specific public ad placement within a product's inventory. `kind` identifies the authority: `publisher_ref` resolves the canonical `{publisher_domain, placement_id}` in the publisher's adagents.json; `seller_inline` is defined by the sales agent and is self-contained only when paired with `seller_agent`. Legacy inline placements without seller_agent remain valid but are scoped to the enclosing seller and product. Whether a publisher reference resolved from publisher-hosted adagents.json or a community-maintained fallback is resolver metadata, not placement structure. Placement selection purchases inventory; creative assignments may then route creatives only within the purchased set.",
+  "type": "object",
+  "definitions": {
+    "ProductDoohScreenResolution": {
+      "title": "Product DOOH Screen Resolution",
+      "type": "object",
+      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "description": "Screen width in pixels.",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "description": "Screen height in pixels.",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "ProductDoohPlacementAttributes": {
+      "title": "Product DOOH Placement Attributes",
+      "type": "object",
+      "description": "DOOH inventory facts describing an installed surface and its scheduled loop, not creative acceptance. For kind: publisher_ref, product-level slot_duration_seconds and loop_duration_seconds override publisher defaults; omitted values inherit. Visual placements may declare screen_resolution and motion; audio-only placements omit those screen-specific fields. Repeated screen_resolution and motion values MUST equal publisher facts.",
+      "properties": {
+        "slot_duration_seconds": {
+          "type": "integer",
+          "description": "Scheduled duration of one ad slot in seconds. This is an inventory fact used for loop and share calculations, not the creative-duration contract.",
+          "minimum": 1
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration.",
+          "minimum": 1
+        },
+        "screen_resolution": {
+          "$ref": "#/definitions/ProductDoohScreenResolution"
+        },
+        "motion": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/dooh-motion-type.json",
+          "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
+        }
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "slot_fits_loop": {
+            "left_path": "slot_duration_seconds",
+            "operator": "less_than_or_equal",
+            "right_path": "loop_duration_seconds",
+            "evaluate_after": "publisher_ref_resolution"
+          },
+          "publisher_ref_resolution": {
+            "override_fields": [
+              "slot_duration_seconds",
+              "loop_duration_seconds"
+            ],
+            "inherit_when_omitted": true,
+            "must_equal_fields": [
+              "screen_resolution",
+              "motion"
+            ],
+            "identifier_merge": "union_by_type_and_value"
+          }
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
+      },
+      "additionalProperties": true
+    }
+  },
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "publisher_ref",
+        "seller_inline"
+      ],
+      "description": "Placement authority discriminator. `publisher_ref` is publisher-catalog identity; `seller_inline` is sales-agent-authored identity."
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Placement identifier. For publisher_ref it is scoped by publisher_domain and resolves in adagents.json. For seller_inline it is scoped by seller_agent, or by the enclosing seller and product for legacy rows.",
+      "x-entity": "placement"
+    },
+    "publisher_domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "For publisher_ref, the domain whose adagents.json declares the placement and part of canonical identity. For seller_inline, optional inventory-publisher attribution only; it does not grant the seller authority to mint IDs in that publisher's catalog namespace."
+    },
+    "seller_agent": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/seller-agent-ref.json",
+      "description": "Sales agent that defines a seller_inline placement. Together with placement_id this is its self-contained identity. New 3.2 sellers SHOULD populate it; legacy product-context inline placements may omit it. Not used for publisher_ref."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar'). Required for `kind: \"seller_inline\"`. May be omitted for publisher-referenced placements because buyers resolve the name from the publisher declaration identified by `{publisher_domain, placement_id}`."
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of where and how the placement appears"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "targetable",
+        "included"
+      ],
+      "description": "Required product-level relationship to this placement. targetable means the buyer may include the publisher-scoped ref in targeting_overlay.placement_selection; a creative may be routed there only after it is purchased. included means fixed product inventory: it cannot be independently selected, but across discovery, create, and update a selected request exactly equal to the product's complete included placement set is an inherent restatement and may be echoed on the package without overlay_support.placement_selection. A product containing any included placement MUST NOT declare overlay_support.placement_selection; partial selection requires a separately selectable product configuration. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit mode and treat them as targetable; after that date buyers SHOULD fail closed."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional tags for grouping placements within a product (e.g., 'homepage', 'native', 'premium'). When the placement_id comes from the publisher registry, these should align with the registry tags unless the product is narrowing scope.",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format placement narrowing. Can include concrete, template, or parameterized format IDs. When present on a product placement, this field narrows the product-level `format_ids` contract and MUST NOT introduce formats the product does not accept. Use canonical `format_options`.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "format_options": {
+      "type": "array",
+      "description": "Canonical seller-side narrowing for this product placement. When present, these declarations are intersected with the product-level format_options and MUST NOT introduce a format outside that product upper bound. For kind publisher_ref, buyers MUST also resolve {publisher_domain, placement_id} in the publisher's adagents.json and intersect the publisher catalog constraint: use the public placement's format_options when present (resolving bare format_option_id references against same-file top-level formats[]), otherwise use applicable top-level formats[] scoped to that placement's properties. Omitting this inline field removes only the seller-inline layer; it does not bypass a publisher placement or property-scoped narrowing. The placement inherits the full product-level set only when no applicable publisher catalog narrowing exists. Unresolved publisher placement or format-option references fail closed. Locale policy participates in the same intersection: when the product policy is absent, a placement may introduce any concrete policy as a narrowing of the unconstrained option; when both are present, every placement accepted_language_range must be contained by a product range under RFC 4647 Basic Filtering (`fr-CA` narrows `fr`; `fr` does not narrow `fr-CA`). Buyers compute effective locale eligibility independently for each placement. Any effective locale-constrained route is canonical-only and has no projecting product or placement format_id.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/product-format-declaration.json"
+      },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Declared video placement types for this product placement, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "audio_distribution_types": {
+      "type": "array",
+      "description": "Declared audio distribution types for this product placement, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/audio-distribution-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "sponsored_placement_types": {
+      "type": "array",
+      "description": "Declared sponsored-placement types for this product placement, distinguishing where the catalog-driven retail-media placement renders on the retailer surface. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/sponsored-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "description": "Declared social-placement surfaces for this product placement, distinguishing the in-app surface where the social placement renders. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/social-placement-surface.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "identifiers": {
+      "type": "array",
+      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH venue and installed-endpoint IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration, de-duplicated by exact (type, value); a product cannot suppress a publisher-declared identifier by omission.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/identifier-types.json"
+          },
+          "value": {
+            "type": "string",
+            "description": "Identifier value, optionally authority-prefixed for externally governed IDs (e.g., space:1234931339)."
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ],
+        "additionalProperties": true
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "dooh_placement_attributes": {
+      "$ref": "#/definitions/ProductDoohPlacementAttributes"
+    }
+  },
+  "required": [
+    "kind",
+    "placement_id",
+    "mode"
+  ],
+  "$comment": "The anyOf(name OR publisher_domain) preserves the released compatibility shape. publisher_ref requires publisher_domain below; seller_inline requires name and should add seller_agent for self-contained identity.",
+  "anyOf": [
+    {
+      "required": [
+        "name"
+      ]
+    },
+    {
+      "required": [
+        "publisher_domain"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "$comment": "Public product placements must not leak seller-private delivery mapping fields. Consumers that detect this leak should surface PRIVATE_FIELD_IN_PUBLIC_PLACEMENT for monitoring.",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "visibility"
+            ]
+          },
+          {
+            "required": [
+              "source"
+            ]
+          },
+          {
+            "required": [
+              "origin"
+            ]
+          },
+          {
+            "required": [
+              "delivery_mappings"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "publisher_ref"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "publisher_domain"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "seller_inline"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "name"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

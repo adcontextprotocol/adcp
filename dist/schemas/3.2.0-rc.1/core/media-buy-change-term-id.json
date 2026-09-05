@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/media-buy-change-term-id.json",
+  "title": "Media Buy Change Term ID",
+  "type": "string",
+  "pattern": "^[A-Za-z0-9_.:-]+$",
+  "x-entity": "media_buy_change_term",
+  "description": "The accepted proposal change_terms[].term_id from which this current-state action projection was derived."
+}

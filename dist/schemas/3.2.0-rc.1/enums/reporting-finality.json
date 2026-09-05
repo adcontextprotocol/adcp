@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/reporting-finality.json",
+  "title": "Reporting Finality",
+  "description": "Finality of a reporting revision. Snapshot revisions are provisional and may be superseded. An official revision is the immutable, invoice-addressable close for its reporting slice and MUST NOT be superseded; later source corrections are explicit reporting adjustments rather than silent replacement revisions.",
+  "type": "string",
+  "enum": [
+    "snapshot",
+    "official"
+  ],
+  "enumDescriptions": {
+    "snapshot": "Provisional seller/source reporting evidence; not sufficient by itself for billing.",
+    "official": "Immutable seller-authoritative close for the represented period. Buyers may key invoices and settlement records to its reporting_revision_id. Later corrections are explicit adjustments, never superseding revisions."
+  }
+}

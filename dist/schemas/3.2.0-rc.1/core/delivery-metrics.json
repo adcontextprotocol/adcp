@@ -1,0 +1,775 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/delivery-metrics.json",
+  "title": "Delivery Metrics",
+  "description": "Standard delivery metrics that can be reported at media buy, package, or creative level",
+  "type": "object",
+  "properties": {
+    "impressions": {
+      "type": "number",
+      "description": "Impressions delivered",
+      "minimum": 0
+    },
+    "spend": {
+      "type": "number",
+      "description": "Amount spent",
+      "minimum": 0
+    },
+    "clicks": {
+      "type": "number",
+      "description": "Total clicks",
+      "minimum": 0
+    },
+    "ctr": {
+      "type": "number",
+      "description": "Click-through rate (clicks/impressions)",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "views": {
+      "type": "number",
+      "description": "Content engagements counted toward the billable view threshold. For video this is a platform-defined view event (e.g., 30 seconds or video midpoint); for audio/podcast it is a stream start; for other formats it follows the pricing model's view definition. When the package uses CPV pricing, spend = views × rate.",
+      "minimum": 0
+    },
+    "completed_views": {
+      "type": "number",
+      "description": "Video/audio completions. When the package has a completed_views optimization goal with view_duration_seconds, completions are counted at that threshold rather than 100% completion.",
+      "minimum": 0
+    },
+    "completion_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Completion rate (completed_views/impressions). Null indicates the metric is not applicable to this package/buy (e.g. completion rate on a non-video buy).",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "conversions": {
+      "type": "number",
+      "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
+      "minimum": 0
+    },
+    "conversion_value": {
+      "type": "number",
+      "description": "Total monetary value of attributed conversions (in the reporting currency)",
+      "minimum": 0
+    },
+    "commissionable_value": {
+      "type": "number",
+      "description": "Settled portion of attributed conversion value eligible for revenue-share commission, in the reporting currency. For revenue_share pricing, spend = round_currency(commissionable_value × commission_rate). This is distinct from conversion_value because taxes, shipping, discounts, returns, cancellations, or ineligible items may be excluded under the agreed commission basis.",
+      "minimum": 0
+    },
+    "roas": {
+      "type": "number",
+      "description": "Return on ad spend (conversion_value / spend)",
+      "minimum": 0
+    },
+    "cost_per_acquisition": {
+      "type": "number",
+      "description": "Cost per conversion (spend / conversions)",
+      "minimum": 0
+    },
+    "new_to_brand_rate": {
+      "type": "number",
+      "description": "Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none, 1 = all. For retail-media unit-volume tracking of first-time buyers, see `new_to_brand_units` (count, not rate).",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "leads": {
+      "type": "number",
+      "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
+      "minimum": 0
+    },
+    "incremental_sales_lift": {
+      "type": "number",
+      "description": "Incremental sales lift attributed to the campaign — sales above the control/holdout baseline. Reported as a fraction (0.15 = 15% lift) or as an absolute value depending on seller convention. The seller's `attribution_methodology` qualifier (typically `deterministic_purchase` or `modeled`) and `attribution_window` qualifier on the matching `committed_metrics` entry disambiguate the methodology and window.",
+      "minimum": 0
+    },
+    "brand_lift": {
+      "type": "number",
+      "description": "Brand lift — measured change in a brand metric (awareness, consideration, favorability, purchase intent, or ad recall) attributed to the campaign. Typically panel-based or survey-based. Reported as a fraction (0.05 = 5% lift). **Multidimensional in production** — Kantar, Upwave, Cint, DV all report each dimension separately with its own sample size and confidence interval. The dimension flows through `qualifier.lift_dimension` on `committed_metrics` / `by_package[].metric_values` (`awareness` | `consideration` | `favorability` | `purchase_intent` | `ad_recall`); rows under different dimensions are different surveyed outcomes and must not be combined. Use `attribution_methodology: 'panel_based'` qualifier when the underlying methodology is a panel.",
+      "minimum": 0
+    },
+    "foot_traffic": {
+      "type": "number",
+      "description": "Store visits attributed to ad exposure. Count of incremental visits over baseline. Typically uses location-data panel methodology (`attribution_methodology: 'panel_based'`) or deterministic loyalty-card match (`attribution_methodology: 'deterministic_purchase'`).",
+      "minimum": 0
+    },
+    "conversion_lift": {
+      "type": "number",
+      "description": "Incremental conversions attributed to the campaign — conversions above the control/holdout baseline. Reported as a fraction (0.10 = 10% lift) or as an absolute count depending on seller convention. Distinct from `conversions` (raw count of attributed conversions); conversion_lift requires a control group and an incrementality methodology.",
+      "minimum": 0
+    },
+    "brand_search_lift": {
+      "type": "number",
+      "description": "Lift in brand search query volume attributed to the campaign — measured via search-data partnerships (Google, Microsoft) or survey methodology. Reported as a fraction (0.20 = 20% lift in branded search).",
+      "minimum": 0
+    },
+    "plays": {
+      "type": "number",
+      "description": "Number of times the ad creative was displayed or played on DOOH or broadcast inventory. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (scheduled-rotation count) and from `impressions` (multiplied audience figure).",
+      "minimum": 0
+    },
+    "measurement_source": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Third-party measurement provider whose data produced this row's audience numbers. Mirrors delivery-forecast.json's measurement_source so forecast and delivery reconcile on the same declaration — distinct from demographic_system, which specifies demographic notation. Makes measured-channel rows (radio, broadcast, OOH) self-describing: a reconciliation join can tie delivered numbers to the system that measured them without consulting out-of-band context. Lowercase slug format.",
+      "examples": [
+        "nielsen",
+        "nielsen_audio",
+        "videoamp",
+        "comscore",
+        "geopath",
+        "barb",
+        "agf",
+        "oztam",
+        "kantar",
+        "barc",
+        "route",
+        "rajar",
+        "triton"
+      ]
+    },
+    "by_event_type": {
+      "type": "array",
+      "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/event-type.json",
+            "description": "The event type"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of events of this type",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of events of this type",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "event_type",
+          "count"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "grps": {
+      "type": "number",
+      "description": "Gross Rating Points delivered (for CPP)",
+      "minimum": 0
+    },
+    "reach": {
+      "type": "number",
+      "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit. The measurement window for this value is declared in `reach_window`; when `reach_window` is omitted, the window is unspecified and buyers MUST NOT sum reach across reports (the value MAY be a daily snapshot, a cumulative total, or something else).",
+      "minimum": 0
+    },
+    "reach_unit": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/reach-unit.json"
+        }
+      ],
+      "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
+    },
+    "reach_window": {
+      "type": "object",
+      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the values are a per-period snapshot, a trailing rolling window, or cumulative-to-date — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "cumulative",
+            "period",
+            "rolling"
+          ],
+          "description": "Window semantics. `cumulative` — uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within a single non-overlapping reporting period (e.g., a daily snapshot for a specific calendar day). Adjacent `period` rows do not share audiences by construction, but the same person MAY appear across multiple periods, so MUST NOT be summed across rows to compute campaign reach. `rolling` — uniques within a trailing window ending at the row's reporting timestamp (e.g., trailing-7-day reach). Adjacent rolling rows overlap and MUST NOT be summed; each row's value stands alone."
+        },
+        "period": {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/duration.json"
+            }
+          ],
+          "description": "Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling` — declares the snapshot length (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot) or the trailing-window length (e.g., `{\"interval\": 7, \"unit\": \"days\"}` for trailing-7-day rolling reach). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "period",
+                  "rolling"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "period"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "frequency": {
+      "type": "number",
+      "description": "Average frequency per reach unit, measured over the window declared in `reach_window`. When `reach_unit` is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT compare or average frequency values across rows.",
+      "minimum": 0
+    },
+    "quartile_data": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Audio/video quartile completion data. Null indicates the metric is not applicable to this package/buy (e.g. quartile data on a non-video buy). Individual quartiles are addressable via the leaf metric identities `quartile_25` (q1_views), `quartile_50` (q2_views), `quartile_75` (q3_views), and `quartile_100` (q4_views) for declaration, commitments, aggregates, and breakdown sorting; this object remains the canonical carrier of the values. Quartiles are player-fired events (VAST firstQuartile/midpoint/thirdQuartile/complete). `quartile_100` counts 100%-of-duration completions and is distinct from `completed_views`, which counts completions at the seller's billable view threshold (`view_duration_seconds`) when one is set.",
+      "properties": {
+        "q1_views": {
+          "type": "number",
+          "description": "25% completion views",
+          "minimum": 0
+        },
+        "q2_views": {
+          "type": "number",
+          "description": "50% completion views",
+          "minimum": 0
+        },
+        "q3_views": {
+          "type": "number",
+          "description": "75% completion views",
+          "minimum": 0
+        },
+        "q4_views": {
+          "type": "number",
+          "description": "100% completion views",
+          "minimum": 0
+        }
+      }
+    },
+    "time_based_views": {
+      "type": "array",
+      "description": "Time-threshold video view counts. Each entry reports views that met a continuous duration threshold under a stated basis, rather than a completion percentage (percentage-based completion is quartile_data). Thresholds of 2 and 6 seconds are RECOMMENDED cross-platform reporting points; any seller-defined threshold is permitted. One entry per (threshold_seconds, basis) pair per reporting period — sellers MUST de-duplicate before emission and MUST NOT emit the same pair twice; buyers MAY treat duplicate pairs as a seller-side conformance bug. Entries under different bases are different metrics and MUST NOT be summed (see view-threshold-basis). Primarily an autoplay/skippable-video metric (social, olv, in-feed video); completion metrics remain the currency for lean-back CTV/cinema inventory. Distinct from `views` (the single billable-threshold scalar) and from `viewability.viewed_seconds` (average in-view duration, not a threshold count). Array entries are not individually sortable in breakdown sort_by. Disclosure-grade surface: (threshold_seconds, basis) is not part of the committed-metric qualifier vocabulary, so a `committed_metrics` entry for `time_based_views` contracts the array's presence, not specific thresholds.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "threshold_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Continuous duration threshold in seconds an impression must meet to count as a view in this entry."
+          },
+          "basis": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/view-threshold-basis.json",
+            "description": "Whether the threshold clock runs on playback time or in-view time. Required because play-time and in-view counts at the same threshold are materially different numbers."
+          },
+          "views": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Count of views meeting this entry's threshold and basis."
+          },
+          "standard": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/viewability-standard.json",
+            "description": "Viewability standard governing the in-view clock for this entry. RECOMMENDED when basis is 'in_view' (MRC and GroupM thresholds differ); not applicable to play_time entries."
+          }
+        },
+        "required": [
+          "threshold_seconds",
+          "basis",
+          "views"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "dooh_metrics": {
+      "type": "object",
+      "description": "DOOH-specific metrics (only included for DOOH campaigns)",
+      "properties": {
+        "loop_plays": {
+          "type": "integer",
+          "description": "Number of times ad played in rotation",
+          "minimum": 0
+        },
+        "screens_used": {
+          "type": "integer",
+          "description": "Number of unique screens displaying the ad",
+          "minimum": 0
+        },
+        "screen_time_seconds": {
+          "type": "integer",
+          "description": "Total display time in seconds",
+          "minimum": 0
+        },
+        "sov_achieved": {
+          "type": "number",
+          "description": "Actual share of voice delivered on a 0.0-1.0 scale. To compare this achieved value with the selected flat-rate DOOH parameters.sov_percentage, multiply sov_achieved by 100. Share is time-weighted: the sum of the delivered segment durations divided by the full loop duration. On equal-duration loops this equals the slot-count ratio. See also ooh_metrics.share_of_voice_contracted, which uses the same 0.0-1.0 scale.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "calculation_notes": {
+          "type": "string",
+          "description": "Per-row supplementary methodology notes for DOOH impression calculation (e.g., 'rotation-based; 6-second slot weighted by 70% audience overlap'). Free-form prose for context that doesn't fit the structured measurement-vendor surface. Canonical methodology declarations belong on the measurement vendor's `get_adcp_capabilities.measurement.metrics[]` block where they're discoverable once and inherited across delivery rows; this field is for row-specific context (a particular daypart's calculation, a venue-mix exception) rather than the seller's general methodology."
+        },
+        "venue_breakdown": {
+          "type": "array",
+          "description": "Per-venue performance breakdown",
+          "items": {
+            "type": "object",
+            "properties": {
+              "venue_id": {
+                "type": "string",
+                "description": "Venue identifier"
+              },
+              "venue_name": {
+                "type": "string",
+                "description": "Human-readable venue name"
+              },
+              "venue_type": {
+                "type": "string",
+                "description": "Venue type (e.g., 'airport', 'transit', 'retail', 'billboard')"
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Impressions delivered at this venue",
+                "minimum": 0
+              },
+              "loop_plays": {
+                "type": "integer",
+                "description": "Loop plays at this venue",
+                "minimum": 0
+              },
+              "screens_used": {
+                "type": "integer",
+                "description": "Number of screens used at this venue",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "venue_id",
+              "impressions"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ooh_metrics": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Classic (static) OOH metrics — printed bulletins, posters, transit, and street furniture (only included for ooh campaigns). Experimental in AdCP 3.2. Static units have no play event: the delivery number is a period-level modeled audience estimate whose methodology tier is declared in estimation_basis (provider identity rides the row-level measurement_source), and the settlement artifact is the posting record — it proves the posting period, not an airing.",
+      "properties": {
+        "panels": {
+          "type": "array",
+          "description": "Panels (faces) covered by this row. A panel commonly carries multiple identifiers at once — OOH contracts key line items on the measurement-currency panel number AND the operator's own panel number together.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "identifiers": {
+                "type": "array",
+                "minItems": 1,
+                "description": "All identifiers for this panel, one entry per scheme",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Panel/face identifier within the id_type namespace"
+                    },
+                    "id_type": {
+                      "type": "string",
+                      "enum": [
+                        "geopath",
+                        "route_frame",
+                        "plant_face",
+                        "other"
+                      ],
+                      "description": "Identifier scheme: geopath (US Geopath Spot ID), route_frame (UK Route frame ID), plant_face (the operator's own panel number — the identifier both sides of a direct contract know), other (markets without a listed scheme). New schemes ship as enum additions in minors."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "id_type"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable location description (e.g., 'I-95 N of Exit 12, right-hand read')"
+              }
+            },
+            "required": [
+              "identifiers"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "posting_period_start": {
+          "type": "string",
+          "format": "date",
+          "description": "First in-charge date of the posting period this row covers"
+        },
+        "posting_period_end": {
+          "type": "string",
+          "format": "date",
+          "description": "Last date of the posting period this row covers"
+        },
+        "average_posted_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Average actual posting date across the row's units — the date the display term runs from under OAAA Bulletin §2.2 / Poster §3.2(a) when materials were timely. Read with materials_timely to know whether that rule was in force."
+        },
+        "materials_timely": {
+          "type": "boolean",
+          "description": "Seller's assertion that the buyer delivered acceptable materials by the contractual deadline, which determines whether the §2.2 posting-completion rule (term runs from average posting date) applied. An assertion about the buyer's delivery, not a derived value — it is not recomputable from postings[] evidence, and is the one field in this block that isn't checkable against it."
+        },
+        "share_of_voice_contracted": {
+          "type": "number",
+          "description": "Contracted share of voice where the buy is rotation-based (e.g., rotary bulletin programs) rather than an exclusive face, on a 0.0-1.0 scale. Share is time-weighted: the sum of contracted display durations divided by the full rotation duration. On equal-duration rotations this equals the slot-count ratio.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "illuminated_hours": {
+          "type": "number",
+          "description": "Contracted daily illumination hours for the panels in this row. Determines the measured day-part basis (12/18/24-hour impressions) and the illumination-credit remedy when unmet.",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "description": "Modeled audience impressions for the panels and period in this row. This is the channel's delivery number — there is no event-counted alternative. The methodology tier MUST be declared in estimation_basis; provider identity is declared in the row-level measurement_source; the billing vendor is declared in measurement_terms.billing_measurement. The row's top-level impressions SHOULD carry the same value so cross-channel aggregation works without channel-specific logic.",
+          "minimum": 0
+        },
+        "estimation_basis": {
+          "type": "string",
+          "enum": [
+            "currency_measured",
+            "seller_modeled"
+          ],
+          "description": "Methodology tier of estimated_impressions: currency_measured (an audience measurement currency's estimate for the panel and period — Geopath, Route, MOVE, COMMB — with the provider named in the row-level measurement_source) or seller_modeled (the seller's own model — the honest fallback for markets without a measurement currency). Tier, not provider: currencies change over time, so provider identity is data on measurement_source, not values in this enum."
+        },
+        "postings": {
+          "type": "array",
+          "description": "Posting records — the seller-attested settlement artifact proving each panel was posted for the period. Industry convention (OAAA model contracts, Proof of Performance §3.5): photo evidence per bulletin within five calendar days of posting and again after each rotary rotation; one representative close-up photograph per creative design variation for poster showings (no deadline attached). Distinct from the §2.2 posting-completion obligation (posting within five business days of the scheduled date), which governs average_posted_date, not evidence.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "panel_id": {
+                "type": "string",
+                "description": "Panel reference matching one of panels[].identifiers[].id"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "posted",
+                  "rotated",
+                  "repaired",
+                  "removed"
+                ],
+                "default": "posted",
+                "description": "What the record attests: initial posting, rotary rotation to a new face, repair/reposting after damage, or removal at flight end"
+              },
+              "occurred_at": {
+                "type": "string",
+                "format": "date",
+                "description": "Date the attested event happened. For posted events this is the posting date — display terms customarily run from the average posting date across units."
+              },
+              "evidence": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/placement-evidence.json",
+                "description": "Evidence artifact for this event (completion photograph); capture time and location ride the artifact"
+              }
+            },
+            "required": [
+              "panel_id",
+              "occurred_at"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "calculation_notes": {
+          "type": "string",
+          "description": "Row-specific methodology context that doesn't fit the structured fields (e.g., a partial-period proration or a market-specific estimate adjustment). Same role as dooh_metrics.calculation_notes — canonical methodology declarations belong on the measurement vendor's discoverable surfaces, not here."
+        }
+      },
+      "dependencies": {
+        "estimated_impressions": [
+          "estimation_basis"
+        ]
+      },
+      "additionalProperties": true
+    },
+    "viewability": {
+      "type": "object",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — plus optional percentile and histogram distributions over that duration; all three use the same `measurable_impressions` population and are governed by the same viewability threshold (`standard`). Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting. The structured distribution carriers require explicit `viewed_seconds_percentiles` and `viewed_seconds_histogram` identities for declaration, commitment, and selection; they are not numeric aggregate rows or sort keys. This object remains the canonical carrier of every value. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "viewed_seconds_percentile_order": "p25 <= p50 <= p75 <= p90 <= p95",
+          "viewed_seconds_histogram_bounds": "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; gaps between buckets are permitted only when zero impressions fall in the gap (enforced by the sum-equals-measurable_impressions rule, not a separate contiguity check); only the final bucket may omit upper_bound_seconds",
+          "viewed_seconds_histogram_population": "sum(bucket.impressions) equals measurable_impressions"
+        },
+        "spec": "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
+      },
+      "properties": {
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/brand-ref.json",
+          "description": "Vendor that produced these viewability values. Optional but RECOMMENDED so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers without joining back to `package.committed_metrics` or `package.performance_standards`. The vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; the metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Same shape as `vendor_metric_value.vendor` for symmetry across vendor-attested surfaces."
+        },
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments). Coverage denominator for `viewable_rate`, `viewed_seconds`, and both viewed-seconds distributions — every duration statistic is computed over this same measurable population.",
+          "minimum": 0
+        },
+        "viewable_impressions": {
+          "type": "number",
+          "description": "Impressions that met the viewability threshold defined by the measurement standard.",
+          "minimum": 0
+        },
+        "viewable_rate": {
+          "type": "number",
+          "description": "Viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "viewed_seconds": {
+          "type": "number",
+          "description": "Average in-view duration per measurable impression, in seconds. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Computed over `measurable_impressions`, not total impressions — the same denominator as `viewable_rate`. The viewability `standard` governs the threshold (e.g., MRC's 50% pixels for 1s display / 2s video) that defines when an impression is in view and therefore when the clock is running. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field.",
+          "minimum": 0
+        },
+        "viewed_seconds_percentiles": {
+          "type": "object",
+          "description": "Percentile summary of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. This object MUST use the same reporting row, measurement vendor, viewability `standard`, and `measurable_impressions` population as `viewed_seconds`; sellers MUST omit it when `measurable_impressions` is zero. Percentiles use the nearest-rank definition: sort the N observed durations in ascending order and select rank `ceil(p × N)` (one-based) for percentile p. Values MUST be non-decreasing from p25 through p95. The structured metric identity `viewed_seconds_percentiles` makes this optional surface discoverable and requestable; it is not sortable and the nested object remains the canonical carrier.",
+          "properties": {
+            "p25": {
+              "type": "number",
+              "description": "25th-percentile in-view duration in seconds.",
+              "minimum": 0
+            },
+            "p50": {
+              "type": "number",
+              "description": "Median (50th-percentile) in-view duration in seconds.",
+              "minimum": 0
+            },
+            "p75": {
+              "type": "number",
+              "description": "75th-percentile in-view duration in seconds.",
+              "minimum": 0
+            },
+            "p90": {
+              "type": "number",
+              "description": "90th-percentile in-view duration in seconds.",
+              "minimum": 0
+            },
+            "p95": {
+              "type": "number",
+              "description": "95th-percentile in-view duration in seconds.",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "p25",
+            "p50",
+            "p75",
+            "p90",
+            "p95"
+          ],
+          "additionalProperties": false
+        },
+        "viewed_seconds_histogram": {
+          "type": "array",
+          "description": "Bucketed counts of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. Buckets MUST be ordered by ascending lower bound, MUST NOT overlap, and MUST partition every impression in the same `measurable_impressions` population exactly once; therefore the sum of `impressions` MUST equal `measurable_impressions`. Buckets need not be contiguous: a gap between consecutive bucket boundaries is permitted when no impressions fall within that range — the sum constraint enforces this implicitly, and validators MUST NOT independently require contiguity. Each bucket is half-open `[lower_bound_seconds, upper_bound_seconds)`; only the final bucket MAY omit `upper_bound_seconds`, representing an unbounded upper range. Sellers choose boundaries, but buyers MUST combine histograms only when the complete boundary sequence, measurement vendor, and viewability `standard` match. The structured metric identity `viewed_seconds_histogram` makes this optional surface discoverable and requestable; it is not sortable and this nested array remains the canonical carrier.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "lower_bound_seconds": {
+                "type": "number",
+                "description": "Inclusive lower bound of this duration bucket, in seconds.",
+                "minimum": 0
+              },
+              "upper_bound_seconds": {
+                "type": "number",
+                "description": "Exclusive upper bound of this duration bucket, in seconds. MUST be greater than `lower_bound_seconds`. Omit only on the final bucket to represent an unbounded upper range.",
+                "minimum": 0
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Number of measurable impressions whose in-view duration falls in this bucket.",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "lower_bound_seconds",
+              "impressions"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "standard": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/viewability-standard.json",
+          "description": "Viewability measurement standard applied to these metrics. Governs the in-view threshold for `viewable_rate`, `viewed_seconds`, and both viewed-seconds distributions."
+        }
+      },
+      "dependencies": {
+        "viewed_seconds_percentiles": [
+          "viewed_seconds",
+          "measurable_impressions"
+        ],
+        "viewed_seconds_histogram": [
+          "viewed_seconds",
+          "measurable_impressions"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "viewed_seconds_percentiles"
+            ]
+          },
+          "then": {
+            "properties": {
+              "measurable_impressions": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "viewed_seconds_histogram"
+            ]
+          },
+          "then": {
+            "properties": {
+              "measurable_impressions": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "engagements": {
+      "type": "number",
+      "description": "Total engagements — direct interactions with the ad beyond viewing. Includes social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio. Platform-specific; corresponds to the 'engagements' optimization metric. Maps to DBCFM KPI_INTERACTIONS (Interaktionen) in the Reporting/Performance block.",
+      "minimum": 0
+    },
+    "follows": {
+      "type": "number",
+      "description": "New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes attributed to this delivery. Paid subscriptions are conversion events with `event_type: subscribe`, not `follows`.",
+      "minimum": 0
+    },
+    "saves": {
+      "type": "number",
+      "description": "Saves, bookmarks, playlist adds, pins attributed to this delivery.",
+      "minimum": 0
+    },
+    "profile_visits": {
+      "type": "number",
+      "description": "Visits to the brand's in-platform page (profile, artist page, channel, or storefront) attributed to this delivery. Does not include external website clicks.",
+      "minimum": 0
+    },
+    "engagement_rate": {
+      "type": "number",
+      "description": "Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impressions, but definition varies by platform.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cost_per_click": {
+      "type": "number",
+      "description": "Cost per click (spend / clicks)",
+      "minimum": 0
+    },
+    "cost_per_completed_view": {
+      "type": "number",
+      "description": "Cost per completed view (spend / completed_views). Primary CPCV pricing scalar for video/audio inventory; the package's `pricing_model` is `cpcv` when this field is the billing basis.",
+      "minimum": 0
+    },
+    "cpm": {
+      "type": "number",
+      "description": "Cost per thousand impressions, computed as (spend / impressions) × 1000. Universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH inventory; the package's `pricing_model` is `cpm` when this field is the billing basis. Field name aligns with the canonical `cpm` token in `enums/pricing-model.json` and `pricing-options/cpm-option.json` so buyers cross-walk pricing model → reported scalar without a translation table.",
+      "minimum": 0
+    },
+    "downloads": {
+      "type": "number",
+      "description": "Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x methodology). Distinct from `views` — for podcast inventory this is the count of podcast episode downloads; for streaming audio it is the count of stream starts that meet the platform's download threshold. Prefer this over `views` for audio inventory.",
+      "minimum": 0
+    },
+    "units_sold": {
+      "type": "number",
+      "description": "Items sold attributed to this delivery. Retail-media scalar distinct from `conversions` — a single conversion (transaction) may carry multiple `units_sold`. Used by retail media platforms where the buyer optimizes against unit movement, not transaction count. Attribution lookback windows are platform-specific (commonly 7/14/30 days, view-through and click-through variants); sellers SHOULD declare the window via `reporting_capabilities.measurement_windows` or `measurement_terms` rather than encoding it in this scalar.",
+      "minimum": 0
+    },
+    "new_to_brand_units": {
+      "type": "number",
+      "description": "Units sold to first-time brand buyers (count, not rate). Retail-media scalar — the unit-volume parallel to the conversion-fraction `new_to_brand_rate`. Used by retail media platforms where new-customer acquisition unit volume is a primary KPI. Same attribution-window note as `units_sold` applies.",
+      "minimum": 0
+    },
+    "by_action_source": {
+      "type": "array",
+      "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_source": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/enums/action-source.json",
+            "description": "Where the conversion occurred"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of conversions from this action source",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of conversions from this action source",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "action_source",
+          "count"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "description": "Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared. Each entry carries the vendor (BrandRef), the metric identifier within the vendor's vocabulary, the value, optional unit, and `measurable_impressions` as the coverage denominator — vendor measurement is rarely 100% of delivered impressions, since vendors only score impressions where their SDK fires or their panel matches. When a declared vendor metric is omitted from this array, buyers infer no measurement happened (no integration). One row per `(vendor.domain, vendor.brand_id, metric_id, qualifier)` per reporting period — the same vendor metric MAY appear in multiple rows only when each carries a distinct qualifier (e.g., 7-day and 30-day attribution windows); sellers MUST de-duplicate before emission and MUST NOT emit two rows with the same tuple; buyers MAY treat duplicate rows as a seller-side conformance bug. The structured `vendor_metric_values` array is the recommended path for vendor metrics; `additionalProperties: true` on this parent object is preserved so existing free-form vendor emissions remain conformant during migration.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/vendor-metric-value.json"
+      }
+    }
+  },
+  "dependencies": {
+    "reach": [
+      "reach_unit"
+    ]
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/reporting-dataset-share-destination.json",
+  "title": "Reporting Dataset Share Destination",
+  "x-status": "experimental",
+  "description": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued immutable recipient/destination generation or asks the seller to provision one for the named recipient. A destination_ref is owned by the stable authenticated principal's relationship with this seller and may be reused across accounts; each account delivery configuration separately authorizes disclosure of its feed and scope. Changing proof-bound recipient coordinates or the accepted delivery contract produces a new destination_ref. No bearer profile, token, private key, password, or other credential may appear here.",
+  "type": "object",
+  "definitions": {
+    "ReportingCloud": {
+      "title": "Reporting Cloud",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "aws",
+        "azure",
+        "gcp"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Existing binding",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "existing"
+        },
+        "destination_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "reporting_destination",
+          "description": "Seller-issued immutable recipient/destination-generation reference returned by sync_agent_configuration, an earlier sync, or bilateral setup."
+        }
+      },
+      "required": [
+        "mode",
+        "destination_ref"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Provision recipient",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "provision"
+        },
+        "provider": {
+          "type": "object",
+          "description": "Data-sharing platform, such as databricks.com or snowflake.com.",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "additionalProperties": false
+        },
+        "access_mode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "description": "Provider access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing."
+        },
+        "recipient": {
+          "type": "object",
+          "description": "Intended buyer principal. The identity is interpreted by the provider and access mode; for example, a Databricks sharing identifier, Snowflake organization/account pair, or Open Sharing recipient email. It is an identifier, never a credential.",
+          "properties": {
+            "identity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "cloud": {
+              "$ref": "#/definitions/ReportingCloud"
+            },
+            "region": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "identity"
+          ],
+          "dependencies": {
+            "cloud": [
+              "region"
+            ],
+            "region": [
+              "cloud"
+            ]
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "mode",
+        "provider",
+        "access_mode",
+        "recipient"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "x-adcp-validation": {
+    "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+    "recipient_proof": "Before ready, prove recipient control and caller authority to disclose every selected account, feed, and media-buy scope. A proof-bound recipient or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Voluntary configuration deactivation stops new publication but may preserve still-authorized historical access through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and revokes the grant within authorization_revocation_seconds."
+  }
+}
