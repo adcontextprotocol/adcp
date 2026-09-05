@@ -151,8 +151,8 @@ describe('fixed trace provider budget', () => {
       .toThrow('cache read accounting is unavailable');
   });
 
-  it('closes shared admission rather than settling an unapproved returned model at requested rates', async () => {
-    const mismatched = { ...RESPONSE, model: 'other-openai-model' };
+  it('closes shared admission rather than settling an attacker-controlled returned model suffix at requested rates', async () => {
+    const mismatched = { ...RESPONSE, model: 'gpt-5.6-luna-attacker-controlled' };
     const delegate = new BudgetScriptedProvider([mismatched, RESPONSE]);
     const budget = new FixedTraceBudget(1);
     const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);

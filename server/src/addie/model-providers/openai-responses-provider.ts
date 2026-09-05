@@ -306,7 +306,10 @@ export class OpenAIResponsesProvider implements ModelProvider {
       { maxRetries: 0, signal: options.signal },
     );
     const normalized = normalizeOpenAIResponse(response);
-    if (normalized.model !== request.model && !normalized.model.startsWith(`${request.model}-`)) {
+    // Returned model identity is a billing and trust boundary. This adapter has
+    // no reviewed, literal canonical-alias allowlist, so aliases and suffixes
+    // must not inherit the requested model's approval or pricing.
+    if (normalized.model !== request.model) {
       throw new UnexpectedModelIdentityError('openai', request.model, normalized.model);
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };
