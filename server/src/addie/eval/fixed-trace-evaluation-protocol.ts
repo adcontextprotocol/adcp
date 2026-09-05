@@ -292,6 +292,85 @@ function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf:
   return resolved;
 }
 
+/**
+ * Execution limits are evaluator-owned planning inputs, not caller-selected
+ * estimates. Keep this matrix independent of the proposed protocol object so
+ * a detached protocol supplied to an offline estimator cannot rewrite its
+ * phase, admission, result-use, or stop conditions.
+ */
+const EVALUATOR_OWNED_PHASE_MATRIX = Object.freeze([
+  Object.freeze({
+    id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1,
+    arms: Object.freeze([Object.freeze({
+      id: 'smoke-incumbent-two-stage', admission: 'planning_only',
+      stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+    })]),
+  }),
+  Object.freeze({
+    id: 'router_screen', uniqueCaseCount: 46, repetitions: 3,
+    arms: Object.freeze([Object.freeze({
+      id: 'router-haiku-default', admission: 'planning_only',
+      stopConditions: Object.freeze([['router', 1]] as const),
+    })]),
+  }),
+  Object.freeze({
+    id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2,
+    arms: Object.freeze([Object.freeze({
+      id: 'oracle-sonnet-default', admission: 'planning_only',
+      stopConditions: Object.freeze([['generation', 12]] as const),
+    })]),
+  }),
+  Object.freeze({
+    id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3,
+    arms: Object.freeze([
+      Object.freeze({
+        id: 'incumbent-haiku-sonnet', admission: 'planning_only',
+        stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+      }),
+      Object.freeze({
+        id: 'gemini-low-medium-pipeline', admission: 'planning_only',
+        stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3,
+    arms: Object.freeze([Object.freeze({
+      id: 'tuning-incumbent-haiku-sonnet', admission: 'planning_only',
+      stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+    })]),
+  }),
+] as const);
+
+function assertEvaluatorOwnedPhaseMatrix(phase: FixedTraceProtocolPhase, index: number): void {
+  const expected = EVALUATOR_OWNED_PHASE_MATRIX[index];
+  if (!expected
+    || phase.id !== expected.id
+    || phase.uniqueCaseCount !== expected.uniqueCaseCount
+    || phase.repetitions !== expected.repetitions
+    || phase.resultUse !== 'diagnostic_only') {
+    throw new Error('Protocol phase does not match the evaluator-owned phase matrix');
+  }
+  if (phase.arms.length !== expected.arms.length) {
+    throw new Error(`${phase.id} arms do not match the evaluator-owned phase matrix`);
+  }
+  for (let armIndex = 0; armIndex < phase.arms.length; armIndex += 1) {
+    const arm = phase.arms[armIndex];
+    const expectedArm = expected.arms[armIndex];
+    if (!expectedArm || arm.id !== expectedArm.id || arm.admission !== expectedArm.admission) {
+      throw new Error(`${phase.id} arm does not match the evaluator-owned admission matrix`);
+    }
+    if (arm.stages.length !== expectedArm.stopConditions.length || arm.stages.some((stage, stageIndex) => {
+      const expectedStop = expectedArm.stopConditions[stageIndex];
+      return !expectedStop
+        || stage.role !== expectedStop[0]
+        || stage.maxInvocationsPerCase !== expectedStop[1];
+    })) {
+      throw new Error(`${phase.id}.${arm.id} does not match the evaluator-owned stop-condition matrix`);
+    }
+  }
+}
+
 function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, pricingAsOf: string): void {
   assertExactKeys(arm, ['id', 'architecture', 'admission', 'stages'], `protocol arm`);
   if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(arm.id)) throw new Error(`Invalid protocol arm ID: ${arm.id}`);
@@ -350,25 +429,24 @@ function assertFixedTraceEvaluationProtocolStructure(protocol: FixedTraceEvaluat
     || protocol.unavailableFinalTarget.missingCaseCount !== 38) {
     throw new Error('Protocol unavailable final target is invalid');
   }
-  const requiredOrder = ['bounded_smoke', 'router_screen', 'oracle_generator_ceiling', 'deployable_architecture', 'controlled_tuning'] as const;
-  if (protocol.phases.length !== requiredOrder.length || protocol.phases.some((phase, index) => phase.id !== requiredOrder[index])) {
+  if (protocol.phases.length !== EVALUATOR_OWNED_PHASE_MATRIX.length
+    || protocol.phases.some((phase, index) => phase.id !== EVALUATOR_OWNED_PHASE_MATRIX[index]?.id)) {
     throw new Error('Protocol phases must use the exact required order');
   }
-  for (const phase of protocol.phases) {
+  for (const [index, phase] of protocol.phases.entries()) {
     assertExactKeys(phase, ['id', 'uniqueCaseCount', 'repetitions', 'resultUse', 'arms'], 'protocol phase');
     if (phaseIds.has(phase.id)) throw new Error(`Duplicate protocol phase: ${phase.id}`);
     phaseIds.add(phase.id);
-    positiveInteger(phase.uniqueCaseCount, `${phase.id}.uniqueCaseCount`);
-    positiveInteger(phase.repetitions, `${phase.id}.repetitions`);
-    if (phase.resultUse !== 'diagnostic_only') throw new Error(`${phase.id} is not diagnostic-only`);
-    if (!phase.arms.length) throw new Error(`${phase.id} requires at least one arm`);
+    assertEvaluatorOwnedPhaseMatrix(phase, index);
     for (const arm of phase.arms) {
       if (armIds.has(arm.id)) throw new Error(`Duplicate protocol arm ID: ${arm.id}`);
       armIds.add(arm.id);
       assertArm(phase, arm, protocol.pricingAsOf);
     }
   }
-  for (const required of requiredOrder) if (!phaseIds.has(required)) throw new Error(`Protocol is missing required phase: ${required}`);
+  for (const required of EVALUATOR_OWNED_PHASE_MATRIX) {
+    if (!phaseIds.has(required.id)) throw new Error(`Protocol is missing required phase: ${required.id}`);
+  }
 }
 
 export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluationProtocol): void {

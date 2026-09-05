@@ -39,6 +39,58 @@ describe('fixed-trace evaluation protocol projection', () => {
     expect(() => fixedTraceEvaluationProtocolRunnerBinding(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, () => ({}) as any, 'bounded_smoke', [])).toThrow('locked');
   });
 
+  it('rejects the reported caller substitutions before estimating a budget', () => {
+    const substituted = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    const phase = substituted.phases[0];
+    phase.arms[0].admission = 'caller_promotional';
+    phase.uniqueCaseCount = 1;
+    phase.repetitions = 999;
+    phase.arms[0].stages[0].maxInvocationsPerCase = 999;
+    expect(() => estimateFixedTraceEvaluationProtocol(substituted)).toThrow('evaluator-owned');
+  });
+
+  it('rejects missing, extra, reordered, and substituted available phases', () => {
+    const missing = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    missing.phases.splice(2, 1);
+    expect(() => estimateFixedTraceEvaluationProtocol(missing)).toThrow('exact required order');
+
+    const extra = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    extra.phases.push(structuredClone(extra.phases[0]));
+    expect(() => estimateFixedTraceEvaluationProtocol(extra)).toThrow('exact required order');
+
+    const reordered = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    [reordered.phases[0], reordered.phases[1]] = [reordered.phases[1], reordered.phases[0]];
+    expect(() => estimateFixedTraceEvaluationProtocol(reordered)).toThrow('exact required order');
+
+    const substituted = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+    substituted.phases[3].arms[1] = structuredClone(substituted.phases[3].arms[0]);
+    expect(() => estimateFixedTraceEvaluationProtocol(substituted)).toThrow('evaluator-owned admission matrix');
+  });
+
+  it('enforces evaluator-owned admission, result use, counts, repetitions, and stop conditions for every phase', () => {
+    for (let phaseIndex = 0; phaseIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases.length; phaseIndex += 1) {
+      for (const mutate of [
+        (phase: any) => { phase.uniqueCaseCount = 1; },
+        (phase: any) => { phase.repetitions = 999; },
+        (phase: any) => { phase.resultUse = 'caller_promotional'; },
+      ]) {
+        const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+        mutate(protocol.phases[phaseIndex]);
+        expect(() => estimateFixedTraceEvaluationProtocol(protocol)).toThrow('evaluator-owned phase matrix');
+      }
+      for (let armIndex = 0; armIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases[phaseIndex].arms.length; armIndex += 1) {
+        const admission = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+        admission.phases[phaseIndex].arms[armIndex].admission = 'caller_promotional';
+        expect(() => estimateFixedTraceEvaluationProtocol(admission)).toThrow('evaluator-owned admission matrix');
+        for (let stageIndex = 0; stageIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases[phaseIndex].arms[armIndex].stages.length; stageIndex += 1) {
+          const stopCondition = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+          stopCondition.phases[phaseIndex].arms[armIndex].stages[stageIndex].maxInvocationsPerCase = 999;
+          expect(() => estimateFixedTraceEvaluationProtocol(stopCondition)).toThrow('evaluator-owned stop-condition matrix');
+        }
+      }
+    }
+  });
+
   it('uses a detached closed snapshot for validation, hashing, and estimates', () => {
     const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
     const expectedFingerprint = fixedTraceEvaluationProtocolFingerprint(protocol);
