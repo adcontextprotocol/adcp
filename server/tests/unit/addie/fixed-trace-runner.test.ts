@@ -10,6 +10,7 @@ import {
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from '../../../src/addie/eval/fixed-trace-runner.js';
+import { runFixedTraceDiagnosticCandidate } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
@@ -1103,6 +1104,19 @@ describe('fixed trace artifact runner', () => {
 
     await expect(runFixedTraceSuite(runConfig))
       .rejects.toThrow('Fixed trace runner execution identity became invalid before provider dispatch');
+    expect(router.respondCalls).toHaveLength(1);
+  });
+
+  it('does not construct a manual diagnostic candidate summary after final-response identity mutation', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    let runConfig!: FixedTraceRunnerConfig;
+    const router = new MutatingResponseProvider([routeResponse('ignore')], () => {
+      runConfig.runId = 'mutated-after-final-response';
+    });
+    runConfig = config(router, new ScriptedProvider([]), { traceSuite: [selectedTrace] });
+
+    await expect(runFixedTraceDiagnosticCandidate(runConfig))
+      .rejects.toThrow('Fixed trace runner execution identity changed before provider dispatch');
     expect(router.respondCalls).toHaveLength(1);
   });
 

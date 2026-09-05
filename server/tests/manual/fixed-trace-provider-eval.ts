@@ -30,12 +30,11 @@ import {
   FixedTraceBudget,
 } from '../../src/addie/eval/fixed-trace-budget.js';
 import {
-  fixedTraceToolSchemaSha256,
   fixedTraceResponseUsesRecordedPricing,
-  runFixedTraceCase,
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from '../../src/addie/eval/fixed-trace-runner.js';
+import { runFixedTraceDiagnosticCandidate } from '../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import { parseFixedTraceDiagnosticCliArguments } from '../../src/addie/eval/fixed-trace-diagnostic-cli.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../src/addie/eval/fixed-trace-diagnostic-output.js';
@@ -50,7 +49,6 @@ import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
-  summarizeFixedTraceRun,
   type FixedTracePricing,
 } from '../../src/addie/eval/fixed-trace-suite.js';
 import { AnthropicRouterProvider } from '../../src/addie/model-providers/anthropic-router-provider.js';
@@ -315,7 +313,6 @@ const promptConfigVersion = sha256(JSON.stringify({
   responseStyle: loadResponseStyle(),
 }));
 const toolDefinitions = canonicalFixedTraceToolDefinitions();
-const toolSchemaSha256 = fixedTraceToolSchemaSha256(FIXED_TRACE_SUITE, toolDefinitions);
 const budget = new FixedTraceBudget(softMaxUsd);
 const plans = providerPlans(providerNames, budget);
 const runStartedAt = new Date().toISOString();
@@ -337,11 +334,7 @@ for (const plan of plans) {
     router: plan.router,
     generation: plan.generation,
   };
-  const observations = [];
-  for (const trace of FIXED_TRACE_SUITE) {
-    observations.push(await runFixedTraceCase(trace, baseConfig, toolSchemaSha256));
-  }
-  const evaluated = summarizeFixedTraceRun(observations);
+  const evaluated = await runFixedTraceDiagnosticCandidate(baseConfig);
   candidateRuns.push({
     provider: plan.name,
     requestedConfig: {
@@ -378,6 +371,7 @@ const runs = candidateRuns.map((run) => ({
   promotionEvidenceEligible: false,
   rollout: null,
 }));
+const toolSchemaSha256 = runs[0]?.observations[0]?.metadata.toolSchemaSha256 ?? null;
 const artifact = {
   artifactVersion: 'fixed_trace_provider_eval_v4',
   runRootId,
