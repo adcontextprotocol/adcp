@@ -323,6 +323,7 @@ export type WebChatRequestThreadService = Pick<ReturnType<typeof getThreadServic
   | 'getMessagesByClientRequestId'
   | 'claimClientTurn'
   | 'renewClientTurnLease'
+  | 'setClientTurnStatus'
 >;
 
 export interface RoutedWebTools {
@@ -1907,12 +1908,42 @@ export function createAddieChatRouter(options?: {
           toolsUsed.push(event.tool_name);
           sendEvent("tool_start", { tool_name: event.tool_name });
         } else if (event.type === 'tool_end') {
-          await threadService.addMessage(buildToolResultCheckpoint({
-            threadId: thread.thread_id,
-            execution: event.execution,
-            requestedModel: effectiveModel,
-            clientRequestId: clientRequestId || undefined,
-          }));
+          try {
+            await threadService.addMessage(buildToolResultCheckpoint({
+              threadId: thread.thread_id,
+              execution: event.execution,
+              requestedModel: effectiveModel,
+              clientRequestId: clientRequestId || undefined,
+            }));
+          } catch (checkpointError) {
+            logger.error(
+              { checkpointError, threadId: thread.thread_id, toolName: event.tool_name },
+              'Addie Chat Stream: Tool result checkpoint failed — stopping stream before further actions',
+            );
+            if (claimedTurn) {
+              try {
+                await threadService.setClientTurnStatus(
+                  claimedTurn.threadId,
+                  claimedTurn.clientRequestId,
+                  claimedTurn.leaseId,
+                  'completed',
+                );
+              } catch (statusError) {
+                logger.error(
+                  { statusError },
+                  'Addie Chat Stream: Failed to close unsafe-to-retry chat turn',
+                );
+              }
+              claimedTurn = null;
+            }
+            sendEvent('stream_error', {
+              error: 'An action completed, but its result could not be safely saved. Review the action before trying again.',
+              reason: 'checkpoint_persistence_failed',
+              recoverable: false,
+            });
+            res.end();
+            return;
+          }
           sendEvent("tool_end", { tool_name: event.tool_name, is_error: event.is_error });
         } else if (event.type === 'retry') {
           sendEvent("retry", {

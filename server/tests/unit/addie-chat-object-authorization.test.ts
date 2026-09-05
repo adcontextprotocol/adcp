@@ -807,6 +807,62 @@ describe('Addie chat conversation object authorization', () => {
     expect(assistantWrites[2]).not.toHaveProperty('tool_calls');
   });
 
+  it('stops before another tool and makes the turn non-retryable when checkpoint storage fails', async () => {
+    const execution = {
+      tool_name: 'schedule_meeting',
+      parameters: { title: 'Review' },
+      result: 'Meeting scheduled',
+      is_error: false,
+      duration_ms: 12,
+      sequence: 1,
+    };
+    let advancedPastCompletedTool = false;
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.addMessage.mockImplementation(async (message: { role: string; content?: string }) => {
+      if (message.role === 'assistant' && message.content === '') {
+        throw new Error('checkpoint database unavailable');
+      }
+      return {
+        ...message,
+        message_id: message.role === 'assistant' ? 'message_assistant' : 'message_user',
+      };
+    });
+    mocks.processMessageStream.mockImplementation(async function* () {
+      yield { type: 'tool_start', tool_name: execution.tool_name, parameters: execution.parameters };
+      yield {
+        type: 'tool_end', tool_name: execution.tool_name, result: execution.result,
+        is_error: false, execution,
+      };
+      advancedPastCompletedTool = true;
+      yield { type: 'tool_start', tool_name: 'send_follow_up', parameters: {} };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Schedule and follow up',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('checkpoint_persistence_failed');
+    expect(response.text).toContain('"recoverable":false');
+    expect(advancedPastCompletedTool).toBe(false);
+    expect(mocks.setClientTurnStatus).toHaveBeenCalledWith(
+      'thread_attacker',
+      'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+      'lease-1',
+      'completed',
+    );
+  });
+
   it('wires checkpointed calls into the retry execution guard', async () => {
     const clientRequestId = 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68';
     const checkpoint = {

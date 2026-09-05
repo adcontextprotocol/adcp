@@ -75,7 +75,15 @@ export function blockCheckpointedToolReplays(
   delegate?: ToolExecutionPolicy,
 ): ToolExecutionPolicy | undefined {
   if (checkpoints.length === 0) return delegate;
-  const completed = new Set(checkpoints.map((call) => replayKey(call.name, call.input)));
+  // A failed tool result is useful model context, but it is not an irreversible
+  // action receipt. Let the normal policy decide whether a later attempt may
+  // retry it.
+  const completed = new Set(
+    checkpoints
+      .filter((call) => call.is_error !== true)
+      .map((call) => replayKey(call.name, call.input)),
+  );
+  if (completed.size === 0) return delegate;
   return async (request) => {
     if (completed.has(replayKey(request.toolName, request.input))) return { allowed: false };
     return delegate ? delegate(request) : { allowed: true };

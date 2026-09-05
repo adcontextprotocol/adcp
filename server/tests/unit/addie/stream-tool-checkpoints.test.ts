@@ -67,4 +67,22 @@ describe('stream tool checkpoints', () => {
     await expect(policy(changed)).resolves.toEqual({ allowed: true });
     expect(delegate).toHaveBeenCalledWith(changed);
   });
+
+  it('leaves failed checkpointed calls retryable through the existing policy', async () => {
+    const delegate = vi.fn().mockReturnValue({ allowed: true });
+    const policy = blockCheckpointedToolReplays([{
+      name: 'schedule_meeting',
+      input: execution.parameters,
+      result: 'Calendar provider unavailable',
+      is_error: true,
+    }], delegate)!;
+    const request = {
+      toolName: 'schedule_meeting',
+      input: execution.parameters,
+      executionMode: 'production' as const,
+    };
+
+    expect(await policy(request)).toEqual({ allowed: true });
+    expect(delegate).toHaveBeenCalledWith(request);
+  });
 });
