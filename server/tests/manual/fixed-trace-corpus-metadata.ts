@@ -11,7 +11,7 @@ import {
   validateFixedTraceCandidateInputProvenance,
   validateFixedTraceCandidateVisibleLeakage,
   validateFixedTraceCorpusToolContracts,
-} from '../../src/addie/eval/fixed-trace-corpus.js';
+} from '../../src/addie/eval/fixed-trace-corpus-evaluator.js';
 
 const report = fixedTraceCorpusValidationReport();
 const structuralFailures = [

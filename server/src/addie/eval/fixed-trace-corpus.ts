@@ -1,43 +1,20 @@
 /**
- * Partitioned-corpus seam for the diagnostic architecture planner.
- *
- * The existing fixed-trace runner deliberately continues to import
- * `fixed-trace-suite` and therefore retains its established 32-case live
- * evaluator contract. Planner/foundation work must import this module instead
- * and bind one returned phase plan to one architecture arm.
+ * Candidate-facing corpus boundary. It can project requests but never exports
+ * evaluator fixtures, expectations, phases, or exact replay inputs. Evaluator
+ * code must import `fixed-trace-corpus-evaluator` explicitly.
  */
-export {
+import {
   FIXED_TRACE_CORPUS,
-  FIXED_TRACE_CORPUS_VERSION,
-  FIXED_TRACE_LEGACY_COVERAGE_INVENTORY,
-  FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST,
-  FIXED_TRACE_PHASE_COUNTS,
-  FIXED_TRACE_PHASE_TARGETS,
   candidateVisibleTraceInput,
-  fixedTraceCasesForPhase,
-  fixedTraceCorpusSha256,
-  fixedTraceCorpusValidationReport,
-  fixedTraceCoverageInventory,
-  fixedTracePhaseSha256,
-  validateFixedTraceCandidateVisibleLeakage,
-  validateFixedTraceCorpus,
+  type FixedTracePhase,
 } from './fixed-trace-suite.js';
-export {
-  candidateVisibleMarkerOverlap,
-  fixedTraceTuningSemanticSha256,
-  validateFixedTraceCandidateInputProvenance,
-  validateFixedTraceCorpusSemanticAuthority,
-  validateFixedTraceCorpusToolContracts,
-} from './fixed-trace-corpus-contracts.js';
-export {
-  FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
-  FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY_VERSION,
-} from './fixed-trace-corpus-authority.js';
-export { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
-export type {
-  FixedTraceCorpusCase,
-  FixedTraceCorpusCoverageInventory,
-  FixedTraceCorpusReviewedLock,
-  FixedTraceCorpusValidationReport,
-  FixedTracePhase,
-} from './fixed-trace-suite.js';
+
+export { candidateVisibleTraceInput } from './fixed-trace-suite.js';
+export type { FixedTracePhase } from './fixed-trace-suite.js';
+
+/** Candidate material for one phase, detached from all evaluator controls. */
+export function fixedTraceCandidateInputsForPhase(phase: FixedTracePhase): ReadonlyArray<Readonly<Record<string, unknown>>> {
+  return Object.freeze(FIXED_TRACE_CORPUS
+    .filter((trace) => trace.phase === phase)
+    .map((trace) => candidateVisibleTraceInput(trace)));
+}

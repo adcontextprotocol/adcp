@@ -40,6 +40,7 @@ import {
   validateFixedTraceCorpusToolContracts,
 } from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
 import { FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY } from '../../../src/addie/eval/fixed-trace-corpus-authority.js';
+import { fixedTraceCandidateInputsForPhase } from '../../../src/addie/eval/fixed-trace-corpus.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
@@ -384,7 +385,7 @@ describe('fixed cross-provider trace suite', () => {
       'org%5Freal%5F123456', 'org%255Freal%255F123456', 'brian%2Go%20kelley',
       'https://nytimes%2ecom/x', 'the%5ftrade%5fdesk', 'u%5f0123456789', 'org%2ereal%2e123456',
       'Brіan O Кelley',
-      'Briaп O Kelley', 'Brıan O Kelley', 'Br.i.an O Kelley', 'Brian O Keλley', 'Brian---O___Kelley',
+      'Briaп O Kelley', 'Brıan O Kelley', 'Br.i.an O Kelley', 'B.r.i.a.n O Kelley', 'Brian O Keλley', 'Brian---O___Kelley',
       'Br\u200bian O\u0000Kelley', 'nytimes dot com', 'nytimes&#46;com', 'org&#46;real&#46;123456',
       'Bria&NewLine;n O Kelley', 'Brian O&sol;Kelley', 'nytimes&Tab;com',
     ]) {
@@ -716,6 +717,12 @@ describe('fixed cross-provider trace suite', () => {
   });
 
   it('keeps evaluator expectations and partitions out of candidate-visible request material', () => {
+    const candidateInputs = fixedTraceCandidateInputsForPhase('tuning');
+    const candidateSerialized = JSON.stringify(candidateInputs);
+    for (const hiddenValue of [
+      'willow-workshop', 'willow-guild', 'willow-publisher.synthetic.invalid', 'Willow Relay',
+      'member_slug', 'reasoning',
+    ]) expect(candidateSerialized).not.toContain(hiddenValue);
     for (const trace of FIXED_TRACE_CORPUS) {
       const visible = candidateVisibleTraceInput(trace);
       expect(visible).toEqual(expect.objectContaining({ request: trace.request }));
@@ -746,14 +753,10 @@ describe('fixed cross-provider trace suite', () => {
 
     expect(validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS)).toEqual([]);
     const hiddenInput = structuredClone(FIXED_TRACE_CORPUS);
-    hiddenInput.find((trace) => trace.id === 'tune-channel-recap-thread')!.toolContract!.orderedCalls[0].input.channel = 'willow-guild';
+    const hiddenTrace = hiddenInput.find((trace) => trace.id === 'tune-channel-recap-thread')!;
+    hiddenTrace.request.message += ' Use willow-workshop.';
     expect(validateFixedTraceCandidateInputProvenance(hiddenInput)).toEqual(expect.arrayContaining([
-      'unproven_contract_input:tune-channel-recap-thread:0:$.channel',
-    ]));
-    const hiddenDevelopmentInput = structuredClone(FIXED_TRACE_CORPUS);
-    hiddenDevelopmentInput.find((trace) => trace.id === 'dev-tool-error-retry')!.toolContract!.orderedCalls[0].input.query = 'private evaluator dossier';
-    expect(validateFixedTraceCandidateInputProvenance(hiddenDevelopmentInput)).toEqual(expect.arrayContaining([
-      'unproven_contract_input:dev-tool-error-retry:0:$.query',
+      'evaluator_input_visible:tune-channel-recap-thread:0:$.channel',
     ]));
 
     const developmentFixtureLeak = structuredClone(FIXED_TRACE_CORPUS);

@@ -13,7 +13,7 @@ import { MEMBER_TOOLS } from '../mcp/member-tools.js';
 import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
 import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
 import type { AddieTool } from '../types.js';
-import type { FixedTraceCorpusCase, FixedTraceExpectedToolCall } from './fixed-trace-suite.js';
+import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
 import {
   FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
   type FixedTraceTuningSemanticAuthorityEntry,
@@ -195,27 +195,6 @@ export function candidateVisibleMarkerOverlap(value: unknown, markers: readonly 
   });
 }
 
-function candidateText(trace: FixedTraceCorpusCase): string {
-  return [trace.request.message, ...(trace.request.threadContext ?? []).map(({ text }) => text)].join('\n');
-}
-
-function compactIncludes(source: string, literal: string): boolean {
-  const candidate = canonicalFixedTraceText(source);
-  const expected = canonicalFixedTraceText(literal);
-  return !candidate.malformedPercentEncoding && !expected.malformedPercentEncoding
-    && expected.compact.length > 0 && candidate.compact.includes(expected.compact);
-}
-
-function numberHasCandidateProvenance(source: string, path: string, value: number): boolean {
-  // A bare digit in an ISO timestamp is not evidence that the candidate chose
-  // a pagination limit. Keep the small set of numeric tool fields explicit so
-  // a corpus author cannot source `limit: 10` from a date.
-  if (path.endsWith('.limit')) {
-    return new RegExp(`\\b(?:up to|at most|no more than|maximum of|max)\\s+${value}\\b`, 'i').test(source);
-  }
-  return new RegExp(`(?:^|[^0-9])${value}(?:[^0-9]|$)`).test(source);
-}
-
 function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; value: string | number | boolean | null }> {
   if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return [{ path, value }];
@@ -228,43 +207,12 @@ function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; va
 }
 
 /**
- * An input literal must originate in material shown to the candidate.  The
- * only exception is a receipt-bound value: a later call may copy the exact
- * marker from an earlier simulated result when its contract declares that
- * dependency.  This is deliberately finite (one declared prior call), not a
- * free-form inference over fixtures or evaluator metadata.
+ * Validate that explicitly evaluator-only call inputs remain outside the
+ * candidate projection. Exact replay inputs are an oracle for grading, not
+ * instructions to the model. This boundary applies to development and tuning
+ * alike, and operates only on declared private paths rather than guessing at
+ * otherwise ordinary request words.
  */
-function literalHasCandidateProvenance(
-  trace: FixedTraceCorpusCase,
-  path: string,
-  value: string | number | boolean | null,
-  callIndex?: number,
-): boolean {
-  const text = candidateText(trace);
-  if (typeof value === 'string') {
-    if (compactIncludes(text, value)) return true;
-    const currentCallIndex = callIndex;
-    const dependency = currentCallIndex === undefined ? undefined : trace.toolContract?.orderedCalls[currentCallIndex]?.dependsOn;
-    if (!dependency || currentCallIndex === undefined || dependency.callIndex < 0 || dependency.callIndex >= currentCallIndex) return false;
-    const prior = trace.toolContract!.orderedCalls[dependency.callIndex];
-    const priorFixtureIndex = trace.toolContract!.orderedCalls.slice(0, dependency.callIndex + 1)
-      .filter((call: FixedTraceExpectedToolCall) => call.execution === 'executed').length - 1;
-    const priorFixture = trace.toolFixtures[priorFixtureIndex];
-    return prior?.execution === 'executed'
-      && priorFixture?.result.includes(dependency.requiredResultMarker)
-      && value === dependency.requiredResultMarker;
-  }
-  if (typeof value === 'number') return numberHasCandidateProvenance(text, path, value);
-  // A boolean is candidate-derived only for the two bounded, semantic forms
-  // used by canonical tools. This avoids treating an evaluator default as a
-  // fact just because its JavaScript spelling appears nowhere in the request.
-  if (typeof value === 'boolean' && path.endsWith('.include_individual')) {
-    return value === false && /(?:do not|don't|without)\s+includ(?:e|ing)\s+individual/i.test(text);
-  }
-  return false;
-}
-
-/** Validate every ordered-call and input-constraint literal against candidate facts. */
 export function validateFixedTraceCandidateInputProvenance(
   suite: ReadonlyArray<FixedTraceCorpusCase>,
 ): string[] {
@@ -275,24 +223,15 @@ export function validateFixedTraceCandidateInputProvenance(
   const failures: string[] = [];
   for (const trace of detached.snapshot) {
     for (const [callIndex, call] of (trace.toolContract?.orderedCalls ?? []).entries()) {
-      for (const leaf of inputScalarLeaves(call.input)) {
-        if (!literalHasCandidateProvenance(trace, leaf.path, leaf.value, callIndex)) {
-          failures.push(`unproven_contract_input:${trace.id}:${callIndex}:${leaf.path}`);
+      for (const path of call.evaluatorOnlyInputPaths ?? []) {
+        const leaves = inputScalarLeaves(call.input).filter((leaf) => leaf.path === path);
+        if (leaves.length !== 1) {
+          failures.push(`invalid_evaluator_only_input_path:${trace.id}:${callIndex}:${path}`);
+          continue;
         }
-      }
-    }
-    for (const constraint of trace.expectation.toolInputConstraints ?? []) {
-      for (const leaf of inputScalarLeaves(constraint.expectedInput)) {
-        const contractCallIndex = (trace.toolContract?.orderedCalls ?? []).findIndex((call: FixedTraceExpectedToolCall) => call.name === constraint.toolName
-          && inputScalarLeaves(call.input).some((input) => input.path === leaf.path && input.value === leaf.value));
-        if (!literalHasCandidateProvenance(trace, leaf.path, leaf.value,
-          contractCallIndex >= 0 ? contractCallIndex : undefined)) {
-          failures.push(`unproven_constraint_input:${trace.id}:${constraint.toolName}:${leaf.path}`);
-        }
-      }
-      for (const required of constraint.required ?? []) {
-        if (!literalHasCandidateProvenance(trace, required.path, required.value)) {
-          failures.push(`unproven_constraint_input:${trace.id}:${constraint.toolName}:${required.path}`);
+        const value = leaves[0]!.value;
+        if (typeof value === 'string' && candidateVisibleMarkerOverlap(candidateInput(trace), [value]).length > 0) {
+          failures.push(`evaluator_input_visible:${trace.id}:${callIndex}:${path}`);
         }
       }
     }
@@ -301,6 +240,19 @@ export function validateFixedTraceCandidateInputProvenance(
   } catch {
     return ['unsafe_candidate_input_provenance:invalid_structure'];
   }
+}
+
+function candidateInput(trace: FixedTraceCorpusCase): { request: FixedTraceCorpusCase['request'] } {
+  const request = trace.request;
+  return {
+    request: {
+      source: request.source,
+      message: request.message,
+      nowUtc: request.nowUtc,
+      isAdmin: request.isAdmin,
+      ...(request.threadContext ? { threadContext: request.threadContext.map(({ user, text }) => ({ user, text })) } : {}),
+    },
+  };
 }
 
 /** The corpus cannot authorize its own semantics: all tuning cases need a reviewer record. */
