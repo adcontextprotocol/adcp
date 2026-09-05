@@ -28,6 +28,7 @@ import {
   admitFixedTraceDirectArm,
   deriveFixedTraceDirectToolUniverse,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
+import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../../../src/addie/direct-tool-universe.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import { ADMIN_TOOLS } from '../../../src/addie/mcp/admin-tools.js';
 import { BRAND_CANONICAL_TOOLS } from '../../../src/addie/mcp/brand-canonical-tools.js';
@@ -1440,9 +1441,11 @@ describe('fixed trace artifact runner', () => {
       .toThrow('Fixed trace observation suite hash does not match grading suite');
   });
 
-  it('rejects trace-local definitions before direct generation can dispatch', async () => {
+  it('executes direct generation through the evaluator-owned surface without a router dispatch', async () => {
     const router = new ScriptedProvider([]);
-    const generation = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([response([
+      { type: 'text', text: 'Synthetic task answer.' },
+    ])]);
     const selectedTrace = trace('knowledge-task-model');
     const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
       architectureArm: 'direct_generation',
@@ -1450,10 +1453,10 @@ describe('fixed trace artifact runner', () => {
     }));
 
     expect(router.respondCalls).toHaveLength(0);
-    expect(generation.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(1);
     expect(observation).toMatchObject({
-      terminalStage: 'admission',
-      terminalStatus: 'not_admitted_architecture',
+      terminalStage: 'generation',
+      terminalStatus: 'complete',
       metadata: {
         architectureArm: {
           id: 'direct_generation',
@@ -1461,18 +1464,15 @@ describe('fixed trace artifact runner', () => {
           rolloutEligible: false,
         },
         toolUniverse: {
-          source: 'authorized_definition_handler_intersection_not_captured',
+          source: 'evaluator_owned_production_shaped_intersection',
           intentNarrowing: 'not_applied',
-          bounded: false,
+          bounded: true,
           deployable: false,
+          toolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
         },
         directArmAdmission: {
-          admitted: false,
-          reasons: expect.arrayContaining([
-            'fixture_local_tool_definitions',
-            'authorized_tool_intersection_not_captured',
-            'authorized_tool_universe_unbounded',
-          ]),
+          admitted: true,
+          reasons: [],
         },
       },
     });
@@ -1481,12 +1481,11 @@ describe('fixed trace artifact runner', () => {
       effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
     });
     expect(observation.metadata.generation).toMatchObject({
-      source: 'not_run', requestedProvider: null, requestedModel: null,
-      effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
+      source: 'provider', requestedProvider: 'anthropic', requestedModel: 'test-model',
     });
     const directRun = summarizeFixedTraceRun([observation], [selectedTrace]).summary;
     expect(directRun.comparisonEligible).toBe(false);
-    expect(directRun.terminalStatusCounts.not_admitted_architecture).toBe(1);
+    expect(directRun.terminalStatusCounts.complete).toBe(1);
     expect(Object.values(directRun.terminalStatusCounts).reduce((total, count) => total + count, 0))
       .toBe(directRun.observed);
   });
@@ -1518,21 +1517,78 @@ describe('fixed trace artifact runner', () => {
       TOOL_DEFINITIONS,
       'fixture_local',
     ).reasons);
-    // Relabeling the same trace-local schemas cannot turn them into a
-    // deployable direct universe: its independent bounded intersection and
-    // request/thread execution envelope are still absent.
+    // Relabeling trace-local schemas cannot affect the evaluator-owned
+    // request-fact universe or change its diagnostic-only admission.
     expect(admitFixedTraceDirectArm(
       selectedTrace,
       TOOL_DEFINITIONS,
       'authorized_definition_handler_intersection',
     )).toMatchObject({
-      admitted: false,
-      reasons: expect.arrayContaining([
-        'authorized_tool_intersection_not_captured',
-        'authorized_tool_universe_unbounded',
-        'request_thread_execution_envelope_not_captured',
-      ]),
+      admitted: true,
+      reasons: [],
     });
+  });
+
+  it('rejects fixture laundering and caller truncation by using the complete fixed direct universe', async () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([
+      response([{
+        type: 'tool_call', id: 'direct-search-1', name: 'search_docs', input: { query: 'synthetic' },
+      }], 'tool_calls'),
+      response([{ type: 'text', text: 'Synthetic task answer.' }]),
+    ]);
+    const selectedTrace = trace('knowledge-task-model');
+    const laundered: FixedTraceCase = {
+      ...selectedTrace,
+      request: { ...selectedTrace.request, source: 'channel', isAdmin: true },
+      routing: { action: 'respond', toolSets: ['admin_events'] },
+      toolFixtures: [{
+        name: 'confirm_send_invoice', effect: 'mutation', resultStatus: 'ok', result: 'fixture oracle',
+      }],
+      expectation: {
+        ...selectedTrace.expectation,
+        allowedTools: ['confirm_send_invoice'], requiredTools: ['confirm_send_invoice'],
+      },
+    };
+    const direct = config(router, generation, {
+      architectureArm: 'direct_generation',
+      traceSuite: [laundered],
+      toolDefinitions: [tool('confirm_send_invoice')],
+      toolDefinitionProvenance: 'authorized_definition_handler_intersection',
+    });
+
+    const observation = await runFixedTraceCase(laundered, direct);
+
+    expect(router.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(2);
+    expect(generation.respondCalls[0]!.tools.map((definition) => definition.name))
+      .toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
+    expect(generation.respondCalls[0]!.system.map((part) => part.text).join('\n'))
+      .toContain('Surface: dm');
+    expect(generation.respondCalls[0]!.system.map((part) => part.text).join('\n'))
+      .toContain('Platform admin: no');
+    expect(observation.tools).toMatchObject([{
+      name: 'search_docs', effect: 'read', policyDisposition: 'allowed', simulated: true,
+    }]);
+    expect(observation.metadata.traceSuiteSha256).toBe(fixedTraceSuiteSha256([laundered]));
+    expect(observation.metadata.toolUniverse.toolNames).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
+    expect(observation.metadata.toolSchemaSha256).toBe(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256);
+    expect(fixedTraceArchitectureConfigSha256(direct)).toBe(
+      fixedTraceArchitectureConfigSha256(config(router, generation, {
+        architectureArm: 'direct_generation', traceSuite: [laundered], toolDefinitions: TOOL_DEFINITIONS,
+      })),
+    );
+    expect(fixedTraceArchitectureConfigSha256(direct)).toBe(
+      fixedTraceArchitectureConfigSha256({
+        ...direct, router: { ...direct.router, model: 'irrelevant-direct-router-model' },
+      }),
+    );
+    expect(fixedTraceArchitectureConfigSha256(direct)).not.toBe(
+      fixedTraceArchitectureConfigSha256({
+        ...direct,
+        generation: { ...direct.generation, maxOutputTokens: direct.generation.maxOutputTokens + 1 },
+      }),
+    );
   });
 
   it('runs an oracle route only as a rollout-ineligible generation diagnostic', async () => {
