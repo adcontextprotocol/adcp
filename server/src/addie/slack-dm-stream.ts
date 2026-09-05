@@ -1,5 +1,5 @@
 import type { AddieResponse, StreamEvent } from './claude-client.js';
-import type { ToolResultPresentation } from './tool-result-contract.js';
+import type { ToolExecution } from './model-providers/tool-orchestration.js';
 import {
   DEFAULT_STREAM_SOFT_CAP,
   decideStreamAppend,
@@ -8,12 +8,7 @@ import {
   type StreamAppendDecision,
 } from './slack-blocks.js';
 
-export type SlackDmToolExecution = {
-  tool_name: string;
-  parameters: Record<string, unknown>;
-  result: string;
-  normalized_result?: ToolResultPresentation;
-};
+export type SlackDmToolExecution = ToolExecution;
 
 export type SlackDmStreamChunk =
   | { type: 'plan_update'; title: string }
@@ -464,12 +459,7 @@ export function reduceSlackDmStreamEvent(
     const toolState: SlackDmStreamState = {
       ...state,
       activeToolTaskIds,
-      toolExecutions: [...state.toolExecutions, {
-        tool_name: event.tool_name,
-        parameters: {},
-        result: event.result,
-        ...(event.normalized_result && { normalized_result: event.normalized_result }),
-      }],
+      toolExecutions: [...state.toolExecutions, event.execution],
     };
     if (toolState.delivery.tag !== 'open') return { state: toolState, effects: [] };
     return scheduleAsyncEffect(

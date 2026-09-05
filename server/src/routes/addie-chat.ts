@@ -30,6 +30,11 @@ import {
   type SponsoredIntelligenceContextKind,
 } from "../addie/slack-tool-selection.js";
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
+import {
+  blockCheckpointedToolReplays,
+  buildToolResultCheckpoint,
+  type StoredToolCall,
+} from "../addie/stream-tool-checkpoints.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
@@ -1718,6 +1723,15 @@ export function createAddieChatRouter(options?: {
 
       // Get conversation history
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
+      const retryCheckpointToolCalls: StoredToolCall[] = retryRequested
+        ? threadMessages
+            .filter((message) => (
+              message.role === 'assistant'
+              && message.delivery_status === 'interrupted'
+              && message.client_request_id === clientRequestId
+            ))
+            .flatMap((message) => message.tool_calls ?? [])
+        : [];
 
       // Save user message
       if (!existingUserMessage) {
@@ -1819,6 +1833,9 @@ export function createAddieChatRouter(options?: {
         : null;
       const { processOptions, effectiveModel } = tieredAccess;
       const requestTools = routedWebTools?.requestTools ?? tieredAccess.requestTools;
+      const replayPolicy = blockCheckpointedToolReplays(
+        retryCheckpointToolCalls,
+      );
       requestedModelForAttempt = effectiveModel;
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
@@ -1870,6 +1887,7 @@ export function createAddieChatRouter(options?: {
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
         ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
+        ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
         ...(streamAuthedScope
           ? { costScope: {
               ...streamAuthedScope,
@@ -1889,6 +1907,12 @@ export function createAddieChatRouter(options?: {
           toolsUsed.push(event.tool_name);
           sendEvent("tool_start", { tool_name: event.tool_name });
         } else if (event.type === 'tool_end') {
+          await threadService.addMessage(buildToolResultCheckpoint({
+            threadId: thread.thread_id,
+            execution: event.execution,
+            requestedModel: effectiveModel,
+            clientRequestId: clientRequestId || undefined,
+          }));
           sendEvent("tool_end", { tool_name: event.tool_name, is_error: event.is_error });
         } else if (event.type === 'retry') {
           sendEvent("retry", {
@@ -1913,14 +1937,6 @@ export function createAddieChatRouter(options?: {
             thread_id: thread.thread_id,
             role: 'assistant',
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
-            tools_used: event.tool_executions.map(execution => execution.tool_name),
-            tool_calls: event.tool_executions.map(execution => ({
-              name: execution.tool_name,
-              input: execution.parameters,
-              result: execution.result,
-              duration_ms: execution.duration_ms,
-              is_error: execution.is_error,
-            })),
             model: effectiveModel,
             model_execution: {
               source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'stream_interrupted',
@@ -2075,6 +2091,7 @@ export function createAddieChatRouter(options?: {
               input: exec.parameters,
               result: exec.result,
               duration_ms: exec.duration_ms,
+              is_error: exec.is_error,
             }))
           : undefined,
         model: effectiveModel,
@@ -2251,14 +2268,6 @@ export function createAddieChatRouter(options?: {
             thread_id: claimedTurn.threadId,
             role: 'assistant',
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
-            tools_used: terminalResponse?.tool_executions?.map(execution => execution.tool_name),
-            tool_calls: terminalResponse?.tool_executions?.map(execution => ({
-              name: execution.tool_name,
-              input: execution.parameters,
-              result: execution.result,
-              duration_ms: execution.duration_ms,
-              is_error: execution.is_error,
-            })),
             flagged: true,
             flag_reason: 'stream_interrupted: route_error',
             model_execution: {

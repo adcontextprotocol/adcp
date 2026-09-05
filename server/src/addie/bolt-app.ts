@@ -168,9 +168,16 @@ import {
   buildThreadSummaryForRouter,
   buildUntrustedSlackHistoryContext,
   buildAuthorizedConversationHistory,
+  unresolvedToolCheckpointsForLatestTurn,
   buildUntrustedSlackChannelMetadataContext,
   isValidWorkingGroupSlug,
 } from './thread-utils.js';
+import {
+  blockCheckpointedToolReplays,
+  buildToolResultCheckpoint,
+  type StoredToolCall,
+} from './stream-tool-checkpoints.js';
+import type { ToolExecution } from './model-providers/tool-orchestration.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import { ProviderHealthController } from './model-providers/provider-health.js';
@@ -1993,10 +2000,12 @@ async function handleUserMessage({
   // This ensures Claude has context from previous turns in the DM thread
   const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  let unresolvedCheckpointToolCalls: StoredToolCall[] = [];
   let historyUnavailable = false;
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
+      unresolvedCheckpointToolCalls = unresolvedToolCheckpointsForLatestTurn(previousMessages, userId);
       // Format previous messages for Claude context
       // Only include user and assistant messages (skip system/tool)
       // Exclude the current message (we just logged it below, but it's not there yet)
@@ -2073,6 +2082,7 @@ async function handleUserMessage({
     : routedTools.requiresDepth
       ? ModelConfig.depth
       : AddieModelConfig.chat;
+  const toolReplayPolicy = blockCheckpointedToolReplays(unresolvedCheckpointToolCalls);
   // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
   // Prefers a mapped WorkOS user ID (aao_team for AAO admins,
   // member_paid for active subs); falls back to `slack:${userId}` at
@@ -2093,13 +2103,14 @@ async function handleUserMessage({
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
+    ...(toolReplayPolicy ? { toolExecutionPolicy: toolReplayPolicy } : {}),
   };
 
   // Process with Claude using streaming
   let response: AddieResponse | undefined;
   let fullText = '';
   let toolsUsed: string[] = [];
-  let toolExecutions: { tool_name: string; parameters: Record<string, unknown>; result: string }[] = [];
+  let toolExecutions: ToolExecution[] = [];
   // Mid-stream upstream failure tracking (#4797). When set, we render a recovery
   // banner in Slack and skip persisting the partial turn so prompt assembly for
   // the next turn doesn't feed the model a truncated assistant message.
@@ -2157,6 +2168,28 @@ async function handleUserMessage({
         continuationBuffer = streamState.continuationBuffer;
         streamWasInterrupted = streamState.streamWasInterrupted;
         streamInterruptCategory = streamState.streamInterruptCategory;
+        if (event.type === 'tool_end') {
+          try {
+            await threadService.addMessage(buildToolResultCheckpoint({
+              threadId: thread.thread_id,
+              execution: event.execution,
+              requestedModel: dmEffectiveModel,
+            }));
+          } catch (checkpointError) {
+            logger.error(
+              { checkpointError, threadId: thread.thread_id, toolName: event.tool_name },
+              'Addie Bolt: Tool result checkpoint failed — stopping stream before further actions',
+            );
+            streamWasInterrupted = true;
+            streamInterruptCategory = 'checkpoint_persistence_failed';
+            try {
+              await say("I completed an action but couldn't safely save its result. Please review the result above before asking again.");
+            } catch (recoveryError) {
+              logger.error({ recoveryError }, 'Addie Bolt: Tool checkpoint recovery notice failed');
+            }
+            break;
+          }
+        }
         if (shouldStopSlackDmStream(streamState)) break;
       }
 
@@ -2400,12 +2433,7 @@ async function handleUserMessage({
       // output. Never persist it under a local provenance label.
       text: STREAM_COMPLETION_MISSING_NOTICE,
       tools_used: toolsUsed,
-      tool_executions: toolExecutions.map((t, i) => ({
-        ...t,
-        is_error: false,
-        duration_ms: 0,
-        sequence: i + 1,
-      })),
+      tool_executions: toolExecutions,
       flagged: true,
       flag_reason: 'Streaming completed without done event',
       model_execution: {

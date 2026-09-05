@@ -855,6 +855,8 @@ export type StreamEvent =
       result: string;
       is_error: boolean;
       normalized_result?: ToolResultPresentation;
+      /** Exact completed receipt used by delivery adapters for checkpoints. */
+      execution: ToolExecution;
     }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
   | {
@@ -2424,6 +2426,7 @@ export class AddieClaudeClient {
               result: event.recorded.execution.result,
               is_error: event.recorded.execution.is_error,
               normalized_result: event.recorded.execution.normalized_result,
+              execution: event.recorded.execution,
             };
             logger.debug(
               {
@@ -2462,6 +2465,7 @@ export class AddieClaudeClient {
               result: event.executed.execution.result,
               is_error: event.executed.execution.is_error,
               normalized_result: event.executed.execution.normalized_result,
+              execution: event.executed.execution,
             };
           }
         }
