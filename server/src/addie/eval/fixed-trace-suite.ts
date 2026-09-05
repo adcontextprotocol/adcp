@@ -2831,16 +2831,16 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('tool_universe_names_mismatch');
   }
   const requestThreadFacts = metadata.requestThreadFacts;
-  if (!requestThreadFacts || !['not_applicable', 'fixture_case_request_not_authenticated'].includes(requestThreadFacts.source)) {
+  if (!requestThreadFacts || !['not_applicable', 'fixture_case_request_untrusted'].includes(requestThreadFacts.source)) {
     failures.push('request_thread_facts_provenance_invalid');
   } else if (arm?.id === 'direct_generation') {
     const expectedFacts = fixedTraceDirectRequestThreadFacts(trace);
     const expectedHash = createHash('sha256').update(canonicalJson(expectedFacts), 'utf8').digest('hex');
     if (
-      requestThreadFacts.source !== 'fixture_case_request_not_authenticated'
+      requestThreadFacts.source !== 'fixture_case_request_untrusted'
       || requestThreadFacts.traceFacts.filter((fact) => fact.traceId === trace.id).length !== 1
       || requestThreadFacts.traceFacts.find((fact) => fact.traceId === trace.id)?.requestThreadFactsSha256 !== expectedHash
-      || requestThreadFacts.traceFacts.find((fact) => fact.traceId === trace.id)?.provenance !== 'fixture_case_request_not_authenticated'
+      || requestThreadFacts.traceFacts.find((fact) => fact.traceId === trace.id)?.provenance !== 'fixture_case_request_untrusted'
       || metadata.directArmAdmission?.universe.requestThreadFactsSha256 !== expectedHash
       || metadata.directArmAdmission.universe.surface !== expectedFacts.source
       || metadata.directArmAdmission.universe.isAdmin !== expectedFacts.isAAOAdmin

@@ -16,19 +16,29 @@ export const ADDIE_REQUEST_TOOL_REPLAY_ASSEMBLY_POLICY_VERSION =
 export const ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS = 60_000;
 
 /**
- * Request facts to bind when a repository-validated production request
- * boundary is eventually wired to this seam. This deliberately contains no
- * caller-controlled `verified` marker: a fact claim is never trusted.
+ * Privacy-safe request facts supplied only through the repository-owned
+ * production capture boundary. This deliberately contains no caller-
+ * controlled `verified` marker: a fact claim is never trusted.
  */
 export interface AddieRequestToolReplayFacts {
-  readonly caseId: string;
-  readonly surface: string;
-  readonly isAAOAdmin: boolean;
+  readonly surface: 'slack_dm' | 'slack_channel' | 'web_chat' | 'email' | 'voice' | 'mcp';
+  readonly requestIdSha256: string;
+  readonly messageIdSha256: string;
+  readonly threadIdSha256: string;
+  readonly threadContextSha256: string;
+  readonly principalSha256: string;
+  readonly adminStatus: 'admin' | 'not_admin';
+  readonly adminProvenance: 'slack_member_context' | 'web_session' | 'email_recipient' | 'voice_session' | 'mcp_session';
   readonly isThread: boolean;
   readonly privacy: 'private' | 'public' | 'unknown';
-  readonly source: string;
+  readonly privacyProvenance: 'slack_dm' | 'slack_channel_context' | 'web_session' | 'email_recipient' | 'voice_session' | 'mcp_session';
   readonly requestTimeMs: number;
-  readonly replayPrincipal: string;
+  /** Unknown is mandatory unless the live transport supplies a verified checkpoint. */
+  readonly confirmationState: 'unknown' | 'not_required' | 'pending' | 'confirmed' | 'rejected';
+  /** Unknown is mandatory unless the transport's dedupe outcome is bound. */
+  readonly idempotencyState: 'unknown' | 'first_attempt' | 'retry';
+  /** Unknown is mandatory unless mutation replay policy is bound to this request. */
+  readonly mutationReplayState: 'unknown' | 'not_applicable' | 'replay_blocked';
 }
 
 /** Safe, handler-free descriptor for later evaluator-owned substitution. */
@@ -72,6 +82,7 @@ export type SealedReplayBindingValidation =
       | 'binding_expired'
       | 'binding_clock_invalid'
       | 'binding_aborted'
+      | 'binding_evaluator_custody_unavailable'
       | 'request_facts_drift'
       | 'assembly_drift';
   };
@@ -109,6 +120,8 @@ interface BoundState {
 }
 
 const boundStates = new WeakMap<object, BoundState>();
+/** Terminal identities retain no handlers or source maps after a claim attempt. */
+const consumedBindings = new WeakSet<object>();
 const handlerIdentities = new WeakMap<Function, string>();
 let nextHandlerIdentity = 1;
 
@@ -247,30 +260,43 @@ function snapshotJson(value: unknown, owner: string): JsonValue {
 
 function snapshotFacts(input: AddieRequestToolReplayFacts): AddieRequestToolReplayFacts {
   const expected = [
-    'caseId', 'surface', 'isAAOAdmin', 'isThread', 'privacy', 'source', 'requestTimeMs', 'replayPrincipal',
+    'surface', 'requestIdSha256', 'messageIdSha256', 'threadIdSha256', 'threadContextSha256', 'principalSha256',
+    'adminStatus', 'adminProvenance', 'isThread', 'privacy', 'privacyProvenance', 'requestTimeMs',
+    'confirmationState', 'idempotencyState', 'mutationReplayState',
   ];
   const inputRecord = plainDataRecord(input, 'facts');
   exactFields(inputRecord, expected, 'facts');
   const facts = {
-    caseId: inputRecord.caseId,
     surface: inputRecord.surface,
-    isAAOAdmin: inputRecord.isAAOAdmin,
+    requestIdSha256: inputRecord.requestIdSha256,
+    messageIdSha256: inputRecord.messageIdSha256,
+    threadIdSha256: inputRecord.threadIdSha256,
+    threadContextSha256: inputRecord.threadContextSha256,
+    principalSha256: inputRecord.principalSha256,
+    adminStatus: inputRecord.adminStatus,
+    adminProvenance: inputRecord.adminProvenance,
     isThread: inputRecord.isThread,
     privacy: inputRecord.privacy,
-    source: inputRecord.source,
+    privacyProvenance: inputRecord.privacyProvenance,
     requestTimeMs: inputRecord.requestTimeMs,
-    replayPrincipal: inputRecord.replayPrincipal,
+    confirmationState: inputRecord.confirmationState,
+    idempotencyState: inputRecord.idempotencyState,
+    mutationReplayState: inputRecord.mutationReplayState,
   };
   const snapshot = facts as AddieRequestToolReplayFacts;
   if (
-    typeof snapshot.caseId !== 'string' || !snapshot.caseId.trim()
-    || typeof snapshot.surface !== 'string' || !snapshot.surface.trim()
-    || typeof snapshot.isAAOAdmin !== 'boolean'
+    !['slack_dm', 'slack_channel', 'web_chat', 'email', 'voice', 'mcp'].includes(snapshot.surface)
+    || ![snapshot.requestIdSha256, snapshot.messageIdSha256, snapshot.threadIdSha256, snapshot.threadContextSha256, snapshot.principalSha256]
+      .every((value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value))
+    || (snapshot.adminStatus !== 'admin' && snapshot.adminStatus !== 'not_admin')
+    || !['slack_member_context', 'web_session', 'email_recipient', 'voice_session', 'mcp_session'].includes(snapshot.adminProvenance)
     || typeof snapshot.isThread !== 'boolean'
     || (snapshot.privacy !== 'private' && snapshot.privacy !== 'public' && snapshot.privacy !== 'unknown')
-    || typeof snapshot.source !== 'string' || !snapshot.source.trim()
+    || !['slack_dm', 'slack_channel_context', 'web_session', 'email_recipient', 'voice_session', 'mcp_session'].includes(snapshot.privacyProvenance)
     || !Number.isSafeInteger(snapshot.requestTimeMs) || snapshot.requestTimeMs < 0
-    || typeof snapshot.replayPrincipal !== 'string' || !snapshot.replayPrincipal.trim()
+    || !['unknown', 'not_required', 'pending', 'confirmed', 'rejected'].includes(snapshot.confirmationState)
+    || !['unknown', 'first_attempt', 'retry'].includes(snapshot.idempotencyState)
+    || !['unknown', 'not_applicable', 'replay_blocked'].includes(snapshot.mutationReplayState)
   ) throw new Error('Replay binding facts are invalid');
   return Object.freeze(snapshot);
 }
@@ -670,12 +696,17 @@ export function claimSealedRequestToolReplayBinding(input: {
   } catch {
     return { valid: false, reason: 'binding_unknown_or_forged' };
   }
+  if (consumedBindings.has(claimInput.binding)) return { valid: false, reason: 'binding_already_consumed' };
   const state = boundStates.get(claimInput.binding);
   if (!state) return { valid: false, reason: 'binding_unknown_or_forged' };
-  if (state.consumed) return { valid: false, reason: 'binding_already_consumed' };
   // Any attempted validation is terminal, so mutable facts cannot be repaired
   // after learning why an integrity check failed.
   state.consumed = true;
+  consumedBindings.add(claimInput.binding);
+  // Release all production definitions and handlers before any validation
+  // result leaves this module. A replay projection never retains authority
+  // after a terminal claim, including failure, expiry, or abort.
+  boundStates.delete(claimInput.binding);
   let signalAborted: boolean;
   try {
     signalAborted = snapshotAbortState(claimInput.signal);
@@ -706,5 +737,8 @@ export function claimSealedRequestToolReplayBinding(input: {
     return { valid: false, reason: 'request_facts_drift' };
   }
   if (!assemblyStillMatches(state)) return { valid: false, reason: 'assembly_drift' };
-  return { valid: true, tools: state.descriptors };
+  // #7308 deliberately has no evaluator-owned custody or simulator handler
+  // substitution yet. A locally sealed projection is therefore never an
+  // authorization grant and cannot be claimed as a runnable binding.
+  return { valid: false, reason: 'binding_evaluator_custody_unavailable' };
 }

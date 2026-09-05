@@ -1941,7 +1941,7 @@ describe('fixed trace artifact runner', () => {
     expect(observation).toMatchObject({ terminalStage: 'admission', terminalStatus: 'not_admitted_architecture' });
     expect(observation.metadata.directArmAdmission?.universe).toMatchObject({
       surface: 'channel', isAdmin: true, isThread: false, channelPrivacy: 'unknown',
-      requestThreadFactsProvenance: 'fixture_case_request_not_authenticated',
+      requestThreadFactsProvenance: 'fixture_case_request_untrusted',
     });
     expect(observation.metadata.traceSuiteSha256).toBe(fixedTraceSuiteSha256([laundered]));
     expect(observation.metadata.toolUniverse.toolNames).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);

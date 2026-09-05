@@ -482,11 +482,11 @@ export interface FixedTraceToolUniverseProvenance {
 }
 
 export interface FixedTraceRequestThreadFactsProvenance {
-  source: 'not_applicable' | 'fixture_case_request_not_authenticated';
+  source: 'not_applicable' | 'fixture_case_request_untrusted';
   traceFacts: readonly Readonly<{
     traceId: string;
     requestThreadFactsSha256: string;
-    provenance: 'fixture_case_request_not_authenticated';
+    provenance: 'fixture_case_request_untrusted';
   }>[];
 }
 
@@ -496,7 +496,7 @@ export interface FixedTraceDirectRequestThreadFacts {
   isThread: boolean;
   channelPrivacy: 'private' | 'unknown';
   authentication: 'not_authenticated_fixture_claim';
-  provenance: 'fixture_case_request_not_authenticated';
+  provenance: 'fixture_case_request_untrusted';
 }
 
 function canonicalJson(value: unknown): string {
@@ -522,7 +522,7 @@ export function fixedTraceDirectRequestThreadFacts(trace: FixedTraceCase): Fixed
     isThread: (trace.request.threadContext?.length ?? 0) > 0,
     channelPrivacy: trace.request.source === 'dm' ? 'private' : 'unknown',
     authentication: 'not_authenticated_fixture_claim',
-    provenance: 'fixture_case_request_not_authenticated',
+    provenance: 'fixture_case_request_untrusted',
   });
 }
 
@@ -532,11 +532,11 @@ export function fixedTraceRequestThreadFactsProvenance(
 ): FixedTraceRequestThreadFactsProvenance {
   if (arm !== 'direct_generation') return Object.freeze({ source: 'not_applicable', traceFacts: [] });
   return Object.freeze({
-    source: 'fixture_case_request_not_authenticated',
+    source: 'fixture_case_request_untrusted',
     traceFacts: Object.freeze(traceSuite.map((trace) => Object.freeze({
       traceId: trace.id,
       requestThreadFactsSha256: sha256(fixedTraceDirectRequestThreadFacts(trace)),
-      provenance: 'fixture_case_request_not_authenticated' as const,
+      provenance: 'fixture_case_request_untrusted' as const,
     })).sort((left, right) => left.traceId.localeCompare(right.traceId))),
   });
 }
@@ -620,7 +620,7 @@ export interface FixedTraceDirectToolUniverse extends FixedTraceToolUniverseProv
   isThread: boolean;
   channelPrivacy: 'private' | 'unknown';
   requestThreadFactsSha256: string;
-  requestThreadFactsProvenance: 'fixture_case_request_not_authenticated';
+  requestThreadFactsProvenance: 'fixture_case_request_untrusted';
 }
 
 export interface FixedTraceDirectArmAdmission {

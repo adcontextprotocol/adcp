@@ -17,9 +17,14 @@ function tool(name: string, description = name): AddieTool {
 
 function facts(overrides: Partial<AddieRequestToolReplayFacts> = {}): AddieRequestToolReplayFacts {
   return {
-    caseId: 'case-a', surface: 'slack', isAAOAdmin: false, isThread: true,
-    privacy: 'private', source: 'channel_message', requestTimeMs: Date.now(),
-    replayPrincipal: 'U_TEST', ...overrides,
+    surface: 'slack_dm',
+    requestIdSha256: '1'.repeat(64), messageIdSha256: '2'.repeat(64),
+    threadIdSha256: '3'.repeat(64), threadContextSha256: '4'.repeat(64),
+    principalSha256: '5'.repeat(64), adminStatus: 'not_admin',
+    adminProvenance: 'slack_member_context', isThread: true, privacy: 'private',
+    privacyProvenance: 'slack_dm', requestTimeMs: Date.now(),
+    confirmationState: 'unknown', idempotencyState: 'unknown',
+    mutationReplayState: 'unknown', ...overrides,
   };
 }
 
@@ -129,8 +134,8 @@ describe('sealed request-local replay binding', () => {
 
   it('binds the case and every request fact without accepting restamped facts', () => {
     for (const changed of [
-      { caseId: 'case-b' }, { surface: 'web' }, { isAAOAdmin: true }, { isThread: false },
-      { privacy: 'public' as const }, { source: 'web_chat' }, { requestTimeMs: 1_001 }, { replayPrincipal: 'U_OTHER' },
+      { requestIdSha256: 'a'.repeat(64) }, { surface: 'web_chat' }, { adminStatus: 'admin' as const }, { isThread: false },
+      { privacy: 'public' as const }, { privacyProvenance: 'web_session' as const }, { requestTimeMs: 1_001 }, { principalSha256: 'b'.repeat(64) },
     ]) {
       const { binding } = capture();
       expect(claimSealedRequestToolReplayBinding({ binding, facts: facts(changed) }))
@@ -396,12 +401,12 @@ describe('sealed request-local replay binding', () => {
     const beforeExpiry = capture();
     vi.advanceTimersByTime(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS - 1);
     expect(claimSealedRequestToolReplayBinding({ binding: beforeExpiry.binding, facts: facts({ requestTimeMs: beforeExpiry.facts.requestTimeMs }) }))
-      .toMatchObject({ valid: true });
+      .toEqual({ valid: false, reason: 'binding_evaluator_custody_unavailable' });
 
     const atExpiry = capture();
     vi.advanceTimersByTime(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS);
     expect(claimSealedRequestToolReplayBinding({ binding: atExpiry.binding, facts: facts({ requestTimeMs: atExpiry.facts.requestTimeMs }) }))
-      .toMatchObject({ valid: true });
+      .toEqual({ valid: false, reason: 'binding_evaluator_custody_unavailable' });
 
     const expired = capture();
     vi.advanceTimersByTime(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS + 1);
@@ -431,8 +436,10 @@ describe('sealed request-local replay binding', () => {
       return result;
     };
 
-    expect(validateAt(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS - epsilon)).toMatchObject({ valid: true });
-    expect(validateAt(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS)).toMatchObject({ valid: true });
+    expect(validateAt(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS - epsilon))
+      .toEqual({ valid: false, reason: 'binding_evaluator_custody_unavailable' });
+    expect(validateAt(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS))
+      .toEqual({ valid: false, reason: 'binding_evaluator_custody_unavailable' });
     expect(validateAt(ADDIE_REQUEST_TOOL_REPLAY_BINDING_TTL_MS + epsilon))
       .toEqual({ valid: false, reason: 'binding_expired' });
   });
@@ -464,10 +471,10 @@ describe('sealed request-local replay binding', () => {
       .toEqual({ valid: false, reason: 'binding_clock_invalid' });
   });
 
-  it('is one-use and fails closed for abort before any real handler can run', () => {
+  it('is one-use and cannot issue a runnable claim before evaluator custody exists', () => {
     const accepted = capture();
     expect(claimSealedRequestToolReplayBinding({ binding: accepted.binding, facts: facts() }))
-      .toMatchObject({ valid: true, tools: accepted.binding.tools });
+      .toEqual({ valid: false, reason: 'binding_evaluator_custody_unavailable' });
     expect(claimSealedRequestToolReplayBinding({ binding: accepted.binding, facts: facts() }))
       .toEqual({ valid: false, reason: 'binding_already_consumed' });
 
@@ -494,6 +501,6 @@ describe('sealed request-local replay binding', () => {
 
     expect(binding.tools.map(({ name }) => name)).toEqual(['alpha', 'beta', 'gamma']);
     expect(claimSealedRequestToolReplayBinding({ binding, facts: facts() }))
-      .toMatchObject({ valid: true });
+      .toEqual({ valid: false, reason: 'binding_evaluator_custody_unavailable' });
   });
 });
