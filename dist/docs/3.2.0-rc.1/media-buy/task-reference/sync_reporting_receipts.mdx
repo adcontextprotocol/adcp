@@ -1,0 +1,129 @@
+---
+title: sync_reporting_receipts
+description: "Record authenticated consumer reconciliation results for Reliable Reporting materializations."
+"og:title": "AdCP — sync_reporting_receipts"
+---
+
+<Warning>
+**Reliable Reporting 1.0 / RC1 additions — unreleased source contract.** This
+task is experimental and belongs to the optional **Reconciled Billing tier**: only sellers advertising
+`media_buy.reporting_delivery.reconciled_billing: true` implement it, and its
+presence is declared through `receipt_task`. Core-tier sellers never implement
+receipts. Sellers implementing it declare `media_buy.reporting_delivery` in
+`get_adcp_capabilities.experimental_features`.
+</Warning>
+
+`sync_reporting_receipts` closes the knowledge gap between “the seller published a
+report” and “this consumer independently observed matching data.” It is a batched,
+idempotent write. It does not acknowledge mere webhook delivery.
+
+A receipt reconciles immutable billing-purpose reporting evidence and control totals
+only. It does not create, approve, modify, or settle invoices; calculate taxes or FX;
+authorize accounting entries; transfer funds; or determine legal payment obligations.
+`accepted` means the digest, version, row-count, and control-total evidence matches;
+it is not invoice/price/fee approval, a dispute waiver, posting authorization, or a
+payment due. `rejected` means an evidence discrepancy only. An external billing system
+MAY retain `reporting_revision_id` as supporting evidence.
+
+**Reliable Reporting 1.0 / RC1 addition:** If the source is corrected, the seller
+publishes a separate accounting-only reporting adjustment into a period
+derived from its pinned billing calendar and correction policy; that metadata does not
+authorize reopening books or altering invoices. The consumer recomputes the adjustment's
+`canonical_adjustment_sha256` and submits an `adjustment_receipts[]` accepted
+or rejected result. Reconciled Billing does not treat the correction as agreed
+until that exact adjustment digest has an accepted receipt.
+
+For example, a buyer can retain `reporting_revision_id` next to a monthly external
+billing-system record while reconciling a `spend` control-total delta. Acceptance only
+records matching reporting evidence; that billing system still decides whether any
+invoice action is appropriate.
+
+<Note>
+The schema links below describe the published RC0 baseline. Fields and behavior
+explicitly labeled **Reliable Reporting 1.0 / RC1** below are unreleased source
+contract and will publish with RC1. RC0 does not support `changes_after`,
+`adjustment_receipts`, receipt replacement semantics, or any other RC1-only
+addition.
+</Note>
+
+**Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/sync-reporting-receipts-request.json)
+
+**Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/sync-reporting-receipts-response.json)
+
+<Note>
+**Reliable Reporting 1.0 / RC1 additions:** `adjustment_receipts[]`, post-official
+adjustment reconciliation, and receipt replacement/supersession and append-only-history
+semantics below are unreleased. RC0 already supports the batched revision
+materialization `receipts[]` form; it must not be read as supporting these RC1 additions.
+</Note>
+
+```json
+{
+  "account": { "account_id": "acc_123" },
+  "idempotency_key": "019c9f25-5d28-7d4b-a6c2-4e7543291840",
+  "receipts": [
+    {
+      "reporting_receipt_id": "receipt_2026_08_billing_01",
+      "reporting_obligation_id": "obligation_2026_08_billing_01",
+      "reporting_revision_id": "revision_2026_08_billing_02",
+      "reporting_materialization_id": "materialization_2026_08_bq_01",
+      "status": "accepted",
+      "verification_profile": "canonical_digest",
+      "observed_row_count": 7,
+      "observed_control_totals": [
+        { "name": "impressions", "value": "4200", "value_type": "integer", "unit": "impressions" },
+        { "name": "spend", "value": "7000.00", "value_type": "decimal", "unit": "USD" }
+      ],
+      "observed_canonical_content_digest": {
+        "algorithm": "sha256",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "canonicalization_id": "billing-rows-v1",
+        "canonicalization_uri": "https://billing.example/reporting/canonicalization/billing-rows-v1.json",
+        "canonicalization_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "consumer_commit_ref": "buyer-ledger-run-42",
+      "observed_at": "2026-09-02T00:01:00Z"
+    }
+  ]
+}
+```
+
+The authenticated transport identity, not a payload field, identifies the buyer or
+governance consumer. The seller accepts a receipt only for that principal's
+account-bound obligation and materialization. Unknown, unauthorized, cross-account,
+and cross-caller identifiers return indistinguishable failures.
+
+**Reliable Reporting 1.0 / RC1 reconciliation semantics:** reconciliation is immediately due once the revision and verified materialization are
+readable; Reliable Reporting does not define a separate receipt SLA. A missing current
+revision receipt produces `action_required` / `RECEIPT_REQUIRED`; a missing adjustment
+receipt produces `ADJUSTMENT_RECEIPT_REQUIRED`, both assigned to the consumer. A current
+rejected receipt produces `RECEIPT_REJECTED` or `ADJUSTMENT_RECEIPT_REJECTED`, assigned
+to the seller for evidence investigation/remediation. Every current revision receipt and
+every applicable adjustment receipt must be accepted before the obligation is accepted.
+Publishing a new adjustment reopens an accepted obligation to pending/action-required.
+
+An accepted receipt always carries independently observed row count and control
+totals. Its selected verification profile adds one of:
+
+- `native_commit`: the exact provider-native immutable version;
+- `manifest_checksums`: the digest-valid manifest whose file checksums were verified;
+  or
+- `canonical_digest`: the digest of canonical logical content, required for billing.
+
+If evidence differs, consumers submit `status: rejected` with stable rejection codes.
+**Reliable Reporting 1.0 / RC1 replacement semantics:**
+A receipt records exactly one materialization evidence attempt. Materializations are
+attempts within one current authenticated-consumer + obligation + revision replacement
+chain, not independently reconciled materialization chains. A receipt ID is immutable. Exact retries are unchanged; reuse with different content
+is an idempotency conflict. A new immutable receipt ID may name
+`supersedes_reporting_receipt_id` only for the same current rejected leaf; accepted
+current leaves are terminal. The revision-receipt replacement chain is scoped to one
+authenticated consumer plus obligation and revision, and its replacement may name a
+corrected materialization for that same revision. Sellers retain the append-only history,
+while status counts derive the one current leaf per authenticated consumer and
+obligation/revision (or adjustment). Sellers return `received_at` and expose the durable receipt
+through [`get_reporting_status`](/dist/docs/3.2.0-rc.1/media-buy/task-reference/get_reporting_status), allowing the consumer to read back that agreement.
+
+One canonical revision may fan out to several destinations or principals. Each consumer
+has its own replacement chain, and one consumer's receipt never counts as another
+consumer's acceptance.
