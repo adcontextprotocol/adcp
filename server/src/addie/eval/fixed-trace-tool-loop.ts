@@ -227,7 +227,7 @@ export function validateFixedTraceToolLoopEnvironment(
   // Registration does not read trace fields while an evaluator environment is
   // supplied. This empty placeholder prevents fixture facts from entering
   // direct admission.
-  void registerTools({ toolFixtures: [] } as FixedTraceCase, definitions, environment);
+  void registerTools({ toolFixtures: [] } as unknown as FixedTraceCase, definitions, environment);
 }
 
 function safeIterationLimit(toolCount: number, requested?: number): number {
