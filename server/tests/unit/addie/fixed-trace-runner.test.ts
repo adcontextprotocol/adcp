@@ -128,6 +128,41 @@ class DeferredBeforeDispatchProvider extends ScriptedProvider {
   }
 }
 
+class DeferredContinuationProvider extends ScriptedProvider {
+  private dispatchCount = 0;
+  private releaseDispatch!: () => void;
+  private readonly dispatchReleased = new Promise<void>((resolve) => { this.releaseDispatch = resolve; });
+  private signalBeforeContinuation!: () => void;
+  readonly beforeContinuationPending = new Promise<void>((resolve) => { this.signalBeforeContinuation = resolve; });
+
+  release(): void {
+    this.releaseDispatch();
+  }
+
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    this.dispatchCount += 1;
+    if (this.dispatchCount === 2) {
+      this.signalBeforeContinuation();
+      await this.dispatchReleased;
+    }
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    const next = this.script.shift();
+    if (!next) throw new Error('Script exhausted');
+    if (next instanceof Error) throw next;
+    yield { type: 'response_start', provider: this.id, model: next.model, id: next.id };
+    for (const [index, item] of next.content.entries()) {
+      if (item.type === 'text') yield { type: 'text_delta', index, text: item.text };
+      else if (item.type === 'tool_call') yield { type: 'tool_call', index, call: item };
+    }
+    yield { type: 'response_complete', response: next };
+  }
+}
+
 function response(
   content: ModelResponse['content'],
   finishReason: ModelResponse['finishReason'] = 'stop',
@@ -934,20 +969,51 @@ describe('fixed trace artifact runner', () => {
     expect(deferredGeneration.respondCalls).toHaveLength(0);
   });
 
+  it('revalidates execution identity before a tool-loop continuation dispatch', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new DeferredContinuationProvider([
+      response([{
+        type: 'tool_call', id: 'expanded-continuation-tool', name: 'search_docs', input: { query: 'task model' },
+      }], 'tool_calls'),
+      response([{ type: 'text', text: 'Synthetic protocol explanation.' }]),
+    ]);
+    const runConfig = config(router, generation);
+    const pending = runFixedTraceCase(selectedTrace, runConfig);
+    await generation.beforeContinuationPending;
+    (runConfig as { traceSuiteSha256: string }).traceSuiteSha256 = HASH;
+    generation.release();
+
+    const observation = await pending;
+    expect(observation).toMatchObject({ terminalStage: 'generation', terminalStatus: 'provider_error' });
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
   it('rejects empty or duplicate-ID evaluator suites before provider dispatch', async () => {
     const selectedTrace = trace('knowledge-task-model');
     const duplicate = structuredClone(selectedTrace);
     const emptyRouter = new ScriptedProvider([]);
     await expect(runFixedTraceSuite(config(emptyRouter, new ScriptedProvider([]), {
       traceSuite: [],
-    }))).rejects.toThrow('empty, duplicated');
+    }))).rejects.toThrow('empty, blank, duplicated');
     expect(emptyRouter.respondCalls).toHaveLength(0);
 
     const duplicateRouter = new ScriptedProvider([]);
     await expect(runFixedTraceSuite(config(duplicateRouter, new ScriptedProvider([]), {
       traceSuite: [selectedTrace, duplicate],
-    }))).rejects.toThrow('empty, duplicated');
+    }))).rejects.toThrow('empty, blank, duplicated');
     expect(duplicateRouter.respondCalls).toHaveLength(0);
+
+    for (const invalidId of ['', '   ', 123 as unknown as string]) {
+      const invalid = structuredClone(selectedTrace) as FixedTraceCase;
+      (invalid as { id: string }).id = invalidId;
+      const invalidRouter = new ScriptedProvider([]);
+      await expect(runFixedTraceSuite(config(invalidRouter, new ScriptedProvider([]), {
+        traceSuite: [invalid],
+      }))).rejects.toThrow('empty, blank, duplicated');
+      expect(invalidRouter.respondCalls).toHaveLength(0);
+    }
   });
 
   it('changes cohort hashes for candidate configuration', () => {
@@ -963,6 +1029,8 @@ describe('fixed trace artifact runner', () => {
       ...base,
       injectProviderDegradation: false,
     })).not.toBe(fixedTraceArchitectureConfigSha256(base));
+    expect(() => fixedTraceArchitectureConfigSha256({ ...base, traceSuiteSha256: HASH }))
+      .toThrow('Fixed trace runner suite hash is missing, forged, empty, blank, duplicated, or no longer bound to its configured suite');
   });
 
   it('refuses a non-canonical bounded-generation override before dispatch', async () => {
@@ -1079,14 +1147,14 @@ describe('fixed trace artifact runner', () => {
       traceSuite: [selectedTrace], traceSuiteSha256: HASH,
     });
     await expect(runFixedTraceCase(selectedTrace, forged))
-      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, empty, duplicated, or no longer bound to its configured suite');
+      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, empty, blank, duplicated, or no longer bound to its configured suite');
     expect(forgedRouter.respondCalls).toHaveLength(0);
 
     const mutatedRouter = new ScriptedProvider([]);
     const mutated = config(mutatedRouter, new ScriptedProvider([]), { traceSuite: [selectedTrace] });
     (mutated as { traceSuite: ReadonlyArray<FixedTraceCase> }).traceSuite = [trace('knowledge-task-model')];
     await expect(runFixedTraceCase(selectedTrace, mutated))
-      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, empty, duplicated, or no longer bound to its configured suite');
+      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, empty, blank, duplicated, or no longer bound to its configured suite');
     expect(mutatedRouter.respondCalls).toHaveLength(0);
 
     const boundRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);

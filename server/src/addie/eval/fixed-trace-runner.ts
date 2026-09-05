@@ -137,16 +137,21 @@ function snapshotExecutionConfig(config: FixedTraceRunnerConfig): FixedTraceRunn
   });
 }
 
-function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionIdentity {
+function assertTraceSuiteIdentity(config: FixedTraceRunnerConfig): void {
   if (
     !Array.isArray(config.traceSuite)
     || config.traceSuite.length === 0
+    || config.traceSuite.some((trace) => typeof trace.id !== 'string' || trace.id.trim().length === 0)
     || new Set(config.traceSuite.map((trace) => trace.id)).size !== config.traceSuite.length
     || !/^[a-f0-9]{64}$/.test(config.traceSuiteSha256)
     || config.traceSuiteSha256 !== fixedTraceSuiteSha256(config.traceSuite)
   ) {
-    throw new Error('Fixed trace runner suite hash is missing, forged, empty, duplicated, or no longer bound to its configured suite');
+    throw new Error('Fixed trace runner suite hash is missing, forged, empty, blank, duplicated, or no longer bound to its configured suite');
   }
+}
+
+function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionIdentity {
+  assertTraceSuiteIdentity(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
   return {
     traceSuiteSha256: config.traceSuiteSha256,
@@ -473,6 +478,9 @@ export function fixedTraceArchitectureConfigSha256(
   config: FixedTraceRunnerConfig,
   suppliedToolSchemaSha256?: string,
 ): string {
+  // This exported helper is a runner-config fingerprint, not a generic hash
+  // builder: never emit a plausible fingerprint for a forged suite binding.
+  assertTraceSuiteIdentity(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
   if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== toolSchemaSha256) {
     throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
