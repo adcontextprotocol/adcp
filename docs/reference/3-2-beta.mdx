@@ -22,10 +22,11 @@ pairings:
 <Info>
 **RC.1 separates protocol-first and SDK-backed testing.** Use its signed bundle
 for raw-wire validation and code generation. Continue using RC.0 for the
-currently matched TypeScript and Python SDKs. A
-[Go RC.1 update is in review](https://github.com/adcontextprotocol/adcp-go/pull/493),
-but it is not usable until a package is published with an explicit support
-statement.
+currently matched TypeScript and Python SDKs. The
+[Go RC.1 update has merged](https://github.com/adcontextprotocol/adcp-go/pull/493),
+and [release PR #494](https://github.com/adcontextprotocol/adcp-go/pull/494)
+is preparing `adcp/v3.2.1`, but it is not usable until that package is published
+with an explicit support statement.
 </Info>
 
 | Checkpoint | Purpose | Who should test |
@@ -93,9 +94,10 @@ matrix before treating schema parity as complete L1–L3 coverage.
 Go `adcp/v3@v3.2.0` includes 3.2 proposal APIs and signing additions, but its
 generated schemas remain pinned to protocol `3.2.0-beta.9`. It is not an exact
 RC.0 or RC.1 pairing; use it only for the documented partial surface. The
-[RC.1 Go update](https://github.com/adcontextprotocol/adcp-go/pull/493) is in
-review, but it is not supported until a package is published with an explicit
-protocol-version statement.
+[RC.1 Go update has merged](https://github.com/adcontextprotocol/adcp-go/pull/493),
+and [release PR #494](https://github.com/adcontextprotocol/adcp-go/pull/494)
+is preparing `adcp/v3.2.1`, but it is not supported until that package is
+published with an explicit protocol-version statement.
 
 ## Use the RC.1 artifact directly
 
