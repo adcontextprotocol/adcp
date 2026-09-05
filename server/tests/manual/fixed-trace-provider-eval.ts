@@ -27,6 +27,7 @@ import {
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from '../../src/addie/eval/fixed-trace-runner.js';
+import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
@@ -61,12 +62,6 @@ import {
   GOOGLE_ROUTER_MODEL,
 } from '../../src/addie/model-providers/google-generate-content-provider.js';
 import { loadResponseStyle, loadRules } from '../../src/addie/rules/index.js';
-import { ADMIN_TOOLS } from '../../src/addie/mcp/admin-tools.js';
-import { BILLING_TOOLS } from '../../src/addie/mcp/billing-tools.js';
-import { KNOWLEDGE_TOOLS } from '../../src/addie/mcp/knowledge-search.js';
-import { MEETING_TOOLS } from '../../src/addie/mcp/meeting-tools.js';
-import { MEMBER_TOOLS } from '../../src/addie/mcp/member-tools.js';
-import type { AddieTool } from '../../src/addie/types.js';
 
 type ProviderName = ModelProviderId;
 
@@ -76,30 +71,6 @@ interface ProviderPlan {
   generation: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
   judge: FixedTraceJudgeConfig;
 }
-
-const MEETING_FULL_ADMINISTRATION_FIXTURE_NAMES = [
-  'schedule_meeting',
-  'list_upcoming_meetings',
-  'get_my_meetings',
-  'get_meeting_details',
-  'rsvp_to_meeting',
-  'cancel_meeting',
-  'cancel_meeting_series',
-  'update_meeting',
-  'add_meeting_attendee',
-  'update_topic_subscriptions',
-  'manage_committee_topics',
-] as const;
-
-const TOOL_NAMES = new Set([
-  'search_docs',
-  'get_doc',
-  'get_my_profile',
-  'find_duplicate_orgs',
-  'send_invoice',
-  'confirm_send_invoice',
-  ...MEETING_FULL_ADMINISTRATION_FIXTURE_NAMES,
-]);
 
 // The confirmed long meeting trace needs four sequential requested tools and
 // one final response. It is deliberately narrower than the synthetic loop's
@@ -156,24 +127,6 @@ function sourceBundle(): { sha256: string; files: string[] } {
     hash.update(file, 'utf8').update('\0').update(readFileSync(file)).update('\0');
   }
   return { sha256: hash.digest('hex'), files };
-}
-
-function canonicalToolDefinitions(): AddieTool[] {
-  const definitions = [
-    ...KNOWLEDGE_TOOLS,
-    ...MEMBER_TOOLS,
-    ...ADMIN_TOOLS,
-    ...BILLING_TOOLS,
-    ...MEETING_TOOLS,
-  ].filter((tool) => TOOL_NAMES.has(tool.name));
-  const byName = new Map<string, AddieTool>();
-  for (const definition of definitions) {
-    if (byName.has(definition.name)) throw new Error(`Duplicate fixed-trace tool: ${definition.name}`);
-    byName.set(definition.name, definition);
-  }
-  const missing = [...TOOL_NAMES].filter((name) => !byName.has(name));
-  if (missing.length > 0) throw new Error(`Missing fixed-trace tools: ${missing.join(', ')}`);
-  return [...TOOL_NAMES].map((name) => byName.get(name)!);
 }
 
 function stage(
@@ -348,7 +301,7 @@ const promptConfigVersion = sha256(JSON.stringify({
   rules: loadRules(),
   responseStyle: loadResponseStyle(),
 }));
-const toolDefinitions = canonicalToolDefinitions();
+const toolDefinitions = canonicalFixedTraceToolDefinitions();
 const toolSchemaSha256 = fixedTraceToolSchemaSha256(toolDefinitions);
 const budget = new FixedTraceBudget(softMaxUsd);
 const allProviderNames = [...new Set([...providerNames, ...judgeProviderNames])];
