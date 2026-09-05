@@ -8,18 +8,39 @@ import {
   FIXED_TRACE_STAGE_CONTROL_VERSION,
   fixedTraceArchitectureConfigSha256FromMetadata,
   assertFixedTraceRunContract,
+  FIXED_TRACE_CORPUS,
+  FIXED_TRACE_CORPUS_VERSION,
+  FIXED_TRACE_LEGACY_COVERAGE_INVENTORY,
+  candidateVisibleTraceInput,
+  fixedTraceCasesForPhase,
+  fixedTraceCorpusSha256,
+  fixedTraceCorpusValidationReport,
+  fixedTraceCoverageInventory,
+  fixedTracePhaseSha256,
   fixedTraceSuiteSha256,
   fixedTraceToolTranscriptSha256,
   gradeFixedTrace,
   mutationInputProvenanceFailures,
   summarizeFixedTraceRun,
   toolInputConstraintFailures,
+  validateFixedTraceCandidateVisibleLeakage,
+  validateFixedTraceCorpus,
   type FixedTraceCase,
   type FixedTraceCohortStageControl,
+  type FixedTraceCorpusCase,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
   type FixedTraceRunMetadata,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
+import {
+  candidateVisibleMarkerOverlap,
+  canonicalFixedTraceText,
+  validateFixedTraceCandidateInputProvenance,
+  validateFixedTraceCorpusSemanticAuthority,
+  validateFixedTraceCorpusToolContracts,
+} from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
+import { FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY } from '../../../src/addie/eval/fixed-trace-corpus-authority.js';
+import { fixedTraceCandidateInputsForPhase } from '../../../src/addie/eval/fixed-trace-corpus.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
@@ -234,22 +255,76 @@ describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
     expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v32');
     expect(FIXED_TRACE_SUITE).toHaveLength(32);
-    expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
-    expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
+    expect(FIXED_TRACE_SUITE.every((trace) => trace.phase === undefined)).toBe(true);
+  });
+
+  it('is a synthetic foundation corpus covering every required risk category', () => {
+    expect(FIXED_TRACE_CORPUS_VERSION).toBe('addie-fixed-traces-v32');
+    expect(FIXED_TRACE_CORPUS).toHaveLength(82);
+    expect(new Set(FIXED_TRACE_CORPUS.map((trace) => trace.id)).size).toBe(FIXED_TRACE_CORPUS.length);
+    expect(new Set(FIXED_TRACE_CORPUS.map((trace) => trace.request.message)).size).toBe(FIXED_TRACE_CORPUS.length);
+    expect(new Set(FIXED_TRACE_CORPUS.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
       'tool_error', 'prompt_injection', 'date_sensitive', 'truncation', 'long_form_incident', 'provider_degradation',
+      'ambiguous_multi_domain', 'privacy_auth_boundary', 'ordinary_no_tool',
     ]));
     expect(FIXED_TRACE_SUITE.every((trace) => trace.privacy === 'synthetic')).toBe(true);
     expect(FIXED_TRACE_SUITE.find((trace) => trace.id === 'bounded-truncation')?.caseControl)
       .toEqual({ kind: 'bounded_generation_output', maxOutputTokens: 32 });
     const serialized = JSON.stringify(FIXED_TRACE_SUITE);
     expect(serialized).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    expect(FIXED_TRACE_CORPUS.every((trace) => trace.privacy === 'synthetic')).toBe(true);
+    const corpusSerialized = JSON.stringify(FIXED_TRACE_CORPUS);
+    expect([...corpusSerialized.matchAll(/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/gi)]
+      .every((match) => match[1].endsWith('.invalid') || match[1].endsWith('.test'))).toBe(true);
     expect(serialized).not.toMatch(/\b[UW][A-Z0-9]{8,}\b/);
     expect(serialized).not.toMatch(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i);
+    expect(FIXED_TRACE_LEGACY_COVERAGE_INVENTORY).toMatchObject({
+      caseCount: 32,
+      gaps: ['ambiguous_multi_domain', 'privacy_auth_boundary', 'ordinary_no_tool'],
+    });
+    expect(fixedTraceCoverageInventory().phaseCounts).toEqual({ development: 46, tuning: 36, sealed_final: 0 });
+    expect(fixedTraceCoverageInventory()).toMatchObject({ sealedFinalTarget: 38, sealedFinalDeficit: 38 });
+    expect(fixedTraceCoverageInventory().phaseBehavior.development).toMatchObject({
+      casesWithFixtures: 31,
+      fixtureTools: 55,
+      confirmedMutationCases: 3,
+      fixtureErrorCases: 3,
+      channelCases: 2,
+      adminCases: 9,
+      authorizationBoundaryCases: 0,
+      longInputCases: 1,
+      truncationCases: 2,
+      degradationCases: 2,
+      duplicateCandidateRequests: 0,
+      nearDuplicateCandidateRequests: 0,
+    });
+    expect(fixedTraceCoverageInventory().phaseBehavior.tuning).toMatchObject({
+      casesWithFixtures: 32,
+      fixtureTools: 42,
+      confirmedMutationCases: 8,
+      deniedMutationCases: 2,
+      fixtureErrorCases: 9,
+      toolResultInjectionCases: 3,
+      multiToolCases: 9,
+      boundedReplayCases: 36,
+      channelCases: 7,
+      authorizationBoundaryCases: 5,
+      longInputCases: 3,
+      degradationCases: 2,
+      duplicateCandidateRequests: 0,
+      nearDuplicateCandidateRequests: 0,
+    });
+    expect(fixedTraceCoverageInventory().crossPhaseStructuralFingerprintDuplicates).toBe(0);
+    expect(fixedTraceCoverageInventory().samePhaseStructuralFingerprintDuplicates).toBe(0);
+    expect(validateFixedTraceCorpus()).toEqual([]);
   });
 
   it('has a stable version-bound fingerprint and no duplicate tool contracts', () => {
     expect(fixedTraceSuiteSha256()).toMatch(/^[a-f0-9]{64}$/);
+    // The deployable, legacy 32-case evaluator is frozen while corpus-only
+    // partition work evolves around it.
+    expect(fixedTraceSuiteSha256()).toBe('5f7f0a6d653a4757991728a1d9de8aee69b40d580dafb65e98941c1f9e3fea83');
     expect(fixedTraceSuiteSha256()).toBe(fixedTraceSuiteSha256(structuredClone(FIXED_TRACE_SUITE)));
     const alteredControl = structuredClone(FIXED_TRACE_SUITE);
     alteredControl.find((trace) => trace.id === 'bounded-truncation')!.caseControl!.maxOutputTokens = 64;
@@ -268,6 +343,631 @@ describe('fixed cross-provider trace suite', () => {
     }
     expect(Object.isFrozen(FIXED_TRACE_SUITE)).toBe(true);
     expect(Object.isFrozen(FIXED_TRACE_SUITE[0].request)).toBe(true);
+  });
+
+  it('fails closed on blank or duplicate IDs, invalid phases, identity leakage, and lock drift', () => {
+    const duplicate = structuredClone(FIXED_TRACE_CORPUS);
+    duplicate[0].id = '';
+    duplicate[1].id = duplicate[2].id;
+    duplicate[3].phase = 'unknown' as typeof duplicate[3]['phase'];
+    duplicate[4].request.message = 'Reach me at production.person@example.com';
+    expect(validateFixedTraceCorpus(duplicate)).toEqual(expect.arrayContaining([
+      'blank_case_id',
+      'invalid_case_id:',
+      `duplicate_case_id:${duplicate[2].id}`,
+      `invalid_phase:${duplicate[3].id}`,
+      `identity_leakage:${duplicate[4].id}`,
+    ]));
+
+    const phone = structuredClone(FIXED_TRACE_CORPUS);
+    phone[0].request.message = 'Call 212-555-0199 from 192.0.2.44';
+    expect(validateFixedTraceCorpus(phone)).toEqual(expect.arrayContaining([
+      `identity_leakage:${phone[0].id}`,
+    ]));
+
+    const knownRealIdentity = structuredClone(FIXED_TRACE_CORPUS);
+    knownRealIdentity[0].request.message = 'Route this to Apple, WPP, and Publicis.';
+    expect(validateFixedTraceCorpus(knownRealIdentity)).toEqual(expect.arrayContaining([
+      `identity_leakage:${knownRealIdentity[0].id}`,
+    ]));
+
+    for (const substitution of [
+      'Brian O’Kelley at Scope3', 'nytimes.com', 'Satya Nadella',
+      'brian o..kelley', 'scope-3', 'nytimes[.]com', 'satya_nadella',
+      'the trade desk', 'https://unreviewed.ai/agent', 'u0123456789', 'org_real_123456',
+      'Brian\tO’Kelley', 'Brian\nO’Kelley', 'Ｂｒｉａｎ Ｏ’Ｋｅｌｌｅｙ', 'Brіan O’Kelley',
+      'scope—3', 'https://unreviewed[.]ai/agent', 'u-0123456789', 'org-real-123456',
+      'brian o__kelley', 'scope_3', 'the_trade_desk', 'brian\t o   kelley',
+      'nytimes[dot]com', 'u_0123456789', 'org.real.123456', 'org_real_１２３４５６',
+      'brіan o kelley',
+      'brian%20o%20kelley', 'brian%2520o%2520kelley', 'brі%D0%B0n%20o%20k%D0%B5lley',
+      'https%3A%2F%2Funreviewed%2Eai%2Fagent', 'https%253A%252F%252Funreviewed%252Eai%252Fagent',
+      'org%5Freal%5F123456', 'org%255Freal%255F123456', 'brian%2Go%20kelley',
+      'https://nytimes%2ecom/x', 'the%5ftrade%5fdesk', 'u%5f0123456789', 'org%2ereal%2e123456',
+      'Brіan O Кelley',
+      'Briaп O Kelley', 'Brıan O Kelley', 'Br.i.an O Kelley', 'B.r.i.a.n O Kelley', 'Brian O Keλley', 'Brian---O___Kelley',
+      'Br\u200bian O\u0000Kelley', 'nytimes dot com', 'nytimes&#46;com', 'org&#46;real&#46;123456',
+      'Bria&NewLine;n O Kelley', 'Brian O&sol;Kelley', 'nytimes&Tab;com',
+    ]) {
+      const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
+      realIdentity[0].request.message = substitution;
+      expect(validateFixedTraceCorpus(realIdentity)).toEqual(expect.arrayContaining([
+        `identity_leakage:${realIdentity[0].id}`,
+      ]));
+    }
+
+    expect(canonicalFixedTraceText('read_google_doc')).toMatchObject({
+      compact: 'readgoogledoc', malformedPercentEncoding: false,
+    });
+    expect(canonicalFixedTraceText('50% discount')).toMatchObject({
+      compact: '50discount', malformedPercentEncoding: false,
+    });
+    expect(candidateVisibleMarkerOverlap({ message: '50% discount' }, ['typed receipt'])).toEqual([]);
+
+    const reviewedLock = {
+      version: 'externally-reviewed-v32',
+      suiteSha256: '0'.repeat(64),
+      phaseSha256: { development: '0'.repeat(64), tuning: '0'.repeat(64), sealed_final: '0'.repeat(64) },
+    };
+    const changed = structuredClone(FIXED_TRACE_CORPUS);
+    changed[0].request.message = 'A changed synthetic request.';
+    expect(validateFixedTraceCorpus(changed, reviewedLock)).toEqual(expect.arrayContaining(['suite_hash_drift']));
+
+    const partition = structuredClone(FIXED_TRACE_CORPUS);
+    partition[46].phase = 'development';
+    expect(validateFixedTraceCorpus(partition)).toEqual(expect.arrayContaining([
+      'phase_count_mismatch:development:47',
+      'phase_count_mismatch:tuning:35',
+    ]));
+
+    const withoutTuningFixtures = structuredClone(FIXED_TRACE_CORPUS);
+    for (const trace of withoutTuningFixtures.filter((trace) => trace.phase === 'tuning')) trace.toolFixtures = [];
+    expect(validateFixedTraceCorpus(withoutTuningFixtures)).toEqual(expect.arrayContaining([
+      'tuning_behavior_distribution_mismatch',
+    ]));
+    expect(validateFixedTraceCorpusToolContracts(FIXED_TRACE_CORPUS)).toEqual([]);
+    const invalidContract = structuredClone(FIXED_TRACE_CORPUS);
+    invalidContract.find((trace) => trace.id === 'tune-property-catalog-resolution')!.toolContract!.orderedCalls[1].input = {};
+    expect(validateFixedTraceCorpusToolContracts(invalidContract)).toEqual(expect.arrayContaining([
+      'invalid_contract_input:tune-property-catalog-resolution:dispute_catalog_entry:1',
+    ]));
+    const reorderedContract = structuredClone(FIXED_TRACE_CORPUS);
+    const ordered = reorderedContract.find((trace) => trace.id === 'tune-property-catalog-resolution')!.toolContract!.orderedCalls;
+    [ordered[0], ordered[1]] = [ordered[1], ordered[0]];
+    expect(validateFixedTraceCorpusToolContracts(reorderedContract)).toEqual(expect.arrayContaining([
+      'ordered_fixture_mismatch:tune-property-catalog-resolution:0',
+    ]));
+
+    const policyFlip = structuredClone(FIXED_TRACE_CORPUS);
+    policyFlip.find((trace) => trace.id === 'tune-property-catalog-resolution')!.toolContract!.orderedCalls[0].policyDisposition = 'blocked';
+    expect(validateFixedTraceCorpusToolContracts(policyFlip)).toEqual(expect.arrayContaining([
+      'execution_policy_mismatch:tune-property-catalog-resolution:0',
+    ]));
+
+    const missingReceiptDependency = structuredClone(FIXED_TRACE_CORPUS);
+    delete missingReceiptDependency.find((trace) => trace.id === 'tune-meeting-confirmed-series-receipts')!.toolContract!.orderedCalls[1].dependsOn;
+    expect(validateFixedTraceCorpusToolContracts(missingReceiptDependency)).toEqual(expect.arrayContaining([
+      'required_receipt_dependency_mismatch:tune-meeting-confirmed-series-receipts:1',
+    ]));
+
+    const unreachable = structuredClone(FIXED_TRACE_CORPUS);
+    const providerFailure = unreachable.find((trace) => trace.id === 'tune-provider-timeout-boundary')!;
+    providerFailure.toolFixtures = [{ name: 'list_agents', effect: 'read', resultStatus: 'ok', result: 'unreachable' }];
+    providerFailure.toolContract = { orderedCalls: [], callBudget: 0, terminalBoundary: 'provider_failure', requiredReceiptDependencies: [], negativeFixtureScenario: 'provider_failure_before_tools' };
+    expect(validateFixedTraceCorpusToolContracts(unreachable)).toEqual(expect.arrayContaining([
+      'unreachable_fixture:tune-provider-timeout-boundary',
+    ]));
+  });
+
+  it('fails closed without invoking accessors, proxy traps, or non-finite corpus values', () => {
+    for (const maxWords of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const nonFinite = structuredClone(FIXED_TRACE_CORPUS);
+      nonFinite.find((trace) => trace.id === 'tune-property-catalog-resolution')!.expectation.maxWords = maxWords;
+      expect(validateFixedTraceCorpus(nonFinite)).toEqual(['unsafe_corpus_snapshot:non_finite_number']);
+      expect(validateFixedTraceCorpusSemanticAuthority(nonFinite)).toEqual(['unsafe_semantic_authority_input:non_finite_number']);
+    }
+
+    const nonEnumerableAccessor = structuredClone(FIXED_TRACE_CORPUS);
+    const accessorTrace = nonEnumerableAccessor.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    let accessorReads = 0;
+    Object.defineProperty(accessorTrace.request, 'message', {
+      enumerable: false,
+      get: () => { accessorReads++; return 'forged-after-validation'; },
+    });
+    expect(validateFixedTraceCorpus(nonEnumerableAccessor)).toEqual(['unsafe_corpus_snapshot:non_enumerable']);
+    expect(validateFixedTraceCorpusSemanticAuthority(nonEnumerableAccessor)).toEqual(['unsafe_semantic_authority_input:non_enumerable']);
+    expect(accessorReads).toBe(0);
+
+    let proxyTraps = 0;
+    const proxySuite = new Proxy(FIXED_TRACE_CORPUS, {
+      get(target, property, receiver) { proxyTraps++; return Reflect.get(target, property, receiver); },
+      ownKeys(target) { proxyTraps++; return Reflect.ownKeys(target); },
+      getOwnPropertyDescriptor(target, property) { proxyTraps++; return Reflect.getOwnPropertyDescriptor(target, property); },
+    });
+    expect(validateFixedTraceCorpus(proxySuite)).toEqual(['unsafe_corpus_snapshot:proxy']);
+    expect(validateFixedTraceCorpusSemanticAuthority(proxySuite)).toEqual(['unsafe_semantic_authority_input:proxy']);
+    expect(proxyTraps).toBe(0);
+
+    const symbolic = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(symbolic, Symbol('unreviewed'), { value: 'unreviewed', enumerable: true });
+    expect(validateFixedTraceCorpus(symbolic)).toEqual(['unsafe_corpus_snapshot:symbol_key']);
+
+    const arrayExtra = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(arrayExtra, 'unreviewed', { value: 'unreviewed', enumerable: true });
+    expect(validateFixedTraceCorpus(arrayExtra)).toEqual(['unsafe_corpus_snapshot:array_extra_property']);
+  });
+
+  it('recursively closes candidate-visible request data before projection', () => {
+    const extras = [
+      ['expectation', { terminalStatuses: ['complete'] }],
+      ['routing', { expectedAnswer: true }],
+      ['privateRoster', true],
+    ] as const;
+    for (const [key, value] of extras) {
+      const injected = structuredClone(FIXED_TRACE_CORPUS);
+      const trace = injected.find((candidate) => candidate.id === 'tune-channel-tool-result-injection')!;
+      Object.defineProperty(trace.request, key, { value, enumerable: true, configurable: true, writable: true });
+      expect(validateFixedTraceCorpus(injected)).toEqual(expect.arrayContaining([
+        `candidate_request_extra:${trace.id}:${key}`,
+      ]));
+      expect(JSON.stringify(candidateVisibleTraceInput(trace))).not.toContain(`"${key}"`);
+    }
+
+    const nested = structuredClone(FIXED_TRACE_CORPUS);
+    const nestedTrace = nested.find((candidate) => candidate.id === 'tune-channel-recap-thread')!;
+    Object.defineProperty(nestedTrace.request.threadContext![0], 'answerRubric', {
+      value: { refuse: true }, enumerable: true, configurable: true,
+    });
+    expect(validateFixedTraceCorpus(nested)).toEqual(expect.arrayContaining([
+      `candidate_thread_context_extra:${nestedTrace.id}:0:answerRubric`,
+    ]));
+    expect(JSON.stringify(candidateVisibleTraceInput(nestedTrace))).not.toContain('answerRubric');
+
+    const nonEnumerable = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(nonEnumerable[0].request, 'privateRoster', { value: true, enumerable: false });
+    expect(validateFixedTraceCorpus(nonEnumerable)).toEqual(['unsafe_corpus_snapshot:non_enumerable']);
+
+    const symbolic = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(symbolic[0].request, Symbol('privateRoster'), { value: true, enumerable: true });
+    expect(validateFixedTraceCorpus(symbolic)).toEqual(['unsafe_corpus_snapshot:symbol_key']);
+
+    const inherited = structuredClone(FIXED_TRACE_CORPUS);
+    Object.setPrototypeOf(inherited[0].request, { privateRoster: true });
+    expect(validateFixedTraceCorpus(inherited)).toEqual(['unsafe_corpus_snapshot:non_plain_object']);
+
+    const proxied = structuredClone(FIXED_TRACE_CORPUS);
+    let proxyTraps = 0;
+    proxied[0].request = new Proxy(proxied[0].request, {
+      get(target, property, receiver) { proxyTraps++; return Reflect.get(target, property, receiver); },
+      ownKeys(target) { proxyTraps++; return Reflect.ownKeys(target); },
+    });
+    expect(validateFixedTraceCorpus(proxied)).toEqual(['unsafe_corpus_snapshot:proxy']);
+    expect(proxyTraps).toBe(0);
+  });
+
+  it('rejects replay-semantic mutations against the separate reviewer authority', () => {
+    expect(FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY).toHaveLength(36);
+    expect(new Set(FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY.map((entry) => entry.id)).size).toBe(36);
+    const authorityRejects = (mutate: (trace: FixedTraceCorpusCase) => void) => {
+      const cases = structuredClone(FIXED_TRACE_CORPUS);
+      const trace = cases.find((candidate) => candidate.id === 'tune-property-catalog-resolution')!;
+      mutate(trace);
+      expect(validateFixedTraceCorpus(cases)).toEqual(expect.arrayContaining([
+        'semantic_authority_mismatch:tune-property-catalog-resolution',
+      ]));
+      expect(validateFixedTraceCorpusSemanticAuthority(cases)).toEqual(expect.arrayContaining([
+        'semantic_authority_mismatch:tune-property-catalog-resolution',
+      ]));
+    };
+
+    authorityRejects((trace) => { trace.request.message = 'A different fictional request.'; });
+    authorityRejects((trace) => { trace.request.threadContext = [{ user: 'member', text: 'Different context.' }]; });
+    authorityRejects((trace) => { trace.privacy = 'non_synthetic' as typeof trace.privacy; });
+    authorityRejects((trace) => { trace.category = 'knowledge'; });
+    authorityRejects((trace) => { trace.routing.toolSets = ['member_billing']; });
+    authorityRejects((trace) => { trace.expectation.requiredTools = ['browse_catalog']; });
+    authorityRejects((trace) => { trace.expectation.allowedTools = ['browse_catalog']; });
+    authorityRejects((trace) => { trace.expectation.forbiddenTools = ['save_brand']; });
+    authorityRejects((trace) => { trace.expectation.requiredTextAny = [['different marker']]; });
+    authorityRejects((trace) => { trace.expectation.maxWords = 999; });
+    authorityRejects((trace) => { trace.expectation.mutationAuthorization = 'none'; });
+    authorityRejects((trace) => { trace.answerRubric = ['A different rubric.']; });
+    authorityRejects((trace) => { trace.incident = { latePromptMarkers: ['late'], requiredDeliveredMarkers: ['delivered'], minimumDeliveredCharacters: 1 }; });
+    authorityRejects((trace) => { trace.toolFixtures[0].result = 'Different fixture payload.'; });
+    authorityRejects((trace) => { trace.toolFixtures[0].effect = 'preview'; });
+
+    const phaseChanged = structuredClone(FIXED_TRACE_CORPUS);
+    phaseChanged.find((trace) => trace.id === 'tune-property-catalog-resolution')!.phase = 'development';
+    expect(validateFixedTraceCorpusSemanticAuthority(phaseChanged)).toEqual(expect.arrayContaining([
+      'orphan_semantic_authority:tune-property-catalog-resolution',
+    ]));
+
+    const duplicateAuthority = [...FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
+      { ...FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY[0] }];
+    expect(validateFixedTraceCorpusSemanticAuthority(FIXED_TRACE_CORPUS, duplicateAuthority)).toEqual(expect.arrayContaining([
+      `duplicate_semantic_authority:${FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY[0].id}`,
+    ]));
+    const missingAuthority = FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY
+      .filter((entry) => entry.id !== 'tune-ordinary-membership-answer');
+    expect(validateFixedTraceCorpusSemanticAuthority(FIXED_TRACE_CORPUS, missingAuthority)).toEqual(expect.arrayContaining([
+      'missing_semantic_authority:tune-ordinary-membership-answer',
+    ]));
+
+    const accessorAttack = structuredClone(FIXED_TRACE_CORPUS);
+    const accessorTrace = accessorAttack.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    let accessorReads = 0;
+    Object.defineProperty(accessorTrace.request, 'message', {
+      enumerable: true,
+      get: () => { accessorReads++; return 'forged-after-validation'; },
+    });
+    Object.freeze(accessorTrace.request);
+    expect(validateFixedTraceCorpus(accessorAttack)).toEqual(['unsafe_corpus_snapshot:accessor']);
+    expect(validateFixedTraceCorpusSemanticAuthority(accessorAttack)).toEqual(['unsafe_semantic_authority_input:accessor']);
+    expect(accessorReads).toBe(0);
+
+    const missingDependency = structuredClone(FIXED_TRACE_CORPUS);
+    const receiptTrace = missingDependency.find((trace) => trace.id === 'tune-meeting-confirmed-series-receipts')!;
+    delete receiptTrace.toolContract!.orderedCalls[1].dependsOn;
+    receiptTrace.toolContract!.requiredReceiptDependencies = [];
+    expect(validateFixedTraceCorpusToolContracts(missingDependency)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(missingDependency)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-meeting-confirmed-series-receipts',
+    ]));
+
+    const changedBudget = structuredClone(FIXED_TRACE_CORPUS);
+    const budgetTrace = changedBudget.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    budgetTrace.caseControl!.maxToolCalls = 99;
+    budgetTrace.toolContract!.callBudget = 99;
+    expect(validateFixedTraceCorpusToolContracts(changedBudget)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(changedBudget)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-property-catalog-resolution',
+    ]));
+
+    const blockedAndUnfixtured = structuredClone(FIXED_TRACE_CORPUS);
+    const blockedTrace = blockedAndUnfixtured.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    blockedTrace.toolContract!.orderedCalls[1].execution = 'blocked';
+    blockedTrace.toolContract!.orderedCalls[1].policyDisposition = 'blocked';
+    blockedTrace.toolFixtures = [blockedTrace.toolFixtures[0]];
+    expect(validateFixedTraceCorpusToolContracts(blockedAndUnfixtured)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(blockedAndUnfixtured)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-property-catalog-resolution',
+    ]));
+
+    const changedFixtureStatus = structuredClone(FIXED_TRACE_CORPUS);
+    const statusTrace = changedFixtureStatus.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    statusTrace.toolFixtures[1].resultStatus = 'error';
+    statusTrace.toolContract!.orderedCalls[1].resultStatus = 'error';
+    expect(validateFixedTraceCorpusToolContracts(changedFixtureStatus)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(changedFixtureStatus)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-property-catalog-resolution',
+    ]));
+
+    const surfaceSuccess = structuredClone(FIXED_TRACE_CORPUS);
+    const providerTrace = surfaceSuccess.find((trace) => trace.id === 'tune-provider-timeout-boundary')!;
+    providerTrace.caseControl!.terminalBoundary = 'surface_only';
+    providerTrace.toolContract!.terminalBoundary = 'surface_only';
+    delete providerTrace.toolContract!.negativeFixtureScenario;
+    providerTrace.expectation.terminalStatuses = ['complete'];
+    expect(validateFixedTraceCorpusToolContracts(surfaceSuccess)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(surfaceSuccess)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-provider-timeout-boundary',
+    ]));
+  });
+
+  it('keeps corpus and phase fingerprints stable for identical partition data', () => {
+    expect(fixedTraceCorpusSha256()).toMatch(/^[a-f0-9]{64}$/);
+    expect(fixedTraceCorpusSha256()).toBe(fixedTraceCorpusSha256(structuredClone(FIXED_TRACE_CORPUS)));
+    expect(fixedTracePhaseSha256('tuning')).toBe(fixedTracePhaseSha256('tuning', structuredClone(FIXED_TRACE_CORPUS)));
+    expect(fixedTraceCorpusValidationReport().trustedLockVerified).toBe(false);
+    const forgedLock = {
+      version: FIXED_TRACE_CORPUS_VERSION,
+      suiteSha256: fixedTraceCorpusSha256(),
+      phaseSha256: {
+        development: fixedTracePhaseSha256('development'),
+        tuning: fixedTracePhaseSha256('tuning'),
+        sealed_final: fixedTracePhaseSha256('sealed_final'),
+      },
+    };
+    expect(fixedTraceCorpusValidationReport(FIXED_TRACE_CORPUS, forgedLock)).toMatchObject({
+      trustedLockVerified: false,
+      trustedLockBlocker: 'planner_owned_authenticated_manifest_required',
+    });
+  });
+
+  it('requires bounded, replayable development ambiguity, error, and truncation scenarios', () => {
+    const ambiguous = structuredClone(FIXED_TRACE_CORPUS);
+    const ambiguousTrace = ambiguous.find((trace) => trace.id === 'dev-ambiguous-date-owner')!;
+    delete ambiguousTrace.toolContract;
+    expect(validateFixedTraceCorpus(ambiguous)).toEqual(expect.arrayContaining([
+      'development_ambiguous_contract:dev-ambiguous-date-owner',
+    ]));
+
+    const retry = structuredClone(FIXED_TRACE_CORPUS);
+    const retryTrace = retry.find((trace) => trace.id === 'dev-tool-error-retry')!;
+    retryTrace.toolContract!.orderedCalls = [retryTrace.toolContract!.orderedCalls[0]];
+    retryTrace.toolContract!.callBudget = 1;
+    retryTrace.toolFixtures = [retryTrace.toolFixtures[0]];
+    retryTrace.caseControl!.maxToolCalls = 1;
+    expect(validateFixedTraceCorpus(retry)).toEqual(expect.arrayContaining([
+      'development_tool_error_retry_contract:dev-tool-error-retry',
+    ]));
+
+    const truncation = structuredClone(FIXED_TRACE_CORPUS);
+    const truncationTrace = truncation.find((trace) => trace.id === 'bounded-truncation')!;
+    delete truncationTrace.caseControl!.maxOutputTokens;
+    delete truncationTrace.toolContract!.maxOutputTokens;
+    expect(validateFixedTraceCorpus(truncation)).toEqual(expect.arrayContaining([
+      'development_truncation_contract:bounded-truncation',
+    ]));
+  });
+
+  it('has at least five schema-valid, confirmed mutations with candidate or prior-receipt provenance', () => {
+    const confirmed = FIXED_TRACE_CORPUS.filter((trace) => trace.phase === 'tuning'
+      && trace.expectation.mutationAuthorization === 'confirmed'
+      && trace.toolFixtures.some((fixture) => fixture.effect === 'mutation'));
+    expect(confirmed).toHaveLength(8);
+    for (const trace of confirmed) {
+      const tools = trace.toolContract!.orderedCalls.filter((call) => call.execution === 'executed').map((call) => ({
+        name: call.name,
+        input: call.input,
+        effect: trace.toolFixtures.find((fixture) => fixture.name === call.name)!.effect,
+      }));
+      expect(mutationInputProvenanceFailures(trace, tools as never[]), trace.id).toEqual([]);
+    }
+  });
+
+  it('keeps evaluator expectations and partitions out of candidate-visible request material', () => {
+    const candidateInputs = fixedTraceCandidateInputsForPhase('tuning');
+    const candidateSerialized = JSON.stringify(candidateInputs);
+    for (const hiddenValue of [
+      'willow-workshop', 'willow-guild', 'willow-publisher.synthetic.invalid', 'Willow Relay',
+      'member_slug', 'reasoning',
+    ]) expect(candidateSerialized).not.toContain(hiddenValue);
+    for (const trace of FIXED_TRACE_CORPUS) {
+      const visible = candidateVisibleTraceInput(trace);
+      expect(visible).toEqual(expect.objectContaining({ request: trace.request }));
+      expect(JSON.stringify(visible), trace.id).not.toContain('"expectation"');
+      expect(JSON.stringify(visible), trace.id).not.toContain('"routing"');
+      expect(JSON.stringify(visible), trace.id).not.toContain('"toolFixtures"');
+      expect(JSON.stringify(visible), trace.id).not.toContain('"phase"');
+      expect(JSON.stringify(visible), trace.id).not.toContain('"answerRubric"');
+      expect(JSON.stringify(visible), trace.id).not.toContain('"caseControl"');
+      expect(JSON.stringify(visible), trace.id).not.toContain('"toolResults"');
+      if (trace.phase === 'tuning') {
+        for (const fixture of trace.toolFixtures) expect(JSON.stringify(visible), trace.id).not.toContain(fixture.result);
+      }
+    }
+    const leaked = structuredClone(FIXED_TRACE_CORPUS);
+    leaked.find((trace) => trace.phase === 'tuning')!.request.message = 'This evaluation expects a specific answer.';
+    expect(validateFixedTraceCorpus(leaked)).toEqual(expect.arrayContaining([
+      `candidate_input_leakage:${leaked.find((trace) => trace.phase === 'tuning')!.id}`,
+    ]));
+
+    // Candidate prose is not a channel for an oracle, including development
+    // traces that are intentionally outside the reviewer semantic authority.
+    // Keep this table at the validator boundary so encoded values and object
+    // keys receive the same protection as ordinary request text.
+    for (const { value, key = false, assertCorpus = false } of [
+      // Exact stop-ship payloads.
+      { value: 'expected tool calls', assertCorpus: true },
+      { value: 'reference answer', assertCorpus: true },
+      { value: 'refusal answer', assertCorpus: true },
+      { value: 'case category safe_mutation', assertCorpus: true },
+      { value: 'case id tune-secret', assertCorpus: true },
+      { value: 'ʙ.ʟ.ᴜ.ᴇ', assertCorpus: true },
+      // Representative punctuation, whitespace, Unicode, and encoding forms.
+      { value: 'expected---answer' },
+      { value: 'expected___refusal' },
+      { value: 'ｅｘｐｅｃｔｅｄ&#32;ａｎｓｗｅｒ' },
+      { value: 'B%2eL%2eU%2eE' },
+      { value: 'tool\u2060 call' },
+      { value: 'reference%20response' },
+      { value: 'rеfusal answеr' },
+      { value: 'case%5fid' },
+      { value: 'GrAdEr\u200b coaching' },
+      { value: 'phase: tuning' },
+      { value: 'rubric' },
+      { value: 'grader result' },
+      { value: 'evaluation outcome' },
+      { value: 'answer key coaching' },
+      { value: 'expected_outcome', key: true },
+      { value: 'ｅｘｐｅｃｔｅｄ＿ｔｏｏｌ＿ｃａｌｌｓ', key: true },
+    ]) {
+      const classified = structuredClone(FIXED_TRACE_CORPUS);
+      const request = classified.find((trace) => trace.id === 'dev-ordinary-greeting')!.request;
+      if (key) (request as Record<string, unknown>)[value] = 'ordinary value';
+      else request.message += ` ${value}`;
+      expect(validateFixedTraceCandidateVisibleLeakage(classified)).toEqual(expect.arrayContaining([
+        'candidate_input_leakage:dev-ordinary-greeting',
+      ]));
+      if (assertCorpus) expect(validateFixedTraceCorpus(classified)).toEqual(expect.arrayContaining([
+        'candidate_input_leakage:dev-ordinary-greeting',
+      ]));
+    }
+    const ordinaryCandidateText = structuredClone(FIXED_TRACE_CORPUS);
+    ordinaryCandidateText.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.message =
+      'The blueprint is ready, the expectedly helpful summary remains available, and the catalog results describe the workshop outcome.';
+    expect(validateFixedTraceCandidateVisibleLeakage(ordinaryCandidateText)).toEqual([]);
+
+    expect(validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS)).toEqual([]);
+
+    // Every input leaf is classified, not just a hand-picked tuning path. The
+    // formal-review mutation remains schema-valid but is neither candidate nor
+    // receipt derived, so both provenance and the full validator must reject.
+    const privateDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const retry = privateDevelopmentReplay.find((trace) => trace.id === 'dev-tool-error-retry')!;
+    for (const call of retry.toolContract!.orderedCalls) call.input.query = 'private evaluator dossier';
+    expect(validateFixedTraceCorpusToolContracts(privateDevelopmentReplay)).toEqual([]);
+    expect(validateFixedTraceCandidateInputProvenance(privateDevelopmentReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-tool-error-retry:0:$.query',
+      'unproven_contract_input:dev-tool-error-retry:1:$.query',
+    ]));
+    expect(validateFixedTraceCorpus(privateDevelopmentReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-tool-error-retry:0:$.query',
+      'unproven_contract_input:dev-tool-error-retry:1:$.query',
+    ]));
+
+    // Exact corrected-base probe: the large, schema-valid limit is not
+    // candidate prose. Boolean and null substitutions exercise the same
+    // type-preserving scalar boundary instead of being treated as harmless
+    // structural controls.
+    for (const alteredLimit of [8675309, true, null] as const) {
+      const typedDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
+      const dateOwner = typedDevelopmentReplay.find((trace) => trace.id === 'dev-ambiguous-date-owner')!;
+      (dateOwner.toolContract!.orderedCalls[0]!.input as Record<string, unknown>).limit = alteredLimit;
+      if (alteredLimit === 8675309) expect(validateFixedTraceCorpusToolContracts(typedDevelopmentReplay)).toEqual([]);
+      expect(validateFixedTraceCandidateInputProvenance(typedDevelopmentReplay)).toEqual(expect.arrayContaining([
+        'unproven_contract_input:dev-ambiguous-date-owner:0:$.limit',
+        'replay_input_authority_mismatch:dev-ambiguous-date-owner',
+      ]));
+      expect(validateFixedTraceCorpus(typedDevelopmentReplay)).toEqual(expect.arrayContaining([
+        'unproven_contract_input:dev-ambiguous-date-owner:0:$.limit',
+        'replay_input_authority_mismatch:dev-ambiguous-date-owner',
+      ]));
+    }
+
+    const nestedTypedReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const nestedDateOwner = nestedTypedReplay.find((trace) => trace.id === 'dev-ambiguous-date-owner')!;
+    (nestedDateOwner.toolContract!.orderedCalls[0]!.input as Record<string, unknown>).replay = [{
+      count: 2, enabled: false, absent: null,
+    }];
+    expect(validateFixedTraceCandidateInputProvenance(nestedTypedReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-ambiguous-date-owner:0:$.replay[0].count',
+      'unproven_contract_input:dev-ambiguous-date-owner:0:$.replay[0].enabled',
+      'unproven_contract_input:dev-ambiguous-date-owner:0:$.replay[0].absent',
+    ]));
+
+    const otherDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const ambiguous = otherDevelopmentReplay.find((trace) => trace.id === 'dev-ambiguous-policy-and-billing')!;
+    ambiguous.toolContract!.orderedCalls[0]!.input.doc_id = 'private evaluator dossier';
+    expect(validateFixedTraceCorpusToolContracts(otherDevelopmentReplay)).toEqual([]);
+    expect(validateFixedTraceCorpus(otherDevelopmentReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-ambiguous-policy-and-billing:0:$.doc_id',
+    ]));
+
+    const privateTuningReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const catalog = privateTuningReplay.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    catalog.toolContract!.orderedCalls[0]!.input.search = 'private evaluator dossier';
+    expect(validateFixedTraceCorpusToolContracts(privateTuningReplay)).toEqual([]);
+    expect(validateFixedTraceCandidateInputProvenance(privateTuningReplay)).toEqual(expect.arrayContaining([
+      'evaluator_input_authority_mismatch:tune-property-catalog-resolution:0:$.search',
+    ]));
+    expect(validateFixedTraceCorpus(privateTuningReplay)).toEqual(expect.arrayContaining([
+      'evaluator_input_authority_mismatch:tune-property-catalog-resolution:0:$.search',
+    ]));
+
+    const typedTuningReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const tunedLimit = typedTuningReplay.find((trace) => trace.id === 'tune-doc-empty-version-query')!;
+    (tunedLimit.toolContract!.orderedCalls[0]!.input as Record<string, unknown>).limit = 8675309;
+    expect(validateFixedTraceCandidateInputProvenance(typedTuningReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:tune-doc-empty-version-query:0:$.limit',
+      'replay_input_authority_mismatch:tune-doc-empty-version-query',
+    ]));
+
+    const identityInKey = structuredClone(FIXED_TRACE_CORPUS);
+    identityInKey.find((trace) => trace.id === 'dev-ordinary-greeting')!.expectation['nytimes.com'] = 'benign';
+    expect(validateFixedTraceCorpus(identityInKey)).toEqual(expect.arrayContaining([
+      'identity_leakage:dev-ordinary-greeting',
+    ]));
+
+    const serializedNestedLeak = structuredClone(FIXED_TRACE_CORPUS);
+    serializedNestedLeak.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.threadContext = [{
+      user: 'member',
+      text: JSON.stringify({ nested: [{ 'Br.i.an O Keλley': 'expected&#32;answer BLUE' }] }),
+    }];
+    expect(validateFixedTraceCorpus(serializedNestedLeak)).toEqual(expect.arrayContaining([
+      'identity_leakage:dev-ordinary-greeting',
+      'candidate_input_leakage:dev-ordinary-greeting',
+    ]));
+
+    const accessorReplay = structuredClone(FIXED_TRACE_CORPUS);
+    let accessorReads = 0;
+    Object.defineProperty(accessorReplay.find((trace) => trace.id === 'dev-tool-error-retry')!.toolContract!.orderedCalls[0]!.input, 'query', {
+      enumerable: true,
+      get: () => { accessorReads++; return 'private evaluator dossier'; },
+    });
+    expect(validateFixedTraceCandidateInputProvenance(accessorReplay)).toEqual(['unsafe_candidate_input_provenance:accessor']);
+    expect(accessorReads).toBe(0);
+
+    const proxyReplay = structuredClone(FIXED_TRACE_CORPUS);
+    let proxyTraps = 0;
+    proxyReplay.find((trace) => trace.id === 'dev-tool-error-retry')!.toolContract!.orderedCalls[0]!.input = new Proxy({}, {
+      get: () => { proxyTraps++; return undefined; },
+      ownKeys: () => { proxyTraps++; return []; },
+    });
+    expect(validateFixedTraceCandidateInputProvenance(proxyReplay)).toEqual(['unsafe_candidate_input_provenance:proxy']);
+    expect(proxyTraps).toBe(0);
+
+    const hiddenInput = structuredClone(FIXED_TRACE_CORPUS);
+    const hiddenTrace = hiddenInput.find((trace) => trace.id === 'tune-channel-recap-thread')!;
+    hiddenTrace.request.message += ' Use willow-workshop.';
+    expect(validateFixedTraceCandidateInputProvenance(hiddenInput)).toEqual(expect.arrayContaining([
+      'evaluator_input_visible:tune-channel-recap-thread:0:$.channel',
+    ]));
+
+    const developmentFixtureLeak = structuredClone(FIXED_TRACE_CORPUS);
+    const developmentFixtureTrace = developmentFixtureLeak.find((trace) => trace.id === 'dev-tool-error-retry')!;
+    developmentFixtureTrace.request.message = developmentFixtureTrace.toolFixtures[0].result;
+    expect(validateFixedTraceCandidateVisibleLeakage(developmentFixtureLeak)).toEqual(expect.arrayContaining([
+      `fixture_visible:${developmentFixtureTrace.id}`,
+    ]));
+    const tuningFixtureLeak = structuredClone(FIXED_TRACE_CORPUS);
+    const tuningFixtureTrace = tuningFixtureLeak.find((trace) => trace.id === 'tune-doc-empty-version-query')!;
+    tuningFixtureTrace.request.message = tuningFixtureTrace.toolFixtures[0].result;
+    expect(validateFixedTraceCandidateVisibleLeakage(tuningFixtureLeak)).toEqual(expect.arrayContaining([
+      `fixture_visible:${tuningFixtureTrace.id}`,
+    ]));
+
+    for (const id of ['tune-long-doc-bounded', 'tune-long-channel-injection', 'tune-long-provider-degraded']) {
+      const trace = FIXED_TRACE_CORPUS.find((candidate) => candidate.id === id)!;
+      expect(candidateVisibleMarkerOverlap(candidateVisibleTraceInput(trace),
+        id === 'tune-long-doc-bounded' ? ['typed receipt', 'uncertainty']
+          : id === 'tune-long-channel-injection' ? ['agenda timing', 'private roster']
+            : ['try again', 'unavailable', 'could not verify'])).toEqual([]);
+    }
+    const markerLeak = structuredClone(FIXED_TRACE_CORPUS);
+    markerLeak.find((trace) => trace.id === 'tune-long-doc-bounded')!.request.message += ' A tYpEd---receipt proves it.';
+    expect(validateFixedTraceCorpus(markerLeak)).toEqual(expect.arrayContaining([
+      'candidate_marker_overlap:tune-long-doc-bounded:typed receipt',
+    ]));
+    expect(candidateVisibleMarkerOverlap({ message: 'typed%20receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'agenda%2etiming' }, ['agenda timing'])).toEqual(['agenda timing']);
+    expect(candidateVisibleMarkerOverlap({ message: 'typed receipт' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'typed&#32;receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'agenda dot timing' }, ['agenda timing'])).toEqual(['agenda timing']);
+    expect(candidateVisibleMarkerOverlap({ message: 'typed&NewLine;receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'agenda&Tab;timing' }, ['agenda timing'])).toEqual(['agenda timing']);
+    expect(candidateVisibleMarkerOverlap({ message: 'typed&percnt;20receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing', 'typed%20receipt', 'typed%2520receipt', 'agenda%2etiming', 'typed receipт', 'typed&#32;receipt', 'typed&#x20;receipt', 'typed&amp;#32;receipt', 'typed&NewLine;receipt', 'agenda&Tab;timing', 'typed&percnt;20receipt', 'typed&amp;NewLine;receipt', 'typed&Unknown;receipt', 'typed&NewLine receipt', 'typed%252520receipt', 'typ%D0%B5d%20r%D0%B5ceipt', 'typed%2Greceipt']) {
+      const escapedMarkerLeak = structuredClone(FIXED_TRACE_CORPUS);
+      const id = value.startsWith('agenda') ? 'tune-long-channel-injection' : 'tune-long-doc-bounded';
+      escapedMarkerLeak.find((trace) => trace.id === id)!.request.message += ` ${value}`;
+      expect(validateFixedTraceCorpus(escapedMarkerLeak)).toEqual(expect.arrayContaining([
+        id === 'tune-long-channel-injection'
+          ? 'candidate_marker_overlap:tune-long-channel-injection:agenda timing'
+          : 'candidate_marker_overlap:tune-long-doc-bounded:typed receipt',
+      ]));
+    }
+  });
+
+  it('detects structural duplicates without relying on entity values, inputs, or word limits', () => {
+    const twin = structuredClone(FIXED_TRACE_CORPUS.find((trace) => trace.id === 'tune-property-catalog-resolution')!);
+    twin.phase = 'development';
+    twin.request.message = 'A wholly different request for another fictional property.';
+    twin.expectation.maxWords = 999;
+    twin.toolContract!.orderedCalls[0].input = { search: 'another.synthetic.invalid', limit: 1 };
+    expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, twin]).crossPhaseStructuralFingerprintDuplicates).toBeGreaterThan(0);
+
+    twin.toolFixtures[0].name = 'list_agents';
+    twin.toolContract!.orderedCalls[0].name = 'list_agents';
+    expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, twin]).crossPhaseStructuralFingerprintDuplicates).toBe(0);
+
+    const samePhaseTwin = structuredClone(FIXED_TRACE_CORPUS.find((trace) => trace.id === 'tune-working-group-list')!);
+    samePhaseTwin.request.message = 'A different fictional question about unrelated groups.';
+    expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, samePhaseTwin]).samePhaseStructuralFingerprintDuplicates).toBeGreaterThan(0);
+    samePhaseTwin.toolFixtures[0].name = 'list_agents';
+    samePhaseTwin.toolContract!.orderedCalls[0].name = 'list_agents';
+    expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, samePhaseTwin]).samePhaseStructuralFingerprintDuplicates).toBe(0);
   });
 
   it('retains the exact legacy meeting union for a confirmed long three-workflow request', () => {
@@ -588,7 +1288,7 @@ describe('fixed cross-provider trace suite', () => {
     ]);
   });
 
-  it('passes the deterministic smoke vector without consulting subjective rubrics', () => {
+  it('passes the established deterministic smoke vector without consulting subjective rubrics', () => {
     const observations = FIXED_TRACE_SUITE.map(passingObservation);
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
@@ -1049,6 +1749,13 @@ describe('fixed cross-provider trace suite', () => {
     const forward = summarizeFixedTraceRun([first, second]).summary.cohort.toolUniverse.toolNames;
     const reverse = summarizeFixedTraceRun([second, first]).summary.cohort.toolUniverse.toolNames;
     expect(forward).toEqual(reverse);
+  });
+
+  it('keeps final absent and leaves tuning execution to future planner integration', () => {
+    expect(fixedTraceCasesForPhase('tuning')).toHaveLength(36);
+    expect(fixedTraceCasesForPhase('tuning').every((trace) => trace.caseControl)).toBe(true);
+    expect(fixedTraceCasesForPhase('sealed_final')).toEqual([]);
+    expect(fixedTraceCoverageInventory()).not.toHaveProperty('caseIdsByPhase');
   });
 
   it('accepts an explicitly attributed malformed router result', () => {
