@@ -27,6 +27,7 @@ import {
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from '../../src/addie/eval/fixed-trace-runner.js';
+import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
 import {
   FIXED_TRACE_SUITE,
@@ -71,11 +72,6 @@ interface ProviderPlan {
   generation: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
   judge: FixedTraceJudgeConfig;
 }
-
-// The confirmed long meeting trace needs four sequential requested tools and
-// one final response. It is deliberately narrower than the synthetic loop's
-// 11-tool-union ceiling, which protects the evaluator from runaway replay.
-const MEETING_FULL_REQUEST_GENERATION_TURNS = 5;
 
 const PRICING = {
   anthropicRouter: {
@@ -185,7 +181,7 @@ function providerPlans(
         ModelConfig.primary,
         'provider_default',
         900,
-        MEETING_FULL_REQUEST_GENERATION_TURNS,
+        MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
         PRICING.anthropicGeneration,
       ),
       judge: {
@@ -217,7 +213,7 @@ function providerPlans(
         OPENAI_ROUTER_MODEL,
         'none',
         900,
-        MEETING_FULL_REQUEST_GENERATION_TURNS,
+        MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
         PRICING.openai,
       ),
       judge: {
@@ -249,7 +245,7 @@ function providerPlans(
         GOOGLE_ROUTER_MODEL,
         'low',
         1_200,
-        MEETING_FULL_REQUEST_GENERATION_TURNS,
+        MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
         PRICING.google,
       ),
       judge: {

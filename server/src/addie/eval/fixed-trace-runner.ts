@@ -193,6 +193,7 @@ function localStageMetadata(
   request: ModelRequest,
   config: FixedTraceProviderStageConfig,
   state: StageInvocationState,
+  usage?: ModelUsage,
 ): FixedTraceModelStageMetadata {
   return {
     source: 'local',
@@ -211,10 +212,12 @@ function localStageMetadata(
     transportRetries: 0,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
-    usageKnown: false,
-    usage: null,
-    estimatedCostUsd: state.dispatched ? null : 0,
-    pricingSource: null,
+    usageKnown: usage !== undefined,
+    usage: usage ?? null,
+    estimatedCostUsd: usage
+      ? estimateCostUsd(usage, config.pricing)
+      : state.dispatched ? null : 0,
+    pricingSource: usage ? config.pricing.source : null,
     latencyMs: state.latencyMs,
   };
 }
@@ -586,6 +589,9 @@ export async function runFixedTraceCase(
     };
   } catch (error) {
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
+    const checkpoint = error instanceof FixedTraceToolLoopBoundaryError
+      ? error.checkpoint
+      : undefined;
     const terminalStatus = error instanceof FixedTraceBudgetAdmissionError
       ? 'not_dispatched_budget'
       : error instanceof FixedTraceToolLoopBoundaryError
@@ -597,7 +603,7 @@ export async function runFixedTraceCase(
       invocations,
       dispatched,
       latencyMs: Date.now() - startedAt,
-    });
+    }, checkpoint?.usage);
     return {
       traceId: trace.id,
       metadata: baseMetadata(config, toolSchemaSha256, routed.metadata, generation),
@@ -609,7 +615,7 @@ export async function runFixedTraceCase(
       output: fallbackOutput(terminalStatus),
       flagged: true,
       route,
-      tools: [],
+      tools: checkpoint?.tools.map(({ sequence: _sequence, ...tool }) => tool) ?? [],
     };
   } finally {
     clearTimeout(timeout);

@@ -306,7 +306,13 @@ describe('executeFixedTraceToolLoop', () => {
       request('claude-test'),
       trace('knowledge-task-model'),
       [tool('search_docs', ['query']), tool('get_doc')],
-    )).rejects.toEqual(new FixedTraceToolLoopBoundaryError('tool_input_invalid'));
+    )).rejects.toMatchObject({
+      reason: 'tool_input_invalid',
+      checkpoint: {
+        usage: { inputTokens: 10, outputTokens: 5 },
+        tools: [],
+      },
+    });
     expect(create).toHaveBeenCalledOnce();
   });
 
@@ -344,7 +350,13 @@ describe('executeFixedTraceToolLoop', () => {
       request('claude-test'),
       duplicateMutationTrace,
       [tool('confirm_send_invoice', ['invoice_id']), tool('get_doc')],
-    )).rejects.toEqual(new FixedTraceToolLoopBoundaryError('duplicate_tool_call'));
+    )).rejects.toMatchObject({
+      reason: 'duplicate_tool_call',
+      checkpoint: {
+        usage: { inputTokens: 10, outputTokens: 5 },
+        tools: [],
+      },
+    });
     expect(create).toHaveBeenCalledOnce();
   });
 
