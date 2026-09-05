@@ -44,12 +44,15 @@ describe('direct tool-universe evaluator descriptors', () => {
     // The only public handler constructor always makes evaluator receipts;
     // prototype/constructor spoofing and matching digests are non-authority.
     const handlers = createSyntheticDirectToolReceiptHandlers(copiedAndBrandedLooking);
-    expect([...handlers.keys()]).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
+    expect(handlers.map((handler) => handler.definition.name)).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
     const first = FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools[0]!;
-    expect(JSON.parse(await handlers.get(first.definition.name)!({ query: 'mock' }))).toMatchObject({
+    const firstHandler = handlers.find((handler) => handler.definition.name === first.definition.name);
+    expect(firstHandler).toBeDefined();
+    expect(JSON.parse(await firstHandler!.handler({ query: 'mock' }))).toMatchObject({
       kind: 'synthetic_direct_tool_receipt',
       handlerProvenance: 'evaluator_simulated_receipt',
       toolName: first.definition.name,
+      receiptHandlerIdentitySha256: first.handlerIdentitySha256,
     });
     expect(mockHandler).not.toHaveBeenCalled();
   });

@@ -5,9 +5,8 @@ import {
   type FixedTraceProviderStageConfig,
 } from './fixed-trace-runner.js';
 import {
+  assertFixedTraceCommonToolUniverseAdmission,
   fixedTraceArchitectureArm,
-  fixedTraceExecutionEnvelopeProvenance,
-  fixedTraceToolUniverseProvenance,
 } from './fixed-trace-architecture.js';
 import {
   summarizeFixedTraceRun,
@@ -307,6 +306,13 @@ function requestedStageConfig(stage: FixedTraceProviderStageConfig): {
 export async function runFixedTraceDiagnosticCandidate(
   config: FixedTraceRunnerConfig,
 ) {
+  const arm = fixedTraceArchitectureArm(config.architectureArm);
+  // The legacy fixture-local runner remains a replay validator, not an
+  // architecture-comparison candidate. Do this before runner preflight so no
+  // provider prepare/dispatch or synthetic handler execution can occur.
+  if (arm.id !== 'oracle_route_diagnostic') {
+    assertFixedTraceCommonToolUniverseAdmission(arm.id, config.toolDefinitionProvenance);
+  }
   const observations = await runFixedTraceSuite(config);
   return {
     ...summarizeFixedTraceRun(observations, config.traceSuite),
@@ -469,6 +475,7 @@ function sameArtifactRunMetadata(left: FixedTraceRunMetadata, right: FixedTraceR
     && left.architectureArm.rolloutEligible === right.architectureArm.rolloutEligible
     && left.architectureArm.diagnosticOnly === right.architectureArm.diagnosticOnly
     && JSON.stringify(left.hybridPolicy) === JSON.stringify(right.hybridPolicy)
+    && JSON.stringify(left.toolUniverse) === JSON.stringify(right.toolUniverse)
     && left.executionEnvelope.source === right.executionEnvelope.source
     && left.executionEnvelope.deployable === right.executionEnvelope.deployable
     && JSON.stringify(left.requestThreadFacts) === JSON.stringify(right.requestThreadFacts);
@@ -488,6 +495,14 @@ export async function runFixedTraceDiagnosticArtifact(
   // by reference. In particular, do not acquire the one-way budget lease
   // until every planned suite has passed its no-dispatch preflight.
   const baseConfig = snapshotBaseConfig(options.baseConfig);
+  const baseArm = fixedTraceArchitectureArm(baseConfig.architectureArm);
+  if (baseArm.id !== 'oracle_route_diagnostic') {
+    // Reject absent or forged neutral-universe provenance before acquiring a
+    // budget lease or entering any runner/provider boundary. A valid neutral
+    // contract may continue to evaluator-only component simulation; direct
+    // admission remains separately fail-closed in the runner.
+    assertFixedTraceCommonToolUniverseAdmission(baseArm.id, baseConfig.toolDefinitionProvenance);
+  }
   const budgetLedger = options.budget;
   const requestedPlans = snapshotPlans(options.plans, budgetLedger);
   const runRootId = snapshotNonblank(options.runRootId, 'run root ID');
@@ -582,8 +597,8 @@ export async function runFixedTraceDiagnosticArtifact(
     ])),
     architectureArm: fixedTraceArchitectureArm(commonMetadata.architectureArm.id),
     hybridPolicy: commonMetadata.hybridPolicy,
-    toolUniverse: fixedTraceToolUniverseProvenance(commonMetadata.architectureArm.id),
-    executionEnvelope: fixedTraceExecutionEnvelopeProvenance(commonMetadata.architectureArm.id),
+    toolUniverse: commonMetadata.toolUniverse,
+    executionEnvelope: commonMetadata.executionEnvelope,
     requestThreadFacts: commonMetadata.requestThreadFacts,
     requestedProviders: plans.map((plan) => plan.name),
     requestedArchitectureArm: commonMetadata.architectureArm.id,

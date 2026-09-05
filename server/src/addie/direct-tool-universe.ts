@@ -54,6 +54,19 @@ export interface SyntheticDirectToolReceipt {
   readonly definitionHandlerSha256: string;
 }
 
+/**
+ * A frozen evaluator-only receipt handler bound to one captured definition.
+ * A caller receives a fresh set for each environment, so it cannot alter a
+ * handler selected by another evaluation run.
+ */
+export interface SyntheticDirectToolReceiptHandler {
+  readonly definition: AddieTool;
+  readonly definitionSha256: string;
+  readonly handlerIdentitySha256: string;
+  readonly handlerProvenance: 'evaluator_simulated_receipt';
+  readonly handler: ToolHandler;
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number') {
@@ -110,15 +123,23 @@ function fixedTraceProductionDefinitions(): AddieTool[] {
  */
 export function createSyntheticDirectToolReceiptHandlers(
   universe: CapturedDirectToolUniverse,
-): Map<string, ToolHandler> {
-  return new Map(universe.tools.map((tool) => [tool.definition.name, async () => JSON.stringify({
-    kind: 'synthetic_direct_tool_receipt',
-    toolName: tool.definition.name,
+): readonly SyntheticDirectToolReceiptHandler[] {
+  return Object.freeze(universe.tools.map((tool) => Object.freeze({
+    definition: tool.definition,
     definitionSha256: tool.definitionSha256,
-    handlerProvenance: 'evaluator_simulated_receipt',
-    receiptHandlerIdentitySha256: sha256(`evaluator-receipt/${tool.definition.name}/${tool.definitionSha256}`),
-    definitionHandlerSha256: universe.definitionHandlerSha256,
-  } satisfies SyntheticDirectToolReceipt)]));
+    handlerIdentitySha256: tool.handlerIdentitySha256,
+    handlerProvenance: tool.handlerProvenance,
+    handler: async () => JSON.stringify({
+      kind: 'synthetic_direct_tool_receipt',
+      toolName: tool.definition.name,
+      definitionSha256: tool.definitionSha256,
+      handlerProvenance: 'evaluator_simulated_receipt',
+      // The receipt must repeat the exact handler identity included in the
+      // universe binding, not a parallel descriptive hash.
+      receiptHandlerIdentitySha256: tool.handlerIdentitySha256,
+      definitionHandlerSha256: universe.definitionHandlerSha256,
+    } satisfies SyntheticDirectToolReceipt),
+  })));
 }
 
 /**
@@ -165,7 +186,3 @@ function captureFixedTraceEvaluatorToolUniverse(): CapturedDirectToolUniverse {
  * with inert evaluator receipt handlers.
  */
 export const FIXED_TRACE_DIRECT_TOOL_UNIVERSE = captureFixedTraceEvaluatorToolUniverse();
-
-export const FIXED_TRACE_DIRECT_TOOL_HANDLERS = createSyntheticDirectToolReceiptHandlers(
-  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
-);

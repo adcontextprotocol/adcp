@@ -42,6 +42,7 @@ import {
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import { parseFixedTraceDiagnosticCliArguments } from '../../src/addie/eval/fixed-trace-diagnostic-cli.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../src/addie/eval/fixed-trace-diagnostic-output.js';
+import { fixedTraceCommonToolDefinitions } from '../../src/addie/eval/fixed-trace-architecture.js';
 import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
 import {
   fixedTraceHybridPolicy,
@@ -323,7 +324,9 @@ const promptConfigVersion = sha256(JSON.stringify({
   rules: loadRules(),
   responseStyle: loadResponseStyle(),
 }));
-const toolDefinitions = canonicalFixedTraceToolDefinitions(traceSuite);
+const toolDefinitions = architectureArm === 'oracle_route_diagnostic'
+  ? canonicalFixedTraceToolDefinitions(traceSuite)
+  : fixedTraceCommonToolDefinitions(architectureArm);
 const budget = new FixedTraceBudget(softMaxUsd);
 const plans = providerPlans(providerNames, budget);
 const runStartedAt = new Date().toISOString();
@@ -338,7 +341,9 @@ const artifact = await runFixedTraceDiagnosticArtifact({
     traceSuite,
     traceSuiteSha256: fixedTraceSuiteSha256(traceSuite),
     toolDefinitions,
-    toolDefinitionProvenance: 'fixture_local',
+    toolDefinitionProvenance: architectureArm === 'oracle_route_diagnostic'
+      ? 'fixture_local'
+      : 'evaluator_owned_common_tool_universe',
     architectureArm,
     ...(architectureArm === 'deterministic_policy_llm_fallback_hybrid'
       ? { hybridPolicy: fixedTraceHybridPolicy() }

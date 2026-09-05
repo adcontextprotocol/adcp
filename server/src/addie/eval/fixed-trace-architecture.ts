@@ -347,13 +347,124 @@ export function fixedTraceArchitectureArm(
 
 export type FixedTraceToolDefinitionProvenance =
   | 'fixture_local'
-  | 'evaluator_owned_production_definitions_simulated_receipts';
+  | 'evaluator_owned_production_definitions_simulated_receipts'
+  | 'evaluator_owned_common_tool_universe';
+
+/**
+ * Candidate-visible tools for an architecture comparison must come from this
+ * evaluator-owned contract, never from the trace's scored fixture fields.
+ *
+ * The current evaluator has a neutral, production-registry-derived descriptor
+ * set, but no authenticated definition/handler binding or shared execution
+ * envelope.  Keep that limitation in the artifact-shaped provenance instead
+ * of silently treating simulated receipts as production authority.
+ */
+export interface FixedTraceCommonToolUniverseProvenance {
+  source: 'evaluator_owned_common_tool_universe';
+  policy: 'shared_deterministic_surface_policy';
+  candidateVisibleToolNames: readonly string[];
+  candidateVisibleToolNamesSha256: string;
+  candidateVisibleToolSchemaSha256: string;
+  definitionHandlerSha256: string;
+  admission: 'blocked_missing_authenticated_definition_handler_intersection';
+  missingPrerequisites: readonly [
+    'authenticated_definition_handler_intersection',
+    'shared_request_thread_execution_envelope',
+  ];
+}
+
+export interface FixedTraceCommonToolUniverseAdmission {
+  admitted: false;
+  provenance: FixedTraceCommonToolUniverseProvenance;
+  reasons: readonly (
+    | 'common_tool_universe_provenance_missing_or_unknown'
+    | 'authenticated_definition_handler_intersection_not_captured'
+    | 'shared_request_thread_execution_envelope_not_captured'
+    | 'evaluator_simulated_receipt_handlers'
+  )[];
+}
+
+/** A fail-closed error that callers can retain as a JSON-safe audit record. */
+export class FixedTraceCommonToolUniverseAdmissionError extends Error {
+  constructor(readonly admission: FixedTraceCommonToolUniverseAdmission) {
+    super(`Fixed trace architecture comparison is not admitted: ${admission.reasons.join(', ')}`);
+    this.name = 'FixedTraceCommonToolUniverseAdmissionError';
+  }
+}
+
+/**
+ * Return the same detached neutral definitions for every candidate arm. This
+ * takes an arm only to make equality at the architecture boundary explicit;
+ * it deliberately never accepts a trace or fixture.
+ */
+export function fixedTraceCommonToolDefinitions(
+  _arm: FixedTraceArchitectureArmId,
+): readonly AddieTool[] {
+  return Object.freeze(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => tool.definition));
+}
+
+export function fixedTraceCommonToolUniverseProvenance(
+  _arm: FixedTraceArchitectureArmId,
+): FixedTraceCommonToolUniverseProvenance {
+  return Object.freeze({
+    source: 'evaluator_owned_common_tool_universe',
+    policy: 'shared_deterministic_surface_policy',
+    candidateVisibleToolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
+    candidateVisibleToolNamesSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256,
+    candidateVisibleToolSchemaSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256,
+    definitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+    admission: 'blocked_missing_authenticated_definition_handler_intersection',
+    missingPrerequisites: Object.freeze([
+      'authenticated_definition_handler_intersection',
+      'shared_request_thread_execution_envelope',
+    ] as const),
+  });
+}
+
+/**
+ * Records the live-execution prerequisites which are unavailable to this
+ * evaluator. They block direct-arm admission; they do not grant authority to
+ * evaluator-only component simulations.
+ */
+export function admitFixedTraceCommonToolUniverse(
+  arm: Exclude<FixedTraceArchitectureArmId, 'oracle_route_diagnostic'>,
+  definitionProvenance: unknown,
+): FixedTraceCommonToolUniverseAdmission {
+  const provenance = fixedTraceCommonToolUniverseProvenance(arm);
+  const reasons: FixedTraceCommonToolUniverseAdmission['reasons'][number][] = [];
+  if (definitionProvenance !== 'evaluator_owned_common_tool_universe') {
+    reasons.push('common_tool_universe_provenance_missing_or_unknown');
+  }
+  reasons.push(
+    'authenticated_definition_handler_intersection_not_captured',
+    'shared_request_thread_execution_envelope_not_captured',
+    'evaluator_simulated_receipt_handlers',
+  );
+  return Object.freeze({ admitted: false, provenance, reasons: Object.freeze(reasons) });
+}
+
+/** Reject unknown provenance before a diagnostic candidate can dispatch. */
+export function assertFixedTraceCommonToolUniverseAdmission(
+  arm: Exclude<FixedTraceArchitectureArmId, 'oracle_route_diagnostic'>,
+  definitionProvenance: unknown,
+): FixedTraceCommonToolUniverseProvenance {
+  const admission = admitFixedTraceCommonToolUniverse(arm, definitionProvenance);
+  // The missing production binding blocks only live-handler authority (and
+  // therefore the direct arm). Component-only evaluator screens use inert,
+  // evaluator-owned receipts and must still reach the runner's normal
+  // execution-identity checks. Unknown provenance is never permitted there.
+  if (admission.reasons.includes('common_tool_universe_provenance_missing_or_unknown')) {
+    throw new FixedTraceCommonToolUniverseAdmissionError(admission);
+  }
+  return admission.provenance;
+}
 
 /** Records what selected the candidate's visible tools for diagnostic replay. */
 export interface FixedTraceToolUniverseProvenance {
   source:
     | 'fixture_local_routed_replay'
     | 'evaluator_owned_production_definitions_simulated_receipts'
+    | 'evaluator_owned_common_tool_universe'
     | 'fixture_oracle';
   intentNarrowing: 'llm_router' | 'production_quick_match_or_llm_router' | 'not_applied' | 'fixture_oracle';
   bounded: boolean;
@@ -362,6 +473,12 @@ export interface FixedTraceToolUniverseProvenance {
   toolNamesSha256?: string | null;
   toolSchemaSha256?: string | null;
   definitionHandlerSha256?: string | null;
+  /** Present only for the evaluator-owned common component universe. */
+  commonUniverseAdmission?: 'blocked_missing_authenticated_definition_handler_intersection';
+  commonUniverseMissingPrerequisites?: readonly (
+    | 'authenticated_definition_handler_intersection'
+    | 'shared_request_thread_execution_envelope'
+  )[];
 }
 
 export interface FixedTraceRequestThreadFactsProvenance {
@@ -430,7 +547,7 @@ export function fixedTraceRequestThreadFactsProvenance(
  * can reuse the production-equivalent executor.
  */
 export interface FixedTraceExecutionEnvelopeProvenance {
-  source: 'fixture_expectation' | 'request_thread_facts_not_captured' | 'evaluator_owned_shared_request_thread_envelope' | 'fixture_oracle';
+  source: 'fixture_expectation' | 'request_thread_facts_not_captured' | 'evaluator_owned_shared_request_thread_envelope' | 'evaluator_owned_synthetic_receipt_envelope' | 'fixture_oracle';
   deployable: boolean;
 }
 

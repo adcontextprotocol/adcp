@@ -13,8 +13,10 @@ import {
   type FixedTraceDiagnosticProviderPlan,
 } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../../src/addie/eval/fixed-trace-diagnostic-output.js';
-import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
-import { fixedTraceHybridPolicy } from '../../../src/addie/eval/fixed-trace-architecture.js';
+import {
+  fixedTraceCommonToolDefinitions,
+  fixedTraceHybridPolicy,
+} from '../../../src/addie/eval/fixed-trace-architecture.js';
 import type { FixedTraceProviderStageConfig } from '../../../src/addie/eval/fixed-trace-runner.js';
 import {
   FIXED_TRACE_SUITE,
@@ -82,6 +84,10 @@ const DIAGNOSTIC_TEST_REQUEST: ModelRequest = {
   tools: [],
   maxOutputTokens: 1,
 };
+
+// Diagnostic artifacts are architecture-comparison components. Every test
+// therefore uses the same evaluator-owned candidate surface, never fixtures.
+const COMMON_TOOL_DEFINITIONS = fixedTraceCommonToolDefinitions('two_stage_llm_router');
 
 function scriptedRouter(
   afterFinalResponse?: (response: ModelResponse) => void,
@@ -288,8 +294,8 @@ describe('fixed-trace diagnostic output reservation', () => {
         promptConfigVersion: 'synthetic-manual-prompt-v1',
         traceSuite: [selectedTrace],
         traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
-        toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local',
+        toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe',
         architectureArm: 'deterministic_policy_llm_fallback_hybrid',
         hybridPolicy: fixedTraceHybridPolicy(),
       },
@@ -352,8 +358,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       promptConfigVersion: 'before-prompt',
       traceSuite: [selectedTrace],
       traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
-      toolDefinitions: [],
-      toolDefinitionProvenance: 'fixture_local' as const,
+      toolDefinitions: COMMON_TOOL_DEFINITIONS,
+      toolDefinitionProvenance: 'evaluator_owned_common_tool_universe' as const,
       architectureArm: 'two_stage_llm_router' as const,
     };
     let secondPlan!: FixedTraceDiagnosticProviderPlan;
@@ -432,8 +438,8 @@ describe('fixed-trace diagnostic output reservation', () => {
     const baseConfig = {
       sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
       promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-      traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-      toolDefinitionProvenance: 'fixture_local' as const,
+      traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+      toolDefinitionProvenance: 'evaluator_owned_common_tool_universe' as const,
       architectureArm: 'two_stage_llm_router' as const,
     };
     const invoke = (plans: FixedTraceDiagnosticProviderPlan[]) => runFixedTraceDiagnosticArtifact({
@@ -493,8 +499,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -537,8 +543,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -575,8 +581,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -622,8 +628,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -666,8 +672,8 @@ describe('fixed-trace diagnostic output reservation', () => {
         promptConfigVersion: 'synthetic-manual-prompt-v1',
         traceSuite: [selectedTrace],
         traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
-        toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local',
+        toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe',
         architectureArm: 'two_stage_llm_router',
       },
       budget,
@@ -695,8 +701,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       // This former input is intentionally ignored at runtime as well as
       // removed from the public type, so a JavaScript caller cannot forge it.
@@ -746,8 +752,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -777,8 +783,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -816,8 +822,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -865,8 +871,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -911,8 +917,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -982,8 +988,8 @@ describe('fixed-trace diagnostic output reservation', () => {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
         traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
-        toolDefinitions: canonicalFixedTraceToolDefinitions().filter((tool) => ['search_docs', 'get_doc'].includes(tool.name)),
-        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        toolDefinitions: COMMON_TOOL_DEFINITIONS,
+        toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -1015,8 +1021,8 @@ describe('fixed-trace diagnostic output reservation', () => {
         baseConfig: {
           sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
           promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
-          traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
-          toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+          traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: COMMON_TOOL_DEFINITIONS,
+          toolDefinitionProvenance: 'evaluator_owned_common_tool_universe', architectureArm: 'two_stage_llm_router',
         },
         budget,
         outputReservation: reserveFixedTraceDiagnosticOutput(join(directory, `${suffix}.json`)),
