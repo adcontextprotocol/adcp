@@ -311,6 +311,7 @@ describe('executeFixedTraceToolLoop', () => {
       checkpoint: {
         usage: { inputTokens: 10, outputTokens: 5 },
         tools: [],
+        rejectedToolCalls: [{ name: 'search_docs', reason: 'tool_input_invalid' }],
       },
     });
     expect(create).toHaveBeenCalledOnce();
@@ -355,6 +356,10 @@ describe('executeFixedTraceToolLoop', () => {
       checkpoint: {
         usage: { inputTokens: 10, outputTokens: 5 },
         tools: [],
+        rejectedToolCalls: [
+          { name: 'confirm_send_invoice', reason: 'duplicate_tool_call' },
+          { name: 'confirm_send_invoice', reason: 'duplicate_tool_call' },
+        ],
       },
     });
     expect(create).toHaveBeenCalledOnce();

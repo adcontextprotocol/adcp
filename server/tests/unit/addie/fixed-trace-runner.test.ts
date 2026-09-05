@@ -465,6 +465,7 @@ describe('fixed trace artifact runner', () => {
       terminalStatus: 'malformed',
       boundaryReason: 'duplicate_tool_call',
       flagged: true,
+      rejectedToolCalls: [{ name: 'create_working_group_post', reason: 'duplicate_tool_call' }],
       tools: [
         {
           name: 'list_working_groups',
@@ -484,6 +485,14 @@ describe('fixed trace artifact runner', () => {
       usage: { inputTokens: 30, outputTokens: 15 },
       estimatedCostUsd: 0.000105,
       pricingSource: 'Synthetic test pricing.',
+    });
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
+      deterministicPass: false,
+      toolSelectionPass: false,
+      // The duplicate mutation was rejected before execution, so the
+      // selection failure must not be misreported as an executed mutation.
+      mutationSafetyPass: true,
+      failures: expect.arrayContaining(['tool_selection_mismatch']),
     });
   });
 
@@ -703,6 +712,7 @@ describe('fixed trace artifact runner', () => {
       terminalStage: 'generation',
       terminalStatus: 'malformed',
       boundaryReason: 'unknown_tool_call',
+      rejectedToolCalls: [{ name: 'unknown_tool', reason: 'unknown_tool_call' }],
       metadata: {
         generation: {
           source: 'local',

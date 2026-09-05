@@ -23,6 +23,7 @@ import { enforceFailedLookupEvidenceBoundary } from '../failed-lookup-evidence.j
 import type {
   FixedTraceBoundaryReason,
   FixedTraceCase,
+  FixedTraceRejectedToolCall,
   FixedTraceToolFixture,
   FixedTraceToolObservation,
 } from './fixed-trace-suite.js';
@@ -37,6 +38,7 @@ export type FixedTraceToolLoopReason = FixedTraceBoundaryReason;
 export interface FixedTraceToolLoopCheckpoint {
   usage: ModelUsage;
   tools: ReadonlyArray<FixedTraceToolExecution>;
+  rejectedToolCalls: ReadonlyArray<FixedTraceRejectedToolCall>;
 }
 
 export class FixedTraceToolLoopBoundaryError extends Error {
@@ -138,6 +140,13 @@ function safeIterationLimit(trace: FixedTraceCase, requested?: number): number {
   return limit;
 }
 
+function rejectedToolCalls(
+  reason: FixedTraceToolLoopReason,
+  calls: ReadonlyArray<{ name: string }>,
+): ReadonlyArray<FixedTraceRejectedToolCall> {
+  return Object.freeze(calls.map((call) => Object.freeze({ name: call.name, reason })));
+}
+
 /**
  * Execute one synthetic trace through the normalized provider boundary.
  *
@@ -190,10 +199,14 @@ export async function executeFixedTraceToolLoop(
   const seenCallIds = new Set<string>();
   const seenToolNames = new Set<string>();
   const modelLoop = new ModelTurnLoopState(iterationLimit);
-  const boundary = (reason: FixedTraceToolLoopReason): FixedTraceToolLoopBoundaryError => (
+  const boundary = (
+    reason: FixedTraceToolLoopReason,
+    calls: ReadonlyArray<{ name: string }> = [],
+  ): FixedTraceToolLoopBoundaryError => (
     new FixedTraceToolLoopBoundaryError(reason, {
       usage: modelLoop.usage,
       tools: Object.freeze([...executions]),
+      rejectedToolCalls: rejectedToolCalls(reason, calls),
     })
   );
 
@@ -244,7 +257,7 @@ export async function executeFixedTraceToolLoop(
     }
 
     if (executions.length + turn.toolCalls.length > trace.toolFixtures.length) {
-      throw boundary('tool_call_limit_exceeded');
+      throw boundary('tool_call_limit_exceeded', turn.toolCalls);
     }
     const calls = turn.toolCalls.map((call) => deepFreeze(structuredClone(call)));
     const batchCallIds = new Set<string>();
@@ -256,12 +269,12 @@ export async function executeFixedTraceToolLoop(
         || batchCallIds.has(call.id)
         || batchToolNames.has(call.name)
       ) {
-        throw boundary('duplicate_tool_call');
+        throw boundary('duplicate_tool_call', calls);
       }
       const entry = registered.get(call.name);
-      if (!entry) throw boundary('unknown_tool_call');
+      if (!entry) throw boundary('unknown_tool_call', calls);
       if (!entry.validate(call.input)) {
-        throw boundary('tool_input_invalid');
+        throw boundary('tool_input_invalid', calls);
       }
       batchCallIds.add(call.id);
       batchToolNames.add(call.name);

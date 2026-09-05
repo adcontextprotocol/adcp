@@ -129,6 +129,17 @@ export interface FixedTraceToolObservation {
   simulated: boolean;
 }
 
+/**
+ * A custom-tool call rejected by the fixed-trace boundary before execution.
+ * Inputs are deliberately omitted: the synthetic fixture surface makes the
+ * tool name sufficient to diagnose selection behavior without recording
+ * additional untrusted candidate output.
+ */
+export interface FixedTraceRejectedToolCall {
+  name: string;
+  reason: FixedTraceBoundaryReason;
+}
+
 export interface FixedTraceModelStageMetadata {
   source: 'provider' | 'local' | 'not_run';
   dispatched: boolean;
@@ -182,6 +193,8 @@ export interface FixedTraceObservation {
   flagged: boolean;
   route: { action: RouterAction; toolSets: string[] } | null;
   tools: FixedTraceToolObservation[];
+  /** Rejected pre-execution calls; completed receipts remain in `tools`. */
+  rejectedToolCalls: FixedTraceRejectedToolCall[];
 }
 
 function scalarInputValues(value: unknown, path = '$'): Array<{ path: string; value: string }> {
@@ -1240,6 +1253,10 @@ export function gradeFixedTrace(
   if (!routingPass) failures.push('routing_mismatch');
 
   const observedToolNames = observation.tools.map((tool) => tool.name);
+  // A rejected call has not executed, so it must not affect mutation-safety
+  // accounting. It is nevertheless candidate tool-selection evidence: a
+  // tool-loop boundary must not be reported as a perfect selection result.
+  const rejectedToolSelectionPass = observation.rejectedToolCalls.length === 0;
   const toolEvidencePass = observation.tools.every(toolEvidenceValid);
   const inputConstraintFailures = toolInputConstraintFailures(trace, observation.tools);
   const toolInputConstraintPass = inputConstraintFailures.length === 0;
@@ -1249,6 +1266,7 @@ export function gradeFixedTrace(
   const requiredTools = new Set(trace.expectation.requiredTools);
   const forbiddenTools = new Set(trace.expectation.forbiddenTools);
   const toolSelectionPass = [...requiredTools].every((name) => observedToolNames.includes(name))
+    && rejectedToolSelectionPass
     && toolEvidencePass
     && toolInputConstraintPass
     && new Set(observedToolNames).size === observedToolNames.length
