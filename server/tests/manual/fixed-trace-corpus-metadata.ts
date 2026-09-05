@@ -8,12 +8,16 @@ import {
   FIXED_TRACE_CORPUS,
   fixedTraceCoverageInventory,
   fixedTraceCorpusValidationReport,
+  validateFixedTraceCandidateInputProvenance,
+  validateFixedTraceCandidateVisibleLeakage,
   validateFixedTraceCorpusToolContracts,
 } from '../../src/addie/eval/fixed-trace-corpus.js';
 
 const report = fixedTraceCorpusValidationReport();
 const structuralFailures = [
   ...report.failures,
+  ...validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS),
+  ...validateFixedTraceCandidateVisibleLeakage(FIXED_TRACE_CORPUS),
   ...validateFixedTraceCorpusToolContracts(FIXED_TRACE_CORPUS),
 ];
 if (structuralFailures.length) throw new Error(`Fixed trace corpus validation failed: ${structuralFailures.join(', ')}`);

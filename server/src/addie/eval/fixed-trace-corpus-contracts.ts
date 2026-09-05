@@ -13,7 +13,7 @@ import { MEMBER_TOOLS } from '../mcp/member-tools.js';
 import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
 import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
 import type { AddieTool } from '../types.js';
-import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
+import type { FixedTraceCorpusCase, FixedTraceExpectedToolCall } from './fixed-trace-suite.js';
 import {
   FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
   type FixedTraceTuningSemanticAuthorityEntry,
@@ -50,6 +50,10 @@ const TEXT_CONFUSABLES: Readonly<Record<string, string>> = Object.freeze({
   '\u0432': 'b', '\u0455': 's', '\u04cf': 'l',
   '\u0131': 'i',
   '\u03b1': 'a', '\u03b2': 'b', '\u03b5': 'e', '\u03b7': 'n', '\u03b9': 'i', '\u03ba': 'k', '\u03bf': 'o', '\u03c1': 'p', '\u03c4': 't', '\u03c5': 'y', '\u03c7': 'x',
+  // The corpus only folds reviewed lookalikes.  Lambda is included because it
+  // has appeared in an attempted spelling of a protected surname; this is not
+  // intended to be a general transliteration table.
+  '\u03bb': 'l',
 });
 
 const MAX_PERCENT_DECODE_ROUNDS = 2;
@@ -191,6 +195,114 @@ export function candidateVisibleMarkerOverlap(value: unknown, markers: readonly 
   });
 }
 
+function candidateText(trace: FixedTraceCorpusCase): string {
+  return [trace.request.message, ...(trace.request.threadContext ?? []).map(({ text }) => text)].join('\n');
+}
+
+function compactIncludes(source: string, literal: string): boolean {
+  const candidate = canonicalFixedTraceText(source);
+  const expected = canonicalFixedTraceText(literal);
+  return !candidate.malformedPercentEncoding && !expected.malformedPercentEncoding
+    && expected.compact.length > 0 && candidate.compact.includes(expected.compact);
+}
+
+function numberHasCandidateProvenance(source: string, path: string, value: number): boolean {
+  // A bare digit in an ISO timestamp is not evidence that the candidate chose
+  // a pagination limit. Keep the small set of numeric tool fields explicit so
+  // a corpus author cannot source `limit: 10` from a date.
+  if (path.endsWith('.limit')) {
+    return new RegExp(`\\b(?:up to|at most|no more than|maximum of|max)\\s+${value}\\b`, 'i').test(source);
+  }
+  return new RegExp(`(?:^|[^0-9])${value}(?:[^0-9]|$)`).test(source);
+}
+
+function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; value: string | number | boolean | null }> {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return [{ path, value }];
+  }
+  if (Array.isArray(value)) return value.flatMap((item, index) => inputScalarLeaves(item, `${path}[${index}]`));
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, item]) => inputScalarLeaves(item, `${path}.${key}`));
+  }
+  return [];
+}
+
+/**
+ * An input literal must originate in material shown to the candidate.  The
+ * only exception is a receipt-bound value: a later call may copy the exact
+ * marker from an earlier simulated result when its contract declares that
+ * dependency.  This is deliberately finite (one declared prior call), not a
+ * free-form inference over fixtures or evaluator metadata.
+ */
+function literalHasCandidateProvenance(
+  trace: FixedTraceCorpusCase,
+  path: string,
+  value: string | number | boolean | null,
+  callIndex?: number,
+): boolean {
+  const text = candidateText(trace);
+  if (typeof value === 'string') {
+    if (compactIncludes(text, value)) return true;
+    const currentCallIndex = callIndex;
+    const dependency = currentCallIndex === undefined ? undefined : trace.toolContract?.orderedCalls[currentCallIndex]?.dependsOn;
+    if (!dependency || currentCallIndex === undefined || dependency.callIndex < 0 || dependency.callIndex >= currentCallIndex) return false;
+    const prior = trace.toolContract!.orderedCalls[dependency.callIndex];
+    const priorFixtureIndex = trace.toolContract!.orderedCalls.slice(0, dependency.callIndex + 1)
+      .filter((call: FixedTraceExpectedToolCall) => call.execution === 'executed').length - 1;
+    const priorFixture = trace.toolFixtures[priorFixtureIndex];
+    return prior?.execution === 'executed'
+      && priorFixture?.result.includes(dependency.requiredResultMarker)
+      && value === dependency.requiredResultMarker;
+  }
+  if (typeof value === 'number') return numberHasCandidateProvenance(text, path, value);
+  // A boolean is candidate-derived only for the two bounded, semantic forms
+  // used by canonical tools. This avoids treating an evaluator default as a
+  // fact just because its JavaScript spelling appears nowhere in the request.
+  if (typeof value === 'boolean' && path.endsWith('.include_individual')) {
+    return value === false && /(?:do not|don't|without)\s+includ(?:e|ing)\s+individual/i.test(text);
+  }
+  return false;
+}
+
+/** Validate every ordered-call and input-constraint literal against candidate facts. */
+export function validateFixedTraceCandidateInputProvenance(
+  suite: ReadonlyArray<FixedTraceCorpusCase>,
+): string[] {
+  const detached = detachFixedTraceSnapshot(suite);
+  if (!detached.snapshot) return [`unsafe_candidate_input_provenance:${detached.error}`];
+  if (!Array.isArray(detached.snapshot)) return ['unsafe_candidate_input_provenance:non_plain_object'];
+  try {
+  const failures: string[] = [];
+  for (const trace of detached.snapshot) {
+    for (const [callIndex, call] of (trace.toolContract?.orderedCalls ?? []).entries()) {
+      for (const leaf of inputScalarLeaves(call.input)) {
+        if (!literalHasCandidateProvenance(trace, leaf.path, leaf.value, callIndex)) {
+          failures.push(`unproven_contract_input:${trace.id}:${callIndex}:${leaf.path}`);
+        }
+      }
+    }
+    for (const constraint of trace.expectation.toolInputConstraints ?? []) {
+      for (const leaf of inputScalarLeaves(constraint.expectedInput)) {
+        const contractCallIndex = (trace.toolContract?.orderedCalls ?? []).findIndex((call: FixedTraceExpectedToolCall) => call.name === constraint.toolName
+          && inputScalarLeaves(call.input).some((input) => input.path === leaf.path && input.value === leaf.value));
+        if (!literalHasCandidateProvenance(trace, leaf.path, leaf.value,
+          contractCallIndex >= 0 ? contractCallIndex : undefined)) {
+          failures.push(`unproven_constraint_input:${trace.id}:${constraint.toolName}:${leaf.path}`);
+        }
+      }
+      for (const required of constraint.required ?? []) {
+        if (!literalHasCandidateProvenance(trace, required.path, required.value)) {
+          failures.push(`unproven_constraint_input:${trace.id}:${constraint.toolName}:${required.path}`);
+        }
+      }
+    }
+  }
+  return failures;
+  } catch {
+    return ['unsafe_candidate_input_provenance:invalid_structure'];
+  }
+}
+
 /** The corpus cannot authorize its own semantics: all tuning cases need a reviewer record. */
 export function validateFixedTraceCorpusSemanticAuthority(
   suite: ReadonlyArray<FixedTraceCorpusCase>,
@@ -271,15 +383,20 @@ export function validateFixedTraceCorpusToolContracts(
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
 
-  for (const trace of suite.filter((candidate) => candidate.phase === 'tuning')) {
+  for (const trace of suite.filter((candidate) => candidate.toolContract)) {
     const contract = trace.toolContract;
     if (!contract) {
       if (trace.toolFixtures.length > 0) failures.push(`missing_contract:${trace.id}`);
       continue;
     }
     if (!trace.caseControl || contract.callBudget !== trace.caseControl.maxToolCalls
-      || contract.terminalBoundary !== trace.caseControl.terminalBoundary) {
+      || contract.terminalBoundary !== trace.caseControl.terminalBoundary
+      || contract.maxOutputTokens !== trace.caseControl.maxOutputTokens) {
       failures.push(`execution_plan_mismatch:${trace.id}`);
+    }
+    if (contract.maxOutputTokens !== undefined && (!Number.isInteger(contract.maxOutputTokens)
+      || contract.maxOutputTokens < 1 || contract.maxOutputTokens > 512)) {
+      failures.push(`invalid_output_budget:${trace.id}`);
     }
     if (contract.orderedCalls.length > contract.callBudget) {
       failures.push(`call_budget_exceeded:${trace.id}`);

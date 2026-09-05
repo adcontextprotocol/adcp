@@ -23,6 +23,7 @@ import {
   mutationInputProvenanceFailures,
   summarizeFixedTraceRun,
   toolInputConstraintFailures,
+  validateFixedTraceCandidateVisibleLeakage,
   validateFixedTraceCorpus,
   type FixedTraceCase,
   type FixedTraceCohortStageControl,
@@ -34,6 +35,7 @@ import {
 import {
   candidateVisibleMarkerOverlap,
   canonicalFixedTraceText,
+  validateFixedTraceCandidateInputProvenance,
   validateFixedTraceCorpusSemanticAuthority,
   validateFixedTraceCorpusToolContracts,
 } from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
@@ -283,10 +285,10 @@ describe('fixed cross-provider trace suite', () => {
     expect(fixedTraceCoverageInventory().phaseCounts).toEqual({ development: 46, tuning: 36, sealed_final: 0 });
     expect(fixedTraceCoverageInventory()).toMatchObject({ sealedFinalTarget: 38, sealedFinalDeficit: 38 });
     expect(fixedTraceCoverageInventory().phaseBehavior.development).toMatchObject({
-      casesWithFixtures: 27,
-      fixtureTools: 50,
+      casesWithFixtures: 31,
+      fixtureTools: 55,
       confirmedMutationCases: 3,
-      fixtureErrorCases: 2,
+      fixtureErrorCases: 3,
       channelCases: 2,
       adminCases: 9,
       authorizationBoundaryCases: 0,
@@ -319,6 +321,9 @@ describe('fixed cross-provider trace suite', () => {
 
   it('has a stable version-bound fingerprint and no duplicate tool contracts', () => {
     expect(fixedTraceSuiteSha256()).toMatch(/^[a-f0-9]{64}$/);
+    // The deployable, legacy 32-case evaluator is frozen while corpus-only
+    // partition work evolves around it.
+    expect(fixedTraceSuiteSha256()).toBe('5f7f0a6d653a4757991728a1d9de8aee69b40d580dafb65e98941c1f9e3fea83');
     expect(fixedTraceSuiteSha256()).toBe(fixedTraceSuiteSha256(structuredClone(FIXED_TRACE_SUITE)));
     const alteredControl = structuredClone(FIXED_TRACE_SUITE);
     alteredControl.find((trace) => trace.id === 'bounded-truncation')!.caseControl!.maxOutputTokens = 64;
@@ -379,7 +384,8 @@ describe('fixed cross-provider trace suite', () => {
       'org%5Freal%5F123456', 'org%255Freal%255F123456', 'brian%2Go%20kelley',
       'https://nytimes%2ecom/x', 'the%5ftrade%5fdesk', 'u%5f0123456789', 'org%2ereal%2e123456',
       'Brіan O Кelley',
-      'Briaп O Kelley', 'Brıan O Kelley', 'nytimes dot com', 'nytimes&#46;com', 'org&#46;real&#46;123456',
+      'Briaп O Kelley', 'Brıan O Kelley', 'Br.i.an O Kelley', 'Brian O Keλley', 'Brian---O___Kelley',
+      'Br\u200bian O\u0000Kelley', 'nytimes dot com', 'nytimes&#46;com', 'org&#46;real&#46;123456',
       'Bria&NewLine;n O Kelley', 'Brian O&sol;Kelley', 'nytimes&Tab;com',
     ]) {
       const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
@@ -667,6 +673,33 @@ describe('fixed cross-provider trace suite', () => {
     });
   });
 
+  it('requires bounded, replayable development ambiguity, error, and truncation scenarios', () => {
+    const ambiguous = structuredClone(FIXED_TRACE_CORPUS);
+    const ambiguousTrace = ambiguous.find((trace) => trace.id === 'dev-ambiguous-date-owner')!;
+    delete ambiguousTrace.toolContract;
+    expect(validateFixedTraceCorpus(ambiguous)).toEqual(expect.arrayContaining([
+      'development_ambiguous_contract:dev-ambiguous-date-owner',
+    ]));
+
+    const retry = structuredClone(FIXED_TRACE_CORPUS);
+    const retryTrace = retry.find((trace) => trace.id === 'dev-tool-error-retry')!;
+    retryTrace.toolContract!.orderedCalls = [retryTrace.toolContract!.orderedCalls[0]];
+    retryTrace.toolContract!.callBudget = 1;
+    retryTrace.toolFixtures = [retryTrace.toolFixtures[0]];
+    retryTrace.caseControl!.maxToolCalls = 1;
+    expect(validateFixedTraceCorpus(retry)).toEqual(expect.arrayContaining([
+      'development_tool_error_retry_contract:dev-tool-error-retry',
+    ]));
+
+    const truncation = structuredClone(FIXED_TRACE_CORPUS);
+    const truncationTrace = truncation.find((trace) => trace.id === 'bounded-truncation')!;
+    delete truncationTrace.caseControl!.maxOutputTokens;
+    delete truncationTrace.toolContract!.maxOutputTokens;
+    expect(validateFixedTraceCorpus(truncation)).toEqual(expect.arrayContaining([
+      'development_truncation_contract:bounded-truncation',
+    ]));
+  });
+
   it('has at least five schema-valid, confirmed mutations with candidate or prior-receipt provenance', () => {
     const confirmed = FIXED_TRACE_CORPUS.filter((trace) => trace.phase === 'tuning'
       && trace.expectation.mutationAuthorization === 'confirmed'
@@ -703,13 +736,38 @@ describe('fixed cross-provider trace suite', () => {
       `candidate_input_leakage:${leaked.find((trace) => trace.phase === 'tuning')!.id}`,
     ]));
 
-    for (const value of ['This is public.', 'This is prіvate.', 'The record has access%20details.']) {
+    for (const value of ['This evaluator expects a specific answer.', 'The expected refusal is BLUE according to the grader marker.']) {
       const classified = structuredClone(FIXED_TRACE_CORPUS);
-      classified.find((trace) => trace.phase === 'tuning')!.request.message = value;
+      classified.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.message = value;
       expect(validateFixedTraceCorpus(classified)).toEqual(expect.arrayContaining([
-        `candidate_input_leakage:${classified.find((trace) => trace.phase === 'tuning')!.id}`,
+        'candidate_input_leakage:dev-ordinary-greeting',
       ]));
     }
+
+    expect(validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS)).toEqual([]);
+    const hiddenInput = structuredClone(FIXED_TRACE_CORPUS);
+    hiddenInput.find((trace) => trace.id === 'tune-channel-recap-thread')!.toolContract!.orderedCalls[0].input.channel = 'willow-guild';
+    expect(validateFixedTraceCandidateInputProvenance(hiddenInput)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:tune-channel-recap-thread:0:$.channel',
+    ]));
+    const hiddenDevelopmentInput = structuredClone(FIXED_TRACE_CORPUS);
+    hiddenDevelopmentInput.find((trace) => trace.id === 'dev-tool-error-retry')!.toolContract!.orderedCalls[0].input.query = 'private evaluator dossier';
+    expect(validateFixedTraceCandidateInputProvenance(hiddenDevelopmentInput)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-tool-error-retry:0:$.query',
+    ]));
+
+    const developmentFixtureLeak = structuredClone(FIXED_TRACE_CORPUS);
+    const developmentFixtureTrace = developmentFixtureLeak.find((trace) => trace.id === 'dev-tool-error-retry')!;
+    developmentFixtureTrace.request.message = developmentFixtureTrace.toolFixtures[0].result;
+    expect(validateFixedTraceCandidateVisibleLeakage(developmentFixtureLeak)).toEqual(expect.arrayContaining([
+      `fixture_visible:${developmentFixtureTrace.id}`,
+    ]));
+    const tuningFixtureLeak = structuredClone(FIXED_TRACE_CORPUS);
+    const tuningFixtureTrace = tuningFixtureLeak.find((trace) => trace.id === 'tune-doc-empty-version-query')!;
+    tuningFixtureTrace.request.message = tuningFixtureTrace.toolFixtures[0].result;
+    expect(validateFixedTraceCandidateVisibleLeakage(tuningFixtureLeak)).toEqual(expect.arrayContaining([
+      `fixture_visible:${tuningFixtureTrace.id}`,
+    ]));
 
     for (const id of ['tune-long-doc-bounded', 'tune-long-channel-injection', 'tune-long-provider-degraded']) {
       const trace = FIXED_TRACE_CORPUS.find((candidate) => candidate.id === id)!;

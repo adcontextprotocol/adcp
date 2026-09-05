@@ -19,11 +19,13 @@ export {
   fixedTraceCorpusValidationReport,
   fixedTraceCoverageInventory,
   fixedTracePhaseSha256,
+  validateFixedTraceCandidateVisibleLeakage,
   validateFixedTraceCorpus,
 } from './fixed-trace-suite.js';
 export {
   candidateVisibleMarkerOverlap,
   fixedTraceTuningSemanticSha256,
+  validateFixedTraceCandidateInputProvenance,
   validateFixedTraceCorpusSemanticAuthority,
   validateFixedTraceCorpusToolContracts,
 } from './fixed-trace-corpus-contracts.js';
