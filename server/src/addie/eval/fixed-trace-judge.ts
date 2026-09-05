@@ -28,6 +28,12 @@ export const FIXED_TRACE_MIN_INDEPENDENT_JUDGES = 2;
  */
 export const FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION =
   'not_admitted_missing_privileged_custodied_calibration' as const;
+export class FixedTraceJudgeAdmissionError extends Error {
+  constructor() {
+    super(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION);
+    this.name = 'FixedTraceJudgeAdmissionError';
+  }
+}
 function hasPrivilegedCustodiedCalibration(): boolean {
   return false;
 }
@@ -404,6 +410,9 @@ export async function judgeFixedTraceObservation(
   observation: FixedTraceObservation,
   config: FixedTraceJudgeConfig,
 ): Promise<FixedTraceJudgment> {
+  // This integration draft has no custodied calibration authority. Refuse
+  // before touching any caller-provided trace, observation, or adapter.
+  if (!hasPrivilegedCustodiedCalibration()) throw new FixedTraceJudgeAdmissionError();
   validateConfig(config);
   const startedAt = Date.now();
   let request: ModelRequest;
@@ -452,16 +461,6 @@ export async function judgeFixedTraceObservation(
   // Do not let a planning-side calibration record authorize a provider call.
   // A separately injected privileged, custodied calibration verifier is the
   // prerequisite; this module intentionally has no caller-mintable seam.
-  if (!hasPrivilegedCustodiedCalibration()) {
-    return {
-      traceId: trace.id,
-      status: 'skipped',
-      failureReason: 'judge_calibration_not_admitted',
-      verdict: null,
-      metadata: metadata(config, request, [], false, startedAt, null),
-    };
-  }
-
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
   let timedOut = false;
