@@ -4,10 +4,12 @@ export interface FixedTraceDiagnosticCliArguments {
   suite?: string;
   softMaxUsd?: string;
   output?: string;
+  experimentPlan?: string;
+  trustedManifest?: string;
   validateOnly: boolean;
 }
 
-const NAMES = new Set(['providers', 'architecture-arm', 'suite', 'soft-max-usd', 'output', 'validate-only']);
+const NAMES = new Set(['providers', 'architecture-arm', 'suite', 'soft-max-usd', 'output', 'experiment-plan', 'trusted-manifest', 'validate-only']);
 
 /** Strict, side-effect-free parser for the diagnostic-only manual evaluator. */
 export function parseFixedTraceDiagnosticCliArguments(values: readonly string[]): FixedTraceDiagnosticCliArguments {
@@ -33,6 +35,8 @@ export function parseFixedTraceDiagnosticCliArguments(values: readonly string[])
     suite: typeof seen.get('suite') === 'string' ? seen.get('suite') as string : undefined,
     softMaxUsd: typeof seen.get('soft-max-usd') === 'string' ? seen.get('soft-max-usd') as string : undefined,
     output: typeof seen.get('output') === 'string' ? seen.get('output') as string : undefined,
+    experimentPlan: typeof seen.get('experiment-plan') === 'string' ? seen.get('experiment-plan') as string : undefined,
+    trustedManifest: typeof seen.get('trusted-manifest') === 'string' ? seen.get('trusted-manifest') as string : undefined,
     validateOnly: seen.get('validate-only') === true || seen.get('validate-only') === 'true',
   };
 }

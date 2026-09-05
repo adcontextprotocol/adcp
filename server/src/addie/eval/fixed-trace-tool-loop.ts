@@ -64,6 +64,14 @@ export interface FixedTraceToolLoopResult {
   usage: ModelUsage;
   tools: ReadonlyArray<FixedTraceToolExecution>;
   invocations: ReadonlyArray<PreparedModelInvocation>;
+  /** Identity-only record for each dispatched model turn; never prompt data. */
+  providerExposures: ReadonlyArray<{
+    attempt: number;
+    preparedProvider: PreparedModelInvocation['provider'];
+    preparedModel: string;
+    returnedProvider: ModelResponse['provider'];
+    returnedModel: string;
+  }>;
 }
 
 export interface FixedTraceToolLoopOptions {
@@ -291,6 +299,7 @@ export async function executeFixedTraceToolLoop(
   const executions: FixedTraceToolExecution[] = [];
   const completedExecutions: ToolExecution[] = [];
   const invocations: PreparedModelInvocation[] = [];
+  const providerExposures: FixedTraceToolLoopResult['providerExposures'][number][] = [];
   const seenCallIds = new Set<string>();
   const seenToolNames = new Set<string>();
   const modelLoop = new ModelTurnLoopState(iterationLimit);
@@ -328,6 +337,15 @@ export async function executeFixedTraceToolLoop(
         await options.beforeDispatch?.(prepared);
       },
     });
+    const prepared = invocations.at(-1);
+    if (!prepared) throw new Error('fixed-trace model response was not preceded by a prepared invocation');
+    providerExposures.push(Object.freeze({
+      attempt: invocations.length,
+      preparedProvider: prepared.provider,
+      preparedModel: prepared.model,
+      returnedProvider: response.provider,
+      returnedModel: response.model,
+    }));
     const turn = activeTurn.acceptResponse(response);
 
     if (turn.providerToolCalls.length > 0 || turn.providerToolResults.length > 0) {
@@ -350,6 +368,7 @@ export async function executeFixedTraceToolLoop(
         usage: modelLoop.usage,
         tools: Object.freeze([...executions]),
         invocations: Object.freeze([...invocations]),
+        providerExposures: Object.freeze([...providerExposures]),
       };
     }
 

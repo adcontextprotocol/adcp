@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createSyntheticDirectToolReceiptHandlers,
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
+  fixedTraceDirectToolHandlers,
   type CapturedDirectToolUniverse,
 } from '../../../src/addie/direct-tool-universe.js';
 import { getSafeReadOnlyFallbackTools } from '../../../src/addie/tool-sets.js';
@@ -52,5 +53,10 @@ describe('direct tool-universe evaluator descriptors', () => {
       toolName: first.definition.name,
     });
     expect(mockHandler).not.toHaveBeenCalled();
+  });
+
+  it('constructs synthetic handlers only through the explicit replay factory', () => {
+    const handlers = fixedTraceDirectToolHandlers();
+    expect([...handlers.keys()]).toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
   });
 });

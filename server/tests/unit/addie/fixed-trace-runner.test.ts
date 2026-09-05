@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assertFixedTraceArchitectureComparisonPrerequisite,
   buildFixedTraceGenerationRequest,
   fixedTraceArchitectureConfigSha256,
   fixedTraceToolSchemaSha256,
@@ -400,6 +401,15 @@ function expandedFixtureTrace(id = 'expanded-fixture-tool'): FixedTraceCase {
 }
 
 describe('fixed trace artifact runner', () => {
+  it('fails closed architecture comparison while candidate-visible tools are fixture-local', () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    expect(() => assertFixedTraceArchitectureComparisonPrerequisite(config(router, generation))).toThrow(
+      'common authenticated base registry/schema/receipt tool universe is unavailable',
+    );
+    expect(router.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(0);
+  });
   it('uses production quick-match terminal behavior only from allowed request facts', () => {
     const selectedTrace = trace('knowledge-task-model');
     const policy = fixedTraceHybridPolicy();
@@ -471,6 +481,12 @@ describe('fixed trace artifact runner', () => {
     expect(ambiguous.terminalStage).toBe('generation');
     expect(ambiguousRouter.respondCalls).toHaveLength(1);
     expect(ambiguousGeneration.respondCalls).toHaveLength(1);
+    expect(ambiguous.metadata.router.providerExposures).toEqual([
+      expect.objectContaining({ attempt: 1, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+    ]);
+    expect(ambiguous.metadata.generation.providerExposures).toEqual([
+      expect.objectContaining({ attempt: 1, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+    ]);
   });
 
   it('fails hybrid admission safe for tool-bearing, admin, thread, and unknown-privacy cases', () => {
@@ -745,6 +761,10 @@ describe('fixed trace artifact runner', () => {
       estimatedCostUsd: 0.00007,
     });
     expect(observation.metadata.generation.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(observation.metadata.generation.providerExposures).toEqual([
+      expect.objectContaining({ attempt: 1, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+      expect.objectContaining({ attempt: 2, preparedProvider: 'anthropic', returnedProvider: 'anthropic' }),
+    ]);
     expect(generation.respondCalls).toHaveLength(2);
     expect(generation.respondCalls[0].toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
     expect(generation.respondCalls[1].toolChoice).toBeUndefined();

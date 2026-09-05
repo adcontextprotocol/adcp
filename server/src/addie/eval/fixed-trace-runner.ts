@@ -332,6 +332,25 @@ interface StageInvocationState {
   latencyMs: number;
 }
 
+function providerExposures(
+  state: StageInvocationState,
+  response?: ModelResponse,
+  recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
+): FixedTraceModelStageMetadata["providerExposures"] {
+  if (recordedExposures) return deepFreeze(recordedExposures.map((exposure) => ({ ...exposure })));
+  return deepFreeze(
+    state.invocations.map((prepared, index) => ({
+      attempt: index + 1,
+      preparedProvider: prepared.provider,
+      preparedModel: prepared.model,
+      returnedProvider:
+        response && index === state.invocations.length - 1 ? response.provider : null,
+      returnedModel:
+        response && index === state.invocations.length - 1 ? response.model : null,
+    })),
+  );
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number') {
@@ -459,6 +478,7 @@ function providerStageMetadata(
   response: ModelResponse,
   usage: ModelUsage,
   state: StageInvocationState,
+  recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
 ): FixedTraceModelStageMetadata {
   // Provider responses are outside evaluator ownership. Retaining their usage
   // object would let a later provider turn mutate already-recorded cost and
@@ -473,6 +493,7 @@ function providerStageMetadata(
     requestedModel: config.model,
     returnedProvider: response.provider,
     returnedModel: response.model,
+    providerExposures: providerExposures(state, response, recordedExposures),
     modelResolution: modelResolution(config, response),
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
@@ -510,6 +531,7 @@ function localStageMetadata(
     requestedModel: config.model,
     returnedProvider: null,
     returnedModel: null,
+    providerExposures: providerExposures(state),
     modelResolution: 'local',
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
@@ -540,6 +562,7 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     requestedModel: null,
     returnedProvider: null,
     returnedModel: null,
+    providerExposures: Object.freeze([]),
     modelResolution: null,
     promptSha256: null,
     providerRequestSha256: null,
@@ -590,6 +613,21 @@ function resolveTraceDefinitions(
     if (!definition) throw new Error(`Missing canonical tool definition: ${fixture.name}`);
     return definition;
   });
+}
+
+/**
+ * Routed replay currently obtains the presented surface from case fixtures.
+ * That is useful for deterministic component replay, but it is not neutral
+ * common-universe provenance and therefore cannot support architecture
+ * comparison. Keep this refusal separate from replay so it cannot be mistaken
+ * for an admission merely because execution succeeds.
+ */
+export function assertFixedTraceArchitectureComparisonPrerequisite(
+  config: Pick<FixedTraceRunnerConfig, "architectureArm" | "toolDefinitionProvenance">,
+): never {
+  if (fixedTraceArchitectureArm(config.architectureArm).id === "direct_generation")
+    throw new Error("direct architecture comparison is not admitted without signed capture/source/thread/request binding");
+  throw new Error("architecture comparison is not admitted: common authenticated base registry/schema/receipt tool universe is unavailable; fixture-local tool definitions are replay-only");
 }
 
 export function fixedTraceToolSchemaSha256(
@@ -1107,6 +1145,7 @@ export async function runFixedTraceCase(
       result.response,
       result.usage,
       state,
+      result.providerExposures,
     );
     const terminalStatus = terminalStatusForFinishReason(result.response.finishReason, result.text);
     return {

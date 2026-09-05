@@ -89,6 +89,14 @@ function googleResponse(overrides: Record<string, unknown> = {}): GenerateConten
 }
 
 describe('OpenAIResponsesProvider', () => {
+  it('keeps Terra and Sol outside the production OpenAI dispatch boundary', () => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    expect(provider.prepare(request(OPENAI_ROUTER_MODEL)).providerRequest).toMatchObject({ model: OPENAI_ROUTER_MODEL });
+    expect(() => provider.prepare(request('gpt-5.6-terra'))).toThrow('Unsupported OpenAI router model');
+    expect(() => provider.prepare(request('gpt-5.6-sol'))).toThrow('Unsupported OpenAI router model');
+    expect(() => provider.prepare(request('gpt-5.6-terra-20260905'))).toThrow('Unsupported OpenAI router model');
+  });
+
   it.each([
     [{ type: 'auto' as const }, 'auto'],
     [{ type: 'required' as const }, 'required'],
