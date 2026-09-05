@@ -16,6 +16,7 @@
  *      tokens via our storage adapter; we redirect to oauth-complete.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import { Router, Request, Response } from 'express';
 import { validate as uuidValidate } from 'uuid';
 import {
@@ -55,6 +56,19 @@ const STATE_COOKIE = 'adcp_oauth_state';
 const STATE_COOKIE_TTL_MS = 10 * 60 * 1000;
 const OFFLINE_ACCESS_SCOPE = 'offline_access';
 const PRM_ABSENT_MARKER = 'does not implement OAuth 2.0 Protected Resource Metadata';
+
+function encodeOAuthStateBinding(state: string): string {
+  // State is a public CSRF nonce carried in the authorization redirect, not a
+  // password or credential. Use a versioned representation for the separate
+  // HttpOnly browser-binding cookie rather than applying password hashing.
+  return `v1.${Buffer.from(state, 'utf8').toString('base64url')}`;
+}
+
+function oauthStateMatchesBinding(state: string, expectedBinding: string): boolean {
+  const actual = Buffer.from(encodeOAuthStateBinding(state), 'ascii');
+  const expected = Buffer.from(expectedBinding, 'ascii');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
 
 export function buildDurableOAuthScopeHint(
   scopes: readonly string[] | undefined,
@@ -321,11 +335,11 @@ export function createAgentOAuthRouter(): Router {
         ...(scopeHint && { clientMetadata: { scope: scopeHint } }),
       });
 
-      // Browser-binding for CSRF (SEP-835 §state guidance). The cookie
-      // value must equal the AS-supplied `state` on the callback;
-      // /callback rejects mismatches and missing cookies before consuming
-      // the pending row.
-      res.cookie(STATE_COOKIE, state, {
+      // Browser-binding for CSRF (SEP-835 §state guidance). Keep the cookie's
+      // representation distinct from the protocol parameter; the callback
+      // encodes the returned state and compares it in constant time before
+      // consuming the pending row.
+      res.cookie(STATE_COOKIE, encodeOAuthStateBinding(state), {
         httpOnly: true,
         secure: req.secure,
         sameSite: 'lax',
@@ -365,8 +379,8 @@ export function createAgentOAuthRouter(): Router {
    *
    * Defense layers:
    *   1. `requireAuth` — must have a live session, not just a state value.
-   *   2. `expectedState` — mandatory; the cookie set on /start must match
-   *      what the AS bounced back. Missing cookie aborts the flow.
+   *   2. State binding — mandatory; the binding cookie set on /start must match
+   *      the state the AS bounced back. Missing/mismatched cookies abort.
    *   3. Pre-token-exchange org check — `flow.carry.organization_id` must
    *      still be an active org for the calling user before the SDK can
    *      exchange the code or persist tokens.
@@ -375,25 +389,12 @@ export function createAgentOAuthRouter(): Router {
     const clearStateCookie = () => res.clearCookie(STATE_COOKIE, { path: '/api/oauth/agent/callback' });
     const { code, state, error, error_description } = req.query;
 
-    if (error) {
-      logger.warn({ error, error_description }, 'OAuth error from provider');
-      const safeError = sanitizeErrorMessage(error_description || error);
-      clearStateCookie();
-      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(safeError)}`);
-    }
-
-    if (typeof code !== 'string' || code.length === 0) {
-      clearStateCookie();
-      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No authorization code received')}`);
-    }
     if (typeof state !== 'string' || state.length === 0) {
-      clearStateCookie();
       return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No state parameter received')}`);
     }
 
-    const expectedState = req.cookies?.[STATE_COOKIE];
-    clearStateCookie();
-    if (typeof expectedState !== 'string' || expectedState.length === 0) {
+    const expectedStateBinding = req.cookies?.[STATE_COOKIE];
+    if (typeof expectedStateBinding !== 'string' || expectedStateBinding.length === 0) {
       logger.warn({}, 'OAuth callback missing state cookie — refusing to consume pending flow');
       const params = new URLSearchParams({
         success: 'false',
@@ -401,6 +402,29 @@ export function createAgentOAuthRouter(): Router {
         code: 'state_cookie_missing',
       });
       return res.redirect(`/oauth-complete.html?${params.toString()}`);
+    }
+
+    if (!oauthStateMatchesBinding(state, expectedStateBinding)) {
+      logger.warn({}, 'OAuth callback state binding mismatch — refusing to consume pending flow');
+      const params = new URLSearchParams({
+        success: 'false',
+        error: 'OAuth state does not match this browser session',
+        code: 'state_mismatch',
+      });
+      return res.redirect(`/oauth-complete.html?${params.toString()}`);
+    }
+
+    // Only a callback bound to the browser that started the flow may consume
+    // (or cancel) it. Invalid callbacks leave the short-lived cookie intact so
+    // a forged navigation cannot terminate the legitimate flow.
+    clearStateCookie();
+    if (error) {
+      logger.warn({ error, error_description }, 'OAuth error from provider');
+      const safeError = sanitizeErrorMessage(error_description || error);
+      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(safeError)}`);
+    }
+    if (typeof code !== 'string' || code.length === 0) {
+      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No authorization code received')}`);
     }
 
     const userId = req.user?.id;
@@ -422,7 +446,9 @@ export function createAgentOAuthRouter(): Router {
         pendingFlowStore: guardedPendingFlowStore,
         agentStorage,
         fetch: oauthSafeFetch,
-        expectedState,
+        // The SDK API requires expectedState; browser binding is enforced by
+        // the independent state-binding comparison above.
+        expectedState: state,
       });
 
       // Defense in depth: the guarded pending-flow store already checked

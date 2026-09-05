@@ -64,6 +64,13 @@ describe('browser external URL defenses', () => {
     expect(source.match(/siSessionCapability = null/g)?.length).toBeGreaterThanOrEqual(2);
     expect(source).not.toMatch(/console\.log\([^\n]*anonymous_access_token/);
   });
+
+  it('encodes conversation IDs before using them in feedback request paths', async () => {
+    const source = await publicSource('chat.html');
+    expect(source.match(/chat\/\$\{encodeURIComponent\(conversationId\)\}\/feedback/g))
+      .toHaveLength(2);
+    expect(source).not.toContain('chat/${conversationId}/feedback');
+  });
 });
 
 describe('server URL validation branch wiring', () => {

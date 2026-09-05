@@ -41,6 +41,7 @@ import { ensureMemberProfileExists } from '../services/member-profile-autopublis
 import { performCreateOrganization } from '../services/organization-bootstrap.js';
 import { isDevModeEnabled, getDevUser } from '../middleware/auth.js';
 import { isFreeEmail, getCompanyDomain } from '../utils/email-domain.js';
+import { validateExternalUrl } from '../utils/url-security.js';
 import {
   gateAgentVisibilityForCaller,
   type VisibilityWarning,
@@ -237,14 +238,60 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
     return root.charAt(0).toUpperCase() + root.slice(1);
   }
 
-  function isParseableUrl(value: string): boolean {
-    try {
-      // eslint-disable-next-line no-new
-      new URL(value);
-      return true;
-    } catch {
-      return false;
+  type AgentRegistrationValidation =
+    | {
+        ok: true;
+        body: Partial<AgentConfig>;
+        targetUrl: string;
+      }
+    | {
+        ok: false;
+        error: Record<string, unknown>;
+      };
+
+  function validateAgentRegistrationBody(raw: unknown): AgentRegistrationValidation {
+    const candidate = (raw ?? {}) as Partial<AgentConfig>;
+    if (typeof candidate.url !== 'string' || candidate.url.length === 0) {
+      return { ok: false, error: { error: 'url is required' } };
     }
+    if (!validateExternalUrl(candidate.url)) {
+      return { ok: false, error: { error: 'url must be a valid http or https URL' } };
+    }
+    const parsedUrl = new URL(candidate.url);
+    if (parsedUrl.username || parsedUrl.password) {
+      return { ok: false, error: { error: 'url must not contain credentials' } };
+    }
+    if (candidate.url.includes('?') || candidate.url.includes('#')) {
+      return {
+        ok: false,
+        error: { error: 'url must not contain query strings or fragments' },
+      };
+    }
+
+    const canonicalUrl = canonicalizeAgentUrl(candidate.url);
+    if (!canonicalUrl) {
+      return { ok: false, error: { error: 'url is not a valid agent URL' } };
+    }
+    if (
+      typeof candidate.type !== 'string' ||
+      !isValidAgentType(candidate.type) ||
+      candidate.type === 'unknown'
+    ) {
+      return {
+        ok: false,
+        error: {
+          error: 'type is required',
+          message:
+            'Specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.',
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      body: { ...candidate, url: canonicalUrl },
+      targetUrl: canonicalUrl,
+    };
   }
 
   /**
@@ -408,37 +455,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       if (!resolved) return;
       const { orgId, orgAutoCreated } = resolved;
 
-      const body = (req.body ?? {}) as Partial<AgentConfig>;
-      if (typeof body.url !== 'string' || body.url.length === 0) {
-        return res.status(400).json({ error: 'url is required' });
-      }
-      if (!isParseableUrl(body.url)) {
-        return res.status(400).json({ error: 'url must be a valid URL' });
-      }
-      // Query strings and fragments have no place in agent identity (issue
-      // #3573). Reject at the boundary — `canonicalizeAgentUrl` itself
-      // preserves them verbatim, so the check belongs here.
-      if (body.url.includes('?') || body.url.includes('#')) {
-        return res.status(400).json({ error: 'url must not contain query strings or fragments' });
-      }
-      const canonicalUrl = canonicalizeAgentUrl(body.url);
-      if (!canonicalUrl) {
-        return res.status(400).json({ error: 'url is not a valid agent URL' });
-      }
-      // `type` is required from the caller — never inferred. 'unknown' is
-      // reserved for server-side smuggle protection (resolveAgentTypes), not
-      // for client input. The caller MUST declare what kind of agent this is.
-      if (typeof body.type !== 'string' || !isValidAgentType(body.type) || body.type === 'unknown') {
-        return res.status(400).json({
-          error: 'type is required',
-          message: 'Specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.',
-        });
-      }
-      // Persist and compare in canonical form so the registered side
-      // collapses with the discovered side (issue #3573).
-      body.url = canonicalUrl;
-      const targetUrl = canonicalUrl;
-
+      const validation = validateAgentRegistrationBody(req.body);
+      if (!validation.ok) return res.status(400).json(validation.error);
+      const { body, targetUrl } = validation;
       // Hostname ownership check (#4499 MVP). Catches the escalation-#340
       // failure mode: org has staked a domain claim (`organization_domains`
       // row with `verified = true`) but is now registering an agent on a
