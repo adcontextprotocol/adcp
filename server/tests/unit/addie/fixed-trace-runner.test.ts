@@ -1185,6 +1185,34 @@ describe('fixed trace artifact runner', () => {
     expect(generationPreparationFailure.respondCalls).toHaveLength(0);
   });
 
+  it('aborts a deterministic continuation preparation failure before a second generation dispatch', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([response([{
+      type: 'tool_call', id: 'continuation-preparation-tool', name: 'search_docs', input: { query: 'task model' },
+    }], 'tool_calls')]);
+    let preparations = 0;
+    generation.prepare.mockImplementation((request) => {
+      preparations += 1;
+      // First turn is preflighted then prepared by `respond`; the third
+      // preparation is the post-tool continuation and must abort locally.
+      if (preparations === 3) throw new Error('synthetic continuation request is invalid');
+      return {
+        provider: generation.id,
+        model: request.model,
+        capabilities: generation.capabilities,
+        requestMetadata: request.requestMetadata,
+        providerRequest: structuredClone(request) as unknown as Readonly<Record<string, unknown>>,
+      } satisfies PreparedModelInvocation;
+    });
+
+    await expect(runFixedTraceCase(selectedTrace, config(router, generation)))
+      .rejects.toThrow('Fixed trace generation request preparation failed');
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(1);
+    expect(preparations).toBe(3);
+  });
+
   it('rejects empty or duplicate-ID evaluator suites before provider dispatch', async () => {
     const selectedTrace = trace('knowledge-task-model');
     const duplicate = structuredClone(selectedTrace);

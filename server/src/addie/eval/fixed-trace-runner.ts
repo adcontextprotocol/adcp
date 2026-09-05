@@ -988,19 +988,13 @@ export async function runFixedTraceCase(
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
   const startedAt = Date.now();
-  const generationPreparationRequest: ModelRequest = {
-    ...generationRequest,
-    tools: buildModelToolDefinitions(definitions),
-    providerTools: [],
-  };
-  const preparedGeneration = prepareFixedTraceRequest(
-    'generation',
-    generationConfig,
-    generationPreparationRequest,
-  );
 
   if (executionTrace.category === 'provider_degradation' && executionConfig.injectProviderDegradation !== false) {
-    invocations.push(preparedGeneration);
+    invocations.push(prepareFixedTraceRequest('generation', generationConfig, {
+      ...generationRequest,
+      tools: buildModelToolDefinitions(definitions),
+      providerTools: [],
+    }));
     const metadata = localStageMetadata(generationRequest, generationConfig, {
       invocations,
       dispatched: false,
@@ -1037,6 +1031,10 @@ export async function runFixedTraceCase(
       {
         signal: controller.signal,
         maxIterations: generationConfig.maxIterations,
+        beforePrepare: (request) => {
+          assertBeforeDispatch();
+          prepareFixedTraceRequest('generation', generationConfig, request);
+        },
         beforeDispatch: (prepared) => {
           assertBeforeDispatch();
           dispatched = true;

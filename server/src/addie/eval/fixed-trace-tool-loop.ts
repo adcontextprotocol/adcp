@@ -69,6 +69,8 @@ export interface FixedTraceToolLoopResult {
 export interface FixedTraceToolLoopOptions {
   signal?: AbortSignal;
   maxIterations?: number;
+  /** Deterministic adapter request validation before every model turn. */
+  beforePrepare?: (request: ModelRequest) => void;
   beforeDispatch?: ModelRespondOptions['beforeDispatch'];
 }
 
@@ -227,7 +229,7 @@ export async function executeFixedTraceToolLoop(
   while (modelLoop.hasRemaining) {
     const activeTurn = modelLoop.beginNext();
     const iteration = activeTurn.iteration;
-    const response = await activeTurn.invoke(provider, {
+    const modelRequest: ModelRequest = {
       ...requestWithoutToolChoice,
       messages,
       tools: buildModelToolDefinitions(
@@ -238,7 +240,9 @@ export async function executeFixedTraceToolLoop(
       // first turn. Requiring it again after the fixture result would create
       // a duplicate call and make replay diverge from the live loop.
       ...(iteration === 1 && initialToolChoice ? { toolChoice: initialToolChoice } : {}),
-    }, {
+    };
+    options.beforePrepare?.(modelRequest);
+    const response = await activeTurn.invoke(provider, modelRequest, {
       signal: options.signal,
       beforeDispatch: async (prepared) => {
         invocations.push(prepared);
