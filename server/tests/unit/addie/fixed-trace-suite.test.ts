@@ -25,7 +25,11 @@ import {
   type FixedTraceObservation,
   type FixedTraceRunMetadata,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
-import { validateFixedTraceCorpusToolContracts } from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
+import {
+  candidateVisibleMarkerOverlap,
+  validateFixedTraceCorpusSemanticAuthority,
+  validateFixedTraceCorpusToolContracts,
+} from '../../../src/addie/eval/fixed-trace-corpus-contracts.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 
@@ -272,7 +276,11 @@ describe('fixed cross-provider trace suite', () => {
       `identity_leakage:${knownRealIdentity[0].id}`,
     ]));
 
-    for (const substitution of ['Brian O’Kelley at Scope3', 'nytimes.com', 'Satya Nadella']) {
+    for (const substitution of [
+      'Brian O’Kelley at Scope3', 'nytimes.com', 'Satya Nadella',
+      'brian o..kelley', 'scope-3', 'nytimes[.]com', 'satya_nadella',
+      'the trade desk', 'https://unreviewed.ai/agent', 'u0123456789', 'org_real_123456',
+    ]) {
       const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
       realIdentity[0].request.message = substitution;
       expect(validateFixedTraceCorpus(realIdentity)).toEqual(expect.arrayContaining([
@@ -321,7 +329,7 @@ describe('fixed cross-provider trace suite', () => {
     ]));
 
     const missingReceiptDependency = structuredClone(FIXED_TRACE_CORPUS);
-    missingReceiptDependency.find((trace) => trace.id === 'tune-meeting-confirmed-series-receipts')!.toolContract!.orderedCalls[1].dependsOn = undefined;
+    delete missingReceiptDependency.find((trace) => trace.id === 'tune-meeting-confirmed-series-receipts')!.toolContract!.orderedCalls[1].dependsOn;
     expect(validateFixedTraceCorpusToolContracts(missingReceiptDependency)).toEqual(expect.arrayContaining([
       'required_receipt_dependency_mismatch:tune-meeting-confirmed-series-receipts:1',
     ]));
@@ -332,6 +340,56 @@ describe('fixed cross-provider trace suite', () => {
     providerFailure.toolContract = { orderedCalls: [], callBudget: 0, terminalBoundary: 'provider_failure', requiredReceiptDependencies: [], negativeFixtureScenario: 'provider_failure_before_tools' };
     expect(validateFixedTraceCorpusToolContracts(unreachable)).toEqual(expect.arrayContaining([
       'unreachable_fixture:tune-provider-timeout-boundary',
+    ]));
+  });
+
+  it('rejects replay-semantic mutations against the separate reviewer authority', () => {
+    const missingDependency = structuredClone(FIXED_TRACE_CORPUS);
+    const receiptTrace = missingDependency.find((trace) => trace.id === 'tune-meeting-confirmed-series-receipts')!;
+    delete receiptTrace.toolContract!.orderedCalls[1].dependsOn;
+    receiptTrace.toolContract!.requiredReceiptDependencies = [];
+    expect(validateFixedTraceCorpusToolContracts(missingDependency)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(missingDependency)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-meeting-confirmed-series-receipts',
+    ]));
+
+    const changedBudget = structuredClone(FIXED_TRACE_CORPUS);
+    const budgetTrace = changedBudget.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    budgetTrace.caseControl!.maxToolCalls = 99;
+    budgetTrace.toolContract!.callBudget = 99;
+    expect(validateFixedTraceCorpusToolContracts(changedBudget)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(changedBudget)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-property-catalog-resolution',
+    ]));
+
+    const blockedAndUnfixtured = structuredClone(FIXED_TRACE_CORPUS);
+    const blockedTrace = blockedAndUnfixtured.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    blockedTrace.toolContract!.orderedCalls[1].execution = 'blocked';
+    blockedTrace.toolContract!.orderedCalls[1].policyDisposition = 'blocked';
+    blockedTrace.toolFixtures = [blockedTrace.toolFixtures[0]];
+    expect(validateFixedTraceCorpusToolContracts(blockedAndUnfixtured)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(blockedAndUnfixtured)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-property-catalog-resolution',
+    ]));
+
+    const changedFixtureStatus = structuredClone(FIXED_TRACE_CORPUS);
+    const statusTrace = changedFixtureStatus.find((trace) => trace.id === 'tune-property-catalog-resolution')!;
+    statusTrace.toolFixtures[1].resultStatus = 'error';
+    statusTrace.toolContract!.orderedCalls[1].resultStatus = 'error';
+    expect(validateFixedTraceCorpusToolContracts(changedFixtureStatus)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(changedFixtureStatus)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-property-catalog-resolution',
+    ]));
+
+    const surfaceSuccess = structuredClone(FIXED_TRACE_CORPUS);
+    const providerTrace = surfaceSuccess.find((trace) => trace.id === 'tune-provider-timeout-boundary')!;
+    providerTrace.caseControl!.terminalBoundary = 'surface_only';
+    providerTrace.toolContract!.terminalBoundary = 'surface_only';
+    delete providerTrace.toolContract!.negativeFixtureScenario;
+    providerTrace.expectation.terminalStatuses = ['complete'];
+    expect(validateFixedTraceCorpusToolContracts(surfaceSuccess)).toEqual([]);
+    expect(validateFixedTraceCorpusSemanticAuthority(surfaceSuccess)).toEqual(expect.arrayContaining([
+      'semantic_authority_mismatch:tune-provider-timeout-boundary',
     ]));
   });
 
@@ -389,6 +447,19 @@ describe('fixed cross-provider trace suite', () => {
     leaked.find((trace) => trace.phase === 'tuning')!.request.message = 'This evaluation expects a specific answer.';
     expect(validateFixedTraceCorpus(leaked)).toEqual(expect.arrayContaining([
       `candidate_input_leakage:${leaked.find((trace) => trace.phase === 'tuning')!.id}`,
+    ]));
+
+    for (const id of ['tune-long-doc-bounded', 'tune-long-channel-injection', 'tune-long-provider-degraded']) {
+      const trace = FIXED_TRACE_CORPUS.find((candidate) => candidate.id === id)!;
+      expect(candidateVisibleMarkerOverlap(JSON.stringify(candidateVisibleTraceInput(trace)),
+        id === 'tune-long-doc-bounded' ? ['typed receipt', 'uncertainty']
+          : id === 'tune-long-channel-injection' ? ['agenda timing', 'private roster']
+            : ['try again', 'unavailable', 'could not verify'])).toEqual([]);
+    }
+    const markerLeak = structuredClone(FIXED_TRACE_CORPUS);
+    markerLeak.find((trace) => trace.id === 'tune-long-doc-bounded')!.request.message += ' A tYpEd---receipt proves it.';
+    expect(validateFixedTraceCorpus(markerLeak)).toEqual(expect.arrayContaining([
+      'candidate_marker_overlap:tune-long-doc-bounded:typed receipt',
     ]));
   });
 
