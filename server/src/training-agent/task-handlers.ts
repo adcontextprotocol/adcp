@@ -3239,12 +3239,7 @@ export function resolveServedAdcpVersion(
       };
     }
 
-    // RC.1 source schemas are exercised only by the test runner until the
-    // Version Packages RC.1 cut supplies the matching SDK. This bypass is
-    // deliberately impossible in a deployed process: it neither changes the
-    // advertised supported list nor accepts the candidate outside NODE_ENV=test.
-    const testOnlyCandidate = process.env.NODE_ENV === 'test' && requestedRelease.raw === '3.2-rc.1';
-    if (supportedVersions.includes(requestedRelease.raw) || testOnlyCandidate) {
+    if (supportedVersions.includes(requestedRelease.raw)) {
       return { ok: true, servedVersion: requestedRelease.raw };
     }
 

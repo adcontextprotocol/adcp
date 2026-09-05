@@ -57,17 +57,15 @@ const GET_REPORTING_STATUS_SCHEMA = {
   context: z.any().optional(),
   ext: z.any().optional(),
 };
-// `tools/list` cannot see an individual request's negotiated wire version.
-// The deployed RC0 list therefore exposes only its frozen input. Test-only
-// direct construction can exercise the pending RC1 delta selector.
+// `tools/list` cannot see an individual request's negotiated wire version, so
+// the current RC.1 surface advertises the complete Reliable Reporting input.
 const RELIABLE_GET_REPORTING_STATUS_SCHEMA = {
   ...GET_REPORTING_STATUS_SCHEMA,
   changes_after: z.string().min(1).max(2048).optional(),
 };
 
-// These primitives deliberately mirror the source schemas rather than the
-// looser legacy SDK Zod shapes: the direct/test-only MCP projection must not
-// accept a receipt the pending RC1 source contract rejects.
+// These primitives deliberately mirror the RC.1 source schemas so the MCP
+// projection cannot accept a receipt that the published contract rejects.
 const RECEIPT_ID = z.string().min(16).max(255).regex(/^[A-Za-z0-9_.:-]{16,255}$/);
 const REFERENCE_ID = z.string().min(1).max(255).regex(/^[A-Za-z0-9_.:-]{1,255}$/);
 const CONTROL_TOTAL_NAME = z.string().min(1).max(128).regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/);
@@ -167,11 +165,6 @@ export function buildSalesTenantConfig(
   tenantId: string;
   config: TenantConfig;
 } {
-  // MCP tools/list has no negotiated-version input. Until the RC.1 SDK is
-  // published, mounting these source-schema tools in a deployed RC.0 process
-  // would advertise an unreachable wire surface. Direct/unit construction is
-  // deliberately enabled only by the test runtime.
-  const enableReliableReportingTools = process.env.NODE_ENV === 'test';
   const material = getTenantSigningMaterial(TENANT_ID);
   const platform = new TrainingSalesPlatform(
     options.storyboardCompat,
@@ -217,7 +210,7 @@ export function buildSalesTenantConfig(
             get_reporting_status: customToolFor(
               'get_reporting_status',
               'Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.',
-              enableReliableReportingTools ? RELIABLE_GET_REPORTING_STATUS_SCHEMA : GET_REPORTING_STATUS_SCHEMA,
+              RELIABLE_GET_REPORTING_STATUS_SCHEMA,
               reportingStatusForCustomTool,
               // A reporting lookup can validly return the protocol's
               // `status: "failed"` payload with resource-level errors. Keep
@@ -228,7 +221,6 @@ export function buildSalesTenantConfig(
                 payloadErrorsAsSuccess: true,
               },
             ),
-            ...(enableReliableReportingTools && {
             sync_reporting_receipts: customToolFor(
               'sync_reporting_receipts',
               "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
@@ -239,7 +231,6 @@ export function buildSalesTenantConfig(
                 enforceIdempotency: true,
               },
             ),
-            }),
           }),
           sync_catalogs: customToolFor(
             'sync_catalogs',

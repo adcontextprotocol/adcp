@@ -11,7 +11,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. No SDK embeds RC.1 yet. TypeScript `@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed RC.0 exactly. Go `adcp/v3@v3.2.0` includes partial 3.2 proposal and signing support but its generated schemas remain pinned to beta.9. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed RC.1 exactly; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 ### Prerelease checkpoints
 
@@ -30,7 +30,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 | `3.2.0-beta.10` | Add managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.28` and exact Python schema/type support in `adcp==8.0.0b11` |
 | `3.2.0-beta.11` | Add `get_principal` to the MCP media-buy role profile and align the public training agent with the latest beta bundle | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.29` and exact Python schema/type support in `adcp==8.0.0b12` |
 | `3.2.0-rc.0` | Publish the first 3.2 release candidate after beta integration fixes and expand reporting lifecycle conformance | Previous checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.31` and exact Python schema/type support in `adcp==8.0.0b13` |
-| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Current signed protocol checkpoint; no matched SDK release yet |
+| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Current signed protocol checkpoint with exact TypeScript, Python, and Go SDK pairings |
 
 Each prerelease is immutable. The `3.2-rc` documentation selector advances to the latest release candidate; the `3.2-beta` selector remains frozen at beta.11. Pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 prerelease program](/docs/reference/3-2-beta).
 
@@ -55,7 +55,7 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
 | An SDK maintainer | Generate from the current signed RC.1 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
-| A compliance operator | Test RC.1 from its signed assets. For SDK-backed RC.0 testing, use `@adcp/sdk@14.0.0-beta.31` or Python `adcp==8.0.0b13`. Go `adcp/v3@v3.2.0` remains generated from beta.9. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
+| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
 
 ### Required 3.2 migrations
 

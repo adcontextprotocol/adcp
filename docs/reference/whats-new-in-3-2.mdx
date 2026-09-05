@@ -9,19 +9,17 @@ description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle
 
 <Warning>
 **3.2 is in release candidate.** RC.1 is the current signed protocol
-checkpoint. No SDK embeds it yet. TypeScript `@adcp/sdk@14.0.0-beta.31` and
-Python `adcp==8.0.0b13` embed RC.0; Python higher-level helpers remain partial.
-Go `adcp/v3@v3.2.0` has partial 3.2 support but remains pinned to protocol
-beta.9. Use RC.1 for raw-wire or code-generation testing, and do not combine it
-with an older SDK unless that SDK documents forward compatibility. See the
+checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, and
+Go `adcp/v3@v3.2.1` embed it exactly; Python and Go higher-level coverage
+remains role-dependent. Use these exact packages for RC.1 staging tests. See the
 [3.2 prerelease program](/docs/reference/3-2-beta).
 </Warning>
 
 <Info>
 **New in RC.1:** Reliable Reporting 1.0 becomes a named, version-discovered
 experimental capability, with stronger delivery, reach, vendor-metric, and
-reconciliation semantics. The public training seller and current SDK wave
-remain on RC.0 until they publish explicit RC.1 support.
+reconciliation semantics. The public training seller and all three maintained
+SDKs now expose the exact RC.1 checkpoint.
 </Info>
 
 AdCP 3.2 turns a media-buy conversation into a commercial lifecycle that
@@ -43,15 +41,15 @@ tools after capability discovery.
 
 <CardGroup cols={3}>
   <Card
-    title="Try the proposal flow"
+    title="Try the proposal lifecycle"
     icon="messages"
-    href="https://agenticadvertising.org/chat?prompt=Run%20a%20live%20AdCP%203.2%20proposal%20demo%20against%20the%20constrained-seller%20training%20profile.%20Show%20me%20the%20alternatives%20and%20stop%20before%20refining."
+    href="https://agenticadvertising.org/chat?prompt=Walk%20me%20through%20the%20AdCP%203.2%20proposal%20lifecycle%20against%20the%20constrained-seller%20training%20profile.%20Show%20the%20alternatives%2C%20pause%20before%20finalizing%20a%20hold%2C%20then%20pause%20again%20before%20accepting%20it."
   >
-    Ask Addie to run a real proposal conversation. No membership or setup is
-    required.
+    Ask Addie to guide discovery, negotiation, hold, and acceptance with clear
+    confirmation gates. No membership or setup is required.
   </Card>
   <Card title="Build it" icon="code" href="/docs/building/by-layer/L4/choose-your-sdk">
-    Choose an SDK-backed RC.0 path or use the signed RC.1 bundle directly.
+    Choose an SDK-backed RC.1 path or use the signed RC.1 bundle directly.
   </Card>
   <Card title="Adopt it" icon="route" href="/docs/reference/migration/3-1-to-3-2">
     Add compact lifecycle tools incrementally while keeping 3.1 integrations
@@ -63,7 +61,7 @@ tools after capability discovery.
 
 | If you are… | The practical change | Start here |
 |---|---|---|
-| A media buyer or operator | A brief can become a seller-authored proposal, a negotiated hold, an accepted buy, and a controlled campaign without losing which terms were agreed. | [Try the live lifecycle](https://agenticadvertising.org/chat?prompt=Run%20a%20live%20AdCP%203.2%20proposal%20demo%20against%20the%20constrained-seller%20training%20profile.%20Show%20me%20the%20alternatives%20and%20stop%20before%20refining.) |
+| A media buyer or operator | A brief can become a seller-authored proposal, a negotiated hold, an accepted buy, and a controlled campaign without losing which terms were agreed. | [Try the live lifecycle](https://agenticadvertising.org/chat?prompt=Walk%20me%20through%20the%20AdCP%203.2%20proposal%20lifecycle%20against%20the%20constrained-seller%20training%20profile.%20Show%20the%20alternatives%2C%20pause%20before%20finalizing%20a%20hold%2C%20then%20pause%20again%20before%20accepting%20it.) |
 | A developer or platform team | Seven capability-gated tools replace overloaded modes, with immutable proposal state, revision checks, exact version negotiation, and MCP validation-schema pairs that are 76–95% smaller for comparable operations. | [Choose an SDK](/docs/building/by-layer/L4/choose-your-sdk) |
 | An existing 3.1 adopter | There is no forced migration deadline: keep production pinned to `"3.1"`, add compact tools incrementally, and validate an exact release candidate in staging. | [Follow the migration guide](/docs/reference/migration/3-1-to-3-2) |
 
@@ -114,7 +112,7 @@ There are two useful lenses on features and hardening:
   effort, so they are not a pure feature-versus-hardening classification.
 - **Repository engineering:** the 917 PRs represented between the 3.1.0 and
   RC.1 tags classify by conventional title as 188 feature/spec PRs (21%), 455
-  fix/test/refactor/performance/compliance PRs (50%), 207 docs/release/CI/dependency
+  fix/test/refactor/performance/compliance PRs (50%), 207 docs/chore/CI/dependency/revert
   PRs (23%), and 67 untyped PRs (7%). That is about 2.4 hardening PRs for every
   feature PR. This broader lens includes the reference implementation, training,
   website, and member application as well as protocol work.
@@ -179,19 +177,21 @@ seller's own denominator.
 
 The model has three explicitly discovered tiers:
 
-- **Core** adds schedule-derived obligations, immutable revisions, health, and
-  `get_reporting_status` over reporting transports the seller already offers;
+- **Core** adds schedule-derived obligations, immutable revisions, explicit
+  post-official adjustments, health, and `get_reporting_status` over reporting
+  transports the seller already offers;
 - **Managed Delivery** binds durable file, dataset-share, or warehouse
   materializations to exact revisions, destinations, retention, and access;
-- **Reconciled Billing** adds authenticated consumer receipts, canonical
-  content agreement, and explicit post-official adjustments without claiming
-  to create or settle invoices.
+- **Reconciled Billing** adds authenticated consumer receipts and canonical
+  content agreement for those revisions and adjustments without claiming to
+  create or settle invoices.
 
 RC.0 introduced the reporting-status baseline. RC.1 makes Reliable Reporting
 a named, version-discovered experimental capability and adds source-timezone
 schedules, checkpointed repair for missed or out-of-order events, immutable
 billing-purpose evidence, adjustment and receipt reconciliation, and
-evidence-scoped reliability statistics. RC.1 has no matched SDK pairing yet. See
+evidence-scoped reliability statistics. RC.1 has matched TypeScript, Python,
+and Go SDK pairings. See
 [Implementing Reliable Reporting Core](/docs/media-buy/reporting-core-implementation-guide).
 
 ### A durable connection for authenticated principals
@@ -407,7 +407,7 @@ does not turn every schema addition into an implementation claim. The current
 | Portable attestations and audience evidence | Versioned `attestations`, `rights-attestations`, `governance-runtime-attestations`, and `audience-evidence` vector suites | Deterministic trust, binding, revocation, cache-reuse, and requirement-mode coverage. These library fixtures do not claim a live issuer/resolver network or replace an agent storyboard. |
 | Timezone and operational controls | Account-timezone and budget-cap-timezone storyboard families, plus deterministic media-buy read filters | End-to-end for the declared reference-agent routes. |
 | OAuth and cache isolation | `oauth_setup` and wholesale product/signal cache-scope isolation storyboards | Protocol and transport behavior are exercised independently of any one commercial workflow. |
-| Reliable Reporting 1.0 | `reporting_core_declaration`, `reporting_core`, `reliable_reporting_managed_delivery`, and `reliable_reporting_reconciled_billing` cover the named capability and its three tiers | Published in RC.1. The public training seller remains on RC.0 until it advertises and serves the newer exact pin. |
+| Reliable Reporting 1.0 | `reporting_core_declaration`, `reporting_core`, `reliable_reporting_managed_delivery`, and `reliable_reporting_reconciled_billing` cover the named capability and its three tiers | Published in RC.1 and served by the public training seller on the exact RC.1 pin. |
 | Experimental governance and Trusted Match | Property-list webhook signing and publisher-authentication rejection storyboards | Partial reference evidence only; experimental declarations and exact-version pinning remain mandatory. |
 | Advanced delivery reporting | `advanced_delivery_reporting` covers metric narrowing, `time_based_views`, canonical `by_format` rows, limits, truncation disclosure, and applied-sort echoes across discovery, purchase, simulation, and delivery | End-to-end on the reference sales tenant for the declared product capabilities. Expanded channel-specific OOH/audio metrics remain separate coverage work. |
 | Audience activation | `audience_activation_discovery` covers the experimental feature gate, catalog-wide method union, per-product declarations, vendor-constrained matching, OR and wildcard semantics, and exclusion of undeclared products | Discovery is end-to-end on the reference sales tenant. External dataset or distributed-segment binding remains an account-setup integration until the external-source runtime extension lands; the storyboard does not imply that runtime exists. |
@@ -428,7 +428,7 @@ for the remaining runner and coverage gaps.
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
 | An SDK maintainer | Generate from the signed RC.1 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
-| A compliance operator | Test RC.1 directly from its signed assets. For SDK-backed RC.0 testing, use an SDK that explicitly lists RC.0, such as TypeScript SDK 14 beta.31 or Python SDK 8 beta.13. Do not treat any of those packages as RC.1 evidence; retain exact versions end to end and do not issue a 3.2 badge from a prerelease. |
+| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions end to end, and do not issue a 3.2 badge from a prerelease. |
 
 ## Start here
 

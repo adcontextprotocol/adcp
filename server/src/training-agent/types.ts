@@ -29,7 +29,7 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /** Current published candidate schema bundle shipped by the server. */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.0' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.1' as const;
 /** First released schema checkpoint containing get_reporting_status. */
 export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
 /** First candidate checkpoint containing Reliable Reporting 1.0. */
@@ -40,6 +40,7 @@ export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
   '3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6',
   '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14',
   '3.1-rc.15', '3.1', SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
+  '3.2-rc.0',
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 ] as const;
 export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
