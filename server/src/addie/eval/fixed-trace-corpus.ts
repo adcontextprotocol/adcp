@@ -31,6 +31,7 @@ export {
   FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
   FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY_VERSION,
 } from './fixed-trace-corpus-authority.js';
+export { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
 export type {
   FixedTraceCorpusCase,
   FixedTraceCorpusCoverageInventory,
