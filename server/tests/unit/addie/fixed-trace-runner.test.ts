@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFixedTraceGenerationRequest,
+  fixedTraceArchitectureConfigSha256,
   fixedTraceToolSchemaSha256,
   runFixedTraceCase,
   type FixedTraceProviderStageConfig,
@@ -15,8 +16,13 @@ import {
   FIXED_TRACE_SUITE,
   gradeFixedTrace,
   mutationInputProvenanceFailures,
+  summarizeFixedTraceRun,
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
+import {
+  admitFixedTraceDirectArm,
+  deriveFixedTraceDirectToolUniverse,
+} from '../../../src/addie/eval/fixed-trace-architecture.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import { ADMIN_TOOLS } from '../../../src/addie/mcp/admin-tools.js';
 import { BRAND_CANONICAL_TOOLS } from '../../../src/addie/mcp/brand-canonical-tools.js';
@@ -730,5 +736,156 @@ describe('fixed trace artifact runner', () => {
   it('hashes exactly the canonical fixed-trace tool subset', () => {
     expect(fixedTraceToolSchemaSha256(TOOL_DEFINITIONS)).toMatch(/^[a-f0-9]{64}$/);
     expect(() => fixedTraceToolSchemaSha256(TOOL_DEFINITIONS.slice(1))).toThrow('incomplete or duplicated');
+  });
+
+  it('changes cohort hashes for candidate configuration', () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    const base = config(router, generation);
+
+    expect(fixedTraceArchitectureConfigSha256({
+      ...base,
+      generation: { ...base.generation, model: 'different-candidate-model' },
+    })).not.toBe(fixedTraceArchitectureConfigSha256(base));
+    expect(fixedTraceArchitectureConfigSha256({
+      ...base,
+      injectProviderDegradation: false,
+    })).not.toBe(fixedTraceArchitectureConfigSha256(base));
+  });
+
+  it('summarizes the complete standard suite with its trace-local truncation control', async () => {
+    const router = new ScriptedProvider(FIXED_TRACE_SUITE.map((fixedTrace) => routeResponse(
+      fixedTrace.routing.action,
+      [...fixedTrace.routing.toolSets],
+    )));
+    const generation = new ScriptedProvider(FIXED_TRACE_SUITE
+      .filter((fixedTrace) => fixedTrace.routing.action === 'respond' && fixedTrace.category !== 'provider_degradation')
+      .map((fixedTrace) => response(
+        [{ type: 'text', text: 'Synthetic fixed-trace evaluator response.' }],
+        fixedTrace.category === 'truncation' ? 'length' : 'stop',
+        `generation-${fixedTrace.id}`,
+      )));
+    const base = config(router, generation);
+    const observations = [];
+    for (const fixedTrace of FIXED_TRACE_SUITE) {
+      observations.push(await runFixedTraceCase(fixedTrace, base));
+    }
+
+    expect(new Set(observations.map((observation) => observation.metadata.architectureConfigSha256)).size).toBe(1);
+    expect(() => summarizeFixedTraceRun(observations)).not.toThrow();
+    const { summary } = summarizeFixedTraceRun(observations);
+    expect(summary.observed).toBe(FIXED_TRACE_SUITE.length);
+    const truncation = observations.find((observation) => observation.traceId === 'bounded-truncation')!;
+    expect(truncation.metadata).toMatchObject({
+      caseControl: { kind: 'bounded_generation_output', maxOutputTokens: 32 },
+      generation: { maxOutputTokens: 32 },
+    });
+  });
+
+  it('rejects trace-local definitions before direct generation can dispatch', async () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    const selectedTrace = trace('knowledge-task-model');
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      architectureArm: 'direct_generation',
+    }));
+
+    expect(router.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(0);
+    expect(observation).toMatchObject({
+      terminalStage: 'admission',
+      terminalStatus: 'not_admitted_architecture',
+      metadata: {
+        architectureArm: {
+          id: 'direct_generation',
+          routeSource: 'deployable_surface_policy',
+          rolloutEligible: false,
+        },
+        toolUniverse: {
+          source: 'authorized_definition_handler_intersection_not_captured',
+          intentNarrowing: 'not_applied',
+          bounded: false,
+          deployable: false,
+        },
+        directArmAdmission: {
+          admitted: false,
+          reasons: expect.arrayContaining([
+            'fixture_local_tool_definitions',
+            'authorized_tool_intersection_not_captured',
+            'authorized_tool_universe_unbounded',
+          ]),
+        },
+      },
+    });
+    const directRun = summarizeFixedTraceRun([observation], [selectedTrace]).summary;
+    expect(directRun.comparisonEligible).toBe(false);
+    expect(directRun.terminalStatusCounts.not_admitted_architecture).toBe(1);
+    expect(Object.values(directRun.terminalStatusCounts).reduce((total, count) => total + count, 0))
+      .toBe(directRun.observed);
+  });
+
+  it('derives direct-arm facts without consulting trace routing or expectations', () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const changedExpectations: FixedTraceCase = {
+      ...selectedTrace,
+      routing: { action: 'respond', toolSets: ['admin_events'] },
+      toolFixtures: [],
+      expectation: {
+        ...selectedTrace.expectation,
+        requiredTools: ['invented_tool'],
+        allowedTools: ['invented_tool'],
+        requiredTextAny: [['invented answer']],
+      },
+      answerRubric: ['Invented rubric.'],
+    };
+
+    expect(deriveFixedTraceDirectToolUniverse(changedExpectations)).toEqual(
+      deriveFixedTraceDirectToolUniverse(selectedTrace),
+    );
+    expect(admitFixedTraceDirectArm(
+      changedExpectations,
+      TOOL_DEFINITIONS,
+      'fixture_local',
+    ).reasons).toEqual(admitFixedTraceDirectArm(
+      selectedTrace,
+      TOOL_DEFINITIONS,
+      'fixture_local',
+    ).reasons);
+    // Relabeling the same trace-local schemas cannot turn them into a
+    // deployable direct universe: its independent bounded intersection and
+    // request/thread execution envelope are still absent.
+    expect(admitFixedTraceDirectArm(
+      selectedTrace,
+      TOOL_DEFINITIONS,
+      'authorized_definition_handler_intersection',
+    )).toMatchObject({
+      admitted: false,
+      reasons: expect.arrayContaining([
+        'authorized_tool_intersection_not_captured',
+        'authorized_tool_universe_unbounded',
+        'request_thread_execution_envelope_not_captured',
+      ]),
+    });
+  });
+
+  it('runs an oracle route only as a rollout-ineligible generation diagnostic', async () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    const selectedTrace = trace('provider-unavailable');
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      architectureArm: 'oracle_route_diagnostic',
+    }));
+
+    expect(router.respondCalls).toHaveLength(0);
+    expect(observation.metadata.architectureArm).toMatchObject({
+      id: 'oracle_route_diagnostic',
+      rolloutEligible: false,
+    });
+    expect(observation.metadata.toolUniverse).toMatchObject({
+      source: 'fixture_oracle', deployable: false,
+    });
+    const { grades, summary } = summarizeFixedTraceRun([observation], [selectedTrace]);
+    expect(grades[0]?.routingPass).toBeNull();
+    expect(summary.comparisonEligible).toBe(false);
   });
 });

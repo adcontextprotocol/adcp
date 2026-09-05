@@ -8,6 +8,8 @@ import type { FixedTraceJudgeSummary } from '../../../src/addie/eval/fixed-trace
 import type { FixedTraceSummary } from '../../../src/addie/eval/fixed-trace-suite.js';
 
 const summary: FixedTraceSummary = {
+  diagnosticOnly: true,
+  promotionBlocker: 'trusted_evaluator_context_unavailable',
   expected: 11,
   observed: 11,
   omitted: 0,
@@ -68,11 +70,11 @@ describe('fixed-trace rollout policy', () => {
     const gate = evaluateFixedTraceRollout(summary, judges, budget);
     expect(gate).toMatchObject({
       policyVersion: FIXED_TRACE_ROLLOUT_POLICY_VERSION,
-      pass: true,
-      failedDimensions: [],
+      pass: false,
+      failedDimensions: ['trusted_evaluator_context_unavailable'],
     });
-    expect(gate.checks).toHaveLength(17);
-    expect(gate.checks.every((check) => check.pass)).toBe(true);
+    expect(gate.checks).toHaveLength(18);
+    expect(gate.failedDimensions).toContain('trusted_evaluator_context_unavailable');
   });
 
   it('fails closed for missing judge consensus and unknown budget exposure', () => {
@@ -87,6 +89,13 @@ describe('fixed-trace rollout policy', () => {
       'judge_eligible',
       'judge_consensus',
     ]));
+  });
+
+  it('cannot be made promotable by spoofing a diagnostic marker', () => {
+    const forged = { ...summary, diagnosticOnly: false, comparisonEligible: true } as unknown as FixedTraceSummary;
+    const gate = evaluateFixedTraceRollout(forged, judges, budget);
+    expect(gate.pass).toBe(false);
+    expect(gate.failedDimensions).toContain('trusted_evaluator_context_unavailable');
   });
 
   it('reports each violated quality, mutation, latency, and cost dimension', () => {
