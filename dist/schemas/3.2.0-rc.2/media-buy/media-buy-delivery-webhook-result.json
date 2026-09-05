@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/media-buy-delivery-webhook-result.json",
+  "title": "Media Buy Delivery Webhook Result",
+  "description": "Payload-only delivery report result carried under core/mcp-webhook-payload.json result for task_type media_buy_delivery. This is not a top-level webhook POST body and does not include protocol envelope fields such as task_id or status.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "row_currency_consistency": "When media_buy_deliveries[].currency is present, every present by_package[].currency MUST equal it",
+      "legacy_currency_consistency": "When deprecated response-wide currency is present, every present media-buy and package currency MUST equal it",
+      "package_currency_presence": "When a package has spend or another currency-denominated monetary value and both the media-buy row currency and deprecated response-wide currency are absent, that package MUST include currency",
+      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values in row totals MUST be omitted"
+    }
+  },
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update"
+      ],
+      "description": "Type of delivery-report notification: scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = corrected data for the same window, window_update = a wider measurement window supersedes a prior window."
+    },
+    "partial_data": {
+      "type": "boolean",
+      "description": "Indicates if any media buys in this webhook have missing or delayed data."
+    },
+    "unavailable_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of media buys with reporting_delayed or failed status when partial_data is true."
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sequential notification number for this reporting webhook stream."
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for the next expected notification. Omitted on final notifications."
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "UTC date range covered by the delivery report.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "currency": {
+      "type": "string",
+      "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy report-wide ISO 4217 currency code. It may be used only when every monetary value in the report has that denomination. A report can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
+      "deprecated": true,
+      "pattern": "^[A-Z]{3}$"
+    },
+    "attribution_window": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/attribution-window.json",
+      "description": "Attribution methodology and lookback windows used for conversion metrics in this report."
+    },
+    "media_buy_deliveries": {
+      "type": "array",
+      "description": "Delivery rows for one or more media buys included in this notification.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "Seller's media buy identifier.",
+            "x-entity": "media_buy"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field and all monetary or money-derived values from row totals; report those values only at package level with each package's own currency. AdCP does not perform currency conversion.",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current media buy lifecycle or reporting status. This is distinct from the webhook envelope's top-level task status.",
+            "enum": [
+              "pending_creatives",
+              "pending_start",
+              "pending",
+              "active",
+              "paused",
+              "completed",
+              "rejected",
+              "canceled",
+              "failed",
+              "reporting_delayed"
+            ]
+          },
+          "expected_availability": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When delayed data is expected to be available. Present when status is reporting_delayed."
+          },
+          "is_adjusted": {
+            "type": "boolean",
+            "description": "Indicates this row contains updated data for a previously reported period."
+          },
+          "is_final": {
+            "type": "boolean",
+            "description": "Whether this row's delivery data is final for the reporting period."
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this row became final. Present only when is_final is true."
+          },
+          "pricing_model": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/pricing-model.json"
+          },
+          "pacing_index": {
+            "type": "number",
+            "description": "Aggregate media-buy delivery pace relative to the media-buy pacing plan. Authoritative for seller-optimized buys.",
+            "minimum": 0
+          },
+          "totals": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/delivery-metrics.json"
+              },
+              {
+                "type": "object",
+                "description": "Aggregate metrics for this media buy across all packages.",
+                "properties": {
+                  "effective_rate": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": true
+              }
+            ]
+          },
+          "by_package": {
+            "type": "array",
+            "description": "Metrics broken down by package.",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/delivery-metrics.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "x-entity": "package"
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "description": "Subordinate package pacing diagnostic. May be absent for seller-optimized packages without package-level pacing.",
+                      "minimum": 0
+                    },
+                    "pricing_model": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/pricing-model.json"
+                    },
+                    "rate": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency and row-level monetary totals are omitted. When both row and deprecated response-wide currency are absent, a package with monetary values MUST include this field. AdCP does not perform currency conversion.",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "delivery_status": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/delivery-status.json",
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control. 'not_delivering' means zero impressions were recorded for the entire reporting_period while the package was in-flight. Sellers SHOULD only report 'not_delivering' once the package's data is_final for the period — a provisional (is_final: false) zero may still be measurement catching up, not genuine non-delivery."
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "is_final": {
+                      "type": "boolean"
+                    },
+                    "finalized_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "measurement_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    },
+                    "supersedes_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    },
+                    "metric_values": {
+                      "type": "array",
+                      "description": "Qualified standard delivery values for this package. Each entry is the delivered counterpart to a standard-scope package.committed_metrics or by_package[].missing_metrics row, using the same atomic key (scope, metric_id, qualifier). Sellers report one row per full qualifier set at package grain; when a metric appears here, its flat scalar counterpart on the package MUST be omitted to avoid two sources of truth. Vendor-scope values continue to use vendor_metric_values. Buyers reconcile rows directly and perform any compatible cross-package aggregation themselves.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/package-delivery-metric-value.json"
+                      }
+                    }
+                  },
+                  "required": [
+                    "spend"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "currency"
+              ]
+            },
+            "then": {
+              "properties": {
+                "totals": {
+                  "required": [
+                    "spend"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "required": [
+          "media_buy_id",
+          "status",
+          "totals",
+          "by_package"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific delivery errors or warnings.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "notification_type",
+    "reporting_period",
+    "media_buy_deliveries"
+  ],
+  "additionalProperties": true
+}

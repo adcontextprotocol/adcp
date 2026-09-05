@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/get-reporting-status-request.json",
+  "title": "Get Reporting Status Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.",
+  "description": "Authoritative caller/account-isolated reporting reliability read. The authenticated caller identity comes only from transport authentication, never request fields. summary answers the operational question for independently selected delivery configurations/feeds; periods returns a cursor-paginated obligation ledger; revision resolves one exact retained revision and its materializations/resources. Unknown, unauthorized, cross-caller, and cross-account identifiers MUST be indistinguishable. Sellers implementing this task MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "type": "object",
+  "definitions": {
+    "ReportingStatusView": {
+      "title": "Reporting Status View",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "summary",
+        "periods",
+        "revision"
+      ],
+      "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit."
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "view": {
+            "const": "summary"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "reporting_revision_id"
+              ]
+            },
+            {
+              "required": [
+                "pagination"
+              ]
+            },
+            {
+              "required": [
+                "health"
+              ]
+            },
+            {
+              "required": [
+                "changes_after"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "view": {
+            "const": "periods"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "reporting_revision_id"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "view": {
+            "const": "revision"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      },
+      "then": {
+        "required": [
+          "reporting_revision_id"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "media_buy_ids"
+              ]
+            },
+            {
+              "required": [
+                "delivery_config_ids"
+              ]
+            },
+            {
+              "required": [
+                "feed_purposes"
+              ]
+            },
+            {
+              "required": [
+                "period"
+              ]
+            },
+            {
+              "required": [
+                "health"
+              ]
+            },
+            {
+              "required": [
+                "finality"
+              ]
+            },
+            {
+              "required": [
+                "changes_after"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-mutates-state": false,
+  "properties": {
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/canonical-account-ref.json",
+      "description": "Account whose caller-owned reporting status is queried."
+    },
+    "view": {
+      "$ref": "#/definitions/ReportingStatusView"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Omit for every accessible media buy in the account."
+    },
+    "delivery_config_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+        "x-entity": "reporting_delivery_config"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Use to reconcile billing, analytics, and pacing independently. Omit for every active caller-owned configuration."
+    },
+    "feed_purposes": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Optional summary/periods feed filter. The response echoes exact resolved configuration generations so this never creates an opaque aggregate."
+    },
+    "period": {
+      "type": "object",
+      "description": "Half-open summary/periods horizon. Omit for the seller's documented operational default horizon; the response always echoes the evaluated scope.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/reporting-health.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Periods-view result filter only; it never changes summary health."
+    },
+    "finality": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/reporting-finality.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Exact retained revision to resolve in revision view."
+    },
+    "changes_after": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Periods-view incremental-repair checkpoint previously returned as changes_checkpoint after fully consuming a response. Returns newly committed obligations, revisions, adjustments, materializations, revision receipts, and adjustment receipts plus the current projection of each affected obligation. Omit for a full ledger read."
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/pagination-request.json",
+      "description": "Periods or revision-view pagination. Cursors are bound to the authenticated caller, account, filters, and ledger snapshot."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "view"
+  ]
+}

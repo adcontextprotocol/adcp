@@ -1,0 +1,721 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/bundled/media-buy/sync-reporting-receipts-request.json",
+  "title": "Sync Reporting Receipts Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
+  "description": "Submit durable authenticated consumer reconciliation results for reporting materializations and post-official adjustments. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governance principal.",
+  "type": "object",
+  "allOf": [
+    {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      },
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "account": {
+      "title": "Canonical Account Reference",
+      "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Key",
+              "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "x-entity": "advertiser_brand",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ],
+                  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/brand-id.json"
+                },
+                "countries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{2}$"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "title": "Operator Unit",
+              "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata.",
+              "x-entity": "operator_unit",
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+                  "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "id": "234284238",
+                  "name": "Nova EMEA"
+                },
+                {
+                  "id": "benelux-seat",
+                  "name": "Nova Benelux"
+                }
+              ],
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_nova_nl"
+        },
+        {
+          "brand": {
+            "domain": "nova-athletics.example",
+            "countries": [
+              "NL"
+            ]
+          },
+          "operator": "nova-athletics.example",
+          "operator_unit": {
+            "id": "234284238",
+            "name": "Nova EMEA"
+          },
+          "currency": "EUR",
+          "timezone": "Europe/Amsterdam"
+        }
+      ],
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/canonical-account-ref.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Client-generated batch key. Exact retries reuse the key and body."
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "title": "Reporting Receipt",
+            "x-status": "experimental",
+            "description": "Authenticated consumer evidence for one materialization. A receipt closes the knowledge gap between producer availability and consumer reconciliation. Buyer and governance consumers submit independently; neither consumer's receipt implies acceptance by another principal.",
+            "type": "object",
+            "properties": {
+              "reporting_receipt_id": {
+                "type": "string",
+                "minLength": 16,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+                "x-entity": "reporting_receipt"
+              },
+              "reporting_obligation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+                "x-entity": "reporting_obligation"
+              },
+              "reporting_revision_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+                "x-entity": "reporting_revision"
+              },
+              "reporting_materialization_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+                "x-entity": "reporting_materialization"
+              },
+              "supersedes_reporting_receipt_id": {
+                "type": "string",
+                "minLength": 16,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+                "x-entity": "reporting_receipt",
+                "description": "Optional immutable rejected receipt replaced by this new receipt. It MUST name the caller's current rejected receipt for this obligation and revision; accepted current receipts are terminal."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "rejected"
+                ]
+              },
+              "verification_profile": {
+                "title": "Reporting Verification Profile",
+                "x-status": "experimental",
+                "description": "Assurance evidence used for one reporting materialization or receipt.",
+                "type": "string",
+                "enum": [
+                  "native_commit",
+                  "manifest_checksums",
+                  "canonical_digest"
+                ],
+                "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-verification-profile.json"
+              },
+              "observed_row_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "observed_control_totals": {
+                "type": "array",
+                "items": {
+                  "title": "Reporting Control Total",
+                  "x-status": "experimental",
+                  "description": "One profile-defined aggregate used to reconcile a reporting revision without rereading every row. Names and units are defined by the immutable report definition. Values use canonical strings so currency and large integer comparisons are exact across SDKs.",
+                  "oneOf": [
+                    {
+                      "title": "IntegerReportingControlTotal",
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+                        },
+                        "value": {
+                          "type": "string",
+                          "pattern": "^-?(?:0|[1-9][0-9]*)$",
+                          "description": "Canonical base-10 integer with no exponent, grouping separator, decimal point, or insignificant leading zeroes."
+                        },
+                        "value_type": {
+                          "type": "string",
+                          "const": "integer"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "value",
+                        "value_type"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "title": "DecimalReportingControlTotal",
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+                        },
+                        "value": {
+                          "type": "string",
+                          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                          "description": "Canonical base-10 decimal with no exponent, grouping separator, or insignificant leading zeroes."
+                        },
+                        "value_type": {
+                          "type": "string",
+                          "const": "decimal"
+                        },
+                        "unit": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "value",
+                        "value_type"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ],
+                  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-control-total.json"
+                },
+                "uniqueItems": true
+              },
+              "observed_canonical_content_digest": {
+                "title": "Reporting Canonical Content Digest",
+                "x-status": "experimental",
+                "description": "Cryptographic digest of logical reporting rows under an immutable canonicalization contract.",
+                "type": "object",
+                "properties": {
+                  "algorithm": {
+                    "type": "string",
+                    "const": "sha256"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[A-Fa-f0-9]{64}$"
+                  },
+                  "canonicalization_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "canonicalization_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+                    "description": "Location of the exact immutable canonicalization contract. Consumers verify canonicalization_sha256 before applying it."
+                  },
+                  "canonicalization_sha256": {
+                    "type": "string",
+                    "pattern": "^[A-Fa-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "algorithm",
+                  "value",
+                  "canonicalization_id",
+                  "canonicalization_uri",
+                  "canonicalization_sha256"
+                ],
+                "additionalProperties": false,
+                "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-canonical-content-digest.json"
+              },
+              "observed_manifest_sha256": {
+                "type": "string",
+                "pattern": "^[A-Fa-f0-9]{64}$"
+              },
+              "observed_native_version_ref": {
+                "title": "Reporting Native Version Reference",
+                "x-status": "experimental",
+                "description": "Credential-free, decoded provider-native immutable version reference, such as an S3 VersionId, GCS generation, table version, transaction, snapshot, manifest generation, job, or run. This is not URI-encoded or concatenated into an object_ref; URI-encode it only when constructing a provider request. The 1024-character limit accommodates a provider value of up to 1024 UTF-8 bytes because every Unicode character occupies at least one UTF-8 byte; JSON Schema maxLength counts characters rather than bytes.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-native-version-ref.json"
+              },
+              "consumer_commit_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "description": "Optional non-secret consumer checkpoint, transaction, or load identifier. It is evidence for operations, not authorization or a credential."
+              },
+              "rejection_codes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Z][A-Z0-9_]*$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "received_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              }
+            },
+            "required": [
+              "reporting_receipt_id",
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "reporting_materialization_id",
+              "status",
+              "verification_profile",
+              "observed_row_count",
+              "observed_control_totals",
+              "observed_at"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "rejected"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "rejection_codes"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "verification_profile": {
+                      "const": "canonical_digest"
+                    },
+                    "status": {
+                      "const": "accepted"
+                    }
+                  },
+                  "required": [
+                    "verification_profile",
+                    "status"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "observed_canonical_content_digest"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "verification_profile": {
+                      "const": "manifest_checksums"
+                    },
+                    "status": {
+                      "const": "accepted"
+                    }
+                  },
+                  "required": [
+                    "verification_profile",
+                    "status"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "observed_manifest_sha256"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "verification_profile": {
+                      "const": "native_commit"
+                    },
+                    "status": {
+                      "const": "accepted"
+                    }
+                  },
+                  "required": [
+                    "verification_profile",
+                    "status"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "observed_native_version_ref"
+                  ]
+                }
+              }
+            ],
+            "x-adcp-validation": {
+              "authorization": "The seller derives the consumer principal from authenticated transport and accepts receipts only for that principal's account-bound obligation and materialization. Unknown, unauthorized, cross-account, and cross-caller identifiers are indistinguishable.",
+              "acceptance_match": "accepted requires exact equality with the selected materialization verification evidence: row count and control totals always; canonical digest or manifest digest when selected. A mismatch MUST be submitted or recorded as rejected.",
+              "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict. A consumer retains one current leaf per obligation and revision: a new ID may supersede only that current rejected leaf. History remains append-only; an accepted current leaf is terminal."
+            },
+            "additionalProperties": false,
+            "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-receipt.json"
+          },
+          {
+            "not": {
+              "required": [
+                "received_at"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "adjustment_receipts": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "title": "Reporting Adjustment Receipt",
+            "x-status": "experimental",
+            "description": "Authenticated consumer acceptance or rejection of one exact post-official adjustment. It does not alter the original official revision or its receipt.",
+            "type": "object",
+            "properties": {
+              "reporting_receipt_id": {
+                "type": "string",
+                "minLength": 16,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+                "x-entity": "reporting_receipt"
+              },
+              "reporting_adjustment_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+                "x-entity": "reporting_adjustment"
+              },
+              "adjusts_reporting_revision_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+                "x-entity": "reporting_revision"
+              },
+              "supersedes_reporting_receipt_id": {
+                "type": "string",
+                "minLength": 16,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+                "x-entity": "reporting_receipt",
+                "description": "Optional immutable rejected receipt replaced by this new receipt for the same adjustment. Accepted current receipts are terminal."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "rejected"
+                ]
+              },
+              "observed_adjustment_sha256": {
+                "type": "string",
+                "pattern": "^[A-Fa-f0-9]{64}$",
+                "description": "Digest recomputed from the adjustment using its canonical evidence rule."
+              },
+              "rejection_codes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/ReportingAdjustmentRejectionCode"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "received_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              }
+            },
+            "required": [
+              "reporting_receipt_id",
+              "reporting_adjustment_id",
+              "adjusts_reporting_revision_id",
+              "status",
+              "observed_adjustment_sha256",
+              "observed_at"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "rejected"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "rejection_codes"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "rejection_codes"
+                    ]
+                  }
+                }
+              }
+            ],
+            "x-adcp-validation": {
+              "authorization": "Derive consumer identity from authenticated transport. The adjustment and its official revision must be visible to that caller/account; unavailable and unauthorized identifiers are indistinguishable.",
+              "acceptance_match": "accepted requires observed_adjustment_sha256 to equal the referenced adjustment's canonical_adjustment_sha256 and adjusts_reporting_revision_id to equal its target. A digest or semantic disagreement is rejected with stable rejection_codes.",
+              "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict. A new ID may supersede only the current rejected receipt for this adjustment; history remains append-only and an accepted current leaf is terminal."
+            },
+            "additionalProperties": false
+          },
+          {
+            "not": {
+              "required": [
+                "received_at"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Consumer acceptance or rejection of exact post-official adjustments."
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "idempotency_key"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "receipts"
+      ]
+    },
+    {
+      "required": [
+        "adjustment_receipts"
+      ]
+    }
+  ],
+  "x-adcp-validation": {
+    "batch_identity": "reporting_receipt_id values MUST be unique across receipts and adjustment_receipts, whose combined length MUST NOT exceed 100. Every referenced obligation, revision, materialization, and adjustment MUST resolve within the authenticated caller and account or fail with an indistinguishable unavailable result.",
+    "partial_results": "Each receipt is independent. One failed result does not roll back successfully recorded receipts; retries use the same receipt IDs and content."
+  },
+  "additionalProperties": true,
+  "definitions": {
+    "ReportingAdjustmentRejectionCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    }
+  },
+  "_bundled": {
+    "generatedAt": "2026-09-05T17:05:55.681Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

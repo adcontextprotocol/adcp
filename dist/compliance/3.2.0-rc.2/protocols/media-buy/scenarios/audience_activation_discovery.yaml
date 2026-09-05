@@ -1,0 +1,254 @@
+id: media_buy_seller/audience_activation_discovery
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller discovers audience activation paths honestly"
+category: media_buy_seller
+summary: "Verifies capability and product declarations, vendor-constrained matching, OR semantics, omitted-field wildcards, and exclusion of undeclared products."
+track: media_buy
+
+requires_capability:
+  path: experimental_features
+  contains: media_buy.audience_activation
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+  - comply_test_controller
+
+narrative: |
+  Audience activation discovery answers how buyer data can reach inventory
+  before the buyer commits to a product. The seller first advertises an honest
+  catalog-wide union, then each product declares its own usable methods.
+
+  A filter is OR across requested methods and AND within one method. Omitted
+  optional fields are wildcards, vendor identity constrains a match, and a
+  product with no audience_activation declaration is excluded rather than
+  treated as compatible. This scenario exercises those behavioral rules, not
+  merely the new schema fields. The separate external_audience_source_binding
+  scenario exercises the runtime dataset-reference leg through purchase.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - audience_activation_discovery
+  examples:
+    - "A retail-media seller accepting inline audiences and shared datasets"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds two declared products and one undeclared control.
+    Both declared products support the seller's catalog-wide dataset-query
+    method; only one also supports inline sync. USD pricing scopes discovery
+    to the three deterministic fixtures.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "audience_activation_inline_dataset"
+      delivery_type: "guaranteed"
+      channels: ["retail_media"]
+      audience_activation:
+        methods:
+          - pattern: "sync_audiences"
+          - pattern: "dataset_query"
+            vendor:
+              domain: "data-cloud.example"
+        preferred_method:
+          pattern: "sync_audiences"
+        notes: "Inline sync is preferred; dataset access is arranged during account setup."
+    - product_id: "audience_activation_dataset_only"
+      delivery_type: "guaranteed"
+      channels: ["retail_media"]
+      audience_activation:
+        methods:
+          - pattern: "dataset_query"
+            vendor:
+              domain: "data-cloud.example"
+        preferred_method:
+          pattern: "dataset_query"
+          vendor:
+            domain: "data-cloud.example"
+    - product_id: "audience_activation_undeclared"
+      delivery_type: "guaranteed"
+      channels: ["retail_media"]
+  pricing_options:
+    - product_id: "audience_activation_inline_dataset"
+      pricing_option_id: "audience_activation_inline_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+    - product_id: "audience_activation_dataset_only"
+      pricing_option_id: "audience_activation_dataset_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+    - product_id: "audience_activation_undeclared"
+      pricing_option_id: "audience_activation_undeclared_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+
+phases:
+  - id: capability_and_matching
+    title: "Discover compatible activation paths"
+    steps:
+      - id: advertise_catalog_union
+        title: "Advertise the experimental feature and catalog-wide method union"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "Capability response matches the protocol schema"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "media_buy.audience_activation"
+            description: "The seller explicitly opts into the experimental surface"
+          - check: field_contains
+            path: "media_buy.audience_targeting.supported_activation_methods[*].pattern"
+            value: "sync_audiences"
+            description: "The catalog-wide union declares inline audience sync"
+          - check: field_contains
+            path: "media_buy.audience_targeting.supported_activation_methods[*].pattern"
+            value: "dataset_query"
+            description: "The catalog-wide union declares dataset-query activation"
+          - check: field_contains
+            path: "media_buy.audience_targeting.supported_activation_methods[*].vendor.domain"
+            value: "data-cloud.example"
+            description: "The dataset-query union identifies its vendor"
+
+      - id: match_dataset_vendor
+        title: "Match the vendor while treating omitted coordinates as wildcards"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            pricing_currencies: ["USD"]
+            audience_activation_methods:
+              - pattern: "dataset_query"
+                vendor:
+                  domain: "data-cloud.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Discovery response matches the protocol schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "audience_activation_inline_dataset"
+            description: "The first vendor-compatible fixture is returned"
+          - check: field_value
+            path: "products[1].product_id"
+            value: "audience_activation_dataset_only"
+            description: "The second vendor-compatible fixture is returned"
+          - check: field_absent
+            path: "products[2]"
+            description: "The undeclared fixture is excluded under an activation filter"
+
+      - id: reject_wrong_vendor
+        title: "Require every specified field within a method"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            pricing_currencies: ["USD"]
+            audience_activation_methods:
+              - pattern: "dataset_query"
+                vendor:
+                  domain: "wrong-data-cloud.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "An empty discovery result remains schema-valid"
+          - check: field_absent
+            path: "products[0]"
+            description: "A method with a different vendor does not match"
+
+      - id: match_or_semantics
+        title: "Match when any requested activation method is supported"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            pricing_currencies: ["USD"]
+            audience_activation_methods:
+              - pattern: "dataset_query"
+                vendor:
+                  domain: "wrong-data-cloud.example"
+              - pattern: "sync_audiences"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Discovery response matches the protocol schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "audience_activation_inline_dataset"
+            description: "The inline-capable product matches the second requested method"
+          - check: field_absent
+            path: "products[1]"
+            description: "The dataset-only and undeclared controls do not match inline sync"
+
+      - id: match_pattern_wildcard
+        title: "Treat omitted optional fields as wildcards"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            pricing_currencies: ["USD"]
+            audience_activation_methods:
+              - pattern: "dataset_query"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Discovery response matches the protocol schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "audience_activation_inline_dataset"
+            description: "Omitting vendor matches the first dataset-query product"
+          - check: field_value
+            path: "products[1].product_id"
+            value: "audience_activation_dataset_only"
+            description: "Omitting vendor matches the second dataset-query product"
+          - check: field_absent
+            path: "products[2]"
+            description: "Omitted method details do not make undeclared products compatible"
