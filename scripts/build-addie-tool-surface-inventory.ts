@@ -74,6 +74,7 @@ const BUDGET_FILE = path.join(REPO_ROOT, 'scripts/addie-tool-surface-budget.json
 const REGISTRATION_SOURCES = [
   'server/src/addie/claude-client.ts',
   'server/src/addie/request-tool-assembly.ts',
+  'server/src/addie/request-tool-replay-binding.ts',
   'server/src/addie/prompts.ts',
   'server/src/addie/tool-wire-shape.ts',
   'server/src/addie/prompt-assembly.ts',
