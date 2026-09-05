@@ -15,6 +15,7 @@ import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
 import type { AddieTool } from '../types.js';
 import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
 import {
+  FIXED_TRACE_DEVELOPMENT_REPLAY_INPUT_AUTHORITY_SHA256,
   FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
   type FixedTraceTuningSemanticAuthorityEntry,
 } from './fixed-trace-corpus-authority.js';
@@ -201,7 +202,9 @@ export function candidateVisibleMarkerOverlap(value: unknown, markers: readonly 
   });
 }
 
-function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; value: string | number | boolean | null }> {
+type InputScalar = string | number | boolean | null;
+
+function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; value: InputScalar }> {
   if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return [{ path, value }];
   }
@@ -212,7 +215,17 @@ function inputScalarLeaves(value: unknown, path = '$'): Array<{ path: string; va
   return [];
 }
 
-function candidateContainsInputValue(candidate: unknown, value: string): boolean {
+function scalarEquals(left: InputScalar, right: InputScalar): boolean {
+  return typeof left === typeof right && Object.is(left, right);
+}
+
+function candidateContainsInputValue(candidate: unknown, value: InputScalar): boolean {
+  // Candidate material is prose. A matching boolean or number elsewhere in a
+  // request (for example `isAdmin: true`) is not evidence that an unrelated
+  // tool argument was candidate-derived. Non-text scalars are therefore
+  // receipt-derived only when an exact typed receipt leaf proves them; all
+  // other scalar controls remain evaluator-owned and digest-bound.
+  if (typeof value !== 'string') return false;
   const expected = canonicalFixedTraceText(value);
   if (!expected.compact) return true;
   return rawTextFragments(candidate).some((fragment) => {
@@ -224,7 +237,7 @@ function candidateContainsInputValue(candidate: unknown, value: string): boolean
 function receiptContainsInputValue(
   trace: FixedTraceCorpusCase,
   callIndex: number,
-  value: string,
+  value: InputScalar,
 ): boolean {
   const call = trace.toolContract?.orderedCalls[callIndex];
   const dependency = call?.dependsOn;
@@ -232,7 +245,13 @@ function receiptContainsInputValue(
   const fixtureIndex = trace.toolContract!.orderedCalls.slice(0, dependency.callIndex + 1)
     .filter((entry) => entry.execution === 'executed').length - 1;
   const receipt = trace.toolFixtures[fixtureIndex]?.result;
-  return typeof receipt === 'string' && candidateContainsInputValue({ receipt }, value);
+  if (typeof receipt !== 'string') return false;
+  if (typeof value === 'string') return candidateContainsInputValue({ receipt }, value);
+  try {
+    return inputScalarLeaves(JSON.parse(receipt)).some((leaf) => scalarEquals(leaf.value, value));
+  } catch {
+    return false;
+  }
 }
 
 function evaluatorOnlyInputAuthorityValid(trace: FixedTraceCorpusCase): boolean {
@@ -241,13 +260,24 @@ function evaluatorOnlyInputAuthorityValid(trace: FixedTraceCorpusCase): boolean 
   return Boolean(authority && fixedTraceTuningSemanticSha256(trace) === authority.semanticSha256);
 }
 
+function developmentReplayInputAuthorityValid(suite: ReadonlyArray<FixedTraceCorpusCase>): boolean {
+  const replayInputs = suite.filter((trace) => trace.phase === 'development').map((trace) => ({
+    id: trace.id,
+    orderedCalls: trace.toolContract?.orderedCalls.map((call) => ({ name: call.name, input: call.input })) ?? [],
+  }));
+  const hash = createHash('sha256').update(canonicalJson({
+    version: 'addie-fixed-traces-v32', phase: 'development', replayInputs,
+  }), 'utf8').digest('hex');
+  return hash === FIXED_TRACE_DEVELOPMENT_REPLAY_INPUT_AUTHORITY_SHA256;
+}
+
 /**
  * Every replay-input leaf has exactly one provenance class: candidate text,
  * a declared prior receipt, or an explicitly evaluator-only leaf. The walker
  * covers nested objects and arrays in every phase; a path declaration is only
  * an exception for a private leaf, never a bypass for the rest of an input.
- * Schema-shaped number/boolean/null leaves are evaluator structural controls
- * and cannot carry a hidden textual identity or grading instruction.
+ * Non-string scalars are compared by exact JSON type and value, never by
+ * string coercion, and require the same evaluator authority as private input.
  */
 export function validateFixedTraceCandidateInputProvenance(
   suite: ReadonlyArray<FixedTraceCorpusCase>,
@@ -258,34 +288,38 @@ export function validateFixedTraceCandidateInputProvenance(
   const snapshot = detached.snapshot as ReadonlyArray<FixedTraceCorpusCase>;
   try {
   const failures: string[] = [];
+  const developmentAuthorityValid = developmentReplayInputAuthorityValid(snapshot);
   for (const trace of snapshot) {
     const visible = candidateInput(trace);
+    const replayAuthorityValid = trace.phase === 'development'
+      ? developmentAuthorityValid
+      : evaluatorOnlyInputAuthorityValid(trace);
     for (const [callIndex, call] of (trace.toolContract?.orderedCalls ?? []).entries()) {
       const leaves = inputScalarLeaves(call.input);
       const leavesByPath = new Map(leaves.map((leaf) => [leaf.path, leaf]));
       const evaluatorOnlyPaths = new Set(call.evaluatorOnlyInputPaths ?? []);
-      const privateAuthorityValid = evaluatorOnlyPaths.size === 0 || evaluatorOnlyInputAuthorityValid(trace);
       for (const path of evaluatorOnlyPaths) {
         if (!leavesByPath.has(path)) {
           failures.push(`invalid_evaluator_only_input_path:${trace.id}:${callIndex}:${path}`);
         }
       }
       for (const leaf of leaves) {
-        if (typeof leaf.value !== 'string') continue;
         if (evaluatorOnlyPaths.has(leaf.path)) {
           if (candidateContainsInputValue(visible, leaf.value)) {
             failures.push(`evaluator_input_visible:${trace.id}:${callIndex}:${leaf.path}`);
           }
-          if (!privateAuthorityValid) {
+          if (!replayAuthorityValid) {
             failures.push(`evaluator_input_authority_mismatch:${trace.id}:${callIndex}:${leaf.path}`);
           }
           continue;
         }
-        if (!candidateContainsInputValue(visible, leaf.value)
-          && !receiptContainsInputValue(trace, callIndex, leaf.value)) {
+        if (candidateContainsInputValue(visible, leaf.value)
+          || receiptContainsInputValue(trace, callIndex, leaf.value)) continue;
+        if (!replayAuthorityValid) {
           failures.push(`unproven_contract_input:${trace.id}:${callIndex}:${leaf.path}`);
         }
       }
+      if (!replayAuthorityValid) failures.push(`replay_input_authority_mismatch:${trace.id}`);
     }
   }
   return failures;

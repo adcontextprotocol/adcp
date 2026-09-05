@@ -7,6 +7,14 @@
  */
 export const FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY_VERSION = 'reviewed-tuning-semantics-v1';
 
+/**
+ * Reviewer-recorded replay-input graph for development. Unlike candidate
+ * prose, every scalar dispatch argument (including limits and booleans) is
+ * evaluator data and must retain both its value and JSON type.
+ */
+export const FIXED_TRACE_DEVELOPMENT_REPLAY_INPUT_AUTHORITY_SHA256 =
+  'ad8d64bb3f2154f681388854631c825af480173d7b70c67ab51d8e9ee7075ba7';
+
 export interface FixedTraceTuningSemanticAuthority {
   /** SHA-256 of the complete replay semantics, not a corpus-provided hash. */
   readonly semanticSha256: string;

@@ -41,6 +41,7 @@ import {
   validateFixedTraceCorpusSemanticAuthority,
   validateFixedTraceCorpusToolContracts,
 } from './fixed-trace-corpus-contracts.js';
+import type { FixedTraceCanonicalText } from './fixed-trace-corpus-contracts.js';
 import { detachFixedTraceSnapshot } from './fixed-trace-corpus-snapshot.js';
 
 /** Version lock for the predeclared partitioned corpus. */
@@ -1997,7 +1998,22 @@ export const FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST = Object.freeze({
 // Ordinary product language such as "public", "catalog", or "access" is
 // legitimate candidate context.  Reject only evaluator vocabulary and explicit
 // outcome/policy coaching, including obfuscated forms after canonicalization.
-const CANDIDATE_VISIBLE_LEAKAGE = /\b(?:phase|evaluation|evaluator|grader|grading|rubric|grader marker|expected answer|expected refusal|expected (?:result|status|outcome)|desired output|failure mode|fixture(?: outcome| result)?|policy disposition|result status|terminal status|answer key|blue)\b/i;
+const CANDIDATE_VISIBLE_LEAKAGE_MARKERS = Object.freeze([
+  'phase', 'evaluation', 'evaluator', 'grader', 'grading', 'rubric', 'grader marker',
+  'expected answer', 'expected refusal', 'expected result', 'expected status',
+  'expected outcome', 'desired output', 'failure mode', 'fixture outcome',
+  'fixture result', 'policy disposition', 'result status', 'terminal status',
+  'answer key', 'blue',
+]);
+
+function containsCanonicalMarker(value: FixedTraceCanonicalText, marker: string): boolean {
+  const compact = canonicalFixedTraceText(marker).compact;
+  if (!compact) return false;
+  // The canonicalizer has already decoded bounded HTML/percent layers and
+  // folded reviewed confusables. Treat only non-alphanumerics as separators,
+  // so expected---answer and B.L.U.E match while blueprint does not.
+  return new RegExp(`(?:^|[^a-z0-9])${[...compact].join('[^a-z0-9]*')}(?=$|[^a-z0-9])`, 'u').test(value.text);
+}
 
 /** This only receives detached snapshots; keys are candidate/evaluator data too. */
 function rawTextFragments(value: unknown): string[] {
@@ -2083,7 +2099,8 @@ function identityLeakage(trace: FixedTraceCorpusCase): boolean {
 function candidateVisibleLeakage(value: unknown): boolean {
   return rawTextFragments(value).some((leaf) => {
     const canonical = canonicalFixedTraceText(leaf);
-    return canonical.malformedPercentEncoding || CANDIDATE_VISIBLE_LEAKAGE.test(canonical.text);
+    return canonical.malformedPercentEncoding
+      || CANDIDATE_VISIBLE_LEAKAGE_MARKERS.some((marker) => containsCanonicalMarker(canonical, marker));
   });
 }
 

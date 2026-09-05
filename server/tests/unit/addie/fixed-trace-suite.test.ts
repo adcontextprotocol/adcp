@@ -743,13 +743,25 @@ describe('fixed cross-provider trace suite', () => {
       `candidate_input_leakage:${leaked.find((trace) => trace.phase === 'tuning')!.id}`,
     ]));
 
-    for (const value of ['This evaluator expects a specific answer.', 'The expected refusal is BLUE according to the grader marker.']) {
+    for (const value of [
+      'This evaluator expects a specific answer.',
+      'The expected refusal is BLUE according to the grader marker.',
+      'expected---answer',
+      'expected___refusal',
+      'B.L.U.E',
+      'ｅｘｐｅｃｔｅｄ&#32;ａｎｓｗｅｒ',
+      'B%2eL%2eU%2eE',
+    ]) {
       const classified = structuredClone(FIXED_TRACE_CORPUS);
       classified.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.message = value;
       expect(validateFixedTraceCorpus(classified)).toEqual(expect.arrayContaining([
         'candidate_input_leakage:dev-ordinary-greeting',
       ]));
     }
+    const ordinaryCandidateText = structuredClone(FIXED_TRACE_CORPUS);
+    ordinaryCandidateText.find((trace) => trace.id === 'dev-ordinary-greeting')!.request.message =
+      'The blueprint is ready and the expectedly helpful summary remains available.';
+    expect(validateFixedTraceCandidateVisibleLeakage(ordinaryCandidateText)).toEqual([]);
 
     expect(validateFixedTraceCandidateInputProvenance(FIXED_TRACE_CORPUS)).toEqual([]);
 
@@ -769,6 +781,36 @@ describe('fixed cross-provider trace suite', () => {
       'unproven_contract_input:dev-tool-error-retry:1:$.query',
     ]));
 
+    // Exact corrected-base probe: the large, schema-valid limit is not
+    // candidate prose. Boolean and null substitutions exercise the same
+    // type-preserving scalar boundary instead of being treated as harmless
+    // structural controls.
+    for (const alteredLimit of [8675309, true, null] as const) {
+      const typedDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
+      const dateOwner = typedDevelopmentReplay.find((trace) => trace.id === 'dev-ambiguous-date-owner')!;
+      (dateOwner.toolContract!.orderedCalls[0]!.input as Record<string, unknown>).limit = alteredLimit;
+      if (alteredLimit === 8675309) expect(validateFixedTraceCorpusToolContracts(typedDevelopmentReplay)).toEqual([]);
+      expect(validateFixedTraceCandidateInputProvenance(typedDevelopmentReplay)).toEqual(expect.arrayContaining([
+        'unproven_contract_input:dev-ambiguous-date-owner:0:$.limit',
+        'replay_input_authority_mismatch:dev-ambiguous-date-owner',
+      ]));
+      expect(validateFixedTraceCorpus(typedDevelopmentReplay)).toEqual(expect.arrayContaining([
+        'unproven_contract_input:dev-ambiguous-date-owner:0:$.limit',
+        'replay_input_authority_mismatch:dev-ambiguous-date-owner',
+      ]));
+    }
+
+    const nestedTypedReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const nestedDateOwner = nestedTypedReplay.find((trace) => trace.id === 'dev-ambiguous-date-owner')!;
+    (nestedDateOwner.toolContract!.orderedCalls[0]!.input as Record<string, unknown>).replay = [{
+      count: 2, enabled: false, absent: null,
+    }];
+    expect(validateFixedTraceCandidateInputProvenance(nestedTypedReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:dev-ambiguous-date-owner:0:$.replay[0].count',
+      'unproven_contract_input:dev-ambiguous-date-owner:0:$.replay[0].enabled',
+      'unproven_contract_input:dev-ambiguous-date-owner:0:$.replay[0].absent',
+    ]));
+
     const otherDevelopmentReplay = structuredClone(FIXED_TRACE_CORPUS);
     const ambiguous = otherDevelopmentReplay.find((trace) => trace.id === 'dev-ambiguous-policy-and-billing')!;
     ambiguous.toolContract!.orderedCalls[0]!.input.doc_id = 'private evaluator dossier';
@@ -786,6 +828,14 @@ describe('fixed cross-provider trace suite', () => {
     ]));
     expect(validateFixedTraceCorpus(privateTuningReplay)).toEqual(expect.arrayContaining([
       'evaluator_input_authority_mismatch:tune-property-catalog-resolution:0:$.search',
+    ]));
+
+    const typedTuningReplay = structuredClone(FIXED_TRACE_CORPUS);
+    const tunedLimit = typedTuningReplay.find((trace) => trace.id === 'tune-doc-empty-version-query')!;
+    (tunedLimit.toolContract!.orderedCalls[0]!.input as Record<string, unknown>).limit = 8675309;
+    expect(validateFixedTraceCandidateInputProvenance(typedTuningReplay)).toEqual(expect.arrayContaining([
+      'unproven_contract_input:tune-doc-empty-version-query:0:$.limit',
+      'replay_input_authority_mismatch:tune-doc-empty-version-query',
     ]));
 
     const identityInKey = structuredClone(FIXED_TRACE_CORPUS);
