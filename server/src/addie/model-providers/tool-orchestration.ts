@@ -45,6 +45,8 @@ export type AddieExecutionMode = 'production' | 'evaluation' | 'replay' | 'shado
 
 export interface ToolExecutionPolicyRequest {
   toolName: string;
+  /** Opaque provider call ID; policy may bind confirmations/idempotency to it. */
+  toolCallId: string;
   input: Readonly<Record<string, unknown>>;
   tool?: Readonly<AddieTool>;
   executionMode: AddieExecutionMode;
@@ -664,6 +666,7 @@ export function createAddieToolExecutor(
       try {
         const decision = await options.policy({
           toolName: call.name,
+          toolCallId: call.id,
           input: call.input,
           tool: registered.definition,
           executionMode: options.executionMode,

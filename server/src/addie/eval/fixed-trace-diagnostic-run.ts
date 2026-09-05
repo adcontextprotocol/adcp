@@ -470,7 +470,8 @@ function sameArtifactRunMetadata(left: FixedTraceRunMetadata, right: FixedTraceR
     && left.architectureArm.diagnosticOnly === right.architectureArm.diagnosticOnly
     && JSON.stringify(left.hybridPolicy) === JSON.stringify(right.hybridPolicy)
     && left.executionEnvelope.source === right.executionEnvelope.source
-    && left.executionEnvelope.deployable === right.executionEnvelope.deployable;
+    && left.executionEnvelope.deployable === right.executionEnvelope.deployable
+    && JSON.stringify(left.requestThreadFacts) === JSON.stringify(right.requestThreadFacts);
 }
 
 /**
@@ -583,6 +584,7 @@ export async function runFixedTraceDiagnosticArtifact(
     hybridPolicy: commonMetadata.hybridPolicy,
     toolUniverse: fixedTraceToolUniverseProvenance(commonMetadata.architectureArm.id),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(commonMetadata.architectureArm.id),
+    requestThreadFacts: commonMetadata.requestThreadFacts,
     requestedProviders: plans.map((plan) => plan.name),
     requestedArchitectureArm: commonMetadata.architectureArm.id,
     repetition: commonMetadata.repetition,

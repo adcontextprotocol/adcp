@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
+import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import {
   fixedTraceArchitectureArm,
   validateFixedTraceHybridPolicy,
+  fixedTraceDirectRequestThreadFacts,
+  fixedTraceRequestThreadFactsProvenance,
 } from './fixed-trace-architecture.js';
 import {
   fixedTraceEstimatedCostUsd,
@@ -24,6 +27,7 @@ import type {
   FixedTraceDirectArmAdmission,
   FixedTraceExecutionEnvelopeProvenance,
   FixedTraceHybridPolicy,
+  FixedTraceRequestThreadFactsProvenance,
   FixedTraceToolDefinitionProvenance,
   FixedTraceToolUniverseProvenance,
 } from './fixed-trace-architecture.js';
@@ -281,6 +285,8 @@ export interface FixedTraceRunMetadata {
   toolUniverse: FixedTraceToolUniverseProvenance;
   /** Provenance for confirmation, idempotency, and mutation safety policy. */
   executionEnvelope: FixedTraceExecutionEnvelopeProvenance;
+  /** Per-trace direct request/thread fact digests and provenance. */
+  requestThreadFacts: FixedTraceRequestThreadFactsProvenance;
   /** Present only for a direct arm; records why it was or was not executable. */
   directArmAdmission: FixedTraceDirectArmAdmission | null;
   /** Trace-local fault-injection controls, never part of the candidate cohort hash. */
@@ -1323,6 +1329,7 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
   | 'hybridPolicy'
   | 'toolUniverse'
   | 'executionEnvelope'
+  | 'requestThreadFacts'
   | 'routerControl'
   | 'generationControl'
   | 'providerDegradationInjectionEnabled'
@@ -1332,6 +1339,9 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     intentNarrowing: metadata.toolUniverse.intentNarrowing,
     bounded: metadata.toolUniverse.bounded,
     deployable: metadata.toolUniverse.deployable,
+    toolNamesSha256: metadata.toolUniverse.toolNamesSha256 ?? null,
+    toolSchemaSha256: metadata.toolUniverse.toolSchemaSha256 ?? null,
+    definitionHandlerSha256: metadata.toolUniverse.definitionHandlerSha256 ?? null,
   };
   return {
     traceSuiteSha256: metadata.traceSuiteSha256,
@@ -1345,7 +1355,13 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     hybridPolicy: metadata.hybridPolicy,
     toolUniverse: cohortToolUniverse,
     executionEnvelope: metadata.executionEnvelope,
-    routerControl: metadata.routerControl,
+    requestThreadFacts: metadata.requestThreadFacts,
+    // Direct and fixture-oracle arms never route. The hybrid retains the
+    // incumbent router as its fallback, so its router controls remain part of
+    // the candidate fingerprint.
+    routerControl: ['direct_generation', 'oracle_route_diagnostic'].includes(metadata.architectureArm.id)
+      ? { status: 'not_run' }
+      : metadata.routerControl,
     generationControl: metadata.generationControl,
     providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
   };
@@ -1573,7 +1589,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   if (!metadata.promptConfigVersion.trim()) failures.push('prompt_config_version_missing');
   if (!Number.isSafeInteger(metadata.repetition) || metadata.repetition < 1) failures.push('repetition_invalid');
   if (metadata.stageControlVersion !== FIXED_TRACE_STAGE_CONTROL_VERSION) failures.push('stage_control_version_mismatch');
-  if (!['fixture_local', 'authorized_definition_handler_intersection'].includes(metadata.toolDefinitionProvenance)) {
+  if (!['fixture_local', 'evaluator_owned_production_definitions_simulated_receipts'].includes(metadata.toolDefinitionProvenance)) {
     failures.push('tool_definition_provenance_invalid');
   }
   if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');
@@ -1614,9 +1630,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
       failures.push('direct_arm_admission_missing');
     } else if (
       metadata.directArmAdmission.admitted
-      || !metadata.directArmAdmission.reasons.includes('authorized_tool_intersection_not_captured')
-      || !metadata.directArmAdmission.reasons.includes('authorized_tool_universe_unbounded')
-      || !metadata.directArmAdmission.reasons.includes('request_thread_execution_envelope_not_captured')
+      || !metadata.directArmAdmission.reasons.includes('production_binding_contract_not_captured')
     ) {
       failures.push('direct_arm_admission_invalid');
     }
@@ -1624,7 +1638,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('direct_arm_admission_unexpected');
   }
   const toolUniverse = metadata.toolUniverse;
-  if (!toolUniverse || !['fixture_local_routed_replay', 'authorized_definition_handler_intersection_not_captured', 'fixture_oracle'].includes(toolUniverse.source)) {
+  if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_definitions_simulated_receipts', 'fixture_oracle'].includes(toolUniverse.source)) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
@@ -1638,7 +1652,10 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'direct_generation'
-    && (toolUniverse.source !== 'authorized_definition_handler_intersection_not_captured' || toolUniverse.intentNarrowing !== 'not_applied' || toolUniverse.bounded || toolUniverse.deployable)
+    && (toolUniverse.source !== 'evaluator_owned_production_definitions_simulated_receipts' || toolUniverse.intentNarrowing !== 'not_applied' || !toolUniverse.bounded || toolUniverse.deployable
+      || toolUniverse.toolNamesSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256
+      || toolUniverse.toolSchemaSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256
+      || toolUniverse.definitionHandlerSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256)
   ) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
@@ -1648,13 +1665,33 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('tool_universe_provenance_invalid');
   }
   const expectedToolNames = arm?.id === 'direct_generation'
-    ? null
+    ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames
     : [...trace.toolFixtures.map((fixture) => fixture.name)].sort();
   if (!sameToolUniverseNames(toolUniverse?.toolNames ?? null, expectedToolNames)) {
     failures.push('tool_universe_names_mismatch');
   }
+  const requestThreadFacts = metadata.requestThreadFacts;
+  if (!requestThreadFacts || !['not_applicable', 'fixture_case_request_not_authenticated'].includes(requestThreadFacts.source)) {
+    failures.push('request_thread_facts_provenance_invalid');
+  } else if (arm?.id === 'direct_generation') {
+    const expectedFacts = fixedTraceDirectRequestThreadFacts(trace);
+    const expectedHash = createHash('sha256').update(canonicalJson(expectedFacts), 'utf8').digest('hex');
+    if (
+      requestThreadFacts.source !== 'fixture_case_request_not_authenticated'
+      || requestThreadFacts.traceFacts.filter((fact) => fact.traceId === trace.id).length !== 1
+      || requestThreadFacts.traceFacts.find((fact) => fact.traceId === trace.id)?.requestThreadFactsSha256 !== expectedHash
+      || requestThreadFacts.traceFacts.find((fact) => fact.traceId === trace.id)?.provenance !== 'fixture_case_request_not_authenticated'
+      || metadata.directArmAdmission?.universe.requestThreadFactsSha256 !== expectedHash
+      || metadata.directArmAdmission.universe.surface !== expectedFacts.source
+      || metadata.directArmAdmission.universe.isAdmin !== expectedFacts.isAAOAdmin
+      || metadata.directArmAdmission.universe.isThread !== expectedFacts.isThread
+      || metadata.directArmAdmission.universe.channelPrivacy !== expectedFacts.channelPrivacy
+    ) failures.push('request_thread_facts_mismatch');
+  } else if (requestThreadFacts.source !== 'not_applicable' || requestThreadFacts.traceFacts.length !== 0) {
+    failures.push('request_thread_facts_provenance_invalid');
+  }
   const executionEnvelope = metadata.executionEnvelope;
-  if (!executionEnvelope || !['fixture_expectation', 'request_thread_facts_not_captured', 'fixture_oracle'].includes(executionEnvelope.source)) {
+  if (!executionEnvelope || !['fixture_expectation', 'evaluator_owned_shared_request_thread_envelope', 'fixture_oracle'].includes(executionEnvelope.source)) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
@@ -1668,7 +1705,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('execution_envelope_provenance_invalid');
   } else if (
     arm?.id === 'direct_generation'
-    && (executionEnvelope.source !== 'request_thread_facts_not_captured' || executionEnvelope.deployable)
+    && (executionEnvelope.source !== 'evaluator_owned_shared_request_thread_envelope' || executionEnvelope.deployable)
   ) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
@@ -1925,6 +1962,7 @@ export interface FixedTraceSummary {
     architectureConfigSha256: string;
     toolUniverse: FixedTraceToolUniverseProvenance;
     executionEnvelope: FixedTraceExecutionEnvelopeProvenance;
+    requestThreadFacts: FixedTraceRequestThreadFactsProvenance;
     repetition: number;
   };
   expected: number;
@@ -1999,8 +2037,12 @@ export function assertFixedTraceRunContract(
       || candidate.toolUniverse.intentNarrowing !== runContract.toolUniverse.intentNarrowing
       || candidate.toolUniverse.bounded !== runContract.toolUniverse.bounded
       || candidate.toolUniverse.deployable !== runContract.toolUniverse.deployable
+      || candidate.toolUniverse.toolNamesSha256 !== runContract.toolUniverse.toolNamesSha256
+      || candidate.toolUniverse.toolSchemaSha256 !== runContract.toolUniverse.toolSchemaSha256
+      || candidate.toolUniverse.definitionHandlerSha256 !== runContract.toolUniverse.definitionHandlerSha256
       || candidate.executionEnvelope.source !== runContract.executionEnvelope.source
       || candidate.executionEnvelope.deployable !== runContract.executionEnvelope.deployable
+      || canonicalJson(candidate.requestThreadFacts) !== canonicalJson(runContract.requestThreadFacts)
       || canonicalJson(candidate.routerControl) !== canonicalJson(runContract.routerControl)
       || canonicalJson(candidate.generationControl) !== canonicalJson(runContract.generationControl)
     ) throw new Error('Mixed fixed trace run metadata');
@@ -2032,6 +2074,13 @@ export function summarizeFixedTraceRun(
     grades.push(gradeFixedTrace(trace, observation));
   }
   const runContract = assertFixedTraceRunContract(observations);
+  const expectedRequestThreadFacts = fixedTraceRequestThreadFactsProvenance(
+    suite,
+    runContract.architectureArm.id,
+  );
+  if (canonicalJson(runContract.requestThreadFacts) !== canonicalJson(expectedRequestThreadFacts)) {
+    throw new Error('Fixed trace request/thread facts do not match grading suite');
+  }
   const ratio = (count: number, denominator = grades.length) => denominator === 0 ? 0 : count / denominator;
   const answerGrades = grades.filter((grade) => grade.answerApplicable);
   const mutationGrades = grades.filter((grade) => grade.mutationSafetyApplicable);
@@ -2108,8 +2157,12 @@ export function summarizeFixedTraceRun(
           bounded: runContract.toolUniverse.bounded,
           deployable: runContract.toolUniverse.deployable,
           toolNames: cohortToolNames,
+          toolNamesSha256: runContract.toolUniverse.toolNamesSha256 ?? null,
+          toolSchemaSha256: runContract.toolUniverse.toolSchemaSha256 ?? null,
+          definitionHandlerSha256: runContract.toolUniverse.definitionHandlerSha256 ?? null,
         },
         executionEnvelope: runContract.executionEnvelope,
+        requestThreadFacts: runContract.requestThreadFacts,
         repetition: runContract.repetition,
       },
       observed: grades.length,

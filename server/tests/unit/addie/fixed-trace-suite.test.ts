@@ -29,6 +29,7 @@ import {
 import {
   fixedTraceArchitectureArm,
   fixedTraceExecutionEnvelopeProvenance,
+  fixedTraceRequestThreadFactsProvenance,
   fixedTraceToolUniverseProvenance,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
 
@@ -109,6 +110,7 @@ function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRun
     hybridPolicy: null,
     toolUniverse: fixedTraceToolUniverseProvenance(),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(),
+    requestThreadFacts: fixedTraceRequestThreadFactsProvenance([]),
     directArmAdmission: null,
     caseControl: null,
     routerControl: control(),
