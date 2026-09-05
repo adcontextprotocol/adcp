@@ -33,24 +33,37 @@ import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
   MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
+  validateFixedTraceToolLoopFixtures,
 } from './fixed-trace-tool-loop.js';
-import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
 import {
-  FIXED_TRACE_SUITE,
+  FixedTraceBudgetAdmissionError,
+  fixedTraceEstimatedCostUsd,
+  fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
+  fixedTraceResponsePricingPolicy,
+  fixedTraceResponseUsesPricingPolicy,
+} from './fixed-trace-budget.js';
+import {
+  admitFixedTraceDirectArm,
+  fixedTraceArchitectureArm,
+  fixedTraceExecutionEnvelopeProvenance,
+  fixedTraceToolUniverseProvenance,
+  type FixedTraceArchitectureArmId,
+  type FixedTraceToolDefinitionProvenance,
+} from './fixed-trace-architecture.js';
+import {
+  FIXED_TRACE_STAGE_CONTROL_VERSION,
+  fixedTraceArchitectureConfigSha256FromMetadata,
   FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
   type FixedTraceCase,
+  type FixedTraceCohortStageControl,
+  type FixedTraceModelResolutionPolicy,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
+  type FixedTracePricing,
   type FixedTraceRunMetadata,
   type FixedTraceTerminalStatus,
 } from './fixed-trace-suite.js';
-
-export interface FixedTracePricing {
-  inputUsdPerMillionTokens: number;
-  outputUsdPerMillionTokens: number;
-  source: string;
-}
 
 export interface FixedTraceProviderStageConfig {
   provider: ModelProvider;
@@ -59,6 +72,7 @@ export interface FixedTraceProviderStageConfig {
   maxOutputTokens: number;
   timeoutMs: number;
   maxIterations: number;
+  transportRetries: 0;
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control';
   temperature: 0 | null;
   pricing: FixedTracePricing;
@@ -70,16 +84,237 @@ export interface FixedTraceRunnerConfig {
   gitCommit: string;
   gitDirty: boolean;
   promptConfigVersion: string;
+  /**
+   * Immutable evaluator-owned corpus/split for this run. Its content hash is
+   * stamped on every observation and included in the architecture fingerprint.
+   */
+  readonly traceSuite: ReadonlyArray<FixedTraceCase>;
+  /** Pinned when the evaluator creates the run; checked before every dispatch. */
+  readonly traceSuiteSha256: string;
   toolDefinitions: ReadonlyArray<AddieTool>;
+  /** Fixture-local definitions are valid only for the existing routed replay. */
+  toolDefinitionProvenance?: FixedTraceToolDefinitionProvenance;
+  /** Defaults to the existing two-stage LLM-router architecture. */
+  architectureArm?: FixedTraceArchitectureArmId;
+  /** One-based repetition identifier; runs are never silently pooled. */
+  repetition?: number;
   router: FixedTraceProviderStageConfig;
   generation: FixedTraceProviderStageConfig;
   /** Deterministic provider-failure fixture; enabled by default. */
   injectProviderDegradation?: boolean;
 }
 
+/**
+ * A runner config represents one evaluator-owned run. Once it has been used,
+ * its validated split identity cannot be swapped between individual cases.
+ * This deliberately lives at the execution boundary rather than in serialized
+ * observations, whose metadata is untrusted on read.
+ */
+interface FixedTraceExecutionIdentity {
+  traceSuiteSha256: string;
+  toolSchemaSha256: string;
+  architectureConfigSha256: string;
+  runProvenanceSha256: string;
+}
+
+const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
+const preflightedFixtureRegistrations = new WeakMap<FixedTraceRunnerConfig, string>();
+
+/**
+ * An evaluator-owned execution contract changed after its request snapshot was
+ * made. This is neither a provider failure nor a scored terminal outcome.
+ */
+class FixedTraceExecutionIdentityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FixedTraceExecutionIdentityError';
+  }
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value)) deepFreeze(nested);
+  return Object.freeze(value);
+}
+
+function snapshotStageConfig(config: FixedTraceProviderStageConfig): FixedTraceProviderStageConfig {
+  return Object.freeze({ ...config, pricing: deepFreeze(structuredClone(config.pricing)) });
+}
+
+function snapshotExecutionConfig(config: FixedTraceRunnerConfig): FixedTraceRunnerConfig {
+  return Object.freeze({
+    ...config,
+    traceSuite: deepFreeze(structuredClone(config.traceSuite)),
+    toolDefinitions: deepFreeze(structuredClone(config.toolDefinitions)),
+    router: snapshotStageConfig(config.router),
+    generation: snapshotStageConfig(config.generation),
+  });
+}
+
+function assertTraceSuiteIdentity(config: FixedTraceRunnerConfig): void {
+  if (
+    !Array.isArray(config.traceSuite)
+    || config.traceSuite.length === 0
+    || config.traceSuite.some((trace) => typeof trace.id !== 'string' || trace.id.trim().length === 0)
+    || new Set(config.traceSuite.map((trace) => trace.id)).size !== config.traceSuite.length
+    || !/^[a-f0-9]{64}$/.test(config.traceSuiteSha256)
+    || config.traceSuiteSha256 !== fixedTraceSuiteSha256(config.traceSuite)
+  ) {
+    throw new Error('Fixed trace runner suite hash is missing, forged, empty, blank, duplicated, or no longer bound to its configured suite');
+  }
+}
+
+function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
+  // Routed/oracle replay registers only trace fixtures. A wider definition
+  // list would make the declared config differ from executable inputs. Direct
+  // remains intentionally exempt: its deployable request-derived universe has
+  // not yet been captured by this diagnostic foundation.
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  if (!Array.isArray(config.toolDefinitions)) {
+    throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
+  }
+  const fixtureNames = new Set(config.traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
+  const definitionNames = config.toolDefinitions.map((definition) => definition.name);
+  if (
+    definitionNames.length !== fixtureNames.size
+    || new Set(definitionNames).size !== definitionNames.length
+    || definitionNames.some((name) => !fixtureNames.has(name))
+  ) throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
+}
+
+function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
+  // Direct is admission-only: it must not derive a fake executable universe
+  // from fixture-local definitions. Routed and oracle replay use this exact
+  // registration primitive at generation time, so validate it before router
+  // dispatch as well.
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  for (const trace of config.traceSuite) {
+    validateFixedTraceToolLoopFixtures(trace, resolveTraceDefinitions(trace, config.toolDefinitions));
+  }
+}
+
+function fixturePreflightKey(identity: FixedTraceExecutionIdentity): string {
+  // This cache is keyed by the complete recomputed identity, never merely the
+  // mutable config object. Changed live inputs therefore still cause the
+  // dispatch identity check to abort, without recompiling every schema.
+  return sha256(identity);
+}
+
+function preflightFixtureRegistrations(
+  config: FixedTraceRunnerConfig,
+  identity: FixedTraceExecutionIdentity,
+): void {
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  const key = fixturePreflightKey(identity);
+  if (preflightedFixtureRegistrations.get(config) === key) return;
+  assertFixtureRegistrations(config);
+  preflightedFixtureRegistrations.set(config, key);
+}
+
+/**
+ * These values are evaluator-owned run provenance, not provider telemetry.
+ * Refuse malformed values before snapshotting or dispatch so an observation
+ * can never be created with a run contract that was invalid from the start.
+ */
+function validateRunProvenance(config: FixedTraceRunnerConfig): void {
+  if (typeof config.runId !== 'string' || config.runId.trim().length === 0) {
+    throw new Error('Fixed trace runner runId must be nonblank');
+  }
+  if (typeof config.sourceBundleSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(config.sourceBundleSha256)) {
+    throw new Error('Fixed trace runner sourceBundleSha256 must be a lowercase SHA-256');
+  }
+  if (typeof config.gitCommit !== 'string' || !/^[a-f0-9]{7,64}$/.test(config.gitCommit)) {
+    throw new Error('Fixed trace runner gitCommit must be a lowercase abbreviated SHA');
+  }
+  if (typeof config.gitDirty !== 'boolean') {
+    throw new Error('Fixed trace runner gitDirty must be boolean');
+  }
+  if (typeof config.promptConfigVersion !== 'string' || config.promptConfigVersion.trim().length === 0) {
+    throw new Error('Fixed trace runner promptConfigVersion must be nonblank');
+  }
+  if (config.repetition !== undefined && (!Number.isSafeInteger(config.repetition) || config.repetition < 1)) {
+    throw new Error('Fixed trace runner repetition must be a positive safe integer');
+  }
+  if (
+    config.toolDefinitionProvenance !== undefined
+    && !['fixture_local', 'authorized_definition_handler_intersection'].includes(config.toolDefinitionProvenance)
+  ) {
+    throw new Error('Fixed trace runner toolDefinitionProvenance is invalid');
+  }
+  if (config.injectProviderDegradation !== undefined && typeof config.injectProviderDegradation !== 'boolean') {
+    throw new Error('Fixed trace runner injectProviderDegradation must be boolean when supplied');
+  }
+}
+
+function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
+  return sha256({
+    runId: config.runId,
+    sourceBundleSha256: config.sourceBundleSha256,
+    gitCommit: config.gitCommit,
+    gitDirty: config.gitDirty,
+    addieCodeVersion: CODE_VERSION,
+    promptConfigVersion: config.promptConfigVersion,
+    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+    repetition: config.repetition ?? 1,
+  });
+}
+
+function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionIdentity {
+  validateRunProvenance(config);
+  assertTraceSuiteIdentity(config);
+  assertFixtureDefinitionUniverse(config);
+  const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
+  return {
+    traceSuiteSha256: config.traceSuiteSha256,
+    toolSchemaSha256,
+    architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+    runProvenanceSha256: runProvenanceSha256(config),
+  };
+}
+
+function assertExecutionIdentity(
+  config: FixedTraceRunnerConfig,
+  expected: FixedTraceExecutionIdentity,
+): void {
+  let actual: FixedTraceExecutionIdentity;
+  try {
+    actual = executionIdentity(config);
+  } catch {
+    throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity became invalid before provider dispatch');
+  }
+  if (
+    actual.traceSuiteSha256 !== expected.traceSuiteSha256
+    || actual.toolSchemaSha256 !== expected.toolSchemaSha256
+    || actual.architectureConfigSha256 !== expected.architectureConfigSha256
+    || actual.runProvenanceSha256 !== expected.runProvenanceSha256
+  ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed before provider dispatch');
+}
+
+/** A deterministic adapter preparation failure, never provider evidence. */
+class FixedTracePreparationError extends Error {
+  constructor(stage: 'router' | 'generation', cause: unknown) {
+    super(`Fixed trace ${stage} request preparation failed`, { cause });
+    this.name = 'FixedTracePreparationError';
+  }
+}
+
+function prepareFixedTraceRequest(
+  stage: 'router' | 'generation',
+  config: FixedTraceProviderStageConfig,
+  request: ModelRequest,
+): PreparedModelInvocation {
+  try {
+    return config.provider.prepare(request);
+  } catch (error) {
+    throw new FixedTracePreparationError(stage, error);
+  }
+}
+
 interface StageInvocationState {
   invocations: PreparedModelInvocation[];
   dispatched: boolean;
+  dispatchedCalls: number;
   latencyMs: number;
 }
 
@@ -126,6 +361,7 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
   ) {
     throw new Error(`${name} maxIterations must be between 1 and ${MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS}`);
   }
+  if (config.transportRetries !== 0) throw new Error(`${name} transportRetries must be zero`);
   if (
     config.samplingMode === 'temperature_zero' && config.temperature !== 0
     || config.samplingMode === 'provider_no_sampling_control' && config.temperature !== null
@@ -136,14 +372,45 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
     || !Number.isFinite(config.pricing.outputUsdPerMillionTokens)
     || config.pricing.outputUsdPerMillionTokens < 0
     || !config.pricing.source.trim()
+    || (config.pricing.cacheReadUsdPerMillionTokens !== null && (
+      !Number.isFinite(config.pricing.cacheReadUsdPerMillionTokens)
+      || config.pricing.cacheReadUsdPerMillionTokens < 0
+    ))
+    || (config.pricing.cacheWriteUsdPerMillionTokens !== null && (
+      !Number.isFinite(config.pricing.cacheWriteUsdPerMillionTokens)
+      || config.pricing.cacheWriteUsdPerMillionTokens < 0
+    ))
+    || !config.pricing.profileId.trim()
+    || !['additive', 'subset', 'unsupported'].includes(config.pricing.cacheReadAccounting)
+    || !['additive', 'subset', 'unsupported'].includes(config.pricing.cacheWriteAccounting)
+    || (config.pricing.cacheReadAccounting === 'unsupported' && config.pricing.cacheReadUsdPerMillionTokens !== null)
+    || (config.pricing.cacheWriteAccounting === 'unsupported' && config.pricing.cacheWriteUsdPerMillionTokens !== null)
+    || (config.pricing.cacheReadAccounting !== 'unsupported' && config.pricing.cacheReadUsdPerMillionTokens === null)
+    || (config.pricing.cacheWriteAccounting !== 'unsupported' && config.pricing.cacheWriteUsdPerMillionTokens === null)
   ) throw new Error(`${name} pricing configuration is invalid`);
 }
 
-function estimateCostUsd(usage: ModelUsage, pricing: FixedTracePricing): number {
-  return (
-    usage.inputTokens * pricing.inputUsdPerMillionTokens
-    + usage.outputTokens * pricing.outputUsdPerMillionTokens
-  ) / 1_000_000;
+export function fixedTraceModelResolutionPolicy(
+  provider: ModelProvider['id'],
+  model: string,
+): FixedTraceModelResolutionPolicy {
+  return fixedTraceBudgetModelResolutionPolicy(provider, model);
+}
+
+function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCohortStageControl {
+  return {
+    requestedProvider: config.provider.id,
+    requestedModel: config.model,
+    reasoningEffort: config.reasoningEffort,
+    configuredMaxOutputTokens: config.maxOutputTokens,
+    timeoutMs: config.timeoutMs,
+    maxIterations: config.maxIterations,
+    transportRetries: config.transportRetries,
+    samplingMode: config.samplingMode,
+    temperature: config.temperature,
+    modelResolutionPolicy: fixedTraceModelResolutionPolicy(config.provider.id, config.model),
+    pricing: { ...config.pricing },
+  };
 }
 
 function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'reasoning'> | Record<string, never> {
@@ -151,10 +418,25 @@ function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'rea
 }
 
 function modelResolution(
-  requestedModel: string,
+  config: FixedTraceProviderStageConfig,
   response: ModelResponse,
 ): 'exact' | 'provider_canonicalized' {
-  return response.model === requestedModel ? 'exact' : 'provider_canonicalized';
+  if (response.model === config.model) return 'exact';
+  // Preserve the provider-returned identity verbatim. Validation uses the
+  // fingerprinted policy to admit only the one reviewed Google revision form.
+  return 'provider_canonicalized';
+}
+
+/** The only non-literal returned model accepted by this diagnostic profile. */
+function returnedModelUsesRecordedPricing(
+  config: FixedTraceProviderStageConfig,
+  response: ModelResponse,
+): boolean {
+  return fixedTraceResponseUsesPricingPolicy(fixedTraceResponsePricingPolicy(
+    config.provider.id,
+    config.model,
+    config.pricing,
+  ), response);
 }
 
 function providerStageMetadata(
@@ -164,27 +446,37 @@ function providerStageMetadata(
   usage: ModelUsage,
   state: StageInvocationState,
 ): FixedTraceModelStageMetadata {
+  // Provider responses are outside evaluator ownership. Retaining their usage
+  // object would let a later provider turn mutate already-recorded cost and
+  // usage evidence after this case has completed.
+  const recordedUsage = deepFreeze(structuredClone(usage));
+  const resolvedPricing = returnedModelUsesRecordedPricing(config, response);
   return {
     source: 'provider',
     dispatched: state.dispatched,
+    dispatchedCalls: state.dispatchedCalls,
     requestedProvider: config.provider.id,
     requestedModel: config.model,
     returnedProvider: response.provider,
     returnedModel: response.model,
-    modelResolution: modelResolution(config.model, response),
+    modelResolution: modelResolution(config, response),
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
     reasoningEffort: config.reasoningEffort,
-    maxOutputTokens: config.maxOutputTokens,
+    effectiveMaxOutputTokens: config.maxOutputTokens,
     timeoutMs: config.timeoutMs,
     maxIterations: config.maxIterations,
-    transportRetries: 0,
+    transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
     usageKnown: true,
-    usage,
-    estimatedCostUsd: estimateCostUsd(usage, config.pricing),
-    pricingSource: config.pricing.source,
+    usage: recordedUsage,
+    // A same-provider but unapproved model ID has no trusted rate in this
+    // cohort. Keep usage for diagnostics, but never charge it at the
+    // requested profile's rates.
+    estimatedCostUsd: resolvedPricing ? fixedTraceEstimatedCostUsd(recordedUsage, config.pricing) : null,
+    pricingSource: resolvedPricing ? config.pricing.source : null,
+    pricingProfileId: resolvedPricing ? config.pricing.profileId : null,
     latencyMs: state.latencyMs,
   };
 }
@@ -195,9 +487,11 @@ function localStageMetadata(
   state: StageInvocationState,
   usage?: ModelUsage,
 ): FixedTraceModelStageMetadata {
+  const recordedUsage = usage === undefined ? undefined : deepFreeze(structuredClone(usage));
   return {
     source: 'local',
     dispatched: state.dispatched,
+    dispatchedCalls: state.dispatchedCalls,
     requestedProvider: config.provider.id,
     requestedModel: config.model,
     returnedProvider: null,
@@ -206,18 +500,19 @@ function localStageMetadata(
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
     reasoningEffort: config.reasoningEffort,
-    maxOutputTokens: config.maxOutputTokens,
+    effectiveMaxOutputTokens: config.maxOutputTokens,
     timeoutMs: config.timeoutMs,
     maxIterations: config.maxIterations,
-    transportRetries: 0,
+    transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
-    usageKnown: usage !== undefined,
-    usage: usage ?? null,
-    estimatedCostUsd: usage
-      ? estimateCostUsd(usage, config.pricing)
+    usageKnown: recordedUsage !== undefined,
+    usage: recordedUsage ?? null,
+    estimatedCostUsd: recordedUsage
+      ? fixedTraceEstimatedCostUsd(recordedUsage, config.pricing)
       : state.dispatched ? null : 0,
-    pricingSource: usage ? config.pricing.source : null,
+    pricingSource: recordedUsage ? config.pricing.source : null,
+    pricingProfileId: config.pricing.profileId,
     latencyMs: state.latencyMs,
   };
 }
@@ -226,15 +521,16 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
   return {
     source: 'not_run',
     dispatched: false,
+    dispatchedCalls: 0,
     requestedProvider: null,
     requestedModel: null,
     returnedProvider: null,
     returnedModel: null,
     modelResolution: null,
-    promptSha256: sha256({ traceId: trace.id, stage: 'not_run' }),
+    promptSha256: null,
     providerRequestSha256: null,
-    reasoningEffort: 'provider_default',
-    maxOutputTokens: null,
+    reasoningEffort: null,
+    effectiveMaxOutputTokens: null,
     timeoutMs: null,
     maxIterations: null,
     transportRetries: null,
@@ -244,6 +540,7 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     usage: null,
     estimatedCostUsd: 0,
     pricingSource: null,
+    pricingProfileId: null,
     latencyMs: 0,
   };
 }
@@ -281,8 +578,11 @@ function resolveTraceDefinitions(
   });
 }
 
-export function fixedTraceToolSchemaSha256(definitions: readonly AddieTool[]): string {
-  const fixtureNames = new Set(FIXED_TRACE_SUITE.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
+export function fixedTraceToolSchemaSha256(
+  traceSuite: readonly FixedTraceCase[],
+  definitions: readonly AddieTool[],
+): string {
+  const fixtureNames = new Set(traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
   const selected = definitions
     .filter((definition) => fixtureNames.has(definition.name))
     .map((definition) => ({
@@ -295,6 +595,38 @@ export function fixedTraceToolSchemaSha256(definitions: readonly AddieTool[]): s
     throw new Error('Fixed trace canonical tool definitions are incomplete or duplicated');
   }
   return sha256(selected);
+}
+
+/**
+ * Hash the immutable candidate cohort independently from trace-local fixture
+ * controls. Individual observations retain their exact control in metadata.
+ */
+export function fixedTraceArchitectureConfigSha256(
+  config: FixedTraceRunnerConfig,
+  suppliedToolSchemaSha256?: string,
+): string {
+  // This exported helper is a runner-config fingerprint, not a generic hash
+  // builder: never emit a plausible fingerprint for a forged suite binding.
+  assertTraceSuiteIdentity(config);
+  assertFixtureDefinitionUniverse(config);
+  const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
+  if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== toolSchemaSha256) {
+    throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
+  }
+  const arm = fixedTraceArchitectureArm(config.architectureArm);
+  return fixedTraceArchitectureConfigSha256FromMetadata({
+    traceSuiteSha256: config.traceSuiteSha256,
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+    promptConfigVersion: config.promptConfigVersion,
+    toolSchemaSha256,
+    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+    architectureArm: arm,
+    toolUniverse: fixedTraceToolUniverseProvenance(arm.id),
+    executionEnvelope: fixedTraceExecutionEnvelopeProvenance(arm.id),
+    routerControl: cohortStageControl(config.router),
+    generationControl: cohortStageControl(config.generation),
+    providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
+  });
 }
 
 export function buildFixedTraceGenerationRequest(
@@ -346,23 +678,120 @@ export function buildFixedTraceGenerationRequest(
 }
 
 function baseMetadata(
+  trace: FixedTraceCase,
   config: FixedTraceRunnerConfig,
   toolSchemaSha256: string,
   router: FixedTraceModelStageMetadata,
   generation: FixedTraceModelStageMetadata,
 ): FixedTraceRunMetadata {
+  const architectureArm = fixedTraceArchitectureArm(config.architectureArm);
   return {
     runId: config.runId,
     traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
-    traceSuiteSha256: fixedTraceSuiteSha256(),
+    traceSuiteSha256: config.traceSuiteSha256,
     sourceBundleSha256: config.sourceBundleSha256,
     gitCommit: config.gitCommit,
     gitDirty: config.gitDirty,
     addieCodeVersion: CODE_VERSION,
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
+    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+    architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+    providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
+    repetition: config.repetition ?? 1,
+    architectureArm,
+    toolUniverse: {
+      ...fixedTraceToolUniverseProvenance(architectureArm.id),
+      // Routed/oracle fixture surfaces are exact replay inputs. Direct has no
+      // captured deployable surface and must remain null rather than inferred.
+      toolNames: architectureArm.id === 'direct_generation'
+        ? null
+        : [...trace.toolFixtures.map((fixture) => fixture.name)].sort(),
+    },
+    executionEnvelope: fixedTraceExecutionEnvelopeProvenance(architectureArm.id),
+    directArmAdmission: null,
+    caseControl: trace.caseControl ?? null,
+    routerControl: cohortStageControl(config.router),
+    generationControl: cohortStageControl(config.generation),
     router,
     generation,
+  };
+}
+
+function generationConfigForTrace(
+  trace: FixedTraceCase,
+  config: FixedTraceRunnerConfig,
+): FixedTraceProviderStageConfig {
+  const control = trace.caseControl;
+  if (!control) return config.generation;
+  if (
+    trace.category !== 'truncation'
+    || control.kind !== 'bounded_generation_output'
+  ) {
+    throw new Error(`Fixed trace case control ${control.kind} is only valid for truncation traces`);
+  }
+  if (!Number.isSafeInteger(control.maxOutputTokens) || control.maxOutputTokens < 1) {
+    throw new Error('Fixed trace bounded_generation_output control must be a positive integer');
+  }
+  return { ...config.generation, maxOutputTokens: control.maxOutputTokens };
+}
+
+/**
+ * Validate the complete immutable execution contract without preparing or
+ * dispatching a provider request. Diagnostic artifacts use this to ensure
+ * every planned run can start before they acquire their exclusive ledger.
+ */
+export function preflightFixedTraceRunnerConfig(config: FixedTraceRunnerConfig): void {
+  const identity = executionIdentity(config);
+  preflightFixtureRegistrations(config, identity);
+  const executionConfig = snapshotExecutionConfig(config);
+  validateStageConfig('router', executionConfig.router);
+  for (const trace of executionConfig.traceSuite) {
+    validateStageConfig('generation', generationConfigForTrace(trace, executionConfig));
+  }
+}
+
+function directAdmissionMetadata(
+  config: FixedTraceRunnerConfig,
+  toolSchemaSha256: string,
+  trace: FixedTraceCase,
+): FixedTraceObservation {
+  const admission = admitFixedTraceDirectArm(
+    trace,
+    config.toolDefinitions,
+    config.toolDefinitionProvenance ?? 'fixture_local',
+  );
+  const notRun = notRunStageMetadata(trace);
+  return {
+    traceId: trace.id,
+    metadata: {
+      ...baseMetadata(trace, config, toolSchemaSha256, notRun, notRun),
+      toolUniverse: admission.universe,
+      directArmAdmission: admission,
+    },
+    terminalStage: 'admission',
+    terminalStatus: 'not_admitted_architecture',
+    boundaryReason: null,
+    localReplacementReason: null,
+    finishReason: null,
+    output: '',
+    flagged: true,
+    route: null,
+    tools: [],
+    rejectedToolCalls: [],
+  };
+}
+
+function oracleRoute(trace: FixedTraceCase): StrictRouterPlan {
+  if (trace.routing.action === 'ignore') return { action: 'ignore', reason: 'Fixed-trace oracle route.' };
+  if (trace.routing.action === 'react') return { action: 'react', emoji: 'eyes', reason: 'Fixed-trace oracle route.' };
+  return {
+    action: 'respond',
+    tool_sets: [...trace.routing.toolSets],
+    confidence: 'high',
+    requires_depth: false,
+    reason: 'Fixed-trace oracle route.',
   };
 }
 
@@ -382,6 +811,7 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
 async function executeRouter(
   trace: FixedTraceCase,
   config: FixedTraceProviderStageConfig,
+  assertBeforeDispatch: () => void,
 ): Promise<{
   request: ModelRequest;
   response: ModelResponse | null;
@@ -404,9 +834,14 @@ async function executeRouter(
   };
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
+  let dispatchedCalls = 0;
   let timedOut = false;
   const controller = new AbortController();
   const startedAt = Date.now();
+  // `prepare` is the provider boundary's deterministic validation and request
+  // translation step. Failures here are evaluator configuration failures;
+  // later transport failures remain provider evidence even without a hook.
+  prepareFixedTraceRequest('router', config, request);
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort(new Error('fixed_trace_router_timeout'));
@@ -415,11 +850,13 @@ async function executeRouter(
     const response = await collectModelResponse(config.provider.respond(request, {
       signal: controller.signal,
       beforeDispatch: (prepared) => {
+        assertBeforeDispatch();
         dispatched = true;
+        dispatchedCalls++;
         invocations.push(prepared);
       },
     }), config.provider.id);
-    const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const metadata = providerStageMetadata(request, config, response, response.usage, state);
     const output = extractRouterResponseText(response.content);
     const status = terminalStatusForFinishReason(response.finishReason, output);
@@ -437,8 +874,9 @@ async function executeRouter(
       return { request, response, plan: null, output, status: 'malformed', metadata };
     }
   } catch (error) {
+    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
-    const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const status = error instanceof FixedTraceBudgetAdmissionError
       ? 'not_dispatched_budget'
       : timedOut && dispatched
@@ -460,17 +898,57 @@ async function executeRouter(
 export async function runFixedTraceCase(
   trace: FixedTraceCase,
   config: FixedTraceRunnerConfig,
-  toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions),
+  suppliedToolSchemaSha256?: string,
 ): Promise<FixedTraceObservation> {
-  validateStageConfig('router', config.router);
-  validateStageConfig('generation', config.generation);
-  const routed = await executeRouter(trace, config.router);
-  const generationNotRun = notRunStageMetadata(trace);
+  const identity = executionIdentity(config);
+  preflightFixtureRegistrations(config, identity);
+  if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== identity.toolSchemaSha256) {
+    throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
+  }
+  const boundIdentity = boundTraceExecutionIdentities.get(config);
+  if (
+    boundIdentity
+    && (
+      boundIdentity.traceSuiteSha256 !== identity.traceSuiteSha256
+      || boundIdentity.toolSchemaSha256 !== identity.toolSchemaSha256
+      || boundIdentity.architectureConfigSha256 !== identity.architectureConfigSha256
+      || boundIdentity.runProvenanceSha256 !== identity.runProvenanceSha256
+    )
+  ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed after dispatch binding');
+  if (!boundIdentity) boundTraceExecutionIdentities.set(config, identity);
+  const configuredTrace = config.traceSuite.find((candidate) => candidate.id === trace.id);
+  if (!configuredTrace || sha256(configuredTrace) !== sha256(trace)) {
+    throw new Error(`Fixed trace is not bound to this runner suite: ${trace.id}`);
+  }
+  const executionConfig = snapshotExecutionConfig(config);
+  const executionTrace = deepFreeze(structuredClone(configuredTrace));
+  const toolSchemaSha256 = identity.toolSchemaSha256;
+  const assertBeforeDispatch = () => assertExecutionIdentity(config, identity);
+  validateStageConfig('router', executionConfig.router);
+  const generationConfig = generationConfigForTrace(executionTrace, executionConfig);
+  validateStageConfig('generation', generationConfig);
+  const architectureArm = fixedTraceArchitectureArm(executionConfig.architectureArm);
+  if (architectureArm.id === 'direct_generation') {
+    // Never fall back to trace-local definitions: a direct arm with an
+    // incomplete deployable fixture surface is not evidence.
+    return directAdmissionMetadata(executionConfig, toolSchemaSha256, executionTrace);
+  }
+  const routed = architectureArm.id === 'oracle_route_diagnostic'
+    ? {
+        request: null,
+        response: null,
+        plan: oracleRoute(executionTrace),
+        output: '',
+        status: null,
+        metadata: notRunStageMetadata(executionTrace),
+      }
+    : await executeRouter(executionTrace, executionConfig.router, assertBeforeDispatch);
+  const generationNotRun = notRunStageMetadata(executionTrace);
   if (!routed.plan || routed.status) {
     const status = routed.status ?? 'malformed';
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(config, toolSchemaSha256, routed.metadata, generationNotRun),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generationNotRun),
       terminalStage: 'router',
       terminalStatus: status,
       boundaryReason: null,
@@ -490,8 +968,8 @@ export async function runFixedTraceCase(
   };
   if (routed.plan.action !== 'respond') {
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(config, toolSchemaSha256, routed.metadata, generationNotRun),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generationNotRun),
       terminalStage: 'surface',
       terminalStatus: routed.plan.action === 'ignore' ? 'ignored' : 'reacted',
       boundaryReason: null,
@@ -505,35 +983,33 @@ export async function runFixedTraceCase(
     };
   }
 
-  const definitions = resolveTraceDefinitions(trace, config.toolDefinitions);
+  const definitions = resolveTraceDefinitions(executionTrace, executionConfig.toolDefinitions);
   const generationRequest = buildFixedTraceGenerationRequest(
-    trace,
+    executionTrace,
     routed.plan,
     definitions,
-    config.generation,
+    generationConfig,
   );
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
+  let dispatchedCalls = 0;
   const startedAt = Date.now();
 
-  if (trace.category === 'provider_degradation' && config.injectProviderDegradation !== false) {
-    try {
-      const prepared = config.generation.provider.prepare({
-        ...generationRequest,
-        tools: buildModelToolDefinitions(definitions),
-      });
-      invocations.push(prepared);
-    } catch {
-      // Missing prepared provenance intentionally makes the artifact ineligible.
-    }
-    const metadata = localStageMetadata(generationRequest, config.generation, {
+  if (executionTrace.category === 'provider_degradation' && executionConfig.injectProviderDegradation !== false) {
+    invocations.push(prepareFixedTraceRequest('generation', generationConfig, {
+      ...generationRequest,
+      tools: buildModelToolDefinitions(definitions),
+      providerTools: [],
+    }));
+    const metadata = localStageMetadata(generationRequest, generationConfig, {
       invocations,
       dispatched: false,
+      dispatchedCalls: 0,
       latencyMs: Date.now() - startedAt,
     });
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(config, toolSchemaSha256, routed.metadata, metadata),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, metadata),
       terminalStage: 'generation',
       terminalStatus: 'provider_error',
       boundaryReason: null,
@@ -552,34 +1028,40 @@ export async function runFixedTraceCase(
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort(new Error('fixed_trace_generation_timeout'));
-  }, config.generation.timeoutMs);
+  }, generationConfig.timeoutMs);
   try {
     const result = await executeFixedTraceToolLoop(
-      config.generation.provider,
+      generationConfig.provider,
       generationRequest,
-      trace,
+      executionTrace,
       definitions,
       {
         signal: controller.signal,
-        maxIterations: config.generation.maxIterations,
+        maxIterations: generationConfig.maxIterations,
+        beforePrepare: (request) => {
+          assertBeforeDispatch();
+          prepareFixedTraceRequest('generation', generationConfig, request);
+        },
         beforeDispatch: (prepared) => {
+          assertBeforeDispatch();
           dispatched = true;
+          dispatchedCalls++;
           invocations.push(prepared);
         },
       },
     );
-    const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const generation = providerStageMetadata(
       generationRequest,
-      config.generation,
+      generationConfig,
       result.response,
       result.usage,
       state,
     );
     const terminalStatus = terminalStatusForFinishReason(result.response.finishReason, result.text);
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(config, toolSchemaSha256, routed.metadata, generation),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
       terminalStatus,
       boundaryReason: null,
@@ -588,10 +1070,11 @@ export async function runFixedTraceCase(
       output: result.text,
       flagged: result.localReplacementReason !== null || terminalStatus !== 'complete',
       route,
-      tools: result.tools.map(({ sequence: _sequence, ...tool }) => tool),
+      tools: [...result.tools],
       rejectedToolCalls: [],
     };
   } catch (error) {
+    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
     const checkpoint = error instanceof FixedTraceToolLoopBoundaryError
       ? error.checkpoint
@@ -603,14 +1086,15 @@ export async function runFixedTraceCase(
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
         : 'provider_error';
-    const generation = localStageMetadata(generationRequest, config.generation, {
+    const generation = localStageMetadata(generationRequest, generationConfig, {
       invocations,
       dispatched,
+      dispatchedCalls,
       latencyMs: Date.now() - startedAt,
     }, checkpoint?.usage);
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(config, toolSchemaSha256, routed.metadata, generation),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
       terminalStatus,
       boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
@@ -619,7 +1103,7 @@ export async function runFixedTraceCase(
       output: fallbackOutput(terminalStatus),
       flagged: true,
       route,
-      tools: checkpoint?.tools.map(({ sequence: _sequence, ...tool }) => tool) ?? [],
+      tools: checkpoint ? [...checkpoint.tools] : [],
       rejectedToolCalls: checkpoint ? [...checkpoint.rejectedToolCalls] : [],
     };
   } finally {
@@ -630,10 +1114,18 @@ export async function runFixedTraceCase(
 export async function runFixedTraceSuite(
   config: FixedTraceRunnerConfig,
 ): Promise<FixedTraceObservation[]> {
-  const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions);
+  const identity = executionIdentity(config);
+  preflightFixtureRegistrations(config, identity);
+  // Iteration must never follow a caller-mutable suite array. Keep a frozen
+  // full plan and still bind the original evaluator-owned config before each
+  // case and after finalization, so a post-dispatch mutation aborts instead
+  // of silently omitting a tail of the suite.
+  const iterationPlan = deepFreeze(structuredClone(config.traceSuite));
   const observations: FixedTraceObservation[] = [];
-  for (const trace of FIXED_TRACE_SUITE) {
-    observations.push(await runFixedTraceCase(trace, config, toolSchemaSha256));
+  for (const trace of iterationPlan) {
+    assertExecutionIdentity(config, identity);
+    observations.push(await runFixedTraceCase(trace, config, identity.toolSchemaSha256));
   }
+  assertExecutionIdentity(config, identity);
   return observations;
 }

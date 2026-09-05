@@ -10,6 +10,7 @@ import {
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
@@ -39,9 +40,14 @@ const CAPABILITIES: ModelProviderCapabilities = {
 };
 
 const PRICING = {
-  inputUsdPerMillionTokens: 1,
-  outputUsdPerMillionTokens: 2,
-  source: 'synthetic judge pricing',
+  profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
+  inputUsdPerMillionTokens: 0.2,
+  outputUsdPerMillionTokens: 1.2,
+  cacheReadUsdPerMillionTokens: 0.02,
+  cacheWriteUsdPerMillionTokens: null,
+  cacheReadAccounting: 'subset' as const,
+  cacheWriteAccounting: 'unsupported' as const,
+  source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
 };
 
 class ScriptedJudgeProvider implements ModelProvider {
@@ -164,7 +170,7 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
 function config(provider: ModelProvider): FixedTraceJudgeConfig {
   return {
     provider,
-    model: `${provider.id}-judge-model`,
+    model: provider.id === 'openai' ? 'gpt-5.6-luna' : `${provider.id}-judge-model`,
     reasoningEffort: provider.id === 'google' ? 'low' : 'none',
     maxOutputTokens: 200,
     timeoutMs: 30_000,
@@ -221,7 +227,7 @@ describe('fixed-trace independent judge', () => {
     expect(result.metadata.promptSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.metadata.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.metadata.responseSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.metadata.estimatedCostUsd).toBeCloseTo(0.00014);
+    expect(result.metadata.estimatedCostUsd).toBeCloseTo(0.000044);
   });
 
   it('joins a valid verdict split across provider text blocks', async () => {
@@ -299,7 +305,12 @@ describe('fixed-trace independent judge', () => {
   it('attributes a budget rejection without dispatching the judge', async () => {
     const delegate = new ScriptedJudgeProvider('openai', '{"pass":true,"score":4,"reason":"correct"}');
     const budget = new FixedTraceBudget(0.000001);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(
+      delegate,
+      budget,
+      PRICING,
+      fixedTraceResponsePricingPolicy('openai', 'gpt-5.6-luna', PRICING),
+    );
     const result = await judgeFixedTraceObservation(trace, observation(trace.id), config(provider));
     expect(result).toMatchObject({
       status: 'not_dispatched_budget',

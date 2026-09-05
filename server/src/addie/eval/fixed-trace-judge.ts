@@ -12,6 +12,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import {
   FixedTraceBudgetAdmissionError,
+  fixedTraceEstimatedCostUsd,
   type FixedTraceBudgetPricing,
 } from './fixed-trace-budget.js';
 import type {
@@ -272,10 +273,7 @@ function responseText(response: ModelResponse): string | null {
 }
 
 function estimatedCost(usage: ModelUsage, pricing: FixedTraceBudgetPricing): number {
-  return (
-    usage.inputTokens * pricing.inputUsdPerMillionTokens
-    + usage.outputTokens * pricing.outputUsdPerMillionTokens
-  ) / 1_000_000;
+  return fixedTraceEstimatedCostUsd(usage, pricing);
 }
 
 function metadata(

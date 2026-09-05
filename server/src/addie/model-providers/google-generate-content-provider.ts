@@ -23,10 +23,13 @@ import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
+const GOOGLE_ROUTER_REVIEWED_REVISIONS = new Set([
+  'gemini-3.7-flash-20260801',
+]);
 
 /** Provider-returned dated revisions accepted for the frozen router model. */
 export function isGoogleRouterModelRevision(model: string): boolean {
-  return model === GOOGLE_ROUTER_MODEL || /^gemini-3\.7-flash-\d{8}$/.test(model);
+  return model === GOOGLE_ROUTER_MODEL || GOOGLE_ROUTER_REVIEWED_REVISIONS.has(model);
 }
 
 export interface GoogleGenerateContentTransport {

@@ -20,6 +20,7 @@ import {
   type ToolHandler,
 } from '../model-providers/tool-orchestration.js';
 import { enforceFailedLookupEvidenceBoundary } from '../failed-lookup-evidence.js';
+import { fixedTraceToolTranscriptSha256 } from './fixed-trace-suite.js';
 import type {
   FixedTraceBoundaryReason,
   FixedTraceCase,
@@ -68,6 +69,8 @@ export interface FixedTraceToolLoopResult {
 export interface FixedTraceToolLoopOptions {
   signal?: AbortSignal;
   maxIterations?: number;
+  /** Deterministic adapter request validation before every model turn. */
+  beforePrepare?: (request: ModelRequest) => void;
   beforeDispatch?: ModelRespondOptions['beforeDispatch'];
 }
 
@@ -130,6 +133,19 @@ function registerFixtures(
     throw new FixedTraceToolLoopBoundaryError('fixture_definition_mismatch');
   }
   return registered;
+}
+
+/**
+ * Validate the exact fixture/definition registration contract without making
+ * a model request. The runner invokes this before routing so deterministic
+ * schema and fixture errors cannot spend a router call; execution uses the
+ * same registration primitive again against its frozen request snapshot.
+ */
+export function validateFixedTraceToolLoopFixtures(
+  trace: FixedTraceCase,
+  definitions: readonly AddieTool[],
+): void {
+  void registerFixtures(trace, definitions);
 }
 
 function safeIterationLimit(trace: FixedTraceCase, requested?: number): number {
@@ -213,7 +229,7 @@ export async function executeFixedTraceToolLoop(
   while (modelLoop.hasRemaining) {
     const activeTurn = modelLoop.beginNext();
     const iteration = activeTurn.iteration;
-    const response = await activeTurn.invoke(provider, {
+    const modelRequest: ModelRequest = {
       ...requestWithoutToolChoice,
       messages,
       tools: buildModelToolDefinitions(
@@ -224,7 +240,9 @@ export async function executeFixedTraceToolLoop(
       // first turn. Requiring it again after the fixture result would create
       // a duplicate call and make replay diverge from the live loop.
       ...(iteration === 1 && initialToolChoice ? { toolChoice: initialToolChoice } : {}),
-    }, {
+    };
+    options.beforePrepare?.(modelRequest);
+    const response = await activeTurn.invoke(provider, modelRequest, {
       signal: options.signal,
       beforeDispatch: async (prepared) => {
         invocations.push(prepared);
@@ -289,8 +307,9 @@ export async function executeFixedTraceToolLoop(
         const entry = registered.get(event.call.name)!;
         const blocked = event.executed.execution.blocked_by_policy === true;
         completedExecutions.push(event.executed.execution);
-        executions.push(Object.freeze({
+        const receipt = {
           sequence: event.sequence,
+          callId: event.executed.result.toolCallId,
           name: event.call.name,
           description: entry.definition.description,
           input: deepFreeze(structuredClone(event.call.input)),
@@ -298,6 +317,10 @@ export async function executeFixedTraceToolLoop(
           policyDisposition: blocked ? 'blocked' : 'allowed',
           resultStatus: entry.fixture.resultStatus,
           simulated: true,
+        } as const;
+        executions.push(Object.freeze({
+          ...receipt,
+          transcriptSha256: fixedTraceToolTranscriptSha256(receipt, entry.fixture.result),
         }));
         results.push(event.executed.result);
       }

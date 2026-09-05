@@ -1,15 +1,29 @@
 import type {
   ModelProvider,
   ModelRequest,
+  ModelResponse,
   ModelRespondOptions,
   ModelUsage,
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../model-providers/model-provider.js';
+import {
+  GOOGLE_ROUTER_MODEL,
+  isGoogleRouterModelRevision,
+} from '../model-providers/google-generate-content-provider.js';
+import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+import type { FixedTraceModelResolutionPolicy } from './fixed-trace-suite.js';
 
 export interface FixedTraceBudgetPricing {
   inputUsdPerMillionTokens: number;
   outputUsdPerMillionTokens: number;
+  /** Null means this provider does not expose a separately billable cache read rate. */
+  cacheReadUsdPerMillionTokens?: number | null;
+  /** Null means this provider does not expose a separately billable cache write rate. */
+  cacheWriteUsdPerMillionTokens?: number | null;
+  /** Cache reads and writes have independently recorded provider semantics. */
+  cacheReadAccounting?: 'additive' | 'subset' | 'unsupported';
+  cacheWriteAccounting?: 'additive' | 'subset' | 'unsupported';
   source: string;
 }
 
@@ -42,12 +56,236 @@ export interface FixedTraceBudgetSnapshot {
   exposureUnknown: boolean;
 }
 
+/**
+ * An evaluator-owned profile records every value used to admit and settle a
+ * fixed-trace stage. Callers can select an entry, but cannot manufacture one
+ * by supplying a matching-looking policy object or a zero-rate tuple.
+ */
+interface FixedTraceApprovedPricing extends FixedTraceBudgetPricing {
+  readonly profileId: string;
+  readonly expectedProvider: ModelProvider['id'];
+  readonly expectedModel: string;
+  readonly modelResolutionPolicy: FixedTraceModelResolutionPolicy;
+}
+
+export function fixedTraceModelResolutionPolicy(
+  provider: ModelProvider['id'],
+  model: string,
+): FixedTraceModelResolutionPolicy {
+  return provider === 'google' && model === GOOGLE_ROUTER_MODEL
+    ? 'google_router_dated_revision_v1'
+    : 'exact_model_identity_v1';
+}
+
+const FIXED_TRACE_APPROVED_PRICING = Object.freeze(([
+  {
+    expectedProvider: 'anthropic', expectedModel: 'claude-haiku-4-5',
+    profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
+    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
+    cacheReadUsdPerMillionTokens: 0.1, cacheWriteUsdPerMillionTokens: 1.25,
+    cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
+    source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+    modelResolutionPolicy: 'exact_model_identity_v1',
+  },
+  {
+    expectedProvider: 'anthropic', expectedModel: 'claude-sonnet-5',
+    profileId: 'anthropic-standard-2026-08:claude-sonnet-5',
+    inputUsdPerMillionTokens: 3, outputUsdPerMillionTokens: 15,
+    cacheReadUsdPerMillionTokens: 0.3, cacheWriteUsdPerMillionTokens: 3.75,
+    cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
+    source: 'Repository Anthropic pricing table: Claude Sonnet 5 standard, refreshed August 2026.',
+    modelResolutionPolicy: 'exact_model_identity_v1',
+  },
+  {
+    expectedProvider: 'openai', expectedModel: 'gpt-5.6-luna',
+    profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
+    inputUsdPerMillionTokens: 0.2, outputUsdPerMillionTokens: 1.2,
+    cacheReadUsdPerMillionTokens: 0.02, cacheWriteUsdPerMillionTokens: null,
+    cacheReadAccounting: 'subset', cacheWriteAccounting: 'unsupported',
+    source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
+    modelResolutionPolicy: 'exact_model_identity_v1',
+  },
+  {
+    expectedProvider: 'google', expectedModel: GOOGLE_ROUTER_MODEL,
+    profileId: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
+    inputUsdPerMillionTokens: 0.75, outputUsdPerMillionTokens: 3.75,
+    cacheReadUsdPerMillionTokens: 0.075, cacheWriteUsdPerMillionTokens: 0.75,
+    cacheReadAccounting: 'subset', cacheWriteAccounting: 'additive',
+    source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
+    modelResolutionPolicy: 'google_router_dated_revision_v1',
+  },
+] satisfies readonly FixedTraceApprovedPricing[]).map((entry) => Object.freeze(entry)));
+
+/**
+ * The complete live approval surface. It is intentionally inspectable for
+ * audits, but policy objects remain module-branded and cannot be minted from
+ * these descriptive values.
+ */
+export function fixedTraceApprovedPricingProfiles(): readonly Readonly<{
+  expectedProvider: ModelProvider['id'];
+  expectedModel: string;
+  profileId: string;
+  source: string;
+}>[] {
+  return FIXED_TRACE_APPROVED_PRICING.map((entry) => Object.freeze({
+    expectedProvider: entry.expectedProvider,
+    expectedModel: entry.expectedModel,
+    profileId: entry.profileId,
+    source: entry.source,
+  }));
+}
+
+/** Opaque, module-branded policy produced only from the approved registry. */
+export interface FixedTraceResponsePricingPolicy {
+  readonly expectedProvider: ModelProvider['id'];
+  readonly expectedModel: string;
+  readonly pricingProfileId: string;
+  readonly modelResolutionPolicy: FixedTraceModelResolutionPolicy;
+}
+
+const approvedResponsePricingPolicies = new WeakMap<
+  FixedTraceResponsePricingPolicy,
+  FixedTraceApprovedPricing
+>();
+
+function sameApprovedPricing(
+  entry: FixedTraceApprovedPricing,
+  pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+): boolean {
+  return entry.profileId === pricing.profileId
+    && entry.inputUsdPerMillionTokens === pricing.inputUsdPerMillionTokens
+    && entry.outputUsdPerMillionTokens === pricing.outputUsdPerMillionTokens
+    && entry.cacheReadUsdPerMillionTokens === pricing.cacheReadUsdPerMillionTokens
+    && entry.cacheWriteUsdPerMillionTokens === pricing.cacheWriteUsdPerMillionTokens
+    && entry.cacheReadAccounting === pricing.cacheReadAccounting
+    && entry.cacheWriteAccounting === pricing.cacheWriteAccounting
+    && entry.source === pricing.source;
+}
+
+function approvedResponsePricing(
+  policy: FixedTraceResponsePricingPolicy,
+): FixedTraceApprovedPricing {
+  const approved = approvedResponsePricingPolicies.get(policy);
+  if (!approved) throw new Error('Fixed trace returned-model pricing policy is not evaluator approved');
+  return approved;
+}
+
+export function fixedTraceResponsePricingPolicy(
+  expectedProvider: ModelProvider['id'],
+  expectedModel: string,
+  pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+): FixedTraceResponsePricingPolicy {
+  const approved = FIXED_TRACE_APPROVED_PRICING.find((entry) => (
+    entry.expectedProvider === expectedProvider
+    && entry.expectedModel === expectedModel
+    && entry.modelResolutionPolicy === fixedTraceModelResolutionPolicy(expectedProvider, expectedModel)
+    && sameApprovedPricing(entry, pricing)
+  ));
+  if (!approved) throw new Error('Fixed trace pricing profile is not evaluator approved');
+  const policy = Object.freeze({
+    expectedProvider: approved.expectedProvider,
+    expectedModel: approved.expectedModel,
+    pricingProfileId: approved.profileId,
+    modelResolutionPolicy: approved.modelResolutionPolicy,
+  });
+  approvedResponsePricingPolicies.set(policy, approved);
+  return policy;
+}
+
+export function fixedTraceResponseUsesPricingPolicy(
+  policy: FixedTraceResponsePricingPolicy,
+  response: ModelResponse,
+): boolean {
+  const approved = approvedResponsePricing(policy);
+  if (response.provider !== policy.expectedProvider) return false;
+  if (response.model === policy.expectedModel) return true;
+  return policy.modelResolutionPolicy === 'google_router_dated_revision_v1'
+    && approved.profileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
+    && isGoogleRouterModelRevision(response.model);
+}
+
 interface Reservation {
   readonly usd: number;
   active: boolean;
 }
 
-function validatePricing(pricing: FixedTraceBudgetPricing): void {
+interface BudgetedProviderBinding {
+  readonly budget: FixedTraceBudget;
+  readonly pricing: FixedTraceBudgetPricing & { readonly profileId: string };
+  readonly responsePricingPolicy: FixedTraceResponsePricingPolicy;
+  readonly delegate: BudgetedDelegateIdentity;
+  lease: object | null;
+}
+
+interface BudgetedDelegateIdentity {
+  readonly delegate: ModelProvider;
+  readonly id: ModelProvider['id'];
+  readonly capabilities: ModelProvider['capabilities'];
+  readonly prepare: ModelProvider['prepare'];
+  readonly respond: ModelProvider['respond'];
+  readonly deriveProviderToolReceipt?: ModelProvider['deriveProviderToolReceipt'];
+}
+
+// This is deliberately not an instance field or a public predicate. The
+// diagnostic artifact accepts only the exact wrapper that owns this private
+// binding; a subclass must not be able to claim ledger ownership while
+// replacing the dispatch path.
+const budgetedProviderBindings = new WeakMap<object, BudgetedProviderBinding>();
+const exclusiveBudgetLeases = new WeakMap<FixedTraceBudget, object>();
+const exclusiveCloneIdentities = new WeakMap<object, BudgetedDelegateIdentity>();
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value)) deepFreeze(nested);
+  return Object.freeze(value);
+}
+
+function snapshotPricing<T extends FixedTraceBudgetPricing>(pricing: T): T {
+  return Object.freeze({ ...pricing }) as T;
+}
+
+function snapshotDelegateIdentity(delegate: ModelProvider): BudgetedDelegateIdentity {
+  // Read all mutable delegate surface once. Lease cloning reuses this sealed
+  // identity rather than re-reading a delegate getter after preflight.
+  const id = delegate.id;
+  const capabilities = deepFreeze(structuredClone(delegate.capabilities)) as ModelProvider['capabilities'];
+  const prepare = delegate.prepare;
+  const respond = delegate.respond;
+  const deriveProviderToolReceipt = delegate.deriveProviderToolReceipt;
+  if (typeof id !== 'string' || !id.trim() || typeof prepare !== 'function' || typeof respond !== 'function') {
+    throw new Error('Fixed trace budget delegate identity is invalid');
+  }
+  return Object.freeze({
+    delegate,
+    id,
+    capabilities,
+    prepare: prepare.bind(delegate),
+    respond: respond.bind(delegate),
+    deriveProviderToolReceipt: deriveProviderToolReceipt?.bind(delegate),
+  });
+}
+
+function samePricing(left: FixedTraceBudgetPricing, right: FixedTraceBudgetPricing): boolean {
+  return left.inputUsdPerMillionTokens === right.inputUsdPerMillionTokens
+    && left.outputUsdPerMillionTokens === right.outputUsdPerMillionTokens
+    && left.cacheReadUsdPerMillionTokens === right.cacheReadUsdPerMillionTokens
+    && left.cacheWriteUsdPerMillionTokens === right.cacheWriteUsdPerMillionTokens
+    && left.cacheReadAccounting === right.cacheReadAccounting
+    && left.cacheWriteAccounting === right.cacheWriteAccounting
+    && left.source === right.source;
+}
+
+function sameResponsePricingPolicy(
+  left: FixedTraceResponsePricingPolicy,
+  right: FixedTraceResponsePricingPolicy,
+): boolean {
+  return left.expectedProvider === right.expectedProvider
+    && left.expectedModel === right.expectedModel
+    && left.pricingProfileId === right.pricingProfileId
+    && left.modelResolutionPolicy === right.modelResolutionPolicy;
+}
+
+export function validateFixedTracePricing(pricing: FixedTraceBudgetPricing): void {
   if (
     !Number.isFinite(pricing.inputUsdPerMillionTokens)
     || pricing.inputUsdPerMillionTokens < 0
@@ -55,26 +293,63 @@ function validatePricing(pricing: FixedTraceBudgetPricing): void {
     || pricing.outputUsdPerMillionTokens < 0
     || !pricing.source.trim()
   ) throw new Error('Fixed trace budget pricing is invalid');
+  for (const rate of [pricing.cacheReadUsdPerMillionTokens, pricing.cacheWriteUsdPerMillionTokens]) {
+    if (rate !== undefined && rate !== null && (!Number.isFinite(rate) || rate < 0)) {
+      throw new Error('Fixed trace cache pricing is invalid');
+    }
+  }
 }
 
 function requestBytes(prepared: PreparedModelInvocation): number {
   return Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8');
 }
 
-function costUsd(
-  inputTokens: number,
-  outputTokens: number,
+/**
+ * Cache usage is provider-profiled: Anthropic reports additive cache buckets,
+ * while some providers report buckets contained in input. Unknown semantics
+ * fail closed instead of applying a provider-specific subtraction globally.
+ */
+export function fixedTraceEstimatedCostUsd(
+  usage: ModelUsage,
   pricing: FixedTraceBudgetPricing,
 ): number {
+  validateFixedTracePricing(pricing);
+  const { inputTokens, outputTokens } = usage;
   if (
     !Number.isSafeInteger(inputTokens)
     || inputTokens < 0
     || !Number.isSafeInteger(outputTokens)
     || outputTokens < 0
   ) throw new Error('Fixed trace budget usage is invalid');
+  const cacheReadTokens = usage.cacheReadTokens ?? 0;
+  const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+  if (
+    !Number.isSafeInteger(cacheReadTokens) || cacheReadTokens < 0
+    || !Number.isSafeInteger(cacheWriteTokens) || cacheWriteTokens < 0
+  ) throw new Error('Fixed trace cache usage is invalid');
+  const readAccounting = pricing.cacheReadAccounting ?? 'unsupported';
+  const writeAccounting = pricing.cacheWriteAccounting ?? 'unsupported';
+  if (cacheReadTokens > 0 && readAccounting === 'unsupported') throw new Error('Fixed trace cache read accounting is unavailable');
+  if (cacheWriteTokens > 0 && writeAccounting === 'unsupported') throw new Error('Fixed trace cache write accounting is unavailable');
+  if (readAccounting === 'subset' && cacheReadTokens > inputTokens) throw new Error('Fixed trace subset cache read usage is invalid');
+  // A subset read and additive write (Google's profile) is valid. Two subset
+  // buckets must jointly fit the provider's normalized input total.
+  if (readAccounting === 'subset' && writeAccounting === 'subset' && cacheReadTokens + cacheWriteTokens > inputTokens) {
+    throw new Error('Fixed trace subset cache usage is invalid');
+  }
+  if (cacheReadTokens > 0 && pricing.cacheReadUsdPerMillionTokens == null) {
+    throw new Error('Fixed trace cache read pricing is unavailable');
+  }
+  if (cacheWriteTokens > 0 && pricing.cacheWriteUsdPerMillionTokens == null) {
+    throw new Error('Fixed trace cache write pricing is unavailable');
+  }
   return (
-    inputTokens * pricing.inputUsdPerMillionTokens
+    (inputTokens
+      - (readAccounting === 'subset' ? cacheReadTokens : 0)
+      - (writeAccounting === 'subset' ? cacheWriteTokens : 0)) * pricing.inputUsdPerMillionTokens
     + outputTokens * pricing.outputUsdPerMillionTokens
+    + cacheReadTokens * (pricing.cacheReadUsdPerMillionTokens ?? 0)
+    + cacheWriteTokens * (pricing.cacheWriteUsdPerMillionTokens ?? 0)
   ) / 1_000_000;
 }
 
@@ -104,8 +379,13 @@ export class FixedTraceBudget {
     prepared: PreparedModelInvocation,
     maxOutputTokens: number,
     pricing: FixedTraceBudgetPricing,
+    lease?: object,
   ): Reservation {
-    validatePricing(pricing);
+    validateFixedTracePricing(pricing);
+    const exclusiveLease = exclusiveBudgetLeases.get(this);
+    if (exclusiveLease !== undefined && lease !== exclusiveLease) {
+      throw new Error('Fixed trace budget is reserved for an exclusive diagnostic run');
+    }
     if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) {
       throw new RangeError('Fixed trace output reserve must be a positive integer');
     }
@@ -117,7 +397,18 @@ export class FixedTraceBudget {
       this.budgetRejectedCalls++;
       throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
     }
-    const usd = costUsd(requestBytes(prepared), maxOutputTokens, pricing);
+    // Request bytes are a deliberately high token bound for the request. An
+    // additive cache bucket is separately billable, so reserve that same
+    // bound for each such bucket as well. Subset buckets are already covered
+    // by inputTokens. This keeps the pre-dispatch reserve conservative under
+    // the recorded, fingerprinted cache formula.
+    const inputTokens = requestBytes(prepared);
+    const usd = fixedTraceEstimatedCostUsd({
+      inputTokens,
+      outputTokens: maxOutputTokens,
+      cacheReadTokens: pricing.cacheReadAccounting === 'additive' ? inputTokens : 0,
+      cacheWriteTokens: pricing.cacheWriteAccounting === 'additive' ? inputTokens : 0,
+    }, pricing);
     if (this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
       this.admissionClosed = true;
       this.budgetRejectedCalls++;
@@ -137,7 +428,7 @@ export class FixedTraceBudget {
     usage: ModelUsage,
     pricing: FixedTraceBudgetPricing,
   ): void {
-    const actualUsd = costUsd(usage.inputTokens, usage.outputTokens, pricing);
+    const actualUsd = fixedTraceEstimatedCostUsd(usage, pricing);
     this.release(reservation);
     this.accountedSpendUsd += actualUsd;
     this.completedCalls++;
@@ -186,43 +477,83 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
   readonly capabilities: ModelProvider['capabilities'];
   readonly deriveProviderToolReceipt?: ModelProvider['deriveProviderToolReceipt'];
 
+  readonly #delegate: BudgetedDelegateIdentity;
+  readonly #budget: FixedTraceBudget;
+  readonly #pricing: FixedTraceBudgetPricing & { readonly profileId: string };
+  readonly #responsePricingPolicy: FixedTraceResponsePricingPolicy;
+
   constructor(
-    private readonly delegate: ModelProvider,
-    private readonly budget: FixedTraceBudget,
-    private readonly pricing: FixedTraceBudgetPricing,
+    delegate: ModelProvider,
+    budget: FixedTraceBudget,
+    pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+    responsePricingPolicy: FixedTraceResponsePricingPolicy,
+    cloneIdentityToken?: object,
   ) {
-    validatePricing(pricing);
-    this.id = delegate.id;
-    this.capabilities = delegate.capabilities;
-    if (delegate.deriveProviderToolReceipt) {
-      this.deriveProviderToolReceipt = delegate.deriveProviderToolReceipt.bind(delegate);
+    const approvedPricing = approvedResponsePricing(responsePricingPolicy);
+    if (!sameApprovedPricing(approvedPricing, pricing)) {
+      throw new Error('Fixed trace budget pricing does not match its evaluator-approved policy');
     }
+    const clonedIdentity = cloneIdentityToken === undefined
+      ? undefined
+      : exclusiveCloneIdentities.get(cloneIdentityToken);
+    if (cloneIdentityToken !== undefined && !clonedIdentity) {
+      throw new Error('Fixed trace budget clone identity is unavailable');
+    }
+    const delegateIdentity = clonedIdentity ?? snapshotDelegateIdentity(delegate);
+    if (delegateIdentity.id !== responsePricingPolicy.expectedProvider) {
+      throw new Error('Fixed trace budget delegate identity does not match its pricing policy');
+    }
+    this.#delegate = delegateIdentity;
+    this.#budget = budget;
+    this.#pricing = snapshotPricing(approvedPricing);
+    this.#responsePricingPolicy = responsePricingPolicy;
+    this.id = delegateIdentity.id;
+    this.capabilities = delegateIdentity.capabilities;
+    if (delegateIdentity.deriveProviderToolReceipt) {
+      this.deriveProviderToolReceipt = delegateIdentity.deriveProviderToolReceipt;
+    }
+    budgetedProviderBindings.set(this, {
+      budget,
+      pricing: this.#pricing,
+      responsePricingPolicy: this.#responsePricingPolicy,
+      delegate: delegateIdentity,
+      lease: null,
+    });
+    // A diagnostic run retains these exact wrapper objects by reference. Lock
+    // their own properties now, before untrusted provider code can resume.
+    Object.freeze(this);
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
-    return this.delegate.prepare(request);
+    this.assertRequestIdentity(request);
+    const prepared = this.#delegate.prepare(request);
+    this.assertPreparedIdentity(prepared);
+    return prepared;
   }
 
   async *respond(
     request: ModelRequest,
     options: ModelRespondOptions = {},
   ): AsyncIterable<NormalizedModelEvent> {
+    this.assertRequestIdentity(request);
+    const lease = budgetedProviderBindings.get(this)?.lease;
     let reservation: Reservation | null = null;
     let dispatchStarted = false;
     let settled = false;
     try {
-      for await (const event of this.delegate.respond(request, {
+      for await (const event of this.#delegate.respond(request, {
         ...options,
         beforeDispatch: async (prepared) => {
-          reservation = this.budget.reserve(prepared, request.maxOutputTokens, this.pricing);
+          this.assertPreparedIdentity(prepared);
+          reservation = this.#budget.reserve(prepared, request.maxOutputTokens, this.#pricing, lease ?? undefined);
           try {
             await options.beforeDispatch?.(prepared);
           } catch (error) {
-            this.budget.cancel(reservation);
+            this.#budget.cancel(reservation);
             reservation = null;
             throw error;
           }
-          this.budget.markDispatched(reservation);
+          this.#budget.markDispatched(reservation);
           dispatchStarted = true;
         },
       })) {
@@ -230,16 +561,177 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
           if (!reservation || !dispatchStarted) {
             throw new Error('Fixed trace provider completed without dispatch admission');
           }
-          this.budget.complete(reservation, event.response.usage, this.pricing);
+          // The delegate still owns `event.response` and may mutate it when
+          // the iterator resumes after this yield. One evaluator-owned frozen
+          // snapshot is therefore the sole terminal response used for
+          // approval, settlement, and the outward event.
+          const response = deepFreeze(structuredClone(event.response));
+          if (fixedTraceResponseUsesPricingPolicy(this.#responsePricingPolicy, response)) {
+            this.#budget.complete(reservation, response.usage, this.#pricing);
+          } else {
+            // Do not settle an unapproved returned identity at the requested
+            // model's rate. The response remains visible to the runner, which
+            // records unknown cost and fails its stage contract; the shared
+            // ledger closes before any subsequent provider call.
+            this.#budget.markExposureUnknown(reservation);
+          }
           settled = true;
+          yield { type: 'response_complete', response };
+          continue;
         }
         yield event;
       }
     } finally {
       if (reservation && !settled) {
-        if (dispatchStarted) this.budget.markExposureUnknown(reservation);
-        else this.budget.cancel(reservation);
+        if (dispatchStarted) this.#budget.markExposureUnknown(reservation);
+        else this.#budget.cancel(reservation);
       }
     }
   }
+
+  private assertRequestIdentity(request: ModelRequest): void {
+    if (request.model !== this.#responsePricingPolicy.expectedModel) {
+      throw new Error('Fixed trace budget request model does not match its pricing policy');
+    }
+  }
+
+  private assertPreparedIdentity(prepared: PreparedModelInvocation): void {
+    if (
+      prepared.provider !== this.id
+      || prepared.model !== this.#responsePricingPolicy.expectedModel
+    ) throw new Error('Fixed trace budget prepared invocation identity does not match its pricing policy');
+  }
+
+  static cloneForExclusiveDiagnosticRun(
+    source: BudgetedFixedTraceProvider,
+    lease: object,
+  ): BudgetedFixedTraceProvider {
+    const binding = budgetedProviderBindings.get(source);
+    if (!binding) throw new Error('Fixed trace budget wrapper binding is unavailable');
+    const cloneIdentityToken = Object.freeze({});
+    exclusiveCloneIdentities.set(cloneIdentityToken, binding.delegate);
+    let clone: BudgetedFixedTraceProvider;
+    try {
+      clone = new BudgetedFixedTraceProvider(
+        binding.delegate.delegate,
+        binding.budget,
+        binding.pricing,
+        binding.responsePricingPolicy,
+        cloneIdentityToken,
+      );
+    } finally {
+      exclusiveCloneIdentities.delete(cloneIdentityToken);
+    }
+    const cloneBinding = budgetedProviderBindings.get(clone);
+    if (!cloneBinding) throw new Error('Fixed trace budget wrapper binding is unavailable');
+    cloneBinding.lease = lease;
+    return clone;
+  }
+}
+
+const budgetedFixedTraceProviderPrepare = BudgetedFixedTraceProvider.prototype.prepare;
+const budgetedFixedTraceProviderRespond = BudgetedFixedTraceProvider.prototype.respond;
+Object.freeze(BudgetedFixedTraceProvider.prototype);
+Object.freeze(BudgetedFixedTraceProvider);
+
+/**
+ * Authenticate the non-overridable ledger wrapper used by diagnostics.
+ * `instanceof` and public binding predicates are intentionally insufficient:
+ * subclasses can replace `respond` and bypass settlement.
+ */
+export function isTrustedBudgetedFixedTraceProvider(
+  provider: ModelProvider,
+  budget: FixedTraceBudget,
+  pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+  responsePricingPolicy: FixedTraceResponsePricingPolicy,
+): boolean {
+  const binding = budgetedProviderBindings.get(provider);
+  if (
+    binding?.budget !== budget
+    || !samePricing(binding.pricing, pricing)
+    || !sameResponsePricingPolicy(binding.responsePricingPolicy, responsePricingPolicy)
+  ) return false;
+  if (Object.getPrototypeOf(provider) !== BudgetedFixedTraceProvider.prototype) return false;
+  if ((provider as unknown as { constructor: unknown }).constructor !== BudgetedFixedTraceProvider) return false;
+  return Object.isFrozen(provider)
+    && provider.prepare === budgetedFixedTraceProviderPrepare
+    && provider.respond === budgetedFixedTraceProviderRespond;
+}
+
+export interface FixedTraceBudgetDiagnosticLease {
+  providerFor(provider: ModelProvider): BudgetedFixedTraceProvider;
+}
+
+/**
+ * Claim an unused ledger for one diagnostic artifact and replace caller-held
+ * wrappers with private, frozen per-run clones. This makes the ledger's call
+ * counts exclusive to the artifact even when a caller retains the original
+ * wrapper or budget reference.
+ */
+export function claimFixedTraceBudgetDiagnosticLease(
+  budget: FixedTraceBudget,
+  providers: readonly ModelProvider[],
+  verifyClones?: (lease: FixedTraceBudgetDiagnosticLease) => void,
+): FixedTraceBudgetDiagnosticLease {
+  const snapshot = budget.snapshot();
+  if (
+    snapshot.accountedSpendUsd !== 0
+    || snapshot.reservedUsd !== 0
+    || snapshot.dispatchedCalls !== 0
+    || snapshot.completedCalls !== 0
+    || snapshot.budgetRejectedCalls !== 0
+    || snapshot.admissionClosed
+    || snapshot.exposureUnknown
+    || exclusiveBudgetLeases.has(budget)
+  ) throw new Error('Fixed trace diagnostic budget must be pristine and exclusively claimed');
+
+  const lease = Object.freeze({});
+  const clones = new Map<ModelProvider, BudgetedFixedTraceProvider>();
+  for (const provider of providers) {
+    if (clones.has(provider)) continue;
+    const binding = budgetedProviderBindings.get(provider);
+    if (!binding || !isTrustedBudgetedFixedTraceProvider(
+      provider,
+      budget,
+      binding.pricing,
+      binding.responsePricingPolicy,
+    )) {
+      throw new Error('Fixed trace diagnostic provider is not an authenticated budget wrapper');
+    }
+    clones.set(provider, BudgetedFixedTraceProvider.cloneForExclusiveDiagnosticRun(
+      provider as BudgetedFixedTraceProvider,
+      lease,
+    ));
+  }
+  const diagnosticLease = Object.freeze({
+    providerFor(provider: ModelProvider): BudgetedFixedTraceProvider {
+      const clone = clones.get(provider);
+      if (!clone) throw new Error('Fixed trace diagnostic provider is missing from its exclusive lease');
+      return clone;
+    },
+  });
+  for (const [source, clone] of clones) {
+    const sourceBinding = budgetedProviderBindings.get(source);
+    const cloneBinding = budgetedProviderBindings.get(clone);
+    if (
+      !sourceBinding
+      || !cloneBinding
+      || cloneBinding.delegate !== sourceBinding.delegate
+      || !isTrustedBudgetedFixedTraceProvider(
+        clone,
+        budget,
+        sourceBinding.pricing,
+        sourceBinding.responsePricingPolicy,
+      )
+    ) throw new Error('Fixed trace diagnostic clone identity is not authenticated');
+  }
+  // Diagnostic plans can additionally validate their cloned stages here. The
+  // callback has no asynchronous boundary and runs before the lease becomes
+  // visible to the shared ledger.
+  verifyClones?.(diagnosticLease);
+  // Cloning has no asynchronous boundary. Complete it before publishing the
+  // lease so a malformed wrapper cannot leave an otherwise pristine ledger
+  // permanently claimed.
+  exclusiveBudgetLeases.set(budget, lease);
+  return diagnosticLease;
 }

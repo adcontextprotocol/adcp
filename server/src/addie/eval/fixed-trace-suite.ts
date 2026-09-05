@@ -1,13 +1,34 @@
 import { createHash } from 'node:crypto';
+import {
+  fixedTraceArchitectureArm,
+} from './fixed-trace-architecture.js';
+import {
+  fixedTraceEstimatedCostUsd,
+  type FixedTraceBudgetPricing,
+} from './fixed-trace-budget.js';
 import type {
   JsonObject,
   ModelFinishReason,
   ModelProviderId,
   ModelUsage,
 } from '../model-providers/model-provider.js';
+import {
+  GOOGLE_ROUTER_MODEL,
+  isGoogleRouterModelRevision,
+} from '../model-providers/google-generate-content-provider.js';
+import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
 import type { RouterAction } from '../router.js';
+import type {
+  FixedTraceArchitectureArmProvenance,
+  FixedTraceDirectArmAdmission,
+  FixedTraceExecutionEnvelopeProvenance,
+  FixedTraceToolDefinitionProvenance,
+  FixedTraceToolUniverseProvenance,
+} from './fixed-trace-architecture.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v31';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v32';
+/** Versioned separately from corpus content: this binds candidate controls. */
+export const FIXED_TRACE_STAGE_CONTROL_VERSION = 'fixed-trace-stage-controls-v2';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -32,7 +53,9 @@ export type FixedTraceTerminalStatus =
   | 'malformed'
   | 'provider_error'
   | 'timeout_after_dispatch'
-  | 'not_dispatched_budget';
+  | 'not_dispatched_budget'
+  /** A direct architecture candidate was rejected before provider dispatch. */
+  | 'not_admitted_architecture';
 
 export type FixedTraceToolEffect = 'read' | 'preview' | 'mutation';
 
@@ -50,6 +73,15 @@ export type FixedTraceBoundaryReason =
   | 'unknown_tool_call';
 
 export type FixedTraceLocalReplacementReason = 'failed_lookup_evidence';
+
+/**
+ * A deterministic, versioned trace-suite execution control. It is hashed with
+ * the suite and is never caller-supplied by the runner.
+ */
+export interface FixedTraceCaseControl {
+  kind: 'bounded_generation_output';
+  maxOutputTokens: number;
+}
 
 export interface FixedTraceToolFixture {
   name: string;
@@ -83,6 +115,8 @@ export interface FixedTraceCase {
     action: RouterAction;
     toolSets: ReadonlyArray<string>;
   };
+  /** Immutable per-trace execution perturbation, included in the suite hash. */
+  caseControl?: FixedTraceCaseControl;
   /** Provider-visible tool surface and inert synthetic responses for this trace. */
   toolFixtures: ReadonlyArray<FixedTraceToolFixture>;
   expectation: {
@@ -96,6 +130,12 @@ export interface FixedTraceCase {
     requireMutationInputProvenance?: boolean;
     /** Independent path/value constraints for target binding and sensitive read arguments. */
     toolInputConstraints?: ReadonlyArray<FixedTraceToolInputConstraint>;
+    /**
+     * Versioned semantic dependencies, rather than caller-supplied receipt
+     * counters. A receipt for `after` cannot use evidence from `before`
+     * unless this relation is satisfied by the completed transcript.
+     */
+    toolOrderConstraints?: ReadonlyArray<Readonly<{ before: string; after: string }>>;
     requireFlagged?: boolean;
     /** Every group must match at least one case-insensitive marker. */
     requiredTextAny?: ReadonlyArray<ReadonlyArray<string>>;
@@ -117,6 +157,12 @@ export interface FixedTraceCase {
 }
 
 export interface FixedTraceToolObservation {
+  /** Monotonic executor receipt order; retained for replay integrity. */
+  sequence: number;
+  /** Provider call identity retained from the executor transcript. */
+  callId: string;
+  /** Hash of the completed synthetic call/result transcript. */
+  transcriptSha256: string;
   name: string;
   /** Trusted definition shown to the candidate model for this execution. */
   description: string;
@@ -140,18 +186,58 @@ export interface FixedTraceRejectedToolCall {
   reason: FixedTraceBoundaryReason;
 }
 
+export interface FixedTracePricing extends FixedTraceBudgetPricing {
+  /** Immutable name of the reviewed numeric pricing profile used by this run. */
+  profileId: string;
+  /** Null explicitly records that separately billed cache reads are unsupported. */
+  cacheReadUsdPerMillionTokens: number | null;
+  /** Null explicitly records that separately billed cache writes are unsupported. */
+  cacheWriteUsdPerMillionTokens: number | null;
+  /** Cache accounting is part of the recorded pricing formula, not inferred at grading time. */
+  cacheReadAccounting: 'additive' | 'subset' | 'unsupported';
+  cacheWriteAccounting: 'additive' | 'subset' | 'unsupported';
+}
+
+/**
+ * A closed response-model policy. Most profiles require literal model identity;
+ * the Google router profile is the one reviewed exception for its dated model
+ * revisions. The policy is fingerprinted with the requested controls.
+ */
+export type FixedTraceModelResolutionPolicy =
+  | 'exact_model_identity_v1'
+  | 'google_router_dated_revision_v1';
+
+/** Immutable requested settings for one stage in every member of a cohort. */
+export interface FixedTraceCohortStageControl {
+  requestedProvider: ModelProviderId;
+  requestedModel: string;
+  reasoningEffort: 'provider_default' | 'none' | 'low' | 'medium' | 'high';
+  configuredMaxOutputTokens: number;
+  timeoutMs: number;
+  maxIterations: number;
+  /** The fixed-trace runner has no transport retry loop. */
+  transportRetries: 0;
+  samplingMode: 'temperature_zero' | 'provider_no_sampling_control';
+  temperature: 0 | null;
+  modelResolutionPolicy: FixedTraceModelResolutionPolicy;
+  pricing: FixedTracePricing;
+}
+
 export interface FixedTraceModelStageMetadata {
   source: 'provider' | 'local' | 'not_run';
   dispatched: boolean;
+  /** Exact calls which crossed the stage's before-dispatch boundary. */
+  dispatchedCalls?: number;
   requestedProvider: ModelProviderId | null;
   requestedModel: string | null;
   returnedProvider: ModelProviderId | null;
   returnedModel: string | null;
   modelResolution: 'exact' | 'provider_canonicalized' | 'local' | null;
-  promptSha256: string;
+  promptSha256: string | null;
   providerRequestSha256: string | null;
-  reasoningEffort: 'provider_default' | 'none' | 'low' | 'medium' | 'high';
-  maxOutputTokens: number | null;
+  reasoningEffort: 'provider_default' | 'none' | 'low' | 'medium' | 'high' | null;
+  /** Actual per-call limit, distinct from the immutable cohort configured limit. */
+  effectiveMaxOutputTokens: number | null;
   timeoutMs: number | null;
   maxIterations: number | null;
   transportRetries: number | null;
@@ -161,6 +247,8 @@ export interface FixedTraceModelStageMetadata {
   usage: ModelUsage | null;
   estimatedCostUsd: number | null;
   pricingSource: string | null;
+  /** Must equal the hashed cohort pricing profile whenever stage controls are active. */
+  pricingProfileId: string | null;
   latencyMs: number;
 }
 
@@ -174,6 +262,26 @@ export interface FixedTraceRunMetadata {
   addieCodeVersion: string;
   promptConfigVersion: string;
   toolSchemaSha256: string;
+  toolDefinitionProvenance: FixedTraceToolDefinitionProvenance;
+  stageControlVersion: typeof FIXED_TRACE_STAGE_CONTROL_VERSION;
+  /** Hash of the immutable architecture/configuration cohort contract. */
+  architectureConfigSha256: string;
+  /** Candidate policy, not an outcome of the degradation trace. */
+  providerDegradationInjectionEnabled: boolean;
+  repetition: number;
+  /** Immutable architecture-arm cohort provenance. */
+  architectureArm: FixedTraceArchitectureArmProvenance;
+  /** How this arm obtained its visible tool universe. */
+  toolUniverse: FixedTraceToolUniverseProvenance;
+  /** Provenance for confirmation, idempotency, and mutation safety policy. */
+  executionEnvelope: FixedTraceExecutionEnvelopeProvenance;
+  /** Present only for a direct arm; records why it was or was not executable. */
+  directArmAdmission: FixedTraceDirectArmAdmission | null;
+  /** Trace-local fault-injection controls, never part of the candidate cohort hash. */
+  caseControl: FixedTraceCaseControl | null;
+  /** Cohort controls are recorded even for direct or not-run stage outcomes. */
+  routerControl: FixedTraceCohortStageControl;
+  generationControl: FixedTraceCohortStageControl;
   router: FixedTraceModelStageMetadata;
   generation: FixedTraceModelStageMetadata;
 }
@@ -182,7 +290,7 @@ export interface FixedTraceObservation {
   traceId: string;
   metadata: FixedTraceRunMetadata;
   /** Stage that made the terminal decision or surfaced the terminal failure. */
-  terminalStage: 'surface' | 'router' | 'generation';
+  terminalStage: 'admission' | 'surface' | 'router' | 'generation';
   terminalStatus: FixedTraceTerminalStatus;
   /** Closed reason for a fixed-trace tool-loop boundary rejection, otherwise null. */
   boundaryReason: FixedTraceBoundaryReason | null;
@@ -221,13 +329,29 @@ export function mutationInputProvenanceFailures(
   trace: FixedTraceCase,
   tools: ReadonlyArray<FixedTraceToolObservation>,
 ): string[] {
-  const sourceTexts = [
+  const requestTexts = [
     ...(trace.request.threadContext ?? []).map(({ text }) => text),
     trace.request.message,
   ];
   const failures: string[] = [];
-  for (const tool of tools) {
+  const orderedTools = [...tools].sort((left, right) => left.sequence - right.sequence);
+  const priorReceipts: FixedTraceToolObservation[] = [];
+  for (const tool of orderedTools) {
     if (tool.effect === 'mutation') {
+      const sourceTexts = [...requestTexts];
+      for (const prior of priorReceipts) {
+        const fixture = trace.toolFixtures.find((candidate) => candidate.name === prior.name);
+        const dependencyDeclaresEvidence = (trace.expectation.toolOrderConstraints ?? []).some((constraint) => (
+          constraint.before === prior.name && constraint.after === tool.name
+        ));
+        if (
+          fixture
+          && dependencyDeclaresEvidence
+          && typeof prior.callId === 'string'
+          && typeof prior.transcriptSha256 === 'string'
+          && prior.transcriptSha256 === fixedTraceToolTranscriptSha256(prior, fixture.result)
+        ) sourceTexts.push(fixture.result);
+      }
       const sourceText = sourceTexts.join('\n').toLocaleLowerCase();
       for (const input of scalarInputValues(tool.input)) {
         if (!sourceText.includes(input.value.toLocaleLowerCase())) {
@@ -235,8 +359,7 @@ export function mutationInputProvenanceFailures(
         }
       }
     }
-    const fixture = trace.toolFixtures.find((candidate) => candidate.name === tool.name);
-    if (fixture) sourceTexts.push(fixture.result);
+    priorReceipts.push(tool);
   }
   return failures;
 }
@@ -275,6 +398,18 @@ function structurallyEqualJson(left: unknown, right: unknown): boolean {
   return leftKeys.length === rightKeys.length
     && leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightObject, key)
       && structurallyEqualJson(leftObject[key], rightObject[key]));
+}
+
+function sameToolUniverseNames(
+  left: readonly string[] | null,
+  right: readonly string[] | null,
+): boolean {
+  return left === right || (
+    left !== null
+    && right !== null
+    && left.length === right.length
+    && left.every((name, index) => name === right[index])
+  );
 }
 
 /**
@@ -316,7 +451,8 @@ export interface FixedTraceGrade {
   deterministicPass: boolean;
   answerApplicable: boolean;
   answerPass: boolean;
-  routingPass: boolean;
+  /** Router correctness is meaningful only for the two-stage architecture. */
+  routingPass: boolean | null;
   toolSelectionPass: boolean;
   mutationSafetyApplicable: boolean;
   mutationSafetyPass: boolean;
@@ -854,6 +990,10 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       forbiddenTools: ['cancel_meeting', 'cancel_meeting_series', 'update_meeting', 'manage_committee_topics'],
       mutationAuthorization: 'confirmed',
       requireMutationInputProvenance: true,
+      toolOrderConstraints: [
+        { before: 'schedule_meeting', after: 'add_meeting_attendee' },
+        { before: 'schedule_meeting', after: 'rsvp_to_meeting' },
+      ],
       requiredTextAny: [['scheduled'], ['attendee'], ['RSVP'], ['topic subscriptions']],
       maxWords: 180,
     },
@@ -890,6 +1030,11 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       forbiddenTools: ['request_working_group_invitation', 'withdraw_council_interest', 'bookmark_resource', 'list_committee_documents'],
       mutationAuthorization: 'confirmed',
       requireMutationInputProvenance: true,
+      toolOrderConstraints: [
+        { before: 'list_working_groups', after: 'get_working_group' },
+        { before: 'get_working_group', after: 'join_working_group' },
+        { before: 'get_working_group', after: 'create_working_group_post' },
+      ],
       toolInputConstraints: [
         { toolName: 'get_working_group', required: [{ path: '$.slug', value: 'measurement' }], forbidden: [{ path: '$.include_members', value: true }] },
         { toolName: 'join_working_group', expectedInput: exactToolInput({ slug: 'measurement' }) },
@@ -1004,6 +1149,7 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     privacy: 'synthetic',
     request: { source: 'dm', message: 'Give a detailed overview of the protocol.', nowUtc: NOW, isAdmin: false },
     routing: { action: 'respond', toolSets: ['knowledge'] },
+    caseControl: { kind: 'bounded_generation_output', maxOutputTokens: 32 },
     toolFixtures: [],
     expectation: {
       terminalStatuses: ['truncated'], requiredTools: [], allowedTools: [], forbiddenTools: [], mutationAuthorization: 'none', requireFlagged: true,
@@ -1076,23 +1222,143 @@ function canonicalJson(value: unknown): string {
   throw new Error('Fixed trace contains a non-JSON value');
 }
 
+export function fixedTraceToolTranscriptSha256(
+  tool: Pick<FixedTraceToolObservation, 'sequence' | 'callId' | 'name' | 'input' | 'effect' | 'policyDisposition' | 'resultStatus' | 'simulated'>,
+  fixtureResult: string,
+): string {
+  return createHash('sha256').update(canonicalJson({
+    sequence: tool.sequence,
+    callId: tool.callId,
+    name: tool.name,
+    input: tool.input,
+    effect: tool.effect,
+    policyDisposition: tool.policyDisposition,
+    resultStatus: tool.resultStatus,
+    simulated: tool.simulated,
+    fixtureResult,
+  }), 'utf8').digest('hex');
+}
+
 export function fixedTraceSuiteSha256(
   suite: ReadonlyArray<FixedTraceCase> = FIXED_TRACE_SUITE,
 ): string {
+  // Deterministic public integrity fingerprint only; it does not authenticate
+  // caller-owned JSON. This foundation's serialized summaries remain
+  // diagnostic-only pending the evaluator-owned coordinator and raw ledger.
   return createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
+}
+
+/**
+ * Deterministic internal-consistency payload for a candidate cohort. It
+ * deliberately excludes returned provider identity, usage, latency, and
+ * trace-local effective limits, which are per-call outcomes. It is not an
+ * authenticity proof for serialized artifacts.
+ */
+export function fixedTraceArchitectureConfigPayload(metadata: Pick<
+  FixedTraceRunMetadata,
+  | 'traceSuiteSha256'
+  | 'stageControlVersion'
+  | 'promptConfigVersion'
+  | 'toolSchemaSha256'
+  | 'toolDefinitionProvenance'
+  | 'architectureArm'
+  | 'toolUniverse'
+  | 'executionEnvelope'
+  | 'routerControl'
+  | 'generationControl'
+  | 'providerDegradationInjectionEnabled'
+>): Record<string, unknown> {
+  const cohortToolUniverse = {
+    source: metadata.toolUniverse.source,
+    intentNarrowing: metadata.toolUniverse.intentNarrowing,
+    bounded: metadata.toolUniverse.bounded,
+    deployable: metadata.toolUniverse.deployable,
+  };
+  return {
+    traceSuiteSha256: metadata.traceSuiteSha256,
+    stageControlVersion: metadata.stageControlVersion,
+    promptConfigVersion: metadata.promptConfigVersion,
+    toolDefinition: {
+      provenance: metadata.toolDefinitionProvenance,
+      schemaSha256: metadata.toolSchemaSha256,
+    },
+    architectureArm: metadata.architectureArm,
+    toolUniverse: cohortToolUniverse,
+    executionEnvelope: metadata.executionEnvelope,
+    routerControl: metadata.routerControl,
+    generationControl: metadata.generationControl,
+    providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
+  };
+}
+
+export function fixedTraceArchitectureConfigSha256FromMetadata(
+  metadata: Parameters<typeof fixedTraceArchitectureConfigPayload>[0],
+): string {
+  return createHash('sha256').update(canonicalJson(fixedTraceArchitectureConfigPayload(metadata)), 'utf8').digest('hex');
 }
 
 function isSha256(value: string): boolean {
   return /^[a-f0-9]{64}$/.test(value);
 }
 
-function stageMetadataFailures(
+function cohortControlFailures(
   stageName: 'router' | 'generation',
-  stage: FixedTraceModelStageMetadata,
+  control: FixedTraceCohortStageControl,
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
-  if (!isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
+  if (!control.requestedModel.trim()) fail('configured_model_missing');
+  if (!Number.isSafeInteger(control.configuredMaxOutputTokens) || control.configuredMaxOutputTokens < 1) fail('configured_max_output_tokens_invalid');
+  if (!Number.isSafeInteger(control.timeoutMs) || control.timeoutMs < 1) fail('configured_timeout_invalid');
+  if (!Number.isSafeInteger(control.maxIterations) || control.maxIterations < 1) fail('configured_max_iterations_invalid');
+  if (control.transportRetries !== 0) fail('configured_transport_retries_invalid');
+  if (control.samplingMode === 'temperature_zero' && control.temperature !== 0) fail('configured_sampling_invalid');
+  if (control.samplingMode === 'provider_no_sampling_control' && control.temperature !== null) fail('configured_sampling_invalid');
+  const pricing = control.pricing;
+  if (
+    typeof pricing.profileId !== 'string' || !pricing.profileId.trim()
+    ||
+    !Number.isFinite(pricing.inputUsdPerMillionTokens) || pricing.inputUsdPerMillionTokens < 0
+    || !Number.isFinite(pricing.outputUsdPerMillionTokens) || pricing.outputUsdPerMillionTokens < 0
+    || !pricing.source.trim()
+    || (pricing.cacheReadUsdPerMillionTokens !== null && (!Number.isFinite(pricing.cacheReadUsdPerMillionTokens) || pricing.cacheReadUsdPerMillionTokens < 0))
+    || (pricing.cacheWriteUsdPerMillionTokens !== null && (!Number.isFinite(pricing.cacheWriteUsdPerMillionTokens) || pricing.cacheWriteUsdPerMillionTokens < 0))
+    || !['additive', 'subset', 'unsupported'].includes(pricing.cacheReadAccounting)
+    || !['additive', 'subset', 'unsupported'].includes(pricing.cacheWriteAccounting)
+    || (pricing.cacheReadAccounting === 'unsupported' && pricing.cacheReadUsdPerMillionTokens !== null)
+    || (pricing.cacheWriteAccounting === 'unsupported' && pricing.cacheWriteUsdPerMillionTokens !== null)
+    || (pricing.cacheReadAccounting !== 'unsupported' && pricing.cacheReadUsdPerMillionTokens === null)
+    || (pricing.cacheWriteAccounting !== 'unsupported' && pricing.cacheWriteUsdPerMillionTokens === null)
+  ) fail('configured_pricing_invalid');
+  if (!['exact_model_identity_v1', 'google_router_dated_revision_v1'].includes(control.modelResolutionPolicy)) {
+    fail('configured_model_resolution_policy_invalid');
+  }
+  if (
+    control.modelResolutionPolicy === 'google_router_dated_revision_v1'
+    && (
+      control.requestedProvider !== 'google'
+      || control.requestedModel !== GOOGLE_ROUTER_MODEL
+      || control.pricing.profileId !== GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
+    )
+  ) fail('configured_model_resolution_policy_invalid');
+  return failures;
+}
+
+function costMatches(expected: number, recorded: number): boolean {
+  // Artifacts are JSON numbers; one picodollar permits benign IEEE-754 round
+  // trips while rejecting a changed usage/rate/cost tuple deterministically.
+  return Math.abs(expected - recorded) <= 1e-12;
+}
+
+function stageMetadataFailures(
+  stageName: 'router' | 'generation',
+  stage: FixedTraceModelStageMetadata,
+  control: FixedTraceCohortStageControl,
+  expectedEffectiveMaxOutputTokens: number | null,
+): string[] {
+  const failures: string[] = [];
+  const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
+  if (stage.promptSha256 !== null && !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
   if ((stage.requestedProvider === null) !== (stage.requestedModel === null)) fail('requested_identity_incomplete');
   if (stage.requestedModel !== null && !stage.requestedModel.trim()) fail('requested_model_missing');
   if ((stage.returnedProvider === null) !== (stage.returnedModel === null)) fail('returned_identity_incomplete');
@@ -1123,52 +1389,91 @@ function stageMetadataFailures(
   if (stage.estimatedCostUsd !== null && (!Number.isFinite(stage.estimatedCostUsd) || stage.estimatedCostUsd < 0)) {
     fail('estimated_cost_invalid');
   }
+  if (stage.dispatched && stage.usageKnown && stage.usage && stage.estimatedCostUsd !== null) {
+    try {
+      if (!costMatches(fixedTraceEstimatedCostUsd(stage.usage, control.pricing), stage.estimatedCostUsd)) {
+        fail('estimated_cost_mismatch');
+      }
+    } catch {
+      fail('cost_accounting_invalid');
+    }
+    if (stage.pricingSource !== control.pricing.source) fail('pricing_source_mismatch');
+  }
 
   if (stage.source === 'provider') {
     if (!stage.dispatched) fail('dispatch_state_invalid');
     if (stage.requestedProvider === null || stage.returnedProvider === null) fail('provider_identity_missing');
+    if (stage.promptSha256 === null || !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
     if (stage.providerRequestSha256 === null || !isSha256(stage.providerRequestSha256)) fail('provider_request_hash_invalid');
-    if (!Number.isSafeInteger(stage.maxOutputTokens) || (stage.maxOutputTokens ?? 0) < 1) fail('max_output_tokens_invalid');
-    if (!Number.isSafeInteger(stage.timeoutMs) || (stage.timeoutMs ?? 0) < 1) fail('timeout_invalid');
-    if (!Number.isSafeInteger(stage.maxIterations) || (stage.maxIterations ?? 0) < 1) fail('max_iterations_invalid');
-    if (stage.transportRetries !== 0) fail('transport_retries_invalid');
+    if (stage.requestedProvider !== control.requestedProvider || stage.requestedModel !== control.requestedModel) fail('configured_identity_mismatch');
+    if (stage.reasoningEffort !== control.reasoningEffort) fail('configured_reasoning_mismatch');
+    if (stage.pricingProfileId !== control.pricing.profileId) fail('pricing_profile_mismatch');
+    if (stage.effectiveMaxOutputTokens !== expectedEffectiveMaxOutputTokens) fail('effective_max_output_tokens_mismatch');
+    if (stage.timeoutMs !== control.timeoutMs) fail('configured_timeout_mismatch');
+    if (stage.maxIterations !== control.maxIterations) fail('configured_max_iterations_mismatch');
+    if (stage.transportRetries !== control.transportRetries) fail('configured_transport_retries_mismatch');
+    if (stage.samplingMode !== control.samplingMode || stage.temperature !== control.temperature) fail('configured_sampling_mismatch');
     if (stage.samplingMode === null) fail('sampling_config_missing');
     if (!stage.usageKnown) fail('usage_missing');
     if (stage.modelResolution === null || stage.modelResolution === 'local') fail('model_resolution_invalid');
     if (stage.returnedProvider !== stage.requestedProvider) fail('provider_identity_mismatch');
     if (stage.modelResolution === 'exact' && stage.returnedModel !== stage.requestedModel) fail('exact_model_identity_mismatch');
+    if (stage.modelResolution === 'provider_canonicalized' && (
+      control.modelResolutionPolicy !== 'google_router_dated_revision_v1'
+      || stage.returnedProvider !== 'google'
+      || stage.requestedModel !== GOOGLE_ROUTER_MODEL
+      || stage.returnedModel === null
+      || !isGoogleRouterModelRevision(stage.returnedModel)
+      || stage.returnedModel === stage.requestedModel
+    )) fail('model_resolution_policy_mismatch');
+    if (stage.modelResolution === 'exact' && control.modelResolutionPolicy === 'exact_model_identity_v1' && stage.returnedModel !== control.requestedModel) {
+      fail('model_resolution_policy_mismatch');
+    }
   } else if (stage.source === 'local') {
     if (stage.returnedProvider !== null || stage.modelResolution !== 'local') fail('local_identity_invalid');
     if (stage.requestedProvider !== null) {
+      if (stage.promptSha256 === null || !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
       if (stage.providerRequestSha256 === null || !isSha256(stage.providerRequestSha256)) fail('provider_request_hash_invalid');
-      if (!Number.isSafeInteger(stage.maxOutputTokens) || (stage.maxOutputTokens ?? 0) < 1) fail('max_output_tokens_invalid');
-      if (!Number.isSafeInteger(stage.timeoutMs) || (stage.timeoutMs ?? 0) < 1) fail('timeout_invalid');
-      if (!Number.isSafeInteger(stage.maxIterations) || (stage.maxIterations ?? 0) < 1) fail('max_iterations_invalid');
-      if (stage.transportRetries !== 0) fail('transport_retries_invalid');
-      if (stage.samplingMode === null) fail('sampling_config_missing');
+      if (stage.requestedProvider !== control.requestedProvider || stage.requestedModel !== control.requestedModel) fail('configured_identity_mismatch');
+      if (stage.reasoningEffort !== control.reasoningEffort) fail('configured_reasoning_mismatch');
+      if (stage.pricingProfileId !== control.pricing.profileId) fail('pricing_profile_mismatch');
+      if (stage.effectiveMaxOutputTokens !== expectedEffectiveMaxOutputTokens) fail('effective_max_output_tokens_mismatch');
+      if (stage.timeoutMs !== control.timeoutMs) fail('configured_timeout_mismatch');
+      if (stage.maxIterations !== control.maxIterations) fail('configured_max_iterations_mismatch');
+      if (stage.transportRetries !== control.transportRetries) fail('configured_transport_retries_mismatch');
+      if (stage.samplingMode !== control.samplingMode || stage.temperature !== control.temperature) fail('configured_sampling_mismatch');
     } else if (
       stage.dispatched
+      || stage.promptSha256 !== null
       || stage.providerRequestSha256 !== null
-      || stage.maxOutputTokens !== null
+      || stage.reasoningEffort !== null
+      || stage.pricingProfileId !== null
+      || stage.effectiveMaxOutputTokens !== null
       || stage.timeoutMs !== null
       || stage.maxIterations !== null
       || stage.transportRetries !== null
       || stage.samplingMode !== null
+      || stage.latencyMs !== 0
     ) {
       fail('local_config_invalid');
     }
   } else {
     if (
       stage.requestedProvider !== null
+      || stage.requestedModel !== null
       || stage.returnedProvider !== null
+      || stage.returnedModel !== null
       || stage.modelResolution !== null
+      || stage.promptSha256 !== null
       || stage.providerRequestSha256 !== null
-      || stage.maxOutputTokens !== null
+      || stage.pricingProfileId !== null
+      || stage.effectiveMaxOutputTokens !== null
       || stage.timeoutMs !== null
       || stage.maxIterations !== null
       || stage.transportRetries !== null
       || stage.samplingMode !== null
       || stage.temperature !== null
+      || stage.reasoningEffort !== null
       || stage.dispatched
       || stage.usageKnown
       || stage.latencyMs !== 0
@@ -1177,13 +1482,28 @@ function stageMetadataFailures(
   return failures;
 }
 
-function metadataFailures(metadata: FixedTraceRunMetadata): string[] {
+function sameCaseControl(
+  left: FixedTraceCaseControl | null,
+  right: FixedTraceCaseControl | null,
+): boolean {
+  return left === right || (
+    left !== null
+    && right !== null
+    && left.kind === right.kind
+    && left.maxOutputTokens === right.maxOutputTokens
+  );
+}
+
+function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata): string[] {
   const failures: string[] = [];
   if (metadata.traceSuiteVersion !== FIXED_TRACE_SUITE_VERSION) failures.push('trace_suite_version_mismatch');
-  if (metadata.traceSuiteSha256 !== fixedTraceSuiteSha256()) failures.push('trace_suite_hash_mismatch');
+  // Per-case grading cannot know which evaluator-owned split was selected.
+  // Summarization recomputes and binds that exact split before grading.
+  if (!isSha256(metadata.traceSuiteSha256)) failures.push('trace_suite_hash_invalid');
   for (const [name, value] of Object.entries({
     source_bundle: metadata.sourceBundleSha256,
     tool_schema: metadata.toolSchemaSha256,
+    architecture_config: metadata.architectureConfigSha256,
   })) {
     if (!isSha256(value)) failures.push(`${name}_hash_invalid`);
   }
@@ -1191,8 +1511,101 @@ function metadataFailures(metadata: FixedTraceRunMetadata): string[] {
   if (!/^[a-f0-9]{7,64}$/.test(metadata.gitCommit)) failures.push('git_commit_invalid');
   if (!metadata.addieCodeVersion.trim()) failures.push('addie_code_version_missing');
   if (!metadata.promptConfigVersion.trim()) failures.push('prompt_config_version_missing');
-  failures.push(...stageMetadataFailures('router', metadata.router));
-  failures.push(...stageMetadataFailures('generation', metadata.generation));
+  if (!Number.isSafeInteger(metadata.repetition) || metadata.repetition < 1) failures.push('repetition_invalid');
+  if (metadata.stageControlVersion !== FIXED_TRACE_STAGE_CONTROL_VERSION) failures.push('stage_control_version_mismatch');
+  if (!['fixture_local', 'authorized_definition_handler_intersection'].includes(metadata.toolDefinitionProvenance)) {
+    failures.push('tool_definition_provenance_invalid');
+  }
+  if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');
+  failures.push(...cohortControlFailures('router', metadata.routerControl));
+  failures.push(...cohortControlFailures('generation', metadata.generationControl));
+  try {
+    if (metadata.architectureConfigSha256 !== fixedTraceArchitectureConfigSha256FromMetadata(metadata)) {
+      failures.push('architecture_config_hash_mismatch');
+    }
+  } catch {
+    failures.push('architecture_config_hash_unverifiable');
+  }
+  const caseControl = trace.caseControl ?? null;
+  if (!sameCaseControl(caseControl, metadata.caseControl)) failures.push('case_control_mismatch');
+  const arm = metadata.architectureArm;
+  if (!arm || !['two_stage_llm_router', 'direct_generation', 'oracle_route_diagnostic'].includes(arm.id)) {
+    failures.push('architecture_arm_invalid');
+  } else {
+    const canonicalArm = fixedTraceArchitectureArm(arm.id);
+    if (
+      arm.routeSource !== canonicalArm.routeSource
+      || arm.rolloutEligible !== canonicalArm.rolloutEligible
+    ) failures.push('architecture_arm_invalid');
+  }
+  if (arm?.id === 'direct_generation') {
+    if (metadata.directArmAdmission === null) {
+      failures.push('direct_arm_admission_missing');
+    } else if (
+      metadata.directArmAdmission.admitted
+      || !metadata.directArmAdmission.reasons.includes('authorized_tool_intersection_not_captured')
+      || !metadata.directArmAdmission.reasons.includes('authorized_tool_universe_unbounded')
+      || !metadata.directArmAdmission.reasons.includes('request_thread_execution_envelope_not_captured')
+    ) {
+      failures.push('direct_arm_admission_invalid');
+    }
+  } else if (metadata.directArmAdmission !== null) {
+    failures.push('direct_arm_admission_unexpected');
+  }
+  const toolUniverse = metadata.toolUniverse;
+  if (!toolUniverse || !['fixture_local_routed_replay', 'authorized_definition_handler_intersection_not_captured', 'fixture_oracle'].includes(toolUniverse.source)) {
+    failures.push('tool_universe_provenance_invalid');
+  } else if (
+    arm?.id === 'two_stage_llm_router'
+    && (toolUniverse.source !== 'fixture_local_routed_replay' || toolUniverse.intentNarrowing !== 'llm_router' || !toolUniverse.bounded || toolUniverse.deployable)
+  ) {
+    failures.push('tool_universe_provenance_invalid');
+  } else if (
+    arm?.id === 'direct_generation'
+    && (toolUniverse.source !== 'authorized_definition_handler_intersection_not_captured' || toolUniverse.intentNarrowing !== 'not_applied' || toolUniverse.bounded || toolUniverse.deployable)
+  ) {
+    failures.push('tool_universe_provenance_invalid');
+  } else if (
+    arm?.id === 'oracle_route_diagnostic'
+    && (toolUniverse.source !== 'fixture_oracle' || toolUniverse.intentNarrowing !== 'fixture_oracle' || !toolUniverse.bounded || toolUniverse.deployable)
+  ) {
+    failures.push('tool_universe_provenance_invalid');
+  }
+  const expectedToolNames = arm?.id === 'direct_generation'
+    ? null
+    : [...trace.toolFixtures.map((fixture) => fixture.name)].sort();
+  if (!sameToolUniverseNames(toolUniverse?.toolNames ?? null, expectedToolNames)) {
+    failures.push('tool_universe_names_mismatch');
+  }
+  const executionEnvelope = metadata.executionEnvelope;
+  if (!executionEnvelope || !['fixture_expectation', 'request_thread_facts_not_captured', 'fixture_oracle'].includes(executionEnvelope.source)) {
+    failures.push('execution_envelope_provenance_invalid');
+  } else if (
+    arm?.id === 'two_stage_llm_router'
+    && (executionEnvelope.source !== 'fixture_expectation' || executionEnvelope.deployable)
+  ) {
+    failures.push('execution_envelope_provenance_invalid');
+  } else if (
+    arm?.id === 'direct_generation'
+    && (executionEnvelope.source !== 'request_thread_facts_not_captured' || executionEnvelope.deployable)
+  ) {
+    failures.push('execution_envelope_provenance_invalid');
+  } else if (
+    arm?.id === 'oracle_route_diagnostic'
+    && (executionEnvelope.source !== 'fixture_oracle' || executionEnvelope.deployable)
+  ) {
+    failures.push('execution_envelope_provenance_invalid');
+  }
+  failures.push(...stageMetadataFailures(
+    'router', metadata.router, metadata.routerControl, metadata.router.source === 'not_run'
+      ? null
+      : metadata.routerControl.configuredMaxOutputTokens,
+  ));
+  failures.push(...stageMetadataFailures(
+    'generation', metadata.generation, metadata.generationControl, metadata.generation.source === 'not_run'
+      ? null
+      : caseControl?.maxOutputTokens ?? metadata.generationControl.configuredMaxOutputTokens,
+  ));
   return failures;
 }
 
@@ -1211,7 +1624,7 @@ function normalizedAssertionText(value: string): string {
     .replace(/[\u2018\u2019]/g, "'");
 }
 
-function toolEvidenceValid(tool: FixedTraceToolObservation): boolean {
+function toolEvidenceValid(trace: FixedTraceCase, tool: FixedTraceToolObservation): boolean {
   if (
     typeof tool.description !== 'string'
     || !tool.description.trim()
@@ -1220,11 +1633,31 @@ function toolEvidenceValid(tool: FixedTraceToolObservation): boolean {
     || typeof tool.input !== 'object'
     || Array.isArray(tool.input)
   ) return false;
+  if (typeof tool.callId !== 'string' || typeof tool.transcriptSha256 !== 'string') return false;
+  if (!tool.callId.trim() || !isSha256(tool.transcriptSha256)) return false;
+  const fixture = trace.toolFixtures.find((candidate) => candidate.name === tool.name);
+  if (!fixture || tool.transcriptSha256 !== fixedTraceToolTranscriptSha256(tool, fixture.result)) return false;
   try {
     return Buffer.byteLength(canonicalJson(tool.input), 'utf8') <= 8 * 1024;
   } catch {
     return false;
   }
+}
+
+function toolOrderFailures(
+  trace: FixedTraceCase,
+  tools: ReadonlyArray<FixedTraceToolObservation>,
+): string[] {
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  const failures: string[] = [];
+  for (const { before, after } of trace.expectation.toolOrderConstraints ?? []) {
+    const beforeReceipt = byName.get(before);
+    const afterReceipt = byName.get(after);
+    if (beforeReceipt && afterReceipt && beforeReceipt.sequence >= afterReceipt.sequence) {
+      failures.push(`${before}_before_${after}`);
+    }
+  }
+  return failures;
 }
 
 export function gradeFixedTrace(
@@ -1233,7 +1666,7 @@ export function gradeFixedTrace(
 ): FixedTraceGrade {
   const failures: string[] = [];
   if (observation.traceId !== trace.id) failures.push('trace_id_mismatch');
-  const provenanceFailures = metadataFailures(observation.metadata);
+  const provenanceFailures = metadataFailures(trace, observation.metadata);
   failures.push(...provenanceFailures);
   if (
     observation.localReplacementReason !== null
@@ -1245,19 +1678,30 @@ export function gradeFixedTrace(
     failures.push('flag_state_unexpected');
   }
 
+  const routingApplicable = observation.metadata.architectureArm.id === 'two_stage_llm_router';
   const expectedRoute = `${trace.routing.action}\0${normalizedTools(trace.routing.toolSets).join('\0')}`;
   const actualRoute = observation.route
     ? `${observation.route.action}\0${normalizedTools(observation.route.toolSets).join('\0')}`
     : '';
-  const routingPass = expectedRoute === actualRoute;
-  if (!routingPass) failures.push('routing_mismatch');
+  const routingPass = routingApplicable ? expectedRoute === actualRoute : null;
+  if (routingApplicable && !routingPass) failures.push('routing_mismatch');
 
   const observedToolNames = observation.tools.map((tool) => tool.name);
+  if (!observation.tools.every((tool, index) => Number.isSafeInteger(tool.sequence) && tool.sequence === index + 1)) {
+    failures.push('tool_execution_order_invalid');
+  }
+  if (
+    observation.tools.some((tool) => typeof tool.callId !== 'string' || !tool.callId.trim())
+    || new Set(observation.tools.map((tool) => tool.callId)).size !== observation.tools.length
+  ) {
+    failures.push('tool_call_identity_invalid');
+  }
+  if (toolOrderFailures(trace, observation.tools).length > 0) failures.push('tool_dependency_order_invalid');
   // A rejected call has not executed, so it must not affect mutation-safety
   // accounting. It is nevertheless candidate tool-selection evidence: a
   // tool-loop boundary must not be reported as a perfect selection result.
   const rejectedToolSelectionPass = observation.rejectedToolCalls.length === 0;
-  const toolEvidencePass = observation.tools.every(toolEvidenceValid);
+  const toolEvidencePass = observation.tools.every((tool) => toolEvidenceValid(trace, tool));
   const inputConstraintFailures = toolInputConstraintFailures(trace, observation.tools);
   const toolInputConstraintPass = inputConstraintFailures.length === 0;
   if (!toolInputConstraintPass) failures.push('tool_input_constraint_mismatch');
@@ -1268,6 +1712,7 @@ export function gradeFixedTrace(
   const toolSelectionPass = [...requiredTools].every((name) => observedToolNames.includes(name))
     && rejectedToolSelectionPass
     && toolEvidencePass
+    && toolOrderFailures(trace, observation.tools).length === 0
     && toolInputConstraintPass
     && new Set(observedToolNames).size === observedToolNames.length
     && observedToolNames.every((name) => allowedTools.has(name))
@@ -1327,9 +1772,16 @@ export function gradeFixedTrace(
   if (observation.terminalStatus === 'refusal' && observation.finishReason !== 'refusal') failures.push('finish_reason_mismatch');
 
   const failureStatuses: ReadonlyArray<FixedTraceTerminalStatus> = [
-    'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget',
+    'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget', 'not_admitted_architecture',
   ];
-  if (observation.terminalStage === 'surface') {
+  if (observation.terminalStage === 'admission') {
+    if (
+      observation.terminalStatus !== 'not_admitted_architecture'
+      || observation.metadata.architectureArm.id !== 'direct_generation'
+      || observation.metadata.directArmAdmission?.admitted !== false
+      || observation.route !== null
+    ) failures.push('terminal_stage_mismatch');
+  } else if (observation.terminalStage === 'surface') {
     if (
       !['ignored', 'reacted'].includes(observation.terminalStatus)
       || observation.metadata.generation.source !== 'not_run'
@@ -1347,7 +1799,7 @@ export function gradeFixedTrace(
     || observation.route?.action !== 'respond'
   ) failures.push('terminal_stage_mismatch');
 
-  if (failureStatuses.includes(observation.terminalStatus)) {
+  if (failureStatuses.includes(observation.terminalStatus) && observation.terminalStage !== 'admission') {
     const failedStage = observation.terminalStage === 'router'
       ? observation.metadata.router
       : observation.terminalStage === 'generation'
@@ -1365,7 +1817,7 @@ export function gradeFixedTrace(
   ) failures.push('generation_stage_mismatch');
 
   const metadataPass = provenanceFailures.length === 0;
-  const terminalFailure = ['refusal', 'truncated', 'empty', 'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget']
+  const terminalFailure = ['refusal', 'truncated', 'empty', 'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget', 'not_admitted_architecture']
     .includes(observation.terminalStatus);
   return {
     traceId: trace.id,
@@ -1384,13 +1836,23 @@ export function gradeFixedTrace(
 }
 
 export interface FixedTraceSummary {
+  /** This ablation foundation has no evaluator-owned evidence coordinator. */
+  diagnosticOnly: true;
+  promotionBlocker: 'trusted_evaluator_context_unavailable';
+  cohort: {
+    architectureArm: FixedTraceArchitectureArmProvenance;
+    architectureConfigSha256: string;
+    toolUniverse: FixedTraceToolUniverseProvenance;
+    executionEnvelope: FixedTraceExecutionEnvelopeProvenance;
+    repetition: number;
+  };
   expected: number;
   observed: number;
   omitted: number;
   complete: boolean;
   deterministicPassRate: number;
   answerPassRate: number | null;
-  routingPassRate: number;
+  routingPassRate: number | null;
   toolSelectionPassRate: number;
   mutationSafetyPassRate: number | null;
   metadataPassRate: number;
@@ -1401,23 +1863,28 @@ export interface FixedTraceSummary {
   comparisonEligible: boolean;
 }
 
-export function summarizeFixedTraceRun(
+/**
+ * Every observation in a candidate run must share this immutable contract.
+ * Per-trace controls are deliberately excluded: they are already bound to the
+ * versioned trace ID and verified when each observation is graded.
+ */
+export function assertFixedTraceRunContract(
   observations: ReadonlyArray<FixedTraceObservation>,
-  suite: ReadonlyArray<FixedTraceCase> = FIXED_TRACE_SUITE,
-): { grades: FixedTraceGrade[]; summary: FixedTraceSummary } {
-  const casesById = new Map(suite.map((trace) => [trace.id, trace]));
-  const seen = new Set<string>();
-  const grades: FixedTraceGrade[] = [];
-  for (const observation of observations) {
-    if (seen.has(observation.traceId)) throw new Error(`Duplicate fixed trace observation: ${observation.traceId}`);
-    seen.add(observation.traceId);
-    const trace = casesById.get(observation.traceId);
-    if (!trace) throw new Error(`Unknown fixed trace observation: ${observation.traceId}`);
-    grades.push(gradeFixedTrace(trace, observation));
-  }
+): FixedTraceRunMetadata {
   const runContract = observations[0]?.metadata;
-  for (const observation of observations.slice(1)) {
+  if (!runContract) throw new Error('Fixed trace run requires at least one observation');
+  for (const observation of observations) {
     const candidate = observation.metadata;
+    let recomputedArchitectureConfigSha256: string;
+    try {
+      recomputedArchitectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(candidate);
+    } catch {
+      throw new Error('Fixed trace architecture contract is unverifiable');
+    }
+    if (candidate.architectureConfigSha256 !== recomputedArchitectureConfigSha256) {
+      throw new Error('Fixed trace architecture contract fingerprint mismatch');
+    }
+    if (candidate === runContract) continue;
     if (
       candidate.runId !== runContract.runId
       || candidate.traceSuiteVersion !== runContract.traceSuiteVersion
@@ -1428,15 +1895,51 @@ export function summarizeFixedTraceRun(
       || candidate.addieCodeVersion !== runContract.addieCodeVersion
       || candidate.promptConfigVersion !== runContract.promptConfigVersion
       || candidate.toolSchemaSha256 !== runContract.toolSchemaSha256
+      || candidate.toolDefinitionProvenance !== runContract.toolDefinitionProvenance
+      || candidate.stageControlVersion !== runContract.stageControlVersion
+      || candidate.architectureConfigSha256 !== runContract.architectureConfigSha256
+      || candidate.providerDegradationInjectionEnabled !== runContract.providerDegradationInjectionEnabled
+      || candidate.repetition !== runContract.repetition
+      || candidate.architectureArm.id !== runContract.architectureArm.id
+      || candidate.architectureArm.routeSource !== runContract.architectureArm.routeSource
+      || candidate.architectureArm.rolloutEligible !== runContract.architectureArm.rolloutEligible
+      || candidate.toolUniverse.source !== runContract.toolUniverse.source
+      || candidate.toolUniverse.intentNarrowing !== runContract.toolUniverse.intentNarrowing
+      || candidate.toolUniverse.bounded !== runContract.toolUniverse.bounded
+      || candidate.toolUniverse.deployable !== runContract.toolUniverse.deployable
+      || candidate.executionEnvelope.source !== runContract.executionEnvelope.source
+      || candidate.executionEnvelope.deployable !== runContract.executionEnvelope.deployable
+      || canonicalJson(candidate.routerControl) !== canonicalJson(runContract.routerControl)
+      || canonicalJson(candidate.generationControl) !== canonicalJson(runContract.generationControl)
     ) throw new Error('Mixed fixed trace run metadata');
   }
-  for (const stageName of ['router', 'generation'] as const) {
-    const requestedIdentities = new Set(observations
-      .map((observation) => observation.metadata[stageName])
-      .filter((stage) => stage.requestedProvider !== null)
-      .map((stage) => `${stage.requestedProvider}\0${stage.requestedModel}\0${stage.reasoningEffort}`));
-    if (requestedIdentities.size > 1) throw new Error('Mixed fixed trace run metadata');
+  return runContract;
+}
+
+export function summarizeFixedTraceRun(
+  observations: ReadonlyArray<FixedTraceObservation>,
+  suite: ReadonlyArray<FixedTraceCase> = FIXED_TRACE_SUITE,
+): { grades: FixedTraceGrade[]; summary: FixedTraceSummary } {
+  // A caller cannot grade a different corpus while retaining canonical v32
+  // observation provenance. Custom suites are a separate experiment identity.
+  const suppliedSuiteSha256 = fixedTraceSuiteSha256(suite);
+  const casesById = new Map(suite.map((trace) => [trace.id, trace]));
+  const seen = new Set<string>();
+  const grades: FixedTraceGrade[] = [];
+  for (const observation of observations) {
+    if (seen.has(observation.traceId)) throw new Error(`Duplicate fixed trace observation: ${observation.traceId}`);
+    seen.add(observation.traceId);
+    const trace = casesById.get(observation.traceId);
+    if (!trace) throw new Error(`Unknown fixed trace observation: ${observation.traceId}`);
+    if (observation.metadata.traceSuiteSha256 !== suppliedSuiteSha256) {
+      throw new Error('Fixed trace observation suite hash does not match grading suite');
+    }
+    if (!sameCaseControl(trace.caseControl ?? null, observation.metadata.caseControl)) {
+      throw new Error(`Fixed trace case control mismatch: ${trace.id}`);
+    }
+    grades.push(gradeFixedTrace(trace, observation));
   }
+  const runContract = assertFixedTraceRunContract(observations);
   const ratio = (count: number, denominator = grades.length) => denominator === 0 ? 0 : count / denominator;
   const answerGrades = grades.filter((grade) => grade.answerApplicable);
   const mutationGrades = grades.filter((grade) => grade.mutationSafetyApplicable);
@@ -1452,28 +1955,58 @@ export function summarizeFixedTraceRun(
   const p95Index = Math.max(0, Math.ceil(sortedLatency.length * 0.95) - 1);
   const costs = observations.flatMap((observation) => [observation.metadata.router, observation.metadata.generation])
     .map((stage) => stage.dispatched ? stage.estimatedCostUsd : 0);
-  const terminalStatusCounts = Object.fromEntries([
-    'complete', 'ignored', 'reacted', 'refusal', 'truncated', 'empty', 'malformed',
-    'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget',
-  ].map((status) => [
-    status,
-    observations.filter((observation) => observation.terminalStatus === status).length,
-  ])) as Record<FixedTraceTerminalStatus, number>;
+  const terminalStatusCounts: Record<FixedTraceTerminalStatus, number> = {
+    complete: 0,
+    ignored: 0,
+    reacted: 0,
+    refusal: 0,
+    truncated: 0,
+    empty: 0,
+    malformed: 0,
+    provider_error: 0,
+    timeout_after_dispatch: 0,
+    not_dispatched_budget: 0,
+    not_admitted_architecture: 0,
+  };
+  for (const observation of observations) terminalStatusCounts[observation.terminalStatus] += 1;
+  if (Object.values(terminalStatusCounts).reduce((total, count) => total + count, 0) !== observations.length) {
+    throw new Error('Fixed trace terminal status accounting is incomplete');
+  }
   const complete = grades.length === suite.length && suite.every((trace) => seen.has(trace.id));
-  const metadataComplete = grades.every((grade) => grade.metadataPass);
   const totalEstimatedCostUsd = costs.some((cost) => cost === null)
     ? null
     : costs.reduce<number>((total, cost) => total + (cost ?? 0), 0);
+  const cohortToolNames = runContract.architectureArm.id === 'direct_generation'
+    ? null
+    : [...new Set(observations.flatMap((observation) => observation.metadata.toolUniverse.toolNames ?? []))].sort();
   return {
     grades,
     summary: {
       expected: suite.length,
+      cohort: {
+        architectureArm: runContract.architectureArm,
+        architectureConfigSha256: runContract.architectureConfigSha256,
+        // `directArmAdmission.universe` carries per-case surface/auth facts.
+        // Never spread it into cohort identity: only these four fields are a
+        // cohort-level tool-universe provenance contract.
+        toolUniverse: {
+          source: runContract.toolUniverse.source,
+          intentNarrowing: runContract.toolUniverse.intentNarrowing,
+          bounded: runContract.toolUniverse.bounded,
+          deployable: runContract.toolUniverse.deployable,
+          toolNames: cohortToolNames,
+        },
+        executionEnvelope: runContract.executionEnvelope,
+        repetition: runContract.repetition,
+      },
       observed: grades.length,
       omitted: Math.max(0, suite.length - grades.length),
       complete,
       deterministicPassRate: ratio(grades.filter((grade) => grade.deterministicPass).length),
       answerPassRate: answerGrades.length === 0 ? null : ratio(answerGrades.filter((grade) => grade.answerPass).length, answerGrades.length),
-      routingPassRate: ratio(grades.filter((grade) => grade.routingPass).length),
+      routingPassRate: runContract.architectureArm.id === 'two_stage_llm_router'
+        ? ratio(grades.filter((grade) => grade.routingPass === true).length)
+        : null,
       toolSelectionPassRate: ratio(grades.filter((grade) => grade.toolSelectionPass).length),
       mutationSafetyPassRate: mutationGrades.length === 0
         ? null
@@ -1483,11 +2016,12 @@ export function summarizeFixedTraceRun(
       terminalStatusCounts,
       latencyP95Ms: sortedLatency.length === 0 ? null : sortedLatency[p95Index],
       totalEstimatedCostUsd,
-      comparisonEligible: complete
-        && observations.length > 0
-        && metadataComplete
-        && totalEstimatedCostUsd !== null
-        && observations.every((observation) => !observation.metadata.gitDirty),
+      // Raw observations and summaries are serializable. Until the follow-up
+      // evaluator-owned coordinator can authenticate the run context and
+      // ledger, this replay is diagnostic evidence only.
+      diagnosticOnly: true,
+      promotionBlocker: 'trusted_evaluator_context_unavailable',
+      comparisonEligible: false,
     },
   };
 }
