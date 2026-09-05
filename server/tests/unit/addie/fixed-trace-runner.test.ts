@@ -342,14 +342,14 @@ function stage(provider: ModelProvider, maxIterations: number): FixedTraceProvid
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
     pricing: {
-      profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
+      profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
       cacheReadUsdPerMillionTokens: 0.1,
       cacheWriteUsdPerMillionTokens: 1.25,
       cacheReadAccounting: 'additive',
       cacheWriteAccounting: 'additive',
-      source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+      source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
     },
   };
 }
@@ -918,7 +918,7 @@ describe('fixed trace artifact runner', () => {
       usageKnown: true,
       usage: { inputTokens: 30, outputTokens: 15 },
       estimatedCostUsd: 0.000105,
-      pricingSource: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+      pricingSource: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
     });
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
       deterministicPass: false,
@@ -1050,14 +1050,14 @@ describe('fixed trace artifact runner', () => {
     const delegate = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const budget = new FixedTraceBudget(0.000001);
     const router = new BudgetedFixedTraceProvider(delegate, budget, {
-      profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
+      profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
       cacheReadUsdPerMillionTokens: 0.1,
       cacheWriteUsdPerMillionTokens: 1.25,
       cacheReadAccounting: 'additive',
       cacheWriteAccounting: 'additive',
-      source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+      source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
     }, fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', stage(delegate, 1).pricing));
     const generation = new ScriptedProvider([]);
 
@@ -1159,7 +1159,7 @@ describe('fixed trace artifact runner', () => {
           usageKnown: true,
           usage: { inputTokens: 10, outputTokens: 5 },
           estimatedCostUsd: 0.000035,
-          pricingSource: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+          pricingSource: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
         },
       },
     });

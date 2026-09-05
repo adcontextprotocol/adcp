@@ -46,14 +46,14 @@ const CAPABILITIES: ModelProviderCapabilities = {
 };
 
 const PRICING: FixedTracePricing = {
-  profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
+  profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
   inputUsdPerMillionTokens: 1,
   outputUsdPerMillionTokens: 5,
   cacheReadUsdPerMillionTokens: 0.1,
   cacheWriteUsdPerMillionTokens: 1.25,
   cacheReadAccounting: 'additive',
   cacheWriteAccounting: 'additive',
-  source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+  source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
 };
 
 const MODEL = 'claude-haiku-4-5';

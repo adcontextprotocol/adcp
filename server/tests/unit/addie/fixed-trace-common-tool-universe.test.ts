@@ -116,14 +116,14 @@ function stage(provider: ModelProvider) {
     samplingMode: 'provider_no_sampling_control' as const,
     temperature: null,
     pricing: {
-      profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
+      profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
       cacheReadUsdPerMillionTokens: 0.1,
       cacheWriteUsdPerMillionTokens: 1.25,
       cacheReadAccounting: 'additive' as const,
       cacheWriteAccounting: 'additive' as const,
-      source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+      source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
     },
   };
 }

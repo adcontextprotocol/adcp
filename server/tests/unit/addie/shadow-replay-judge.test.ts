@@ -282,7 +282,7 @@ describe('shadow replay independent judge', () => {
       cacheReadTokens: 5,
       cacheWriteTokens: 2,
       usageAvailable: true,
-      pricingVersion: 'anthropic-standard-2026-08:claude-opus-4-6',
+      pricingVersion: 'anthropic-standard-2026-09:claude-opus-4-6',
       latencyMs: 250,
     });
     expect(result.judgePromptHmac).toMatch(/^[0-9a-f]{64}$/);
@@ -410,7 +410,7 @@ describe('shadow replay independent judge', () => {
     expect(result).toMatchObject({
       status: 'error',
       reason: 'judge_provider_error',
-      pricingVersion: 'anthropic-standard-2026-08:claude-opus-4-6',
+      pricingVersion: 'anthropic-standard-2026-09:claude-opus-4-6',
       usageAvailable: false,
       inputTokens: 0,
       outputTokens: 0,

@@ -50,7 +50,7 @@ const COMPLETE_JUDGMENT_USAGE = {
   cacheReadTokens: 6,
   cacheWriteTokens: 3,
   usageAvailable: true,
-  pricingVersion: 'anthropic-standard-2026-08:claude-opus-4-6',
+  pricingVersion: 'anthropic-standard-2026-09:claude-opus-4-6',
   latencyMs: 125,
 } as const;
 const NO_JUDGE_USAGE = {
@@ -637,7 +637,7 @@ describe('shadow replay trace authorization', () => {
       trace.expected.effective_model,
       trace.expected.provider_request_hmac,
       CODE_VERSION,
-      'anthropic-standard-2026-08:claude-sonnet-5',
+      'anthropic-standard-2026-09:claude-sonnet-5',
     ]);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
   });
@@ -987,7 +987,7 @@ describe('shadow replay trace authorization', () => {
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
         usageAvailable: true,
-        pricingVersion: 'anthropic-standard-2026-08:claude-sonnet-5',
+        pricingVersion: 'anthropic-standard-2026-09:claude-sonnet-5',
         latencyMs: 125,
         startedAt: new Date(NOW.getTime() - 1_000),
         completedAt: NOW,
@@ -1150,7 +1150,7 @@ describe('shadow replay trace authorization', () => {
       false,
       500,
       null,
-      'anthropic-standard-2026-08:claude-sonnet-5',
+      'anthropic-standard-2026-09:claude-sonnet-5',
     ]);
   });
 
@@ -1289,6 +1289,8 @@ describe('shadow replay trace authorization', () => {
   });
 
   it('reports categorical judgment totals and a no-payload opportunity funnel', async () => {
+    // A stored August estimate is historical evidence. Reporting preserves its
+    // recorded cohort and amount; it must not be recalculated at September rates.
     const judgments = [{
       capture_version: 3,
       capture_policy_version: 'official-docs-capture:v3',

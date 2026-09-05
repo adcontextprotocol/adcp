@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { costUsdMicros, __hasKnownPricing } from '../../src/addie/claude-pricing.js';
+import {
+  __hasKnownPricing,
+  costUsdMicros,
+  resolveKnownClaudePricingModel,
+} from '../../src/addie/claude-pricing.js';
 
 /**
  * #2790 — pricing helper. Converts Anthropic `usage` to USD micros
@@ -13,9 +17,9 @@ describe('costUsdMicros', () => {
     expect(costUsdMicros('claude-haiku-4-5', { input_tokens: 1_000_000, output_tokens: 0 })).toBe(1_000_000);
   });
 
-  it('prices Sonnet at $3/M input, $15/M output', () => {
-    // 10k input, 5k output: 10_000*3 + 5_000*15 = 30_000 + 75_000 = 105_000 micros ($0.105)
-    expect(costUsdMicros('claude-sonnet-5', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(105_000);
+  it('prices Sonnet 5 at $2/M input and $10/M output', () => {
+    // 10k input, 5k output: 10_000*2 + 5_000*10 = 70_000 micros ($0.070)
+    expect(costUsdMicros('claude-sonnet-5', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(70_000);
   });
 
   it('prices Opus at $5/M input, $25/M output', () => {
@@ -23,15 +27,15 @@ describe('costUsdMicros', () => {
     expect(costUsdMicros('claude-opus-5', { input_tokens: 1000, output_tokens: 500 })).toBe(17_500);
   });
 
-  it('applies cache-creation and cache-read rates (Sonnet)', () => {
-    // 1000 input@3, 500 output@15, 2000 creation@3.75, 500 read@0.3
-    // = 3000 + 7500 + 7500 + 150 = 18_150 micros
-    expect(costUsdMicros('claude-sonnet-4-6', {
+  it('applies Sonnet 5 5-minute cache-creation and cache-read rates', () => {
+    // 1000 input@2, 500 output@10, 2000 creation@2.5, 500 read@0.2
+    // = 2000 + 5000 + 5000 + 100 = 12_100 micros
+    expect(costUsdMicros('claude-sonnet-5', {
       input_tokens: 1000,
       output_tokens: 500,
       cache_creation_input_tokens: 2000,
       cache_read_input_tokens: 500,
-    })).toBe(18_150);
+    })).toBe(12_100);
   });
 
   it('treats missing cache fields as zero', () => {
@@ -51,8 +55,8 @@ describe('costUsdMicros', () => {
 
   it('ceilings fractional results so a sub-micro charge still increments the counter', () => {
     // 1 token at Haiku ($1/M): 1 * 1 = 1 micro. Integer already.
-    // 1 token at Sonnet cache-read ($0.3/M): 1 * 0.3 = 0.3 → ceil to 1.
-    expect(costUsdMicros('claude-sonnet-4-6', {
+    // 1 token at Sonnet 5 cache-read ($0.2/M): 1 * 0.2 = 0.2 → ceil to 1.
+    expect(costUsdMicros('claude-sonnet-5', {
       input_tokens: 0,
       output_tokens: 0,
       cache_read_input_tokens: 1,
@@ -61,6 +65,16 @@ describe('costUsdMicros', () => {
 
   it('is zero for a zero-usage response (rare but possible)', () => {
     expect(costUsdMicros('claude-haiku-4-5', { input_tokens: 0, output_tokens: 0 })).toBe(0);
+  });
+});
+
+describe('resolveKnownClaudePricingModel', () => {
+  it('maps a dated Sonnet 5 response to its reviewed canonical rate', () => {
+    expect(resolveKnownClaudePricingModel('claude-sonnet-5-20260905')).toBe('claude-sonnet-5');
+  });
+
+  it('does not resolve an unknown model family', () => {
+    expect(resolveKnownClaudePricingModel('claude-sonnet-6-20260905')).toBeNull();
   });
 });
 

@@ -64,6 +64,39 @@ const RESPONSE_PRICING_POLICY = fixedTraceResponsePricingPolicy(
   PRICING,
 );
 
+const SONNET_5_PRICING = {
+  profileId: 'anthropic-standard-2026-09:claude-sonnet-5',
+  inputUsdPerMillionTokens: 2,
+  outputUsdPerMillionTokens: 10,
+  cacheReadUsdPerMillionTokens: 0.2,
+  cacheWriteUsdPerMillionTokens: 2.5,
+  cacheReadAccounting: 'additive' as const,
+  cacheWriteAccounting: 'additive' as const,
+  source: 'Anthropic pricing page: Claude Sonnet 5 standard (5-minute cache write), checked 2026-09-05.',
+};
+
+const HAIKU_4_5_PRICING = {
+  profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
+  inputUsdPerMillionTokens: 1,
+  outputUsdPerMillionTokens: 5,
+  cacheReadUsdPerMillionTokens: 0.1,
+  cacheWriteUsdPerMillionTokens: 1.25,
+  cacheReadAccounting: 'additive' as const,
+  cacheWriteAccounting: 'additive' as const,
+  source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
+};
+
+const GOOGLE_PRICING = {
+  profileId: 'google-gemini-3.7-flash-through-2026-12-31',
+  inputUsdPerMillionTokens: 0.75,
+  outputUsdPerMillionTokens: 3.75,
+  cacheReadUsdPerMillionTokens: 0.075,
+  cacheWriteUsdPerMillionTokens: 0.75,
+  cacheReadAccounting: 'subset' as const,
+  cacheWriteAccounting: 'additive' as const,
+  source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
+};
+
 class BudgetScriptedProvider implements ModelProvider {
   readonly id = 'openai' as const;
   readonly capabilities = CAPABILITIES;
@@ -115,6 +148,56 @@ describe('fixed trace provider budget', () => {
       source: 'Synthetic manual artifact pricing.',
     })).toThrow('Fixed trace pricing profile is not evaluator approved');
     expect(delegate.dispatches).not.toHaveBeenCalled();
+  });
+
+  it('accepts only the reviewed September Sonnet 5 policy and applies its additive cache rates', () => {
+    expect(fixedTraceApprovedPricingProfiles()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        expectedProvider: 'anthropic',
+        expectedModel: 'claude-sonnet-5',
+        profileId: 'anthropic-standard-2026-09:claude-sonnet-5',
+      }),
+      expect.objectContaining({
+        expectedProvider: 'openai',
+        expectedModel: 'gpt-5.6-luna',
+        profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
+      }),
+      expect.objectContaining({
+        expectedProvider: 'google',
+        expectedModel: 'gemini-3.7-flash',
+        profileId: 'google-gemini-3.7-flash-through-2026-12-31',
+      }),
+    ]));
+    expect(fixedTraceResponsePricingPolicy('anthropic', 'claude-sonnet-5', SONNET_5_PRICING))
+      .toMatchObject({ pricingProfileId: SONNET_5_PRICING.profileId });
+    expect(fixedTraceEstimatedCostUsd({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 1_000,
+      cacheWriteTokens: 200,
+    }, SONNET_5_PRICING)).toBe(0.0011);
+    // A previous live cohort is historical evidence, not an approval for a
+    // new fixed-trace run at a new date.
+    expect(() => fixedTraceResponsePricingPolicy('anthropic', 'claude-sonnet-5', {
+      ...SONNET_5_PRICING,
+      profileId: 'anthropic-standard-2026-08:claude-sonnet-5',
+    })).toThrow('Fixed trace pricing profile is not evaluator approved');
+  });
+
+  it('retains the reviewed Haiku, Luna, and Gemini rate cohorts', () => {
+    expect(fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', HAIKU_4_5_PRICING))
+      .toMatchObject({ pricingProfileId: HAIKU_4_5_PRICING.profileId });
+    expect(fixedTraceEstimatedCostUsd({
+      inputTokens: 100, outputTokens: 20, cacheReadTokens: 1_000, cacheWriteTokens: 200,
+    }, HAIKU_4_5_PRICING)).toBe(0.00055);
+    expect(fixedTraceEstimatedCostUsd({
+      inputTokens: 100, outputTokens: 20, cacheReadTokens: 20, cacheWriteTokens: 0,
+    }, PRICING)).toBeCloseTo(0.0000404);
+    expect(fixedTraceResponsePricingPolicy('google', 'gemini-3.7-flash', GOOGLE_PRICING))
+      .toMatchObject({ pricingProfileId: GOOGLE_PRICING.profileId });
+    expect(fixedTraceEstimatedCostUsd({
+      inputTokens: 100, outputTokens: 20, cacheReadTokens: 20, cacheWriteTokens: 0,
+    }, GOOGLE_PRICING)).toBeCloseTo(0.0001365);
   });
 
   it('prices Google-style subset reads plus additive writes explicitly', () => {
