@@ -1,5 +1,5 @@
-import { add, compare, divide, midpoint, multiply, negate, pow, rational, subtract, type Rational, validateExternalRational, ONE, ZERO } from './rational.js';
-import { degree, derivative, divideWithRemainder, evaluate, isZero, polynomialNegate, polynomialScale, type RationalPolynomial } from './polynomial.js';
+import { add, compare, divide, midpoint, multiply, pow, rational, subtract, type Rational, validateBoundedRational, ONE, ZERO } from './rational.js';
+import { degree, derivative, divideWithRemainder, evaluate, isZero, polynomialNegate, type RationalPolynomial } from './polynomial.js';
 
 function integerGcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left; let b = right < 0n ? -right : right;
@@ -19,25 +19,33 @@ function validateAlgebraicPolynomial(value: RationalPolynomial): void {
   if (!Array.isArray(value) || value.length === 0 || degree(value) > MAX_ALGEBRAIC_DEGREE) {
     throw new RangeError(`Algebraic polynomial degree must be in [0, ${MAX_ALGEBRAIC_DEGREE}]`);
   }
-  for (const coefficient of value) validateExternalRational(coefficient, 'Polynomial coefficient');
+  for (const coefficient of value) validateBoundedRational(coefficient, 'Polynomial coefficient');
 }
 
 export interface RationalInterval { readonly lower: Rational; readonly upper: Rational; }
 export const interval = (lower: Rational, upper: Rational): RationalInterval => {
+  validateBoundedRational(lower, 'Interval lower bound'); validateBoundedRational(upper, 'Interval upper bound');
   if (compare(lower, upper) > 0) throw new RangeError('Invalid rational interval');
   return Object.freeze({ lower, upper });
 };
-export function intervalAdd(a: RationalInterval, b: RationalInterval): RationalInterval { return interval(add(a.lower, b.lower), add(a.upper, b.upper)); }
-export function intervalSubtract(a: RationalInterval, b: RationalInterval): RationalInterval { return interval(subtract(a.lower, b.upper), subtract(a.upper, b.lower)); }
+function validateInterval(value: RationalInterval, name: string): void {
+  if (!value || typeof value !== 'object') throw new RangeError(`${name} must be a rational interval`);
+  interval(value.lower, value.upper);
+}
+export function intervalAdd(a: RationalInterval, b: RationalInterval): RationalInterval { validateInterval(a, 'Left interval'); validateInterval(b, 'Right interval'); return interval(add(a.lower, b.lower), add(a.upper, b.upper)); }
+export function intervalSubtract(a: RationalInterval, b: RationalInterval): RationalInterval { validateInterval(a, 'Left interval'); validateInterval(b, 'Right interval'); return interval(subtract(a.lower, b.upper), subtract(a.upper, b.lower)); }
 export function intervalMultiply(a: RationalInterval, b: RationalInterval): RationalInterval {
+  validateInterval(a, 'Left interval'); validateInterval(b, 'Right interval');
   const values = [multiply(a.lower, b.lower), multiply(a.lower, b.upper), multiply(a.upper, b.lower), multiply(a.upper, b.upper)];
   return interval(values.reduce((x, y) => compare(x, y) < 0 ? x : y), values.reduce((x, y) => compare(x, y) > 0 ? x : y));
 }
 export function intervalDividePositive(a: RationalInterval, b: RationalInterval): RationalInterval {
+  validateInterval(a, 'Dividend interval'); validateInterval(b, 'Divisor interval');
   if (compare(b.lower, ZERO) <= 0) throw new RangeError('Interval divisor must be positive');
   return interval(divide(a.lower, b.upper), divide(a.upper, b.lower));
 }
 export function evaluateInterval(value: RationalPolynomial, at: RationalInterval): RationalInterval {
+  validateAlgebraicPolynomial(value); validateInterval(at, 'Evaluation interval');
   let result = interval(ZERO, ZERO);
   for (let index = value.length - 1; index >= 0; index--) result = intervalAdd(intervalMultiply(result, at), interval(value[index]!, value[index]!));
   return result;
@@ -87,7 +95,7 @@ function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: Ration
 export interface RootIsolation { readonly exact: readonly Rational[]; readonly intervals: readonly RationalInterval[]; readonly unresolved: boolean; }
 /** Isolate every distinct interior root using Sturm counts and dyadic bisection. */
 export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits = 96): RootIsolation {
-  validateAlgebraicPolynomial(value); validateExternalRational(lower, 'Root lower bound'); validateExternalRational(upper, 'Root upper bound');
+  validateAlgebraicPolynomial(value); validateBoundedRational(lower, 'Root lower bound'); validateBoundedRational(upper, 'Root upper bound');
   if (compare(lower, upper) > 0) throw new RangeError('Root lower bound must not exceed upper bound');
   if (degree(value) <= 0) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: false });
   if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > 64) throw new RangeError('Root refinement bits must be an integer in [1, 64]');
@@ -132,7 +140,7 @@ export function maximizePolynomial(
   value: RationalPolynomial, lower: Rational, upper: Rational, maxSplits = 24,
   encloseAt: ((at: RationalInterval) => RationalInterval) | undefined = undefined,
 ): MaximumCertificate {
-  validateAlgebraicPolynomial(value); validateExternalRational(lower, 'Maximum lower bound'); validateExternalRational(upper, 'Maximum upper bound');
+  validateAlgebraicPolynomial(value); validateBoundedRational(lower, 'Maximum lower bound'); validateBoundedRational(upper, 'Maximum upper bound');
   if (!Number.isSafeInteger(maxSplits) || maxSplits < 1 || maxSplits > 64) throw new RangeError('Maximum root refinement must be an integer in [1, 64]');
   const roots = isolateInteriorRoots(derivative(value), lower, upper, maxSplits);
   let minimum = evaluate(value, lower);
@@ -152,7 +160,7 @@ export function maximizePolynomial(
 
 /** Positive square-root enclosure by rational bisection. */
 export function sqrtInterval(value: Rational, rounds = 56): RationalInterval {
-  validateExternalRational(value, 'Square-root value');
+  validateBoundedRational(value, 'Square-root value');
   if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 256) throw new RangeError('Square-root rounds must be an integer in [1, 256]');
   if (compare(value, ZERO) < 0) throw new RangeError('Square root requires a nonnegative rational');
   if (compare(value, ZERO) === 0) return interval(ZERO, ZERO);

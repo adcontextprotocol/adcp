@@ -13,7 +13,7 @@ import {
   restrictedScoreEM,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
 import { polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
-import { add, choose, compare, decimal, divide, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
+import { add, choose, compare, decimal, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   const margin = parseMatchedPairNiDecimal('0.10');
@@ -114,11 +114,20 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(compare(outcome.diagnostic.pValue.upper, decimal('0.05889'))).toBeLessThan(0);
   });
 
-  it('propagates no n=5,m=.20 state uncertainty into a size envelope', () => {
+  it('matches the independent n=5,m=.20 tie and size-oracle regression', () => {
+    const tieCases = [[2, 2], [3, 3], [4, 4], [5, 5]] as const;
+    for (const [x, t] of tieCases) {
+      const outcome = restrictedScoreEM({
+        counts: { n11: 5 - t, n10: x, n01: t - x, n00: 0 }, margin: decimal('0.20'), alpha,
+      });
+      expect(outcome.diagnostic.indeterminate).toBeUndefined();
+      expect(outcome.diagnostic.statisticalRejectNull).toBe(true);
+    }
     const size = nullBoundarySizeEnvelope(5, decimal('0.20'), alpha);
     expect(size.status).toBe('certified');
     expect(size.indeterminateStates).toEqual([]);
     const maximum = maximizePolynomial(size.upper, decimal('0.20'), ONE);
+    expect(compare(maximum.lower, decimal('0.04192'))).toBeGreaterThan(0);
     expect(compare(maximum.upper, decimal('0.0420'))).toBeLessThan(0);
   });
 
@@ -127,6 +136,19 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(size.status).toBe('indeterminate');
     expect(size.reason).toBe('size_complexity_ceiling');
     expect(size.indeterminateStates).toHaveLength(55);
+  });
+
+  it('conservatively propagates a real overlapping p-value matrix into upper envelopes', () => {
+    for (const fixtureCase of [
+      { counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, n: 4, x: 3, t: 3, margin: decimal('0.07') },
+      { counts: { n11: 3, n10: 2, n01: 0, n00: 0 }, n: 5, x: 2, t: 2, margin: decimal('0.20') },
+    ]) {
+      const p = restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha }).diagnostic.pValue;
+      const uncertain = nullBoundarySizeEnvelope(fixtureCase.n, fixtureCase.margin, midpoint(p.lower, p.upper));
+      expect(uncertain.status).toBe('indeterminate');
+      expect(uncertain.reason).toBe('overlapping_p_value');
+      expect(uncertain.indeterminateStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
+    }
   });
 
   it('has a hard-coded, non-overridable non-admission declaration', () => {

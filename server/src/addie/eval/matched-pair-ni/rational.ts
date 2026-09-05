@@ -3,6 +3,8 @@ export interface Rational { readonly numerator: bigint; readonly denominator: bi
 /** External operands are capped before any exact algebraic work begins. */
 export const MAX_EXTERNAL_RATIONAL_BITS = 256;
 export const MAX_EXTERNAL_DECIMAL_CHARACTERS = 80;
+/** Absolute guard for direct-module arithmetic and intermediate certificates. */
+export const MAX_RATIONAL_BITS = 8_192;
 
 function gcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left;
@@ -14,6 +16,7 @@ function gcd(left: bigint, right: bigint): bigint {
 export function rational(numerator: bigint | number, denominator: bigint | number = 1n): Rational {
   let n = BigInt(numerator);
   let d = BigInt(denominator);
+  if (bitLength(n) > MAX_RATIONAL_BITS || bitLength(d) > MAX_RATIONAL_BITS) throw new RangeError(`Rational exceeds ${MAX_RATIONAL_BITS}-bit arithmetic ceiling`);
   if (d === 0n) throw new RangeError('Rational denominator must not be zero');
   if (n === 0n) return ZERO;
   if (d < 0n) [n, d] = [-n, -d];
@@ -25,27 +28,33 @@ export const ZERO: Rational = Object.freeze({ numerator: 0n, denominator: 1n });
 export const ONE: Rational = Object.freeze({ numerator: 1n, denominator: 1n });
 export const TWO: Rational = Object.freeze({ numerator: 2n, denominator: 1n });
 
-export function add(a: Rational, b: Rational): Rational { return rational(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator); }
-export function subtract(a: Rational, b: Rational): Rational { return rational(a.numerator * b.denominator - b.numerator * a.denominator, a.denominator * b.denominator); }
-export function multiply(a: Rational, b: Rational): Rational { return rational(a.numerator * b.numerator, a.denominator * b.denominator); }
+export function validateBoundedRational(value: Rational, name: string): void {
+  if (typeof value?.numerator !== 'bigint' || typeof value?.denominator !== 'bigint' || value.denominator <= 0n || bitLength(value.numerator) > MAX_RATIONAL_BITS || bitLength(value.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${name} exceeds the rational arithmetic ceiling`);
+}
+export function add(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator); }
+export function subtract(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.denominator - b.numerator * a.denominator, a.denominator * b.denominator); }
+export function multiply(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.numerator, a.denominator * b.denominator); }
 export function divide(a: Rational, b: Rational): Rational {
+  validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational');
   if (b.numerator === 0n) throw new RangeError('Rational division by zero');
   return rational(a.numerator * b.denominator, a.denominator * b.numerator);
 }
-export function negate(a: Rational): Rational { return rational(-a.numerator, a.denominator); }
+export function negate(a: Rational): Rational { validateBoundedRational(a, 'Rational'); return rational(-a.numerator, a.denominator); }
 export function compare(a: Rational, b: Rational): -1 | 0 | 1 {
+  validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational');
   const value = a.numerator * b.denominator - b.numerator * a.denominator;
   return value < 0n ? -1 : value > 0n ? 1 : 0;
 }
 export function equal(a: Rational, b: Rational): boolean { return compare(a, b) === 0; }
 export function abs(a: Rational): Rational { return a.numerator < 0n ? negate(a) : a; }
 export function pow(a: Rational, exponent: number): Rational {
+  validateBoundedRational(a, 'Rational');
   if (!Number.isSafeInteger(exponent) || exponent < 0) throw new RangeError('Rational exponent must be a nonnegative safe integer');
   let base = a;
   let result = ONE;
   for (let e = exponent; e > 0; e = Math.floor(e / 2)) {
     if (e % 2 === 1) result = multiply(result, base);
-    base = multiply(base, base);
+    if (e > 1) base = multiply(base, base);
   }
   return result;
 }
@@ -60,7 +69,7 @@ export function decimal(value: string): Rational {
   return rational(negative ? -numerator : numerator, scale);
 }
 export function choose(n: number, k: number): bigint {
-  if (!Number.isSafeInteger(n) || !Number.isSafeInteger(k) || k < 0 || k > n) return 0n;
+  if (!Number.isSafeInteger(n) || !Number.isSafeInteger(k) || n < 0 || n > 25 || k < 0 || k > n) throw new RangeError('Binomial arguments must satisfy 0 <= k <= n <= 25');
   const selected = Math.min(k, n - k);
   let result = 1n;
   for (let i = 1; i <= selected; i++) result = result * BigInt(n - selected + i) / BigInt(i);

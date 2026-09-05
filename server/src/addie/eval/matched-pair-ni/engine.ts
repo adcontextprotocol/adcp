@@ -312,7 +312,7 @@ export interface NullBoundarySizeEnvelope {
   readonly lower: RationalPolynomial;
   readonly upper: RationalPolynomial;
   readonly indeterminateStates: readonly ReducedMatchedPairState[];
-  readonly reason: 'indeterminate_p_value' | 'size_complexity_ceiling' | null;
+  readonly reason: 'indeterminate_p_value' | 'overlapping_p_value' | 'size_complexity_ceiling' | null;
 }
 /**
  * Certified null-boundary size envelope. Any unresolved p-value is included
@@ -340,11 +340,16 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
     } else if (outcome.diagnostic.statisticalRejectNull) {
       lower = polynomialAdd(lower, probability);
       upper = polynomialAdd(upper, probability);
+    } else if (compare(outcome.diagnostic.pValue.lower, alpha) <= 0) {
+      // The actual p-value could be <= alpha inside its certified enclosure.
+      // Include it only in the upper size region and advertise the uncertainty.
+      upper = polynomialAdd(upper, probability);
+      indeterminateStates.push(state);
     }
   }
   return Object.freeze({
     status: indeterminateStates.length === 0 ? 'certified' : 'indeterminate', lower, upper,
-    indeterminateStates: Object.freeze(indeterminateStates), reason: indeterminateStates.length === 0 ? null : 'indeterminate_p_value',
+    indeterminateStates: Object.freeze(indeterminateStates), reason: indeterminateStates.length === 0 ? null : 'overlapping_p_value',
   });
 }
 /** Typed non-admitting contracts: confidence inversion and adaptive resizing are deliberately absent. */
