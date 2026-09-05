@@ -14,6 +14,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
+  fixedTraceSuiteSha256,
   gradeFixedTrace,
   mutationInputProvenanceFailures,
   summarizeFixedTraceRun,
@@ -232,11 +233,14 @@ function stage(provider: ModelProvider, maxIterations: number): FixedTraceProvid
     maxOutputTokens: 300,
     timeoutMs: 30_000,
     maxIterations,
+    transportRetries: 0,
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
     pricing: {
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
+      cacheReadUsdPerMillionTokens: null,
+      cacheWriteUsdPerMillionTokens: null,
       source: 'Synthetic test pricing.',
     },
   };
@@ -753,6 +757,18 @@ describe('fixed trace artifact runner', () => {
     })).not.toBe(fixedTraceArchitectureConfigSha256(base));
   });
 
+  it('refuses a non-canonical bounded-generation override before dispatch', async () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    const altered = structuredClone(trace('knowledge-task-model'));
+    altered.caseControl = { kind: 'bounded_generation_output', maxOutputTokens: 32 };
+
+    await expect(runFixedTraceCase(altered, config(router, generation)))
+      .rejects.toThrow('only valid for truncation traces');
+    expect(router.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(0);
+  });
+
   it('summarizes the complete standard suite with its trace-local truncation control', async () => {
     const router = new ScriptedProvider(FIXED_TRACE_SUITE.map((fixedTrace) => routeResponse(
       fixedTrace.routing.action,
@@ -778,7 +794,7 @@ describe('fixed trace artifact runner', () => {
     const truncation = observations.find((observation) => observation.traceId === 'bounded-truncation')!;
     expect(truncation.metadata).toMatchObject({
       caseControl: { kind: 'bounded_generation_output', maxOutputTokens: 32 },
-      generation: { maxOutputTokens: 32 },
+      generation: { effectiveMaxOutputTokens: 32 },
     });
   });
 
@@ -817,6 +833,15 @@ describe('fixed trace artifact runner', () => {
         },
       },
     });
+    expect(observation.metadata.router).toMatchObject({
+      source: 'not_run', requestedProvider: null, requestedModel: null,
+      effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
+    });
+    expect(observation.metadata.generation).toMatchObject({
+      source: 'not_run', requestedProvider: null, requestedModel: null,
+      effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
+    });
+    observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([selectedTrace]);
     const directRun = summarizeFixedTraceRun([observation], [selectedTrace]).summary;
     expect(directRun.comparisonEligible).toBe(false);
     expect(directRun.terminalStatusCounts.not_admitted_architecture).toBe(1);
@@ -884,6 +909,7 @@ describe('fixed trace artifact runner', () => {
     expect(observation.metadata.toolUniverse).toMatchObject({
       source: 'fixture_oracle', deployable: false,
     });
+    observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([selectedTrace]);
     const { grades, summary } = summarizeFixedTraceRun([observation], [selectedTrace]);
     expect(grades[0]?.routingPass).toBeNull();
     expect(summary.comparisonEligible).toBe(false);
