@@ -1450,6 +1450,16 @@ export class AddieRouter {
    * Returns null if no quick match, meaning the full router should run.
    */
   quickMatch(ctx: RoutingContext): ExecutionPlan | null {
+    return quickMatchRoutingContext(ctx);
+  }
+}
+
+/**
+ * Production's deterministic pre-router policy.  Keep this separate from
+ * `AddieRouter` so diagnostic callers can reuse the exact policy without
+ * constructing a provider-backed router or widening their capability surface.
+ */
+export function quickMatchRoutingContext(ctx: RoutingContext): ExecutionPlan | null {
     const startTime = Date.now();
     // Normalize smart quotes (Slack converts ' to \u2018/\u2019 and " to \u201C/\u201D)
     const text = ctx.message
@@ -1565,6 +1575,5 @@ export class AddieRouter {
     }
 
     // No quick match - need full router
-    return null;
-  }
+  return null;
 }
