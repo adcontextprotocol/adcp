@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   FIXED_TRACE_ADMITTED_CELLS,
+  FIXED_TRACE_ARCHITECTURE_CELL_TRUTH,
+  FIXED_TRACE_COMPONENT_SMOKE_PLAN,
   FIXED_TRACE_CONFIRMATORY_POWER_GATE,
   FIXED_TRACE_CONFIRMATORY_ADMISSION,
   FIXED_TRACE_HYBRID_CONTRAST_PREFLIGHT,
   FIXED_TRACE_JUDGE_CALIBRATION_REQUIREMENTS,
+  FIXED_TRACE_OPERATIONAL_ECONOMIC_GATE,
   FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
   FIXED_TRACE_PROTOCOL_PRICING,
   FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES,
@@ -34,6 +37,8 @@ describe("fixed-trace staged protocol", () => {
     ).toBe(82);
   });
   it("screens every reviewed adapter-supported provider/model/effort cell before adaptive pruning", () => {
+    expect(FIXED_TRACE_ADMITTED_CELLS.filter((cell) => cell.role === "router")).toHaveLength(10);
+    expect(FIXED_TRACE_ADMITTED_CELLS.filter((cell) => cell.role === "generation")).toHaveLength(11);
     for (const role of ["router", "generation"] as const)
       for (const provider of ["anthropic", "openai", "google"] as const)
         expect(
@@ -60,6 +65,26 @@ describe("fixed-trace staged protocol", () => {
         repeats: "stability_only_not_new_cases",
       },
     );
+    expect(FIXED_TRACE_COMPONENT_SMOKE_PLAN).toMatchObject({
+      status: "not_admitted_pending_credential_free_admission",
+      totalComponentCells: 21,
+      cases: 8,
+      repetitions: 1,
+      maxGenerationInvocationsPerCase: 2,
+      providerCeilingUsd: 5,
+      llmJudging: "none",
+      architectureClaim: "none",
+    });
+    expect(FIXED_TRACE_ARCHITECTURE_CELL_TRUTH).toEqual({
+      routerCells: 10,
+      generationCells: 11,
+      directCombinations: 11,
+      twoStageCombinations: 110,
+      hybridCombinations: 110,
+      totalArchitectureCombinations: 231,
+      potentiallyLlmJudgeableProviderMatchedCombinations: 97,
+      mixedProviderCombinationsRequiringHumanOrFourthProvider: 134,
+    });
   });
   it("keeps hybrid router fallback and direct admission explicit in worst-case accounting", () => {
     const estimate = estimateFixedTraceEvaluationProtocol();
@@ -72,6 +97,11 @@ describe("fixed-trace staged protocol", () => {
       architecture.arms.find((arm) => arm.architecture === "direct_generation")
         ?.admission,
     ).toBe("not_admitted_architecture");
+    expect(
+      estimate.armCallAccounting.find(
+        (arm) => arm.armId === "direct-locked-finalist",
+      ),
+    ).toMatchObject({ evaluable: false, routerCalls: 0, generationCalls: 0 });
     const hybrid = architecture.arms.find(
       (arm) => arm.architecture === "deterministic_policy_llm_fallback_hybrid",
     )!;
@@ -131,10 +161,14 @@ describe("fixed-trace staged protocol", () => {
       FIXED_TRACE_CONFIRMATORY_POWER_GATE.hypotheses.map(
         (hypothesis) => hypothesis.id,
       ),
-    ).toEqual(["H1-superiority", "H2-non-inferiority"]);
+    ).toEqual([
+      "H1-superiority",
+      "H2-quality-non-inferiority-for-lower-cost-pipeline",
+    ]);
     expect(FIXED_TRACE_CONFIRMATORY_POWER_GATE).toMatchObject({
       targetPower: 0.8,
       conservativeDiscordanceVarianceUpperBound: 1,
+      worstCaseUpperBoundsNotFinalN: true,
       hypotheses: [
         {
           id: "H1-superiority",
@@ -142,10 +176,10 @@ describe("fixed-trace staged protocol", () => {
           exactTest: "exact_conditional_mcnemar_zero_margin_only",
         },
         {
-          id: "H2-non-inferiority",
+          id: "H2-quality-non-inferiority-for-lower-cost-pipeline",
           marginPercentagePoints: -3,
           exactTest:
-            "predeclared_exact_unconditional_matched_pair_test_required",
+            "unavailable_pending_independent_Lloyd_Moldovan_score_statistic_E_plus_M_exact_unconditional_noninferiority_implementation_and_type_I_error_validation",
         },
       ],
     });
@@ -165,14 +199,21 @@ describe("fixed-trace staged protocol", () => {
       },
       finalProtocolFingerprint: null,
     });
+    expect(FIXED_TRACE_OPERATIONAL_ECONOMIC_GATE).toMatchObject({
+      status:
+        "not_admitted_pending_complete_trusted_usage_and_predeclared_economic_margin",
+      endpoint: "paired_metered_USD_cost_and_latency_reliability",
+      qualityHypothesisRelationship: "separate_from_H2_quality_noninferiority",
+      binaryPercentagePointHypothesis: false,
+    });
   });
-  it("uses two provider-excluding calibrated judge families for every candidate provider", () => {
+  it("fails closed until every provider-excluding judge has a custodied calibration", () => {
     for (const provider of ["anthropic", "openai", "google"] as const) {
-      const judges = providerExcludingCalibratedJudges([provider]);
-      expect(judges).toHaveLength(2);
-      expect(judges.some((judge) => judge.provider === provider)).toBe(false);
+      expect(() => providerExcludingCalibratedJudges([provider])).toThrow(
+        "no admissible provider-excluding judge pair",
+      );
     }
-    expect(FIXED_TRACE_JUDGE_CALIBRATION_REQUIREMENTS).toHaveLength(2);
+    expect(FIXED_TRACE_JUDGE_CALIBRATION_REQUIREMENTS).toHaveLength(3);
     expect(
       FIXED_TRACE_JUDGE_CALIBRATION_REQUIREMENTS.every(
         (judge) =>
@@ -225,7 +266,7 @@ describe("fixed-trace staged protocol", () => {
     (routed.stages[0] as { cellId: string }).cellId =
       "router:openai:gpt-5.6-luna:none";
     expect(() => assertFixedTraceEvaluationProtocol(protocol)).toThrow(
-      "single-provider complete pipeline",
+      "pinned declaration",
     );
   });
   it("applies hard elimination and successive halving deterministically", () => {
@@ -241,14 +282,47 @@ describe("fixed-trace staged protocol", () => {
         costUsd: index,
       }),
     );
-    expect(selectFixedTraceScreeningSurvivors(results)).toEqual([
+    const required = results.map((result) => result.cellId);
+    expect(selectFixedTraceScreeningSurvivors(results, required)).toEqual([
       results[0]!.cellId,
       results[1]!.cellId,
     ]);
-    expect(selectFixedTraceScreeningSurvivors([...results].reverse())).toEqual([
+    expect(selectFixedTraceScreeningSurvivors([...results].reverse(), required)).toEqual([
       results[0]!.cellId,
       results[1]!.cellId,
     ]);
+  });
+  it("rejects partial and hostile screening result sets", () => {
+    const result = {
+      cellId: FIXED_TRACE_ADMITTED_CELLS[0]!.id,
+      safetyFailures: 0, identityFailures: 0, malformedFailures: 0,
+      toolLoopFailures: 0, reliabilityFailures: 0, latencyMs: 1, costUsd: 1,
+    };
+    expect(() => selectFixedTraceScreeningSurvivors([result])).toThrow(
+      "exactly one result for every supported executable cell",
+    );
+    expect(() => selectFixedTraceScreeningSurvivors(
+      [{ ...result, latencyMs: Number.NaN }], [result.cellId],
+    )).toThrow("invalid metrics");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      [result, result], [result.cellId],
+    )).toThrow("unknown or duplicate");
+    expect(() => selectFixedTraceScreeningSurvivors(
+      [result], ["unknown"],
+    )).toThrow("required cell set is invalid");
+  });
+  it.each([
+    (protocol: any) => { protocol.finalProtocol.familywiseAlpha = 0.5; },
+    (protocol: any) => { protocol.finalProtocol.hypothesisIds[0] = "rewritten"; },
+    (protocol: any) => { protocol.finalProtocol.pairedTest = "rewritten"; },
+    (protocol: any) => { protocol.finalProtocol.exclusions = "drop_failures"; },
+    (protocol: any) => { protocol.adaptiveRule.repeats = "inflate_N"; },
+    (protocol: any) => { protocol.finalProtocol.powerResult = { admitted: true }; },
+    (protocol: any) => { protocol.phases[4].arms[0].stages[0].maxOutputTokens = 1; },
+  ])("rejects hostile nested protocol rewrites before fingerprinting", (mutate) => {
+    const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
+    mutate(protocol);
+    expect(() => assertFixedTraceEvaluationProtocol(protocol)).toThrow();
   });
   it("uses canonical Luna subset-cache pricing and leaves Terra/Sol inert", () => {
     const luna = FIXED_TRACE_PROTOCOL_PRICING.find(

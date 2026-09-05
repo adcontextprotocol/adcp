@@ -592,6 +592,21 @@ function resolveTraceDefinitions(
   });
 }
 
+/**
+ * Routed replay currently obtains the presented surface from case fixtures.
+ * That is useful for deterministic component replay, but it is not neutral
+ * common-universe provenance and therefore cannot support architecture
+ * comparison. Keep this refusal separate from replay so it cannot be mistaken
+ * for an admission merely because execution succeeds.
+ */
+export function assertFixedTraceArchitectureComparisonPrerequisite(
+  config: Pick<FixedTraceRunnerConfig, "architectureArm" | "toolDefinitionProvenance">,
+): never {
+  if (fixedTraceArchitectureArm(config.architectureArm).id === "direct_generation")
+    throw new Error("direct architecture comparison is not admitted without signed capture/source/thread/request binding");
+  throw new Error("architecture comparison is not admitted: common authenticated base registry/schema/receipt tool universe is unavailable; fixture-local tool definitions are replay-only");
+}
+
 export function fixedTraceToolSchemaSha256(
   traceSuite: readonly FixedTraceCase[],
   definitions: readonly AddieTool[],

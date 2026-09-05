@@ -409,6 +409,30 @@ describe("fixed-trace independent judge", () => {
     expect(provider.dispatches).toBe(0);
   });
 
+  it("unions requested and returned router and generator providers for pipeline exclusion", async () => {
+    const candidate = observation(trace.id, "anthropic");
+    candidate.metadata.router.returnedProvider = "openai";
+    candidate.metadata.router.returnedModel = "openai-router-fallback";
+    candidate.metadata.generation.requestedProvider = "google";
+    candidate.metadata.generation.returnedProvider = "google";
+    candidate.metadata.generation.returnedModel = "google-generator-fallback";
+    const onlyRemainingProvider = new ScriptedJudgeProvider(
+      "openai",
+      '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}',
+    );
+    const sameRouterProvider = new ScriptedJudgeProvider(
+      "anthropic",
+      '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}',
+    );
+    await expect(judgeFixedTraceObservation(trace, candidate, config(sameRouterProvider)))
+      .resolves.toMatchObject({ status: "skipped", failureReason: "judge_not_independent" });
+    await expect(runIndependentFixedTraceJudges(
+      [trace], [candidate], [config(onlyRemainingProvider)],
+    )).rejects.toThrow("requires at least two independent judge providers");
+    expect(sameRouterProvider.dispatches).toBe(0);
+    expect(onlyRemainingProvider.dispatches).toBe(0);
+  });
+
   it("attributes a budget rejection without dispatching the judge", async () => {
     const delegate = new ScriptedJudgeProvider(
       "openai",

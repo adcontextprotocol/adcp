@@ -82,14 +82,53 @@ const contract = () =>
 describe("fixed-trace evaluator-owned evidence coordinator", () => {
   it("authenticates and validates the complete pre-dispatch sequence", () => {
     const issued = contract();
-    expect(
-      coordinator.validate(issued, issued.entries.map(actual)),
-    ).toMatchObject({
+    const ledger = coordinator.validate(issued, issued.entries.map(actual));
+    expect(ledger).toMatchObject({
       complete: true,
+      admission:
+        "not_admitted_diagnostic_hmac_without_privileged_durable_authority",
       plannedDenominator: 2,
       observedDenominator: 2,
       hardFailureDenominator: 0,
     });
+    expect(issued.keyId).toBe("test-evaluator-custody-v1");
+    expect(ledger.signature).toMatch(/^[a-f0-9]{64}$/);
+  });
+  it("snapshots and freezes nested contracts and ledgers", () => {
+    const entries = [expected("case-a", 1), expected("case-b", 2)];
+    const issued = coordinator.issueExpectedSequence({
+      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest", entries,
+    });
+    (entries[0]!.controls.presentedToolNames as unknown as string[])[0] = "rewritten";
+    expect(issued.entries[0]!.controls.presentedToolNames[0]).toBe("search_docs");
+    const supplied = issued.entries.map((entry) => ({
+      ...actual(entry),
+      controls: {
+        ...entry.controls,
+        presentedToolNames: [...entry.controls.presentedToolNames],
+      },
+    }));
+    const ledger = coordinator.validate(issued, supplied);
+    (supplied[0]!.controls.presentedToolNames as unknown as string[])[0] = "rewritten-again";
+    expect(ledger.entries[0]!.controls.presentedToolNames[0]).toBe("search_docs");
+    expect(Object.isFrozen(ledger.entries[0]!.controls.presentedToolNames)).toBe(true);
+    expect(() => {
+      (ledger.entries[0]!.controls.presentedToolNames as unknown as string[])[0] = "tamper";
+    }).toThrow();
+  });
+  it("never represents caller-keyed HMAC output as privileged custody", () => {
+    const arbitraryImporter = createFixedTraceEvaluatorCoordinator({
+      hmacKey: new Uint8Array(32).fill(9), keyId: "arbitrary-importer-key",
+    });
+    expect(arbitraryImporter.admission).toBe(
+      "not_admitted_diagnostic_hmac_without_privileged_durable_authority",
+    );
+    const issued = arbitraryImporter.issueExpectedSequence({
+      runId: "run-1", protocolFingerprint: "protocol", manifestFingerprint: "manifest",
+      entries: [expected("case-a", 1)],
+    });
+    expect(arbitraryImporter.validate(issued, [actual(issued.entries[0]!)]).admission)
+      .toBe("not_admitted_diagnostic_hmac_without_privileged_durable_authority");
   });
   it.each([
     [
@@ -150,6 +189,10 @@ describe("fixed-trace evaluator-owned evidence coordinator", () => {
         issued.entries.map(actual),
       ),
     ).toThrow("authentication");
+    expect(() => coordinator.validate(
+      { ...issued, keyId: "wrong-custody-key" },
+      issued.entries.map(actual),
+    )).toThrow("authentication");
     expect(() =>
       coordinator.validate(issued, [
         { ...actual(issued.entries[0]!), terminalStatus: "unknown_exposure" },

@@ -5,10 +5,10 @@ import type {
 } from "../model-providers/model-provider.js";
 
 /**
- * Evaluator-owned custody for offline fixed-trace evidence. This module has no
- * provider client and no production-handler import. Its signing key is passed
- * only by the evaluator's protected configuration; candidate plans, artifacts,
- * and callbacks cannot mint, alter, or restamp an expected sequence.
+ * Diagnostic integrity only. An importer supplies this module's key, so this
+ * cannot establish evaluator custody or confirmatory evidence. A separately
+ * injected opaque privileged signer and durable dispatcher/ledger boundary is
+ * required before any admission can be made.
  */
 export const FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION =
   "addie-fixed-trace-evaluator-coordinator-v1" as const;
@@ -101,6 +101,7 @@ export interface FixedTraceActualInvocation extends FixedTraceExpectedInvocation
 }
 export interface FixedTraceExpectedSequenceContract {
   readonly version: typeof FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION;
+  readonly keyId: string;
   readonly runId: string;
   readonly protocolFingerprint: string;
   readonly manifestFingerprint: string;
@@ -108,6 +109,7 @@ export interface FixedTraceExpectedSequenceContract {
   readonly signature: string;
 }
 export interface FixedTraceEvidenceLedger {
+  readonly admission: "not_admitted_diagnostic_hmac_without_privileged_durable_authority";
   readonly contract: FixedTraceExpectedSequenceContract;
   readonly entries: readonly FixedTraceActualInvocation[];
   readonly complete: boolean;
@@ -115,7 +117,11 @@ export interface FixedTraceEvidenceLedger {
   readonly plannedDenominator: number;
   readonly observedDenominator: number;
   readonly hardFailureDenominator: number;
+  readonly signature: string;
 }
+
+const DIAGNOSTIC_ADMISSION =
+  "not_admitted_diagnostic_hmac_without_privileged_durable_authority" as const;
 
 function canonical(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "string")
@@ -134,6 +140,15 @@ function canonical(value: unknown): string {
       .join(",")}}`;
   }
   throw new Error("non-JSON evaluator ledger value");
+}
+function deepSnapshot<T>(value: T): T {
+  const copy = structuredClone(value);
+  const freeze = (nested: unknown): unknown => {
+    if (nested === null || typeof nested !== "object" || Object.isFrozen(nested)) return nested;
+    for (const child of Object.values(nested as Record<string, unknown>)) freeze(child);
+    return Object.freeze(nested);
+  };
+  return freeze(copy) as T;
 }
 const invocationKey = (
   entry: Pick<
@@ -159,6 +174,8 @@ const invocationKey = (
 const contractProjection = (
   contract: Omit<FixedTraceExpectedSequenceContract, "signature">,
 ) => canonical(contract);
+const ledgerProjection = (ledger: Omit<FixedTraceEvidenceLedger, "signature">) =>
+  canonical(ledger);
 const sameExpected = (
   actual: FixedTraceActualInvocation,
   expected: FixedTraceExpectedInvocation,
@@ -210,6 +227,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
   const verify = (contract: FixedTraceExpectedSequenceContract) => {
     const projection = contractProjection({
       version: contract.version,
+      keyId: contract.keyId,
       runId: contract.runId,
       protocolFingerprint: contract.protocolFingerprint,
       manifestFingerprint: contract.manifestFingerprint,
@@ -219,6 +237,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
     const supplied = Buffer.from(contract.signature, "hex");
     if (
       contract.version !== FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION ||
+      contract.keyId !== evaluatorConfig.keyId ||
       expected.length !== supplied.length ||
       !timingSafeEqual(expected, supplied)
     )
@@ -228,8 +247,12 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
       );
   };
   return Object.freeze({
+    admission: DIAGNOSTIC_ADMISSION,
     issueExpectedSequence(
-      input: Omit<FixedTraceExpectedSequenceContract, "version" | "signature">,
+      input: Omit<
+        FixedTraceExpectedSequenceContract,
+        "version" | "keyId" | "signature"
+      >,
     ): FixedTraceExpectedSequenceContract {
       if (
         !input.runId.trim() ||
@@ -249,13 +272,14 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
           );
         keys.add(key);
       }
-      const unsigned = {
+      const unsigned = deepSnapshot({
         version: FIXED_TRACE_EVALUATOR_COORDINATOR_VERSION,
+        keyId: evaluatorConfig.keyId,
         ...input,
-      } as const;
-      return Object.freeze({
+        entries: deepSnapshot(input.entries),
+      } as const);
+      return deepSnapshot({
         ...unsigned,
-        entries: Object.freeze([...input.entries]),
         signature: sign(contractProjection(unsigned)),
       });
     },
@@ -263,19 +287,21 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
       contract: FixedTraceExpectedSequenceContract,
       actualEntries: readonly FixedTraceActualInvocation[],
     ): FixedTraceEvidenceLedger {
-      verify(contract);
+      const trustedContract = deepSnapshot(contract);
+      const trustedActualEntries = deepSnapshot(actualEntries);
+      verify(trustedContract);
       const observed: FixedTraceActualInvocation[] = [];
       const seen = new Set<string>();
       let halted = false;
-      for (const actual of actualEntries) {
+      for (const actual of trustedActualEntries) {
         if (halted)
           throw new FixedTraceLedgerValidationError(
             "unknown_exposure",
             "run was halted after unknown exposure",
           );
         const key = invocationKey(actual);
-        const expected = contract.entries[observed.length];
-        const knownIndex = contract.entries.findIndex(
+        const expected = trustedContract.entries[observed.length];
+        const knownIndex = trustedContract.entries.findIndex(
           (entry) => invocationKey(entry) === key,
         );
         if (seen.has(key))
@@ -295,7 +321,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
           );
         if (knownIndex > observed.length) {
           const expectedKey = invocationKey(expected);
-          const appearsLater = actualEntries
+          const appearsLater = trustedActualEntries
             .slice(observed.length + 1)
             .some((entry) => invocationKey(entry) === expectedKey);
           throw new FixedTraceLedgerValidationError(
@@ -364,7 +390,7 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
         seen.add(key);
         observed.push(actual);
       }
-      if (observed.length !== contract.entries.length)
+      if (observed.length !== trustedContract.entries.length)
         throw new FixedTraceLedgerValidationError(
           "omission",
           "ledger ended before its planned denominator",
@@ -372,14 +398,19 @@ export function createFixedTraceEvaluatorCoordinator(evaluatorConfig: {
       const hardFailureDenominator = observed.filter(
         (entry) => entry.terminalStatus !== "complete",
       ).length;
-      return Object.freeze({
-        contract,
-        entries: Object.freeze(observed),
+      const unsignedLedger = deepSnapshot({
+        admission: DIAGNOSTIC_ADMISSION,
+        contract: trustedContract,
+        entries: observed,
         complete: true,
         halted: false,
-        plannedDenominator: contract.entries.length,
+        plannedDenominator: trustedContract.entries.length,
         observedDenominator: observed.length,
         hardFailureDenominator,
+      });
+      return deepSnapshot({
+        ...unsignedLedger,
+        signature: sign(ledgerProjection(unsignedLedger)),
       });
     },
   });

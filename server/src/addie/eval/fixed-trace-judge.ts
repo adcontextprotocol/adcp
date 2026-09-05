@@ -332,17 +332,15 @@ function validateConfig(config: FixedTraceJudgeConfig): void {
 }
 
 function candidateProviders(observation: FixedTraceObservation): ReadonlySet<ModelProviderId> {
-  const generation = [
+  // A router selects the candidate-visible surface, so both stages contribute
+  // to the pipeline under semantic review—even when generation metadata exists
+  // or a fallback changed the returned provider.
+  return new Set([
+    observation.metadata.router.requestedProvider,
+    observation.metadata.router.returnedProvider,
     observation.metadata.generation.requestedProvider,
     observation.metadata.generation.returnedProvider,
-  ].filter((provider): provider is ModelProviderId => provider !== null);
-  const providers = generation.length > 0
-    ? generation
-    : [
-        observation.metadata.router.requestedProvider,
-        observation.metadata.router.returnedProvider,
-      ].filter((provider): provider is ModelProviderId => provider !== null);
-  return new Set(providers);
+  ].filter((provider): provider is ModelProviderId => provider !== null));
 }
 
 export async function judgeFixedTraceObservation(

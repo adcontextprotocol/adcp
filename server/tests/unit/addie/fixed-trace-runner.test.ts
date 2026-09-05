@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assertFixedTraceArchitectureComparisonPrerequisite,
   buildFixedTraceGenerationRequest,
   fixedTraceArchitectureConfigSha256,
   fixedTraceToolSchemaSha256,
@@ -400,6 +401,15 @@ function expandedFixtureTrace(id = 'expanded-fixture-tool'): FixedTraceCase {
 }
 
 describe('fixed trace artifact runner', () => {
+  it('fails closed architecture comparison while candidate-visible tools are fixture-local', () => {
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    expect(() => assertFixedTraceArchitectureComparisonPrerequisite(config(router, generation))).toThrow(
+      'common authenticated base registry/schema/receipt tool universe is unavailable',
+    );
+    expect(router.respondCalls).toHaveLength(0);
+    expect(generation.respondCalls).toHaveLength(0);
+  });
   it('uses production quick-match terminal behavior only from allowed request facts', () => {
     const selectedTrace = trace('knowledge-task-model');
     const policy = fixedTraceHybridPolicy();
