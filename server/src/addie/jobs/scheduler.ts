@@ -79,6 +79,47 @@ interface RunningJob {
   lastRunAt: Date | null;
   lastDurationMs: number | null;
   lastError: string | null;
+  lastMemoryProfile: JobMemoryProfile | null;
+}
+
+export interface JobMemorySnapshot {
+  rssMb: number;
+  heapUsedMb: number;
+  heapTotalMb: number;
+  externalMb: number;
+}
+
+export interface JobMemoryProfile {
+  before: JobMemorySnapshot;
+  after: JobMemorySnapshot;
+  delta: JobMemorySnapshot;
+}
+
+function memorySnapshot(): JobMemorySnapshot {
+  const memory = process.memoryUsage();
+  const toMb = (bytes: number) => Math.round(bytes / 1024 / 1024);
+  return {
+    rssMb: toMb(memory.rss),
+    heapUsedMb: toMb(memory.heapUsed),
+    heapTotalMb: toMb(memory.heapTotal),
+    externalMb: toMb(memory.external),
+  };
+}
+
+function memoryProfile(
+  before: JobMemorySnapshot,
+  after: JobMemorySnapshot,
+): JobMemoryProfile {
+  return {
+    before,
+    after,
+    delta: {
+      rssMb: after.rssMb - before.rssMb,
+      heapUsedMb: after.heapUsedMb - before.heapUsedMb,
+      heapTotalMb: after.heapTotalMb - before.heapTotalMb,
+      externalMb: after.externalMb - before.externalMb,
+    },
+  };
 }
 
 /**
@@ -92,6 +133,7 @@ export interface JobStatus {
   lastRunAt: string | null;
   lastDurationMs: number | null;
   lastError: string | null;
+  lastMemoryProfile: JobMemoryProfile | null;
   consecutiveFailures: number;
   businessHours?: BusinessHoursConstraint;
 }
@@ -216,6 +258,7 @@ export class JobScheduler {
       lastRunAt: null,
       lastDurationMs: null,
       lastError: null,
+      lastMemoryProfile: null,
     };
 
     const runJob = async () => {
@@ -236,6 +279,7 @@ export class JobScheduler {
       job.executing = true;
       await this.acquireSlot();
       const startTime = Date.now();
+      const memoryBefore = memorySnapshot();
       try {
         const result = await config.runner(config.options ?? ({} as never));
 
@@ -270,10 +314,23 @@ export class JobScheduler {
           });
         }
       } finally {
-        this.releaseSlot();
+        const durationMs = Date.now() - startTime;
+        const profile = memoryProfile(memoryBefore, memorySnapshot());
+        job.lastMemoryProfile = profile;
         job.executing = false;
         job.lastRunAt = new Date();
-        job.lastDurationMs = Date.now() - startTime;
+        job.lastDurationMs = durationMs;
+        logger.info(
+          {
+            jobName: name,
+            durationMs,
+            memory: profile,
+            activeJobs: this.activeJobs,
+            queuedJobs: this.waitQueue.length,
+          },
+          'Scheduled job memory profile',
+        );
+        this.releaseSlot();
       }
     };
 
@@ -374,6 +431,7 @@ export class JobScheduler {
         lastRunAt: job?.lastRunAt?.toISOString() ?? null,
         lastDurationMs: job?.lastDurationMs ?? null,
         lastError: job?.lastError ?? null,
+        lastMemoryProfile: job?.lastMemoryProfile ?? null,
         consecutiveFailures: this.consecutiveFailures.get(name) ?? 0,
         businessHours: config.businessHours,
       });

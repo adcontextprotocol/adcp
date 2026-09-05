@@ -33,6 +33,15 @@ const mcpAuthMocks = vi.hoisted(() => ({
   discoverAuthorizationServerMetadata: vi.fn(),
   discoverOAuthProtectedResourceMetadata: vi.fn(),
 }));
+const mcpServerAuthMocks = vi.hoisted(() => {
+  class OAuthError extends Error {
+    static errorCode = 'server_error';
+    get errorCode() {
+      return (this.constructor as typeof OAuthError).errorCode;
+    }
+  }
+  return { OAuthError };
+});
 const agentContextDbMocks = vi.hoisted(() => ({
   instance: {
     getById: vi.fn(),
@@ -72,6 +81,10 @@ vi.mock('@modelcontextprotocol/sdk/client/auth.js', () => ({
   discoverOAuthProtectedResourceMetadata: mcpAuthMocks.discoverOAuthProtectedResourceMetadata,
 }));
 
+vi.mock('@modelcontextprotocol/sdk/server/auth/errors.js', () => ({
+  OAuthError: mcpServerAuthMocks.OAuthError,
+}));
+
 vi.mock('../../src/auth/workos-client.js', () => ({
   getWorkos: () => ({
     userManagement: {
@@ -106,6 +119,7 @@ import {
   buildDurableOAuthScopeHint,
   createAgentOAuthRouter,
   createMembershipGuardedPendingFlowStore,
+  isAgentSideOAuthError,
 } from '../../src/routes/agent-oauth.js';
 import { oauthSafeFetch } from '../../src/utils/oauth-safe-fetch.js';
 
@@ -376,6 +390,12 @@ describe('agent OAuth safe fetch injection', () => {
 });
 
 describe('buildDurableOAuthScopeHint', () => {
+  it('recognizes OAuth failures from both SDK error families as agent-side', () => {
+    expect(isAgentSideOAuthError(new sdkMocks.OAuthError())).toBe(true);
+    expect(isAgentSideOAuthError(new mcpServerAuthMocks.OAuthError('registration failed'))).toBe(true);
+    expect(isAgentSideOAuthError(new Error('database unavailable'))).toBe(false);
+  });
+
   it('preserves advertised scopes and appends offline_access', () => {
     expect(buildDurableOAuthScopeHint(['openid', 'profile', 'email'])).toBe('openid profile email offline_access');
   });

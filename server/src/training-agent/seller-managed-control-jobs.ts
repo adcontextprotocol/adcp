@@ -7,7 +7,7 @@ import {
   type TaskRegistry,
   type TaskRegistryScope,
 } from '@adcp/sdk/server';
-import { query } from '../db/client.js';
+import { isDatabaseInitialized, query } from '../db/client.js';
 import { decrypt, deriveKey, encrypt } from '../db/encryption.js';
 import { createLogger } from '../logger.js';
 
@@ -836,15 +836,30 @@ export class SellerManagedControlJobCoordinator {
       ? new PostgresSellerManagedControlJobStore()
       : new InMemorySellerManagedControlJobStore(),
     private readonly notify: NotifyJob = async () => {},
+    private readonly isDatabaseReady: () => boolean = isDatabaseInitialized,
   ) {}
 
   start(): void {
-    void this.runAvailable().catch(err => logger.error({ err }, 'Initial seller-control reconciliation failed'));
+    this.reconcile('Initial seller-control reconciliation failed');
     if (process.env.NODE_ENV !== 'production' || this.timer) return;
     this.timer = setInterval(() => {
-      void this.runAvailable().catch(err => logger.error({ err }, 'Seller-control reconciliation failed'));
+      this.reconcile('Seller-control reconciliation failed');
     }, RECONCILE_INTERVAL_MS);
     this.timer.unref();
+  }
+
+  stop(): void {
+    if (!this.timer) return;
+    clearInterval(this.timer);
+    this.timer = undefined;
+  }
+
+  private reconcile(errorMessage: string): void {
+    if (this.store instanceof PostgresSellerManagedControlJobStore && !this.isDatabaseReady()) {
+      logger.debug('Deferring seller-control reconciliation until database initialization');
+      return;
+    }
+    void this.runAvailable().catch(err => logger.error({ err }, errorMessage));
   }
 
   async enqueue(input: SellerManagedControlJobInput): Promise<SellerManagedControlJob> {

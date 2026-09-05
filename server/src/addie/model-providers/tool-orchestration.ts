@@ -607,7 +607,10 @@ export function createAddieToolExecutor(
         executionMode: options.executionMode,
       };
       if (operationalExecution) {
-        logger.error(invariantContext, invariantMessage);
+        // notifyToolError below owns the operator notification. Logging this
+        // at error as well causes the logger hook to emit a duplicate system
+        // alert for the same rejected call.
+        logger.warn(invariantContext, invariantMessage);
       } else {
         logger.debug(invariantContext, invariantMessage);
       }
