@@ -172,7 +172,7 @@ function budgetedStageProvider(
     provider,
     budget,
     pricing,
-    fixedTraceResponsePricingPolicy(provider.id, model, pricing.profileId),
+    fixedTraceResponsePricingPolicy(provider.id, model, pricing),
   );
 }
 

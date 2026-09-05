@@ -767,10 +767,15 @@ describe('fixed trace artifact runner', () => {
     const delegate = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const budget = new FixedTraceBudget(0.000001);
     const router = new BudgetedFixedTraceProvider(delegate, budget, {
+      profileId: 'synthetic-test-model-v1',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
+      cacheReadUsdPerMillionTokens: null,
+      cacheWriteUsdPerMillionTokens: null,
+      cacheReadAccounting: 'unsupported',
+      cacheWriteAccounting: 'unsupported',
       source: 'Synthetic test pricing.',
-    }, fixedTraceResponsePricingPolicy('anthropic', 'test-model', 'synthetic-test-model-v1'));
+    }, fixedTraceResponsePricingPolicy('anthropic', 'test-model', stage(delegate, 1).pricing));
     const generation = new ScriptedProvider([]);
 
     const observation = await runFixedTraceCase(

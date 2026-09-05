@@ -23,6 +23,10 @@ import {
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
+  GOOGLE_ROUTER_MODEL,
+  isGoogleRouterModelRevision,
+} from '../../../src/addie/model-providers/google-generate-content-provider.js';
+import {
   fixedTraceArchitectureArm,
   fixedTraceExecutionEnvelopeProvenance,
   fixedTraceToolUniverseProvenance,
@@ -889,6 +893,17 @@ describe('fixed cross-provider trace suite', () => {
     unpinnedGoogleProfile.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(unpinnedGoogleProfile.metadata);
     expect(gradeFixedTrace(trace, unpinnedGoogleProfile).failures)
       .toContain('router_configured_model_resolution_policy_invalid');
+  });
+
+  it('accepts only calendar-valid reviewed Google router revisions', () => {
+    expect(isGoogleRouterModelRevision(GOOGLE_ROUTER_MODEL)).toBe(true);
+    expect(isGoogleRouterModelRevision('gemini-3.7-flash-20260801')).toBe(true);
+    for (const model of [
+      'gemini-3.7-flash-00000000',
+      'gemini-3.7-flash-99999999',
+      'gemini-3.7-flash-20260230',
+      'gemini-3.7-flash-20271231',
+    ]) expect(isGoogleRouterModelRevision(model)).toBe(false);
   });
 
   it('requires every inactive local or not-run telemetry field to be null or zero', () => {

@@ -432,29 +432,11 @@ function returnedModelUsesRecordedPricing(
   config: FixedTraceProviderStageConfig,
   response: ModelResponse,
 ): boolean {
-  return fixedTraceResponseUsesRecordedPricing(
+  return fixedTraceResponseUsesPricingPolicy(fixedTraceResponsePricingPolicy(
     config.provider.id,
     config.model,
-    config.pricing.profileId,
-    response,
-  );
-}
-
-/**
- * Shared by runner metadata and the budget decorator's response edge. Exact
- * policies accept only literal identity. The Google dated-revision exception
- * is tied to its one reviewed price-profile version.
- */
-export function fixedTraceResponseUsesRecordedPricing(
-  requestedProvider: ModelProvider['id'],
-  requestedModel: string,
-  pricingProfileId: string,
-  response: ModelResponse,
-): boolean {
-  return fixedTraceResponseUsesPricingPolicy(
-    fixedTraceResponsePricingPolicy(requestedProvider, requestedModel, pricingProfileId),
-    response,
-  );
+    config.pricing,
+  ), response);
 }
 
 function providerStageMetadata(

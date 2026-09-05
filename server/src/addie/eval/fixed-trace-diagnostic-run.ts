@@ -64,6 +64,45 @@ function ownDataProperty(source: unknown, name: string, owner: string): unknown 
   return descriptor.value;
 }
 
+const DIAGNOSTIC_PRICING_FIELDS = [
+  'profileId',
+  'inputUsdPerMillionTokens',
+  'outputUsdPerMillionTokens',
+  'cacheReadUsdPerMillionTokens',
+  'cacheWriteUsdPerMillionTokens',
+  'cacheReadAccounting',
+  'cacheWriteAccounting',
+  'source',
+] as const;
+
+function snapshotPricing(pricing: unknown, owner: string): FixedTracePricing {
+  const prototype = typeof pricing === 'object' && pricing !== null
+    ? Object.getPrototypeOf(pricing)
+    : null;
+  if (
+    typeof pricing !== 'object'
+    || pricing === null
+    || (prototype !== Object.prototype && prototype !== null)
+  ) throw new Error(`Fixed trace diagnostic ${owner} must be a plain pricing object`);
+  const keys = Reflect.ownKeys(pricing);
+  if (
+    keys.length !== DIAGNOSTIC_PRICING_FIELDS.length
+    || keys.some((key) => typeof key !== 'string' || !DIAGNOSTIC_PRICING_FIELDS.includes(key as typeof DIAGNOSTIC_PRICING_FIELDS[number]))
+  ) throw new Error(`Fixed trace diagnostic ${owner} must contain only approved pricing fields`);
+  // Structured cloning calls nested getters. Copy each approved data
+  // descriptor instead, so a price cannot change between validation and use.
+  return Object.freeze({
+    profileId: ownDataProperty(pricing, 'profileId', owner),
+    inputUsdPerMillionTokens: ownDataProperty(pricing, 'inputUsdPerMillionTokens', owner),
+    outputUsdPerMillionTokens: ownDataProperty(pricing, 'outputUsdPerMillionTokens', owner),
+    cacheReadUsdPerMillionTokens: ownDataProperty(pricing, 'cacheReadUsdPerMillionTokens', owner),
+    cacheWriteUsdPerMillionTokens: ownDataProperty(pricing, 'cacheWriteUsdPerMillionTokens', owner),
+    cacheReadAccounting: ownDataProperty(pricing, 'cacheReadAccounting', owner),
+    cacheWriteAccounting: ownDataProperty(pricing, 'cacheWriteAccounting', owner),
+    source: ownDataProperty(pricing, 'source', owner),
+  }) as FixedTracePricing;
+}
+
 function snapshotStageConfig(config: unknown, owner: string): FixedTraceProviderStageConfig {
   // Read each untrusted stage property exactly once. Later checks use only
   // this detached plain object, never a caller-controlled getter or proxy.
@@ -87,7 +126,7 @@ function snapshotStageConfig(config: unknown, owner: string): FixedTraceProvider
     transportRetries,
     samplingMode,
     temperature,
-    pricing: deepFreeze(structuredClone(pricing)),
+    pricing: snapshotPricing(pricing, `${owner}.pricing`),
   }) as FixedTraceProviderStageConfig;
 }
 
@@ -127,12 +166,12 @@ function snapshotPlans(
     const routerPolicy = fixedTraceResponsePricingPolicy(
       plan.router.provider.id,
       plan.router.model,
-      plan.router.pricing.profileId,
+      plan.router.pricing,
     );
     const generationPolicy = fixedTraceResponsePricingPolicy(
       plan.generation.provider.id,
       plan.generation.model,
-      plan.generation.pricing.profileId,
+      plan.generation.pricing,
     );
     if (
       typeof plan.name !== 'string'
@@ -157,6 +196,24 @@ function leasePlans(
   const lease = claimFixedTraceBudgetDiagnosticLease(
     budget,
     plans.flatMap((plan) => [plan.router.provider, plan.generation.provider]),
+    (candidateLease) => {
+      for (const plan of plans) {
+        const router = candidateLease.providerFor(plan.router.provider);
+        const generation = candidateLease.providerFor(plan.generation.provider);
+        const routerPolicy = fixedTraceResponsePricingPolicy(router.id, plan.router.model, plan.router.pricing);
+        const generationPolicy = fixedTraceResponsePricingPolicy(
+          generation.id,
+          plan.generation.model,
+          plan.generation.pricing,
+        );
+        if (
+          plan.name !== router.id
+          || plan.name !== generation.id
+          || !isTrustedBudgetedFixedTraceProvider(router, budget, plan.router.pricing, routerPolicy)
+          || !isTrustedBudgetedFixedTraceProvider(generation, budget, plan.generation.pricing, generationPolicy)
+        ) throw new Error('Fixed trace diagnostic cloned provider plans are not authenticated');
+      }
+    },
   );
   return Object.freeze(plans.map((plan) => Object.freeze({
     name: plan.name,

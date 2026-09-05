@@ -40,6 +40,7 @@ const CAPABILITIES: ModelProviderCapabilities = {
 };
 
 const PRICING = {
+  profileId: 'synthetic-judge-v1',
   inputUsdPerMillionTokens: 1,
   outputUsdPerMillionTokens: 2,
   source: 'synthetic judge pricing',
@@ -304,7 +305,7 @@ describe('fixed-trace independent judge', () => {
       delegate,
       budget,
       PRICING,
-      fixedTraceResponsePricingPolicy('openai', 'openai-judge-model', 'synthetic-judge-v1'),
+      fixedTraceResponsePricingPolicy('openai', 'openai-judge-model', PRICING),
     );
     const result = await judgeFixedTraceObservation(trace, observation(trace.id), config(provider));
     expect(result).toMatchObject({

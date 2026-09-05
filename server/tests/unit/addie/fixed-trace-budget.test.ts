@@ -47,6 +47,7 @@ const RESPONSE: ModelResponse = {
 };
 
 const PRICING = {
+  profileId: 'openai-budget-model-v1',
   inputUsdPerMillionTokens: 1,
   outputUsdPerMillionTokens: 5,
   source: 'Synthetic budget pricing.',
@@ -55,7 +56,7 @@ const PRICING = {
 const RESPONSE_PRICING_POLICY = fixedTraceResponsePricingPolicy(
   'openai',
   'budget-model',
-  'openai-budget-model-v1',
+  PRICING,
 );
 
 class BudgetScriptedProvider implements ModelProvider {
@@ -147,7 +148,7 @@ describe('fixed trace provider budget', () => {
       budget,
       PRICING,
       (() => true) as unknown as typeof RESPONSE_PRICING_POLICY,
-    )).toThrow('Fixed trace returned-model pricing policy is invalid');
+    )).toThrow('Fixed trace returned-model pricing policy is not evaluator approved');
   });
 
   it('reserves an additive cache-write worst case before dispatch', () => {

@@ -107,6 +107,44 @@ function scriptedRouter(
   return { provider, calls, response };
 }
 
+function cloneChangingIdentityProvider(): {
+  provider: ModelProvider;
+  calls: ModelRequest[];
+  idReads: () => number;
+} {
+  const calls: ModelRequest[] = [];
+  let reads = 0;
+  const provider: ModelProvider = {
+    get id(): ModelProviderId {
+      reads++;
+      return reads === 1 ? 'anthropic' : 'openai';
+    },
+    capabilities: CAPABILITIES,
+    prepare(request): PreparedModelInvocation {
+      // The delegate's request surface is stable; only an old clone's second
+      // read of `id` would change the wrapper identity.
+      return {
+        provider: 'anthropic', model: request.model, capabilities: CAPABILITIES,
+        requestMetadata: request.requestMetadata,
+        providerRequest: structuredClone(request) as unknown as Readonly<Record<string, unknown>>,
+      };
+    },
+    async *respond(request, options = {}): AsyncIterable<NormalizedModelEvent> {
+      await options.beforeDispatch?.(this.prepare(request));
+      calls.push(structuredClone(request));
+      const response: ModelResponse = {
+        provider: 'anthropic', model: 'synthetic-manual-model', id: 'stable-response',
+        content: [{ type: 'text', text: JSON.stringify({ action: 'ignore', reason: 'Synthetic route.' }) }],
+        finishReason: 'stop', providerFinishReason: 'stop', usage: { inputTokens: 10, outputTokens: 5 },
+      };
+      yield { type: 'response_start', provider: 'anthropic', model: response.model, id: response.id };
+      yield { type: 'text_delta', index: 0, text: response.content[0].type === 'text' ? response.content[0].text : '' };
+      yield { type: 'response_complete', response };
+    },
+  };
+  return { provider, calls, idReads: () => reads };
+}
+
 function stage(
   provider: ModelProvider,
   pricing: FixedTracePricing = PRICING,
@@ -137,7 +175,7 @@ function budgetedStage(
       provider,
       budget,
       pricing,
-      fixedTraceResponsePricingPolicy(provider.id, configured.model, pricing.profileId),
+      fixedTraceResponsePricingPolicy(provider.id, configured.model, pricing),
     ),
   };
 }
@@ -464,6 +502,130 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(artifact.runs[0]).toMatchObject({ provider: 'anthropic', runId: 'root:anthropic' });
   });
 
+  it('never rereads a delegate identity while cloning an authenticated plan', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const path = join(directory, 'artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const changing = cloneChangingIdentityProvider();
+    const budget = new FixedTraceBudget(1);
+    const wrapper = new BudgetedFixedTraceProvider(
+      changing.provider,
+      budget,
+      PRICING,
+      fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING),
+    );
+    const artifact = await runFixedTraceDiagnosticArtifact({
+      plans: [{ name: 'anthropic', router: stage(wrapper), generation: stage(wrapper) }],
+      baseConfig: {
+        sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+        promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+      },
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    expect(changing.idReads()).toBe(1);
+    expect(changing.calls).toHaveLength(1);
+    expect(artifact).toMatchObject({ requestedProviders: ['anthropic'] });
+    expect(artifact.runs[0]).toMatchObject({ provider: 'anthropic', runId: 'root:anthropic' });
+    expect(artifact.runs[0].observations[0].metadata.router).toMatchObject({
+      requestedProvider: 'anthropic', returnedProvider: 'anthropic', estimatedCostUsd: 0.000035,
+    });
+  });
+
+  it('rejects a self-declared zero-rate profile before lease or dispatch and leaves the budget reusable', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const failedPath = join(directory, 'forged-artifact.json');
+    const retryPath = join(directory, 'retry-artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const router = scriptedRouter();
+    const budget = new FixedTraceBudget(1e-12);
+    const trustedRouter = budgetedStage(router.provider, budget);
+    const trustedGeneration = budgetedStage(router.provider, budget);
+    const forgedPricing: FixedTracePricing = {
+      ...ZERO_RATE_PRICING,
+      profileId: 'attacker-says-reviewed-v1',
+      source: 'attacker assertion',
+    };
+    const invoke = (plans: readonly FixedTraceDiagnosticProviderPlan[], path: string) => runFixedTraceDiagnosticArtifact({
+      plans,
+      baseConfig: {
+        sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+        promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+      },
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    await expect(invoke([{
+      name: 'anthropic', router: { ...trustedRouter, pricing: forgedPricing }, generation: trustedGeneration,
+    }], failedPath)).rejects.toThrow('Fixed trace pricing profile is not evaluator approved');
+    expect(router.calls).toHaveLength(0);
+    expect(readFileSync(failedPath, 'utf8')).toBe('');
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0, reservedUsd: 0, dispatchedCalls: 0,
+      completedCalls: 0, budgetRejectedCalls: 0, admissionClosed: false, exposureUnknown: false,
+    });
+
+    const artifact = await invoke([{
+      name: 'anthropic', router: trustedRouter, generation: trustedGeneration,
+    }], retryPath);
+    expect(artifact.budget).toMatchObject({ dispatchedCalls: 0, completedCalls: 0, budgetRejectedCalls: 1 });
+    expect(readFileSync(retryPath, 'utf8')).not.toBe('');
+  });
+
+  it('rejects nested pricing accessors without reading them and leaves the budget reusable', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const failedPath = join(directory, 'accessor-artifact.json');
+    const retryPath = join(directory, 'retry-artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const router = scriptedRouter();
+    const budget = new FixedTraceBudget(1);
+    const trustedRouter = budgetedStage(router.provider, budget);
+    const trustedGeneration = budgetedStage(router.provider, budget);
+    const accessorPricing = { ...PRICING } as FixedTracePricing;
+    let pricingReads = 0;
+    Object.defineProperty(accessorPricing, 'inputUsdPerMillionTokens', {
+      enumerable: true,
+      get() { pricingReads++; return 0; },
+    });
+    const invoke = (plans: readonly FixedTraceDiagnosticProviderPlan[], path: string) => runFixedTraceDiagnosticArtifact({
+      plans,
+      baseConfig: {
+        sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+        promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+      },
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    await expect(invoke([{
+      name: 'anthropic', router: { ...trustedRouter, pricing: accessorPricing }, generation: trustedGeneration,
+    }], failedPath)).rejects.toThrow('provider plan 0.router.pricing.inputUsdPerMillionTokens must be an own data property');
+    expect(pricingReads).toBe(0);
+    expect(router.calls).toHaveLength(0);
+    expect(readFileSync(failedPath, 'utf8')).toBe('');
+    expect(budget.snapshot()).toMatchObject({ dispatchedCalls: 0, completedCalls: 0, budgetRejectedCalls: 0 });
+
+    await invoke([{ name: 'anthropic', router: trustedRouter, generation: trustedGeneration }], retryPath);
+    expect(router.calls).toHaveLength(1);
+  });
+
   it('does not let a final-response mutation alter its snapshotted manual artifact', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
     const path = join(directory, 'artifact.json');
@@ -545,7 +707,7 @@ describe('fixed-trace diagnostic output reservation', () => {
           delegate.provider,
           budget,
           PRICING,
-          fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING.profileId),
+          fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING),
         );
       }
 
@@ -792,13 +954,13 @@ describe('fixed-trace diagnostic output reservation', () => {
       replace('prototype_prepare', () => Object.defineProperty(BudgetedFixedTraceProvider.prototype, 'prepare', { value: delegate.provider.prepare }));
     });
     const budget = new FixedTraceBudget(1);
-    const policy = fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', ZERO_RATE_PRICING.profileId);
-    const router = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, policy);
-    generation = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, policy);
-    const generationStage = stage(generation, ZERO_RATE_PRICING);
+    const policy = fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING);
+    const router = new BudgetedFixedTraceProvider(delegate.provider, budget, PRICING, policy);
+    generation = new BudgetedFixedTraceProvider(delegate.provider, budget, PRICING, policy);
+    const generationStage = stage(generation, PRICING);
     generationStage.maxIterations = 2;
     const artifact = await runFixedTraceDiagnosticArtifact({
-      plans: [{ name: 'anthropic', router: stage(router, ZERO_RATE_PRICING), generation: generationStage }],
+        plans: [{ name: 'anthropic', router: stage(router, PRICING), generation: generationStage }],
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
         promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
@@ -815,13 +977,14 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(attacks).toEqual(['own_respond', 'own_prepare', 'prototype_swap', 'prototype_respond', 'prototype_prepare']);
     expect(delegate.calls).toHaveLength(3);
     expect(artifact.runs[0].observations[0].metadata).toMatchObject({
-      router: { dispatchedCalls: 1, estimatedCostUsd: 0 },
-      generation: { dispatchedCalls: 2, estimatedCostUsd: 0 },
+      router: { dispatchedCalls: 1, estimatedCostUsd: 0.000035 },
+      generation: { dispatchedCalls: 2, estimatedCostUsd: 0.00007 },
     });
-    expect(artifact.runs[0].summary.totalEstimatedCostUsd).toBe(0);
+    expect(artifact.runs[0].summary.totalEstimatedCostUsd).toBeCloseTo(0.000105);
     expect(artifact.budget).toMatchObject({
-      accountedSpendUsd: 0, dispatchedCalls: 3, completedCalls: 3, budgetRejectedCalls: 0, exposureUnknown: false,
+      dispatchedCalls: 3, completedCalls: 3, budgetRejectedCalls: 0, exposureUnknown: false,
     });
+    expect(artifact.budget.accountedSpendUsd).toBeCloseTo(0.000105);
   });
 
   it('rejects a zero-rate ledger with preexisting completed, unknown, or rejected activity', async () => {
@@ -831,7 +994,7 @@ describe('fixed-trace diagnostic output reservation', () => {
       const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
       const provider = scriptedRouter();
       await expect(runFixedTraceDiagnosticArtifact({
-        plans: [{ name: 'anthropic', router: budgetedStage(provider.provider, budget, ZERO_RATE_PRICING), generation: budgetedStage(provider.provider, budget, ZERO_RATE_PRICING) }],
+        plans: [{ name: 'anthropic', router: budgetedStage(provider.provider, budget), generation: budgetedStage(provider.provider, budget) }],
         baseConfig: {
           sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
           promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
