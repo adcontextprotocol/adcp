@@ -136,7 +136,8 @@ export interface FixedTraceJudgeSummary {
   expectedJudgments: number;
   observedJudgments: number;
   judgedJudgments: number;
-  complete: boolean;
+  /** Merely a count check; it is not an evidentiary-admission conclusion. */
+  expectedRecordCountObserved: boolean;
   judgmentCoverageRate: number;
   consensusPassRate: number | null;
   disagreementRate: number | null;
@@ -647,7 +648,7 @@ export function summarizeFixedTraceJudges(
     expectedJudgments,
     observedJudgments: judgments.length,
     judgedJudgments,
-    complete: judgments.length === expectedJudgments,
+    expectedRecordCountObserved: judgments.length === expectedJudgments,
     judgmentCoverageRate: ratio(judgedJudgments, expectedJudgments),
     consensusPassRate: consensusPasses.length === applicable.length
       ? ratio(consensusPasses.filter(Boolean).length, consensusPasses.length)

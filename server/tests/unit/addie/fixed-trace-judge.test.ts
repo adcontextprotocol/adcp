@@ -526,7 +526,7 @@ describe("fixed-trace independent judge", () => {
       expectedJudgments: 2,
       observedJudgments: 0,
       judgedJudgments: 0,
-      complete: false,
+      expectedRecordCountObserved: false,
       judgmentCoverageRate: 0,
       consensusPassRate: null,
       disagreementRate: null,
