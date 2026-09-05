@@ -1107,9 +1107,12 @@ phases:
             path: "context.correlation_id"
             value: "deterministic_testing--initiate_session"
             description: "Context correlation_id returned unchanged"
+      # Keep both follow-up steps gated on the phase's anchor tool. Older
+      # runners that miss phase-level capability gates still cascade-skip them
+      # when si_initiate_session is unavailable.
       - id: force_session_terminated
         title: 'Force session timeout'
-        requires_tool: comply_test_controller
+        requires_tool: si_initiate_session
         narrative: |
           Use the controller to force the session into terminated state with
           termination_reason: session_timeout.
@@ -1146,7 +1149,7 @@ phases:
             description: "Context correlation_id returned unchanged"
       - id: verify_terminated_session
         title: 'Verify messaging fails on terminated session'
-        requires_tool: comply_test_controller
+        requires_tool: si_initiate_session
         narrative: |
           Attempt to send a message on the terminated session. The agent must
           reject with SESSION_TERMINATED — per si-send-message-response.json,
