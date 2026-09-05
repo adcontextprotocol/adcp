@@ -5,6 +5,7 @@ import {
   fixedTraceArchitectureConfigSha256,
   fixedTraceToolSchemaSha256,
   runFixedTraceCase,
+  runFixedTraceSuite,
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from '../../../src/addie/eval/fixed-trace-runner.js';
@@ -69,7 +70,7 @@ class ScriptedProvider implements ModelProvider {
   readonly respondCalls: ModelRequest[] = [];
 
   constructor(
-    private readonly script: Array<ModelResponse | Error>,
+    protected readonly script: Array<ModelResponse | Error>,
     capabilities: ModelProviderCapabilities = CAPABILITIES,
   ) {
     this.capabilities = capabilities;
@@ -92,6 +93,36 @@ class ScriptedProvider implements ModelProvider {
       else if (item.type === 'provider_state') yield { type: 'provider_state', index, state: item };
       else if (item.type === 'provider_tool_call') yield { type: 'provider_tool_call', index, call: item };
       else if (item.type === 'provider_tool_result') yield { type: 'provider_tool_result', index, result: item };
+    }
+    yield { type: 'response_complete', response: next };
+  }
+}
+
+class DeferredBeforeDispatchProvider extends ScriptedProvider {
+  private releaseDispatch!: () => void;
+  private readonly dispatchReleased = new Promise<void>((resolve) => { this.releaseDispatch = resolve; });
+  private signalBeforeDispatch!: () => void;
+  readonly beforeDispatchPending = new Promise<void>((resolve) => { this.signalBeforeDispatch = resolve; });
+
+  release(): void {
+    this.releaseDispatch();
+  }
+
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    this.signalBeforeDispatch();
+    await this.dispatchReleased;
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    const next = this.script.shift();
+    if (!next) throw new Error('Script exhausted');
+    if (next instanceof Error) throw next;
+    yield { type: 'response_start', provider: this.id, model: next.model, id: next.id };
+    for (const [index, item] of next.content.entries()) {
+      if (item.type === 'text') yield { type: 'text_delta', index, text: item.text };
     }
     yield { type: 'response_complete', response: next };
   }
@@ -277,6 +308,20 @@ function trace(id: string): FixedTraceCase {
   const selected = FIXED_TRACE_SUITE.find((candidate) => candidate.id === id);
   if (!selected) throw new Error(`Missing trace ${id}`);
   return selected;
+}
+
+function expandedFixtureTrace(id = 'expanded-fixture-tool'): FixedTraceCase {
+  const expanded = structuredClone(trace('provider-unavailable'));
+  return {
+    ...expanded,
+    id,
+    toolFixtures: [{
+      name: 'expanded_fixture_tool',
+      effect: 'read',
+      resultStatus: 'ok',
+      result: 'Synthetic expanded-suite fixture result.',
+    }],
+  };
 }
 
 describe('fixed trace artifact runner', () => {
@@ -766,8 +811,143 @@ describe('fixed trace artifact runner', () => {
   });
 
   it('hashes exactly the canonical fixed-trace tool subset', () => {
-    expect(fixedTraceToolSchemaSha256(TOOL_DEFINITIONS)).toMatch(/^[a-f0-9]{64}$/);
-    expect(() => fixedTraceToolSchemaSha256(TOOL_DEFINITIONS.slice(1))).toThrow('incomplete or duplicated');
+    expect(fixedTraceToolSchemaSha256(FIXED_TRACE_SUITE, TOOL_DEFINITIONS)).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => fixedTraceToolSchemaSha256(FIXED_TRACE_SUITE, TOOL_DEFINITIONS.slice(1)))
+      .toThrow('incomplete or duplicated');
+  });
+
+  it('binds expanded-suite fixture schemas to execution and cohort identity', async () => {
+    const firstTrace = expandedFixtureTrace();
+    const secondTrace = expandedFixtureTrace('expanded-fixture-tool-second');
+    const expandedSuite = [firstTrace, secondTrace];
+    const fixtureDefinition = tool('expanded_fixture_tool');
+    const definitions = [...TOOL_DEFINITIONS, fixtureDefinition];
+    const expandedSchemaSha256 = fixedTraceToolSchemaSha256(expandedSuite, definitions);
+    const canonicalSchemaSha256 = fixedTraceToolSchemaSha256(FIXED_TRACE_SUITE, definitions);
+    expect(expandedSchemaSha256).not.toBe(canonicalSchemaSha256);
+
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const expandedConfig = config(router, new ScriptedProvider([]), {
+      traceSuite: expandedSuite,
+      toolDefinitions: definitions,
+    });
+    const first = await runFixedTraceCase(firstTrace, expandedConfig, expandedSchemaSha256);
+    expect(first.metadata.toolSchemaSha256).toBe(expandedSchemaSha256);
+    expect(() => summarizeFixedTraceRun([first], expandedSuite)).not.toThrow();
+
+    const changedFixtureDefinition: AddieTool = {
+      ...fixtureDefinition,
+      input_schema: {
+        ...fixtureDefinition.input_schema,
+        properties: { ...fixtureDefinition.input_schema.properties, expanded_filter: { type: 'string' } },
+      },
+    };
+    const changedDefinitions = definitions.map((definition) => (
+      definition.name === changedFixtureDefinition.name ? changedFixtureDefinition : definition
+    ));
+    const changedSchemaSha256 = fixedTraceToolSchemaSha256(expandedSuite, changedDefinitions);
+    expect(changedSchemaSha256).not.toBe(expandedSchemaSha256);
+    expect(fixedTraceArchitectureConfigSha256({ ...expandedConfig, toolDefinitions: changedDefinitions }))
+      .not.toBe(fixedTraceArchitectureConfigSha256(expandedConfig));
+
+    const missingRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(firstTrace, config(missingRouter, new ScriptedProvider([]), {
+      traceSuite: expandedSuite,
+      toolDefinitions: TOOL_DEFINITIONS,
+    }))).rejects.toThrow('incomplete or duplicated');
+    expect(missingRouter.respondCalls).toHaveLength(0);
+
+    const duplicateRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(firstTrace, config(duplicateRouter, new ScriptedProvider([]), {
+      traceSuite: expandedSuite,
+      toolDefinitions: [...definitions, fixtureDefinition],
+    }))).rejects.toThrow('incomplete or duplicated');
+    expect(duplicateRouter.respondCalls).toHaveLength(0);
+
+    const staleRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(firstTrace, config(staleRouter, new ScriptedProvider([]), {
+      traceSuite: expandedSuite,
+      toolDefinitions: definitions,
+    }), canonicalSchemaSha256)).rejects.toThrow('supplied tool schema hash does not match');
+    expect(staleRouter.respondCalls).toHaveLength(0);
+
+    const restamped = structuredClone(first);
+    restamped.metadata.toolSchemaSha256 = canonicalSchemaSha256;
+    expect(() => summarizeFixedTraceRun([restamped], expandedSuite))
+      .toThrow('Fixed trace architecture contract fingerprint mismatch');
+
+    const mixedRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const changed = await runFixedTraceCase(secondTrace, config(mixedRouter, new ScriptedProvider([]), {
+      traceSuite: expandedSuite,
+      toolDefinitions: changedDefinitions,
+    }));
+    expect(() => summarizeFixedTraceRun([first, changed], expandedSuite))
+      .toThrow('Mixed fixed trace run metadata');
+
+    const boundDefinitions = [...definitions];
+    const boundRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const bound = config(boundRouter, new ScriptedProvider([]), {
+      traceSuite: expandedSuite,
+      toolDefinitions: boundDefinitions,
+    });
+    await runFixedTraceCase(firstTrace, bound);
+    (bound as { toolDefinitions: ReadonlyArray<AddieTool> }).toolDefinitions = changedDefinitions;
+    await expect(runFixedTraceCase(secondTrace, bound))
+      .rejects.toThrow('Fixed trace runner execution identity changed after dispatch binding');
+    expect(boundRouter.respondCalls).toHaveLength(1);
+  });
+
+  it('revalidates the immutable execution identity at each provider dispatch edge', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const deferredRouter = new DeferredBeforeDispatchProvider([routeResponse('respond', ['knowledge'])]);
+    const runConfig = config(deferredRouter, new ScriptedProvider([]));
+    const pending = runFixedTraceCase(selectedTrace, runConfig);
+    await deferredRouter.beforeDispatchPending;
+
+    const changedSearchDocs = tool('search_docs');
+    changedSearchDocs.input_schema.properties = {
+      ...changedSearchDocs.input_schema.properties,
+      forged_during_dispatch: { type: 'string' },
+    };
+    (runConfig as { toolDefinitions: ReadonlyArray<AddieTool> }).toolDefinitions = TOOL_DEFINITIONS.map((definition) => (
+      definition.name === changedSearchDocs.name ? changedSearchDocs : definition
+    ));
+    deferredRouter.release();
+
+    const observation = await pending;
+    expect(observation).toMatchObject({ terminalStage: 'router', terminalStatus: 'provider_error' });
+    expect(deferredRouter.respondCalls).toHaveLength(0);
+
+    const generationRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const deferredGeneration = new DeferredBeforeDispatchProvider([response([
+      { type: 'text', text: 'Synthetic protocol explanation.' },
+    ])]);
+    const generationConfig = config(generationRouter, deferredGeneration);
+    const generationPending = runFixedTraceCase(selectedTrace, generationConfig);
+    await deferredGeneration.beforeDispatchPending;
+    (generationConfig as { traceSuiteSha256: string }).traceSuiteSha256 = HASH;
+    deferredGeneration.release();
+
+    const generationObservation = await generationPending;
+    expect(generationObservation).toMatchObject({ terminalStage: 'generation', terminalStatus: 'provider_error' });
+    expect(generationRouter.respondCalls).toHaveLength(1);
+    expect(deferredGeneration.respondCalls).toHaveLength(0);
+  });
+
+  it('rejects empty or duplicate-ID evaluator suites before provider dispatch', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const duplicate = structuredClone(selectedTrace);
+    const emptyRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceSuite(config(emptyRouter, new ScriptedProvider([]), {
+      traceSuite: [],
+    }))).rejects.toThrow('empty, duplicated');
+    expect(emptyRouter.respondCalls).toHaveLength(0);
+
+    const duplicateRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceSuite(config(duplicateRouter, new ScriptedProvider([]), {
+      traceSuite: [selectedTrace, duplicate],
+    }))).rejects.toThrow('empty, duplicated');
+    expect(duplicateRouter.respondCalls).toHaveLength(0);
   });
 
   it('changes cohort hashes for candidate configuration', () => {
@@ -795,6 +975,26 @@ describe('fixed trace artifact runner', () => {
       .rejects.toThrow('only valid for truncation traces');
     expect(router.respondCalls).toHaveLength(0);
     expect(generation.respondCalls).toHaveLength(0);
+  });
+
+  it('uses a configured expanded-suite truncation control without consulting the global corpus', async () => {
+    const expandedTruncation = structuredClone(trace('bounded-truncation'));
+    expandedTruncation.id = 'expanded-bounded-truncation';
+    expandedTruncation.caseControl = { kind: 'bounded_generation_output', maxOutputTokens: 64 };
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([response([
+      { type: 'text', text: 'Synthetic bounded response.' },
+    ], 'length')]);
+
+    const observation = await runFixedTraceCase(expandedTruncation, config(router, generation, {
+      traceSuite: [expandedTruncation],
+    }));
+
+    expect(observation.metadata).toMatchObject({
+      traceSuiteSha256: fixedTraceSuiteSha256([expandedTruncation]),
+      caseControl: { kind: 'bounded_generation_output', maxOutputTokens: 64 },
+      generation: { effectiveMaxOutputTokens: 64 },
+    });
   });
 
   it('summarizes the complete standard suite with its trace-local truncation control', async () => {
@@ -879,14 +1079,14 @@ describe('fixed trace artifact runner', () => {
       traceSuite: [selectedTrace], traceSuiteSha256: HASH,
     });
     await expect(runFixedTraceCase(selectedTrace, forged))
-      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, or no longer bound to its configured suite');
+      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, empty, duplicated, or no longer bound to its configured suite');
     expect(forgedRouter.respondCalls).toHaveLength(0);
 
     const mutatedRouter = new ScriptedProvider([]);
     const mutated = config(mutatedRouter, new ScriptedProvider([]), { traceSuite: [selectedTrace] });
     (mutated as { traceSuite: ReadonlyArray<FixedTraceCase> }).traceSuite = [trace('knowledge-task-model')];
     await expect(runFixedTraceCase(selectedTrace, mutated))
-      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, or no longer bound to its configured suite');
+      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, empty, duplicated, or no longer bound to its configured suite');
     expect(mutatedRouter.respondCalls).toHaveLength(0);
 
     const boundRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
@@ -900,7 +1100,7 @@ describe('fixed trace artifact runner', () => {
     (bound as { traceSuite: ReadonlyArray<FixedTraceCase>; traceSuiteSha256: string }).traceSuiteSha256
       = fixedTraceSuiteSha256(bound.traceSuite);
     await expect(runFixedTraceCase(selectedTrace, bound))
-      .rejects.toThrow('Fixed trace runner suite identity changed after dispatch binding');
+      .rejects.toThrow('Fixed trace runner execution identity changed after dispatch binding');
     expect(boundRouter.respondCalls).toHaveLength(1);
     expect(boundGeneration.respondCalls).toHaveLength(1);
 

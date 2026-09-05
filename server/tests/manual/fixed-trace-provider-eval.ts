@@ -315,7 +315,7 @@ const promptConfigVersion = sha256(JSON.stringify({
   responseStyle: loadResponseStyle(),
 }));
 const toolDefinitions = canonicalFixedTraceToolDefinitions();
-const toolSchemaSha256 = fixedTraceToolSchemaSha256(toolDefinitions);
+const toolSchemaSha256 = fixedTraceToolSchemaSha256(FIXED_TRACE_SUITE, toolDefinitions);
 const budget = new FixedTraceBudget(softMaxUsd);
 const plans = providerPlans(providerNames, budget);
 const runStartedAt = new Date().toISOString();
@@ -384,7 +384,7 @@ const artifact = {
   runStartedAt,
   runCompletedAt: new Date().toISOString(),
   traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
-  traceSuiteSha256: fixedTraceSuiteSha256(),
+  traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_SUITE),
   traceCount: FIXED_TRACE_SUITE.length,
   sourceBundleSha256: sources.sha256,
   sourceBundleFiles: sources.files,

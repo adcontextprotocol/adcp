@@ -50,7 +50,6 @@ import {
   type FixedTraceToolDefinitionProvenance,
 } from './fixed-trace-architecture.js';
 import {
-  FIXED_TRACE_SUITE,
   FIXED_TRACE_STAGE_CONTROL_VERSION,
   fixedTraceArchitectureConfigSha256FromMetadata,
   FIXED_TRACE_SUITE_VERSION,
@@ -110,7 +109,63 @@ export interface FixedTraceRunnerConfig {
  * This deliberately lives at the execution boundary rather than in serialized
  * observations, whose metadata is untrusted on read.
  */
-const boundTraceSuiteHashes = new WeakMap<FixedTraceRunnerConfig, string>();
+interface FixedTraceExecutionIdentity {
+  traceSuiteSha256: string;
+  toolSchemaSha256: string;
+  architectureConfigSha256: string;
+}
+
+const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value)) deepFreeze(nested);
+  return Object.freeze(value);
+}
+
+function snapshotStageConfig(config: FixedTraceProviderStageConfig): FixedTraceProviderStageConfig {
+  return Object.freeze({ ...config, pricing: deepFreeze(structuredClone(config.pricing)) });
+}
+
+function snapshotExecutionConfig(config: FixedTraceRunnerConfig): FixedTraceRunnerConfig {
+  return Object.freeze({
+    ...config,
+    traceSuite: deepFreeze(structuredClone(config.traceSuite)),
+    toolDefinitions: deepFreeze(structuredClone(config.toolDefinitions)),
+    router: snapshotStageConfig(config.router),
+    generation: snapshotStageConfig(config.generation),
+  });
+}
+
+function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionIdentity {
+  if (
+    !Array.isArray(config.traceSuite)
+    || config.traceSuite.length === 0
+    || new Set(config.traceSuite.map((trace) => trace.id)).size !== config.traceSuite.length
+    || !/^[a-f0-9]{64}$/.test(config.traceSuiteSha256)
+    || config.traceSuiteSha256 !== fixedTraceSuiteSha256(config.traceSuite)
+  ) {
+    throw new Error('Fixed trace runner suite hash is missing, forged, empty, duplicated, or no longer bound to its configured suite');
+  }
+  const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
+  return {
+    traceSuiteSha256: config.traceSuiteSha256,
+    toolSchemaSha256,
+    architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+  };
+}
+
+function assertExecutionIdentity(
+  config: FixedTraceRunnerConfig,
+  expected: FixedTraceExecutionIdentity,
+): void {
+  const actual = executionIdentity(config);
+  if (
+    actual.traceSuiteSha256 !== expected.traceSuiteSha256
+    || actual.toolSchemaSha256 !== expected.toolSchemaSha256
+    || actual.architectureConfigSha256 !== expected.architectureConfigSha256
+  ) throw new Error('Fixed trace runner execution identity changed before provider dispatch');
+}
 
 interface StageInvocationState {
   invocations: PreparedModelInvocation[];
@@ -391,8 +446,11 @@ function resolveTraceDefinitions(
   });
 }
 
-export function fixedTraceToolSchemaSha256(definitions: readonly AddieTool[]): string {
-  const fixtureNames = new Set(FIXED_TRACE_SUITE.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
+export function fixedTraceToolSchemaSha256(
+  traceSuite: readonly FixedTraceCase[],
+  definitions: readonly AddieTool[],
+): string {
+  const fixtureNames = new Set(traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
   const selected = definitions
     .filter((definition) => fixtureNames.has(definition.name))
     .map((definition) => ({
@@ -413,8 +471,12 @@ export function fixedTraceToolSchemaSha256(definitions: readonly AddieTool[]): s
  */
 export function fixedTraceArchitectureConfigSha256(
   config: FixedTraceRunnerConfig,
-  toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions),
+  suppliedToolSchemaSha256?: string,
 ): string {
+  const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
+  if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== toolSchemaSha256) {
+    throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
+  }
   const arm = fixedTraceArchitectureArm(config.architectureArm);
   return fixedTraceArchitectureConfigSha256FromMetadata({
     traceSuiteSha256: config.traceSuiteSha256,
@@ -527,11 +589,9 @@ function generationConfigForTrace(
 ): FixedTraceProviderStageConfig {
   const control = trace.caseControl;
   if (!control) return config.generation;
-  const canonicalControl = FIXED_TRACE_SUITE.find((candidate) => candidate.id === trace.id)?.caseControl;
   if (
     trace.category !== 'truncation'
-    || canonicalControl?.kind !== control.kind
-    || canonicalControl.maxOutputTokens !== control.maxOutputTokens
+    || control.kind !== 'bounded_generation_output'
   ) {
     throw new Error(`Fixed trace case control ${control.kind} is only valid for truncation traces`);
   }
@@ -600,6 +660,7 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
 async function executeRouter(
   trace: FixedTraceCase,
   config: FixedTraceProviderStageConfig,
+  assertBeforeDispatch: () => void,
 ): Promise<{
   request: ModelRequest;
   response: ModelResponse | null;
@@ -633,6 +694,7 @@ async function executeRouter(
     const response = await collectModelResponse(config.provider.respond(request, {
       signal: controller.signal,
       beforeDispatch: (prepared) => {
+        assertBeforeDispatch();
         dispatched = true;
         invocations.push(prepared);
       },
@@ -678,50 +740,55 @@ async function executeRouter(
 export async function runFixedTraceCase(
   trace: FixedTraceCase,
   config: FixedTraceRunnerConfig,
-  toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions),
+  suppliedToolSchemaSha256?: string,
 ): Promise<FixedTraceObservation> {
+  const identity = executionIdentity(config);
+  if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== identity.toolSchemaSha256) {
+    throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
+  }
+  const boundIdentity = boundTraceExecutionIdentities.get(config);
   if (
-    !Array.isArray(config.traceSuite)
-    ||
-    !/^[a-f0-9]{64}$/.test(config.traceSuiteSha256)
-    || config.traceSuiteSha256 !== fixedTraceSuiteSha256(config.traceSuite)
-  ) {
-    throw new Error('Fixed trace runner suite hash is missing, forged, or no longer bound to its configured suite');
-  }
-  const boundTraceSuiteSha256 = boundTraceSuiteHashes.get(config);
-  if (boundTraceSuiteSha256 && boundTraceSuiteSha256 !== config.traceSuiteSha256) {
-    throw new Error('Fixed trace runner suite identity changed after dispatch binding');
-  }
-  if (!boundTraceSuiteSha256) boundTraceSuiteHashes.set(config, config.traceSuiteSha256);
+    boundIdentity
+    && (
+      boundIdentity.traceSuiteSha256 !== identity.traceSuiteSha256
+      || boundIdentity.toolSchemaSha256 !== identity.toolSchemaSha256
+      || boundIdentity.architectureConfigSha256 !== identity.architectureConfigSha256
+    )
+  ) throw new Error('Fixed trace runner execution identity changed after dispatch binding');
+  if (!boundIdentity) boundTraceExecutionIdentities.set(config, identity);
   const configuredTrace = config.traceSuite.find((candidate) => candidate.id === trace.id);
   if (!configuredTrace || sha256(configuredTrace) !== sha256(trace)) {
     throw new Error(`Fixed trace is not bound to this runner suite: ${trace.id}`);
   }
-  validateStageConfig('router', config.router);
-  const generationConfig = generationConfigForTrace(trace, config);
+  const executionConfig = snapshotExecutionConfig(config);
+  const executionTrace = deepFreeze(structuredClone(configuredTrace));
+  const toolSchemaSha256 = identity.toolSchemaSha256;
+  const assertBeforeDispatch = () => assertExecutionIdentity(config, identity);
+  validateStageConfig('router', executionConfig.router);
+  const generationConfig = generationConfigForTrace(executionTrace, executionConfig);
   validateStageConfig('generation', generationConfig);
-  const architectureArm = fixedTraceArchitectureArm(config.architectureArm);
+  const architectureArm = fixedTraceArchitectureArm(executionConfig.architectureArm);
   if (architectureArm.id === 'direct_generation') {
     // Never fall back to trace-local definitions: a direct arm with an
     // incomplete deployable fixture surface is not evidence.
-    return directAdmissionMetadata(config, toolSchemaSha256, trace);
+    return directAdmissionMetadata(executionConfig, toolSchemaSha256, executionTrace);
   }
   const routed = architectureArm.id === 'oracle_route_diagnostic'
     ? {
         request: null,
         response: null,
-        plan: oracleRoute(trace),
+        plan: oracleRoute(executionTrace),
         output: '',
         status: null,
-        metadata: notRunStageMetadata(trace),
+        metadata: notRunStageMetadata(executionTrace),
       }
-    : await executeRouter(trace, config.router);
-  const generationNotRun = notRunStageMetadata(trace);
+    : await executeRouter(executionTrace, executionConfig.router, assertBeforeDispatch);
+  const generationNotRun = notRunStageMetadata(executionTrace);
   if (!routed.plan || routed.status) {
     const status = routed.status ?? 'malformed';
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(trace, config, toolSchemaSha256, routed.metadata, generationNotRun),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generationNotRun),
       terminalStage: 'router',
       terminalStatus: status,
       boundaryReason: null,
@@ -741,8 +808,8 @@ export async function runFixedTraceCase(
   };
   if (routed.plan.action !== 'respond') {
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(trace, config, toolSchemaSha256, routed.metadata, generationNotRun),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generationNotRun),
       terminalStage: 'surface',
       terminalStatus: routed.plan.action === 'ignore' ? 'ignored' : 'reacted',
       boundaryReason: null,
@@ -756,9 +823,9 @@ export async function runFixedTraceCase(
     };
   }
 
-  const definitions = resolveTraceDefinitions(trace, config.toolDefinitions);
+  const definitions = resolveTraceDefinitions(executionTrace, executionConfig.toolDefinitions);
   const generationRequest = buildFixedTraceGenerationRequest(
-    trace,
+    executionTrace,
     routed.plan,
     definitions,
     generationConfig,
@@ -767,7 +834,7 @@ export async function runFixedTraceCase(
   let dispatched = false;
   const startedAt = Date.now();
 
-  if (trace.category === 'provider_degradation' && config.injectProviderDegradation !== false) {
+  if (executionTrace.category === 'provider_degradation' && executionConfig.injectProviderDegradation !== false) {
     try {
       const prepared = generationConfig.provider.prepare({
         ...generationRequest,
@@ -783,8 +850,8 @@ export async function runFixedTraceCase(
       latencyMs: Date.now() - startedAt,
     });
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(trace, config, toolSchemaSha256, routed.metadata, metadata),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, metadata),
       terminalStage: 'generation',
       terminalStatus: 'provider_error',
       boundaryReason: null,
@@ -808,12 +875,13 @@ export async function runFixedTraceCase(
     const result = await executeFixedTraceToolLoop(
       generationConfig.provider,
       generationRequest,
-      trace,
+      executionTrace,
       definitions,
       {
         signal: controller.signal,
         maxIterations: generationConfig.maxIterations,
         beforeDispatch: (prepared) => {
+          assertBeforeDispatch();
           dispatched = true;
           invocations.push(prepared);
         },
@@ -829,8 +897,8 @@ export async function runFixedTraceCase(
     );
     const terminalStatus = terminalStatusForFinishReason(result.response.finishReason, result.text);
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(trace, config, toolSchemaSha256, routed.metadata, generation),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
       terminalStatus,
       boundaryReason: null,
@@ -860,8 +928,8 @@ export async function runFixedTraceCase(
       latencyMs: Date.now() - startedAt,
     }, checkpoint?.usage);
     return {
-      traceId: trace.id,
-      metadata: baseMetadata(trace, config, toolSchemaSha256, routed.metadata, generation),
+      traceId: executionTrace.id,
+      metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
       terminalStatus,
       boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
@@ -881,7 +949,7 @@ export async function runFixedTraceCase(
 export async function runFixedTraceSuite(
   config: FixedTraceRunnerConfig,
 ): Promise<FixedTraceObservation[]> {
-  const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions);
+  const { toolSchemaSha256 } = executionIdentity(config);
   const observations: FixedTraceObservation[] = [];
   for (const trace of config.traceSuite) {
     observations.push(await runFixedTraceCase(trace, config, toolSchemaSha256));
