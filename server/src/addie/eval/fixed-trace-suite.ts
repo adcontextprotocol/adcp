@@ -1240,13 +1240,17 @@ export function fixedTraceToolTranscriptSha256(
 export function fixedTraceSuiteSha256(
   suite: ReadonlyArray<FixedTraceCase> = FIXED_TRACE_SUITE,
 ): string {
+  // Deterministic public integrity fingerprint only; it does not authenticate
+  // caller-owned JSON. This foundation's serialized summaries remain
+  // diagnostic-only pending the evaluator-owned coordinator and raw ledger.
   return createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
 }
 
 /**
- * The candidate identity payload deliberately excludes returned provider
- * identity, usage, latency, and trace-local effective limits. Those are
- * per-call outcomes. Every field here must be recoverable from an artifact.
+ * Deterministic internal-consistency payload for a candidate cohort. It
+ * deliberately excludes returned provider identity, usage, latency, and
+ * trace-local effective limits, which are per-call outcomes. It is not an
+ * authenticity proof for serialized artifacts.
  */
 export function fixedTraceArchitectureConfigPayload(metadata: Pick<
   FixedTraceRunMetadata,

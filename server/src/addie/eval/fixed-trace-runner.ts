@@ -113,9 +113,21 @@ interface FixedTraceExecutionIdentity {
   traceSuiteSha256: string;
   toolSchemaSha256: string;
   architectureConfigSha256: string;
+  runProvenanceSha256: string;
 }
 
 const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
+
+/**
+ * An evaluator-owned execution contract changed after its request snapshot was
+ * made. This is neither a provider failure nor a scored terminal outcome.
+ */
+class FixedTraceExecutionIdentityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FixedTraceExecutionIdentityError';
+  }
+}
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -150,13 +162,47 @@ function assertTraceSuiteIdentity(config: FixedTraceRunnerConfig): void {
   }
 }
 
+function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
+  // Routed/oracle replay registers only trace fixtures. A wider definition
+  // list would make the declared config differ from executable inputs. Direct
+  // remains intentionally exempt: its deployable request-derived universe has
+  // not yet been captured by this diagnostic foundation.
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  if (!Array.isArray(config.toolDefinitions)) {
+    throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
+  }
+  const fixtureNames = new Set(config.traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
+  const definitionNames = config.toolDefinitions.map((definition) => definition.name);
+  if (
+    definitionNames.length !== fixtureNames.size
+    || new Set(definitionNames).size !== definitionNames.length
+    || definitionNames.some((name) => !fixtureNames.has(name))
+  ) throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
+}
+
+function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
+  return sha256({
+    runId: config.runId,
+    sourceBundleSha256: config.sourceBundleSha256,
+    gitCommit: config.gitCommit,
+    gitDirty: config.gitDirty,
+    addieCodeVersion: CODE_VERSION,
+    promptConfigVersion: config.promptConfigVersion,
+    toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
+    stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+    repetition: config.repetition ?? 1,
+  });
+}
+
 function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionIdentity {
   assertTraceSuiteIdentity(config);
+  assertFixtureDefinitionUniverse(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
   return {
     traceSuiteSha256: config.traceSuiteSha256,
     toolSchemaSha256,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+    runProvenanceSha256: runProvenanceSha256(config),
   };
 }
 
@@ -164,12 +210,18 @@ function assertExecutionIdentity(
   config: FixedTraceRunnerConfig,
   expected: FixedTraceExecutionIdentity,
 ): void {
-  const actual = executionIdentity(config);
+  let actual: FixedTraceExecutionIdentity;
+  try {
+    actual = executionIdentity(config);
+  } catch {
+    throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity became invalid before provider dispatch');
+  }
   if (
     actual.traceSuiteSha256 !== expected.traceSuiteSha256
     || actual.toolSchemaSha256 !== expected.toolSchemaSha256
     || actual.architectureConfigSha256 !== expected.architectureConfigSha256
-  ) throw new Error('Fixed trace runner execution identity changed before provider dispatch');
+    || actual.runProvenanceSha256 !== expected.runProvenanceSha256
+  ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed before provider dispatch');
 }
 
 interface StageInvocationState {
@@ -481,6 +533,7 @@ export function fixedTraceArchitectureConfigSha256(
   // This exported helper is a runner-config fingerprint, not a generic hash
   // builder: never emit a plausible fingerprint for a forged suite binding.
   assertTraceSuiteIdentity(config);
+  assertFixtureDefinitionUniverse(config);
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.traceSuite, config.toolDefinitions);
   if (suppliedToolSchemaSha256 !== undefined && suppliedToolSchemaSha256 !== toolSchemaSha256) {
     throw new Error('Fixed trace supplied tool schema hash does not match the configured suite definitions');
@@ -725,6 +778,7 @@ async function executeRouter(
       return { request, response, plan: null, output, status: 'malformed', metadata };
     }
   } catch (error) {
+    if (error instanceof FixedTraceExecutionIdentityError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
     const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
     const status = error instanceof FixedTraceBudgetAdmissionError
@@ -761,8 +815,9 @@ export async function runFixedTraceCase(
       boundIdentity.traceSuiteSha256 !== identity.traceSuiteSha256
       || boundIdentity.toolSchemaSha256 !== identity.toolSchemaSha256
       || boundIdentity.architectureConfigSha256 !== identity.architectureConfigSha256
+      || boundIdentity.runProvenanceSha256 !== identity.runProvenanceSha256
     )
-  ) throw new Error('Fixed trace runner execution identity changed after dispatch binding');
+  ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed after dispatch binding');
   if (!boundIdentity) boundTraceExecutionIdentities.set(config, identity);
   const configuredTrace = config.traceSuite.find((candidate) => candidate.id === trace.id);
   if (!configuredTrace || sha256(configuredTrace) !== sha256(trace)) {
@@ -919,6 +974,7 @@ export async function runFixedTraceCase(
       rejectedToolCalls: [],
     };
   } catch (error) {
+    if (error instanceof FixedTraceExecutionIdentityError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
     const checkpoint = error instanceof FixedTraceToolLoopBoundaryError
       ? error.checkpoint

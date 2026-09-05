@@ -320,15 +320,17 @@ function config(
   generation: ModelProvider,
   overrides: Partial<FixedTraceRunnerConfig> = {},
 ): FixedTraceRunnerConfig {
+  const traceSuite = overrides.traceSuite ?? FIXED_TRACE_SUITE;
+  const fixtureNames = new Set(traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
   const base = {
     runId: 'fixed-run-test',
     sourceBundleSha256: HASH,
     gitCommit: 'abcdef0',
     gitDirty: false,
     promptConfigVersion: 'synthetic-prompt-v1',
-    traceSuite: FIXED_TRACE_SUITE,
-    traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_SUITE),
-    toolDefinitions: TOOL_DEFINITIONS,
+    traceSuite,
+    traceSuiteSha256: fixedTraceSuiteSha256(traceSuite),
+    toolDefinitions: overrides.toolDefinitions ?? TOOL_DEFINITIONS.filter((definition) => fixtureNames.has(definition.name)),
     router: stage(router, 1),
     generation: stage(generation, 3),
     ...overrides,
@@ -851,15 +853,27 @@ describe('fixed trace artifact runner', () => {
       .toThrow('incomplete or duplicated');
   });
 
+  it('rejects unused fixture-local definitions for routed and oracle execution', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    for (const architectureArm of ['two_stage_llm_router', 'oracle_route_diagnostic'] as const) {
+      const router = new ScriptedProvider([]);
+      await expect(runFixedTraceCase(selectedTrace, config(router, new ScriptedProvider([]), {
+        architectureArm,
+        toolDefinitions: [...TOOL_DEFINITIONS, tool('out_of_suite_fixture_tool')],
+      }))).rejects.toThrow('routed/oracle definitions must exactly match configured suite fixtures');
+      expect(router.respondCalls).toHaveLength(0);
+    }
+  });
+
   it('binds expanded-suite fixture schemas to execution and cohort identity', async () => {
     const firstTrace = expandedFixtureTrace();
     const secondTrace = expandedFixtureTrace('expanded-fixture-tool-second');
     const expandedSuite = [firstTrace, secondTrace];
     const fixtureDefinition = tool('expanded_fixture_tool');
-    const definitions = [...TOOL_DEFINITIONS, fixtureDefinition];
+    const definitions = [fixtureDefinition];
     const expandedSchemaSha256 = fixedTraceToolSchemaSha256(expandedSuite, definitions);
-    const canonicalSchemaSha256 = fixedTraceToolSchemaSha256(FIXED_TRACE_SUITE, definitions);
-    expect(expandedSchemaSha256).not.toBe(canonicalSchemaSha256);
+    const staleSchemaSha256 = HASH;
+    expect(expandedSchemaSha256).not.toBe(staleSchemaSha256);
 
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const expandedConfig = config(router, new ScriptedProvider([]), {
@@ -889,25 +903,25 @@ describe('fixed trace artifact runner', () => {
     await expect(runFixedTraceCase(firstTrace, config(missingRouter, new ScriptedProvider([]), {
       traceSuite: expandedSuite,
       toolDefinitions: TOOL_DEFINITIONS,
-    }))).rejects.toThrow('incomplete or duplicated');
+    }))).rejects.toThrow('routed/oracle definitions must exactly match configured suite fixtures');
     expect(missingRouter.respondCalls).toHaveLength(0);
 
     const duplicateRouter = new ScriptedProvider([]);
     await expect(runFixedTraceCase(firstTrace, config(duplicateRouter, new ScriptedProvider([]), {
       traceSuite: expandedSuite,
       toolDefinitions: [...definitions, fixtureDefinition],
-    }))).rejects.toThrow('incomplete or duplicated');
+    }))).rejects.toThrow('routed/oracle definitions must exactly match configured suite fixtures');
     expect(duplicateRouter.respondCalls).toHaveLength(0);
 
     const staleRouter = new ScriptedProvider([]);
     await expect(runFixedTraceCase(firstTrace, config(staleRouter, new ScriptedProvider([]), {
       traceSuite: expandedSuite,
       toolDefinitions: definitions,
-    }), canonicalSchemaSha256)).rejects.toThrow('supplied tool schema hash does not match');
+    }), staleSchemaSha256)).rejects.toThrow('supplied tool schema hash does not match');
     expect(staleRouter.respondCalls).toHaveLength(0);
 
     const restamped = structuredClone(first);
-    restamped.metadata.toolSchemaSha256 = canonicalSchemaSha256;
+    restamped.metadata.toolSchemaSha256 = staleSchemaSha256;
     expect(() => summarizeFixedTraceRun([restamped], expandedSuite))
       .toThrow('Fixed trace architecture contract fingerprint mismatch');
 
@@ -949,8 +963,7 @@ describe('fixed trace artifact runner', () => {
     ));
     deferredRouter.release();
 
-    const observation = await pending;
-    expect(observation).toMatchObject({ terminalStage: 'router', terminalStatus: 'provider_error' });
+    await expect(pending).rejects.toThrow('Fixed trace runner execution identity changed before provider dispatch');
     expect(deferredRouter.respondCalls).toHaveLength(0);
 
     const generationRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
@@ -963,10 +976,43 @@ describe('fixed trace artifact runner', () => {
     (generationConfig as { traceSuiteSha256: string }).traceSuiteSha256 = HASH;
     deferredGeneration.release();
 
-    const generationObservation = await generationPending;
-    expect(generationObservation).toMatchObject({ terminalStage: 'generation', terminalStatus: 'provider_error' });
+    await expect(generationPending)
+      .rejects.toThrow('Fixed trace runner execution identity became invalid before provider dispatch');
     expect(generationRouter.respondCalls).toHaveLength(1);
     expect(deferredGeneration.respondCalls).toHaveLength(0);
+  });
+
+  it('revalidates evaluator-owned run provenance before provider dispatch and between cases', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const replacement = createHash('sha256').update('replacement-provenance').digest('hex');
+    const mutations: Array<(runConfig: FixedTraceRunnerConfig) => void> = [
+      (runConfig) => { runConfig.runId = 'forged-run-id'; },
+      (runConfig) => { runConfig.sourceBundleSha256 = replacement; },
+      (runConfig) => { runConfig.repetition = 2; },
+    ];
+    for (const mutate of mutations) {
+      const router = new DeferredBeforeDispatchProvider([routeResponse('respond', ['knowledge'])]);
+      const runConfig = config(router, new ScriptedProvider([]));
+      const pending = runFixedTraceCase(selectedTrace, runConfig);
+      await router.beforeDispatchPending;
+      mutate(runConfig);
+      router.release();
+      await expect(pending).rejects.toThrow('Fixed trace runner execution identity changed before provider dispatch');
+      expect(router.respondCalls).toHaveLength(0);
+    }
+
+    const firstTrace = expandedFixtureTrace();
+    const secondTrace = expandedFixtureTrace('expanded-provenance-second');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const runConfig = config(router, new ScriptedProvider([]), {
+      traceSuite: [firstTrace, secondTrace],
+      toolDefinitions: [tool('expanded_fixture_tool')],
+    });
+    await runFixedTraceCase(firstTrace, runConfig);
+    runConfig.runId = 'mutated-between-cases';
+    await expect(runFixedTraceCase(secondTrace, runConfig))
+      .rejects.toThrow('Fixed trace runner execution identity changed after dispatch binding');
+    expect(router.respondCalls).toHaveLength(1);
   });
 
   it('revalidates execution identity before a tool-loop continuation dispatch', async () => {
@@ -984,8 +1030,8 @@ describe('fixed trace artifact runner', () => {
     (runConfig as { traceSuiteSha256: string }).traceSuiteSha256 = HASH;
     generation.release();
 
-    const observation = await pending;
-    expect(observation).toMatchObject({ terminalStage: 'generation', terminalStatus: 'provider_error' });
+    await expect(pending)
+      .rejects.toThrow('Fixed trace runner execution identity became invalid before provider dispatch');
     expect(router.respondCalls).toHaveLength(1);
     expect(generation.respondCalls).toHaveLength(1);
   });
@@ -1164,10 +1210,11 @@ describe('fixed trace artifact runner', () => {
     const boundTrace = trace('knowledge-task-model');
     const bound = config(boundRouter, boundGeneration, { traceSuite: [boundTrace] });
     await runFixedTraceCase(boundTrace, bound);
-    (bound as { traceSuite: ReadonlyArray<FixedTraceCase>; traceSuiteSha256: string }).traceSuite = [selectedTrace];
+    const swappedTrace = trace('tool-result-prompt-injection');
+    (bound as { traceSuite: ReadonlyArray<FixedTraceCase>; traceSuiteSha256: string }).traceSuite = [swappedTrace];
     (bound as { traceSuite: ReadonlyArray<FixedTraceCase>; traceSuiteSha256: string }).traceSuiteSha256
       = fixedTraceSuiteSha256(bound.traceSuite);
-    await expect(runFixedTraceCase(selectedTrace, bound))
+    await expect(runFixedTraceCase(swappedTrace, bound))
       .rejects.toThrow('Fixed trace runner execution identity changed after dispatch binding');
     expect(boundRouter.respondCalls).toHaveLength(1);
     expect(boundGeneration.respondCalls).toHaveLength(1);
