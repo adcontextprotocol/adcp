@@ -17,6 +17,7 @@
     "build:addie-tools": "tsx scripts/build-addie-tool-reference.ts && tsx scripts/build-addie-tool-surface-inventory.ts",
     "test:addie-tools": "tsx scripts/build-addie-tool-reference.ts --check && tsx scripts/build-addie-tool-surface-inventory.ts --check && node scripts/check-addie-tool-inventory-portability.mjs",
     "test:addie-fixed-traces": "vitest run --config server/vitest.config.ts server/tests/unit/addie/fixed-trace-suite.test.ts",
+    "validate:addie-fixed-traces": "tsx server/tests/manual/fixed-trace-corpus-metadata.ts",
     "build:schemas": "node scripts/build-schemas.cjs",
     "verify:training-agent-runtime": "node dist/scripts/verify-training-agent-runtime-assets.js",
     "test:mcp-schema-projection": "npm run build:schemas && node --test --test-force-exit --test-timeout=60000 tests/mcp-schema-projection.test.cjs tests/mcp-schema-analysis.test.cjs",
