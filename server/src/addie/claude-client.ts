@@ -1221,11 +1221,15 @@ export class AddieClaudeClient {
       && !isIsolatedExecution(options)
       && options?.disableServerTools !== true;
     const effectiveModel = options?.modelOverride ?? this.model;
+    const allowedToolNames = options?.allowedToolNames
+      ? new Set(options.allowedToolNames)
+      : null;
     const assembledTools = assembleAddieRequestTools(
       this.tools,
       this.toolHandlers,
       requestTools,
       options?.allowedToolNames,
+      allowedToolNames,
     );
     const allTools = assembledTools.tools;
     const allHandlers = assembledTools.handlers;

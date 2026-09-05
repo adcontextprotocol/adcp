@@ -17,18 +17,18 @@ export function assembleAddieRequestTools(
   globalTools: readonly AddieTool[],
   globalHandlers: ReadonlyMap<string, ToolHandler>,
   requestTools?: AddieRequestTools,
-  allowedToolNames?: readonly string[],
+  definitionAllowedToolNames?: readonly string[],
+  handlerAllowedToolNames?: ReadonlySet<string> | null,
 ): { tools: AddieTool[]; handlers: Map<string, ToolHandler> } {
-  const allowed = allowedToolNames ? new Set(allowedToolNames) : null;
   return {
     tools: mergeAddieToolDefinitions(
       globalTools,
       requestTools?.tools,
-      allowedToolNames,
+      definitionAllowedToolNames,
     ),
     handlers: new Map(
       [...globalHandlers, ...(requestTools?.handlers || [])]
-        .filter(([name]) => !allowed || allowed.has(name)),
+        .filter(([name]) => !handlerAllowedToolNames || handlerAllowedToolNames.has(name)),
     ),
   };
 }

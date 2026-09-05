@@ -28,6 +28,7 @@ function assemble(
     globalHandlers,
     requestTools,
     allowedToolNames,
+    allowedToolNames ? new Set(allowedToolNames) : null,
   );
   const allowed = allowedToolNames ? new Set(allowedToolNames) : null;
   const beforeExtraction = {
@@ -99,6 +100,20 @@ describe('request-local custom-tool assembly', () => {
 
     expect(result.tools.map((entry) => entry.name)).toEqual(['alpha', 'gamma']);
     expect([...result.handlers.keys()]).toEqual(['alpha', 'gamma']);
+  });
+
+  it('uses separately materialized definition and handler allowlists', () => {
+    const safe = handler();
+    const result = requestToolAssembly.assembleAddieRequestTools(
+      [tool('safe')],
+      new Map([['safe', safe]]),
+      undefined,
+      ['safe'],
+      new Set(),
+    );
+
+    expect(result.tools.map((entry) => entry.name)).toEqual(['safe']);
+    expect([...result.handlers.keys()]).toEqual([]);
   });
 
   it('retains a definition with no handler and leaves unknown data non-executable', () => {
