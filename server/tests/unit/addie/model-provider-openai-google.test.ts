@@ -148,8 +148,41 @@ describe('OpenAIResponsesProvider', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][1]).toEqual({ maxRetries: 0, signal: undefined });
     expect(beforeDispatch).toHaveBeenCalledTimes(1);
+    expect(normalized.model).toBe(OPENAI_ROUTER_MODEL);
     expect(normalized.finishReason).toBe('stop');
     expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 });
+  });
+
+  it.each([
+    'gpt-5.6-luna-attacker-controlled',
+    'gpt-5.6-luna-2026-01-01',
+    'gpt-5.6-luna-latest',
+    'gpt-5.6-terra',
+    'anthropic-gpt-5.6-luna',
+  ])('rejects the unapproved returned OpenAI model identity %s', async (model) => {
+    const provider = new OpenAIResponsesProvider('unused', {
+      responses: { create: vi.fn().mockResolvedValue(openAIResponse({ model })) },
+    });
+
+    await expect(collectModelResponse(provider.respond(request(OPENAI_ROUTER_MODEL))))
+      .rejects.toMatchObject({
+        name: 'UnexpectedModelIdentityError',
+        provider: 'openai',
+        expectedModel: OPENAI_ROUTER_MODEL,
+        actualModel: model,
+      });
+  });
+
+  it.each([
+    { model: '', label: 'empty' },
+    { model: undefined, label: 'missing' },
+  ])('rejects a $label returned OpenAI model identity', async ({ model }) => {
+    const provider = new OpenAIResponsesProvider('unused', {
+      responses: { create: vi.fn().mockResolvedValue(openAIResponse({ model })) },
+    });
+
+    await expect(collectModelResponse(provider.respond(request(OPENAI_ROUTER_MODEL))))
+      .rejects.toThrow(`Malformed OpenAI response model`);
   });
 
   it('projects custom tools and stateless function-call continuation exactly', () => {
