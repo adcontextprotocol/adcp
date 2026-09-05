@@ -4,8 +4,10 @@ import {
   captureAddieRequestThreadFacts,
   captureAuthorizedDirectToolUniverse,
   createSyntheticDirectToolReceiptHandlers,
+  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
   type AuthorizedToolBinding,
 } from '../../../src/addie/direct-tool-universe.js';
+import { getSafeReadOnlyFallbackTools } from '../../../src/addie/tool-sets.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 function definition(name: string): AddieTool {
@@ -44,6 +46,17 @@ function bindings(...names: string[]): AuthorizedToolBinding[] {
 }
 
 describe('direct tool-universe capture', () => {
+  it('keeps the fixed evaluator universe complete for the shared fallback, without provider-managed tools', () => {
+    const expectedCustomNames = getSafeReadOnlyFallbackTools().filter((name) => name !== 'web_search');
+
+    expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames).toEqual(expectedCustomNames);
+    expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => tool.definition.name))
+      .toEqual(expectedCustomNames);
+    expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames).not.toContain('web_search');
+    expect(new Set(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames).size)
+      .toBe(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames.length);
+  });
+
   it('derives the bounded read-only universe from authenticated request facts, not a route or fixture', () => {
     const universe = captureAuthorizedDirectToolUniverse(
       facts(),

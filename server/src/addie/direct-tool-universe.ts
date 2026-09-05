@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
+import { SCHEMA_TOOLS } from './mcp/schema-tools.js';
+import { URL_TOOLS } from './mcp/url-tools.js';
 import type { ToolHandler } from './model-providers/tool-orchestration.js';
 import {
   selectBoundedRoutedToolSets,
@@ -7,6 +10,7 @@ import {
   type SponsoredIntelligenceContextKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
+import { getSafeReadOnlyFallbackTools } from './tool-sets.js';
 import type { AddieTool } from './types.js';
 
 /**
@@ -73,6 +77,7 @@ export interface CapturedDirectToolUniverse {
   readonly selectedToolSets: readonly string[];
   readonly toolNames: readonly string[];
   readonly toolNamesSha256: string;
+  readonly toolSchemaSha256: string;
   readonly definitionHandlerSha256: string;
   readonly tools: readonly CapturedDirectTool[];
 }
@@ -221,7 +226,15 @@ export function captureAuthorizedDirectToolUniverse(
     // tools are intentionally absent from the direct custom-tool universe.
     isToolAvailable: (name) => byName.has(name),
   });
-  const tools = selection.allowedToolNames.flatMap((name) => {
+  // `web_search` is provider-managed and intentionally cannot participate in
+  // a custom definition/handler contract. Every admitted custom name must be
+  // present: filtering a partial intersection would silently truncate the
+  // request-fact policy surface.
+  const selectedCustomNames = selection.allowedToolNames.filter((name) => name !== 'web_search');
+  if (selectedCustomNames.some((name) => !byName.has(name))) {
+    throw new Error('Authorized direct tool universe is incomplete');
+  }
+  const tools = selectedCustomNames.flatMap((name) => {
     const binding = byName.get(name);
     if (!binding) return [];
     const definition = deepFreeze(structuredClone(binding.definition));
@@ -242,6 +255,10 @@ export function captureAuthorizedDirectToolUniverse(
     selectedToolSets: [...selection.selectedToolSets],
     toolNames,
     toolNamesSha256: sha256(toolNames),
+    toolSchemaSha256: sha256(tools.map((tool) => ({
+      name: tool.definition.name,
+      definitionSha256: tool.definitionSha256,
+    }))),
     definitionHandlerSha256: sha256(tools.map((tool) => ({
       name: tool.definition.name,
       definitionSha256: tool.definitionSha256,
@@ -267,4 +284,63 @@ export function createSyntheticDirectToolReceiptHandlers(
     handlerIdentitySha256: tool.handlerIdentitySha256,
     definitionHandlerSha256: universe.definitionHandlerSha256,
   } satisfies SyntheticDirectToolReceipt)]));
+}
+
+/**
+ * Fixed traces deliberately use the production direct-chat safe fallback,
+ * before intent routing. This is evaluator-owned rather than a per-case
+ * selection: a trace cannot add, remove, or relabel the candidate universe.
+ */
+const FIXED_TRACE_DIRECT_FACTS = captureAddieRequestThreadFacts({
+  surface: 'dm',
+  authenticatedPrincipalId: 'fixed-trace-evaluator-principal',
+  accountAccess: 'member',
+  isAAOAdmin: false,
+  threadId: 'fixed-trace-evaluator-thread',
+  isThread: true,
+  channelPrivacy: 'private',
+  confirmation: 'not_required',
+  confirmedMutationToolNames: [],
+  confirmedMutationIdempotencyKeys: [],
+  idempotencyScope: 'fixed-trace-evaluator-request',
+  completedToolCallKeys: [],
+  replayClassification: 'initial',
+});
+
+function fixedTraceProductionDefinitions(): AddieTool[] {
+  const byName = new Map<string, AddieTool>();
+  for (const definition of [...KNOWLEDGE_TOOLS, ...SCHEMA_TOOLS, ...URL_TOOLS]) {
+    if (byName.has(definition.name)) throw new Error(`Duplicate production direct tool definition: ${definition.name}`);
+    byName.set(definition.name, definition);
+  }
+  return getSafeReadOnlyFallbackTools().flatMap((name) => {
+    // web_search is provider-managed in production. It is deliberately not a
+    // custom evaluator tool, so direct fixed traces never enable network use.
+    if (name === 'web_search') return [];
+    const definition = byName.get(name);
+    if (!definition) throw new Error(`Missing production direct tool definition: ${name}`);
+    return [definition];
+  });
+}
+
+/**
+ * The only direct custom-tool universe available to fixed-trace evaluation.
+ * It is immutable, complete for the shared fallback policy, and paired only
+ * with inert evaluator receipt handlers.
+ */
+export const FIXED_TRACE_DIRECT_TOOL_UNIVERSE = captureAuthorizedDirectToolUniverse(
+  FIXED_TRACE_DIRECT_FACTS,
+  fixedTraceProductionDefinitions().map((definition) => ({
+    definition,
+    handler: async () => '{"kind":"unreachable_production_shaped_receipt"}',
+    handlerIdentity: `fixed-trace-receipt/${definition.name}/${definitionSha256(definition)}`,
+  })),
+);
+
+export const FIXED_TRACE_DIRECT_TOOL_HANDLERS = createSyntheticDirectToolReceiptHandlers(
+  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
+);
+
+export function fixedTraceDirectRequestThreadFacts(): AddieRequestThreadFacts {
+  return FIXED_TRACE_DIRECT_FACTS;
 }

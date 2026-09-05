@@ -72,12 +72,36 @@ export interface FixedTraceToolLoopOptions {
   /** Deterministic adapter request validation before every model turn. */
   beforePrepare?: (request: ModelRequest) => void;
   beforeDispatch?: ModelRespondOptions['beforeDispatch'];
+  /**
+   * Evaluator-owned tool surface. This bypasses trace fixtures while retaining
+   * the shared normalized model/tool continuation loop.
+   */
+  evaluatorToolEnvironment?: FixedTraceEvaluatorToolEnvironment;
 }
 
-interface RegisteredFixture {
-  fixture: FixedTraceToolFixture;
+export interface FixedTraceEvaluatorTool {
+  definition: AddieTool;
+  handler: ToolHandler;
+  effect: FixedTraceToolFixture['effect'];
+  resultStatus: FixedTraceToolFixture['resultStatus'];
+}
+
+export interface FixedTraceEvaluatorToolEnvironment {
+  tools: readonly FixedTraceEvaluatorTool[];
+  authorize: (input: {
+    toolName: string;
+    toolCallId: string;
+    isMutation: boolean;
+  }) => { allowed: boolean };
+}
+
+interface RegisteredTool {
   definition: AddieTool;
   validate: ValidateFunction;
+  handler: ToolHandler;
+  effect: FixedTraceToolFixture['effect'];
+  resultStatus: FixedTraceToolFixture['resultStatus'];
+  fixtureResult: string | null;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -104,16 +128,52 @@ function validateInitialRequest(request: ModelRequest): void {
   }
 }
 
-function registerFixtures(
+function registerTools(
   trace: FixedTraceCase,
   definitions: readonly AddieTool[],
-): Map<string, RegisteredFixture> {
+  environment?: FixedTraceEvaluatorToolEnvironment,
+): Map<string, RegisteredTool> {
   const ajv = new Ajv({ allErrors: false, strict: false });
+  if (environment) {
+    const evaluatorTools = new Map(environment.tools.map((tool) => [tool.definition.name, tool]));
+    if (evaluatorTools.size !== environment.tools.length) {
+      throw new FixedTraceToolLoopBoundaryError('duplicate_tool_definition');
+    }
+    const registered = new Map<string, RegisteredTool>();
+    for (const sourceDefinition of definitions) {
+      if (registered.has(sourceDefinition.name)) {
+        throw new FixedTraceToolLoopBoundaryError('duplicate_tool_definition');
+      }
+      const tool = evaluatorTools.get(sourceDefinition.name);
+      if (!tool || typeof tool.handler !== 'function') {
+        throw new FixedTraceToolLoopBoundaryError('fixture_definition_mismatch');
+      }
+      const definition = deepFreeze(structuredClone(sourceDefinition));
+      let validate: ValidateFunction;
+      try {
+        validate = ajv.compile(definition.input_schema);
+      } catch {
+        throw new FixedTraceToolLoopBoundaryError('tool_schema_invalid');
+      }
+      registered.set(definition.name, {
+        definition,
+        validate,
+        handler: tool.handler,
+        effect: tool.effect,
+        resultStatus: tool.resultStatus,
+        fixtureResult: null,
+      });
+    }
+    if (registered.size !== evaluatorTools.size) {
+      throw new FixedTraceToolLoopBoundaryError('fixture_definition_mismatch');
+    }
+    return registered;
+  }
   const fixtures = new Map(trace.toolFixtures.map((fixture) => [fixture.name, fixture]));
   if (fixtures.size !== trace.toolFixtures.length) {
     throw new FixedTraceToolLoopBoundaryError('fixture_definition_mismatch');
   }
-  const registered = new Map<string, RegisteredFixture>();
+  const registered = new Map<string, RegisteredTool>();
   for (const sourceDefinition of definitions) {
     if (registered.has(sourceDefinition.name)) {
       throw new FixedTraceToolLoopBoundaryError('duplicate_tool_definition');
@@ -127,7 +187,18 @@ function registerFixtures(
     } catch {
       throw new FixedTraceToolLoopBoundaryError('tool_schema_invalid');
     }
-    registered.set(definition.name, { fixture, definition, validate });
+    registered.set(definition.name, {
+      definition,
+      validate,
+      handler: async () => ({
+        status: fixture.resultStatus,
+        model_context: fixture.result,
+        user_summary: fixture.result,
+      }),
+      effect: fixture.effect,
+      resultStatus: fixture.resultStatus,
+      fixtureResult: fixture.result,
+    });
   }
   if (registered.size !== fixtures.size) {
     throw new FixedTraceToolLoopBoundaryError('fixture_definition_mismatch');
@@ -145,11 +216,22 @@ export function validateFixedTraceToolLoopFixtures(
   trace: FixedTraceCase,
   definitions: readonly AddieTool[],
 ): void {
-  void registerFixtures(trace, definitions);
+  void registerTools(trace, definitions);
 }
 
-function safeIterationLimit(trace: FixedTraceCase, requested?: number): number {
-  const limit = requested ?? Math.max(1, trace.toolFixtures.length + 1);
+/** The same preflight for an evaluator-owned, non-fixture tool environment. */
+export function validateFixedTraceToolLoopEnvironment(
+  definitions: readonly AddieTool[],
+  environment: FixedTraceEvaluatorToolEnvironment,
+): void {
+  // Registration does not read trace fields while an evaluator environment is
+  // supplied. This empty placeholder prevents fixture facts from entering
+  // direct admission.
+  void registerTools({ toolFixtures: [] } as FixedTraceCase, definitions, environment);
+}
+
+function safeIterationLimit(toolCount: number, requested?: number): number {
+  const limit = requested ?? Math.max(1, toolCount + 1);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS) {
     throw new RangeError(`Fixed trace iteration limit must be between 1 and ${MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS}`);
   }
@@ -181,28 +263,25 @@ export async function executeFixedTraceToolLoop(
   const request = snapshotRequest(initialRequest);
   validateInitialRequest(request);
   const { toolChoice: initialToolChoice, ...requestWithoutToolChoice } = request;
-  const registered = registerFixtures(trace, definitions);
-  const iterationLimit = safeIterationLimit(trace, options.maxIterations);
+  const registered = registerTools(trace, definitions, options.evaluatorToolEnvironment);
+  const iterationLimit = safeIterationLimit(registered.size, options.maxIterations);
   const handlers = new Map<string, ToolHandler>();
-  for (const [name, entry] of registered) {
-    handlers.set(name, async () => ({
-      status: entry.fixture.resultStatus,
-      model_context: entry.fixture.result,
-      user_summary: entry.fixture.result,
-    }));
-  }
+  for (const [name, entry] of registered) handlers.set(name, entry.handler);
   const executeTool = createAddieToolExecutor(
     [...registered.values()].map((entry) => entry.definition),
     handlers,
     {
       executionMode: 'evaluation',
-      policy: ({ toolName }) => {
-        const fixture = registered.get(toolName)?.fixture;
+      policy: ({ toolName, toolCallId }) => {
+        const tool = registered.get(toolName);
         return {
-          allowed: fixture !== undefined && (
-            fixture.effect !== 'mutation'
-            || trace.expectation.mutationAuthorization === 'confirmed'
-          ),
+          allowed: tool !== undefined && (options.evaluatorToolEnvironment
+            ? options.evaluatorToolEnvironment.authorize({
+              toolName,
+              toolCallId,
+              isMutation: tool.effect === 'mutation',
+            }).allowed
+            : tool.effect !== 'mutation' || trace.expectation.mutationAuthorization === 'confirmed'),
         };
       },
     },
@@ -274,7 +353,7 @@ export async function executeFixedTraceToolLoop(
       };
     }
 
-    if (executions.length + turn.toolCalls.length > trace.toolFixtures.length) {
+    if (executions.length + turn.toolCalls.length > registered.size) {
       throw boundary('tool_call_limit_exceeded', turn.toolCalls);
     }
     const calls = turn.toolCalls.map((call) => deepFreeze(structuredClone(call)));
@@ -313,14 +392,17 @@ export async function executeFixedTraceToolLoop(
           name: event.call.name,
           description: entry.definition.description,
           input: deepFreeze(structuredClone(event.call.input)),
-          effect: entry.fixture.effect,
+          effect: entry.effect,
           policyDisposition: blocked ? 'blocked' : 'allowed',
-          resultStatus: entry.fixture.resultStatus,
+          resultStatus: entry.resultStatus,
           simulated: true,
         } as const;
         executions.push(Object.freeze({
           ...receipt,
-          transcriptSha256: fixedTraceToolTranscriptSha256(receipt, entry.fixture.result),
+          transcriptSha256: fixedTraceToolTranscriptSha256(
+            receipt,
+            entry.fixtureResult ?? event.executed.execution.result,
+          ),
         }));
         results.push(event.executed.result);
       }
