@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/installment-ref.json",
+  "title": "Installment Reference",
+  "description": "Canonical reference to one installment within a publisher-scoped collection. Installment IDs are collection-scoped, so identity is the tuple (collection_ref, installment_id).",
+  "type": "object",
+  "properties": {
+    "collection_ref": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/collection-ref.json"
+    },
+    "installment_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Installment ID within the referenced collection.",
+      "x-entity": "installment"
+    }
+  },
+  "required": [
+    "collection_ref",
+    "installment_id"
+  ],
+  "additionalProperties": true
+}

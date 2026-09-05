@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/placement-evidence.json",
+  "title": "Placement Evidence",
+  "x-status": "experimental",
+  "description": "Seller-attested evidence artifact proving a physical placement ran — a posting photograph for an OOH face, a tearsheet page for a print insertion. Channel-neutral: this record carries the artifact facts; what the artifact proves (posting, rotation, insertion) is declared by the containing record's event semantics. Third-party audit convention: the artifact should be geotagged and timestamped within the placement period, with the creative legible.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The evidence artifact — photograph, scanned tearsheet, or evidence package"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the artifact was captured"
+    },
+    "latitude": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90,
+      "description": "Capture location latitude"
+    },
+    "longitude": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180,
+      "description": "Capture location longitude"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Context that doesn't fit the structured fields (e.g., 'shot from the eastbound approach at 40mph equivalent')"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": true
+}

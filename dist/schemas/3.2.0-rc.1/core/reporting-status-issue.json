@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/reporting-status-issue.json",
+  "title": "Reporting Status Issue",
+  "x-status": "experimental",
+  "description": "Structured reporting condition that explains delayed or action_required health without exposing credentials, provider response bodies, or internal stack traces.",
+  "type": "object",
+  "definitions": {
+    "ReportingStatusSeverity": {
+      "title": "Reporting Status Severity",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "delayed",
+        "action_required"
+      ]
+    }
+  },
+  "properties": {
+    "issue_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Seller-issued stable identifier for this logical issue: re-emissions and later polls of the same unresolved condition reuse it, and resolution retires it, so consumers can project AdCP reporting issues into durable work items. A recurrence after resolution receives a new id."
+    },
+    "code": {
+      "type": "string",
+      "enum": [
+        "REPORT_OVERDUE",
+        "PRODUCTION_FAILED",
+        "DELIVERY_FAILED",
+        "ACCESS_REQUIRED",
+        "CONFIGURATION_REQUIRED",
+        "REPORTING_COVERAGE_INCOMPLETE",
+        "RESOURCE_EXPIRED",
+        "READER_INCOMPATIBLE",
+        "HISTORY_UNAVAILABLE",
+        "RECEIPT_REQUIRED",
+        "RECEIPT_REJECTED",
+        "ADJUSTMENT_RECEIPT_REQUIRED",
+        "ADJUSTMENT_RECEIPT_REJECTED"
+      ]
+    },
+    "severity": {
+      "$ref": "#/definitions/ReportingStatusSeverity"
+    },
+    "responsible_party": {
+      "type": "string",
+      "enum": [
+        "buyer",
+        "seller",
+        "provider"
+      ]
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": [
+        "wait_for_retry",
+        "contact_buyer",
+        "contact_seller",
+        "contact_provider",
+        "repair_access",
+        "update_configuration",
+        "change_reporting_scope",
+        "use_supported_reader"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Untrusted display text only. SDKs and agents dispatch exclusively on closed code/recommended_action values and never execute embedded links or instructions."
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation"
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config"
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "package_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/core/reporting-coverage.json#/definitions/ReportingPackageId"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "period_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "period_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expected_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "issue_id",
+    "code",
+    "severity",
+    "responsible_party",
+    "recommended_action"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,513 @@
+id: media_buy_seller/account_change_feed
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Shared-account change feed convergence"
+category: media_buy_seller
+summary: "Bootstraps a shared account, forces a connected-platform creative change, observes account.change_recorded, drains list_account_changes, and repairs through list_creatives."
+track: media_buy
+
+requires_all_capabilities:
+  - path: account.change_feed.supported
+    equals: true
+  - path: creative.has_creative_library
+    equals: true
+
+required_tools:
+  - sync_accounts
+  - list_creatives
+  - list_account_changes
+  - comply_test_controller
+
+narrative: |
+  A buyer connects to an account that is also managed through seller and
+  connected-platform surfaces. The buyer registers the generic account change
+  wake-up, obtains a latest feed checkpoint before reading snapshots, and then
+  observes a creative status change driven outside its AdCP mutation calls.
+
+  The seller must make the changed creative snapshot and durable change record
+  readable before enqueueing account.change_recorded. The webhook is only a
+  wake-up; the buyer drains from its own cursor and repairs through the task in
+  the change record.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - sells_media
+    - has_creative_library
+    - account_change_feed
+  examples:
+    - "Seller with a connected social platform and shared advertiser accounts"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner hosts a signed webhook receiver and the seller exposes the
+    sandbox comply controller. The change-feed capability is optional; once
+    advertised, every phase is required and failures must not grade as skips.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: subscribe_and_checkpoint
+    title: "Subscribe and acquire a pre-bootstrap checkpoint"
+    steps:
+      - id: sync_shared_account
+        title: "Register account.change_recorded"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "acc_luma_shared"
+              notification_configs:
+                - subscriber_id: "account-change-runner"
+                  url: "{{runner.webhook_url:account_change_feed}}"
+                  event_types:
+                    - "account.change_recorded"
+                  active: true
+          idempotency_key: "$generate:uuid_v4#account_change_feed_sync_account"
+          context:
+            correlation_id: "account_change_feed--sync_account"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "active"
+            description: "Shared sandbox account is active"
+          - check: field_value
+            path: "accounts[0].notification_configs[0].event_types[0]"
+            value: "account.change_recorded"
+            description: "Change-feed subscriber is persisted"
+
+      - id: acquire_latest_checkpoint
+        title: "Acquire C0 before snapshot bootstrap"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          starting_position: "latest"
+          max_results: 100
+          context:
+            correlation_id: "account_change_feed--checkpoint"
+        context_outputs:
+          - name: account_change_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_present
+            path: "cursor"
+            description: "Tail checkpoint is returned even when no changes are returned"
+          - check: field_value
+            path: "has_more"
+            value: false
+            description: "Latest checkpoint starts at the seller-ingestion tail"
+
+  - id: external_creative_change
+    title: "Observe a connected-platform creative addition"
+    steps:
+      - id: seed_connected_creative
+        title: "Connected platform adds a creative while the buyer is idle"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+            sandbox: true
+          scenario: "seed_creative"
+          params:
+            creative_id: "$generate:uuid_v4#account_change_feed_external_creative"
+            fixture:
+              name: "Shared account display baseline"
+              status: "approved"
+              format_kind: "image"
+              manifest:
+                format_kind: "image"
+                assets:
+                  image:
+                    asset_type: "image"
+                    url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-300x250.png"
+                    width: 300
+                    height: 250
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "External creative addition committed"
+
+      - id: expect_account_change_webhook
+        title: "Observe account.change_recorded"
+        task: expect_webhook
+        triggered_by: seed_connected_creative
+        filter:
+          notification_type: "account.change_recorded"
+          subscriber_id: "account-change-runner"
+          change_id: "*"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/account-change-recorded-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          One logical account.change_recorded fire arrives. notification_id
+          equals change_id and the creative identity is present, but the payload
+          is not treated as the current creative document.
+
+  - id: drain_and_repair
+    title: "Drain the feed and repair authoritative state"
+    steps:
+      - id: drain_after_checkpoint
+        title: "Read changes strictly after C0"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_cursor"
+          max_results: 100
+        context_outputs:
+          - name: account_change_tail_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes[0].resource.type"
+            value: "creative"
+            description: "Feed identifies the changed resource family"
+          - check: field_value
+            path: "changes[0].resource.resource_id"
+            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            description: "Feed identifies the externally changed creative"
+          - check: field_value
+            path: "changes[0].origin.kind"
+            value: "connected_platform"
+            description: "Server-derived origin identifies the connected platform"
+          - check: field_value
+            path: "changes[0].repair.task"
+            value: "list_creatives"
+            description: "Change names the authoritative repair read"
+
+      - id: repair_creative_snapshot
+        title: "Re-read authoritative creative state"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          filters:
+            creative_ids:
+              - "$generate:uuid_v4#account_change_feed_external_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            description: "Authoritative read returns the changed creative"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "Authoritative state already reflects the external change"
+
+  - id: external_creative_update
+    title: "Observe a connected-platform creative modification"
+    steps:
+      - id: force_connected_creative_rejection
+        title: "Connected platform changes creative status"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "$generate:uuid_v4#account_change_feed_external_creative"
+            status: "rejected"
+            rejection_reason: "Connected-platform policy review rejected the creative."
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "External creative modification committed"
+          - check: field_value
+            path: "current_state"
+            value: "rejected"
+            description: "Controller reports the committed external state"
+
+      - id: expect_creative_update_webhook
+        title: "Observe the modification wake-up"
+        task: expect_webhook
+        triggered_by: force_connected_creative_rejection
+        filter:
+          notification_type: "account.change_recorded"
+          subscriber_id: "account-change-runner"
+          change_id: "*"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/account-change-recorded-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A second logical account.change_recorded fire arrives for the status
+          modification, even though the buyer initiated no AdCP creative task.
+
+      - id: drain_creative_update
+        title: "Drain the external modification"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_tail_cursor"
+          max_results: 100
+        context_outputs:
+          - name: account_change_status_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes[0].resource.resource_id"
+            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            description: "Feed correlates the modification to the creative"
+          - check: field_value
+            path: "changes[0].action"
+            value: "status_changed"
+            description: "Feed distinguishes the lifecycle modification"
+          - check: field_value
+            path: "changes[0].origin.kind"
+            value: "connected_platform"
+            description: "Modification retains its external origin"
+
+      - id: repair_modified_creative_snapshot
+        title: "Re-read modified authoritative creative state"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          filters:
+            creative_ids:
+              - "$generate:uuid_v4#account_change_feed_external_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Authoritative read already reflects the external modification"
+
+      - id: empty_tail_checkpoint
+        title: "Persist a cursor from an empty tail page"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_status_cursor"
+        context_outputs:
+          - name: account_change_expiring_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes"
+            value: []
+            description: "No additional changes remain"
+          - check: field_present
+            path: "cursor"
+            description: "Empty tail still returns a resumable checkpoint"
+          - check: field_value
+            path: "has_more"
+            value: false
+            description: "Buyer is caught up to seller ingestion"
+
+      - id: reject_cursor_filter_reuse
+        title: "Reject a cursor under a different filter set"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_status_cursor"
+          resource_types:
+            - "creative"
+        expected: |
+          Reject with INVALID_REQUEST rather than applying a new filter at the
+          old checkpoint and silently skipping retained creative history.
+        validations:
+          - check: response_schema
+            description: "Failure matches list-account-changes-response.json"
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Cursor/filter mismatch is rejected"
+          - check: field_value
+            path: "errors[0].field"
+            value: "cursor"
+            description: "The seller identifies the incompatible cursor"
+
+  - id: cursor_expiry_recovery
+    title: "Recover from authorization-scoped cursor expiry"
+    steps:
+      - id: expire_authorization_scope
+        title: "Rotate the sandbox authorization-scope epoch"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+            sandbox: true
+          scenario: "expire_account_change_cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Authorization-scope epoch rotated"
+          - check: field_value
+            path: "current_state"
+            value: "authorization_scope_changed"
+            description: "Controller identifies the simulated scope change"
+
+      - id: observe_cursor_expired
+        title: "Reject the cursor from the prior authorization scope"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_expiring_cursor"
+        validations:
+          - check: response_schema
+            description: "Failure matches list-account-changes-response.json"
+          - check: error_code
+            value: "CURSOR_EXPIRED"
+            description: "Seller never silently resumes an authorization-invalid cursor"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "authorization_scope_changed"
+            description: "Failure explains why snapshot rebootstrap is required"
+          - check: field_value
+            path: "errors[0].details.restart_with.starting_position"
+            value: "latest"
+            description: "Failure supplies the safe restart position"
+
+      - id: acquire_rebootstrap_checkpoint
+        title: "Acquire a new latest checkpoint"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          starting_position: "latest"
+        context_outputs:
+          - name: account_change_rebootstrap_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_present
+            path: "cursor"
+            description: "New authorization scope receives a fresh checkpoint"
+          - check: field_value
+            path: "has_more"
+            value: false
+            description: "Fresh checkpoint starts at the current seller-ingestion tail"
+
+      - id: rebootstrap_creative_snapshot
+        title: "Rebuild the authoritative creative snapshot"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          filters:
+            creative_ids:
+              - "$generate:uuid_v4#account_change_feed_external_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Rebootstrap restores current authoritative state"
+
+      - id: drain_after_rebootstrap
+        title: "Drain strictly after the replacement checkpoint"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_rebootstrap_cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes"
+            value: []
+            description: "No gap appears while the replacement snapshot is read"
+          - check: field_present
+            path: "cursor"
+            description: "Recovered consumer persists the new tail checkpoint"

@@ -1,0 +1,1148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.1/mcp/2026-07-28/profiles/media-buy/protocol/sync-principal-response.json",
+  "x-status": "experimental",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "$ref": "#/$defs/external:core~1protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "applied"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "updated",
+                "unchanged",
+                "cleared"
+              ]
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": false
+            },
+            "principal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "principal_kind": {
+              "$ref": "#/$defs/external:enums~1principal-kind.json"
+            },
+            "configuration_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "configuration": {
+              "$ref": "#/$defs/external:core~1principal-state.json"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "dry_run",
+            "principal_id",
+            "principal_kind",
+            "configuration_version",
+            "configuration"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "validated"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "would_update",
+                "would_be_unchanged",
+                "would_clear"
+              ]
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": true
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "dry_run"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "errors"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "result"
+  ],
+  "additionalProperties": true,
+  "if": {
+    "properties": {
+      "result": {
+        "properties": {
+          "kind": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "required": [
+      "result"
+    ]
+  },
+  "then": {
+    "properties": {
+      "status": {
+        "enum": [
+          "failed",
+          "rejected"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/protocol-envelope.json": {
+      "type": "object",
+      "properties": {
+        "context_id": {
+          "type": "string"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "task_id": {
+          "type": "string",
+          "x-entity": "task"
+        },
+        "status": {
+          "$ref": "#/$defs/external:enums~1task-status.json"
+        },
+        "message": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "replayed": {
+          "type": "boolean",
+          "default": false
+        },
+        "adcp_error": {
+          "$ref": "#/$defs/external:core~1error.json"
+        },
+        "push_notification_config": {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        },
+        "governance_context": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[\\x20-\\x7E]+$"
+        },
+        "payload": {
+          "type": "object",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_status"
+            ]
+          },
+          {
+            "required": [
+              "response_status"
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "Task response schemas (e.g., get-products-response.json) define ONLY the body fields; protocol-layer fields live on this envelope.",
+        "Transport serialization (normative):",
+        "  - MCP: envelope fields and task-body fields are siblings at the root of the tool response. The `payload` object is NOT serialized as a nested key — its body fields are flattened to the root alongside `status`, `context_id`, `context`, etc. This matches MCP's native `structuredContent` convention and is what shipping SDKs (@adcp/client) emit. Conformant MCP receivers parse from the flat root; receivers that expect a nested `payload` key MUST migrate.",
+        "  - A2A 1.0 with the AdCP profile extension: `task.status.state` carries the transport invocation lifecycle used to select the extraction location; `task.contextId` carries `context_id`, while `task.id` is an independent A2A transport identifier. The complete AdCP response, including its protocol-level `status` and any application-layer `task_id`, is canonically carried in `task.artifacts[0].parts[].DataPart` on final states; `task.status.message.parts[].DataPart` is the fallback container used only for interim A2A states (working, native submitted, input-required) where no final artifact has been emitted yet. For a structured AdCP business rejection or Submitted response, A2A is `completed` while the DataPart carries `status: rejected` or `status: submitted` because the handler invocation succeeded. An AdCP `task_id` MUST NOT be copied into artifact metadata or inferred from `task.id`. Receivers MUST prefer artifacts when present and MUST NOT overwrite a DataPart's status with the A2A state. See `a2a-profile-extension.mdx` and `a2a-response-extraction.mdx` for the full binding and extraction algorithm.",
+        "  - REST: envelope fields MAY ride on HTTP headers (e.g., `X-AdCP-Status`, `X-AdCP-Context-Id`) or as JSON body siblings; body fields appear at the JSON body root. Implementers choosing the header path SHOULD also mirror to body siblings for non-streaming callers.",
+        "Across all three: envelope and body fields are conceptually a single response object. A task response schema MAY declare body fields with the same name as envelope fields (e.g., `errors[]` body-level for per-record validation results vs envelope-level for fatal task failure) and the two MUST be treated as distinct fields by name within their respective namespaces — see `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`.",
+        "`status` is REQUIRED on the conceptual AdCP response across all transports. On MCP and REST it appears as a sibling field at the JSON root (or `structuredContent` root for MCP). On A2A it is carried inside the authoritative DataPart alongside the task body; `task.status.state` separately carries the A2A transport lifecycle and selects where that DataPart is found. Receivers MUST preserve the DataPart status when present. The schema-level `required: [status]` enforces the post-extraction AdCP shape. `payload` remains intentionally NOT required — it is a documentary grouping construct, never a required wire field. See `mcp-guide.mdx` and `a2a-guide.mdx` for the wire-level patterns receivers MUST implement.",
+        "Receivers MUST handle absence of an envelope field (e.g., `replayed` omitted) as the field's documented default — see each field's `default` clause."
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/task-status.json": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ]
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "buyer_reason": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": true
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "buyer_reason": [
+          "recovery"
+        ]
+      }
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:enums/principal-kind.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "buyer_agent",
+        "operator"
+      ]
+    },
+    "external:core/principal-state.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "notification_configs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1agent-notification-config-state.json"
+          },
+          "maxItems": 16
+        },
+        "reporting_destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1agent-reporting-destination-state.json"
+          },
+          "maxItems": 64
+        },
+        "declarations": {
+          "$ref": "#/$defs/external:core~1principal-declarations-state.json"
+        },
+        "retired_destinations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "destination_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+              },
+              "destination_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "minItems": 1,
+                "maxItems": 32,
+                "uniqueItems": true
+              },
+              "revoked_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "destination_id",
+              "destination_refs"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 64
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "external:core/agent-notification-config-state.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:enums~1notification-type.json"
+              },
+              {
+                "not": {
+                  "enum": [
+                    "scheduled",
+                    "final",
+                    "delayed",
+                    "adjusted",
+                    "window_update",
+                    "impairment"
+                  ]
+                }
+              }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "all_authorized_accounts": {
+          "type": "boolean"
+        },
+        "include_future_event_types": {
+          "type": "boolean"
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": [
+            "schemes"
+          ],
+          "additionalProperties": false
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/notification-type.json": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update",
+        "impairment",
+        "creative.status_changed",
+        "creative.assignment_changed",
+        "indicators.changed",
+        "creative.purged",
+        "account.status_changed",
+        "account.change_recorded",
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change",
+        "capabilities.changed",
+        "reporting.delivery_ready",
+        "reporting.status_changed",
+        "reporting.ledger_changed",
+        "principal.changed"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/agent-reporting-destination-state.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "destination_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+        },
+        "destination_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "prior_destination_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "state": {
+          "$ref": "#/$defs/external:enums~1reporting-destination-setup-state.json"
+        },
+        "configuration": {
+          "$ref": "#/$defs/external:core~1agent-reporting-destination.json"
+        },
+        "setup": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "grant_access",
+                "accept_share",
+                "prove_control",
+                "contact_support"
+              ]
+            },
+            "setup_url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://[!$&-;=@-~]+$"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          },
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "destination_id",
+        "destination_ref",
+        "state",
+        "configuration"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "action_required"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "setup"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "inactive"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "configuration": {
+                "properties": {
+                  "active": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "configuration": {
+                "properties": {
+                  "active": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "active"
+                ]
+              }
+            },
+            "required": [
+              "configuration"
+            ]
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "inactive",
+                  "rejected"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/reporting-destination-setup-state.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "validating",
+        "ready",
+        "action_required",
+        "inactive",
+        "rejected"
+      ]
+    },
+    "external:core/agent-reporting-destination.json": {
+      "x-status": "experimental",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "file_transfer"
+            },
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "operator_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "pattern": "^[!$&-;=@-~]+$"
+            },
+            "accepted_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "jsonl",
+                  "csv",
+                  "parquet",
+                  "avro",
+                  "orc"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "location",
+            "accepted_formats",
+            "accepted_verification_profiles"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "warehouse_materialization"
+            },
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "operator_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "pattern": "^[!$&-;=@-~]+$"
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "location",
+            "accepted_verification_profiles"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "dataset_share"
+            },
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "operator_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "recipient": {
+              "$ref": "#/$defs/external:core~1delivery-recipient.json"
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "access_mode",
+            "recipient",
+            "accepted_verification_profiles"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "proof_file_transfer": "A file_transfer destination MUST NOT become ready until both hold: (1) the caller has proven control of the normalized location through a seller-verifiable challenge, such as writing a seller-named proof object under the prefix or granting the seller's published principal and surfacing provider-native evidence of that grant; and (2) the seller has successfully written and read back a probe object under the prefix. Grant existence alone is insufficient.",
+        "proof_warehouse_materialization": "A warehouse_materialization destination MUST NOT become ready until the seller has verified, through provider-native access it was granted, that it can create and commit into the normalized locator, and the seller has bound that verification to the caller's proof tuple. A caller-asserted locator with no observed grant MUST remain action_required.",
+        "proof_dataset_share": "A dataset_share destination MUST NOT become ready until the named recipient has affirmatively completed the provider's recipient-side acceptance or activation step and the provider reports the recipient able to read the share. For access modes that grant access to a named identifier with no recipient-side acceptance step, the seller MUST require an equivalent recipient-initiated proof (for example, a recipient read of a seller-published proof dataset) before ready; grant creation alone MUST NOT produce ready. Provider grant propagation can lag: ready asserts recipient readability was observed, and account-level delivery readiness additionally requires consumer-read verification as defined by managed reporting delivery.",
+        "normalization": "Before proof binding, uniqueness comparison, and generation comparison, sellers MUST canonicalize coordinates per transport: Unicode NFC, lowercase scheme and host authority, no default ports, single canonical path separators, and no percent-encoding of characters that are valid literally. Sellers MUST reject a location or recipient identity whose host authority is not ASCII after canonicalization. Proof is bound to the canonical form.",
+        "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, secret query parameters, and secret fragments in any field, including forms the schema pattern cannot express such as userinfo-style 'key:secret@host' prefixes inside an otherwise valid locator. The schema pattern is a transport guard, not the enforcement boundary; sellers MUST screen canonicalized values. Exchange access through provider-native control planes or out of band.",
+        "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
+        "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history, and remain enumerable to their owner through configuration readback.",
+        "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered.",
+        "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
+      }
+    },
+    "external:core/delivery-provider.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/reporting-verification-profile-set.json": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "native_commit",
+          "manifest_checksums",
+          "canonical_digest"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "external:core/delivery-recipient.json": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "cloud": {
+          "$ref": "#/$defs/external:enums~1delivery-recipient-cloud.json"
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "identity"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "cloud": [
+          "region"
+        ],
+        "region": [
+          "cloud"
+        ]
+      }
+    },
+    "external:enums/delivery-recipient-cloud.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "aws",
+        "azure",
+        "gcp"
+      ]
+    },
+    "external:core/principal-declarations-state.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "declared": {
+          "$ref": "#/$defs/external:core~1principal-declarations.json"
+        },
+        "accepted": {
+          "$ref": "#/$defs/external:core~1principal-declarations.json"
+        },
+        "selected_async_adcp_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+$"
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "axis": {
+                "type": "string",
+                "enum": [
+                  "async_adcp_versions",
+                  "webhook_signing_algorithms",
+                  "experimental_features"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "required": [
+              "axis",
+              "value",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 64
+        }
+      },
+      "required": [
+        "declared",
+        "accepted"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/principal-declarations.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "async_adcp_versions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+$"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "webhook_signing_algorithms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ed25519",
+              "ecdsa-p256-sha256"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "experimental_features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1experimental-feature-id.json"
+          },
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/experimental-feature-id.json": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+    }
+  }
+}
