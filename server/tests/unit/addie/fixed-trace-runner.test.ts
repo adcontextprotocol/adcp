@@ -26,7 +26,9 @@ import {
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import {
   admitFixedTraceDirectArm,
+  decideFixedTraceHybridRoute,
   deriveFixedTraceDirectToolUniverse,
+  fixedTraceHybridPolicy,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import { ADMIN_TOOLS } from '../../../src/addie/mcp/admin-tools.js';
@@ -393,6 +395,144 @@ function expandedFixtureTrace(id = 'expanded-fixture-tool'): FixedTraceCase {
 }
 
 describe('fixed trace artifact runner', () => {
+  it('uses production quick-match terminal behavior only from allowed request facts', () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const policy = fixedTraceHybridPolicy();
+    const decide = (candidate: FixedTraceCase) => decideFixedTraceHybridRoute({
+      message: candidate.request.message,
+      source: candidate.request.source,
+      isAdmin: candidate.request.isAdmin,
+      isThread: (candidate.request.threadContext?.length ?? 0) > 0,
+      channelPrivacy: candidate.request.channelPrivacy,
+      policy,
+    });
+    const obvious: FixedTraceCase = {
+      ...selectedTrace,
+      request: { source: 'dm', message: 'ok', isAdmin: false, nowUtc: selectedTrace.request.nowUtc },
+    };
+    const answerLeakingChanges: FixedTraceCase = {
+      ...obvious,
+      routing: { action: 'respond', toolSets: ['admin_events'] },
+      toolFixtures: [{ name: 'fixture_only', effect: 'mutation', resultStatus: 'ok', result: 'different fixture result' }],
+      expectation: {
+        ...obvious.expectation,
+        requiredTools: ['fixture_only'],
+        allowedTools: ['fixture_only'],
+        requiredTextAny: [['different expected answer']],
+      },
+      answerRubric: ['different grade label'],
+    };
+
+    expect(decide(answerLeakingChanges)).toMatchObject(decide(obvious));
+    expect(decide(obvious)).toMatchObject({
+      mode: 'local_terminal', reason: 'production_quick_match_terminal', plan: { action: 'ignore' },
+    });
+  });
+
+  it('runs obvious local outcomes without a router dispatch and routes ambiguous cases through the incumbent stages', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const localTrace: FixedTraceCase = {
+      ...selectedTrace,
+      request: { source: 'dm', message: 'ok', isAdmin: false, nowUtc: selectedTrace.request.nowUtc },
+    };
+    const localRouter = new ScriptedProvider([]);
+    const localGeneration = new ScriptedProvider([]);
+    const local = await runFixedTraceCase(localTrace, config(localRouter, localGeneration, {
+      traceSuite: [localTrace], architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }));
+    expect(local).toMatchObject({ terminalStage: 'surface', terminalStatus: 'ignored', route: { action: 'ignore', toolSets: [] } });
+    expect(local.metadata.hybridPolicy).toEqual(fixedTraceHybridPolicy());
+    expect(localRouter.respondCalls).toHaveLength(0);
+    expect(localGeneration.respondCalls).toHaveLength(0);
+
+    const ambiguousTrace: FixedTraceCase = {
+      ...selectedTrace,
+      request: { source: 'dm', message: 'Explain AdCP authentication.', isAdmin: false, nowUtc: selectedTrace.request.nowUtc },
+    };
+    const ambiguousRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const ambiguousGeneration = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
+    const ambiguous = await runFixedTraceCase(ambiguousTrace, config(ambiguousRouter, ambiguousGeneration, {
+      traceSuite: [ambiguousTrace], architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }));
+    expect(ambiguous.terminalStage).toBe('generation');
+    expect(ambiguousRouter.respondCalls).toHaveLength(1);
+    expect(ambiguousGeneration.respondCalls).toHaveLength(1);
+  });
+
+  it('fails hybrid admission safe for tool-bearing, admin, thread, and unknown-privacy cases', () => {
+    const policy = fixedTraceHybridPolicy();
+    const decide = (input: Parameters<typeof decideFixedTraceHybridRoute>[0]) => decideFixedTraceHybridRoute({ ...input, policy });
+    expect(decide({ message: 'attendee list for the summit', source: 'dm', isAdmin: false, isThread: false }))
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'tool_or_mutation_capability_requires_router' });
+    expect(decide({ message: 'send the invoice to the member', source: 'dm', isAdmin: false, isThread: false }))
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'no_production_quick_match' });
+    expect(decide({ message: 'thanks', source: 'dm', isAdmin: true, isThread: false }))
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'admin_requires_router' });
+    expect(decide({ message: 'thanks', source: 'dm', isAdmin: false, isThread: true }))
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'thread_context_requires_router' });
+    expect(decide({ message: 'hello', source: 'channel', isAdmin: false, isThread: false, channelPrivacy: 'public' }))
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'channel_privacy_not_captured' });
+    expect(decide({ message: 'hello', source: 'channel', isAdmin: false, isThread: false }))
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'channel_privacy_not_captured' });
+  });
+
+  it('keeps routed tool definitions and generation execution identical after hybrid fallback', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const incumbentRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const incumbentGeneration = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
+    await runFixedTraceCase(selectedTrace, config(incumbentRouter, incumbentGeneration, { traceSuite: [selectedTrace] }));
+
+    const hybridRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const hybridGeneration = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
+    await runFixedTraceCase(selectedTrace, config(hybridRouter, hybridGeneration, {
+      traceSuite: [selectedTrace], architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }));
+
+    expect(hybridRouter.respondCalls).toHaveLength(1);
+    expect(hybridGeneration.respondCalls).toEqual(incumbentGeneration.respondCalls);
+  });
+
+  it('binds hybrid policy and fallback-router controls into the frozen architecture identity', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const policy = fixedTraceHybridPolicy();
+    const hybrid = config(new ScriptedProvider([]), new ScriptedProvider([]), {
+      traceSuite: [selectedTrace], architectureArm: 'deterministic_policy_llm_fallback_hybrid', hybridPolicy: policy,
+    });
+    const incumbent = { ...hybrid, architectureArm: 'two_stage_llm_router' as const, hybridPolicy: undefined };
+    expect(fixedTraceArchitectureConfigSha256(hybrid)).not.toBe(fixedTraceArchitectureConfigSha256(incumbent));
+    expect(fixedTraceArchitectureConfigSha256({ ...hybrid, hybridPolicy: { ...policy, version: 'fixed-trace-hybrid-quick-match-v2' } }))
+      .not.toBe(fixedTraceArchitectureConfigSha256(hybrid));
+    expect(fixedTraceArchitectureConfigSha256({ ...hybrid, hybridPolicy: { ...policy, localTerminalActions: ['ignore'] } }))
+      .not.toBe(fixedTraceArchitectureConfigSha256(hybrid));
+    expect(fixedTraceArchitectureConfigSha256({ ...hybrid, router: { ...hybrid.router, timeoutMs: 20_000 } }))
+      .not.toBe(fixedTraceArchitectureConfigSha256(hybrid));
+
+    const invalidRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(selectedTrace, config(invalidRouter, new ScriptedProvider([]), {
+      traceSuite: [selectedTrace],
+      architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+      hybridPolicy: { ...policy, localTerminalActions: ['respond' as never] },
+    }))).rejects.toThrow('Fixed trace hybrid policy is invalid');
+    expect(invalidRouter.respondCalls).toHaveLength(0);
+  });
+
+  it('does not permit hybrid policy restamping after the first dispatch', async () => {
+    const firstTrace = trace('knowledge-task-model');
+    const secondTrace = { ...structuredClone(firstTrace), id: 'hybrid-second-trace' };
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
+    const runConfig = config(router, generation, {
+      traceSuite: [firstTrace, secondTrace],
+      architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+      hybridPolicy: { ...fixedTraceHybridPolicy() },
+    });
+    await runFixedTraceCase(firstTrace, runConfig);
+    runConfig.hybridPolicy!.version = 'fixed-trace-hybrid-quick-match-v2';
+    await expect(runFixedTraceCase(secondTrace, runConfig))
+      .rejects.toThrow('Fixed trace runner execution identity changed after dispatch binding');
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(1);
+  });
   it('keeps an unapproved same-provider returned model unpriced for failure telemetry', async () => {
     const router = new ScriptedProvider([{ ...routeResponse('respond', ['knowledge']), model: 'other-anthropic-model' }]);
     const generation = new ScriptedProvider([
@@ -889,14 +1029,14 @@ describe('fixed trace artifact runner', () => {
       .toThrow('incomplete or duplicated');
   });
 
-  it('rejects unused fixture-local definitions for routed and oracle execution', async () => {
+  it('rejects unused fixture-local definitions for routed, hybrid, and oracle execution', async () => {
     const selectedTrace = trace('knowledge-task-model');
-    for (const architectureArm of ['two_stage_llm_router', 'oracle_route_diagnostic'] as const) {
+    for (const architectureArm of ['two_stage_llm_router', 'deterministic_policy_llm_fallback_hybrid', 'oracle_route_diagnostic'] as const) {
       const router = new ScriptedProvider([]);
       await expect(runFixedTraceCase(selectedTrace, config(router, new ScriptedProvider([]), {
         architectureArm,
         toolDefinitions: [...TOOL_DEFINITIONS, tool('out_of_suite_fixture_tool')],
-      }))).rejects.toThrow('routed/oracle definitions must exactly match configured suite fixtures');
+      }))).rejects.toThrow('routed/hybrid/oracle definitions must exactly match configured suite fixtures');
       expect(router.respondCalls).toHaveLength(0);
     }
   });
@@ -939,14 +1079,14 @@ describe('fixed trace artifact runner', () => {
     await expect(runFixedTraceCase(firstTrace, config(missingRouter, new ScriptedProvider([]), {
       traceSuite: expandedSuite,
       toolDefinitions: TOOL_DEFINITIONS,
-    }))).rejects.toThrow('routed/oracle definitions must exactly match configured suite fixtures');
+    }))).rejects.toThrow('routed/hybrid/oracle definitions must exactly match configured suite fixtures');
     expect(missingRouter.respondCalls).toHaveLength(0);
 
     const duplicateRouter = new ScriptedProvider([]);
     await expect(runFixedTraceCase(firstTrace, config(duplicateRouter, new ScriptedProvider([]), {
       traceSuite: expandedSuite,
       toolDefinitions: [...definitions, fixtureDefinition],
-    }))).rejects.toThrow('routed/oracle definitions must exactly match configured suite fixtures');
+    }))).rejects.toThrow('routed/hybrid/oracle definitions must exactly match configured suite fixtures');
     expect(duplicateRouter.respondCalls).toHaveLength(0);
 
     const staleRouter = new ScriptedProvider([]);
@@ -1139,6 +1279,14 @@ describe('fixed trace artifact runner', () => {
       toolDefinitions: [invalidDefinition],
     }))).rejects.toMatchObject({ reason: 'tool_schema_invalid' });
     expect(invalidSchemaRouter.respondCalls).toHaveLength(0);
+
+    const hybridInvalidSchemaRouter = new ScriptedProvider([]);
+    await expect(runFixedTraceCase(expandedTrace, config(hybridInvalidSchemaRouter, new ScriptedProvider([]), {
+      traceSuite: [expandedTrace],
+      toolDefinitions: [invalidDefinition],
+      architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }))).rejects.toMatchObject({ reason: 'tool_schema_invalid' });
+    expect(hybridInvalidSchemaRouter.respondCalls).toHaveLength(0);
 
     const duplicateFixtureTrace = structuredClone(trace('knowledge-task-model'));
     duplicateFixtureTrace.toolFixtures = [

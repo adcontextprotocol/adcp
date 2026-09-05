@@ -44,10 +44,14 @@ import {
 } from './fixed-trace-budget.js';
 import {
   admitFixedTraceDirectArm,
+  decideFixedTraceHybridRoute,
   fixedTraceArchitectureArm,
   fixedTraceExecutionEnvelopeProvenance,
+  fixedTraceHybridPolicy,
   fixedTraceToolUniverseProvenance,
+  validateFixedTraceHybridPolicy,
   type FixedTraceArchitectureArmId,
+  type FixedTraceHybridPolicy,
   type FixedTraceToolDefinitionProvenance,
 } from './fixed-trace-architecture.js';
 import {
@@ -96,6 +100,8 @@ export interface FixedTraceRunnerConfig {
   toolDefinitionProvenance?: FixedTraceToolDefinitionProvenance;
   /** Defaults to the existing two-stage LLM-router architecture. */
   architectureArm?: FixedTraceArchitectureArmId;
+  /** Required only by the diagnostic hybrid; default policy is versioned. */
+  hybridPolicy?: FixedTraceHybridPolicy;
   /** One-based repetition identifier; runs are never silently pooled. */
   repetition?: number;
   router: FixedTraceProviderStageConfig;
@@ -165,13 +171,13 @@ function assertTraceSuiteIdentity(config: FixedTraceRunnerConfig): void {
 }
 
 function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
-  // Routed/oracle replay registers only trace fixtures. A wider definition
+  // Routed/hybrid/oracle replay registers only trace fixtures. A wider definition
   // list would make the declared config differ from executable inputs. Direct
   // remains intentionally exempt: its deployable request-derived universe has
   // not yet been captured by this diagnostic foundation.
   if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
   if (!Array.isArray(config.toolDefinitions)) {
-    throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
+    throw new Error('Fixed trace routed/hybrid/oracle definitions must exactly match configured suite fixtures');
   }
   const fixtureNames = new Set(config.traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
   const definitionNames = config.toolDefinitions.map((definition) => definition.name);
@@ -179,12 +185,12 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
     definitionNames.length !== fixtureNames.size
     || new Set(definitionNames).size !== definitionNames.length
     || definitionNames.some((name) => !fixtureNames.has(name))
-  ) throw new Error('Fixed trace routed/oracle definitions must exactly match configured suite fixtures');
+  ) throw new Error('Fixed trace routed/hybrid/oracle definitions must exactly match configured suite fixtures');
 }
 
 function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
   // Direct is admission-only: it must not derive a fake executable universe
-  // from fixture-local definitions. Routed and oracle replay use this exact
+  // from fixture-local definitions. Routed, hybrid, and oracle replay use this exact
   // registration primitive at generation time, so validate it before router
   // dispatch as well.
   if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
@@ -243,6 +249,11 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
   }
   if (config.injectProviderDegradation !== undefined && typeof config.injectProviderDegradation !== 'boolean') {
     throw new Error('Fixed trace runner injectProviderDegradation must be boolean when supplied');
+  }
+  if (config.architectureArm === 'deterministic_policy_llm_fallback_hybrid') {
+    validateFixedTraceHybridPolicy(fixedTraceHybridPolicy(config.hybridPolicy));
+  } else if (config.hybridPolicy !== undefined) {
+    throw new Error('Fixed trace hybrid policy is only valid for the hybrid architecture arm');
   }
 }
 
@@ -621,6 +632,9 @@ export function fixedTraceArchitectureConfigSha256(
     toolSchemaSha256,
     toolDefinitionProvenance: config.toolDefinitionProvenance ?? 'fixture_local',
     architectureArm: arm,
+    hybridPolicy: arm.id === 'deterministic_policy_llm_fallback_hybrid'
+      ? fixedTraceHybridPolicy(config.hybridPolicy)
+      : null,
     toolUniverse: fixedTraceToolUniverseProvenance(arm.id),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(arm.id),
     routerControl: cohortStageControl(config.router),
@@ -701,6 +715,9 @@ function baseMetadata(
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     repetition: config.repetition ?? 1,
     architectureArm,
+    hybridPolicy: architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
+      ? fixedTraceHybridPolicy(config.hybridPolicy)
+      : null,
     toolUniverse: {
       ...fixedTraceToolUniverseProvenance(architectureArm.id),
       // Routed/oracle fixture surfaces are exact replay inputs. Direct has no
@@ -933,6 +950,16 @@ export async function runFixedTraceCase(
     // incomplete deployable fixture surface is not evidence.
     return directAdmissionMetadata(executionConfig, toolSchemaSha256, executionTrace);
   }
+  const hybridDecision = architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
+    ? decideFixedTraceHybridRoute({
+        message: executionTrace.request.message,
+        source: executionTrace.request.source,
+        isAdmin: executionTrace.request.isAdmin,
+        isThread: (executionTrace.request.threadContext?.length ?? 0) > 0,
+        channelPrivacy: executionTrace.request.channelPrivacy,
+        policy: fixedTraceHybridPolicy(executionConfig.hybridPolicy),
+      })
+    : null;
   const routed = architectureArm.id === 'oracle_route_diagnostic'
     ? {
         request: null,
@@ -942,6 +969,15 @@ export async function runFixedTraceCase(
         status: null,
         metadata: notRunStageMetadata(executionTrace),
       }
+    : hybridDecision?.mode === 'local_terminal'
+      ? {
+          request: null,
+          response: null,
+          plan: hybridDecision.plan,
+          output: '',
+          status: null,
+          metadata: notRunStageMetadata(executionTrace),
+        }
     : await executeRouter(executionTrace, executionConfig.router, assertBeforeDispatch);
   const generationNotRun = notRunStageMetadata(executionTrace);
   if (!routed.plan || routed.status) {

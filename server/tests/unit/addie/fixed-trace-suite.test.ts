@@ -106,6 +106,7 @@ function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRun
     providerDegradationInjectionEnabled: true,
     repetition: 1,
     architectureArm: fixedTraceArchitectureArm(),
+    hybridPolicy: null,
     toolUniverse: fixedTraceToolUniverseProvenance(),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(),
     directArmAdmission: null,

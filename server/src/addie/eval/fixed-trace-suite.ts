@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   fixedTraceArchitectureArm,
+  validateFixedTraceHybridPolicy,
 } from './fixed-trace-architecture.js';
 import {
   fixedTraceEstimatedCostUsd,
@@ -22,6 +23,7 @@ import type {
   FixedTraceArchitectureArmProvenance,
   FixedTraceDirectArmAdmission,
   FixedTraceExecutionEnvelopeProvenance,
+  FixedTraceHybridPolicy,
   FixedTraceToolDefinitionProvenance,
   FixedTraceToolUniverseProvenance,
 } from './fixed-trace-architecture.js';
@@ -109,6 +111,8 @@ export interface FixedTraceCase {
     message: string;
     nowUtc: string;
     isAdmin: boolean;
+    /** Required for a local channel outcome; absent facts fail safe to routing. */
+    channelPrivacy?: 'private' | 'public';
     threadContext?: ReadonlyArray<{ user: 'member' | 'addie'; text: string }>;
   };
   routing: {
@@ -271,6 +275,8 @@ export interface FixedTraceRunMetadata {
   repetition: number;
   /** Immutable architecture-arm cohort provenance. */
   architectureArm: FixedTraceArchitectureArmProvenance;
+  /** Candidate controls for the hybrid arm; included in the cohort fingerprint. */
+  hybridPolicy: FixedTraceHybridPolicy | null;
   /** How this arm obtained its visible tool universe. */
   toolUniverse: FixedTraceToolUniverseProvenance;
   /** Provenance for confirmation, idempotency, and mutation safety policy. */
@@ -1262,6 +1268,7 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
   | 'toolSchemaSha256'
   | 'toolDefinitionProvenance'
   | 'architectureArm'
+  | 'hybridPolicy'
   | 'toolUniverse'
   | 'executionEnvelope'
   | 'routerControl'
@@ -1283,6 +1290,7 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
       schemaSha256: metadata.toolSchemaSha256,
     },
     architectureArm: metadata.architectureArm,
+    hybridPolicy: metadata.hybridPolicy,
     toolUniverse: cohortToolUniverse,
     executionEnvelope: metadata.executionEnvelope,
     routerControl: metadata.routerControl,
@@ -1529,15 +1537,26 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   const caseControl = trace.caseControl ?? null;
   if (!sameCaseControl(caseControl, metadata.caseControl)) failures.push('case_control_mismatch');
   const arm = metadata.architectureArm;
-  if (!arm || !['two_stage_llm_router', 'direct_generation', 'oracle_route_diagnostic'].includes(arm.id)) {
+  if (!arm || !['two_stage_llm_router', 'direct_generation', 'deterministic_policy_llm_fallback_hybrid', 'oracle_route_diagnostic'].includes(arm.id)) {
     failures.push('architecture_arm_invalid');
   } else {
     const canonicalArm = fixedTraceArchitectureArm(arm.id);
     if (
       arm.routeSource !== canonicalArm.routeSource
       || arm.rolloutEligible !== canonicalArm.rolloutEligible
+      || arm.diagnosticOnly !== canonicalArm.diagnosticOnly
     ) failures.push('architecture_arm_invalid');
   }
+  if (arm?.id === 'deterministic_policy_llm_fallback_hybrid') {
+    if (metadata.hybridPolicy === null) failures.push('hybrid_policy_missing');
+    else {
+      try {
+        validateFixedTraceHybridPolicy(metadata.hybridPolicy);
+      } catch {
+        failures.push('hybrid_policy_invalid');
+      }
+    }
+  } else if (metadata.hybridPolicy !== null) failures.push('hybrid_policy_unexpected');
   if (arm?.id === 'direct_generation') {
     if (metadata.directArmAdmission === null) {
       failures.push('direct_arm_admission_missing');
@@ -1554,6 +1573,11 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   }
   const toolUniverse = metadata.toolUniverse;
   if (!toolUniverse || !['fixture_local_routed_replay', 'authorized_definition_handler_intersection_not_captured', 'fixture_oracle'].includes(toolUniverse.source)) {
+    failures.push('tool_universe_provenance_invalid');
+  } else if (
+    arm?.id === 'deterministic_policy_llm_fallback_hybrid'
+    && (toolUniverse.source !== 'fixture_local_routed_replay' || toolUniverse.intentNarrowing !== 'production_quick_match_or_llm_router' || !toolUniverse.bounded || toolUniverse.deployable)
+  ) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'two_stage_llm_router'
@@ -1579,6 +1603,11 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   }
   const executionEnvelope = metadata.executionEnvelope;
   if (!executionEnvelope || !['fixture_expectation', 'request_thread_facts_not_captured', 'fixture_oracle'].includes(executionEnvelope.source)) {
+    failures.push('execution_envelope_provenance_invalid');
+  } else if (
+    arm?.id === 'deterministic_policy_llm_fallback_hybrid'
+    && (executionEnvelope.source !== 'fixture_expectation' || executionEnvelope.deployable)
+  ) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
     arm?.id === 'two_stage_llm_router'
@@ -1903,6 +1932,8 @@ export function assertFixedTraceRunContract(
       || candidate.architectureArm.id !== runContract.architectureArm.id
       || candidate.architectureArm.routeSource !== runContract.architectureArm.routeSource
       || candidate.architectureArm.rolloutEligible !== runContract.architectureArm.rolloutEligible
+      || candidate.architectureArm.diagnosticOnly !== runContract.architectureArm.diagnosticOnly
+      || canonicalJson(candidate.hybridPolicy) !== canonicalJson(runContract.hybridPolicy)
       || candidate.toolUniverse.source !== runContract.toolUniverse.source
       || candidate.toolUniverse.intentNarrowing !== runContract.toolUniverse.intentNarrowing
       || candidate.toolUniverse.bounded !== runContract.toolUniverse.bounded
@@ -2004,7 +2035,7 @@ export function summarizeFixedTraceRun(
       complete,
       deterministicPassRate: ratio(grades.filter((grade) => grade.deterministicPass).length),
       answerPassRate: answerGrades.length === 0 ? null : ratio(answerGrades.filter((grade) => grade.answerPass).length, answerGrades.length),
-      routingPassRate: runContract.architectureArm.id === 'two_stage_llm_router'
+      routingPassRate: ['two_stage_llm_router', 'deterministic_policy_llm_fallback_hybrid'].includes(runContract.architectureArm.id)
         ? ratio(grades.filter((grade) => grade.routingPass === true).length)
         : null,
       toolSelectionPassRate: ratio(grades.filter((grade) => grade.toolSelectionPass).length),

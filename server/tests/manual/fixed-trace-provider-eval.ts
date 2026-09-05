@@ -41,7 +41,10 @@ import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed
 import { parseFixedTraceDiagnosticCliArguments } from '../../src/addie/eval/fixed-trace-diagnostic-cli.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../src/addie/eval/fixed-trace-diagnostic-output.js';
 import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
-import { type FixedTraceArchitectureArmId } from '../../src/addie/eval/fixed-trace-architecture.js';
+import {
+  fixedTraceHybridPolicy,
+  type FixedTraceArchitectureArmId,
+} from '../../src/addie/eval/fixed-trace-architecture.js';
 import {
   FIXED_TRACE_SUITE,
   fixedTraceSuiteSha256,
@@ -271,7 +274,7 @@ if (new Set(providerNames).size !== providerNames.length || providerNames.length
   throw new Error('--providers must contain one or more unique providers');
 }
 const architectureArm = (argument('architecture-arm') ?? 'two_stage_llm_router') as FixedTraceArchitectureArmId;
-if (!(architectureArm in { two_stage_llm_router: true, direct_generation: true, oracle_route_diagnostic: true })) {
+if (!(architectureArm in { two_stage_llm_router: true, direct_generation: true, deterministic_policy_llm_fallback_hybrid: true, oracle_route_diagnostic: true })) {
   throw new Error('Unknown --architecture-arm value');
 }
 const softMaxUsd = Number(argument('soft-max-usd'));
@@ -325,6 +328,9 @@ const artifact = await runFixedTraceDiagnosticArtifact({
     toolDefinitions,
     toolDefinitionProvenance: 'fixture_local',
     architectureArm,
+    ...(architectureArm === 'deterministic_policy_llm_fallback_hybrid'
+      ? { hybridPolicy: fixedTraceHybridPolicy() }
+      : {}),
   },
   budget,
   outputReservation,
