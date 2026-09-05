@@ -7,6 +7,7 @@ import {
   buildThreadSummaryForRouter,
   buildUntrustedSlackHistoryContext,
   buildAuthorizedConversationHistory,
+  unresolvedToolCheckpointsForLatestTurn,
   buildUntrustedSlackChannelMetadataContext,
   isValidWorkingGroupSlug,
 } from '../../src/addie/thread-utils.js';
@@ -62,6 +63,41 @@ describe('Slack authority boundaries', () => {
       { user: 'Brian', text: 'show my status' },
       { user: 'Addie', text: 'Here is your status', toolCalls: undefined },
     ]);
+  });
+
+  it('keeps interrupted tool checkpoints only until a final assistant response exists', () => {
+    const checkpoint = {
+      name: 'schedule_meeting', input: { title: 'Review' }, result: 'scheduled', is_error: false,
+    };
+    const interrupted = [
+      { role: 'user', user_id: BRIAN, user_display_name: 'Brian', content: 'schedule and summarize' },
+      { role: 'assistant', content: '', delivery_status: 'interrupted' as const, tool_calls: [checkpoint] },
+      { role: 'assistant', content: '', delivery_status: 'interrupted' as const, tool_calls: [{
+        name: 'list_meetings', input: {}, result: 'one meeting', is_error: false,
+      }] },
+    ];
+
+    expect(buildAuthorizedConversationHistory(interrupted, BRIAN, 20)).toEqual([
+      { user: 'Brian', text: 'schedule and summarize' },
+      { user: 'Addie', text: '', toolCalls: [checkpoint] },
+      { user: 'Addie', text: '', toolCalls: [{
+        name: 'list_meetings', input: {}, result: 'one meeting', is_error: false,
+      }] },
+    ]);
+    expect(unresolvedToolCheckpointsForLatestTurn(interrupted, BRIAN)).toEqual([
+      checkpoint,
+      { name: 'list_meetings', input: {}, result: 'one meeting', is_error: false },
+    ]);
+
+    const completed = [...interrupted, {
+      role: 'assistant', content: 'Scheduled and summarized.', delivery_status: 'completed' as const,
+      tool_calls: [checkpoint],
+    }];
+    expect(buildAuthorizedConversationHistory(completed, BRIAN, 20)).toEqual([
+      { user: 'Brian', text: 'schedule and summarize' },
+      { user: 'Addie', text: 'Scheduled and summarized.', toolCalls: [checkpoint] },
+    ]);
+    expect(unresolvedToolCheckpointsForLatestTurn(completed, BRIAN)).toEqual([]);
   });
 
   it('marks channel-controlled metadata as untrusted data', () => {

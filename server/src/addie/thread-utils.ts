@@ -84,6 +84,7 @@ export interface StoredConversationMessage {
     result: unknown;
     is_error?: boolean;
   }> | null;
+  delivery_status?: 'completed' | 'interrupted';
 }
 
 export interface AuthorizedConversationEntry {
@@ -103,29 +104,64 @@ export function buildAuthorizedConversationHistory(
   maxMessages: number,
 ): AuthorizedConversationEntry[] {
   const authorized: AuthorizedConversationEntry[] = [];
-  let includeAssistantResponse = false;
+  let activeUser: AuthorizedConversationEntry | null = null;
+  let activeAssistants: StoredConversationMessage[] = [];
 
-  for (const message of messages) {
-    if (message.role === 'user') {
-      includeAssistantResponse = message.user_id === currentUserId;
-      if (!includeAssistantResponse) continue;
-      authorized.push({
-        user: message.user_display_name || 'User',
-        text: message.content_sanitized || message.content,
-      });
-      continue;
-    }
-
-    if (message.role === 'assistant' && includeAssistantResponse) {
+  const flush = () => {
+    if (!activeUser) return;
+    authorized.push(activeUser);
+    const completed = activeAssistants.filter((message) => message.delivery_status !== 'interrupted');
+    const selected = completed.length > 0
+      ? completed
+      : activeAssistants.filter((message) => (message.tool_calls?.length ?? 0) > 0);
+    for (const message of selected) {
       authorized.push({
         user: 'Addie',
         text: message.content_sanitized || message.content,
         toolCalls: message.tool_calls ?? undefined,
       });
     }
+  };
+
+  for (const message of messages) {
+    if (message.role === 'user') {
+      flush();
+      activeAssistants = [];
+      activeUser = message.user_id === currentUserId
+        ? {
+            user: message.user_display_name || 'User',
+            text: message.content_sanitized || message.content,
+          }
+        : null;
+      continue;
+    }
+
+    if (message.role === 'assistant' && activeUser) activeAssistants.push(message);
   }
+  flush();
 
   return authorized.slice(-maxMessages);
+}
+
+/** Exact completed receipts from the latest authorized turn with no final response. */
+export function unresolvedToolCheckpointsForLatestTurn(
+  messages: StoredConversationMessage[],
+  currentUserId: string,
+): NonNullable<StoredConversationMessage['tool_calls']> {
+  let owned = false;
+  let hasCompletedAssistant = false;
+  let checkpoints: NonNullable<StoredConversationMessage['tool_calls']> = [];
+  for (const message of messages) {
+    if (message.role === 'user') {
+      owned = message.user_id === currentUserId;
+      hasCompletedAssistant = false;
+      checkpoints = [];
+    } else if (message.role === 'assistant' && owned) {
+      if (message.delivery_status !== 'interrupted') hasCompletedAssistant = true;
+      else if (message.tool_calls) checkpoints.push(...message.tool_calls);
+    }
+  }
+  return hasCompletedAssistant ? [] : checkpoints;
 }
 
 /** Encode Slack-editable channel metadata as explicitly untrusted data. */

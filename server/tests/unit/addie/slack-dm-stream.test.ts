@@ -354,11 +354,18 @@ describe('Slack DM stream tool metadata', () => {
     }, CONFIG, io);
     state = await interpretSlackDmStreamEvent(state, {
       type: 'tool_end', tool_name: 'lookup', result: 'ok', is_error: false,
+      execution: {
+        tool_name: 'lookup', parameters: { query: 'second' }, result: 'ok',
+        is_error: false, duration_ms: 12, sequence: 2,
+      },
     }, CONFIG, io);
 
     expect(state.toolsUsed).toEqual(['lookup', 'lookup']);
     expect(state.activeToolTaskIds).toEqual(['lookup_1']);
-    expect(state.toolExecutions).toEqual([{ tool_name: 'lookup', parameters: {}, result: 'ok' }]);
+    expect(state.toolExecutions).toEqual([{
+      tool_name: 'lookup', parameters: { query: 'second' }, result: 'ok',
+      is_error: false, duration_ms: 12, sequence: 2,
+    }]);
     const appendPayloads = calls.filter(call => call.kind === 'append').map(call => call.value);
     expect(appendPayloads[0]).toMatchObject({ chunks: [
       { type: 'plan_update', title: 'Addie is working' },
@@ -379,13 +386,20 @@ describe('Slack DM stream tool metadata', () => {
     }, CONFIG);
     const end = reduceSlackDmStreamEvent(start.state, {
       type: 'tool_end', tool_name: 'late_tool', result: 'late result', is_error: true,
+      execution: {
+        tool_name: 'late_tool', parameters: {}, result: 'late result',
+        is_error: true, duration_ms: 8, sequence: 1,
+      },
     }, CONFIG);
 
     expect(start.effects).toEqual([]);
     expect(end.effects).toEqual([]);
     expect(end.state.toolsUsed).toEqual(['late_tool']);
     expect(end.state.toolExecutions).toEqual([
-      { tool_name: 'late_tool', parameters: {}, result: 'late result' },
+      {
+        tool_name: 'late_tool', parameters: {}, result: 'late result',
+        is_error: true, duration_ms: 8, sequence: 1,
+      },
     ]);
   });
 });

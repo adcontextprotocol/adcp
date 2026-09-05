@@ -730,6 +730,189 @@ describe('Addie chat conversation object authorization', () => {
     }));
   });
 
+  it('checkpoints each completed tool before a later stream error', async () => {
+    const firstExecution = {
+      tool_name: 'schedule_meeting',
+      parameters: { title: 'Review' },
+      result: 'Meeting scheduled',
+      is_error: false,
+      duration_ms: 12,
+      sequence: 1,
+    };
+    const secondExecution = {
+      tool_name: 'list_upcoming_meetings',
+      parameters: {},
+      result: 'One meeting',
+      is_error: false,
+      duration_ms: 8,
+      sequence: 2,
+    };
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.processMessageStream.mockImplementation(async function* () {
+      yield { type: 'tool_start', tool_name: firstExecution.tool_name, parameters: firstExecution.parameters };
+      yield {
+        type: 'tool_end', tool_name: firstExecution.tool_name, result: firstExecution.result,
+        is_error: false, execution: firstExecution,
+      };
+      yield { type: 'tool_start', tool_name: secondExecution.tool_name, parameters: secondExecution.parameters };
+      yield {
+        type: 'tool_end', tool_name: secondExecution.tool_name, result: secondExecution.result,
+        is_error: false, execution: secondExecution,
+      };
+      yield {
+        type: 'stream_error',
+        reason: 'Connection broke mid-reply',
+        deltasBeforeError: 1,
+        tool_executions: [firstExecution, secondExecution],
+        certification_reserve_used: false,
+      };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Schedule and summarize',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+      });
+
+    expect(response.status).toBe(200);
+    const assistantWrites = mocks.addMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.role === 'assistant');
+    expect(assistantWrites).toHaveLength(3);
+    expect(assistantWrites.slice(0, 2)).toEqual([
+      expect.objectContaining({
+        content: '',
+        delivery_status: 'interrupted',
+        tool_calls: [expect.objectContaining({ name: 'schedule_meeting', input: { title: 'Review' } })],
+      }),
+      expect.objectContaining({
+        content: '',
+        delivery_status: 'interrupted',
+        tool_calls: [expect.objectContaining({ name: 'list_upcoming_meetings', input: {} })],
+      }),
+    ]);
+    expect(assistantWrites[2]).toEqual(expect.objectContaining({
+      delivery_status: 'interrupted',
+      client_turn_lease_id: 'lease-1',
+      finalize_client_turn_status: 'interrupted',
+    }));
+    expect(assistantWrites[2]).not.toHaveProperty('tool_calls');
+  });
+
+  it('stops before another tool and makes the turn non-retryable when checkpoint storage fails', async () => {
+    const execution = {
+      tool_name: 'schedule_meeting',
+      parameters: { title: 'Review' },
+      result: 'Meeting scheduled',
+      is_error: false,
+      duration_ms: 12,
+      sequence: 1,
+    };
+    let advancedPastCompletedTool = false;
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.addMessage.mockImplementation(async (message: { role: string; content?: string }) => {
+      if (message.role === 'assistant' && message.content === '') {
+        throw new Error('checkpoint database unavailable');
+      }
+      return {
+        ...message,
+        message_id: message.role === 'assistant' ? 'message_assistant' : 'message_user',
+      };
+    });
+    mocks.processMessageStream.mockImplementation(async function* () {
+      yield { type: 'tool_start', tool_name: execution.tool_name, parameters: execution.parameters };
+      yield {
+        type: 'tool_end', tool_name: execution.tool_name, result: execution.result,
+        is_error: false, execution,
+      };
+      advancedPastCompletedTool = true;
+      yield { type: 'tool_start', tool_name: 'send_follow_up', parameters: {} };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Schedule and follow up',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('checkpoint_persistence_failed');
+    expect(response.text).toContain('"recoverable":false');
+    expect(advancedPastCompletedTool).toBe(false);
+    expect(mocks.setClientTurnStatus).toHaveBeenCalledWith(
+      'thread_attacker',
+      'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+      'lease-1',
+      'completed',
+    );
+  });
+
+  it('wires checkpointed calls into the retry execution guard', async () => {
+    const clientRequestId = 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68';
+    const checkpoint = {
+      name: 'schedule_meeting',
+      input: { title: 'Review' },
+      result: 'Meeting scheduled',
+      is_error: false,
+    };
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.getMessagesByClientRequestId.mockResolvedValue([{
+      message_id: 'message_user', role: 'user', content: 'Schedule a review', delivery_status: 'completed',
+    }]);
+    mocks.getThreadMessages.mockResolvedValue([
+      {
+        message_id: 'message_user', role: 'user', content: 'Schedule a review',
+        client_request_id: clientRequestId, delivery_status: 'completed',
+      },
+      {
+        message_id: 'checkpoint', role: 'assistant', content: '', tool_calls: [checkpoint],
+        client_request_id: clientRequestId, delivery_status: 'interrupted',
+      },
+    ]);
+    let replayDecision: unknown;
+    mocks.processMessageStream.mockImplementation(async function* (...args: unknown[]) {
+      const options = args[3] as { toolExecutionPolicy: (request: unknown) => Promise<unknown> };
+      replayDecision = await options.toolExecutionPolicy({
+        toolName: 'schedule_meeting', input: { title: 'Review' }, executionMode: 'production',
+      });
+      yield { type: 'done', response: successfulModelResponse('Already scheduled.') };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Schedule a review',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: clientRequestId,
+        retry: true,
+      });
+
+    expect(response.status).toBe(200);
+    expect(replayDecision).toEqual({ allowed: false });
+  });
+
   it('gives every active certification learning thread the expanded reserve', async () => {
     const conversationId = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
     mocks.memberContext = {

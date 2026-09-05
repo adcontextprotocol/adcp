@@ -79,6 +79,7 @@ async function evaluateWebDelivery(): Promise<{
     getMessagesByClientRequestId: async () => [],
     claimClientTurn: async () => ({ state: 'claimed', leaseId: 'fixed-trace-web-lease' }),
     renewClientTurnLease: async () => true,
+    setClientTurnStatus: async () => true,
   };
   const prepareRequest = async (message: string): Promise<PreparedRequest> => ({
     messageToProcess: message,
