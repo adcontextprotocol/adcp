@@ -12,6 +12,16 @@ import {
   FIXED_TRACE_PARTITION_MANIFEST_VERSION,
   assertFixedTracePartitionManifest,
 } from './fixed-trace-partition.js';
+import type { AddieTool } from '../types.js';
+import { CODE_VERSION } from '../config-version.js';
+import {
+  FIXED_TRACE_STAGE_CONTROL_VERSION,
+  fixedTraceSuiteSha256,
+  type FixedTraceCase,
+} from './fixed-trace-suite.js';
+import { fixedTraceToolSchemaSha256 } from './fixed-trace-runner.js';
+import { validateFixedTraceToolLoopFixtures } from './fixed-trace-tool-loop.js';
+import type { FixedTraceToolDefinitionProvenance } from './fixed-trace-architecture.js';
 
 /** A versioned, network-free admission contract for fixed-trace experiments. */
 export const FIXED_TRACE_EXPERIMENT_PLAN_VERSION = 'addie-fixed-trace-experiment-plan-v1' as const;
@@ -94,8 +104,11 @@ export interface FixedTracePlannedStage {
   maxOutputTokens: number;
   timeoutMs: number;
   maxIterations: number;
+  transportRetries: 0;
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control';
   temperature: 0 | null;
+  /** Cache accounting is unavailable for execution unless disabled. */
+  cacheMode: 'disabled';
   requestBounds: FixedTraceRequestBounds;
 }
 
@@ -122,9 +135,16 @@ export interface FixedTraceExperimentPlan {
   sourceRevision: string;
   pricingAsOf: string;
   sourceBundleSha256: string;
+  /** Exact values stamped by the runner and included in its provenance hash. */
+  gitCommit: string;
+  gitDirty: boolean;
+  addieCodeVersion: string;
+  stageControlVersion: string;
   traceSuiteSha256: string;
   promptConfigVersion: string;
   toolSchemaSha256: string;
+  toolDefinitionProvenance: FixedTraceToolDefinitionProvenance;
+  providerDegradationInjectionEnabled: boolean;
   partition: {
     manifestVersion: typeof FIXED_TRACE_PARTITION_MANIFEST_VERSION;
     manifestSha256: typeof FIXED_TRACE_PARTITION_MANIFEST_SHA256;
@@ -147,14 +167,56 @@ export interface FixedTraceTrustedManifest {
   sourceId: string;
   sourceRevision: string;
   sourceBundleSha256: string;
-  traceSuiteSha256: string;
   promptConfigVersion: string;
-  toolSchemaSha256: string;
+  /**
+   * Resolver-owned, phase-selected execution inputs. They are never inferred
+   * from a plan or copied onto an observation after execution.
+   */
+  suites: Readonly<Record<'development' | 'holdout', FixedTraceTrustedSuite>>;
   partitionManifestSha256: string;
   rawLedgerVersion: typeof FIXED_TRACE_RAW_LEDGER_VERSION;
+  gitCommit: string;
+  gitDirty: boolean;
+  addieCodeVersion: string;
+  stageControlVersion: string;
+  providerDegradationInjectionEnabled: boolean;
+}
+
+export interface FixedTraceTrustedSuite {
+  traceSuite: ReadonlyArray<FixedTraceCase>;
+  traceSuiteSha256: string;
+  toolDefinitions: ReadonlyArray<AddieTool>;
+  toolSchemaSha256: string;
+  toolDefinitionProvenance: FixedTraceToolDefinitionProvenance;
 }
 
 export type FixedTraceTrustedManifestResolver = (id: string) => FixedTraceTrustedManifest | null;
+
+/** Stable identity for a resolver-owned manifest, used by the raw ledger. */
+export function fixedTraceTrustedManifestFingerprint(manifest: FixedTraceTrustedManifest): string {
+  return sha256(manifest);
+}
+
+/**
+ * The evaluator-owned portion of a future runner config. A dispatcher must
+ * supply actual providers separately, but may not replace any value here or
+ * synthesize a suite/hash from a completed observation.
+ */
+export interface FixedTraceExperimentRunnerBinding {
+  runId: string;
+  repetition: number;
+  sourceBundleSha256: string;
+  gitCommit: string;
+  gitDirty: boolean;
+  addieCodeVersion: string;
+  stageControlVersion: string;
+  promptConfigVersion: string;
+  traceSuite: ReadonlyArray<FixedTraceCase>;
+  traceSuiteSha256: string;
+  toolDefinitions: ReadonlyArray<AddieTool>;
+  toolDefinitionProvenance: FixedTraceToolDefinitionProvenance;
+  providerDegradationInjectionEnabled: boolean;
+}
 
 /**
  * Finalization state belongs to a controlled store, not the candidate plan.
@@ -196,14 +258,18 @@ export interface FixedTraceRawLedgerEntry {
   maxOutputTokens: number | null;
   timeoutMs: number | null;
   maxIterations: number | null;
+  transportRetries: 0 | null;
   reasoningEffort: ModelReasoningEffort;
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control' | null;
+  cacheMode: 'disabled' | null;
 }
 
 export interface FixedTraceRawAuditableLedger {
   version: typeof FIXED_TRACE_RAW_LEDGER_VERSION;
   trustedManifestSha256: string;
   planFingerprint: string;
+  /** Exact dry-run reservation identity; summaries cannot substitute it. */
+  budgetIdentitySha256: string;
   entries: readonly FixedTraceRawLedgerEntry[];
 }
 export type FixedTraceRawArtifactResolver = (storageKey: string) => { sha256: string; byteLength: number } | null;
@@ -222,6 +288,10 @@ export interface FixedTraceStageReservation {
 
 export interface FixedTraceDryRunEstimate {
   planFingerprint: string;
+  /** Binds a raw spend ledger to the exact conservative reservations below. */
+  budgetIdentitySha256: string;
+  diagnosticOnly: true;
+  comparisonEligible: false;
   executionOrder: readonly string[];
   candidate: { ceilingUsd: number; expectedSpendUsd: null; reservations: readonly FixedTraceStageReservation[] };
   judges: { ceilingUsd: number; expectedSpendUsd: null; reservations: readonly FixedTraceStageReservation[] };
@@ -246,6 +316,12 @@ function canonicalJson(value: unknown): string {
 
 function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value)) deepFreeze(nested);
+  return Object.freeze(value);
 }
 
 function requireHash(value: string, label: string): void {
@@ -287,6 +363,9 @@ function validateStage(
     (stage.samplingMode === 'temperature_zero' && stage.temperature !== 0)
     || (stage.samplingMode === 'provider_no_sampling_control' && stage.temperature !== null)
   ) throw new Error(`${label} sampling controls are inconsistent`);
+  if (stage.transportRetries !== 0 || stage.cacheMode !== 'disabled') {
+    throw new Error(`${label} has an unsupported retry or cache control`);
+  }
   const pricing = pricingFor(stage, pricingAsOf);
   const bounds = stage.requestBounds?.inputBytesByTrace;
   if (!bounds || typeof bounds !== 'object') throw new Error(`${label}.requestBounds are required`);
@@ -347,21 +426,87 @@ function resolveTrustedManifest(
   const manifest = resolver(plan.trustedManifestId);
   if (!manifest) throw new Error(`Trusted fixed-trace manifest is unavailable: ${plan.trustedManifestId}`);
   requireHash(manifest.sourceBundleSha256, 'trusted manifest sourceBundleSha256');
-  requireHash(manifest.traceSuiteSha256, 'trusted manifest traceSuiteSha256');
   requireHash(manifest.promptConfigVersion, 'trusted manifest promptConfigVersion');
-  requireHash(manifest.toolSchemaSha256, 'trusted manifest toolSchemaSha256');
   if (manifest.rawLedgerVersion !== FIXED_TRACE_RAW_LEDGER_VERSION) throw new Error('Trusted manifest requires an unsupported raw ledger');
+  if (
+    !/^[a-f0-9]{7,64}$/.test(manifest.gitCommit)
+    || typeof manifest.gitDirty !== 'boolean'
+    || !manifest.addieCodeVersion.trim()
+    || manifest.stageControlVersion !== FIXED_TRACE_STAGE_CONTROL_VERSION
+    || typeof manifest.providerDegradationInjectionEnabled !== 'boolean'
+  ) throw new Error('Trusted manifest run provenance is incomplete');
+  const suite = manifest.suites[plan.partition.selected];
+  if (!suite) throw new Error(`Trusted manifest lacks ${plan.partition.selected} suite inputs`);
+  requireHash(suite.traceSuiteSha256, 'trusted manifest traceSuiteSha256');
+  requireHash(suite.toolSchemaSha256, 'trusted manifest toolSchemaSha256');
+  if (!Array.isArray(suite.traceSuite)) throw new Error('Trusted manifest suite does not exactly bind the selected partition');
+  const selectedIds = selectedTraceIds(plan);
+  const suiteIds = suite.traceSuite.map((trace) => trace.id);
+  if (
+    suite.traceSuite.length !== selectedIds.length
+    || suiteIds.some((id) => !id.trim())
+    || new Set(suiteIds).size !== suiteIds.length
+    || suiteIds.some((id) => !selectedIds.includes(id))
+    || new Set(selectedIds).size !== new Set(suiteIds).size
+  ) throw new Error('Trusted manifest suite does not exactly bind the selected partition');
+  if (
+    fixedTraceSuiteSha256(suite.traceSuite) !== suite.traceSuiteSha256
+    || fixedTraceToolSchemaSha256(suite.traceSuite, suite.toolDefinitions) !== suite.toolSchemaSha256
+  ) throw new Error('Trusted manifest suite or tool schema hash is forged');
+  // This is the same fixture registration/AJV primitive the foundation uses
+  // before routing. Direct remains inadmissible in this planner, so no fake
+  // fixture-derived direct universe is accepted here.
+  for (const trace of suite.traceSuite) {
+    const definitions = suite.toolDefinitions.filter((definition) =>
+      trace.toolFixtures.some((fixture: FixedTraceCase['toolFixtures'][number]) => fixture.name === definition.name));
+    validateFixedTraceToolLoopFixtures(trace, definitions);
+  }
   if (
     manifest.id !== plan.trustedManifestId
     || manifest.sourceId !== plan.sourceId
     || manifest.sourceRevision !== plan.sourceRevision
     || manifest.sourceBundleSha256 !== plan.sourceBundleSha256
-    || manifest.traceSuiteSha256 !== plan.traceSuiteSha256
+    || suite.traceSuiteSha256 !== plan.traceSuiteSha256
     || manifest.promptConfigVersion !== plan.promptConfigVersion
-    || manifest.toolSchemaSha256 !== plan.toolSchemaSha256
+    || suite.toolSchemaSha256 !== plan.toolSchemaSha256
+    || manifest.gitCommit !== plan.gitCommit
+    || manifest.gitDirty !== plan.gitDirty
+    || manifest.addieCodeVersion !== plan.addieCodeVersion
+    || suite.toolDefinitionProvenance !== plan.toolDefinitionProvenance
+    || manifest.stageControlVersion !== plan.stageControlVersion
+    || manifest.providerDegradationInjectionEnabled !== plan.providerDegradationInjectionEnabled
     || manifest.partitionManifestSha256 !== FIXED_TRACE_PARTITION_MANIFEST_SHA256
   ) throw new Error('Experiment plan does not match its trusted manifest');
   return manifest;
+}
+
+/** Builds an immutable input binding for exactly one planned arm, never a dispatcher. */
+export function fixedTraceExperimentRunnerBinding(
+  plan: FixedTraceExperimentPlan,
+  resolver: FixedTraceTrustedManifestResolver,
+  armId: string,
+  holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver,
+): FixedTraceExperimentRunnerBinding {
+  assertFixedTraceExperimentPlan(plan, resolver, holdoutFinalizationResolver);
+  const arm = plan.arms.find((candidate) => candidate.id === armId);
+  if (!arm) throw new Error(`Experiment plan has no arm: ${armId}`);
+  const manifest = resolveTrustedManifest(plan, resolver);
+  const suite = manifest.suites[plan.partition.selected];
+  return Object.freeze({
+    runId: `${plan.id}:${arm.id}:r${arm.repetitionIndex}`,
+    repetition: arm.repetitionIndex,
+    sourceBundleSha256: plan.sourceBundleSha256,
+    gitCommit: plan.gitCommit,
+    gitDirty: plan.gitDirty,
+    addieCodeVersion: plan.addieCodeVersion,
+    stageControlVersion: plan.stageControlVersion,
+    promptConfigVersion: plan.promptConfigVersion,
+    traceSuite: deepFreeze(structuredClone(suite.traceSuite)),
+    traceSuiteSha256: suite.traceSuiteSha256,
+    toolDefinitions: deepFreeze(structuredClone(suite.toolDefinitions)),
+    toolDefinitionProvenance: suite.toolDefinitionProvenance,
+    providerDegradationInjectionEnabled: plan.providerDegradationInjectionEnabled,
+  });
 }
 
 /** Omits only execution partition/finalization state so an approved candidate cannot drift at unlock. */
@@ -406,6 +551,10 @@ export function assertFixedTraceExperimentPlan(
   if (!plan.id.trim()) throw new Error('Experiment plan ID is required');
   if (!plan.trustedManifestId.trim() || !plan.sourceId.trim() || !plan.sourceRevision.trim()) throw new Error('Experiment plan requires a trusted source identity');
   requireHash(plan.sourceBundleSha256, 'sourceBundleSha256');
+  if (!/^[a-f0-9]{7,64}$/.test(plan.gitCommit) || typeof plan.gitDirty !== 'boolean' || !plan.addieCodeVersion.trim() || plan.stageControlVersion !== FIXED_TRACE_STAGE_CONTROL_VERSION || typeof plan.providerDegradationInjectionEnabled !== 'boolean') {
+    throw new Error('Experiment plan run provenance is incomplete');
+  }
+  if (plan.addieCodeVersion !== CODE_VERSION) throw new Error('Experiment plan Addie code version does not match this runner');
   requireHash(plan.traceSuiteSha256, 'traceSuiteSha256');
   requireHash(plan.promptConfigVersion, 'promptConfigVersion');
   requireHash(plan.toolSchemaSha256, 'toolSchemaSha256');
@@ -479,8 +628,17 @@ export function estimateFixedTraceExperiment(plan: FixedTraceExperimentPlan, res
   const judgeCeilingUsd = judges.reduce((total, item) => total + item.ceilingUsd, 0);
   if (candidateCeilingUsd > plan.budgets.candidateCeilingUsd) throw new Error('Candidate worst-case reservation exceeds its separate budget');
   if (judgeCeilingUsd > plan.budgets.judgeCeilingUsd) throw new Error('Judge worst-case reservation exceeds its separate budget');
+  const planFingerprint = fixedTraceExperimentPlanFingerprint(plan, resolver, holdoutFinalizationResolver);
+  const budgetIdentitySha256 = sha256({
+    planFingerprint,
+    candidate: candidate.map((item) => ({ ...item })),
+    judges: judges.map((item) => ({ ...item })),
+  });
   return Object.freeze({
-    planFingerprint: fixedTraceExperimentPlanFingerprint(plan, resolver, holdoutFinalizationResolver),
+    planFingerprint,
+    budgetIdentitySha256,
+    diagnosticOnly: true,
+    comparisonEligible: false,
     executionOrder: fixedTraceExperimentExecutionOrder(plan, resolver, holdoutFinalizationResolver),
     candidate: Object.freeze({ ceilingUsd: candidateCeilingUsd, expectedSpendUsd: null, reservations: Object.freeze(candidate) }),
     judges: Object.freeze({ ceilingUsd: judgeCeilingUsd, expectedSpendUsd: null, reservations: Object.freeze(judges) }),
@@ -530,8 +688,11 @@ export function assertFixedTraceRawAuditableLedger(
   const manifest = resolveTrustedManifest(plan, resolver);
   assertFixedTraceExperimentPlan(plan, resolver, holdoutFinalizationResolver);
   if (ledger.version !== FIXED_TRACE_RAW_LEDGER_VERSION) throw new Error('Unsupported raw fixed-trace ledger version');
-  if (ledger.trustedManifestSha256 !== sha256(manifest)) throw new Error('Raw ledger trusted manifest mismatch');
+  if (ledger.trustedManifestSha256 !== fixedTraceTrustedManifestFingerprint(manifest)) throw new Error('Raw ledger trusted manifest mismatch');
   if (ledger.planFingerprint !== fixedTraceExperimentPlanFingerprint(plan, resolver, holdoutFinalizationResolver)) throw new Error('Raw ledger plan fingerprint mismatch');
+  if (ledger.budgetIdentitySha256 !== estimateFixedTraceExperiment(plan, resolver, holdoutFinalizationResolver).budgetIdentitySha256) {
+    throw new Error('Raw ledger budget identity mismatch');
+  }
   const knownArms = new Map(plan.arms.map((arm) => [arm.id, arm]));
   const knownTraces = new Set(selectedTraceIds(plan));
   const expectedEntries = new Set<string>();
@@ -587,8 +748,10 @@ export function assertFixedTraceRawAuditableLedger(
       || entry.maxOutputTokens !== configuredStage.maxOutputTokens
       || entry.timeoutMs !== configuredStage.timeoutMs
       || entry.maxIterations !== configuredStage.maxIterations
+      || entry.transportRetries !== configuredStage.transportRetries
       || entry.reasoningEffort !== configuredStage.reasoningEffort
       || entry.samplingMode !== configuredStage.samplingMode
+      || entry.cacheMode !== configuredStage.cacheMode
     ) throw new Error('Raw ledger entry does not match its planned stage controls');
   }
   if (entries.size !== expectedEntries.size) throw new Error('Raw ledger lacks complete planned-stage coverage');
