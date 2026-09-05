@@ -1,12 +1,13 @@
 export interface FixedTraceDiagnosticCliArguments {
   providers?: string;
   architectureArm?: string;
+  suite?: string;
   softMaxUsd?: string;
   output?: string;
   validateOnly: boolean;
 }
 
-const NAMES = new Set(['providers', 'architecture-arm', 'soft-max-usd', 'output', 'validate-only']);
+const NAMES = new Set(['providers', 'architecture-arm', 'suite', 'soft-max-usd', 'output', 'validate-only']);
 
 /** Strict, side-effect-free parser for the diagnostic-only manual evaluator. */
 export function parseFixedTraceDiagnosticCliArguments(values: readonly string[]): FixedTraceDiagnosticCliArguments {
@@ -29,6 +30,7 @@ export function parseFixedTraceDiagnosticCliArguments(values: readonly string[])
   return {
     providers: typeof seen.get('providers') === 'string' ? seen.get('providers') as string : undefined,
     architectureArm: typeof seen.get('architecture-arm') === 'string' ? seen.get('architecture-arm') as string : undefined,
+    suite: typeof seen.get('suite') === 'string' ? seen.get('suite') as string : undefined,
     softMaxUsd: typeof seen.get('soft-max-usd') === 'string' ? seen.get('soft-max-usd') as string : undefined,
     output: typeof seen.get('output') === 'string' ? seen.get('output') as string : undefined,
     validateOnly: seen.get('validate-only') === true || seen.get('validate-only') === 'true',

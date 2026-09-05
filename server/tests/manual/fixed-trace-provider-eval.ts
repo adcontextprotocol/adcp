@@ -11,7 +11,9 @@
  * before intent narrowing, but this harness neither captures that intersection
  * nor bounds it independently; fixture-local schemas must not stand in for it.
  * `oracle_route_diagnostic` may execute generation with fixture routing.
- * Every arm is diagnostic-only in this foundation: independent judging,
+ * The hybrid-only `--suite=hybrid-evaluator` binds the separately reviewed
+ * local-admission corpus without altering the legacy 32 traces. Every arm is
+ * diagnostic-only in this foundation: independent judging,
  * comparison, and rollout are blocked until an evaluator-owned run-context
  * and raw-ledger coordinator can authenticate serialized artifacts.
  *
@@ -47,6 +49,7 @@ import {
 } from '../../src/addie/eval/fixed-trace-architecture.js';
 import {
   FIXED_TRACE_SUITE,
+  FIXED_TRACE_HYBRID_EVALUATOR_SUITE,
   fixedTraceSuiteSha256,
   type FixedTracePricing,
 } from '../../src/addie/eval/fixed-trace-suite.js';
@@ -117,7 +120,7 @@ const PRICING = {
 const cliArguments = parseFixedTraceDiagnosticCliArguments(process.argv.slice(2));
 
 function argument(name: string): string | undefined {
-  return cliArguments[{ providers: 'providers', 'architecture-arm': 'architectureArm', 'soft-max-usd': 'softMaxUsd', output: 'output' }[name] as keyof typeof cliArguments] as string | undefined;
+  return cliArguments[{ providers: 'providers', 'architecture-arm': 'architectureArm', suite: 'suite', 'soft-max-usd': 'softMaxUsd', output: 'output' }[name] as keyof typeof cliArguments] as string | undefined;
 }
 
 function sha256(value: string): string {
@@ -277,6 +280,14 @@ const architectureArm = (argument('architecture-arm') ?? 'two_stage_llm_router')
 if (!(architectureArm in { two_stage_llm_router: true, direct_generation: true, deterministic_policy_llm_fallback_hybrid: true, oracle_route_diagnostic: true })) {
   throw new Error('Unknown --architecture-arm value');
 }
+const suiteName = argument('suite') ?? 'canonical';
+if (suiteName !== 'canonical' && suiteName !== 'hybrid-evaluator') throw new Error('Unknown --suite value');
+if (suiteName === 'hybrid-evaluator' && architectureArm !== 'deterministic_policy_llm_fallback_hybrid') {
+  throw new Error('--suite=hybrid-evaluator requires --architecture-arm=deterministic_policy_llm_fallback_hybrid');
+}
+const traceSuite = suiteName === 'hybrid-evaluator'
+  ? FIXED_TRACE_HYBRID_EVALUATOR_SUITE
+  : FIXED_TRACE_SUITE;
 const softMaxUsd = Number(argument('soft-max-usd'));
 if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
   throw new Error('--soft-max-usd is required and must be positive');
@@ -291,6 +302,7 @@ if (cliArguments.validateOnly) {
     validated: {
       providers: providerNames,
       architectureArm,
+      suite: suiteName,
       softMaxUsd,
       outputPath,
     },
@@ -311,7 +323,7 @@ const promptConfigVersion = sha256(JSON.stringify({
   rules: loadRules(),
   responseStyle: loadResponseStyle(),
 }));
-const toolDefinitions = canonicalFixedTraceToolDefinitions();
+const toolDefinitions = canonicalFixedTraceToolDefinitions(traceSuite);
 const budget = new FixedTraceBudget(softMaxUsd);
 const plans = providerPlans(providerNames, budget);
 const runStartedAt = new Date().toISOString();
@@ -323,8 +335,8 @@ const artifact = await runFixedTraceDiagnosticArtifact({
     gitCommit,
     gitDirty,
     promptConfigVersion,
-    traceSuite: FIXED_TRACE_SUITE,
-    traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_SUITE),
+    traceSuite,
+    traceSuiteSha256: fixedTraceSuiteSha256(traceSuite),
     toolDefinitions,
     toolDefinitionProvenance: 'fixture_local',
     architectureArm,
@@ -343,6 +355,7 @@ console.log(JSON.stringify({
   outputPath,
   runRootId,
   providers: providerNames,
+  suite: suiteName,
   comparisonEligible: artifact.comparisonEligible,
   rolloutPass: artifact.rolloutPass,
   budget: artifact.budget,

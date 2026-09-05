@@ -18,6 +18,8 @@ import {
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
+  FIXED_TRACE_HYBRID_EVALUATOR_SUITE,
+  FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS,
   fixedTraceSuiteSha256,
   gradeFixedTrace,
   mutationInputProvenanceFailures,
@@ -28,6 +30,7 @@ import {
   admitFixedTraceDirectArm,
   decideFixedTraceHybridRoute,
   deriveFixedTraceDirectToolUniverse,
+  FixedTraceHybridAdmissionSnapshotError,
   fixedTraceHybridPolicy,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
@@ -472,9 +475,9 @@ describe('fixed trace artifact runner', () => {
     const policy = fixedTraceHybridPolicy();
     const decide = (input: Parameters<typeof decideFixedTraceHybridRoute>[0]) => decideFixedTraceHybridRoute({ ...input, policy });
     expect(decide({ message: 'attendee list for the summit', source: 'dm', isAdmin: false, isThread: false }))
-      .toMatchObject({ mode: 'llm_router_fallback', reason: 'tool_or_mutation_capability_requires_router' });
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'unsafe_or_ambiguous_message' });
     expect(decide({ message: 'send the invoice to the member', source: 'dm', isAdmin: false, isThread: false }))
-      .toMatchObject({ mode: 'llm_router_fallback', reason: 'no_production_quick_match' });
+      .toMatchObject({ mode: 'llm_router_fallback', reason: 'unsafe_or_ambiguous_message' });
     expect(decide({ message: 'thanks', source: 'dm', isAdmin: true, isThread: false }))
       .toMatchObject({ mode: 'llm_router_fallback', reason: 'admin_requires_router' });
     expect(decide({ message: 'thanks', source: 'dm', isAdmin: false, isThread: true }))
@@ -485,8 +488,135 @@ describe('fixed trace artifact runner', () => {
       .toMatchObject({ mode: 'llm_router_fallback', reason: 'channel_privacy_not_captured' });
   });
 
-  it('keeps routed tool definitions and generation execution identical after hybrid fallback', async () => {
+  it('fails closed for exact and adjacent mutation, tool, delimiter, negation, and control-byte bypasses', () => {
+    const policy = fixedTraceHybridPolicy();
+    const decide = (message: string) => decideFixedTraceHybridRoute({
+      message, source: 'channel', isAdmin: false, isThread: false, channelPrivacy: 'private', policy,
+    });
+    for (const message of [
+      'ship invoice now',
+      'delete it thanks',
+      'hi; delete user',
+      'not hi delete it',
+      'hi\u2028delete user',
+      'hi\0delete user',
+    ]) {
+      expect(decide(message)).toMatchObject({ mode: 'llm_router_fallback', reason: 'unsafe_or_ambiguous_message' });
+    }
+    expect(decide('hi')).toMatchObject({ mode: 'local_terminal', plan: { action: 'react', emoji: 'wave' } });
+    expect(decide('thanks')).toMatchObject({ mode: 'local_terminal', plan: { action: 'react', emoji: 'heart' } });
+  });
+
+  it('snapshots request facts before matching, catches matcher failures, and never dispatches an unsafe local request', async () => {
+    const policy = fixedTraceHybridPolicy();
+    const throwingMatcher = decideFixedTraceHybridRoute({
+      message: 'ok', source: 'dm', isAdmin: false, isThread: false, policy,
+      quickMatcher: () => { throw new Error('matcher failure'); },
+    });
+    expect(throwingMatcher).toMatchObject({ mode: 'llm_router_fallback', reason: 'quick_match_exception', plan: null });
+
+    const mutableInput = {
+      message: 'ok', source: 'dm' as const, isAdmin: false, isThread: false, policy,
+      quickMatcher: (snapshot: Readonly<{ message: string; source: 'dm' | 'channel'; isThread: boolean; isAAOAdmin: boolean }>) => {
+        mutableInput.message = 'delete user';
+        expect(snapshot).toEqual({ message: 'ok', source: 'dm', isThread: false, isAAOAdmin: false });
+        expect(Object.isFrozen(snapshot)).toBe(true);
+        return { action: 'ignore' as const, reason: 'synthetic', decision_method: 'quick_match' as const };
+      },
+    };
+    expect(decideFixedTraceHybridRoute(mutableInput)).toMatchObject({ mode: 'local_terminal', plan: { action: 'ignore' } });
+
+    const getterInput = Object.defineProperties({}, {
+      message: { get: () => { throw new Error('untrusted getter'); }, enumerable: true },
+      source: { value: 'dm', enumerable: true },
+      isAdmin: { value: false, enumerable: true },
+      isThread: { value: false, enumerable: true },
+      policy: { value: policy, enumerable: true },
+    });
+    expect(() => decideFixedTraceHybridRoute(getterInput as Parameters<typeof decideFixedTraceHybridRoute>[0]))
+      .toThrow(FixedTraceHybridAdmissionSnapshotError);
+    const proxyInput = new Proxy({ message: 'ok', source: 'dm', isAdmin: false, isThread: false, policy }, {
+      getOwnPropertyDescriptor: () => { throw new Error('untrusted proxy'); },
+    });
+    expect(() => decideFixedTraceHybridRoute(proxyInput as Parameters<typeof decideFixedTraceHybridRoute>[0]))
+      .toThrow(FixedTraceHybridAdmissionSnapshotError);
+
     const selectedTrace = trace('knowledge-task-model');
+    const unsafeTrace: FixedTraceCase = {
+      ...selectedTrace,
+      request: { source: 'dm', message: 'hi delete it', isAdmin: false, nowUtc: selectedTrace.request.nowUtc },
+    };
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
+    await runFixedTraceCase(unsafeTrace, config(router, generation, {
+      traceSuite: [unsafeTrace], architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }));
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('marks legacy hybrid replay as uncovered and exercises reviewed local admission only with the separate evaluator suite', async () => {
+    const policy = fixedTraceHybridPolicy();
+    const canonicalDecisions = FIXED_TRACE_SUITE.map((candidate) => decideFixedTraceHybridRoute({
+      message: candidate.request.message,
+      source: candidate.request.source,
+      isAdmin: candidate.request.isAdmin,
+      isThread: (candidate.request.threadContext?.length ?? 0) > 0,
+      channelPrivacy: candidate.request.channelPrivacy,
+      policy,
+    }));
+    expect(canonicalDecisions).toHaveLength(32);
+    expect(canonicalDecisions.every((decision) => decision.mode === 'llm_router_fallback')).toBe(true);
+
+    const legacyTrace = trace('knowledge-task-model');
+    const legacyRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const legacyGeneration = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
+    const legacyObservations = await runFixedTraceSuite(config(legacyRouter, legacyGeneration, {
+      traceSuite: [legacyTrace], architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }));
+    expect(summarizeFixedTraceRun(legacyObservations, [legacyTrace]).summary.hybridCoverage).toMatchObject({
+      plannerBound: false, localAdmissionCount: 0, sufficient: false, blocker: 'hybrid_evaluator_suite_not_bound',
+    });
+
+    const localObservations = await runFixedTraceSuite(config(new ScriptedProvider([]), new ScriptedProvider([]), {
+      traceSuite: FIXED_TRACE_HYBRID_EVALUATOR_SUITE,
+      architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+    }));
+    const coverage = summarizeFixedTraceRun(localObservations, FIXED_TRACE_HYBRID_EVALUATOR_SUITE).summary.hybridCoverage;
+    expect(coverage).toMatchObject({
+      plannerBound: true,
+      localAdmissionCount: FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS,
+      sufficient: true,
+      blocker: null,
+    });
+
+    // A local terminal result whose router metadata is not `not_run` is not
+    // admissible local-coverage evidence. This keeps the evidence gate
+    // fail-closed even when a serialized observation is internally invalid.
+    const zeroLocalCoverage = localObservations.map((observation) => ({
+      ...observation,
+      metadata: {
+        ...observation.metadata,
+        router: { ...observation.metadata.router, source: 'local' as const },
+      },
+    }));
+    expect(summarizeFixedTraceRun(zeroLocalCoverage, FIXED_TRACE_HYBRID_EVALUATOR_SUITE).summary.hybridCoverage)
+      .toMatchObject({
+        plannerBound: true,
+        localAdmissionCount: 0,
+        sufficient: false,
+        blocker: 'hybrid_local_admission_coverage_below_minimum',
+      });
+  });
+
+  it('keeps routed tool definitions and generation execution identical after hybrid fallback', async () => {
+    const selectedTrace: FixedTraceCase = {
+      ...trace('knowledge-task-model'),
+      request: {
+        ...trace('knowledge-task-model').request,
+        threadContext: [{ user: 'member', text: 'Please continue with the protocol explanation.' }],
+      },
+    };
     const incumbentRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const incumbentGeneration = new ScriptedProvider([response([{ type: 'text', text: 'Synthetic answer.' }])]);
     await runFixedTraceCase(selectedTrace, config(incumbentRouter, incumbentGeneration, { traceSuite: [selectedTrace] }));
@@ -498,6 +628,7 @@ describe('fixed trace artifact runner', () => {
     }));
 
     expect(hybridRouter.respondCalls).toHaveLength(1);
+    expect(hybridRouter.respondCalls).toEqual(incumbentRouter.respondCalls);
     expect(hybridGeneration.respondCalls).toEqual(incumbentGeneration.respondCalls);
   });
 

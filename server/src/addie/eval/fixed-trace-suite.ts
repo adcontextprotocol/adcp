@@ -1255,6 +1255,58 @@ export function fixedTraceSuiteSha256(
 }
 
 /**
+ * Deliberately separate from the legacy 32-case canonical corpus. This small,
+ * evaluator-owned synthetic suite exercises only the reviewed local terminal
+ * subset; it is the minimum planner binding required before hybrid outcomes
+ * can even be described as covered. It remains diagnostic-only.
+ */
+export const FIXED_TRACE_HYBRID_EVALUATOR_SUITE_VERSION = 'addie-fixed-trace-hybrid-evaluator-v1' as const;
+export const FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS = 3 as const;
+
+const HYBRID_EVALUATOR_BASE_TRACE = FIXED_TRACE_SUITE.find((trace) => trace.id === 'knowledge-task-model');
+if (!HYBRID_EVALUATOR_BASE_TRACE) throw new Error('Fixed trace hybrid evaluator base trace is missing');
+
+export const FIXED_TRACE_HYBRID_EVALUATOR_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
+  {
+    ...HYBRID_EVALUATOR_BASE_TRACE,
+    id: 'hybrid-evaluator-ignore-ok',
+    request: { source: 'dm', message: 'ok', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'ignore', toolSets: [] },
+    toolFixtures: [],
+    expectation: {
+      terminalStatuses: ['ignored'], requiredTools: [], allowedTools: [], forbiddenTools: [], mutationAuthorization: 'none',
+    },
+    answerRubric: [],
+  },
+  {
+    ...HYBRID_EVALUATOR_BASE_TRACE,
+    id: 'hybrid-evaluator-react-hi',
+    request: { source: 'channel', channelPrivacy: 'private', message: 'hi', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'react', toolSets: [] },
+    toolFixtures: [],
+    expectation: {
+      terminalStatuses: ['reacted'], requiredTools: [], allowedTools: [], forbiddenTools: [], mutationAuthorization: 'none',
+    },
+    answerRubric: [],
+  },
+  {
+    ...HYBRID_EVALUATOR_BASE_TRACE,
+    id: 'hybrid-evaluator-react-thanks',
+    request: { source: 'channel', channelPrivacy: 'private', message: 'thanks', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'react', toolSets: [] },
+    toolFixtures: [],
+    expectation: {
+      terminalStatuses: ['reacted'], requiredTools: [], allowedTools: [], forbiddenTools: [], mutationAuthorization: 'none',
+    },
+    answerRubric: [],
+  },
+]);
+
+export function fixedTraceHybridEvaluatorSuiteSha256(): string {
+  return fixedTraceSuiteSha256(FIXED_TRACE_HYBRID_EVALUATOR_SUITE);
+}
+
+/**
  * Deterministic internal-consistency payload for a candidate cohort. It
  * deliberately excludes returned provider identity, usage, latency, and
  * trace-local effective limits, which are per-call outcomes. It is not an
@@ -1889,6 +1941,15 @@ export interface FixedTraceSummary {
   terminalStatusCounts: Record<FixedTraceTerminalStatus, number>;
   latencyP95Ms: number | null;
   totalEstimatedCostUsd: number | null;
+  /** Null outside the hybrid arm; otherwise an explicit evidence-coverage blocker. */
+  hybridCoverage: {
+    suiteVersion: typeof FIXED_TRACE_HYBRID_EVALUATOR_SUITE_VERSION;
+    plannerBound: boolean;
+    localAdmissionCount: number;
+    minimumLocalAdmissions: typeof FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS;
+    sufficient: boolean;
+    blocker: 'hybrid_evaluator_suite_not_bound' | 'hybrid_local_admission_coverage_below_minimum' | null;
+  } | null;
   comparisonEligible: boolean;
 }
 
@@ -2010,6 +2071,27 @@ export function summarizeFixedTraceRun(
   const cohortToolNames = runContract.architectureArm.id === 'direct_generation'
     ? null
     : [...new Set(observations.flatMap((observation) => observation.metadata.toolUniverse.toolNames ?? []))].sort();
+  const localAdmissionCount = observations.filter((observation) => (
+    observation.terminalStage === 'surface'
+    && (observation.terminalStatus === 'ignored' || observation.terminalStatus === 'reacted')
+    && observation.metadata.router.source === 'not_run'
+  )).length;
+  const hybridPlannerBound = runContract.architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
+    && suppliedSuiteSha256 === fixedTraceHybridEvaluatorSuiteSha256();
+  const hybridCoverage = runContract.architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
+    ? {
+        suiteVersion: FIXED_TRACE_HYBRID_EVALUATOR_SUITE_VERSION,
+        plannerBound: hybridPlannerBound,
+        localAdmissionCount,
+        minimumLocalAdmissions: FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS,
+        sufficient: hybridPlannerBound && localAdmissionCount >= FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS,
+        blocker: !hybridPlannerBound
+          ? 'hybrid_evaluator_suite_not_bound' as const
+          : localAdmissionCount < FIXED_TRACE_HYBRID_MINIMUM_LOCAL_ADMISSIONS
+            ? 'hybrid_local_admission_coverage_below_minimum' as const
+            : null,
+      }
+    : null;
   return {
     grades,
     summary: {
@@ -2047,6 +2129,7 @@ export function summarizeFixedTraceRun(
       terminalStatusCounts,
       latencyP95Ms: sortedLatency.length === 0 ? null : sortedLatency[p95Index],
       totalEstimatedCostUsd,
+      hybridCoverage,
       // Raw observations and summaries are serializable. Until the follow-up
       // evaluator-owned coordinator can authenticate the run context and
       // ledger, this replay is diagnostic evidence only.
