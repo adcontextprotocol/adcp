@@ -11,6 +11,7 @@
  */
 
 import { DOMParser } from 'linkedom';
+import { SaxesParser } from 'saxes';
 
 export const TRAINING_SELLER_VAST_VERSIONS = ['2.0', '3.0', '4.0', '4.1', '4.2', '4.3'] as const;
 
@@ -64,6 +65,20 @@ function namedDescendants(
   name: string,
 ): Array<{ localName?: string; tagName?: string }> {
   return walkElements(root).filter(node => elementName(node) === name);
+}
+
+function isWellFormedXml(xml: string): boolean {
+  let parseError: Error | undefined;
+  const parser = new SaxesParser({ xmlns: true });
+  parser.on('error', error => {
+    parseError ??= error;
+  });
+  try {
+    parser.write(xml).close();
+  } catch {
+    return false;
+  }
+  return parseError === undefined;
 }
 
 export function formatOptionVastVersions(params: unknown): string[] | undefined {
@@ -128,7 +143,28 @@ export function validateInlineVastDocument(args: {
     };
   }
 
-  const document = new DOMParser().parseFromString(trimmed, 'text/xml');
+  if (!isWellFormedXml(trimmed)) {
+    return {
+      code: 'VAST_PARSE_FAILED',
+      message: 'VAST document is not well-formed XML',
+      field,
+      recovery: 'correctable',
+      details: { reason: 'not_xml' },
+    };
+  }
+
+  let document: ReturnType<DOMParser['parseFromString']>;
+  try {
+    document = new DOMParser().parseFromString(trimmed, 'text/xml');
+  } catch {
+    return {
+      code: 'VAST_PARSE_FAILED',
+      message: 'VAST document is not well-formed XML',
+      field,
+      recovery: 'correctable',
+      details: { reason: 'not_xml' },
+    };
+  }
   const root = document.documentElement;
   if (!root || elementName(root) === 'parsererror') {
     return {

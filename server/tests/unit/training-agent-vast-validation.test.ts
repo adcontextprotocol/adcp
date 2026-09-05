@@ -58,6 +58,20 @@ describe('validateInlineVastDocument', () => {
     })).toMatchObject({ code: 'VAST_PARSE_FAILED', details: { reason: 'not_xml' } });
   });
 
+  it.each([
+    '<VAST version="4.2"><Ad>',
+    '<VAST version="4.2"><Ad></VAST>',
+    '<VAST version="4.2"><Ad></Ad></VAST>trailing text',
+    '<VAST version="4.2"><Ad>&unknown;</Ad></VAST>',
+  ])('rejects malformed XML that a lenient DOM parser repairs: %s', xml => {
+    expect(validateInlineVastDocument({
+      xml,
+      field: 'assets.vast_tag',
+      assetVastVersion: '4.2',
+      sellerVastVersions: seller,
+    })).toMatchObject({ code: 'VAST_PARSE_FAILED', details: { reason: 'not_xml' } });
+  });
+
   it('rejects a non-VAST root', () => {
     expect(validateInlineVastDocument({
       xml: '<VMAP version="1.0"></VMAP>',
