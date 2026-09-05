@@ -526,6 +526,236 @@ export interface RequestTools {
 }
 
 /**
+ * The immutable policy label carried by an in-memory direct-replay contract.
+ * This is deliberately separate from evaluator provenance: a digest is useful
+ * for audit, but never establishes authority to replay a production request.
+ */
+export const DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION = 'direct-replay-assembly:v1' as const;
+
+/** Facts authenticated by the Slack/channel assembly before a dormant replay capability is minted. */
+export interface DirectReplayContractFacts {
+  surface: 'slack_channel';
+  isAdmin: boolean;
+  threadId: string;
+  channelPrivacy: 'public';
+  replayPrincipal: string;
+  caseId: string;
+  requestId: string;
+  selectedToolSetNames: readonly string[];
+  selectedToolNames: readonly string[];
+  expiresAt: number;
+  abortSignal?: AbortSignal;
+}
+
+/** Evidence only. None of these values are consulted when admitting a contract. */
+export interface DirectReplayContractAudit {
+  assemblyPolicyVersion: typeof DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION;
+  definitionSha256: string;
+  factsSha256: string;
+}
+
+/**
+ * Opaque in-memory capability. Runtime authority is private WeakMap
+ * membership below; this visible audit shape is intentionally forgeable.
+ */
+export interface DirectReplayContract {
+  readonly audit: DirectReplayContractAudit;
+}
+
+export type DirectReplayContractConsumption =
+  | { admitted: true }
+  | {
+      admitted: false;
+      reason: 'unknown_contract' | 'already_consumed' | 'expired' | 'aborted' | 'assembly_drift';
+    };
+
+interface DirectToolRegistryAssembly {
+  definitions: AddieTool[];
+  handlers: Map<string, ToolHandler>;
+}
+
+interface DirectReplayContractRecord {
+  consumed: boolean;
+  assemblyPolicyVersion: typeof DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION;
+  selectedToolSetNames: readonly string[];
+  selectedToolSetsAreCurrent: () => boolean;
+  noProviderToolsAreCurrent: () => boolean;
+  facts: DirectReplayContractFacts;
+  factSnapshot: Omit<DirectReplayContractFacts, 'abortSignal'>;
+  definitionSnapshots: readonly AddieTool[];
+  handlerSlots: ReadonlyMap<string, ToolHandler>;
+  sourceRegistriesAreCurrent: () => boolean;
+  assembleCurrent: () => DirectToolRegistryAssembly;
+}
+
+// No brand, constructor, serialized hash, or public registrar can create
+// membership in this map. A copied audit object is evidence only.
+const directReplayContracts = new WeakMap<object, DirectReplayContractRecord>();
+
+function hasDuplicateNames(tools: readonly AddieTool[]): boolean {
+  const names = new Set<string>();
+  for (const tool of tools) {
+    if (names.has(tool.name)) return true;
+    names.add(tool.name);
+  }
+  return false;
+}
+
+function hasOnlyPlainData(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return true;
+  if (typeof value !== 'object') return false;
+  const object = value as object;
+  if (seen.has(object)) return false;
+  seen.add(object);
+  try {
+    const prototype = Object.getPrototypeOf(object);
+    if (prototype !== Object.prototype && prototype !== null && !Array.isArray(object)) return false;
+    for (const key of Reflect.ownKeys(object)) {
+      if (typeof key !== 'string') return false;
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      if (!descriptor || !('value' in descriptor) || !hasOnlyPlainData(descriptor.value, seen)) return false;
+    }
+    return true;
+  } catch {
+    // Proxies and hostile accessors must not become a replay capability.
+    return false;
+  }
+}
+
+function immutableDefinitionSnapshots(definitions: readonly AddieTool[]): readonly AddieTool[] | null {
+  if (!hasOnlyPlainData(definitions)) return null;
+  try {
+    return Object.freeze(definitions.map((definition) => Object.freeze(structuredClone(definition))));
+  } catch {
+    return null;
+  }
+}
+
+function sameDefinitionSnapshots(
+  expected: readonly AddieTool[],
+  actual: readonly AddieTool[],
+): boolean {
+  const snapshots = immutableDefinitionSnapshots(actual);
+  if (!snapshots || snapshots.length !== expected.length) return false;
+  return snapshots.every((snapshot, index) => JSON.stringify(snapshot) === JSON.stringify(expected[index]));
+}
+
+function sameStringList(expected: readonly string[], actual: readonly string[]): boolean {
+  return expected.length === actual.length && expected.every((value, index) => value === actual[index]);
+}
+
+function factsAreCurrent(expected: DirectReplayContractFacts): boolean {
+  return expected.surface === 'slack_channel'
+    && expected.isAdmin === false
+    && expected.channelPrivacy === 'public'
+    && expected.threadId.trim().length > 0
+    && expected.replayPrincipal.trim().length > 0
+    && expected.caseId.trim().length > 0
+    && expected.requestId.trim().length > 0
+    && Number.isSafeInteger(expected.expiresAt)
+    && expected.expiresAt > 0;
+}
+
+function snapshotFacts(facts: DirectReplayContractFacts): Omit<DirectReplayContractFacts, 'abortSignal'> {
+  return Object.freeze({
+    surface: facts.surface,
+    isAdmin: facts.isAdmin,
+    threadId: facts.threadId,
+    channelPrivacy: facts.channelPrivacy,
+    replayPrincipal: facts.replayPrincipal,
+    caseId: facts.caseId,
+    requestId: facts.requestId,
+    selectedToolSetNames: Object.freeze([...facts.selectedToolSetNames]),
+    selectedToolNames: Object.freeze([...facts.selectedToolNames]),
+    expiresAt: facts.expiresAt,
+  });
+}
+
+function sameFacts(
+  expected: Omit<DirectReplayContractFacts, 'abortSignal'>,
+  actual: DirectReplayContractFacts,
+): boolean {
+  return expected.surface === actual.surface
+    && expected.isAdmin === actual.isAdmin
+    && expected.threadId === actual.threadId
+    && expected.channelPrivacy === actual.channelPrivacy
+    && expected.replayPrincipal === actual.replayPrincipal
+    && expected.caseId === actual.caseId
+    && expected.requestId === actual.requestId
+    && expected.expiresAt === actual.expiresAt
+    && sameStringList(expected.selectedToolSetNames, actual.selectedToolSetNames)
+    && sameStringList(expected.selectedToolNames, actual.selectedToolNames);
+}
+
+function contractAudit(
+  definitions: readonly AddieTool[],
+  facts: DirectReplayContractFacts,
+): DirectReplayContractAudit {
+  // These hashes are deliberately never read by consumeDirectReplayContract.
+  // Definition data excludes handlers; function identity is bound by reference.
+  return Object.freeze({
+    assemblyPolicyVersion: DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION,
+    definitionSha256: createHash('sha256').update(JSON.stringify(definitions), 'utf8').digest('hex'),
+    factsSha256: createHash('sha256').update(JSON.stringify({
+      surface: facts.surface,
+      isAdmin: facts.isAdmin,
+      threadId: facts.threadId,
+      channelPrivacy: facts.channelPrivacy,
+      replayPrincipal: facts.replayPrincipal,
+      caseId: facts.caseId,
+      requestId: facts.requestId,
+      selectedToolSetNames: facts.selectedToolSetNames,
+      selectedToolNames: facts.selectedToolNames,
+      expiresAt: facts.expiresAt,
+    }), 'utf8').digest('hex'),
+  });
+}
+
+/**
+ * Consume a capability once. This intentionally does not expose handlers or
+ * dispatch a provider/tool: connecting it to replay is a later, reviewed step.
+ */
+export function consumeDirectReplayContract(
+  contract: unknown,
+  now: number = Date.now(),
+): DirectReplayContractConsumption {
+  if (!contract || typeof contract !== 'object') return { admitted: false, reason: 'unknown_contract' };
+  const record = directReplayContracts.get(contract);
+  if (!record) return { admitted: false, reason: 'unknown_contract' };
+  if (record.consumed) return { admitted: false, reason: 'already_consumed' };
+  // A valid member is consumed before any mutable-state check, so repairing a
+  // changed registry after a failed attempt cannot resurrect the capability.
+  record.consumed = true;
+  if (!Number.isFinite(now) || now >= record.facts.expiresAt) return { admitted: false, reason: 'expired' };
+  if (record.facts.abortSignal?.aborted) return { admitted: false, reason: 'aborted' };
+  if (
+    record.assemblyPolicyVersion !== DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION
+    || !record.noProviderToolsAreCurrent()
+    || !record.selectedToolSetsAreCurrent()
+    || !sameStringList(record.selectedToolSetNames, record.facts.selectedToolSetNames)
+    || !factsAreCurrent(record.facts)
+    || !sameFacts(record.factSnapshot, record.facts)
+  ) {
+    return { admitted: false, reason: 'assembly_drift' };
+  }
+  let current: DirectToolRegistryAssembly;
+  try {
+    current = record.assembleCurrent();
+  } catch {
+    return { admitted: false, reason: 'assembly_drift' };
+  }
+  if (
+    hasDuplicateNames(current.definitions)
+    || !record.sourceRegistriesAreCurrent()
+    || !sameStringList(record.facts.selectedToolNames, current.definitions.map((tool) => tool.name))
+    || !sameDefinitionSnapshots(record.definitionSnapshots, current.definitions)
+    || current.definitions.some((tool) => current.handlers.get(tool.name) !== record.handlerSlots.get(tool.name))
+    || current.handlers.size !== record.handlerSlots.size
+  ) return { admitted: false, reason: 'assembly_drift' };
+  return { admitted: true };
+}
+
+/**
  * Result from createUserScopedTools including admin status
  */
 export interface UserScopedToolsResult {
@@ -541,6 +771,14 @@ export interface ProcessMessageOptions {
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
   disableServerTools?: boolean;
+  /**
+   * Slack's authenticated channel assembly may supply facts for the dormant
+   * direct-replay capability. The capability itself is minted privately only
+   * while this client's normal request assembly resolves definitions/handlers.
+   */
+  directReplayContractFacts?: DirectReplayContractFacts;
+  /** Internal observer for an opaque, already-issued contract; it cannot mint one. */
+  onDirectReplayContract?: (contract: DirectReplayContract) => void;
   /**
    * Exact request-local custom-tool allowlist. When present, global and
    * request-scoped tools outside this list are omitted before prompt sizing,
@@ -1192,6 +1430,90 @@ export class AddieClaudeClient {
   }
 
   /**
+   * Resolve the provider-neutral custom-tool intersection for one request.
+   * The order and same-name winner semantics intentionally match the existing
+   * live request path: request-local definitions and handlers win globally
+   * registered entries of the same name.
+   */
+  private assembleDirectToolRegistry(
+    requestTools: RequestTools | undefined,
+    allowedToolNames: readonly string[] | undefined,
+  ): DirectToolRegistryAssembly {
+    const allowed = allowedToolNames ? new Set(allowedToolNames) : null;
+    return {
+      definitions: mergeAddieToolDefinitions(this.tools, requestTools?.tools, allowedToolNames),
+      handlers: new Map(
+        [...this.toolHandlers, ...(requestTools?.handlers || [])]
+          .filter(([name]) => !allowed || allowed.has(name)),
+      ),
+    };
+  }
+
+  /**
+   * Mint an opaque, in-memory capability after the exact production registry
+   * merge. This remains private so no caller can register arbitrary
+   * definitions/handlers as production replay authority.
+   */
+  private mintDirectReplayContract(
+    requestTools: RequestTools | undefined,
+    options: ProcessMessageOptions,
+    facts: DirectReplayContractFacts,
+    assembly: DirectToolRegistryAssembly,
+    requestWebSearchEnabled: boolean,
+  ): DirectReplayContract | undefined {
+    const definitionNames = assembly.definitions.map((tool) => tool.name);
+    const snapshots = immutableDefinitionSnapshots(assembly.definitions);
+    const globalSnapshots = immutableDefinitionSnapshots(this.tools);
+    const requestSnapshots = immutableDefinitionSnapshots(requestTools?.tools ?? []);
+    const selectedSets = options.selectedToolSetNames ?? [];
+    const selectedSetSnapshot = Object.freeze([...selectedSets]);
+    const noProviderTools = options.disableServerTools === true && !requestWebSearchEnabled;
+    if (
+      !snapshots
+      || !globalSnapshots
+      || !requestSnapshots
+      || hasDuplicateNames(assembly.definitions)
+      || hasDuplicateNames(this.tools)
+      || hasDuplicateNames(requestTools?.tools ?? [])
+      || (options.executionMode ?? 'production') !== 'production'
+      || !noProviderTools
+      || !factsAreCurrent(facts)
+      || !sameStringList(facts.selectedToolSetNames, selectedSets)
+      || !sameStringList(facts.selectedToolNames, definitionNames)
+      || assembly.definitions.some((tool) => typeof assembly.handlers.get(tool.name) !== 'function')
+      || assembly.handlers.size !== assembly.definitions.length
+      || [...assembly.handlers.keys()].some((name) => !definitionNames.includes(name))
+    ) return undefined;
+
+    const contract: DirectReplayContract = Object.freeze({
+      audit: contractAudit(snapshots, facts),
+    });
+    directReplayContracts.set(contract, {
+      consumed: false,
+      assemblyPolicyVersion: DIRECT_REPLAY_ASSEMBLY_POLICY_VERSION,
+      selectedToolSetNames: selectedSetSnapshot,
+      selectedToolSetsAreCurrent: () => sameStringList(
+        selectedSetSnapshot,
+        options.selectedToolSetNames ?? [],
+      ),
+      noProviderToolsAreCurrent: () => options.disableServerTools === true,
+      facts,
+      factSnapshot: snapshotFacts(facts),
+      definitionSnapshots: snapshots,
+      handlerSlots: new Map(assembly.definitions.map((tool) => [
+        tool.name,
+        assembly.handlers.get(tool.name)!,
+      ])),
+      sourceRegistriesAreCurrent: () => !hasDuplicateNames(this.tools)
+        && !hasDuplicateNames(requestTools?.tools ?? [])
+        && sameDefinitionSnapshots(globalSnapshots, this.tools)
+        && sameDefinitionSnapshots(requestSnapshots, requestTools?.tools ?? []),
+      assembleCurrent: () => this.assembleDirectToolRegistry(requestTools, options.allowedToolNames),
+    });
+    return contract;
+  }
+
+  /**
    * Copy the registered tool surface into a provider-isolated client. This is
    * deliberately not a production selector: alternate providers remain
    * blocked by the operational guards in both message entry points.
@@ -1221,18 +1543,19 @@ export class AddieClaudeClient {
       && !isIsolatedExecution(options)
       && options?.disableServerTools !== true;
     const effectiveModel = options?.modelOverride ?? this.model;
-    const allowedToolNames = options?.allowedToolNames
-      ? new Set(options.allowedToolNames)
-      : null;
-    const allTools = mergeAddieToolDefinitions(
-      this.tools,
-      requestTools?.tools,
-      options?.allowedToolNames,
-    );
-    const allHandlers = new Map(
-      [...this.toolHandlers, ...(requestTools?.handlers || [])]
-        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
-    );
+    const directTools = this.assembleDirectToolRegistry(requestTools, options?.allowedToolNames);
+    const allTools = directTools.definitions;
+    const allHandlers = directTools.handlers;
+    const directReplayContract = options?.directReplayContractFacts
+      ? this.mintDirectReplayContract(
+          requestTools,
+          options,
+          options.directReplayContractFacts,
+          directTools,
+          requestWebSearchEnabled,
+        )
+      : undefined;
+    if (directReplayContract) options?.onDirectReplayContract?.(directReplayContract);
 
     const promptStart = Date.now();
     const systemBlocks = this.buildSystemBlocks(
