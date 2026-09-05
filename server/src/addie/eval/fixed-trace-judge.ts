@@ -145,6 +145,44 @@ export interface FixedTraceJudgeSummary {
   comparisonEligible: boolean;
 }
 
+/**
+ * Do not dereference a caller supplied trace, observation, adapter, or config
+ * on this path.  A skipped diagnostic record is more useful than an exception
+ * to callers, and still cannot be mistaken for a scored judgment.
+ */
+function notAdmittedJudgeResult(): FixedTraceJudgment {
+  return Object.freeze({
+    traceId: "not_admitted",
+    status: "skipped",
+    failureReason: "judge_calibration_not_admitted",
+    verdict: null,
+    metadata: Object.freeze({
+      promptVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION,
+      candidateIdentityMetadataExposed: false,
+      requestedProvider: "anthropic",
+      requestedModel: "not_admitted",
+      returnedProvider: null,
+      returnedModel: null,
+      modelResolution: null,
+      promptSha256: "0".repeat(64),
+      providerRequestSha256: null,
+      responseSha256: null,
+      reasoningEffort: "provider_default",
+      maxOutputTokens: 0,
+      timeoutMs: 0,
+      maxIterations: 1,
+      transportRetries: 0,
+      samplingMode: "provider_no_sampling_control",
+      temperature: null,
+      usageKnown: false,
+      usage: null,
+      estimatedCostUsd: null,
+      pricingSource: null,
+      latencyMs: 0,
+    }),
+  });
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number') {
@@ -412,7 +450,7 @@ export async function judgeFixedTraceObservation(
 ): Promise<FixedTraceJudgment> {
   // This integration draft has no custodied calibration authority. Refuse
   // before touching any caller-provided trace, observation, or adapter.
-  if (!hasPrivilegedCustodiedCalibration()) throw new FixedTraceJudgeAdmissionError();
+  if (!hasPrivilegedCustodiedCalibration()) return notAdmittedJudgeResult();
   validateConfig(config);
   const startedAt = Date.now();
   let request: ModelRequest;

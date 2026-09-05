@@ -10,6 +10,7 @@ import {
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
+  type FixedTraceCase,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
 } from "../../../src/addie/eval/fixed-trace-suite.js";
@@ -253,7 +254,7 @@ describe("fixed-trace independent judge", () => {
       verdict: null,
       metadata: {
         candidateIdentityMetadataExposed: false,
-        requestedProvider: "openai",
+        requestedProvider: "anthropic",
         returnedProvider: null,
         usageKnown: false,
         maxIterations: 1,
@@ -266,6 +267,22 @@ describe("fixed-trace independent judge", () => {
     expect(FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION).toBe(
       "not_admitted_missing_privileged_custodied_calibration",
     );
+  });
+
+  it("refuses before reading any caller-controlled judge input", async () => {
+    let reads = 0;
+    const hostile = new Proxy({}, {
+      get: () => { reads += 1; throw new Error("caller input was read"); },
+    });
+    await expect(judgeFixedTraceObservation(
+      hostile as FixedTraceCase,
+      hostile as FixedTraceObservation,
+      hostile as FixedTraceJudgeConfig,
+    )).resolves.toMatchObject({
+      status: "skipped",
+      failureReason: "judge_calibration_not_admitted",
+    });
+    expect(reads).toBe(0);
   });
 
   it("does not process provider text before calibration admission", async () => {
@@ -380,7 +397,7 @@ describe("fixed-trace independent judge", () => {
     );
     expect(result).toMatchObject({
       status: "skipped",
-      failureReason: "judge_not_independent",
+      failureReason: "judge_calibration_not_admitted",
     });
     expect(provider.dispatches).toBe(0);
   });
@@ -409,7 +426,7 @@ describe("fixed-trace independent judge", () => {
     );
     expect(result).toMatchObject({
       status: "skipped",
-      failureReason: "judge_not_independent",
+      failureReason: "judge_calibration_not_admitted",
     });
     expect(provider.dispatches).toBe(0);
   });
@@ -446,7 +463,7 @@ describe("fixed-trace independent judge", () => {
       '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}',
     );
     await expect(judgeFixedTraceObservation(trace, candidate, config(sameRouterProvider)))
-      .resolves.toMatchObject({ status: "skipped", failureReason: "judge_not_independent" });
+      .resolves.toMatchObject({ status: "skipped", failureReason: "judge_calibration_not_admitted" });
     await expect(runIndependentFixedTraceJudges(
       [trace], [candidate], [config(onlyRemainingProvider)],
     )).rejects.toThrow("privileged custodied calibration");
@@ -464,7 +481,7 @@ describe("fixed-trace independent judge", () => {
     await expect(judgeFixedTraceObservation(trace, candidate, config(provider)))
       .resolves.toMatchObject({
         status: "skipped",
-        failureReason: "candidate_not_judgeable",
+        failureReason: "judge_calibration_not_admitted",
       });
     expect(provider.dispatches).toBe(0);
   });
@@ -483,7 +500,7 @@ describe("fixed-trace independent judge", () => {
       await expect(judgeFixedTraceObservation(trace, candidate, config(provider)))
         .resolves.toMatchObject({
           status: "skipped",
-          failureReason: "candidate_not_judgeable",
+          failureReason: "judge_calibration_not_admitted",
         });
     }
     expect(provider.dispatches).toBe(0);
