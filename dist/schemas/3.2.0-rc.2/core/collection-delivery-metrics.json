@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/collection-delivery-metrics.json",
+  "title": "Collection Delivery Metrics",
+  "description": "Delivery metrics for one canonically identified collection.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "collection_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/collection-ref.json"
+        },
+        "collection_name": {
+          "type": "string",
+          "description": "Current human-readable collection name. Convenience metadata only; collection_ref is stable identity."
+        }
+      },
+      "required": [
+        "collection_ref",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}
