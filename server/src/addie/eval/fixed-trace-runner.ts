@@ -480,6 +480,7 @@ export async function runFixedTraceCase(
       flagged: true,
       route: null,
       tools: [],
+      rejectedToolCalls: [],
     };
   }
 
@@ -500,6 +501,7 @@ export async function runFixedTraceCase(
       flagged: false,
       route,
       tools: [],
+      rejectedToolCalls: [],
     };
   }
 
@@ -541,6 +543,7 @@ export async function runFixedTraceCase(
       flagged: true,
       route,
       tools: [],
+      rejectedToolCalls: [],
     };
   }
 
@@ -586,6 +589,7 @@ export async function runFixedTraceCase(
       flagged: result.localReplacementReason !== null || terminalStatus !== 'complete',
       route,
       tools: result.tools.map(({ sequence: _sequence, ...tool }) => tool),
+      rejectedToolCalls: [],
     };
   } catch (error) {
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
@@ -616,6 +620,7 @@ export async function runFixedTraceCase(
       flagged: true,
       route,
       tools: checkpoint?.tools.map(({ sequence: _sequence, ...tool }) => tool) ?? [],
+      rejectedToolCalls: checkpoint ? [...checkpoint.rejectedToolCalls] : [],
     };
   } finally {
     clearTimeout(timeout);

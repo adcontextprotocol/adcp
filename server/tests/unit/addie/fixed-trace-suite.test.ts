@@ -135,6 +135,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
         simulated: true,
       };
     }),
+    rejectedToolCalls: [],
   };
 }
 
