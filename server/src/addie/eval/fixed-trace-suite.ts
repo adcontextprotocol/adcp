@@ -2788,9 +2788,9 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   const toolUniverse = metadata.toolUniverse;
   if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe', 'fixture_oracle'].includes(toolUniverse.source)) {
     failures.push('tool_universe_provenance_invalid');
-  } else if (
-    metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe'
-    && (toolUniverse.source !== 'evaluator_owned_common_tool_universe' || toolUniverse.intentNarrowing !== 'not_applied' || !toolUniverse.bounded || toolUniverse.deployable
+  } else if (metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe') {
+    if (
+      toolUniverse.source !== 'evaluator_owned_common_tool_universe' || toolUniverse.intentNarrowing !== 'not_applied' || !toolUniverse.bounded || toolUniverse.deployable
       || toolUniverse.toolNamesSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256
       || toolUniverse.toolSchemaSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256
       || toolUniverse.definitionHandlerSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256
@@ -2798,9 +2798,8 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
       || canonicalJson(toolUniverse.commonUniverseMissingPrerequisites) !== canonicalJson([
         'authenticated_definition_handler_intersection',
         'shared_request_thread_execution_envelope',
-      ]))
-  ) {
-    failures.push('tool_universe_provenance_invalid');
+      ])
+    ) failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
     && (toolUniverse.source !== 'fixture_local_routed_replay' || toolUniverse.intentNarrowing !== 'production_quick_match_or_llm_router' || !toolUniverse.bounded || toolUniverse.deployable)
@@ -2854,11 +2853,10 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
   const executionEnvelope = metadata.executionEnvelope;
   if (!executionEnvelope || !['fixture_expectation', 'evaluator_owned_shared_request_thread_envelope', 'evaluator_owned_synthetic_receipt_envelope', 'fixture_oracle'].includes(executionEnvelope.source)) {
     failures.push('execution_envelope_provenance_invalid');
-  } else if (
-    metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe'
-    && (executionEnvelope.source !== 'evaluator_owned_synthetic_receipt_envelope' || executionEnvelope.deployable)
-  ) {
-    failures.push('execution_envelope_provenance_invalid');
+  } else if (metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe') {
+    if (executionEnvelope.source !== 'evaluator_owned_synthetic_receipt_envelope' || executionEnvelope.deployable) {
+      failures.push('execution_envelope_provenance_invalid');
+    }
   } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
     && (executionEnvelope.source !== 'fixture_expectation' || executionEnvelope.deployable)

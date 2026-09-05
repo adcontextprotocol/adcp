@@ -4,6 +4,7 @@ import {
   assertFixedTraceCommonToolUniverseAdmission,
   FixedTraceCommonToolUniverseAdmissionError,
   fixedTraceCommonToolDefinitions,
+  fixedTraceHybridPolicy,
   fixedTraceCommonToolUniverseProvenance,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
 import {
@@ -11,7 +12,14 @@ import {
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
 } from '../../../src/addie/direct-tool-universe.js';
 import { runFixedTraceDiagnosticCandidate } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
-import { FIXED_TRACE_SUITE, fixedTraceSuiteSha256, type FixedTraceCase } from '../../../src/addie/eval/fixed-trace-suite.js';
+import {
+  FIXED_TRACE_SUITE,
+  fixedTraceSuiteSha256,
+  gradeFixedTrace,
+  summarizeFixedTraceRun,
+  type FixedTraceCase,
+  type FixedTraceObservation,
+} from '../../../src/addie/eval/fixed-trace-suite.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -160,6 +168,88 @@ describe('fixed-trace common evaluator tool universe', () => {
     ]);
     expect(provenance[1]).toEqual(provenance[0]);
     expect(provenance[2]).toEqual(provenance[0]);
+  });
+
+  it.each([
+    'two_stage_llm_router',
+    'deterministic_policy_llm_fallback_hybrid',
+  ] as const)('serializes valid common-universe %s observations without legacy provenance failures', async (architectureArm) => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const router = new ScriptedProvider([
+      scriptedResponse('router-response', JSON.stringify({
+        action: 'respond',
+        tool_sets: [],
+        confidence: 'high',
+        requires_depth: false,
+        reason: 'Synthetic route.',
+      })),
+    ]);
+    const generation = new ScriptedProvider([
+      scriptedResponse('generation-response', 'Synthetic terminal response.'),
+    ]);
+
+    const result = await runFixedTraceDiagnosticCandidate({
+      ...config(router, generation, [trace]),
+      toolDefinitions: fixedTraceCommonToolDefinitions(architectureArm),
+      toolDefinitionProvenance: 'evaluator_owned_common_tool_universe',
+      architectureArm,
+      ...(architectureArm === 'deterministic_policy_llm_fallback_hybrid'
+        ? { hybridPolicy: fixedTraceHybridPolicy() }
+        : {}),
+    });
+    const serialized = JSON.parse(JSON.stringify(result.observations)) as FixedTraceObservation[];
+    const regraded = summarizeFixedTraceRun(serialized, [trace]);
+
+    expect(router.requests).toHaveLength(1);
+    expect(generation.requests).toHaveLength(1);
+    expect(serialized[0]!.metadata.toolDefinitionProvenance).toBe('evaluator_owned_common_tool_universe');
+    expect(regraded.grades[0]).toMatchObject({ metadataPass: true });
+    expect(regraded.grades[0]!.failures).not.toContain('tool_universe_provenance_invalid');
+    expect(regraded.grades[0]!.failures).not.toContain('execution_envelope_provenance_invalid');
+    expect(regraded.summary).toMatchObject({
+      expected: 1,
+      observed: 1,
+      metadataPassRate: 1,
+    });
+  });
+
+  it('does not let invalid common provenance escape through the valid hybrid legacy path', async () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const router = new ScriptedProvider([
+      scriptedResponse('router-response', JSON.stringify({
+        action: 'respond',
+        tool_sets: [],
+        confidence: 'high',
+        requires_depth: false,
+        reason: 'Synthetic route.',
+      })),
+    ]);
+    const generation = new ScriptedProvider([
+      scriptedResponse('generation-response', 'Synthetic terminal response.'),
+    ]);
+    const result = await runFixedTraceDiagnosticCandidate({
+      ...config(router, generation, [trace]),
+      toolDefinitions: fixedTraceCommonToolDefinitions('deterministic_policy_llm_fallback_hybrid'),
+      toolDefinitionProvenance: 'evaluator_owned_common_tool_universe',
+      architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+      hybridPolicy: fixedTraceHybridPolicy(),
+    });
+    const invalid = JSON.parse(JSON.stringify(result.observations[0])) as FixedTraceObservation;
+    invalid.metadata.toolUniverse = {
+      ...invalid.metadata.toolUniverse,
+      source: 'fixture_local_routed_replay',
+      intentNarrowing: 'production_quick_match_or_llm_router',
+    };
+    invalid.metadata.executionEnvelope = {
+      ...invalid.metadata.executionEnvelope,
+      source: 'fixture_expectation',
+    };
+
+    const grade = gradeFixedTrace(trace, invalid);
+
+    expect(grade.metadataPass).toBe(false);
+    expect(grade.failures).toContain('tool_universe_provenance_invalid');
+    expect(grade.failures).toContain('execution_envelope_provenance_invalid');
   });
 
   it('does not let scoring-label or fixture mutation alter candidate-visible definitions', async () => {
