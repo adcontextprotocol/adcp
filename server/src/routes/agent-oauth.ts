@@ -36,6 +36,7 @@ import {
   discoverAuthorizationServerMetadata,
   discoverOAuthProtectedResourceMetadata,
 } from '@modelcontextprotocol/sdk/client/auth.js';
+import { OAuthError as McpOAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {
   checkResourceAllowed,
   resourceUrlFromServerUrl,
@@ -116,6 +117,11 @@ function sanitizeErrorMessage(error: unknown): string {
   return String(error)
     .slice(0, 200)
     .replace(/[<>]/g, '');
+}
+
+/** OAuth failures returned by an agent's authorization server are not app faults. */
+export function isAgentSideOAuthError(error: unknown): error is OAuthError | McpOAuthError {
+  return error instanceof OAuthError || error instanceof McpOAuthError;
 }
 
 function getCallbackUrl(req: Request): string {
@@ -337,8 +343,9 @@ export function createAgentOAuthRouter(): Router {
       // `warn` to keep the pino → posthog hook from paging #aao-errors.
       // Same convention as the `AuthenticationRequiredError` branch in
       // server/src/http.ts and the slack-client expected-error sites.
-      if (error instanceof OAuthError) {
-        logger.warn({ error, code: error.code }, 'OAuth flow start failed (agent-side)');
+      if (isAgentSideOAuthError(error)) {
+        const code = error instanceof OAuthError ? error.code : error.errorCode;
+        logger.warn({ error, code }, 'OAuth flow start failed (agent-side)');
       } else {
         logger.error({ error }, 'Failed to start OAuth flow');
       }

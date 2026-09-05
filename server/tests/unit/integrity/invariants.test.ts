@@ -158,6 +158,10 @@ describe('workos-verified-domains-mirrored', () => {
       id: 'org_spanglish',
       name: 'Spanglish Movies',
       domains: [{ domain: 'spanglishmovies.com', state: 'verified' }],
+    }).mockResolvedValueOnce({
+      id: 'org_personal',
+      name: 'Gustavo Workspace',
+      domains: [],
     });
 
     const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
@@ -165,6 +169,43 @@ describe('workos-verified-domains-mirrored', () => {
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].message).toContain('local row belongs');
     expect(result.violations[0].details?.local_workos_organization_id).toBe('org_personal');
+  });
+
+  it('warns instead of recommending an unsafe transfer when WorkOS verifies both orgs', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_acme_primary', name: 'Acme Primary' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          domain: 'acme.test',
+          workos_organization_id: 'org_acme_duplicate',
+          org_name: 'Acme Duplicate',
+          verified: true,
+          is_primary: true,
+        }],
+      });
+    mockWorkosGetOrganization
+      .mockResolvedValueOnce({
+        id: 'org_acme_primary',
+        name: 'Acme Primary',
+        domains: [{ domain: 'acme.test', state: 'verified' }],
+      })
+      .mockResolvedValueOnce({
+        id: 'org_acme_duplicate',
+        name: 'Acme Duplicate',
+        domains: [{ domain: 'acme.test', state: 'legacy_verified' }],
+      });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0]).toMatchObject({
+      severity: 'warning',
+      subject_id: 'acme.test',
+      details: { duplicate_verified_workos_ownership: true },
+    });
+    expect(result.violations[0].remediation_hint).toContain('canonical owner');
   });
 });
 

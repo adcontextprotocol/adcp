@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryTaskRegistry } from '@adcp/sdk/server';
 import {
   InMemorySellerManagedControlJobStore,
+  PostgresSellerManagedControlJobStore,
   SellerManagedControlJobCoordinator,
   rebindCachedSdkReplay,
   withSellerManagedIdempotencyReplay,
@@ -24,6 +25,11 @@ const INPUT = {
 };
 const TASK_SCOPE = { accountId: INPUT.accountId, ownerScope: INPUT.ownerScope };
 
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
+
 async function registerTask(taskRegistry: ReturnType<typeof createInMemoryTaskRegistry>): Promise<void> {
   await taskRegistry.create({
     tool: 'control_media_buy',
@@ -34,6 +40,30 @@ async function registerTask(taskRegistry: ReturnType<typeof createInMemoryTaskRe
 }
 
 describe('seller-managed control durable jobs', () => {
+  it('defers Postgres reconciliation until the database is initialized', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NODE_ENV', 'production');
+    let databaseReady = false;
+    const store = new PostgresSellerManagedControlJobStore();
+    const claim = vi.spyOn(store, 'claim').mockResolvedValue(null);
+    const coordinator = new SellerManagedControlJobCoordinator(
+      createInMemoryTaskRegistry(),
+      async () => ({}),
+      store,
+      async () => {},
+      () => databaseReady,
+    );
+
+    coordinator.start();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(claim).not.toHaveBeenCalled();
+
+    databaseReady = true;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(claim).toHaveBeenCalledOnce();
+    coordinator.stop();
+  });
+
   it('replays the same orphaned task for the same caller idempotency key', async () => {
     const store = new InMemorySellerManagedControlJobStore();
     const first = await store.enqueue(INPUT);

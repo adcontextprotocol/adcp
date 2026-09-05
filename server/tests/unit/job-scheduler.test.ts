@@ -174,4 +174,53 @@ describe('JobScheduler', () => {
 
     scheduler.stopAll();
   });
+
+  it('records and logs the memory delta for each completed job', async () => {
+    vi.useFakeTimers();
+    const memorySpy = vi.spyOn(process, 'memoryUsage')
+      .mockReturnValueOnce({
+        rss: 100 * 1024 * 1024,
+        heapTotal: 60 * 1024 * 1024,
+        heapUsed: 40 * 1024 * 1024,
+        external: 5 * 1024 * 1024,
+        arrayBuffers: 0,
+      })
+      .mockReturnValueOnce({
+        rss: 112 * 1024 * 1024,
+        heapTotal: 66 * 1024 * 1024,
+        heapUsed: 47 * 1024 * 1024,
+        external: 7 * 1024 * 1024,
+        arrayBuffers: 0,
+      });
+
+    const scheduler = new JobScheduler();
+    scheduler.register({
+      name: 'profiled-job',
+      description: 'Profiled job',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      runner: async () => undefined,
+    });
+
+    scheduler.start('profiled-job');
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(scheduler.getStatus()[0].lastMemoryProfile).toEqual({
+      before: { rssMb: 100, heapUsedMb: 40, heapTotalMb: 60, externalMb: 5 },
+      after: { rssMb: 112, heapUsedMb: 47, heapTotalMb: 66, externalMb: 7 },
+      delta: { rssMb: 12, heapUsedMb: 7, heapTotalMb: 6, externalMb: 2 },
+    });
+    expect(loggerMock.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobName: 'profiled-job',
+        memory: expect.objectContaining({
+          delta: expect.objectContaining({ rssMb: 12, heapUsedMb: 7 }),
+        }),
+      }),
+      'Scheduled job memory profile',
+    );
+
+    memorySpy.mockRestore();
+    scheduler.stopAll();
+  });
 });

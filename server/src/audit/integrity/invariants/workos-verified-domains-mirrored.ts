@@ -90,6 +90,43 @@ export const workosVerifiedDomainsMirroredInvariant: Invariant = {
           }
 
           if (row.workos_organization_id !== org.workos_organization_id) {
+            let localOwnerAlsoVerified = false;
+            try {
+              const localOwner = await workos.organizations.getOrganization(row.workos_organization_id);
+              localOwnerAlsoVerified = localOwner.domains.some((candidate) =>
+                candidate.domain.toLowerCase() === domain
+                && (String(candidate.state) === 'verified' || String(candidate.state) === 'legacy_verified'));
+            } catch (err) {
+              logger.warn(
+                { err, orgId: row.workos_organization_id, domain },
+                'workos-verified-domains-mirrored: local domain owner lookup failed',
+              );
+            }
+
+            if (localOwnerAlsoVerified) {
+              violations.push({
+                invariant: 'workos-verified-domains-mirrored',
+                severity: 'warning',
+                subject_type: 'domain',
+                subject_id: domain,
+                message:
+                  `WorkOS says ${domain} is verified for both "${org.name}" (${org.workos_organization_id}) ` +
+                  `and "${row.org_name ?? 'unknown'}" (${row.workos_organization_id}).`,
+                details: {
+                  domain,
+                  workos_organization_id: org.workos_organization_id,
+                  organization_name: org.name,
+                  local_workos_organization_id: row.workos_organization_id,
+                  local_organization_name: row.org_name,
+                  local_verified: row.verified,
+                  duplicate_verified_workos_ownership: true,
+                },
+                remediation_hint:
+                  'Resolve the duplicate WorkOS organizations and choose a canonical owner before reconciling local domain ownership.',
+              });
+              continue;
+            }
+
             violations.push({
               invariant: 'workos-verified-domains-mirrored',
               severity: 'critical',

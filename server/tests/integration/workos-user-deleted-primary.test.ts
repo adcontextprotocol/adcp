@@ -173,5 +173,36 @@ describe('user.deleted: promote secondary before CASCADE (#3718)', () => {
     expect(survivors.rows[0].workos_user_id).toBe(secondary);
     expect(survivors.rows[0].is_primary).toBe(true);
   });
-});
 
+  it('deletes an account with accumulated community data', async () => {
+    const userId = await insertUser('community', 'community@test.example');
+    await pool.query(
+      `INSERT INTO community_points (workos_user_id, action, points)
+       VALUES ($1, 'test_activity', 1)`,
+      [userId],
+    );
+
+    await expect(
+      pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [userId]),
+    ).resolves.toMatchObject({ rowCount: 1 });
+
+    const points = await pool.query(
+      `SELECT 1 FROM community_points WHERE workos_user_id = $1`,
+      [userId],
+    );
+    expect(points.rows).toHaveLength(0);
+  });
+
+  it('has no restrictive foreign keys pointing directly at users', async () => {
+    const restrictive = await pool.query<{ table_name: string; constraint_name: string }>(
+      `SELECT conrelid::regclass::text AS table_name, conname AS constraint_name
+         FROM pg_constraint
+        WHERE contype = 'f'
+          AND confrelid = 'users'::regclass
+          AND confdeltype IN ('a', 'r')
+        ORDER BY conrelid::regclass::text, conname`,
+    );
+
+    expect(restrictive.rows).toEqual([]);
+  });
+});
