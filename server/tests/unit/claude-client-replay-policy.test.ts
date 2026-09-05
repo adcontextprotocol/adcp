@@ -179,6 +179,72 @@ function sequentialAllowedToolOptions(): {
   };
 }
 
+function crossMutatingToolInputs(): {
+  options: ProcessMessageOptions;
+  requestTools: RequestTools;
+  events: () => string[];
+  alphaHandler: ReturnType<typeof vi.fn>;
+  betaHandler: ReturnType<typeof vi.fn>;
+} {
+  const accessEvents: string[] = [];
+  let phase = 'before-request-tools';
+  const alphaHandler = vi.fn().mockResolvedValue('alpha result');
+  const betaHandler = vi.fn().mockResolvedValue('beta result');
+  const options = new Proxy<ProcessMessageOptions>({
+    disableServerTools: true,
+    get allowedToolNames() {
+      accessEvents.push(`options.getter.allowedToolNames.${phase}`);
+      return phase === 'before-request-tools' ? ['alpha'] : ['beta'];
+    },
+  }, {
+    get(target, property, receiver) {
+      if (property === 'allowedToolNames') {
+        accessEvents.push('options.proxy.allowedToolNames');
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  const requestTools = new Proxy<RequestTools>({
+    get tools() {
+      accessEvents.push('requestTools.getter.tools');
+      phase = 'after-request-tools';
+      return [tool('alpha', 'pure_local'), tool('beta', 'pure_local')];
+    },
+    get handlers() {
+      accessEvents.push('requestTools.getter.handlers');
+      return new Map<string, ToolHandler>([
+        ['alpha', alphaHandler],
+        ['beta', betaHandler],
+      ]);
+    },
+  }, {
+    get(target, property, receiver) {
+      accessEvents.push(`requestTools.proxy.${String(property)}`);
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  return {
+    options,
+    requestTools,
+    events: () => accessEvents,
+    alphaHandler,
+    betaHandler,
+  };
+}
+
+const crossMutatingToolAccessSequence = [
+  'options.proxy.allowedToolNames',
+  'options.getter.allowedToolNames.before-request-tools',
+  'options.proxy.allowedToolNames',
+  'options.getter.allowedToolNames.before-request-tools',
+  'requestTools.proxy.tools',
+  'requestTools.getter.tools',
+  'options.proxy.allowedToolNames',
+  'options.getter.allowedToolNames.after-request-tools',
+  'requestTools.proxy.handlers',
+  'requestTools.getter.handlers',
+];
+
 function invocationHmac(key: string, domain: string, value: string): string {
   return createHmac('sha256', key)
     .update('addie-invocation\0', 'utf8')
@@ -852,6 +918,94 @@ describe('AddieClaudeClient isolated execution policy', () => {
     expect(response.tools_used).toEqual(['safe']);
     expect(response.tool_executions).toEqual([
       expect.objectContaining({ tool_name: 'safe', is_error: true }),
+    ]);
+  });
+
+  it('preserves the legacy cross-mutation access sequence and executable registry', async () => {
+    const legacyInput = crossMutatingToolInputs();
+    const legacy = legacyRequestToolAssembly(
+      [tool('alpha', 'pure_local'), tool('beta', 'pure_local')],
+      new Map<string, ToolHandler>([
+        ['alpha', legacyInput.alphaHandler],
+        ['beta', legacyInput.betaHandler],
+      ]),
+      legacyInput.requestTools,
+      legacyInput.options,
+    );
+    expect(legacyInput.events()).toEqual(crossMutatingToolAccessSequence);
+    expect(legacy.tools.map(({ name }) => name)).toEqual(['beta']);
+    expect([...legacy.handlers.keys()]).toEqual(['alpha']);
+    expect(legacy.tools.filter(({ name }) => legacy.handlers.has(name))).toEqual([]);
+
+    const client = new AddieClaudeClient('unused', 'test-model');
+    const actualInput = crossMutatingToolInputs();
+    client.registerTool(tool('alpha', 'pure_local'), actualInput.alphaHandler);
+    client.registerTool(tool('beta', 'pure_local'), actualInput.betaHandler);
+    sdkState.nonStreamingResponses.push(
+      toolUseResponse([{ id: 'beta-call', name: 'beta', input: { value: 'input' } }]),
+      textResponse(),
+    );
+
+    const response = await client.processMessage(
+      'execute', undefined, actualInput.requestTools, { systemPrompt: 'system' }, actualInput.options,
+    );
+
+    expect(actualInput.events()).toEqual(crossMutatingToolAccessSequence);
+    expect((sdkState.calls[0].tools as Array<{ name: string }>).map(({ name }) => name))
+      .toEqual(['beta']);
+    expect(actualInput.alphaHandler).not.toHaveBeenCalled();
+    expect(actualInput.betaHandler).not.toHaveBeenCalled();
+    expect(response.tool_executions).toEqual([
+      expect.objectContaining({ tool_name: 'beta', is_error: true }),
+    ]);
+  });
+
+  it('preserves a third allowlist accessor throw after request definitions', () => {
+    const expected = new Error('third allowedToolNames getter failure');
+    const events: string[] = [];
+    let reads = 0;
+    const options = new Proxy<ProcessMessageOptions>({
+      get allowedToolNames() {
+        reads++;
+        events.push(`options.getter.allowedToolNames.${reads}`);
+        if (reads === 3) throw expected;
+        return ['safe'];
+      },
+    }, {
+      get(target, property, receiver) {
+        if (property === 'allowedToolNames') events.push('options.proxy.allowedToolNames');
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const requestTools = new Proxy<RequestTools>({
+      get tools() {
+        events.push('requestTools.getter.tools');
+        return [tool('safe', 'pure_local')];
+      },
+      get handlers() {
+        events.push('requestTools.getter.handlers');
+        return new Map<string, ToolHandler>();
+      },
+    }, {
+      get(target, property, receiver) {
+        events.push(`requestTools.proxy.${String(property)}`);
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const client = new AddieClaudeClient('unused', 'test-model');
+
+    expect(() => client.prepareMessageInvocation(
+      'prepare', undefined, requestTools, { systemPrompt: 'system' }, options,
+    )).toThrow(expected);
+    expect(events).toEqual([
+      'options.proxy.allowedToolNames',
+      'options.getter.allowedToolNames.1',
+      'options.proxy.allowedToolNames',
+      'options.getter.allowedToolNames.2',
+      'requestTools.proxy.tools',
+      'requestTools.getter.tools',
+      'options.proxy.allowedToolNames',
+      'options.getter.allowedToolNames.3',
     ]);
   });
 

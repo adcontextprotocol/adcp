@@ -27,7 +27,7 @@ function assemble(
     globalTools,
     globalHandlers,
     requestTools,
-    allowedToolNames,
+    { allowedToolNames },
     allowedToolNames ? new Set(allowedToolNames) : null,
   );
   const allowed = allowedToolNames ? new Set(allowedToolNames) : null;
@@ -108,12 +108,64 @@ describe('request-local custom-tool assembly', () => {
       [tool('safe')],
       new Map([['safe', safe]]),
       undefined,
-      ['safe'],
+      { allowedToolNames: ['safe'] },
       new Set(),
     );
 
     expect(result.tools.map((entry) => entry.name)).toEqual(['safe']);
     expect([...result.handlers.keys()]).toEqual([]);
+  });
+
+  it('reads request definitions before the definition allowlist and handlers', () => {
+    const events: string[] = [];
+    let phase = 'before-tools';
+    const requestTools = new Proxy<AddieRequestTools>({
+      get tools() {
+        events.push('requestTools.tools');
+        phase = 'after-tools';
+        return [tool('alpha'), tool('beta')];
+      },
+      get handlers() {
+        events.push('requestTools.handlers');
+        return new Map([['alpha', handler()], ['beta', handler()]]);
+      },
+    }, {
+      get(target, property, receiver) {
+        events.push(`requestTools.proxy.${String(property)}`);
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const definitionOptions = new Proxy({
+      get allowedToolNames() {
+        events.push(`options.allowedToolNames.${phase}`);
+        return phase === 'before-tools' ? ['alpha'] : ['beta'];
+      },
+    }, {
+      get(target, property, receiver) {
+        events.push(`options.proxy.${String(property)}`);
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const result = requestToolAssembly.assembleAddieRequestTools(
+      [],
+      new Map([['alpha', handler()], ['beta', handler()]]),
+      requestTools,
+      definitionOptions,
+      new Set(['alpha']),
+    );
+
+    expect(events).toEqual([
+      'requestTools.proxy.tools',
+      'requestTools.tools',
+      'options.proxy.allowedToolNames',
+      'options.allowedToolNames.after-tools',
+      'requestTools.proxy.handlers',
+      'requestTools.handlers',
+    ]);
+    expect(result.tools.map(({ name }) => name)).toEqual(['beta']);
+    expect([...result.handlers.keys()]).toEqual(['alpha']);
+    expect(result.tools.filter(({ name }) => result.handlers.has(name))).toEqual([]);
   });
 
   it('retains a definition with no handler and leaves unknown data non-executable', () => {

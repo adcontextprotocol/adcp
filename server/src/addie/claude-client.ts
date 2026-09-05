@@ -1228,7 +1228,7 @@ export class AddieClaudeClient {
       this.tools,
       this.toolHandlers,
       requestTools,
-      options?.allowedToolNames,
+      options,
       allowedToolNames,
     );
     const allTools = assembledTools.tools;
