@@ -8,11 +8,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
  * the unprocessed partial text. Consumers can render a recovery banner and
  * drop the partial assistant turn from conversation history.
  *
- * The "no retry after content yielded" guard in claude-client.ts is
- * load-bearing: Anthropic streaming has no resumption token and the
- * prompt cache only dedupes input, so a retried request would sample a
- * fresh output and we'd be stitching two unrelated streams. The event
- * gives the consumer the signal needed to do the discard cleanly.
+ * Provider deltas remain buffered and may be retried before any event or tool
+ * from that attempt is exposed. After a prior logical-turn iteration has
+ * emitted an event or completed a tool, Anthropic has no resumption token, so
+ * the client emits `stream_error` instead of restarting the turn. The event
+ * gives the delivery owner the signal needed to persist and discard cleanly.
  */
 
 // Two stream stubs covering both realistic mid-stream failure shapes.
@@ -58,6 +58,7 @@ function makeApiErrorStub(MockedAPIError: { new (msg: string): Error & { status?
 
 // Selects which stub the mocked SDK returns. Mutated per-test below.
 let streamStubFactory: () => ReturnType<typeof makeKeywordErrorStub> = makeKeywordErrorStub;
+let sdkStreamCalls = 0;
 
 vi.mock('@anthropic-ai/sdk', () => {
   class MockAPIError extends Error {
@@ -72,13 +73,19 @@ vi.mock('@anthropic-ai/sdk', () => {
     default: class {
       beta = {
         messages: {
-          stream: vi.fn(() => streamStubFactory()),
+          stream: vi.fn(() => {
+            sdkStreamCalls++;
+            return streamStubFactory();
+          }),
           create: vi.fn(),
         },
       };
       messages = {
         create: vi.fn(),
-        stream: vi.fn(() => streamStubFactory()),
+        stream: vi.fn(() => {
+          sdkStreamCalls++;
+          return streamStubFactory();
+        }),
       };
     },
     APIError: MockAPIError,
@@ -97,6 +104,7 @@ beforeEach(() => {
   __setCostTrackerStore(__createInMemoryCostStore());
   // Default stub: keyword-only Error. Per-test overrides flip to APIError.
   streamStubFactory = makeKeywordErrorStub;
+  sdkStreamCalls = 0;
   vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
     callback();
     return 0;
@@ -133,6 +141,7 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     expect(evt.deltasBeforeError).toBe(1);
     expect(evt.tool_executions).toEqual([]);
     expect(evt.certification_reserve_used).toBe(false);
+    expect(sdkStreamCalls).toBe(4);
 
     // The recoverable terminal event is emitted exactly once. It carries the
     // completed tool receipts, so consumers do not need a second error event.
@@ -187,6 +196,37 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     expect(streamErrorEvents).toHaveLength(1);
     const evt = streamErrorEvents[0] as Extract<StreamEvent, { type: 'stream_error' }>;
     expect(evt.deltasBeforeError).toBe(1);
+  });
+
+  it('does not retry a non-retryable provider stream failure', async () => {
+    const sdkModule = await import('@anthropic-ai/sdk');
+    const MockedAPIError = (sdkModule as unknown as {
+      APIError: new (msg: string) => Error & { status?: number; error?: unknown };
+    }).APIError;
+    streamStubFactory = () => ({
+      async *[Symbol.asyncIterator]() {
+        const error = new MockedAPIError('Invalid request');
+        error.status = 400;
+        error.error = { type: 'invalid_request_error', message: 'Invalid request' };
+        throw error;
+      },
+      finalMessage: vi.fn().mockResolvedValue(null),
+    }) as unknown as ReturnType<typeof makeKeywordErrorStub>;
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'invalid request',
+      undefined,
+      undefined,
+      { costScope: { userId: 'test-user-non-retryable', tier: 'member_paid' }, maxIterations: 1 },
+    )) {
+      events.push(event);
+    }
+
+    expect(sdkStreamCalls).toBe(1);
+    expect(events.filter((event) => event.type === 'retry')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'stream_error')).toHaveLength(1);
   });
 
   it('surfaces provider recovery copy when the local circuit opens after buffered deltas', async () => {

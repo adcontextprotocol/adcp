@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { APIError, APIConnectionError } from '@anthropic-ai/sdk';
-import { isRetryableError, withRetry, withStreamRetry, RetriesExhaustedError, isRetriesExhaustedError } from '../../server/src/utils/anthropic-retry.js';
+import { isRetryableError, withRetry, RetriesExhaustedError, isRetriesExhaustedError } from '../../server/src/utils/anthropic-retry.js';
 
 describe('anthropic-retry utilities', () => {
   describe('isRetryableError', () => {
@@ -249,85 +249,4 @@ describe('anthropic-retry utilities', () => {
     });
   });
 
-  describe('withStreamRetry', () => {
-    // Helper to create an async generator from an array
-    async function* arrayToGenerator<T>(items: T[]): AsyncGenerator<T> {
-      for (const item of items) {
-        yield item;
-      }
-    }
-
-    // Helper to collect all items from an async generator
-    async function collectGenerator<T>(gen: AsyncGenerator<T>): Promise<T[]> {
-      const items: T[] = [];
-      for await (const item of gen) {
-        items.push(item);
-      }
-      return items;
-    }
-
-    it('yields all items on successful first attempt', async () => {
-      const items = ['a', 'b', 'c'];
-      const fn = vi.fn(() => arrayToGenerator(items));
-
-      const result = await collectGenerator(withStreamRetry(fn));
-
-      expect(result).toEqual(items);
-      expect(fn).toHaveBeenCalledTimes(1);
-    });
-
-    it('retries on retryable errors and succeeds', async () => {
-      vi.useRealTimers();
-
-      let callCount = 0;
-      const fn = vi.fn(async function* () {
-        callCount++;
-        if (callCount === 1) {
-          throw new APIConnectionError({ message: 'Connection failed' });
-        }
-        yield 'success';
-      });
-
-      const result = await collectGenerator(
-        withStreamRetry(fn, { maxRetries: 2, initialDelayMs: 10, jitter: false })
-      );
-
-      expect(result).toEqual(['success']);
-      expect(fn).toHaveBeenCalledTimes(2);
-    });
-
-    it('throws non-retryable errors immediately', async () => {
-      const fn = vi.fn(async function* () {
-        throw new APIError(400, { type: 'error' }, 'Bad request', new Headers());
-      });
-
-      await expect(
-        collectGenerator(withStreamRetry(fn, { maxRetries: 3, initialDelayMs: 10, jitter: false }))
-      ).rejects.toThrow('400'); // APIError message format includes status code
-
-      expect(fn).toHaveBeenCalledTimes(1);
-    });
-
-    it('throws RetriesExhaustedError when retries exhausted', async () => {
-      vi.useRealTimers();
-
-      const fn = vi.fn(async function* () {
-        throw new APIError(500, { type: 'server_error' }, 'Server Error', new Headers());
-      });
-
-      try {
-        await collectGenerator(
-          withStreamRetry(fn, { maxRetries: 2, initialDelayMs: 10, jitter: false })
-        );
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect(isRetriesExhaustedError(error)).toBe(true);
-        if (isRetriesExhaustedError(error)) {
-          expect(error.attempts).toBe(3); // 1 initial + 2 retries
-        }
-      }
-
-      expect(fn).toHaveBeenCalledTimes(3);
-    });
-  });
 });

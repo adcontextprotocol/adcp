@@ -1913,10 +1913,19 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Process a message with streaming - yields events as they occur
+   * Process a message as a stream of delivery events.
    *
-   * Note: Tool use temporarily pauses text streaming while the tool executes,
-   * then resumes with the response. The final 'done' event includes the complete response.
+   * Provider attempts are buffered here and may be retried only before that
+   * attempt exposes model content/tool events or executes a requested tool
+   * (a retry-status event may still describe the discarded attempt).
+   * Once a prior iteration has emitted text or a tool receipt, a later terminal
+   * provider failure becomes `stream_error`; this method never restarts the
+   * logical turn. Delivery adapters persist that boundary and own any explicit
+   * user-triggered continuation. These phases cannot use the one-shot
+   * `withRetry` helper because it has no event/tool visibility.
+   *
+   * Tool use pauses delivery while the tool executes, then resumes with its
+   * result. The final `done` event includes the complete response.
    *
    * @param userMessage - The user's message
    * @param threadContext - Optional thread history
@@ -2102,10 +2111,12 @@ export class AddieClaudeClient {
         let currentResponse: ModelResponse | null = null;
         let reusedEmptyResponse = false;
 
-        // Retry loop for streaming API calls (handles overloaded_error).
-        // Logical-turn buffering means no model output is exposed and no
-        // custom tool executes until a complete response is assembled, so a
-        // failed sample is safe to discard and retry even after deltas arrive.
+        // Provider-attempt retry (the pre-first-content/tool-event phase).
+        // Logical response buffering means no model output from this attempt is
+        // exposed and none of its requested tools executes until the response
+        // is complete.
+        // A failed sample is therefore safe to discard even after provider
+        // deltas arrive. This loop never restarts the surrounding logical turn.
         const maxStreamRetries = isExactlyOnceExecution(options) ? 0 : 3;
         let streamRetryCount = 0;
         let streamSucceeded = false;

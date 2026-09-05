@@ -1652,8 +1652,12 @@ export function createAddieChatRouter(options?: {
         });
       }
 
-      // The message uniqueness constraint prevents duplicate storage; this
-      // lease prevents duplicate model/tool execution while a turn is active.
+      // User-triggered ask-again is owned here, separately from provider-attempt
+      // retry and terminal stream-error handling. The message constraint avoids
+      // duplicate storage; the lease serializes the turn; and, on an interrupted
+      // retry, persisted tool checkpoints below reconstruct results and block
+      // exact successful-call replay. Never restart a turn merely because the
+      // transport disconnected.
       if (!completedAssistantMessage && clientRequestId) {
         const claim = await threadService.claimClientTurn(
           thread.thread_id,
