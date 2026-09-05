@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, estimateFixedTraceExperiment, fixedTraceCandidatePlanFingerprint, fixedTraceExperimentPlanFingerprint, fixedTraceTrustedManifestFingerprint, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
+import { FIXED_TRACE_EXPERIMENT_PLAN_VERSION, FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION, assertFixedTraceExperimentPlan, estimateFixedTraceExperiment, fixedTraceCandidatePlanFingerprint, fixedTraceExperimentPlanFingerprint, fixedTraceTrustedManifestFingerprint, validateFixedTraceExperimentPlanOffline, validateFixedTraceRawAuditableLedgerOffline, type FixedTraceExperimentPlan } from '../../../src/addie/eval/fixed-trace-experiment-plan.js';
 import { FIXED_TRACE_PARTITION_MANIFEST, FIXED_TRACE_PARTITION_MANIFEST_SHA256, FIXED_TRACE_PARTITION_MANIFEST_VERSION } from '../../../src/addie/eval/fixed-trace-partition.js';
 import { CLAUDE_PRICING_VERSION } from '../../../src/addie/claude-pricing.js';
 import { CODE_VERSION } from '../../../src/addie/config-version.js';
@@ -52,6 +52,26 @@ describe('fixed-trace experiment plan offline boundary', () => {
     expect(Object.isFrozen(estimate.candidate.reservations)).toBe(true);
     (mutable.arms as any).extra = true;
     expect(() => validateFixedTraceExperimentPlanOffline(mutable)).toThrow('extra array property');
+  });
+  it('validates a declared holdout gate before its resolver check without recursive fingerprinting', () => {
+    const holdout = plan() as any;
+    holdout.partition = {
+      manifestVersion: FIXED_TRACE_PARTITION_MANIFEST_VERSION,
+      manifestSha256: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
+      selected: 'holdout',
+      finalizationGate: { version: FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION, recordId: 'finalize-1' },
+    };
+    holdout.arms[0].router.requestBounds.inputBytesByTrace = Object.fromEntries(
+      FIXED_TRACE_PARTITION_MANIFEST.holdout.map((id) => [id, [100]]),
+    );
+    const fingerprint = fixedTraceCandidatePlanFingerprint(holdout);
+    expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => assertFixedTraceExperimentPlan(holdout, () => null, () => ({
+      version: FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION,
+      trustedManifestId: holdout.trustedManifestId,
+      frozenCandidatePlanFingerprint: fingerprint,
+      consumed: false,
+    }))).toThrow('Trusted fixed-trace manifest is locked');
   });
   it('requires exact ledger sequence, tools, and offline provider resolution', () => {
     const current = plan();

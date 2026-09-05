@@ -460,7 +460,6 @@ function assertPlanShape(plan: FixedTraceExperimentPlan): void {
 
 function assertFixedTraceExperimentPlanStructure(
   plan: FixedTraceExperimentPlan,
-  holdoutFinalizationResolver?: FixedTraceHoldoutFinalizationResolver,
 ): void {
   assertPlanShape(plan);
   assertFixedTracePartitionManifest();
@@ -479,7 +478,7 @@ function assertFixedTraceExperimentPlanStructure(
     throw new Error('Experiment plan uses an uncommitted fixed-trace partition manifest');
   }
   if (plan.partition.selected === 'holdout') {
-    assertHoldoutFinalization(plan, holdoutFinalizationResolver);
+    assertHoldoutFinalizationGateShape(plan);
   } else if (plan.partition.selected !== 'development' || plan.partition.finalizationGate) {
     throw new Error('Development execution must not carry a holdout finalization gate');
   }
@@ -650,10 +649,8 @@ function assertHoldoutFinalization(
   resolver: FixedTraceHoldoutFinalizationResolver | undefined,
 ): void {
   if (plan.partition.selected !== 'holdout') return;
-  const gate = plan.partition.finalizationGate;
-  if (!gate || gate.version !== FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION) {
-    throw new Error('Holdout is locked; an explicit versioned finalization gate is required');
-  }
+  assertHoldoutFinalizationGateShape(plan);
+  const gate = plan.partition.finalizationGate!;
   if (!resolver) throw new Error('Holdout is locked; an externally resolved finalization record is required');
   const record = resolver(gate.recordId);
   if (!record) throw new Error(`Holdout finalization record is unavailable: ${gate.recordId}`);
@@ -663,6 +660,14 @@ function assertHoldoutFinalization(
     || record.frozenCandidatePlanFingerprint !== fixedTraceCandidatePlanFingerprint(plan)
   ) throw new Error('Holdout finalization record does not match the frozen candidate plan');
   if (record.consumed) throw new Error('Holdout finalization record has already been consumed');
+}
+
+/** Shape validation is resolver-free so candidate fingerprints cannot recurse. */
+function assertHoldoutFinalizationGateShape(plan: FixedTraceExperimentPlan): void {
+  const gate = plan.partition.finalizationGate;
+  if (!gate || gate.version !== FIXED_TRACE_HOLDOUT_FINALIZATION_GATE_VERSION) {
+    throw new Error('Holdout is locked; an explicit versioned finalization gate is required');
+  }
 }
 
 export function assertFixedTraceExperimentPlan(
