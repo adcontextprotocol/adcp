@@ -64,13 +64,13 @@ describe('fixed-trace evaluation protocol projection', () => {
     expect(FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES).toEqual([{ provider: 'openai', model: 'gpt-5.6-terra', dispatchable: false, trustedPrice: null }, { provider: 'openai', model: 'gpt-5.6-sol', dispatchable: false, trustedPrice: null }]);
     const terra = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
     terra.phases[1].arms[0].stages[0].provider = 'openai'; terra.phases[1].arms[0].stages[0].model = 'gpt-5.6-terra';
-    expect(() => assertFixedTraceEvaluationProtocol(terra)).toThrow('pricing profile does not match');
+    expect(() => assertFixedTraceEvaluationProtocol(terra)).toThrow('evaluator-owned stage configuration matrix');
   });
   it('rejects reversed, duplicated, direct, smoke-promotion, and fabricated trust', () => {
     const reversed = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL); reversed.phases.reverse();
     expect(() => assertFixedTraceEvaluationProtocol(reversed)).toThrow('exact required order');
     const direct = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL); direct.phases[3].arms[0].architecture = 'direct_bounded_production_shaped';
-    expect(() => assertFixedTraceEvaluationProtocol(direct)).toThrow('direct and hybrid');
+    expect(() => assertFixedTraceEvaluationProtocol(direct)).toThrow('evaluator-owned arm matrix');
     const promotional = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any; promotional.phases[0].resultUse = 'promotional';
     expect(() => assertFixedTraceEvaluationProtocol(promotional)).toThrow();
     expect(() => assertFixedTraceEvaluationProtocolTrusted(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL, () => ({}) as any)).toThrow('locked');
@@ -102,7 +102,7 @@ describe('fixed-trace evaluation protocol projection', () => {
 
     const substituted = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
     substituted.phases[3].arms[1] = structuredClone(substituted.phases[3].arms[0]);
-    expect(() => estimateFixedTraceEvaluationProtocol(substituted)).toThrow('evaluator-owned admission matrix');
+    expect(() => estimateFixedTraceEvaluationProtocol(substituted)).toThrow('evaluator-owned arm matrix');
   });
 
   it('enforces evaluator-owned admission, result use, counts, repetitions, and stop conditions for every phase', () => {
@@ -119,14 +119,85 @@ describe('fixed-trace evaluation protocol projection', () => {
       for (let armIndex = 0; armIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases[phaseIndex].arms.length; armIndex += 1) {
         const admission = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
         admission.phases[phaseIndex].arms[armIndex].admission = 'caller_promotional';
-        expect(() => estimateFixedTraceEvaluationProtocol(admission)).toThrow('evaluator-owned admission matrix');
+        expect(() => estimateFixedTraceEvaluationProtocol(admission)).toThrow('evaluator-owned arm matrix');
         for (let stageIndex = 0; stageIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases[phaseIndex].arms[armIndex].stages.length; stageIndex += 1) {
           const stopCondition = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
           stopCondition.phases[phaseIndex].arms[armIndex].stages[stageIndex].maxInvocationsPerCase = 999;
-          expect(() => estimateFixedTraceEvaluationProtocol(stopCondition)).toThrow('evaluator-owned stop-condition matrix');
+          expect(() => estimateFixedTraceEvaluationProtocol(stopCondition)).toThrow('evaluator-owned stage configuration matrix');
         }
       }
     }
+  });
+
+  it('prices only exact evaluator-owned provider, model, and execution configurations', () => {
+    const profile = (provider: 'anthropic' | 'google', model: string) =>
+      FIXED_TRACE_PROTOCOL_PRICING.find((candidate) => candidate.provider === provider && candidate.model === model)!;
+    const haiku = profile('anthropic', 'claude-haiku-4-5');
+    const sonnet = profile('anthropic', 'claude-sonnet-5');
+    const gemini = profile('google', 'gemini-3.7-flash');
+    const reject = (mutate: (stage: any) => void) => {
+      const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+      mutate(protocol.phases[1].arms[0].stages[0]);
+      expect(() => estimateFixedTraceEvaluationProtocol(protocol)).toThrow('evaluator-owned stage configuration matrix');
+    };
+
+    reject((stage) => { stage.provider = gemini.provider; stage.model = gemini.model; stage.pricingProfileId = gemini.profileId; });
+    reject((stage) => { stage.model = sonnet.model; stage.pricingProfileId = sonnet.profileId; });
+    reject((stage) => { stage.model = 'claude-haiku-4.5'; });
+    reject((stage) => { stage.pricingProfileId = sonnet.profileId; });
+    expect(haiku.profileId).not.toBe(gemini.profileId);
+
+    for (let phaseIndex = 0; phaseIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases.length; phaseIndex += 1) {
+      for (let armIndex = 0; armIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases[phaseIndex].arms.length; armIndex += 1) {
+        for (let stageIndex = 0; stageIndex < FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases[phaseIndex].arms[armIndex].stages.length; stageIndex += 1) {
+          for (const mutate of [
+            (stage: any) => { stage.reasoningEffort = stage.reasoningEffort === 'low' ? 'medium' : 'low'; },
+            (stage: any) => { stage.maxInputTokensPerInvocation += 1; },
+            (stage: any) => { stage.maxOutputTokensPerInvocation += 1; },
+            (stage: any) => { stage.timeoutMs += 1; },
+            (stage: any) => { stage.maxInvocationsPerCase += 1; },
+            (stage: any) => { stage.transportRetries = 1; },
+            (stage: any) => { stage.cacheMode = 'caller_cache'; },
+            (stage: any) => { stage.samplingMode = 'caller_sampling'; },
+            (stage: any) => { stage.temperature = 0; },
+          ]) {
+            const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+            mutate(protocol.phases[phaseIndex].arms[armIndex].stages[stageIndex]);
+            expect(() => estimateFixedTraceEvaluationProtocol(protocol)).toThrow('evaluator-owned stage configuration matrix');
+          }
+        }
+      }
+    }
+  });
+
+  it('rejects missing, extra, reordered, duplicated, and hostile stage records before pricing', () => {
+    const reject = (mutate: (protocol: any) => void, message = 'evaluator-owned stage configuration matrix') => {
+      const protocol = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
+      mutate(protocol);
+      expect(() => estimateFixedTraceEvaluationProtocol(protocol)).toThrow(message);
+    };
+    reject((protocol) => { protocol.phases[0].arms[0].stages.pop(); });
+    reject((protocol) => { protocol.phases[0].arms[0].stages.push(structuredClone(protocol.phases[0].arms[0].stages[0])); });
+    reject((protocol) => { protocol.phases[0].arms[0].stages.reverse(); });
+    reject((protocol) => { protocol.phases[0].arms[0].stages[1] = structuredClone(protocol.phases[0].arms[0].stages[0]); });
+
+    reject((protocol) => {
+      const stage = protocol.phases[1].arms[0].stages[0];
+      const { provider: ignoredProvider, ...own } = stage;
+      void ignoredProvider;
+      protocol.phases[1].arms[0].stages[0] = Object.assign(Object.create({ provider: 'google' }), own);
+    }, 'plain object');
+    reject((protocol) => {
+      Object.defineProperty(protocol.phases[1].arms[0].stages[0], 'provider', {
+        enumerable: true,
+        get() { return 'google'; },
+      });
+    }, 'own enumerable data');
+    reject((protocol) => { protocol.phases[1].arms[0].stages[0] = new Proxy(protocol.phases[1].arms[0].stages[0], {}); }, 'Proxy');
+    reject((protocol) => { Object.setPrototypeOf(protocol.phases[1].arms[0].stages[0], { provider: 'google' }); }, 'plain object');
+    reject((protocol) => {
+      Object.defineProperty(protocol.phases[1].arms[0].stages[0], '__proto__', { enumerable: true, value: { poisoned: true } });
+    }, 'dangerous prototype key');
   });
 
   it('keeps prototype-shaped JSON as visible data and rejects it at every protocol fingerprint boundary', () => {
@@ -184,7 +255,8 @@ describe('fixed-trace evaluation protocol projection', () => {
     expect(estimate.stages.find((stage) => stage.phaseId === 'router_screen')?.outputTokenCeiling).toBe(46 * 3 * 300);
     expect(Object.isFrozen(estimate)).toBe(true);
     expect(Object.isFrozen(estimate.phases)).toBe(true);
-    expect(expectedFingerprint).not.toBe(fixedTraceEvaluationProtocolFingerprint(protocol));
+    expect(expectedFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => fixedTraceEvaluationProtocolFingerprint(protocol)).toThrow('evaluator-owned stage configuration matrix');
 
     const arrayExtra = structuredClone(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) as any;
     arrayExtra.phases.extra = true;

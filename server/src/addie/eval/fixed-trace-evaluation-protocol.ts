@@ -146,6 +146,12 @@ export interface FixedTraceProtocolStage {
   cacheMode: 'disabled';
 }
 
+const STAGE_FIELD_KEYS = Object.freeze([
+  'role', 'provider', 'model', 'reasoningEffort', 'pricingProfileId',
+  'maxInputTokensPerInvocation', 'maxOutputTokensPerInvocation', 'timeoutMs',
+  'maxInvocationsPerCase', 'transportRetries', 'samplingMode', 'temperature', 'cacheMode',
+] as const);
+
 export interface FixedTraceProtocolArm {
   id: string;
   architecture: FixedTraceProtocolArchitecture;
@@ -372,11 +378,7 @@ function pricing(profileId: string, pricingAsOf: string): FixedTraceProtocolPric
 }
 
 function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf: string): FixedTraceProtocolPricingProfile {
-  assertExactKeys(stage, [
-    'role', 'provider', 'model', 'reasoningEffort', 'pricingProfileId',
-    'maxInputTokensPerInvocation', 'maxOutputTokensPerInvocation', 'timeoutMs',
-    'maxInvocationsPerCase', 'transportRetries', 'samplingMode', 'temperature', 'cacheMode',
-  ], label);
+  assertExactKeys(stage, STAGE_FIELD_KEYS, label);
   positiveInteger(stage.maxInputTokensPerInvocation, `${label}.maxInputTokensPerInvocation`);
   positiveInteger(stage.maxOutputTokensPerInvocation, `${label}.maxOutputTokensPerInvocation`);
   positiveInteger(stage.timeoutMs, `${label}.timeoutMs`);
@@ -397,51 +399,114 @@ function assertStage(stage: FixedTraceProtocolStage, label: string, pricingAsOf:
  * Execution limits are evaluator-owned planning inputs, not caller-selected
  * estimates. Keep this matrix independent of the proposed protocol object so
  * a detached protocol supplied to an offline estimator cannot rewrite its
- * phase, admission, result-use, or stop conditions.
+ * phase, arm, admission, result-use, or execution configuration. The private
+ * stage records are the only allowed price-bearing configurations; callers
+ * may provide JSON that equals them, but cannot select a price cohort.
  */
+const PRICE = Object.freeze({
+  haiku: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
+  sonnet: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
+  gemini: `${GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION}:gemini-3.7-flash`,
+});
+
+const router = (
+  provider: ModelProviderId,
+  model: string,
+  reasoningEffort: ModelReasoningEffort,
+  pricingProfileId: string,
+): FixedTraceProtocolStage => Object.freeze({
+  role: 'router', provider, model, reasoningEffort, pricingProfileId,
+  maxInputTokensPerInvocation: 4_096, maxOutputTokensPerInvocation: 300,
+  timeoutMs: 120_000, maxInvocationsPerCase: 1, transportRetries: 0,
+  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
+});
+
+const generation = (
+  provider: ModelProviderId,
+  model: string,
+  reasoningEffort: ModelReasoningEffort,
+  pricingProfileId: string,
+): FixedTraceProtocolStage => Object.freeze({
+  role: 'generation', provider, model, reasoningEffort, pricingProfileId,
+  maxInputTokensPerInvocation: 16_384, maxOutputTokensPerInvocation: 900,
+  timeoutMs: 120_000, maxInvocationsPerCase: 12, transportRetries: 0,
+  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
+});
+
 const EVALUATOR_OWNED_PHASE_MATRIX = Object.freeze([
   Object.freeze({
     id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1,
     arms: Object.freeze([Object.freeze({
-      id: 'smoke-incumbent-two-stage', admission: 'planning_only',
-      stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+      id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      stages: Object.freeze([
+        router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
+        generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+      ]),
     })]),
   }),
   Object.freeze({
     id: 'router_screen', uniqueCaseCount: 46, repetitions: 3,
     arms: Object.freeze([Object.freeze({
-      id: 'router-haiku-default', admission: 'planning_only',
-      stopConditions: Object.freeze([['router', 1]] as const),
+      id: 'router-haiku-default', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]),
     })]),
   }),
   Object.freeze({
     id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2,
     arms: Object.freeze([Object.freeze({
-      id: 'oracle-sonnet-default', admission: 'planning_only',
-      stopConditions: Object.freeze([['generation', 12]] as const),
+      id: 'oracle-sonnet-default', architecture: 'oracle_route_diagnostic', admission: 'planning_only',
+      stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]),
     })]),
   }),
   Object.freeze({
     id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3,
     arms: Object.freeze([
       Object.freeze({
-        id: 'incumbent-haiku-sonnet', admission: 'planning_only',
-        stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+        id: 'incumbent-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only',
+        stages: Object.freeze([
+          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
+          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+        ]),
       }),
       Object.freeze({
-        id: 'gemini-low-medium-pipeline', admission: 'planning_only',
-        stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+        id: 'gemini-low-medium-pipeline', architecture: 'two_stage_llm_router', admission: 'planning_only',
+        stages: Object.freeze([
+          router('google', 'gemini-3.7-flash', 'low', PRICE.gemini),
+          generation('google', 'gemini-3.7-flash', 'medium', PRICE.gemini),
+        ]),
       }),
     ]),
   }),
   Object.freeze({
     id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3,
     arms: Object.freeze([Object.freeze({
-      id: 'tuning-incumbent-haiku-sonnet', admission: 'planning_only',
-      stopConditions: Object.freeze([['router', 1], ['generation', 12]] as const),
+      id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router', admission: 'planning_only',
+      stages: Object.freeze([
+        router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
+        generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+      ]),
     })]),
   }),
 ] as const);
+
+function matchesEvaluatorOwnedStage(
+  stage: FixedTraceProtocolStage,
+  expected: FixedTraceProtocolStage,
+): boolean {
+  return stage.role === expected.role
+    && stage.provider === expected.provider
+    && stage.model === expected.model
+    && stage.reasoningEffort === expected.reasoningEffort
+    && stage.pricingProfileId === expected.pricingProfileId
+    && stage.maxInputTokensPerInvocation === expected.maxInputTokensPerInvocation
+    && stage.maxOutputTokensPerInvocation === expected.maxOutputTokensPerInvocation
+    && stage.timeoutMs === expected.timeoutMs
+    && stage.maxInvocationsPerCase === expected.maxInvocationsPerCase
+    && stage.transportRetries === expected.transportRetries
+    && stage.samplingMode === expected.samplingMode
+    && stage.temperature === expected.temperature
+    && stage.cacheMode === expected.cacheMode;
+}
 
 function assertEvaluatorOwnedPhaseMatrix(phase: FixedTraceProtocolPhase, index: number): void {
   const expected = EVALUATOR_OWNED_PHASE_MATRIX[index];
@@ -458,16 +523,22 @@ function assertEvaluatorOwnedPhaseMatrix(phase: FixedTraceProtocolPhase, index: 
   for (let armIndex = 0; armIndex < phase.arms.length; armIndex += 1) {
     const arm = phase.arms[armIndex];
     const expectedArm = expected.arms[armIndex];
-    if (!expectedArm || arm.id !== expectedArm.id || arm.admission !== expectedArm.admission) {
-      throw new Error(`${phase.id} arm does not match the evaluator-owned admission matrix`);
+    if (!expectedArm
+      || arm.id !== expectedArm.id
+      || arm.architecture !== expectedArm.architecture
+      || arm.admission !== expectedArm.admission) {
+      throw new Error(`${phase.id} arm does not match the evaluator-owned arm matrix`);
     }
-    if (arm.stages.length !== expectedArm.stopConditions.length || arm.stages.some((stage, stageIndex) => {
-      const expectedStop = expectedArm.stopConditions[stageIndex];
-      return !expectedStop
-        || stage.role !== expectedStop[0]
-        || stage.maxInvocationsPerCase !== expectedStop[1];
-    })) {
-      throw new Error(`${phase.id}.${arm.id} does not match the evaluator-owned stop-condition matrix`);
+    if (arm.stages.length !== expectedArm.stages.length) {
+      throw new Error(`${phase.id}.${arm.id} does not match the evaluator-owned stage configuration matrix`);
+    }
+    for (let stageIndex = 0; stageIndex < arm.stages.length; stageIndex += 1) {
+      const stage = arm.stages[stageIndex];
+      const expectedStage = expectedArm.stages[stageIndex];
+      assertExactKeys(stage, STAGE_FIELD_KEYS, `${phase.id}.${arm.id}.stage[${stageIndex}]`);
+      if (!expectedStage || !matchesEvaluatorOwnedStage(stage, expectedStage)) {
+        throw new Error(`${phase.id}.${arm.id} does not match the evaluator-owned stage configuration matrix`);
+      }
     }
   }
 }
@@ -679,36 +750,6 @@ export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluat
     totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd + contingencyUsd,
   });
 }
-
-const router = (
-  provider: ModelProviderId,
-  model: string,
-  reasoningEffort: ModelReasoningEffort,
-  pricingProfileId: string,
-): FixedTraceProtocolStage => ({
-  role: 'router', provider, model, reasoningEffort, pricingProfileId,
-  maxInputTokensPerInvocation: 4_096, maxOutputTokensPerInvocation: 300,
-  timeoutMs: 120_000, maxInvocationsPerCase: 1, transportRetries: 0,
-  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
-});
-
-const generation = (
-  provider: ModelProviderId,
-  model: string,
-  reasoningEffort: ModelReasoningEffort,
-  pricingProfileId: string,
-): FixedTraceProtocolStage => ({
-  role: 'generation', provider, model, reasoningEffort, pricingProfileId,
-  maxInputTokensPerInvocation: 16_384, maxOutputTokensPerInvocation: 900,
-  timeoutMs: 120_000, maxInvocationsPerCase: 12, transportRetries: 0,
-  samplingMode: 'provider_no_sampling_control', temperature: null, cacheMode: 'disabled',
-});
-
-const PRICE = Object.freeze({
-  haiku: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
-  sonnet: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
-  gemini: `${GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION}:gemini-3.7-flash`,
-});
 
 /** Unsupported model names are inert metadata, never a stage or a price. */
 export const FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES = Object.freeze([
