@@ -378,6 +378,7 @@ describe('fixed cross-provider trace suite', () => {
       'org%5Freal%5F123456', 'org%255Freal%255F123456', 'brian%2Go%20kelley',
       'https://nytimes%2ecom/x', 'the%5ftrade%5fdesk', 'u%5f0123456789', 'org%2ereal%2e123456',
       'Brіan O Кelley',
+      'Briaп O Kelley', 'Brıan O Kelley', 'nytimes dot com', 'nytimes&#46;com', 'org&#46;real&#46;123456',
     ]) {
       const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
       realIdentity[0].request.message = substitution;
@@ -389,6 +390,10 @@ describe('fixed cross-provider trace suite', () => {
     expect(canonicalFixedTraceText('read_google_doc')).toMatchObject({
       compact: 'readgoogledoc', malformedPercentEncoding: false,
     });
+    expect(canonicalFixedTraceText('50% discount')).toMatchObject({
+      compact: '50discount', malformedPercentEncoding: false,
+    });
+    expect(candidateVisibleMarkerOverlap({ message: '50% discount' }, ['typed receipt'])).toEqual([]);
 
     const reviewedLock = {
       version: 'externally-reviewed-v32',
@@ -671,7 +676,9 @@ describe('fixed cross-provider trace suite', () => {
     expect(candidateVisibleMarkerOverlap({ message: 'typed%20receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
     expect(candidateVisibleMarkerOverlap({ message: 'agenda%2etiming' }, ['agenda timing'])).toEqual(['agenda timing']);
     expect(candidateVisibleMarkerOverlap({ message: 'typed receipт' }, ['typed receipt'])).toEqual(['typed receipt']);
-    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing', 'typed%20receipt', 'typed%2520receipt', 'agenda%2etiming', 'typed receipт', 'typ%D0%B5d%20r%D0%B5ceipt', 'typed%2Greceipt']) {
+    expect(candidateVisibleMarkerOverlap({ message: 'typed&#32;receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'agenda dot timing' }, ['agenda timing'])).toEqual(['agenda timing']);
+    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing', 'typed%20receipt', 'typed%2520receipt', 'agenda%2etiming', 'typed receipт', 'typed&#32;receipt', 'typed&#x20;receipt', 'typed&amp;#32;receipt', 'typed%252520receipt', 'typ%D0%B5d%20r%D0%B5ceipt', 'typed%2Greceipt']) {
       const escapedMarkerLeak = structuredClone(FIXED_TRACE_CORPUS);
       const id = value.startsWith('agenda') ? 'tune-long-channel-injection' : 'tune-long-doc-bounded';
       escapedMarkerLeak.find((trace) => trace.id === id)!.request.message += ` ${value}`;
