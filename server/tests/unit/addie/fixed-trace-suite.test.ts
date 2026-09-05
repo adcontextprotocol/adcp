@@ -16,6 +16,7 @@ import {
   type FixedTraceRunMetadata,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
+import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 
 const HASH = createHash('sha256').update('fixture').digest('hex');
 
@@ -143,6 +144,13 @@ describe('fixed cross-provider trace suite', () => {
       ...new Set(FIXED_TRACE_SUITE.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name))),
     ];
     expect(canonicalFixedTraceToolDefinitions().map((tool) => tool.name)).toEqual(fixtureNames);
+  });
+
+  it('can replay every fixture tool sequentially and still request a final answer', () => {
+    const requiredIterations = Math.max(
+      ...FIXED_TRACE_SUITE.map((trace) => trace.toolFixtures.length + 1),
+    );
+    expect(MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS).toBeGreaterThanOrEqual(requiredIterations);
   });
 
   it('is a fixed synthetic corpus covering every required risk category', () => {

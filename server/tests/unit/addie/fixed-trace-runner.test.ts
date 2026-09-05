@@ -465,7 +465,25 @@ describe('fixed trace artifact runner', () => {
       terminalStatus: 'malformed',
       boundaryReason: 'duplicate_tool_call',
       flagged: true,
-      tools: [],
+      tools: [
+        {
+          name: 'list_working_groups',
+          resultStatus: 'ok',
+          simulated: true,
+        },
+        {
+          name: 'create_working_group_post',
+          resultStatus: 'ok',
+          simulated: true,
+        },
+      ],
+    });
+    expect(observation.metadata.generation).toMatchObject({
+      source: 'local',
+      usageKnown: true,
+      usage: { inputTokens: 30, outputTokens: 15 },
+      estimatedCostUsd: 0.000105,
+      pricingSource: 'Synthetic test pricing.',
     });
   });
 
@@ -669,7 +687,7 @@ describe('fixed trace artifact runner', () => {
     });
   });
 
-  it('keeps a dispatched malformed tool turn in the denominator with unknown cost', async () => {
+  it('keeps exact usage for a dispatched malformed tool turn', async () => {
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const generation = new ScriptedProvider([response([{
       type: 'tool_call',
@@ -689,9 +707,10 @@ describe('fixed trace artifact runner', () => {
         generation: {
           source: 'local',
           dispatched: true,
-          usageKnown: false,
-          estimatedCostUsd: null,
-          pricingSource: null,
+          usageKnown: true,
+          usage: { inputTokens: 10, outputTokens: 5 },
+          estimatedCostUsd: 0.000035,
+          pricingSource: 'Synthetic test pricing.',
         },
       },
     });

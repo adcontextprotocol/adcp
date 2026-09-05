@@ -34,8 +34,16 @@ export const MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS = 12;
 
 export type FixedTraceToolLoopReason = FixedTraceBoundaryReason;
 
+export interface FixedTraceToolLoopCheckpoint {
+  usage: ModelUsage;
+  tools: ReadonlyArray<FixedTraceToolExecution>;
+}
+
 export class FixedTraceToolLoopBoundaryError extends Error {
-  constructor(readonly reason: FixedTraceToolLoopReason) {
+  constructor(
+    readonly reason: FixedTraceToolLoopReason,
+    readonly checkpoint?: FixedTraceToolLoopCheckpoint,
+  ) {
     super(reason);
     this.name = 'FixedTraceToolLoopBoundaryError';
   }
@@ -182,6 +190,12 @@ export async function executeFixedTraceToolLoop(
   const seenCallIds = new Set<string>();
   const seenToolNames = new Set<string>();
   const modelLoop = new ModelTurnLoopState(iterationLimit);
+  const boundary = (reason: FixedTraceToolLoopReason): FixedTraceToolLoopBoundaryError => (
+    new FixedTraceToolLoopBoundaryError(reason, {
+      usage: modelLoop.usage,
+      tools: Object.freeze([...executions]),
+    })
+  );
 
   while (modelLoop.hasRemaining) {
     const activeTurn = modelLoop.beginNext();
@@ -207,7 +221,7 @@ export async function executeFixedTraceToolLoop(
     const turn = activeTurn.acceptResponse(response);
 
     if (turn.providerToolCalls.length > 0 || turn.providerToolResults.length > 0) {
-      throw new FixedTraceToolLoopBoundaryError('provider_continuation_not_allowed');
+      throw boundary('provider_continuation_not_allowed');
     }
     if (turn.action === 'continue') {
       appendModelTurnContinuation(messages, response);
@@ -230,7 +244,7 @@ export async function executeFixedTraceToolLoop(
     }
 
     if (executions.length + turn.toolCalls.length > trace.toolFixtures.length) {
-      throw new FixedTraceToolLoopBoundaryError('tool_call_limit_exceeded');
+      throw boundary('tool_call_limit_exceeded');
     }
     const calls = turn.toolCalls.map((call) => deepFreeze(structuredClone(call)));
     const batchCallIds = new Set<string>();
@@ -242,12 +256,12 @@ export async function executeFixedTraceToolLoop(
         || batchCallIds.has(call.id)
         || batchToolNames.has(call.name)
       ) {
-        throw new FixedTraceToolLoopBoundaryError('duplicate_tool_call');
+        throw boundary('duplicate_tool_call');
       }
       const entry = registered.get(call.name);
-      if (!entry) throw new FixedTraceToolLoopBoundaryError('unknown_tool_call');
+      if (!entry) throw boundary('unknown_tool_call');
       if (!entry.validate(call.input)) {
-        throw new FixedTraceToolLoopBoundaryError('tool_input_invalid');
+        throw boundary('tool_input_invalid');
       }
       batchCallIds.add(call.id);
       batchToolNames.add(call.name);
@@ -278,5 +292,5 @@ export async function executeFixedTraceToolLoop(
     appendModelTurnContinuation(messages, response, results);
   }
 
-  throw new FixedTraceToolLoopBoundaryError('iteration_limit_exceeded');
+  throw boundary('iteration_limit_exceeded');
 }
