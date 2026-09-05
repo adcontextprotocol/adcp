@@ -59,7 +59,7 @@ function judgment(
     judge_model: 'claude-opus-4-6',
     self_judged: false,
     judge_prompt_version: 'official-docs-independent-judge:v1',
-    pricing_version: 'anthropic-standard-2026-08:claude-opus-4-6',
+    pricing_version: 'anthropic-standard-2026-09:claude-opus-4-6',
     status: 'judged',
     reason: 'judgment_succeeded',
     evaluation_valid: true,

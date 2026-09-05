@@ -11,7 +11,7 @@
  *     cap by rewriting pricing).
  *
  * Update these alongside Anthropic's pricing page when model rates
- * change. Last refresh: August 2026.
+ * change. Last refresh: September 2026.
  */
 
 /** Per-million-token prices. Converted to per-token via × 1/1_000_000 downstream. */
@@ -24,7 +24,7 @@ interface ModelRates {
   cacheReadUsd: number;
 }
 
-export const CLAUDE_PRICING_VERSION = 'anthropic-standard-2026-08' as const;
+export const CLAUDE_PRICING_VERSION = 'anthropic-standard-2026-09' as const;
 
 const PRICING_PER_MILLION_TOKENS: Record<string, ModelRates> = {
   // Claude Fable — highest-cost generally available tier
@@ -34,11 +34,12 @@ const PRICING_PER_MILLION_TOKENS: Record<string, ModelRates> = {
   'claude-opus-4-7': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
   'claude-opus-4-8': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
   'claude-opus-5': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
-  // Claude Sonnet — balanced tier (most Addie calls). Sonnet 5 is kept at
-  // its standard post-promotion rate so the daily cap remains conservative.
+  // Claude Sonnet — balanced tier (most Addie calls). Anthropic pricing
+  // checked 2026-09-05: Sonnet 5 uses its exact public standard rate,
+  // including the 5-minute cache-write rate.
   'claude-sonnet-4-5': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
   'claude-sonnet-4-6': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
-  'claude-sonnet-5': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
+  'claude-sonnet-5': { inputUsd: 2, outputUsd: 10, cacheCreationUsd: 2.5, cacheReadUsd: 0.2 },
   // Claude Haiku 4.x — fast / cheap tier (routing, classification)
   'claude-haiku-4-5': { inputUsd: 1, outputUsd: 5, cacheCreationUsd: 1.25, cacheReadUsd: 0.1 },
 };

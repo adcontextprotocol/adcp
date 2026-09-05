@@ -77,24 +77,24 @@ type ProviderPlan = FixedTraceDiagnosticProviderPlan & { name: ProviderName };
 
 const PRICING = {
   anthropicRouter: {
-    profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
+    profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
     inputUsdPerMillionTokens: 1,
     outputUsdPerMillionTokens: 5,
     cacheReadUsdPerMillionTokens: 0.1,
     cacheWriteUsdPerMillionTokens: 1.25,
     cacheReadAccounting: 'additive',
     cacheWriteAccounting: 'additive',
-    source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+    source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
   },
   anthropicGeneration: {
-    profileId: 'anthropic-standard-2026-08:claude-sonnet-5',
-    inputUsdPerMillionTokens: 3,
-    outputUsdPerMillionTokens: 15,
-    cacheReadUsdPerMillionTokens: 0.3,
-    cacheWriteUsdPerMillionTokens: 3.75,
+    profileId: 'anthropic-standard-2026-09:claude-sonnet-5',
+    inputUsdPerMillionTokens: 2,
+    outputUsdPerMillionTokens: 10,
+    cacheReadUsdPerMillionTokens: 0.2,
+    cacheWriteUsdPerMillionTokens: 2.5,
     cacheReadAccounting: 'additive',
     cacheWriteAccounting: 'additive',
-    source: 'Repository Anthropic pricing table: Claude Sonnet 5 standard, refreshed August 2026.',
+    source: 'Anthropic pricing page: Claude Sonnet 5 standard (5-minute cache write), checked 2026-09-05.',
   },
   openai: {
     profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',

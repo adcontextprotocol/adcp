@@ -7,13 +7,13 @@ import {
 describe('shadow replay pricing', () => {
   it('prices exact Anthropic usage including cache reads and writes', () => {
     const pricing = resolveShadowReplayPricing('anthropic', 'claude-sonnet-5');
-    expect(pricing?.version).toBe('anthropic-standard-2026-08:claude-sonnet-5');
+    expect(pricing?.version).toBe('anthropic-standard-2026-09:claude-sonnet-5');
     expect(pricing?.estimateCostMicros({
       inputTokens: 100,
       outputTokens: 20,
       cacheReadTokens: 1_000,
       cacheWriteTokens: 200,
-    })).toBe(1_650);
+    })).toBe(1_100);
   });
 
   it('prices only the exact reviewed Google model', () => {
