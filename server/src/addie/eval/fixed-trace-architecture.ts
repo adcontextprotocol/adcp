@@ -1,4 +1,5 @@
 import type { AddieTool } from '../types.js';
+import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import type { FixedTraceCase } from './fixed-trace-suite.js';
 
 /**
@@ -49,11 +50,15 @@ export interface FixedTraceToolUniverseProvenance {
   source:
     | 'fixture_local_routed_replay'
     | 'authorized_definition_handler_intersection_not_captured'
+    | 'evaluator_owned_production_shaped_intersection'
     | 'fixture_oracle';
   intentNarrowing: 'llm_router' | 'not_applied' | 'fixture_oracle';
   bounded: boolean;
   deployable: boolean;
   toolNames: readonly string[] | null;
+  toolNamesSha256?: string | null;
+  toolSchemaSha256?: string | null;
+  definitionHandlerSha256?: string | null;
 }
 
 /**
@@ -62,7 +67,7 @@ export interface FixedTraceToolUniverseProvenance {
  * can reuse the production-equivalent executor.
  */
 export interface FixedTraceExecutionEnvelopeProvenance {
-  source: 'fixture_expectation' | 'request_thread_facts_not_captured' | 'fixture_oracle';
+  source: 'fixture_expectation' | 'request_thread_facts_not_captured' | 'evaluator_owned_shared_request_thread_envelope' | 'fixture_oracle';
   deployable: boolean;
 }
 
@@ -70,7 +75,7 @@ export function fixedTraceExecutionEnvelopeProvenance(
   arm: FixedTraceArchitectureArmId = 'two_stage_llm_router',
 ): FixedTraceExecutionEnvelopeProvenance {
   if (arm === 'direct_generation') return Object.freeze({
-    source: 'request_thread_facts_not_captured',
+    source: 'evaluator_owned_shared_request_thread_envelope',
     deployable: false,
   });
   if (arm === 'oracle_route_diagnostic') return Object.freeze({
@@ -85,11 +90,14 @@ export function fixedTraceToolUniverseProvenance(
 ): FixedTraceToolUniverseProvenance {
   if (arm === 'direct_generation') {
     return Object.freeze({
-      source: 'authorized_definition_handler_intersection_not_captured',
+      source: 'evaluator_owned_production_shaped_intersection',
       intentNarrowing: 'not_applied',
-      bounded: false,
+      bounded: true,
       deployable: false,
-      toolNames: null,
+      toolNames: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames,
+      toolNamesSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256,
+      toolSchemaSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256,
+      definitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
     });
   }
   if (arm === 'oracle_route_diagnostic') {
@@ -151,8 +159,10 @@ function freezeAdmission(
 export function deriveFixedTraceDirectToolUniverse(trace: FixedTraceCase): FixedTraceDirectToolUniverse {
   return Object.freeze({
     ...fixedTraceToolUniverseProvenance('direct_generation'),
-    surface: trace.request.source,
-    isAdmin: trace.request.isAdmin,
+    // Surface and authorization are evaluator-owned. Fixed traces can supply
+    // only synthetic conversation content, never capability claims.
+    surface: 'dm',
+    isAdmin: false,
   });
 }
 
@@ -170,17 +180,10 @@ export function admitFixedTraceDirectArm(
   definitionProvenance: FixedTraceToolDefinitionProvenance,
 ): FixedTraceDirectArmAdmission {
   const universe = deriveFixedTraceDirectToolUniverse(trace);
-  const reasons: FixedTraceDirectArmAdmissionReason[] = [];
-  if (definitionProvenance === 'fixture_local') reasons.push('fixture_local_tool_definitions');
-
-  // Do not infer a candidate surface from the definitions or fixture labels.
-  // Today they are trace-local, while production's authenticated intersection
-  // is neither captured here nor bounded independently of intent narrowing.
+  // The evaluator's definitions, synthetic receipt handlers, policy, and
+  // request/thread envelope are all fixed above. Caller-provided definitions
+  // and provenance never participate in direct admission.
   void definitions;
-  reasons.push(
-    'authorized_tool_intersection_not_captured',
-    'authorized_tool_universe_unbounded',
-    'request_thread_execution_envelope_not_captured',
-  );
-  return freezeAdmission(reasons.length === 0, [...new Set(reasons)], universe);
+  void definitionProvenance;
+  return freezeAdmission(true, [], universe);
 }

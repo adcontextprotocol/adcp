@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../direct-tool-universe.js';
 import {
   fixedTraceArchitectureArm,
 } from './fixed-trace-architecture.js';
@@ -1273,6 +1274,9 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     intentNarrowing: metadata.toolUniverse.intentNarrowing,
     bounded: metadata.toolUniverse.bounded,
     deployable: metadata.toolUniverse.deployable,
+    toolNamesSha256: metadata.toolUniverse.toolNamesSha256 ?? null,
+    toolSchemaSha256: metadata.toolUniverse.toolSchemaSha256 ?? null,
+    definitionHandlerSha256: metadata.toolUniverse.definitionHandlerSha256 ?? null,
   };
   return {
     traceSuiteSha256: metadata.traceSuiteSha256,
@@ -1285,7 +1289,12 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     architectureArm: metadata.architectureArm,
     toolUniverse: cohortToolUniverse,
     executionEnvelope: metadata.executionEnvelope,
-    routerControl: metadata.routerControl,
+    // A direct (or fixture-oracle) arm has no router dispatch. Retaining an
+    // unexecuted router's provider/model/price controls in its identity would
+    // let an irrelevant config alter the candidate fingerprint.
+    routerControl: metadata.architectureArm.id === 'two_stage_llm_router'
+      ? metadata.routerControl
+      : { status: 'not_run' },
     generationControl: metadata.generationControl,
     providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
   };
@@ -1542,10 +1551,8 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     if (metadata.directArmAdmission === null) {
       failures.push('direct_arm_admission_missing');
     } else if (
-      metadata.directArmAdmission.admitted
-      || !metadata.directArmAdmission.reasons.includes('authorized_tool_intersection_not_captured')
-      || !metadata.directArmAdmission.reasons.includes('authorized_tool_universe_unbounded')
-      || !metadata.directArmAdmission.reasons.includes('request_thread_execution_envelope_not_captured')
+      !metadata.directArmAdmission.admitted
+      || metadata.directArmAdmission.reasons.length !== 0
     ) {
       failures.push('direct_arm_admission_invalid');
     }
@@ -1553,7 +1560,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('direct_arm_admission_unexpected');
   }
   const toolUniverse = metadata.toolUniverse;
-  if (!toolUniverse || !['fixture_local_routed_replay', 'authorized_definition_handler_intersection_not_captured', 'fixture_oracle'].includes(toolUniverse.source)) {
+  if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_shaped_intersection', 'fixture_oracle'].includes(toolUniverse.source)) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'two_stage_llm_router'
@@ -1562,7 +1569,10 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('tool_universe_provenance_invalid');
   } else if (
     arm?.id === 'direct_generation'
-    && (toolUniverse.source !== 'authorized_definition_handler_intersection_not_captured' || toolUniverse.intentNarrowing !== 'not_applied' || toolUniverse.bounded || toolUniverse.deployable)
+    && (toolUniverse.source !== 'evaluator_owned_production_shaped_intersection' || toolUniverse.intentNarrowing !== 'not_applied' || !toolUniverse.bounded || toolUniverse.deployable
+      || toolUniverse.toolNamesSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256
+      || toolUniverse.toolSchemaSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256
+      || toolUniverse.definitionHandlerSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256)
   ) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
@@ -1572,13 +1582,13 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('tool_universe_provenance_invalid');
   }
   const expectedToolNames = arm?.id === 'direct_generation'
-    ? null
+    ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames
     : [...trace.toolFixtures.map((fixture) => fixture.name)].sort();
   if (!sameToolUniverseNames(toolUniverse?.toolNames ?? null, expectedToolNames)) {
     failures.push('tool_universe_names_mismatch');
   }
   const executionEnvelope = metadata.executionEnvelope;
-  if (!executionEnvelope || !['fixture_expectation', 'request_thread_facts_not_captured', 'fixture_oracle'].includes(executionEnvelope.source)) {
+  if (!executionEnvelope || !['fixture_expectation', 'evaluator_owned_shared_request_thread_envelope', 'fixture_oracle'].includes(executionEnvelope.source)) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
     arm?.id === 'two_stage_llm_router'
@@ -1587,7 +1597,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('execution_envelope_provenance_invalid');
   } else if (
     arm?.id === 'direct_generation'
-    && (executionEnvelope.source !== 'request_thread_facts_not_captured' || executionEnvelope.deployable)
+    && (executionEnvelope.source !== 'evaluator_owned_shared_request_thread_envelope' || executionEnvelope.deployable)
   ) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
@@ -1907,6 +1917,9 @@ export function assertFixedTraceRunContract(
       || candidate.toolUniverse.intentNarrowing !== runContract.toolUniverse.intentNarrowing
       || candidate.toolUniverse.bounded !== runContract.toolUniverse.bounded
       || candidate.toolUniverse.deployable !== runContract.toolUniverse.deployable
+      || candidate.toolUniverse.toolNamesSha256 !== runContract.toolUniverse.toolNamesSha256
+      || candidate.toolUniverse.toolSchemaSha256 !== runContract.toolUniverse.toolSchemaSha256
+      || candidate.toolUniverse.definitionHandlerSha256 !== runContract.toolUniverse.definitionHandlerSha256
       || candidate.executionEnvelope.source !== runContract.executionEnvelope.source
       || candidate.executionEnvelope.deployable !== runContract.executionEnvelope.deployable
       || canonicalJson(candidate.routerControl) !== canonicalJson(runContract.routerControl)
@@ -1976,9 +1989,7 @@ export function summarizeFixedTraceRun(
   const totalEstimatedCostUsd = costs.some((cost) => cost === null)
     ? null
     : costs.reduce<number>((total, cost) => total + (cost ?? 0), 0);
-  const cohortToolNames = runContract.architectureArm.id === 'direct_generation'
-    ? null
-    : [...new Set(observations.flatMap((observation) => observation.metadata.toolUniverse.toolNames ?? []))].sort();
+  const cohortToolNames = [...new Set(observations.flatMap((observation) => observation.metadata.toolUniverse.toolNames ?? []))].sort();
   return {
     grades,
     summary: {
@@ -1995,6 +2006,9 @@ export function summarizeFixedTraceRun(
           bounded: runContract.toolUniverse.bounded,
           deployable: runContract.toolUniverse.deployable,
           toolNames: cohortToolNames,
+          toolNamesSha256: runContract.toolUniverse.toolNamesSha256 ?? null,
+          toolSchemaSha256: runContract.toolUniverse.toolSchemaSha256 ?? null,
+          definitionHandlerSha256: runContract.toolUniverse.definitionHandlerSha256 ?? null,
         },
         executionEnvelope: runContract.executionEnvelope,
         repetition: runContract.repetition,
