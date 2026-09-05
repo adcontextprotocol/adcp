@@ -23,23 +23,13 @@ import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
+const GOOGLE_ROUTER_REVIEWED_REVISIONS = new Set([
+  'gemini-3.7-flash-20260801',
+]);
 
 /** Provider-returned dated revisions accepted for the frozen router model. */
 export function isGoogleRouterModelRevision(model: string): boolean {
-  if (model === GOOGLE_ROUTER_MODEL) return true;
-  const match = /^gemini-3\.7-flash-(\d{4})(\d{2})(\d{2})$/.exec(model);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  // The reviewed fixed-trace profile covers only the 2026 introductory
-  // pricing window. Round-trip through UTC to reject pseudo-dates such as
-  // 20260230 instead of admitting any eight-digit suffix.
-  if (year !== 2026 || month < 1 || month > 12 || day < 1 || day > 31) return false;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day;
+  return model === GOOGLE_ROUTER_MODEL || GOOGLE_ROUTER_REVIEWED_REVISIONS.has(model);
 }
 
 export interface GoogleGenerateContentTransport {

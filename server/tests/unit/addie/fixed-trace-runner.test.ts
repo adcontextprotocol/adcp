@@ -201,7 +201,7 @@ function response(
 ): ModelResponse {
   return {
     provider: 'anthropic',
-    model: 'test-model',
+    model: 'claude-haiku-4-5',
     id,
     content,
     finishReason,
@@ -325,7 +325,7 @@ const TOOL_DEFINITIONS = [
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {
   return {
     provider,
-    model: 'test-model',
+    model: 'claude-haiku-4-5',
     reasoningEffort: 'none',
     maxOutputTokens: 300,
     timeoutMs: 30_000,
@@ -334,14 +334,14 @@ function stage(provider: ModelProvider, maxIterations: number): FixedTraceProvid
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
     pricing: {
-      profileId: 'synthetic-test-model-v1',
+      profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
-      cacheReadUsdPerMillionTokens: null,
-      cacheWriteUsdPerMillionTokens: null,
-      cacheReadAccounting: 'unsupported',
-      cacheWriteAccounting: 'unsupported',
-      source: 'Synthetic test pricing.',
+      cacheReadUsdPerMillionTokens: 0.1,
+      cacheWriteUsdPerMillionTokens: 1.25,
+      cacheReadAccounting: 'additive',
+      cacheWriteAccounting: 'additive',
+      source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
     },
   };
 }
@@ -635,7 +635,7 @@ describe('fixed trace artifact runner', () => {
       usageKnown: true,
       usage: { inputTokens: 30, outputTokens: 15 },
       estimatedCostUsd: 0.000105,
-      pricingSource: 'Synthetic test pricing.',
+      pricingSource: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
     });
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
       deterministicPass: false,
@@ -767,15 +767,15 @@ describe('fixed trace artifact runner', () => {
     const delegate = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const budget = new FixedTraceBudget(0.000001);
     const router = new BudgetedFixedTraceProvider(delegate, budget, {
-      profileId: 'synthetic-test-model-v1',
+      profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
-      cacheReadUsdPerMillionTokens: null,
-      cacheWriteUsdPerMillionTokens: null,
-      cacheReadAccounting: 'unsupported',
-      cacheWriteAccounting: 'unsupported',
-      source: 'Synthetic test pricing.',
-    }, fixedTraceResponsePricingPolicy('anthropic', 'test-model', stage(delegate, 1).pricing));
+      cacheReadUsdPerMillionTokens: 0.1,
+      cacheWriteUsdPerMillionTokens: 1.25,
+      cacheReadAccounting: 'additive',
+      cacheWriteAccounting: 'additive',
+      source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+    }, fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', stage(delegate, 1).pricing));
     const generation = new ScriptedProvider([]);
 
     const observation = await runFixedTraceCase(
@@ -876,7 +876,7 @@ describe('fixed trace artifact runner', () => {
           usageKnown: true,
           usage: { inputTokens: 10, outputTokens: 5 },
           estimatedCostUsd: 0.000035,
-          pricingSource: 'Synthetic test pricing.',
+          pricingSource: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
         },
       },
     });

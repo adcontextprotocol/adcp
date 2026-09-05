@@ -895,7 +895,7 @@ describe('fixed cross-provider trace suite', () => {
       .toContain('router_configured_model_resolution_policy_invalid');
   });
 
-  it('accepts only calendar-valid reviewed Google router revisions', () => {
+  it('accepts only literal reviewed Google router revisions', () => {
     expect(isGoogleRouterModelRevision(GOOGLE_ROUTER_MODEL)).toBe(true);
     expect(isGoogleRouterModelRevision('gemini-3.7-flash-20260801')).toBe(true);
     for (const model of [

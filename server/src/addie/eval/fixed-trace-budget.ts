@@ -114,44 +114,26 @@ const FIXED_TRACE_APPROVED_PRICING = Object.freeze(([
     source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
     modelResolutionPolicy: 'google_router_dated_revision_v1',
   },
-  // Literal evaluator-owned fixtures used only by no-network unit tests.
-  {
-    expectedProvider: 'anthropic', expectedModel: 'synthetic-manual-model',
-    profileId: 'synthetic-manual-artifact-v1',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
-    cacheReadUsdPerMillionTokens: null, cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'unsupported', cacheWriteAccounting: 'unsupported',
-    source: 'Synthetic manual artifact pricing.', modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'openai', expectedModel: 'synthetic-manual-model',
-    profileId: 'synthetic-manual-artifact-v1',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
-    cacheReadUsdPerMillionTokens: null, cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'unsupported', cacheWriteAccounting: 'unsupported',
-    source: 'Synthetic manual artifact pricing.', modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'openai', expectedModel: 'budget-model',
-    profileId: 'openai-budget-model-v1',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
-    source: 'Synthetic budget pricing.', modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'anthropic', expectedModel: 'test-model',
-    profileId: 'synthetic-test-model-v1',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
-    cacheReadUsdPerMillionTokens: null, cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'unsupported', cacheWriteAccounting: 'unsupported',
-    source: 'Synthetic test pricing.', modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'openai', expectedModel: 'openai-judge-model',
-    profileId: 'synthetic-judge-v1',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 2,
-    source: 'synthetic judge pricing', modelResolutionPolicy: 'exact_model_identity_v1',
-  },
 ] satisfies readonly FixedTraceApprovedPricing[]).map((entry) => Object.freeze(entry)));
+
+/**
+ * The complete live approval surface. It is intentionally inspectable for
+ * audits, but policy objects remain module-branded and cannot be minted from
+ * these descriptive values.
+ */
+export function fixedTraceApprovedPricingProfiles(): readonly Readonly<{
+  expectedProvider: ModelProvider['id'];
+  expectedModel: string;
+  profileId: string;
+  source: string;
+}>[] {
+  return FIXED_TRACE_APPROVED_PRICING.map((entry) => Object.freeze({
+    expectedProvider: entry.expectedProvider,
+    expectedModel: entry.expectedModel,
+    profileId: entry.profileId,
+    source: entry.source,
+  }));
+}
 
 /** Opaque, module-branded policy produced only from the approved registry. */
 export interface FixedTraceResponsePricingPolicy {

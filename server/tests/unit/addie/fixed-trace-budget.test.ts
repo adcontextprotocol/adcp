@@ -4,6 +4,7 @@ import {
   FixedTraceBudget,
   FixedTraceBudgetAdmissionError,
   fixedTraceEstimatedCostUsd,
+  fixedTraceApprovedPricingProfiles,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
@@ -29,7 +30,7 @@ const CAPABILITIES: ModelProviderCapabilities = {
 };
 
 const REQUEST: ModelRequest = {
-  model: 'budget-model',
+  model: 'gpt-5.6-luna',
   system: [],
   messages: [{ role: 'user', content: [{ type: 'text', text: 'Synthetic request.' }] }],
   tools: [],
@@ -38,7 +39,7 @@ const REQUEST: ModelRequest = {
 
 const RESPONSE: ModelResponse = {
   provider: 'openai',
-  model: 'budget-model',
+  model: 'gpt-5.6-luna',
   id: 'response-1',
   content: [{ type: 'text', text: 'Synthetic response.' }],
   finishReason: 'stop',
@@ -47,15 +48,19 @@ const RESPONSE: ModelResponse = {
 };
 
 const PRICING = {
-  profileId: 'openai-budget-model-v1',
-  inputUsdPerMillionTokens: 1,
-  outputUsdPerMillionTokens: 5,
-  source: 'Synthetic budget pricing.',
+  profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
+  inputUsdPerMillionTokens: 0.2,
+  outputUsdPerMillionTokens: 1.2,
+  cacheReadUsdPerMillionTokens: 0.02,
+  cacheWriteUsdPerMillionTokens: null,
+  cacheReadAccounting: 'subset' as const,
+  cacheWriteAccounting: 'unsupported' as const,
+  source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
 };
 
 const RESPONSE_PRICING_POLICY = fixedTraceResponsePricingPolicy(
   'openai',
-  'budget-model',
+  'gpt-5.6-luna',
   PRICING,
 );
 
@@ -91,6 +96,27 @@ class BudgetScriptedProvider implements ModelProvider {
 }
 
 describe('fixed trace provider budget', () => {
+  it('exposes only reviewed production pricing and rejects former test profiles before dispatch', () => {
+    const liveProfiles = fixedTraceApprovedPricingProfiles();
+    expect(liveProfiles).toHaveLength(4);
+    for (const profile of liveProfiles) {
+      expect(`${profile.expectedModel}\n${profile.profileId}\n${profile.source}`).not.toMatch(/synthetic|test/i);
+    }
+
+    const delegate = new BudgetScriptedProvider([RESPONSE]);
+    expect(() => fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', {
+      profileId: 'synthetic-manual-artifact-v1',
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 5,
+      cacheReadUsdPerMillionTokens: null,
+      cacheWriteUsdPerMillionTokens: null,
+      cacheReadAccounting: 'unsupported',
+      cacheWriteAccounting: 'unsupported',
+      source: 'Synthetic manual artifact pricing.',
+    })).toThrow('Fixed trace pricing profile is not evaluator approved');
+    expect(delegate.dispatches).not.toHaveBeenCalled();
+  });
+
   it('prices Google-style subset reads plus additive writes explicitly', () => {
     expect(fixedTraceEstimatedCostUsd({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 40, cacheWriteTokens: 20 }, {
       ...PRICING,
@@ -117,7 +143,11 @@ describe('fixed trace provider budget', () => {
   });
 
   it('fails closed when a nonzero cache bucket has no recorded formula', () => {
-    expect(() => fixedTraceEstimatedCostUsd({ inputTokens: 10, outputTokens: 0, cacheReadTokens: 1 }, PRICING))
+    expect(() => fixedTraceEstimatedCostUsd({ inputTokens: 10, outputTokens: 0, cacheReadTokens: 1 }, {
+      ...PRICING,
+      cacheReadUsdPerMillionTokens: null,
+      cacheReadAccounting: 'unsupported',
+    }))
       .toThrow('cache read accounting is unavailable');
   });
 
@@ -196,7 +226,7 @@ describe('fixed trace provider budget', () => {
 
     await expect(collectModelResponse(provider.respond(REQUEST))).resolves.toEqual(RESPONSE);
     expect(budget.snapshot()).toMatchObject({
-      accountedSpendUsd: 0.000035,
+      accountedSpendUsd: 0.000008,
       reservedUsd: 0,
       dispatchedCalls: 1,
       completedCalls: 1,
@@ -238,7 +268,7 @@ describe('fixed trace provider budget', () => {
     expect(Object.isFrozen(collected)).toBe(true);
     expect(Object.isFrozen(collected.usage)).toBe(true);
     expect(budget.snapshot()).toMatchObject({
-      accountedSpendUsd: 0.000035,
+      accountedSpendUsd: 0.000008,
       dispatchedCalls: 1,
       completedCalls: 1,
       exposureUnknown: false,

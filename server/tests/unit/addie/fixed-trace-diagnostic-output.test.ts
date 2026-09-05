@@ -43,14 +43,27 @@ const CAPABILITIES: ModelProviderCapabilities = {
 };
 
 const PRICING: FixedTracePricing = {
-  profileId: 'synthetic-manual-artifact-v1',
+  profileId: 'anthropic-standard-2026-08:claude-haiku-4-5',
   inputUsdPerMillionTokens: 1,
   outputUsdPerMillionTokens: 5,
-  cacheReadUsdPerMillionTokens: null,
+  cacheReadUsdPerMillionTokens: 0.1,
+  cacheWriteUsdPerMillionTokens: 1.25,
+  cacheReadAccounting: 'additive',
+  cacheWriteAccounting: 'additive',
+  source: 'Repository Anthropic pricing table: Claude Haiku 4.5, refreshed August 2026.',
+};
+
+const MODEL = 'claude-haiku-4-5';
+const OPENAI_MODEL = 'gpt-5.6-luna';
+const OPENAI_PRICING: FixedTracePricing = {
+  profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
+  inputUsdPerMillionTokens: 0.2,
+  outputUsdPerMillionTokens: 1.2,
+  cacheReadUsdPerMillionTokens: 0.02,
   cacheWriteUsdPerMillionTokens: null,
-  cacheReadAccounting: 'unsupported',
+  cacheReadAccounting: 'subset',
   cacheWriteAccounting: 'unsupported',
-  source: 'Synthetic manual artifact pricing.',
+  source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
 };
 
 const ZERO_RATE_PRICING: FixedTracePricing = {
@@ -62,7 +75,7 @@ const ZERO_RATE_PRICING: FixedTracePricing = {
 };
 
 const DIAGNOSTIC_TEST_REQUEST: ModelRequest = {
-  model: 'synthetic-manual-model',
+  model: MODEL,
   system: [],
   messages: [{ role: 'user', content: [{ type: 'text', text: 'Synthetic request.' }] }],
   tools: [],
@@ -76,7 +89,7 @@ function scriptedRouter(
   const calls: ModelRequest[] = [];
   const response: ModelResponse = {
     provider: providerId,
-    model: 'synthetic-manual-model',
+    model: providerId === 'openai' ? OPENAI_MODEL : MODEL,
     id: `${providerId}-scripted-router-ignore`,
     content: [{ type: 'text', text: JSON.stringify({ action: 'ignore', reason: 'Synthetic route.' }) }],
     finishReason: 'stop',
@@ -133,7 +146,7 @@ function cloneChangingIdentityProvider(): {
       await options.beforeDispatch?.(this.prepare(request));
       calls.push(structuredClone(request));
       const response: ModelResponse = {
-        provider: 'anthropic', model: 'synthetic-manual-model', id: 'stable-response',
+        provider: 'anthropic', model: MODEL, id: 'stable-response',
         content: [{ type: 'text', text: JSON.stringify({ action: 'ignore', reason: 'Synthetic route.' }) }],
         finishReason: 'stop', providerFinishReason: 'stop', usage: { inputTokens: 10, outputTokens: 5 },
       };
@@ -147,11 +160,11 @@ function cloneChangingIdentityProvider(): {
 
 function stage(
   provider: ModelProvider,
-  pricing: FixedTracePricing = PRICING,
+  pricing: FixedTracePricing = provider.id === 'openai' ? OPENAI_PRICING : PRICING,
 ): FixedTraceProviderStageConfig {
   return {
     provider,
-    model: 'synthetic-manual-model',
+    model: provider.id === 'openai' ? OPENAI_MODEL : MODEL,
     reasoningEffort: 'none',
     maxOutputTokens: 300,
     timeoutMs: 30_000,
@@ -166,7 +179,7 @@ function stage(
 function budgetedStage(
   provider: ModelProvider,
   budget: FixedTraceBudget,
-  pricing: FixedTracePricing = PRICING,
+  pricing: FixedTracePricing = provider.id === 'openai' ? OPENAI_PRICING : PRICING,
 ): FixedTraceProviderStageConfig {
   const configured = stage(provider, pricing);
   return {
@@ -174,8 +187,8 @@ function budgetedStage(
     provider: new BudgetedFixedTraceProvider(
       provider,
       budget,
-      pricing,
-      fixedTraceResponsePricingPolicy(provider.id, configured.model, pricing),
+      configured.pricing,
+      fixedTraceResponsePricingPolicy(provider.id, configured.model, configured.pricing),
     ),
   };
 }
@@ -201,7 +214,7 @@ function twoTurnProvider(
       const router = request.requestMetadata?.purpose === 'fixed_trace_router';
       const response: ModelResponse = router
         ? {
-            provider: 'anthropic', model: 'synthetic-manual-model', id: 'router',
+            provider: 'anthropic', model: MODEL, id: 'router',
             content: [{ type: 'text', text: JSON.stringify({
               action: 'respond', tool_sets: ['knowledge'], confidence: 'high',
               requires_depth: false, reason: 'Synthetic route.',
@@ -210,12 +223,12 @@ function twoTurnProvider(
           }
         : generationTurn++ === 0
           ? {
-              provider: 'anthropic', model: 'synthetic-manual-model', id: 'generation-tool',
+              provider: 'anthropic', model: MODEL, id: 'generation-tool',
               content: [{ type: 'tool_call', id: 'tool-1', name: 'search_docs', input: { query: 'task model' } }],
               finishReason: 'tool_calls', providerFinishReason: 'tool_use', usage: { inputTokens: 10, outputTokens: 5 },
             }
           : {
-              provider: 'anthropic', model: 'synthetic-manual-model', id: 'generation-final',
+              provider: 'anthropic', model: MODEL, id: 'generation-final',
               content: [{ type: 'text', text: 'A buyer calls a seller task and receives its structured response.' }],
               finishReason: 'stop', providerFinishReason: 'stop', usage: { inputTokens: 10, outputTokens: 5 },
             };
@@ -388,7 +401,7 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(persisted.runs[1].requestedConfig.router).toMatchObject({
       provider: 'openai',
       maxOutputTokens: 300,
-      pricing: { source: 'Synthetic manual artifact pricing.' },
+      pricing: { source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.' },
     });
     expect(persisted.runs[0].observations[0].metadata.router).toMatchObject({
       usage: { inputTokens: 10, outputTokens: 5 },
@@ -513,7 +526,7 @@ describe('fixed-trace diagnostic output reservation', () => {
       changing.provider,
       budget,
       PRICING,
-      fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING),
+      fixedTraceResponsePricingPolicy('anthropic', MODEL, PRICING),
     );
     const artifact = await runFixedTraceDiagnosticArtifact({
       plans: [{ name: 'anthropic', router: stage(wrapper), generation: stage(wrapper) }],
@@ -662,7 +675,7 @@ describe('fixed-trace diagnostic output reservation', () => {
     });
 
     expect(router.calls).toHaveLength(1);
-    expect(artifact.runs[0].requestedConfig.router.model).toBe('synthetic-manual-model');
+    expect(artifact.runs[0].requestedConfig.router.model).toBe(MODEL);
     expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ complete: true, diagnosticOnly: true });
   });
 
@@ -707,7 +720,7 @@ describe('fixed-trace diagnostic output reservation', () => {
           delegate.provider,
           budget,
           PRICING,
-          fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING),
+          fixedTraceResponsePricingPolicy('anthropic', MODEL, PRICING),
         );
       }
 
@@ -772,7 +785,7 @@ describe('fixed-trace diagnostic output reservation', () => {
     const observation = artifact.runs[0].observations[0];
 
     expect(observation.metadata.router).toMatchObject({
-      returnedModel: 'synthetic-manual-model',
+      returnedModel: MODEL,
       usage: { inputTokens: 10, outputTokens: 5 },
       estimatedCostUsd: 0.000035,
     });
@@ -928,12 +941,12 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(first.calls).toHaveLength(1);
     expect(second.calls).toHaveLength(1);
     expect(artifact.budget).toMatchObject({
-      accountedSpendUsd: 0.00007,
       dispatchedCalls: 2,
       completedCalls: 2,
       budgetRejectedCalls: 0,
       exposureUnknown: false,
     });
+    expect(artifact.budget.accountedSpendUsd).toBeCloseTo(0.000043);
   });
 
   it('prevents post-preflight method and prototype tampering in a two-turn zero-rate run', async () => {
@@ -954,7 +967,7 @@ describe('fixed-trace diagnostic output reservation', () => {
       replace('prototype_prepare', () => Object.defineProperty(BudgetedFixedTraceProvider.prototype, 'prepare', { value: delegate.provider.prepare }));
     });
     const budget = new FixedTraceBudget(1);
-    const policy = fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING);
+    const policy = fixedTraceResponsePricingPolicy('anthropic', MODEL, PRICING);
     const router = new BudgetedFixedTraceProvider(delegate.provider, budget, PRICING, policy);
     generation = new BudgetedFixedTraceProvider(delegate.provider, budget, PRICING, policy);
     const generationStage = stage(generation, PRICING);
