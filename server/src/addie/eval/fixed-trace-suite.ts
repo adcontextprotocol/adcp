@@ -1250,6 +1250,7 @@ export function fixedTraceSuiteSha256(
  */
 export function fixedTraceArchitectureConfigPayload(metadata: Pick<
   FixedTraceRunMetadata,
+  | 'traceSuiteSha256'
   | 'stageControlVersion'
   | 'promptConfigVersion'
   | 'toolSchemaSha256'
@@ -1268,6 +1269,7 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     deployable: metadata.toolUniverse.deployable,
   };
   return {
+    traceSuiteSha256: metadata.traceSuiteSha256,
     stageControlVersion: metadata.stageControlVersion,
     promptConfigVersion: metadata.promptConfigVersion,
     toolDefinition: {
@@ -1489,7 +1491,9 @@ function sameCaseControl(
 function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata): string[] {
   const failures: string[] = [];
   if (metadata.traceSuiteVersion !== FIXED_TRACE_SUITE_VERSION) failures.push('trace_suite_version_mismatch');
-  if (metadata.traceSuiteSha256 !== fixedTraceSuiteSha256()) failures.push('trace_suite_hash_mismatch');
+  // Per-case grading cannot know which evaluator-owned split was selected.
+  // Summarization recomputes and binds that exact split before grading.
+  if (!isSha256(metadata.traceSuiteSha256)) failures.push('trace_suite_hash_invalid');
   for (const [name, value] of Object.entries({
     source_bundle: metadata.sourceBundleSha256,
     tool_schema: metadata.toolSchemaSha256,

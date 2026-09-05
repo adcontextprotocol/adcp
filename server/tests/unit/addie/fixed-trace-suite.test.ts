@@ -678,6 +678,7 @@ describe('fixed cross-provider trace suite', () => {
     }));
     for (const observation of observations) {
       observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256(syntheticSuite);
+      observation.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observation.metadata);
     }
     const { grades, summary } = summarizeFixedTraceRun(observations, syntheticSuite);
     expect(grades).toHaveLength(4);
@@ -734,7 +735,7 @@ describe('fixed cross-provider trace suite', () => {
     const trace = FIXED_TRACE_SUITE[1];
     const observation = passingObservation(trace);
     observation.metadata = metadata({
-      traceSuiteSha256: HASH,
+      traceSuiteSha256: 'not-a-hash',
       generation: stage({
         promptSha256: 'not-a-hash',
         returnedProvider: null,
@@ -750,7 +751,7 @@ describe('fixed cross-provider trace suite', () => {
     expect(grade.metadataPass).toBe(false);
     expect(grade.deterministicPass).toBe(false);
     expect(grade.failures).toEqual(expect.arrayContaining([
-      'trace_suite_hash_mismatch',
+      'trace_suite_hash_invalid',
       'generation_prompt_hash_invalid',
       'generation_usage_consistency_invalid',
       'generation_cost_provenance_missing',

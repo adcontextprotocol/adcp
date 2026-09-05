@@ -329,6 +329,8 @@ for (const plan of plans) {
     gitCommit,
     gitDirty,
     promptConfigVersion,
+    traceSuite: FIXED_TRACE_SUITE,
+    traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_SUITE),
     toolDefinitions,
     toolDefinitionProvenance: 'fixture_local',
     architectureArm,

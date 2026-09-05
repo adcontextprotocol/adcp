@@ -254,16 +254,22 @@ function config(
   generation: ModelProvider,
   overrides: Partial<FixedTraceRunnerConfig> = {},
 ): FixedTraceRunnerConfig {
-  return {
+  const base = {
     runId: 'fixed-run-test',
     sourceBundleSha256: HASH,
     gitCommit: 'abcdef0',
     gitDirty: false,
     promptConfigVersion: 'synthetic-prompt-v1',
+    traceSuite: FIXED_TRACE_SUITE,
+    traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_SUITE),
     toolDefinitions: TOOL_DEFINITIONS,
     router: stage(router, 1),
     generation: stage(generation, 3),
     ...overrides,
+  };
+  return {
+    ...base,
+    traceSuiteSha256: overrides.traceSuiteSha256 ?? fixedTraceSuiteSha256(base.traceSuite),
   };
 }
 
@@ -785,7 +791,7 @@ describe('fixed trace artifact runner', () => {
     const altered = structuredClone(trace('knowledge-task-model'));
     altered.caseControl = { kind: 'bounded_generation_output', maxOutputTokens: 32 };
 
-    await expect(runFixedTraceCase(altered, config(router, generation)))
+    await expect(runFixedTraceCase(altered, config(router, generation, { traceSuite: [altered] })))
       .rejects.toThrow('only valid for truncation traces');
     expect(router.respondCalls).toHaveLength(0);
     expect(generation.respondCalls).toHaveLength(0);
@@ -820,12 +826,115 @@ describe('fixed trace artifact runner', () => {
     });
   });
 
+  it('binds a real runner subset to its evaluator-owned suite identity', async () => {
+    const selectedTrace = trace('provider-unavailable');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([]);
+    const subset = [selectedTrace];
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, { traceSuite: subset }));
+
+    expect(observation.metadata.traceSuiteSha256).toBe(fixedTraceSuiteSha256(subset));
+    expect(gradeFixedTrace(selectedTrace, observation).metadataPass).toBe(true);
+    expect(() => summarizeFixedTraceRun([observation], subset)).not.toThrow();
+  });
+
+  it('binds truncation, direct, and oracle subset paths without restamping observations', async () => {
+    const truncation = trace('bounded-truncation');
+    const truncationRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const truncationGeneration = new ScriptedProvider([response([
+      { type: 'text', text: 'Synthetic truncation response.' },
+    ], 'length')]);
+    const truncationObservation = await runFixedTraceCase(truncation, config(truncationRouter, truncationGeneration, {
+      traceSuite: [truncation],
+    }));
+    expect(truncationObservation.metadata).toMatchObject({
+      traceSuiteSha256: fixedTraceSuiteSha256([truncation]),
+      generation: { effectiveMaxOutputTokens: 32 },
+    });
+    expect(() => summarizeFixedTraceRun([truncationObservation], [truncation])).not.toThrow();
+
+    const selectedTrace = trace('knowledge-task-model');
+    const direct = await runFixedTraceCase(selectedTrace, config(new ScriptedProvider([]), new ScriptedProvider([]), {
+      traceSuite: [selectedTrace], architectureArm: 'direct_generation',
+    }));
+    const oracle = await runFixedTraceCase(selectedTrace, config(new ScriptedProvider([]), new ScriptedProvider([]), {
+      traceSuite: [selectedTrace], architectureArm: 'oracle_route_diagnostic',
+    }));
+    expect(summarizeFixedTraceRun([direct], [selectedTrace]).summary.comparisonEligible).toBe(false);
+    expect(summarizeFixedTraceRun([oracle], [selectedTrace]).summary.comparisonEligible).toBe(false);
+  });
+
+  it('refuses absent, forged, or mixed split identity before a caller can launder observations', async () => {
+    const selectedTrace = trace('provider-unavailable');
+    const router = new ScriptedProvider([]);
+    const generation = new ScriptedProvider([]);
+    const noSuite = config(router, generation) as FixedTraceRunnerConfig & { traceSuite?: ReadonlyArray<FixedTraceCase> };
+    delete noSuite.traceSuite;
+    await expect(runFixedTraceCase(selectedTrace, noSuite as FixedTraceRunnerConfig))
+      .rejects.toThrow();
+    expect(router.respondCalls).toHaveLength(0);
+
+    const forgedRouter = new ScriptedProvider([]);
+    const forged = config(forgedRouter, new ScriptedProvider([]), {
+      traceSuite: [selectedTrace], traceSuiteSha256: HASH,
+    });
+    await expect(runFixedTraceCase(selectedTrace, forged))
+      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, or no longer bound to its configured suite');
+    expect(forgedRouter.respondCalls).toHaveLength(0);
+
+    const mutatedRouter = new ScriptedProvider([]);
+    const mutated = config(mutatedRouter, new ScriptedProvider([]), { traceSuite: [selectedTrace] });
+    (mutated as { traceSuite: ReadonlyArray<FixedTraceCase> }).traceSuite = [trace('knowledge-task-model')];
+    await expect(runFixedTraceCase(selectedTrace, mutated))
+      .rejects.toThrow('Fixed trace runner suite hash is missing, forged, or no longer bound to its configured suite');
+    expect(mutatedRouter.respondCalls).toHaveLength(0);
+
+    const boundRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const boundGeneration = new ScriptedProvider([response([
+      { type: 'text', text: 'Synthetic knowledge response.' },
+    ])]);
+    const boundTrace = trace('knowledge-task-model');
+    const bound = config(boundRouter, boundGeneration, { traceSuite: [boundTrace] });
+    await runFixedTraceCase(boundTrace, bound);
+    (bound as { traceSuite: ReadonlyArray<FixedTraceCase>; traceSuiteSha256: string }).traceSuite = [selectedTrace];
+    (bound as { traceSuite: ReadonlyArray<FixedTraceCase>; traceSuiteSha256: string }).traceSuiteSha256
+      = fixedTraceSuiteSha256(bound.traceSuite);
+    await expect(runFixedTraceCase(selectedTrace, bound))
+      .rejects.toThrow('Fixed trace runner suite identity changed after dispatch binding');
+    expect(boundRouter.respondCalls).toHaveLength(1);
+    expect(boundGeneration.respondCalls).toHaveLength(1);
+
+    const canonicalRouter = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const canonical = await runFixedTraceCase(selectedTrace, config(canonicalRouter, new ScriptedProvider([])));
+    canonical.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([selectedTrace]);
+    expect(() => summarizeFixedTraceRun([canonical], [selectedTrace]))
+      .toThrow('Fixed trace architecture contract fingerprint mismatch');
+
+    const secondTrace = trace('knowledge-task-model');
+    const split = [selectedTrace, secondTrace];
+    const splitRouter = new ScriptedProvider([
+      routeResponse('respond', ['knowledge']), routeResponse('respond', ['knowledge']),
+    ]);
+    const splitGeneration = new ScriptedProvider([response([
+      { type: 'text', text: 'Synthetic knowledge response.' },
+    ])]);
+    const first = await runFixedTraceCase(selectedTrace, config(splitRouter, splitGeneration, { traceSuite: split }));
+    const second = await runFixedTraceCase(secondTrace, config(splitRouter, splitGeneration, { traceSuite: split }));
+    second.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([secondTrace]);
+    second.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256({
+      ...config(splitRouter, splitGeneration, { traceSuite: [secondTrace] }),
+    });
+    expect(() => summarizeFixedTraceRun([first, second], split))
+      .toThrow('Fixed trace observation suite hash does not match grading suite');
+  });
+
   it('rejects trace-local definitions before direct generation can dispatch', async () => {
     const router = new ScriptedProvider([]);
     const generation = new ScriptedProvider([]);
     const selectedTrace = trace('knowledge-task-model');
     const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
       architectureArm: 'direct_generation',
+      traceSuite: [selectedTrace],
     }));
 
     expect(router.respondCalls).toHaveLength(0);
@@ -863,7 +972,6 @@ describe('fixed trace artifact runner', () => {
       source: 'not_run', requestedProvider: null, requestedModel: null,
       effectiveMaxOutputTokens: null, usage: null, estimatedCostUsd: 0, pricingSource: null,
     });
-    observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([selectedTrace]);
     const directRun = summarizeFixedTraceRun([observation], [selectedTrace]).summary;
     expect(directRun.comparisonEligible).toBe(false);
     expect(directRun.terminalStatusCounts.not_admitted_architecture).toBe(1);
@@ -921,6 +1029,7 @@ describe('fixed trace artifact runner', () => {
     const selectedTrace = trace('provider-unavailable');
     const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
       architectureArm: 'oracle_route_diagnostic',
+      traceSuite: [selectedTrace],
     }));
 
     expect(router.respondCalls).toHaveLength(0);
@@ -931,7 +1040,6 @@ describe('fixed trace artifact runner', () => {
     expect(observation.metadata.toolUniverse).toMatchObject({
       source: 'fixture_oracle', deployable: false,
     });
-    observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([selectedTrace]);
     const { grades, summary } = summarizeFixedTraceRun([observation], [selectedTrace]);
     expect(grades[0]?.routingPass).toBeNull();
     expect(summary.comparisonEligible).toBe(false);

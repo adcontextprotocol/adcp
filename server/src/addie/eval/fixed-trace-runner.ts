@@ -84,6 +84,13 @@ export interface FixedTraceRunnerConfig {
   gitCommit: string;
   gitDirty: boolean;
   promptConfigVersion: string;
+  /**
+   * Immutable evaluator-owned corpus/split for this run. Its content hash is
+   * stamped on every observation and included in the architecture fingerprint.
+   */
+  readonly traceSuite: ReadonlyArray<FixedTraceCase>;
+  /** Pinned when the evaluator creates the run; checked before every dispatch. */
+  readonly traceSuiteSha256: string;
   toolDefinitions: ReadonlyArray<AddieTool>;
   /** Fixture-local definitions are valid only for the existing routed replay. */
   toolDefinitionProvenance?: FixedTraceToolDefinitionProvenance;
@@ -96,6 +103,14 @@ export interface FixedTraceRunnerConfig {
   /** Deterministic provider-failure fixture; enabled by default. */
   injectProviderDegradation?: boolean;
 }
+
+/**
+ * A runner config represents one evaluator-owned run. Once it has been used,
+ * its validated split identity cannot be swapped between individual cases.
+ * This deliberately lives at the execution boundary rather than in serialized
+ * observations, whose metadata is untrusted on read.
+ */
+const boundTraceSuiteHashes = new WeakMap<FixedTraceRunnerConfig, string>();
 
 interface StageInvocationState {
   invocations: PreparedModelInvocation[];
@@ -402,6 +417,7 @@ export function fixedTraceArchitectureConfigSha256(
 ): string {
   const arm = fixedTraceArchitectureArm(config.architectureArm);
   return fixedTraceArchitectureConfigSha256FromMetadata({
+    traceSuiteSha256: config.traceSuiteSha256,
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     promptConfigVersion: config.promptConfigVersion,
     toolSchemaSha256,
@@ -474,7 +490,7 @@ function baseMetadata(
   return {
     runId: config.runId,
     traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
-    traceSuiteSha256: fixedTraceSuiteSha256(),
+    traceSuiteSha256: config.traceSuiteSha256,
     sourceBundleSha256: config.sourceBundleSha256,
     gitCommit: config.gitCommit,
     gitDirty: config.gitDirty,
@@ -664,6 +680,23 @@ export async function runFixedTraceCase(
   config: FixedTraceRunnerConfig,
   toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions),
 ): Promise<FixedTraceObservation> {
+  if (
+    !Array.isArray(config.traceSuite)
+    ||
+    !/^[a-f0-9]{64}$/.test(config.traceSuiteSha256)
+    || config.traceSuiteSha256 !== fixedTraceSuiteSha256(config.traceSuite)
+  ) {
+    throw new Error('Fixed trace runner suite hash is missing, forged, or no longer bound to its configured suite');
+  }
+  const boundTraceSuiteSha256 = boundTraceSuiteHashes.get(config);
+  if (boundTraceSuiteSha256 && boundTraceSuiteSha256 !== config.traceSuiteSha256) {
+    throw new Error('Fixed trace runner suite identity changed after dispatch binding');
+  }
+  if (!boundTraceSuiteSha256) boundTraceSuiteHashes.set(config, config.traceSuiteSha256);
+  const configuredTrace = config.traceSuite.find((candidate) => candidate.id === trace.id);
+  if (!configuredTrace || sha256(configuredTrace) !== sha256(trace)) {
+    throw new Error(`Fixed trace is not bound to this runner suite: ${trace.id}`);
+  }
   validateStageConfig('router', config.router);
   const generationConfig = generationConfigForTrace(trace, config);
   validateStageConfig('generation', generationConfig);
@@ -850,7 +883,7 @@ export async function runFixedTraceSuite(
 ): Promise<FixedTraceObservation[]> {
   const toolSchemaSha256 = fixedTraceToolSchemaSha256(config.toolDefinitions);
   const observations: FixedTraceObservation[] = [];
-  for (const trace of FIXED_TRACE_SUITE) {
+  for (const trace of config.traceSuite) {
     observations.push(await runFixedTraceCase(trace, config, toolSchemaSha256));
   }
   return observations;
