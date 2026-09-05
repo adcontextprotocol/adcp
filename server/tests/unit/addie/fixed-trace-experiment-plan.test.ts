@@ -9,6 +9,8 @@ import {
   fixedTraceDevelopmentSelectionArtifact,
   consumeFixedTraceHoldoutFinalization,
   fixedTraceExperimentPlanFingerprint,
+  fixedTraceExperimentRunnerBinding,
+  fixedTraceTrustedManifestFingerprint,
   assertFixedTraceRawAuditableLedger,
   type FixedTraceExperimentPlan,
   type FixedTracePlannedStage,
@@ -23,19 +25,47 @@ import {
   GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
   OPENAI_GPT_5_6_PRICING_VERSION,
 } from '../../../src/addie/model-cost-pricing.js';
+import { CODE_VERSION } from '../../../src/addie/config-version.js';
+import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
+import {
+  FIXED_TRACE_STAGE_CONTROL_VERSION,
+  FIXED_TRACE_SUITE,
+  fixedTraceSuiteSha256,
+} from '../../../src/addie/eval/fixed-trace-suite.js';
+import { fixedTraceToolSchemaSha256 } from '../../../src/addie/eval/fixed-trace-runner.js';
 
 const HASH = 'a'.repeat(64);
+
+function trustedSuite(ids: readonly string[]) {
+  const traceSuite = FIXED_TRACE_SUITE.filter((trace) => ids.includes(trace.id));
+  const fixtureNames = new Set(traceSuite.flatMap((trace) => trace.toolFixtures.map((fixture) => fixture.name)));
+  const toolDefinitions = canonicalFixedTraceToolDefinitions().filter((definition) => fixtureNames.has(definition.name));
+  return {
+    traceSuite,
+    traceSuiteSha256: fixedTraceSuiteSha256(traceSuite),
+    toolDefinitions,
+    toolSchemaSha256: fixedTraceToolSchemaSha256(traceSuite, toolDefinitions),
+    toolDefinitionProvenance: 'fixture_local' as const,
+  };
+}
 
 const trustedManifest = {
   id: 'trusted-synthetic-v1',
   sourceId: 'fixed-trace-synthetic-corpus',
   sourceRevision: 'addie-fixed-traces-v32',
   sourceBundleSha256: HASH,
-  traceSuiteSha256: HASH,
   promptConfigVersion: HASH,
-  toolSchemaSha256: HASH,
+  suites: {
+    development: trustedSuite(FIXED_TRACE_PARTITION_MANIFEST.development),
+    holdout: trustedSuite(FIXED_TRACE_PARTITION_MANIFEST.holdout),
+  },
   partitionManifestSha256: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
   rawLedgerVersion: 'addie-fixed-trace-raw-ledger-v1' as const,
+  gitCommit: 'a'.repeat(40),
+  gitDirty: false,
+  addieCodeVersion: CODE_VERSION,
+  stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+  providerDegradationInjectionEnabled: true,
 };
 const resolver = (id: string) => id === trustedManifest.id ? trustedManifest : null;
 
@@ -54,13 +84,17 @@ function stage(
     maxOutputTokens: 10,
     timeoutMs: 1_000,
     maxIterations,
+    transportRetries: 0,
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
+    cacheMode: 'disabled',
     requestBounds: { inputBytesByTrace: Object.fromEntries(traceIds.map((id) => [id, Array(maxIterations).fill(100)])) },
   };
 }
 
 function plan(overrides: Partial<FixedTraceExperimentPlan> = {}): FixedTraceExperimentPlan {
+  const selected = overrides.partition?.selected ?? 'development';
+  const suite = trustedManifest.suites[selected];
   const router = stage('openai', 'gpt-5.6-luna', OPENAI_GPT_5_6_PRICING_VERSION);
   const generation = stage('openai', 'gpt-5.6-terra', OPENAI_GPT_5_6_PRICING_VERSION, 2);
   return {
@@ -71,9 +105,15 @@ function plan(overrides: Partial<FixedTraceExperimentPlan> = {}): FixedTraceExpe
     sourceRevision: trustedManifest.sourceRevision,
     pricingAsOf: '2026-09-05T12:00:00.000Z',
     sourceBundleSha256: HASH,
-    traceSuiteSha256: HASH,
+    gitCommit: trustedManifest.gitCommit,
+    gitDirty: trustedManifest.gitDirty,
+    addieCodeVersion: trustedManifest.addieCodeVersion,
+    traceSuiteSha256: suite.traceSuiteSha256,
     promptConfigVersion: HASH,
-    toolSchemaSha256: HASH,
+    toolSchemaSha256: suite.toolSchemaSha256,
+    toolDefinitionProvenance: suite.toolDefinitionProvenance,
+    stageControlVersion: trustedManifest.stageControlVersion,
+    providerDegradationInjectionEnabled: trustedManifest.providerDegradationInjectionEnabled,
     partition: {
       manifestVersion: FIXED_TRACE_PARTITION_MANIFEST_VERSION,
       manifestSha256: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
@@ -100,6 +140,7 @@ function plan(overrides: Partial<FixedTraceExperimentPlan> = {}): FixedTraceExpe
 describe('fixed-trace experiment plan', () => {
   it('estimates a pure conservative ceiling with independently budgeted judges', () => {
     const estimate = estimateFixedTraceExperiment(plan(), resolver);
+    expect(estimate).toMatchObject({ diagnosticOnly: true, comparisonEligible: false });
     expect(estimate.expectedSpendUsd).toBeNull();
     expect(estimate.candidate.expectedSpendUsd).toBeNull();
     expect(estimate.judges.expectedSpendUsd).toBeNull();
@@ -107,6 +148,27 @@ describe('fixed-trace experiment plan', () => {
     expect(estimate.judges.reservations.map((item) => item.stage)).toEqual(['judge', 'judge']);
     expect(estimate.totalCeilingUsd).toBe(estimate.candidate.ceilingUsd + estimate.judges.ceilingUsd);
     expect(estimate.candidate.reservations[1]).toMatchObject({ requests: 48, inputBytes: 4_800, outputTokens: 480 });
+    expect(estimate.budgetIdentitySha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('passes the frozen evaluator-owned suite and provenance unchanged to a future runner', () => {
+    const current = plan();
+    const binding = fixedTraceExperimentRunnerBinding(current, resolver, 'terra-finalist-r1');
+    expect(binding).toMatchObject({
+      runId: 'matrix-v1:terra-finalist-r1:r1',
+      traceSuiteSha256: current.traceSuiteSha256,
+      toolDefinitionProvenance: 'fixture_local',
+      providerDegradationInjectionEnabled: true,
+    });
+    expect(Object.isFrozen(binding.traceSuite)).toBe(true);
+    expect(Object.isFrozen(binding.traceSuite[0])).toBe(true);
+    expect(Object.isFrozen(binding.toolDefinitions)).toBe(true);
+    expect(Object.isFrozen(binding.toolDefinitions[0])).toBe(true);
+
+    const forged = structuredClone(trustedManifest);
+    forged.suites.development.traceSuite[0]!.id = 'forged-trace';
+    expect(() => fixedTraceExperimentRunnerBinding(current, (id) => id === forged.id ? forged : null, 'terra-finalist-r1'))
+      .toThrow('suite does not exactly bind');
   });
 
   it('fails closed for spoofed manifests, unknown pricing, and missing request bounds', () => {
@@ -208,10 +270,11 @@ describe('fixed-trace experiment plan', () => {
       version: 'addie-fixed-trace-raw-ledger-v1' as const,
       trustedManifestSha256: 'b'.repeat(64),
       planFingerprint: fingerprint,
+      budgetIdentitySha256: estimateFixedTraceExperiment(current, resolver).budgetIdentitySha256,
       entries: [],
     };
     expect(() => assertFixedTraceRawAuditableLedger(current, resolver, ledger, () => null)).toThrow('trusted manifest mismatch');
-    ledger.trustedManifestSha256 = '5be1abed816962f0b01f28eaf24f22058d5177f1dc4bcd9649cbe9eb77daaf85';
+    ledger.trustedManifestSha256 = fixedTraceTrustedManifestFingerprint(trustedManifest);
     expect(() => assertFixedTraceRawAuditableLedger(current, resolver, ledger, () => null)).toThrow('lacks complete planned-stage coverage');
   });
 });
