@@ -12,6 +12,11 @@
     "availability_status": { "$ref": "/schemas/enums/availability-status.json" },
     "metrics": {
       "type": "object",
+      "properties": {
+        "coverage_rate": {
+          "$ref": "/schemas/core/forecast-rate-range.json"
+        }
+      },
       "additionalProperties": { "$ref": "/schemas/core/forecast-range.json" }
     },
     "viewability": {
@@ -20,11 +25,26 @@
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
         "measurable_impressions": { "$ref": "/schemas/core/forecast-range.json" },
         "viewable_impressions": { "$ref": "/schemas/core/forecast-range.json" },
-        "viewable_rate": { "$ref": "/schemas/core/forecast-range.json" },
+        "viewable_rate": {
+          "$ref": "/schemas/core/forecast-rate-range.json"
+        },
         "viewed_seconds": { "$ref": "/schemas/core/forecast-range.json" },
         "standard": { "$ref": "/schemas/enums/viewability-standard.json" }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "not": {
+            "anyOf": [
+              { "required": ["measurable_impressions"] },
+              { "required": ["viewable_impressions"] },
+              { "required": ["viewable_rate"] },
+              { "required": ["viewed_seconds"] }
+            ]
+          }
+        },
+        { "required": ["standard"] }
+      ]
     },
     "vendor_metric_values": {
       "type": "array",
