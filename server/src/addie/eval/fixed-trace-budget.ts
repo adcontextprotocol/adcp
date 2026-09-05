@@ -267,6 +267,11 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     return this.delegate.prepare(request);
   }
 
+  /** The diagnostic artifact may report only the ledger this decorator uses. */
+  isBoundToBudget(budget: FixedTraceBudget): boolean {
+    return this.budget === budget;
+  }
+
   async *respond(
     request: ModelRequest,
     options: ModelRespondOptions = {},

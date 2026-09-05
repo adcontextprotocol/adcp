@@ -2,7 +2,10 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FixedTraceBudget } from '../../../src/addie/eval/fixed-trace-budget.js';
+import {
+  BudgetedFixedTraceProvider,
+  FixedTraceBudget,
+} from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   runFixedTraceDiagnosticArtifact,
   type FixedTraceDiagnosticProviderPlan,
@@ -17,6 +20,7 @@ import {
 import type {
   ModelProvider,
   ModelProviderCapabilities,
+  ModelProviderId,
   ModelRequest,
   ModelRespondOptions,
   ModelResponse,
@@ -46,23 +50,26 @@ const PRICING: FixedTracePricing = {
   source: 'Synthetic manual artifact pricing.',
 };
 
-function scriptedRouter(afterFinalResponse?: () => void): { provider: ModelProvider; calls: ModelRequest[] } {
+function scriptedRouter(
+  afterFinalResponse?: () => void,
+  providerId: ModelProviderId = 'anthropic',
+): { provider: ModelProvider; calls: ModelRequest[]; response: ModelResponse } {
   const calls: ModelRequest[] = [];
   const response: ModelResponse = {
-    provider: 'anthropic',
+    provider: providerId,
     model: 'synthetic-manual-model',
-    id: 'scripted-router-ignore',
+    id: `${providerId}-scripted-router-ignore`,
     content: [{ type: 'text', text: JSON.stringify({ action: 'ignore', reason: 'Synthetic route.' }) }],
     finishReason: 'stop',
     providerFinishReason: 'stop',
     usage: { inputTokens: 10, outputTokens: 5 },
   };
   const provider: ModelProvider = {
-    id: 'anthropic',
+    id: providerId,
     capabilities: CAPABILITIES,
     prepare(request: ModelRequest): PreparedModelInvocation {
       return {
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         capabilities: CAPABILITIES,
         requestMetadata: request.requestMetadata,
@@ -72,13 +79,13 @@ function scriptedRouter(afterFinalResponse?: () => void): { provider: ModelProvi
     async *respond(request: ModelRequest, options: ModelRespondOptions = {}): AsyncIterable<NormalizedModelEvent> {
       await options.beforeDispatch?.(this.prepare(request));
       calls.push(structuredClone(request));
-      yield { type: 'response_start', provider: 'anthropic', model: response.model, id: response.id };
+      yield { type: 'response_start', provider: providerId, model: response.model, id: response.id };
       yield { type: 'text_delta', index: 0, text: response.content[0].type === 'text' ? response.content[0].text : '' };
       yield { type: 'response_complete', response };
       afterFinalResponse?.();
     },
   };
-  return { provider, calls };
+  return { provider, calls, response };
 }
 
 function stage(provider: ModelProvider): FixedTraceProviderStageConfig {
@@ -92,8 +99,12 @@ function stage(provider: ModelProvider): FixedTraceProviderStageConfig {
     transportRetries: 0,
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
-    pricing: PRICING,
+    pricing: structuredClone(PRICING),
   };
+}
+
+function budgetedStage(provider: ModelProvider, budget: FixedTraceBudget): FixedTraceProviderStageConfig {
+  return stage(new BudgetedFixedTraceProvider(provider, budget, PRICING, () => true));
 }
 
 describe('fixed-trace diagnostic output reservation', () => {
@@ -123,10 +134,11 @@ describe('fixed-trace diagnostic output reservation', () => {
     const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
     if (!selectedTrace) throw new Error('Missing synthetic surface trace');
     const router = scriptedRouter();
+    const budget = new FixedTraceBudget(1);
     const plan: FixedTraceDiagnosticProviderPlan = {
-      name: 'scripted',
-      router: stage(router.provider),
-      generation: stage(router.provider),
+      name: 'anthropic',
+      router: budgetedStage(router.provider, budget),
+      generation: budgetedStage(router.provider, budget),
     };
 
     const artifact = await runFixedTraceDiagnosticArtifact({
@@ -143,13 +155,10 @@ describe('fixed-trace diagnostic output reservation', () => {
         architectureArm: 'two_stage_llm_router',
       },
       runIdForProvider: (provider) => `synthetic-manual-${provider}`,
-      budget: new FixedTraceBudget(1),
+      budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
-      artifactVersion: 'fixed_trace_provider_eval_v4',
       runRootId: 'synthetic-manual-root',
       runStartedAt: '2026-09-05T00:00:00.000Z',
-      traceSuiteVersion: 'synthetic-manual-suite-v1',
-      addieCodeVersion: 'synthetic-code-v1',
       sourceBundleFiles: ['synthetic.ts'],
       budgetNote: 'Synthetic no-network budget note.',
     });
@@ -163,24 +172,165 @@ describe('fixed-trace diagnostic output reservation', () => {
       promotionEvidenceEligible: false,
       rolloutPass: false,
       runs: [{
-        provider: 'scripted',
+        provider: 'anthropic',
         summary: { complete: true, comparisonEligible: false },
         observations: [{ traceId: selectedTrace.id, terminalStatus: 'ignored' }],
       }],
     });
     expect(persisted.runs[0].observations).toHaveLength(1);
+    router.response.usage.inputTokens = 999_999;
+    expect(artifact.runs[0].observations[0].metadata.router).toMatchObject({
+      usage: { inputTokens: 10, outputTokens: 5 },
+      estimatedCostUsd: 0.000035,
+    });
+    expect(artifact.runs[0].summary.totalEstimatedCostUsd).toBe(0.000035);
+    expect(persisted.runs[0].observations[0].metadata.router.usage).toMatchObject({ inputTokens: 10 });
   });
 
-  it('does not finalize a manual artifact after a final-response identity mutation', async () => {
+  it('freezes the complete two-plan artifact contract before a provider can mutate later plans', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const path = join(directory, 'artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const sourceBundleFiles = ['before.ts'];
+    const budget = new FixedTraceBudget(1);
+    const baseConfig = {
+      sourceBundleSha256: 'a'.repeat(64),
+      gitCommit: 'abcdef0',
+      gitDirty: false,
+      promptConfigVersion: 'before-prompt',
+      traceSuite: [selectedTrace],
+      traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
+      toolDefinitions: [],
+      toolDefinitionProvenance: 'fixture_local' as const,
+      architectureArm: 'two_stage_llm_router' as const,
+    };
+    let secondPlan!: FixedTraceDiagnosticProviderPlan;
+    const first = scriptedRouter(() => {
+      baseConfig.sourceBundleSha256 = 'b'.repeat(64);
+      baseConfig.promptConfigVersion = 'forged-after-first-plan';
+      sourceBundleFiles.push('forged-after-first-plan.ts');
+      secondPlan.router.maxOutputTokens = 1;
+      secondPlan.router.pricing.source = 'forged-after-first-plan';
+    });
+    const second = scriptedRouter(() => {
+      first.response.usage.inputTokens = 999_999;
+    }, 'openai');
+    secondPlan = {
+      name: 'openai',
+      router: budgetedStage(second.provider, budget),
+      generation: budgetedStage(second.provider, budget),
+    };
+
+    const artifact = await runFixedTraceDiagnosticArtifact({
+      plans: [
+        {
+          name: 'anthropic',
+          router: budgetedStage(first.provider, budget),
+          generation: budgetedStage(first.provider, budget),
+        },
+        secondPlan,
+      ],
+      baseConfig,
+      runIdForProvider: (provider) => `synthetic-manual-${provider}`,
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'synthetic-manual-root',
+      runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles,
+      budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as typeof artifact;
+    expect(persisted).toMatchObject({
+      sourceBundleSha256: 'a'.repeat(64),
+      promptConfigVersion: 'before-prompt',
+      sourceBundleFiles: ['before.ts'],
+      requestedProviders: ['anthropic', 'openai'],
+    });
+    expect(persisted.runs[1].requestedConfig.router).toMatchObject({
+      provider: 'openai',
+      maxOutputTokens: 300,
+      pricing: { source: 'Synthetic manual artifact pricing.' },
+    });
+    expect(persisted.runs[0].observations[0].metadata.router).toMatchObject({
+      usage: { inputTokens: 10, outputTokens: 5 },
+      estimatedCostUsd: 0.000035,
+    });
+    for (const run of persisted.runs) {
+      expect(run.observations[0].metadata).toMatchObject({
+        sourceBundleSha256: persisted.sourceBundleSha256,
+        promptConfigVersion: persisted.promptConfigVersion,
+        traceSuiteSha256: persisted.traceSuiteSha256,
+        addieCodeVersion: persisted.addieCodeVersion,
+        repetition: persisted.repetition,
+      });
+    }
+  });
+
+  it('rejects a provider-mismatched plan before scripted dispatch', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const path = join(directory, 'artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const router = scriptedRouter();
+    const budget = new FixedTraceBudget(1);
+    const baseConfig = {
+      sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+      promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+      traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+      toolDefinitionProvenance: 'fixture_local' as const,
+      architectureArm: 'two_stage_llm_router' as const,
+    };
+    const invoke = (plans: FixedTraceDiagnosticProviderPlan[]) => runFixedTraceDiagnosticArtifact({
+      plans,
+      baseConfig,
+      runIdForProvider: (provider) => `synthetic-manual-${provider}`,
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'synthetic-manual-root',
+      runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'],
+      budgetNote: 'Synthetic no-network budget note.',
+    });
+    const plan = {
+      name: 'anthropic',
+      router: budgetedStage(router.provider, budget),
+      generation: budgetedStage(router.provider, budget),
+    };
+    await expect(invoke([{ ...plan, name: 'not-anthropic' }])).rejects.toThrow('provider plans require unique names');
+    const duplicatePath = join(directory, 'duplicate-artifact.json');
+    await expect(runFixedTraceDiagnosticArtifact({
+      plans: [plan, { ...plan }],
+      baseConfig,
+      runIdForProvider: (provider) => `synthetic-manual-${provider}`,
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(duplicatePath),
+      runRootId: 'synthetic-manual-root',
+      runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'],
+      budgetNote: 'Synthetic no-network budget note.',
+    })).rejects.toThrow('provider plans require unique names');
+    expect(router.calls).toHaveLength(0);
+    expect(readFileSync(path, 'utf8')).toBe('');
+    expect(readFileSync(duplicatePath, 'utf8')).toBe('');
+  });
+
+  it('does not let a final-response mutation alter its snapshotted manual artifact', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
     const path = join(directory, 'artifact.json');
     const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
     if (!selectedTrace) throw new Error('Missing synthetic surface trace');
     let plan!: FixedTraceDiagnosticProviderPlan;
     const router = scriptedRouter(() => { plan.router.model = 'mutated-after-final-response'; });
-    plan = { name: 'scripted', router: stage(router.provider), generation: stage(router.provider) };
+    const budget = new FixedTraceBudget(1);
+    plan = {
+      name: 'anthropic',
+      router: budgetedStage(router.provider, budget),
+      generation: budgetedStage(router.provider, budget),
+    };
 
-    await expect(runFixedTraceDiagnosticArtifact({
+    const artifact = await runFixedTraceDiagnosticArtifact({
       plans: [plan],
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64),
@@ -194,18 +344,16 @@ describe('fixed-trace diagnostic output reservation', () => {
         architectureArm: 'two_stage_llm_router',
       },
       runIdForProvider: (provider) => `synthetic-manual-${provider}`,
-      budget: new FixedTraceBudget(1),
+      budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
-      artifactVersion: 'fixed_trace_provider_eval_v4',
       runRootId: 'synthetic-manual-root',
       runStartedAt: '2026-09-05T00:00:00.000Z',
-      traceSuiteVersion: 'synthetic-manual-suite-v1',
-      addieCodeVersion: 'synthetic-code-v1',
       sourceBundleFiles: ['synthetic.ts'],
       budgetNote: 'Synthetic no-network budget note.',
-    })).rejects.toThrow('Fixed trace runner execution identity changed before provider dispatch');
+    });
 
     expect(router.calls).toHaveLength(1);
-    expect(readFileSync(path, 'utf8')).toBe('');
+    expect(artifact.runs[0].requestedConfig.router.model).toBe('synthetic-manual-model');
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ complete: true, diagnosticOnly: true });
   });
 });

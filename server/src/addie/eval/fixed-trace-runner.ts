@@ -466,6 +466,10 @@ function providerStageMetadata(
   usage: ModelUsage,
   state: StageInvocationState,
 ): FixedTraceModelStageMetadata {
+  // Provider responses are outside evaluator ownership. Retaining their usage
+  // object would let a later provider turn mutate already-recorded cost and
+  // usage evidence after this case has completed.
+  const recordedUsage = deepFreeze(structuredClone(usage));
   const resolvedPricing = returnedModelUsesRecordedPricing(config, response);
   return {
     source: 'provider',
@@ -485,11 +489,11 @@ function providerStageMetadata(
     samplingMode: config.samplingMode,
     temperature: config.temperature,
     usageKnown: true,
-    usage,
+    usage: recordedUsage,
     // A same-provider but unapproved model ID has no trusted rate in this
     // cohort. Keep usage for diagnostics, but never charge it at the
     // requested profile's rates.
-    estimatedCostUsd: resolvedPricing ? fixedTraceEstimatedCostUsd(usage, config.pricing) : null,
+    estimatedCostUsd: resolvedPricing ? fixedTraceEstimatedCostUsd(recordedUsage, config.pricing) : null,
     pricingSource: resolvedPricing ? config.pricing.source : null,
     pricingProfileId: resolvedPricing ? config.pricing.profileId : null,
     latencyMs: state.latencyMs,
@@ -502,6 +506,7 @@ function localStageMetadata(
   state: StageInvocationState,
   usage?: ModelUsage,
 ): FixedTraceModelStageMetadata {
+  const recordedUsage = usage === undefined ? undefined : deepFreeze(structuredClone(usage));
   return {
     source: 'local',
     dispatched: state.dispatched,
@@ -519,12 +524,12 @@ function localStageMetadata(
     transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
-    usageKnown: usage !== undefined,
-    usage: usage ?? null,
-    estimatedCostUsd: usage
-      ? fixedTraceEstimatedCostUsd(usage, config.pricing)
+    usageKnown: recordedUsage !== undefined,
+    usage: recordedUsage ?? null,
+    estimatedCostUsd: recordedUsage
+      ? fixedTraceEstimatedCostUsd(recordedUsage, config.pricing)
       : state.dispatched ? null : 0,
-    pricingSource: usage ? config.pricing.source : null,
+    pricingSource: recordedUsage ? config.pricing.source : null,
     pricingProfileId: config.pricing.profileId,
     latencyMs: state.latencyMs,
   };

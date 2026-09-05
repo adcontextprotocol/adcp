@@ -44,7 +44,6 @@ import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-t
 import { type FixedTraceArchitectureArmId } from '../../src/addie/eval/fixed-trace-architecture.js';
 import {
   FIXED_TRACE_SUITE,
-  FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
   type FixedTracePricing,
 } from '../../src/addie/eval/fixed-trace-suite.js';
@@ -326,12 +325,9 @@ const artifact = await runFixedTraceDiagnosticArtifact({
   runIdForProvider: (provider) => `${runRootId}-${provider}`,
   budget,
   outputReservation,
-  artifactVersion: 'fixed_trace_provider_eval_v4',
   runRootId,
   runStartedAt,
-  traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
   sourceBundleFiles: sources.files,
-  addieCodeVersion: CODE_VERSION,
   budgetNote: 'Soft admission target: exact prepared-request bytes and the full output allowance are reserved before each dispatch. Remote work may continue after a client timeout; any dispatched call without terminal usage marks exposure unknown and blocks every later dispatch.',
 });
 console.log(JSON.stringify({
