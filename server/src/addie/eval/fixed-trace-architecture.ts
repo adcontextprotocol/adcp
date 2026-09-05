@@ -1,4 +1,5 @@
 import type { AddieTool } from '../types.js';
+import { quickMatchRoutingContext, type ExecutionPlan } from '../router.js';
 import type { FixedTraceCase } from './fixed-trace-suite.js';
 
 /**
@@ -13,22 +14,126 @@ export const FIXED_TRACE_ARCHITECTURE_ARMS = Object.freeze({
     // Architectural capability is distinct from authenticated evaluation
     // evidence; this foundation is diagnostic-only.
     rolloutEligible: false,
+    diagnosticOnly: true,
   }),
   direct_generation: Object.freeze({
     id: 'direct_generation',
     routeSource: 'deployable_surface_policy',
     rolloutEligible: false,
+    diagnosticOnly: true,
+  }),
+  deterministic_policy_llm_fallback_hybrid: Object.freeze({
+    id: 'deterministic_policy_llm_fallback_hybrid',
+    routeSource: 'production_quick_match_with_llm_fallback',
+    rolloutEligible: false,
+    diagnosticOnly: true,
   }),
   oracle_route_diagnostic: Object.freeze({
     id: 'oracle_route_diagnostic',
     routeSource: 'fixture_oracle',
     rolloutEligible: false,
+    diagnosticOnly: true,
   }),
 } as const);
 
 export type FixedTraceArchitectureArmId = keyof typeof FIXED_TRACE_ARCHITECTURE_ARMS;
 export type FixedTraceArchitectureArmProvenance =
   (typeof FIXED_TRACE_ARCHITECTURE_ARMS)[FixedTraceArchitectureArmId];
+
+/**
+ * The diagnostic hybrid is intentionally a strict subset of production's
+ * quick-match policy.  It can only terminate no-tool surface outcomes; every
+ * routed/tool-bearing decision retains the incumbent strict LLM router.
+ */
+export const FIXED_TRACE_HYBRID_POLICY_VERSION = 'fixed-trace-hybrid-quick-match-v1';
+
+export interface FixedTraceHybridPolicy {
+  version: string;
+  /** A subset of production quick-match terminal actions, never `respond`. */
+  localTerminalActions: readonly ('ignore' | 'react')[];
+  /** Admin state is never an admission signal for a local outcome. */
+  requireNonAdmin: true;
+  /** Channel outcomes require a captured private-channel fact. */
+  requirePrivateChannelForChannelOutcome: true;
+  /** All non-local outcomes use the incumbent strict router stage. */
+  fallbackRouter: 'two_stage_llm_router';
+}
+
+export interface FixedTraceHybridDecision {
+  mode: 'local_terminal' | 'llm_router_fallback';
+  reason:
+    | 'production_quick_match_terminal'
+    | 'no_production_quick_match'
+    | 'thread_context_requires_router'
+    | 'admin_requires_router'
+    | 'channel_privacy_not_captured'
+    | 'tool_or_mutation_capability_requires_router'
+    | 'policy_disallows_terminal_action';
+  plan: ExecutionPlan | null;
+}
+
+const DEFAULT_FIXED_TRACE_HYBRID_POLICY: FixedTraceHybridPolicy = Object.freeze({
+  version: FIXED_TRACE_HYBRID_POLICY_VERSION,
+  localTerminalActions: Object.freeze(['ignore', 'react'] as const),
+  requireNonAdmin: true,
+  requirePrivateChannelForChannelOutcome: true,
+  fallbackRouter: 'two_stage_llm_router',
+});
+
+export function fixedTraceHybridPolicy(
+  policy: FixedTraceHybridPolicy | undefined = undefined,
+): FixedTraceHybridPolicy {
+  return policy ?? DEFAULT_FIXED_TRACE_HYBRID_POLICY;
+}
+
+export function validateFixedTraceHybridPolicy(policy: FixedTraceHybridPolicy): void {
+  if (!policy.version.trim()) throw new Error('Fixed trace hybrid policy version is required');
+  if (
+    !Array.isArray(policy.localTerminalActions)
+    || policy.localTerminalActions.length === 0
+    || policy.localTerminalActions.some((action) => action !== 'ignore' && action !== 'react')
+    || new Set(policy.localTerminalActions).size !== policy.localTerminalActions.length
+    || policy.requireNonAdmin !== true
+    || policy.requirePrivateChannelForChannelOutcome !== true
+    || policy.fallbackRouter !== 'two_stage_llm_router'
+  ) throw new Error('Fixed trace hybrid policy is invalid');
+}
+
+/**
+ * Make a deterministic hybrid decision from production quick-match behavior
+ * and request/surface facts only.  Do not pass a trace object to this helper:
+ * its routing, expectation, fixture, result, rubric, and grade fields are
+ * deliberately outside the admission boundary.
+ */
+export function decideFixedTraceHybridRoute(input: {
+  message: string;
+  source: FixedTraceCase['request']['source'];
+  isAdmin: boolean;
+  isThread: boolean;
+  channelPrivacy?: 'private' | 'public';
+  policy: FixedTraceHybridPolicy;
+}): FixedTraceHybridDecision {
+  validateFixedTraceHybridPolicy(input.policy);
+  if (input.isAdmin) return { mode: 'llm_router_fallback', reason: 'admin_requires_router', plan: null };
+  if (input.isThread) return { mode: 'llm_router_fallback', reason: 'thread_context_requires_router', plan: null };
+  if (input.source === 'channel' && input.channelPrivacy !== 'private') {
+    return { mode: 'llm_router_fallback', reason: 'channel_privacy_not_captured', plan: null };
+  }
+  const plan = quickMatchRoutingContext({
+    message: input.message,
+    source: input.source,
+    isThread: input.isThread,
+    isAAOAdmin: input.isAdmin,
+  });
+  if (!plan) return { mode: 'llm_router_fallback', reason: 'no_production_quick_match', plan: null };
+  if (plan.action === 'respond') {
+    return { mode: 'llm_router_fallback', reason: 'tool_or_mutation_capability_requires_router', plan: null };
+  }
+  if (!input.policy.localTerminalActions.includes(plan.action)) {
+    return { mode: 'llm_router_fallback', reason: 'policy_disallows_terminal_action', plan: null };
+  }
+  return { mode: 'local_terminal', reason: 'production_quick_match_terminal', plan };
+}
 
 export function fixedTraceArchitectureArm(
   arm: FixedTraceArchitectureArmId = 'two_stage_llm_router',
@@ -50,7 +155,7 @@ export interface FixedTraceToolUniverseProvenance {
     | 'fixture_local_routed_replay'
     | 'authorized_definition_handler_intersection_not_captured'
     | 'fixture_oracle';
-  intentNarrowing: 'llm_router' | 'not_applied' | 'fixture_oracle';
+  intentNarrowing: 'llm_router' | 'production_quick_match_or_llm_router' | 'not_applied' | 'fixture_oracle';
   bounded: boolean;
   deployable: boolean;
   toolNames: readonly string[] | null;
@@ -96,6 +201,15 @@ export function fixedTraceToolUniverseProvenance(
     return Object.freeze({
       source: 'fixture_oracle',
       intentNarrowing: 'fixture_oracle',
+      bounded: true,
+      deployable: false,
+      toolNames: null,
+    });
+  }
+  if (arm === 'deterministic_policy_llm_fallback_hybrid') {
+    return Object.freeze({
+      source: 'fixture_local_routed_replay',
+      intentNarrowing: 'production_quick_match_or_llm_router',
       bounded: true,
       deployable: false,
       toolNames: null,

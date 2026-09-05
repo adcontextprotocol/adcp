@@ -467,6 +467,8 @@ function sameArtifactRunMetadata(left: FixedTraceRunMetadata, right: FixedTraceR
     && left.architectureArm.id === right.architectureArm.id
     && left.architectureArm.routeSource === right.architectureArm.routeSource
     && left.architectureArm.rolloutEligible === right.architectureArm.rolloutEligible
+    && left.architectureArm.diagnosticOnly === right.architectureArm.diagnosticOnly
+    && JSON.stringify(left.hybridPolicy) === JSON.stringify(right.hybridPolicy)
     && left.executionEnvelope.source === right.executionEnvelope.source
     && left.executionEnvelope.deployable === right.executionEnvelope.deployable;
 }
@@ -578,6 +580,7 @@ export async function runFixedTraceDiagnosticArtifact(
       run.observations[0]?.metadata.architectureConfigSha256 ?? null,
     ])),
     architectureArm: fixedTraceArchitectureArm(commonMetadata.architectureArm.id),
+    hybridPolicy: commonMetadata.hybridPolicy,
     toolUniverse: fixedTraceToolUniverseProvenance(commonMetadata.architectureArm.id),
     executionEnvelope: fixedTraceExecutionEnvelopeProvenance(commonMetadata.architectureArm.id),
     requestedProviders: plans.map((plan) => plan.name),

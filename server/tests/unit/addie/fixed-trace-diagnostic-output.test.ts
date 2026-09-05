@@ -14,6 +14,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../../src/addie/eval/fixed-trace-diagnostic-output.js';
 import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
+import { fixedTraceHybridPolicy } from '../../../src/addie/eval/fixed-trace-architecture.js';
 import type { FixedTraceProviderStageConfig } from '../../../src/addie/eval/fixed-trace-runner.js';
 import {
   FIXED_TRACE_SUITE,
@@ -289,7 +290,8 @@ describe('fixed-trace diagnostic output reservation', () => {
         traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
         toolDefinitions: [],
         toolDefinitionProvenance: 'fixture_local',
-        architectureArm: 'two_stage_llm_router',
+        architectureArm: 'deterministic_policy_llm_fallback_hybrid',
+        hybridPolicy: fixedTraceHybridPolicy(),
       },
       budget,
       outputReservation: reserveFixedTraceDiagnosticOutput(path),
@@ -307,6 +309,8 @@ describe('fixed-trace diagnostic output reservation', () => {
       comparisonEligible: false,
       promotionEvidenceEligible: false,
       rolloutPass: false,
+      architectureArm: { id: 'deterministic_policy_llm_fallback_hybrid', diagnosticOnly: true },
+      hybridPolicy: fixedTraceHybridPolicy(),
       runs: [{
         provider: 'anthropic',
         summary: { complete: true, comparisonEligible: false },
