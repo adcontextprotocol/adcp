@@ -125,7 +125,7 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 ### Error Object Fields
 
-These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema. `buyer_reason` is part of the 3.2 beta schema and is not present in the released 3.1 bundle.
+These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema. `buyer_reason` is part of the 3.2 release-candidate schema and is not present in the released 3.1 bundle.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -155,7 +155,7 @@ Use `buyer_reason` when the top-level error is too coarse for a buyer agent to r
 }
 ```
 
-{/* The buyer-reason creative codes are published in the 3.2 beta bundle. */}
+{/* The buyer-reason creative codes are published in the 3.2 release-candidate bundle. */}
 `buyer_reason.code` reuses the comprehensive standard vocabulary in [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json), including request, authorization, account, policy, governance, commercial, inventory, and creative failure classes. [`CREATIVE_SIZE_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-creative-size-mismatch), [`CREATIVE_MISSING_CLICK_URL`](/docs/building/verification/compliance-catalog#error-code-creative-missing-click-url), and [`CREATIVE_VALIDATION_FAILED_GENERIC`](/docs/building/verification/compliance-catalog#error-code-creative-validation-failed-generic) cover the motivating creative-validation gaps. The wire field remains an open string: receivers MUST accept unknown codes, use `buyer_reason.message` for human-facing context, and route recovery from the enclosing `error.recovery`. Seller-specific extensions MUST follow the standard `X_{VENDOR}_{CODE}` naming rule. This permits later codes and platform-specific extensions without making older receivers reject the error object.
 
 `buyer_reason.message` MUST be buyer-safe. It MUST NOT contain vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details. Producers compose it from buyer-visible request and catalog data; they do not copy raw downstream error text. Buyer clients may display the message, but MUST treat it as untrusted producer text and MUST NOT use the free text for control flow.

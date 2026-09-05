@@ -15,8 +15,18 @@ change 3.2 surfaces before GA.
 </Warning>
 
 The 3.2 prerelease cycle started with a protocol-first beta checkpoint.
-RC.0 is the current protocol checkpoint. TypeScript SDK `14.0.0-beta.31` and
-Python SDK `8.0.0b13` consume the signed RC.0 bundle:
+RC.1 is the current signed protocol checkpoint. No SDK embeds it yet.
+TypeScript SDK `14.0.0-beta.31` and Python SDK `8.0.0b13` remain exact RC.0
+pairings:
+
+<Info>
+**RC.1 separates protocol-first and SDK-backed testing.** Use its signed bundle
+for raw-wire validation and code generation. Continue using RC.0 for the
+currently matched TypeScript and Python SDKs. A
+[Go RC.1 update is in review](https://github.com/adcontextprotocol/adcp-go/pull/493),
+but it is not usable until a package is published with an explicit support
+statement.
+</Info>
 
 | Checkpoint | Purpose | Who should test |
 |---|---|---|
@@ -32,31 +42,32 @@ Python SDK `8.0.0b13` consume the signed RC.0 bundle:
 | `3.2.0-beta.9` | Previous protocol checkpoint for the draft account change feed, inventory-list receipts, inventory delivery identity, seller policy and change rights, and broader conformance coverage | Pinned adopters comparing beta.9 and beta.10 behavior |
 | `3.2.0-beta.10` | Previous protocol checkpoint for managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Pinned adopters comparing beta.10 and beta.11 behavior |
 | `3.2.0-beta.11` | Previous protocol checkpoint | Pinned adopters comparing beta.11 and RC.0 behavior |
-| `3.2.0-rc.0` | Current protocol checkpoint | SDK-backed, raw-wire, code-generation, and integration testing |
-| SDK wave | `@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed `3.2.0-rc.0`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
+| `3.2.0-rc.0` | Previous protocol checkpoint | SDK-backed integration testing with an exact RC.0 package pairing |
+| `3.2.0-rc.1` | Current protocol checkpoint for Reliable Reporting 1.0 and reporting-semantics hardening | Raw-wire, signed-artifact, code-generation, and SDK implementation testing |
+| Current SDK wave | `@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed `3.2.0-rc.0`; Go `adcp/v3@v3.2.0` remains pinned to protocol beta.9 | RC.0 SDK-backed testing while RC.1 SDK work proceeds |
 
 Earlier betas remain useful as pinned implementation checkpoints. For
-SDK-backed testing of the current checkpoint, pair TypeScript SDK beta.31 or
-Python SDK beta.13 with protocol RC.0. TypeScript SDK beta.29 and Python SDK
-beta.12 remain historical pairings for beta.11. Do not combine a newer wire pin
-with an SDK generated from an older bundle unless the SDK maintainer documents
-forward compatibility.
+SDK-backed testing, pair TypeScript SDK beta.31 or Python SDK beta.13 with
+protocol RC.0. TypeScript SDK beta.29 and Python SDK beta.12 remain historical
+pairings for beta.11. No current SDK pairing is RC.1 evidence. Do not combine a
+newer wire pin with an SDK generated from an older bundle unless the SDK
+maintainer documents forward compatibility.
 
 ## Know which version string to use
 
 The artifact version, wire pin, and documentation selector are related but not
 interchangeable:
 
-| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 | beta.6 | beta.7 | beta.8 | beta.9 | beta.10 | beta.11 | RC.0 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Protocol artifact | `3.2.0-beta.0` | `3.2.0-beta.1` | `3.2.0-beta.2` | `3.2.0-beta.3` | `3.2.0-beta.4` | `3.2.0-beta.5` | `3.2.0-beta.6` | `3.2.0-beta.7` | `3.2.0-beta.8` | `3.2.0-beta.9` | `3.2.0-beta.10` | `3.2.0-beta.11` | `3.2.0-rc.0` |
-| Git tag | `v3.2.0-beta.0` | `v3.2.0-beta.1` | `v3.2.0-beta.2` | `v3.2.0-beta.3` | `v3.2.0-beta.4` | `v3.2.0-beta.5` | `v3.2.0-beta.6` | `v3.2.0-beta.7` | `v3.2.0-beta.8` | `v3.2.0-beta.9` | `v3.2.0-beta.10` | `v3.2.0-beta.11` | `v3.2.0-rc.0` |
-| `adcp_version` wire pin | `"3.2-beta.0"` | `"3.2-beta.1"` | `"3.2-beta.2"` | `"3.2-beta.3"` | `"3.2-beta.4"` | `"3.2-beta.5"` | `"3.2-beta.6"` | `"3.2-beta.7"` | `"3.2-beta.8"` | `"3.2-beta.9"` | `"3.2-beta.10"` | `"3.2-beta.11"` | `"3.2-rc.0"` |
-| Documentation selector | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-rc` |
+| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 | beta.6 | beta.7 | beta.8 | beta.9 | beta.10 | beta.11 | RC.0 | RC.1 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Protocol artifact | `3.2.0-beta.0` | `3.2.0-beta.1` | `3.2.0-beta.2` | `3.2.0-beta.3` | `3.2.0-beta.4` | `3.2.0-beta.5` | `3.2.0-beta.6` | `3.2.0-beta.7` | `3.2.0-beta.8` | `3.2.0-beta.9` | `3.2.0-beta.10` | `3.2.0-beta.11` | `3.2.0-rc.0` | `3.2.0-rc.1` |
+| Git tag | `v3.2.0-beta.0` | `v3.2.0-beta.1` | `v3.2.0-beta.2` | `v3.2.0-beta.3` | `v3.2.0-beta.4` | `v3.2.0-beta.5` | `v3.2.0-beta.6` | `v3.2.0-beta.7` | `v3.2.0-beta.8` | `v3.2.0-beta.9` | `v3.2.0-beta.10` | `v3.2.0-beta.11` | `v3.2.0-rc.0` | `v3.2.0-rc.1` |
+| `adcp_version` wire pin | `"3.2-beta.0"` | `"3.2-beta.1"` | `"3.2-beta.2"` | `"3.2-beta.3"` | `"3.2-beta.4"` | `"3.2-beta.5"` | `"3.2-beta.6"` | `"3.2-beta.7"` | `"3.2-beta.8"` | `"3.2-beta.9"` | `"3.2-beta.10"` | `"3.2-beta.11"` | `"3.2-rc.0"` | `"3.2-rc.1"` |
+| Documentation selector | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-rc` | `3.2-rc` |
 
 Only send a prerelease wire pin to a peer that advertises that exact value in
 `get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact: a
-buyer pinned to `"3.2-rc.0"` must not silently negotiate to another prerelease,
+buyer pinned to `"3.2-rc.1"` must not silently negotiate to another prerelease,
 and a stable `"3.2"` pin must not silently negotiate to a prerelease.
 
 ## Use matched SDK prereleases
@@ -79,19 +90,26 @@ Python `adcp==8.0.0b13` carries RC.0 schemas and generated types. Its
 higher-level caller/server helpers remain role-dependent, so consult the SDK
 matrix before treating schema parity as complete L1–L3 coverage.
 
-## Use the RC.0 artifact directly
+Go `adcp/v3@v3.2.0` includes 3.2 proposal APIs and signing additions, but its
+generated schemas remain pinned to protocol `3.2.0-beta.9`. It is not an exact
+RC.0 or RC.1 pairing; use it only for the documented partial surface. The
+[RC.1 Go update](https://github.com/adcontextprotocol/adcp-go/pull/493) is in
+review, but it is not supported until a package is published with an explicit
+protocol-version statement.
 
-Download the signed RC.0 protocol bundle rather
+## Use the RC.1 artifact directly
+
+Download the signed RC.1 protocol bundle rather
 than copying schemas from `main` or from the moving `/schemas/latest/` path:
 
 ```bash
-curl -fLO https://adcontextprotocol.org/protocol/3.2.0-rc.0.tgz
-curl -fLO https://adcontextprotocol.org/protocol/3.2.0-rc.0.tgz.sha256
-shasum -a 256 -c 3.2.0-rc.0.tgz.sha256
-tar -xzf 3.2.0-rc.0.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.2.0-rc.1.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.2.0-rc.1.tgz.sha256
+shasum -a 256 -c 3.2.0-rc.1.tgz.sha256
+tar -xzf 3.2.0-rc.1.tgz
 ```
 
-The extracted `adcp-3.2.0-rc.0/` directory contains:
+The extracted `adcp-3.2.0-rc.1/` directory contains:
 
 - `manifest.json` — release version, bundle contents, skills, and file count;
 - `schemas/` — source-shaped and bundled request/response schemas, including
@@ -109,13 +127,13 @@ Useful direct-artifact tests are:
 1. Generate or refresh types from the pinned bundled schemas.
 2. Validate representative requests and responses for the roles you implement.
 3. Compare your advertised tools with `schemas/manifest.json`.
-4. Exercise raw MCP or A2A calls with `adcp_version: "3.2-rc.0"` against a
+4. Exercise raw MCP or A2A calls with `adcp_version: "3.2-rc.1"` against a
    staging peer that advertises the same pin.
 5. Run the compliance assets with a source-compatible runner if you maintain
    one. Do not weaken production authentication to accommodate a prerelease runner.
 
 <Note>
-**No 3.2 verification badge is currently issued for RC.0.** Treat it as an
+**No 3.2 verification badge is currently issued for a prerelease.** Treat RC.1 as an
 implementation input, not a certification target.
 </Note>
 
@@ -142,15 +160,16 @@ SDK implementation bugs in the SDK's own repository. Accepted protocol fixes
 receive a changeset and ship in a later prerelease; published prereleases are never rebuilt
 in place.
 
-## Current RC.0 checkpoint
+## Current RC.1 checkpoint
 
-Protocol beta.1 through beta.11 and RC.0 are published. TypeScript SDK beta.31
-and Python SDK beta.13 embed the exact RC.0 bundle. Before treating
-a test result as RC.0 protocol evidence, confirm that:
+Protocol beta.1 through beta.11, RC.0, and RC.1 are published. No SDK embeds
+RC.1 yet; TypeScript SDK beta.31 and Python SDK beta.13 embed RC.0. Before
+treating a test result as RC.1 protocol evidence, confirm that:
 
-- the test uses the signed RC.0 artifact directly;
-- both peers advertise `"3.2-rc.0"` before calls use that pin;
-- the integration scenarios below run against RC.0 and retain the exact
+- the test uses the signed RC.1 artifact directly rather than an older SDK's
+  generated schemas;
+- both peers advertise `"3.2-rc.1"` before calls use that pin;
+- the integration scenarios below run against RC.1 and retain the exact
   bundle version;
 - copy/paste installation and validation commands have been executed as
   published;
@@ -253,7 +272,8 @@ Include this information in a prerelease issue:
 - schema path or JSON Pointer involved;
 - expected and actual behavior;
 - minimal redacted payload and validation error;
-- whether the problem blocks RC.0 interoperability.
+- whether the problem blocks RC.1 interoperability or only an older SDK-backed
+  checkpoint.
 
 Never include credentials, signed URLs, bearer tokens, private keys, or live
 customer payloads.

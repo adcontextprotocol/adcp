@@ -5,8 +5,8 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 ---
 
 <Warning>
-**Reliable Reporting 1.0 / RC1 additions — unreleased source contract.** This
-task is experimental. Sellers implementing it declare
+**Reliable Reporting 1.0 is published in RC.1 and remains experimental.**
+Sellers implementing it declare
 `media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
 </Warning>
 
@@ -16,23 +16,22 @@ usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-refe
 as the reporting-data API.
 
 <Note>
-The schema links below describe the published RC0 baseline. Fields and behavior
-explicitly labeled **Reliable Reporting 1.0 / RC1** below are unreleased source
-contract and will publish with RC1. RC0 does not support `changes_after`,
-`adjustment_receipts`, receipt replacement semantics, or any other RC1-only
+The schema links below pin the published RC.1 contract. RC.0 does not support `changes_after`,
+`adjustment_receipts`, receipt replacement semantics, or any other RC.1-only
 addition.
 </Note>
 
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/get-reporting-status-request.json)
+{/* The stable /schemas/v3 alias does not expose this RC.1-only task yet. */}
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-reporting-status-request.json)
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-reporting-status-response.json)
 
 <Note>
-**Reliable Reporting 1.0 / RC1 additions:** incremental `changes_after` repair and
+**Reliable Reporting 1.0 / RC.1 additions:** incremental `changes_after` repair and
 its checkpoint, post-official `adjustments[]` and `adjustment_receipts[]`, and their
-correction/reconciliation semantics below are unreleased. RC0 already supports the
+correction/reconciliation semantics below are published in RC.1. RC.0 supports the
 `summary`, `periods`, and `revision` views, retained revisions, materializations,
-`receipts[]`, and cursor pagination; do not infer the RC1 additions from that baseline.
+`receipts[]`, and cursor pagination; do not infer the RC.1 additions from that baseline.
 </Note>
 
 ## Views
@@ -42,8 +41,8 @@ Every request explicitly selects one response shape:
 | View | Use |
 | --- | --- |
 | `summary` | Answer “where is my reporting?” for an account, media-buy, and time scope. |
-| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, **RC1** post-official adjustments and adjustment receipts, materialization attempts, and consumer receipts. Use **RC1** `changes_after` for incremental repair. |
-| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its **RC1** adjustments and adjustment receipts, materializations, and receipts. |
+| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, **RC.1** post-official adjustments and adjustment receipts, materialization attempts, and consumer receipts. Use **RC.1** `changes_after` for incremental repair. |
+| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its **RC.1** adjustments and adjustment receipts, materializations, and receipts. |
 
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
 explicit so adding a filter never silently changes the response type.
