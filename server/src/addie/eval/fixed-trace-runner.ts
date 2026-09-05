@@ -758,6 +758,21 @@ function generationConfigForTrace(
   return { ...config.generation, maxOutputTokens: control.maxOutputTokens };
 }
 
+/**
+ * Validate the complete immutable execution contract without preparing or
+ * dispatching a provider request. Diagnostic artifacts use this to ensure
+ * every planned run can start before they acquire their exclusive ledger.
+ */
+export function preflightFixedTraceRunnerConfig(config: FixedTraceRunnerConfig): void {
+  const identity = executionIdentity(config);
+  preflightFixtureRegistrations(config, identity);
+  const executionConfig = snapshotExecutionConfig(config);
+  validateStageConfig('router', executionConfig.router);
+  for (const trace of executionConfig.traceSuite) {
+    validateStageConfig('generation', generationConfigForTrace(trace, executionConfig));
+  }
+}
+
 function directAdmissionMetadata(
   config: FixedTraceRunnerConfig,
   toolSchemaSha256: string,

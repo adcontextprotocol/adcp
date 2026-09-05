@@ -442,7 +442,6 @@ export function claimFixedTraceBudgetDiagnosticLease(
   ) throw new Error('Fixed trace diagnostic budget must be pristine and exclusively claimed');
 
   const lease = Object.freeze({});
-  exclusiveBudgetLeases.set(budget, lease);
   const clones = new Map<ModelProvider, BudgetedFixedTraceProvider>();
   for (const provider of providers) {
     if (clones.has(provider)) continue;
@@ -455,6 +454,10 @@ export function claimFixedTraceBudgetDiagnosticLease(
       lease,
     ));
   }
+  // Cloning has no asynchronous boundary. Complete it before publishing the
+  // lease so a malformed wrapper cannot leave an otherwise pristine ledger
+  // permanently claimed.
+  exclusiveBudgetLeases.set(budget, lease);
   return Object.freeze({
     providerFor(provider: ModelProvider): BudgetedFixedTraceProvider {
       const clone = clones.get(provider);

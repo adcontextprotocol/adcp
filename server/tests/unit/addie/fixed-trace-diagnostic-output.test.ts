@@ -620,6 +620,76 @@ describe('fixed-trace diagnostic output reservation', () => {
     });
   });
 
+  it('preflights every plan before leasing a pristine budget or dispatching an earlier plan', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const failedPath = join(directory, 'failed-artifact.json');
+    const completedPath = join(directory, 'completed-artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const first = scriptedRouter(undefined, 'anthropic');
+    const second = scriptedRouter(undefined, 'openai');
+    const budget = new FixedTraceBudget(1);
+    const firstPlan: FixedTraceDiagnosticProviderPlan = {
+      name: 'anthropic',
+      router: budgetedStage(first.provider, budget),
+      generation: budgetedStage(first.provider, budget),
+    };
+    const invalidSecondPlan: FixedTraceDiagnosticProviderPlan = {
+      name: 'openai',
+      router: budgetedStage(second.provider, budget),
+      generation: budgetedStage(second.provider, budget),
+    };
+    invalidSecondPlan.generation.maxIterations = 0;
+    const invoke = (
+      plans: readonly FixedTraceDiagnosticProviderPlan[],
+      path: string,
+    ) => runFixedTraceDiagnosticArtifact({
+      plans,
+      baseConfig: {
+        sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+        promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+      },
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    await expect(invoke([firstPlan, invalidSecondPlan], failedPath)).rejects.toThrow(
+      'generation maxIterations must be between',
+    );
+    expect(first.calls).toHaveLength(0);
+    expect(second.calls).toHaveLength(0);
+    expect(readFileSync(failedPath, 'utf8')).toBe('');
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0,
+      reservedUsd: 0,
+      dispatchedCalls: 0,
+      completedCalls: 0,
+      budgetRejectedCalls: 0,
+      admissionClosed: false,
+      exposureUnknown: false,
+    });
+
+    const validSecondPlan: FixedTraceDiagnosticProviderPlan = {
+      name: 'openai',
+      router: budgetedStage(second.provider, budget),
+      generation: budgetedStage(second.provider, budget),
+    };
+    const artifact = await invoke([firstPlan, validSecondPlan], completedPath);
+    expect(first.calls).toHaveLength(1);
+    expect(second.calls).toHaveLength(1);
+    expect(artifact.budget).toMatchObject({
+      accountedSpendUsd: 0.00007,
+      dispatchedCalls: 2,
+      completedCalls: 2,
+      budgetRejectedCalls: 0,
+      exposureUnknown: false,
+    });
+  });
+
   it('prevents post-preflight method and prototype tampering in a two-turn zero-rate run', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
     const path = join(directory, 'artifact.json');

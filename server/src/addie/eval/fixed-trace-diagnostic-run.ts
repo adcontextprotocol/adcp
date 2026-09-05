@@ -1,4 +1,5 @@
 import {
+  preflightFixedTraceRunnerConfig,
   runFixedTraceSuite,
   type FixedTraceRunnerConfig,
   type FixedTraceProviderStageConfig,
@@ -52,16 +53,22 @@ function deepFreeze<T>(value: T): T {
 }
 
 function snapshotStageConfig(config: FixedTraceProviderStageConfig): FixedTraceProviderStageConfig {
-  return Object.freeze({ ...config, pricing: deepFreeze(structuredClone(config.pricing)) });
+  const { provider, pricing, ...serializable } = config;
+  return Object.freeze({
+    ...structuredClone(serializable),
+    provider,
+    pricing: deepFreeze(structuredClone(pricing)),
+  });
 }
 
 function snapshotBaseConfig(
   config: FixedTraceDiagnosticArtifactOptions['baseConfig'],
 ): FixedTraceDiagnosticArtifactOptions['baseConfig'] {
+  const { traceSuite, toolDefinitions, ...serializable } = config;
   return Object.freeze({
-    ...config,
-    traceSuite: deepFreeze(structuredClone(config.traceSuite)),
-    toolDefinitions: deepFreeze(structuredClone(config.toolDefinitions)),
+    ...structuredClone(serializable),
+    traceSuite: deepFreeze(structuredClone(traceSuite)),
+    toolDefinitions: deepFreeze(structuredClone(toolDefinitions)),
   });
 }
 
@@ -85,20 +92,28 @@ function snapshotPlans(
     ) throw new Error('Fixed trace diagnostic provider plans require unique names matching both stage providers');
     names.add(plan.name);
   }
+  // Clone every serializable stage control before a provider can run, but do
+  // not claim the live ledger yet. The complete suite still needs preflight.
+  return Object.freeze(suppliedPlans.map((plan) => Object.freeze({
+    name: plan.name,
+    router: snapshotStageConfig(plan.router),
+    generation: snapshotStageConfig(plan.generation),
+  })));
+}
+
+function leasePlans(
+  plans: readonly FixedTraceDiagnosticProviderPlan[],
+  budget: FixedTraceBudget,
+): readonly FixedTraceDiagnosticProviderPlan[] {
   const lease = claimFixedTraceBudgetDiagnosticLease(
     budget,
-    suppliedPlans.flatMap((plan) => [plan.router.provider, plan.generation.provider]),
+    plans.flatMap((plan) => [plan.router.provider, plan.generation.provider]),
   );
-  const plans = suppliedPlans.map((plan) => {
-    // Execute through lease-private wrappers and clone every serializable
-    // stage control before the first await.
-    return Object.freeze({
-      name: plan.name,
-      router: snapshotStageConfig({ ...plan.router, provider: lease.providerFor(plan.router.provider) }),
-      generation: snapshotStageConfig({ ...plan.generation, provider: lease.providerFor(plan.generation.provider) }),
-    });
-  });
-  return Object.freeze(plans);
+  return Object.freeze(plans.map((plan) => Object.freeze({
+    name: plan.name,
+    router: Object.freeze({ ...plan.router, provider: lease.providerFor(plan.router.provider) }),
+    generation: Object.freeze({ ...plan.generation, provider: lease.providerFor(plan.generation.provider) }),
+  })));
 }
 
 function snapshotNonblank(value: string, name: string): string {
@@ -123,6 +138,39 @@ function snapshotSourceBundleFiles(files: readonly string[]): readonly string[] 
     throw new Error('Fixed trace diagnostic source bundle files must be unique');
   }
   return Object.freeze([...files]);
+}
+
+function snapshotOutputReservation(
+  reservation: FixedTraceDiagnosticOutputReservation,
+): FixedTraceDiagnosticOutputReservation {
+  if (!reservation || typeof reservation.finalize !== 'function') {
+    throw new Error('Fixed trace diagnostic output reservation must finalize content');
+  }
+  return reservation;
+}
+
+function plannedRunConfigs(
+  baseConfig: FixedTraceDiagnosticArtifactOptions['baseConfig'],
+  plans: readonly FixedTraceDiagnosticProviderPlan[],
+  runRootId: string,
+): readonly { readonly plan: FixedTraceDiagnosticProviderPlan; readonly runId: string; readonly config: FixedTraceRunnerConfig }[] {
+  const runIds = new Set<string>();
+  const plannedRuns = plans.map((plan) => {
+    const runId = diagnosticChildRunId(runRootId, plan.name);
+    if (runIds.has(runId)) throw new Error('Fixed trace diagnostic plans must derive unique child run IDs');
+    runIds.add(runId);
+    return Object.freeze({
+      plan,
+      runId,
+      config: Object.freeze({
+        ...baseConfig,
+        runId,
+        router: plan.router,
+        generation: plan.generation,
+      }),
+    });
+  });
+  return Object.freeze(plannedRuns);
 }
 
 function requestedStageConfig(stage: FixedTraceProviderStageConfig): {
@@ -319,28 +367,29 @@ function sameArtifactRunMetadata(left: FixedTraceRunMetadata, right: FixedTraceR
 export async function runFixedTraceDiagnosticArtifact(
   options: FixedTraceDiagnosticArtifactOptions,
 ) {
-  // Snapshot every serializable claim before provider code can run. Provider,
-  // budget, and reservation objects remain live capabilities by reference.
+  // Snapshot and validate every serializable claim before provider code can
+  // run. Provider, budget, and reservation objects remain live capabilities
+  // by reference. In particular, do not acquire the one-way budget lease
+  // until every planned suite has passed its no-dispatch preflight.
   const baseConfig = snapshotBaseConfig(options.baseConfig);
   const budgetLedger = options.budget;
-  const plans = snapshotPlans(options.plans, budgetLedger);
+  const requestedPlans = snapshotPlans(options.plans, budgetLedger);
   const runRootId = snapshotNonblank(options.runRootId, 'run root ID');
   const runStartedAt = snapshotNonblank(options.runStartedAt, 'run start time');
   const sourceBundleFiles = snapshotSourceBundleFiles(options.sourceBundleFiles);
   const budgetNote = snapshotNonblank(options.budgetNote, 'budget note');
-  const outputReservation = options.outputReservation;
-  const plannedRuns = Object.freeze(plans.map((plan) => Object.freeze({
-    plan,
-    runId: diagnosticChildRunId(runRootId, plan.name),
-  })));
+  const outputReservation = snapshotOutputReservation(options.outputReservation);
+  const requestedPlannedRuns = plannedRunConfigs(baseConfig, requestedPlans, runRootId);
+  for (const plannedRun of requestedPlannedRuns) {
+    preflightFixedTraceRunnerConfig(plannedRun.config);
+  }
+
+  // From this point onward a failure remains fail-closed: the budget lease is
+  // intentionally exclusive for the complete diagnostic artifact lifetime.
+  const plans = leasePlans(requestedPlans, budgetLedger);
+  const plannedRuns = plannedRunConfigs(baseConfig, plans, runRootId);
   const candidateRuns = [];
-  for (const { plan, runId } of plannedRuns) {
-    const config: FixedTraceRunnerConfig = {
-      ...baseConfig,
-      runId,
-      router: plan.router,
-      generation: plan.generation,
-    };
+  for (const { plan, runId, config } of plannedRuns) {
     const evaluated = await runFixedTraceDiagnosticCandidate(config);
     candidateRuns.push({
       provider: plan.name,
