@@ -322,7 +322,6 @@ const artifact = await runFixedTraceDiagnosticArtifact({
     toolDefinitionProvenance: 'fixture_local',
     architectureArm,
   },
-  runIdForProvider: (provider) => `${runRootId}-${provider}`,
   budget,
   outputReservation,
   runRootId,

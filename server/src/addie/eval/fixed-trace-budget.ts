@@ -62,6 +62,37 @@ interface Reservation {
   active: boolean;
 }
 
+interface BudgetedProviderBinding {
+  readonly budget: FixedTraceBudget;
+  readonly pricing: FixedTraceBudgetPricing;
+}
+
+// This is deliberately not an instance field or a public predicate. The
+// diagnostic artifact accepts only the exact wrapper that owns this private
+// binding; a subclass must not be able to claim ledger ownership while
+// replacing the dispatch path.
+const budgetedProviderBindings = new WeakMap<object, BudgetedProviderBinding>();
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
+  for (const nested of Object.values(value)) deepFreeze(nested);
+  return Object.freeze(value);
+}
+
+function snapshotPricing(pricing: FixedTraceBudgetPricing): FixedTraceBudgetPricing {
+  return Object.freeze({ ...pricing });
+}
+
+function samePricing(left: FixedTraceBudgetPricing, right: FixedTraceBudgetPricing): boolean {
+  return left.inputUsdPerMillionTokens === right.inputUsdPerMillionTokens
+    && left.outputUsdPerMillionTokens === right.outputUsdPerMillionTokens
+    && left.cacheReadUsdPerMillionTokens === right.cacheReadUsdPerMillionTokens
+    && left.cacheWriteUsdPerMillionTokens === right.cacheWriteUsdPerMillionTokens
+    && left.cacheReadAccounting === right.cacheReadAccounting
+    && left.cacheWriteAccounting === right.cacheWriteAccounting
+    && left.source === right.source;
+}
+
 export function validateFixedTracePricing(pricing: FixedTraceBudgetPricing): void {
   if (
     !Number.isFinite(pricing.inputUsdPerMillionTokens)
@@ -249,27 +280,32 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
   readonly capabilities: ModelProvider['capabilities'];
   readonly deriveProviderToolReceipt?: ModelProvider['deriveProviderToolReceipt'];
 
+  readonly #delegate: ModelProvider;
+  readonly #budget: FixedTraceBudget;
+  readonly #pricing: FixedTraceBudgetPricing;
+  readonly #responsePricingApproved: FixedTraceResponsePricingApproval;
+
   constructor(
-    private readonly delegate: ModelProvider,
-    private readonly budget: FixedTraceBudget,
-    private readonly pricing: FixedTraceBudgetPricing,
-    private readonly responsePricingApproved: FixedTraceResponsePricingApproval = () => false,
+    delegate: ModelProvider,
+    budget: FixedTraceBudget,
+    pricing: FixedTraceBudgetPricing,
+    responsePricingApproved: FixedTraceResponsePricingApproval = () => false,
   ) {
     validateFixedTracePricing(pricing);
+    this.#delegate = delegate;
+    this.#budget = budget;
+    this.#pricing = snapshotPricing(pricing);
+    this.#responsePricingApproved = responsePricingApproved;
     this.id = delegate.id;
     this.capabilities = delegate.capabilities;
     if (delegate.deriveProviderToolReceipt) {
       this.deriveProviderToolReceipt = delegate.deriveProviderToolReceipt.bind(delegate);
     }
+    budgetedProviderBindings.set(this, { budget, pricing: this.#pricing });
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
-    return this.delegate.prepare(request);
-  }
-
-  /** The diagnostic artifact may report only the ledger this decorator uses. */
-  isBoundToBudget(budget: FixedTraceBudget): boolean {
-    return this.budget === budget;
+    return this.#delegate.prepare(request);
   }
 
   async *respond(
@@ -280,18 +316,18 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     let dispatchStarted = false;
     let settled = false;
     try {
-      for await (const event of this.delegate.respond(request, {
+      for await (const event of this.#delegate.respond(request, {
         ...options,
         beforeDispatch: async (prepared) => {
-          reservation = this.budget.reserve(prepared, request.maxOutputTokens, this.pricing);
+          reservation = this.#budget.reserve(prepared, request.maxOutputTokens, this.#pricing);
           try {
             await options.beforeDispatch?.(prepared);
           } catch (error) {
-            this.budget.cancel(reservation);
+            this.#budget.cancel(reservation);
             reservation = null;
             throw error;
           }
-          this.budget.markDispatched(reservation);
+          this.#budget.markDispatched(reservation);
           dispatchStarted = true;
         },
       })) {
@@ -299,24 +335,52 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
           if (!reservation || !dispatchStarted) {
             throw new Error('Fixed trace provider completed without dispatch admission');
           }
-          if (this.responsePricingApproved(event.response)) {
-            this.budget.complete(reservation, event.response.usage, this.pricing);
+          // The delegate still owns `event.response` and may mutate it when
+          // the iterator resumes after this yield. One evaluator-owned frozen
+          // snapshot is therefore the sole terminal response used for
+          // approval, settlement, and the outward event.
+          const response = deepFreeze(structuredClone(event.response));
+          if (this.#responsePricingApproved(response)) {
+            this.#budget.complete(reservation, response.usage, this.#pricing);
           } else {
             // Do not settle an unapproved returned identity at the requested
             // model's rate. The response remains visible to the runner, which
             // records unknown cost and fails its stage contract; the shared
             // ledger closes before any subsequent provider call.
-            this.budget.markExposureUnknown(reservation);
+            this.#budget.markExposureUnknown(reservation);
           }
           settled = true;
+          yield { type: 'response_complete', response };
+          continue;
         }
         yield event;
       }
     } finally {
       if (reservation && !settled) {
-        if (dispatchStarted) this.budget.markExposureUnknown(reservation);
-        else this.budget.cancel(reservation);
+        if (dispatchStarted) this.#budget.markExposureUnknown(reservation);
+        else this.#budget.cancel(reservation);
       }
     }
   }
+}
+
+const budgetedFixedTraceProviderPrepare = BudgetedFixedTraceProvider.prototype.prepare;
+const budgetedFixedTraceProviderRespond = BudgetedFixedTraceProvider.prototype.respond;
+
+/**
+ * Authenticate the non-overridable ledger wrapper used by diagnostics.
+ * `instanceof` and public binding predicates are intentionally insufficient:
+ * subclasses can replace `respond` and bypass settlement.
+ */
+export function isTrustedBudgetedFixedTraceProvider(
+  provider: ModelProvider,
+  budget: FixedTraceBudget,
+  pricing: FixedTraceBudgetPricing,
+): boolean {
+  const binding = budgetedProviderBindings.get(provider);
+  if (binding?.budget !== budget || !samePricing(binding.pricing, pricing)) return false;
+  if (Object.getPrototypeOf(provider) !== BudgetedFixedTraceProvider.prototype) return false;
+  if ((provider as unknown as { constructor: unknown }).constructor !== BudgetedFixedTraceProvider) return false;
+  return provider.prepare === budgetedFixedTraceProviderPrepare
+    && provider.respond === budgetedFixedTraceProviderRespond;
 }

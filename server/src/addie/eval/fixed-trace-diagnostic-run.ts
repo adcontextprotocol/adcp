@@ -16,9 +16,9 @@ import {
   type FixedTraceRunMetadata,
 } from './fixed-trace-suite.js';
 import {
-  BudgetedFixedTraceProvider,
   FixedTraceBudget,
   fixedTraceEstimatedCostUsd,
+  isTrustedBudgetedFixedTraceProvider,
 } from './fixed-trace-budget.js';
 
 export interface FixedTraceDiagnosticProviderPlan {
@@ -34,7 +34,6 @@ export interface FixedTraceDiagnosticOutputReservation {
 interface FixedTraceDiagnosticArtifactOptions {
   readonly plans: readonly FixedTraceDiagnosticProviderPlan[];
   readonly baseConfig: Omit<FixedTraceRunnerConfig, 'runId' | 'router' | 'generation'>;
-  readonly runIdForProvider: (provider: string) => string;
   readonly budget: FixedTraceBudget;
   readonly outputReservation: FixedTraceDiagnosticOutputReservation;
   readonly runRootId: string;
@@ -80,10 +79,8 @@ function snapshotPlans(
       || names.has(plan.name)
       || plan.name !== plan.router?.provider?.id
       || plan.name !== plan.generation?.provider?.id
-      || !(plan.router.provider instanceof BudgetedFixedTraceProvider)
-      || !(plan.generation.provider instanceof BudgetedFixedTraceProvider)
-      || !plan.router.provider.isBoundToBudget(budget)
-      || !plan.generation.provider.isBoundToBudget(budget)
+      || !isTrustedBudgetedFixedTraceProvider(plan.router.provider, budget, plan.router.pricing)
+      || !isTrustedBudgetedFixedTraceProvider(plan.generation.provider, budget, plan.generation.pricing)
     ) throw new Error('Fixed trace diagnostic provider plans require unique names matching both stage providers');
     names.add(plan.name);
     // Providers are live capabilities and deliberately stay by reference;
@@ -102,6 +99,13 @@ function snapshotNonblank(value: string, name: string): string {
     throw new Error(`Fixed trace diagnostic ${name} must be nonblank`);
   }
   return value;
+}
+
+function diagnosticChildRunId(runRootId: string, provider: string): string {
+  // Plan names are validated as unique provider IDs. This makes each child
+  // deterministic and unique without granting an external callback authority
+  // to inject unrelated run provenance.
+  return `${runRootId}:${provider}`;
 }
 
 function snapshotSourceBundleFiles(files: readonly string[]): readonly string[] {
@@ -188,8 +192,87 @@ function assertStageCost(stage: FixedTraceModelStageMetadata, control: FixedTrac
     || stage.pricingProfileId !== control.pricing.profileId
     || stage.pricingSource !== control.pricing.source
   ) throw new Error('Fixed trace diagnostic artifact has incomplete dispatched stage cost evidence');
-  if (stage.estimatedCostUsd !== fixedTraceEstimatedCostUsd(stage.usage, control.pricing)) {
+  if (!costMatches(stage.estimatedCostUsd, fixedTraceEstimatedCostUsd(stage.usage, control.pricing))) {
     throw new Error('Fixed trace diagnostic artifact stage cost does not match recorded usage and pricing');
+  }
+}
+
+function costMatches(left: number, right: number): boolean {
+  // JSON serialization and addition of multiple model turns use IEEE-754.
+  // One picodollar is materially below the resolution of this diagnostic.
+  return Math.abs(left - right) <= 1e-12;
+}
+
+function assertBudgetReconciliation(
+  budget: ReturnType<FixedTraceBudget['snapshot']>,
+  runs: ReadonlyArray<{ observations: readonly { metadata: FixedTraceRunMetadata; terminalStatus: string }[] }>,
+): void {
+  let dispatchedStages = 0;
+  let visibleSettledSpendUsd = 0;
+  let allDispatchedCostsVisible = true;
+  let budgetRejections = 0;
+
+  for (const run of runs) {
+    for (const observation of run.observations) {
+      if (observation.terminalStatus === 'not_dispatched_budget') budgetRejections++;
+      for (const stage of [observation.metadata.router, observation.metadata.generation]) {
+        if (!stage.dispatched) continue;
+        dispatchedStages++;
+        // A stage can be local after a terminal event was settled but failed
+        // stream validation. That paid call is intentionally not represented
+        // as a provider observation, so exact spend equality is not claimed.
+        if (
+          stage.source !== 'provider'
+          || !stage.usageKnown
+          || stage.usage === null
+          || stage.estimatedCostUsd === null
+        ) {
+          allDispatchedCostsVisible = false;
+          continue;
+        }
+        visibleSettledSpendUsd += stage.estimatedCostUsd;
+      }
+    }
+  }
+
+  if (
+    !Number.isFinite(budget.accountedSpendUsd)
+    || budget.accountedSpendUsd < 0
+    || !Number.isFinite(budget.reservedUsd)
+    || budget.reservedUsd < 0
+    || !Number.isSafeInteger(budget.dispatchedCalls)
+    || !Number.isSafeInteger(budget.completedCalls)
+    || !Number.isSafeInteger(budget.budgetRejectedCalls)
+    || budget.dispatchedCalls < 0
+    || budget.completedCalls < 0
+    || budget.budgetRejectedCalls < 0
+  ) throw new Error('Fixed trace diagnostic artifact budget ledger is invalid');
+  if (!costMatches(budget.reservedUsd, 0)) {
+    throw new Error('Fixed trace diagnostic artifact has unsettled budget reservations');
+  }
+  if (budget.dispatchedCalls < dispatchedStages || budget.completedCalls > budget.dispatchedCalls) {
+    throw new Error('Fixed trace diagnostic artifact budget call counts do not cover observations');
+  }
+  if (budget.budgetRejectedCalls !== budgetRejections) {
+    throw new Error('Fixed trace diagnostic artifact budget rejections do not match observations');
+  }
+  if (budget.exposureUnknown) {
+    // A dispatched unknown-exposure call is never completed. The known spend
+    // preceding it is only a lower bound because failed terminal validation
+    // can hide an already-settled call from stage metadata.
+    if (budget.completedCalls >= budget.dispatchedCalls || budget.accountedSpendUsd + 1e-12 < visibleSettledSpendUsd) {
+      throw new Error('Fixed trace diagnostic artifact unknown-exposure ledger is inconsistent');
+    }
+    return;
+  }
+  if (budget.completedCalls !== budget.dispatchedCalls) {
+    throw new Error('Fixed trace diagnostic artifact completed budget calls do not match dispatches');
+  }
+  if (budget.accountedSpendUsd + 1e-12 < visibleSettledSpendUsd) {
+    throw new Error('Fixed trace diagnostic artifact budget spend is below finalized observations');
+  }
+  if (allDispatchedCostsVisible && !costMatches(budget.accountedSpendUsd, visibleSettledSpendUsd)) {
+    throw new Error('Fixed trace diagnostic artifact budget spend does not match finalized observations');
   }
 }
 
@@ -234,7 +317,7 @@ export async function runFixedTraceDiagnosticArtifact(
   const outputReservation = options.outputReservation;
   const plannedRuns = Object.freeze(plans.map((plan) => Object.freeze({
     plan,
-    runId: snapshotNonblank(options.runIdForProvider(plan.name), 'run ID'),
+    runId: diagnosticChildRunId(runRootId, plan.name),
   })));
   const candidateRuns = [];
   for (const { plan, runId } of plannedRuns) {
@@ -247,6 +330,7 @@ export async function runFixedTraceDiagnosticArtifact(
     const evaluated = await runFixedTraceDiagnosticCandidate(config);
     candidateRuns.push({
       provider: plan.name,
+      runId,
       requestedConfig: {
         router: requestedStageConfig(plan.router),
         generation: {
@@ -279,6 +363,8 @@ export async function runFixedTraceDiagnosticArtifact(
     if (
       !metadata
       || run.observations.length !== baseConfig.traceSuite.length
+      || run.runId !== diagnosticChildRunId(runRootId, run.provider)
+      || run.observations.some((observation) => observation.metadata.runId !== run.runId)
       || !sameArtifactRunMetadata(commonMetadata, metadata)
       || !requestedStageMatchesControl(run.requestedConfig.router, metadata.routerControl)
       || !requestedStageMatchesControl(run.requestedConfig.generation, metadata.generationControl)
@@ -294,6 +380,7 @@ export async function runFixedTraceDiagnosticArtifact(
       assertStageCost(observation.metadata.generation, observation.metadata.generationControl);
     }
   }
+  assertBudgetReconciliation(budget, runs);
   const toolSchemaSha256 = commonMetadata.toolSchemaSha256;
   const artifact = {
     artifactVersion: 'fixed_trace_provider_eval_v4',

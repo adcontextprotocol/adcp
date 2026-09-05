@@ -188,6 +188,50 @@ describe('fixed trace provider budget', () => {
     });
   });
 
+  it('uses one frozen terminal snapshot despite delegate mutation after response_complete', async () => {
+    const original = structuredClone(RESPONSE);
+    const delegate: ModelProvider = {
+      id: 'openai',
+      capabilities: CAPABILITIES,
+      prepare(request): PreparedModelInvocation {
+        return {
+          provider: 'openai', model: request.model, capabilities: CAPABILITIES,
+          providerRequest: { model: request.model },
+        };
+      },
+      async *respond(request, options = {}): AsyncIterable<NormalizedModelEvent> {
+        await options.beforeDispatch?.(this.prepare(request));
+        yield { type: 'response_start', provider: 'openai', model: original.model, id: original.id };
+        yield { type: 'text_delta', index: 0, text: 'Synthetic response.' };
+        yield { type: 'response_complete', response: original };
+        original.id = 'mutated-response-id';
+        original.model = 'mutated-model';
+        original.content[0] = { type: 'text', text: 'Mutated response.' };
+        original.usage.inputTokens = 999_999;
+        original.usage.outputTokens = 999_999;
+      },
+    };
+    const budget = new FixedTraceBudget(1);
+    const approved = vi.fn((response: ModelResponse) => {
+      expect(Object.isFrozen(response)).toBe(true);
+      expect(Object.isFrozen(response.usage)).toBe(true);
+      return response.model === 'budget-model' && response.usage.inputTokens === 10;
+    });
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, approved);
+
+    const collected = await collectModelResponse(provider.respond(REQUEST));
+
+    expect(collected).toEqual(RESPONSE);
+    expect(collected).not.toBe(original);
+    expect(approved).toHaveBeenCalledWith(collected);
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0.000035,
+      dispatchedCalls: 1,
+      completedCalls: 1,
+      exposureUnknown: false,
+    });
+  });
+
   it('halts later calls after a dispatched response has unknown usage', async () => {
     const delegate = new BudgetScriptedProvider([new Error('transport failed'), RESPONSE]);
     const budget = new FixedTraceBudget(1);
