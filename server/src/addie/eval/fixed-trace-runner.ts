@@ -35,13 +35,13 @@ import {
   MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
   validateFixedTraceToolLoopFixtures,
 } from './fixed-trace-tool-loop.js';
-import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
-import { fixedTraceEstimatedCostUsd } from './fixed-trace-budget.js';
 import {
-  GOOGLE_ROUTER_MODEL,
-  isGoogleRouterModelRevision,
-} from '../model-providers/google-generate-content-provider.js';
-import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+  FixedTraceBudgetAdmissionError,
+  fixedTraceEstimatedCostUsd,
+  fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
+  fixedTraceResponsePricingPolicy,
+  fixedTraceResponseUsesPricingPolicy,
+} from './fixed-trace-budget.js';
 import {
   admitFixedTraceDirectArm,
   fixedTraceArchitectureArm,
@@ -394,9 +394,7 @@ export function fixedTraceModelResolutionPolicy(
   provider: ModelProvider['id'],
   model: string,
 ): FixedTraceModelResolutionPolicy {
-  return provider === 'google' && model === GOOGLE_ROUTER_MODEL
-    ? 'google_router_dated_revision_v1'
-    : 'exact_model_identity_v1';
+  return fixedTraceBudgetModelResolutionPolicy(provider, model);
 }
 
 function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCohortStageControl {
@@ -453,11 +451,10 @@ export function fixedTraceResponseUsesRecordedPricing(
   pricingProfileId: string,
   response: ModelResponse,
 ): boolean {
-  if (response.provider !== requestedProvider) return false;
-  if (response.model === requestedModel) return true;
-  return fixedTraceModelResolutionPolicy(requestedProvider, requestedModel) === 'google_router_dated_revision_v1'
-    && pricingProfileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
-    && isGoogleRouterModelRevision(response.model);
+  return fixedTraceResponseUsesPricingPolicy(
+    fixedTraceResponsePricingPolicy(requestedProvider, requestedModel, pricingProfileId),
+    response,
+  );
 }
 
 function providerStageMetadata(

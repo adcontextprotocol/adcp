@@ -20,6 +20,7 @@ import {
   FixedTraceBudget,
   claimFixedTraceBudgetDiagnosticLease,
   fixedTraceEstimatedCostUsd,
+  fixedTraceResponsePricingPolicy,
   isTrustedBudgetedFixedTraceProvider,
 } from './fixed-trace-budget.js';
 
@@ -52,13 +53,42 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function snapshotStageConfig(config: FixedTraceProviderStageConfig): FixedTraceProviderStageConfig {
-  const { provider, pricing, ...serializable } = config;
+function ownDataProperty(source: unknown, name: string, owner: string): unknown {
+  if (typeof source !== 'object' || source === null) {
+    throw new Error(`Fixed trace diagnostic ${owner} must be an object with own data properties`);
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(source, name);
+  if (!descriptor || !('value' in descriptor)) {
+    throw new Error(`Fixed trace diagnostic ${owner}.${name} must be an own data property`);
+  }
+  return descriptor.value;
+}
+
+function snapshotStageConfig(config: unknown, owner: string): FixedTraceProviderStageConfig {
+  // Read each untrusted stage property exactly once. Later checks use only
+  // this detached plain object, never a caller-controlled getter or proxy.
+  const provider = ownDataProperty(config, 'provider', owner);
+  const model = ownDataProperty(config, 'model', owner);
+  const reasoningEffort = ownDataProperty(config, 'reasoningEffort', owner);
+  const maxOutputTokens = ownDataProperty(config, 'maxOutputTokens', owner);
+  const timeoutMs = ownDataProperty(config, 'timeoutMs', owner);
+  const maxIterations = ownDataProperty(config, 'maxIterations', owner);
+  const transportRetries = ownDataProperty(config, 'transportRetries', owner);
+  const samplingMode = ownDataProperty(config, 'samplingMode', owner);
+  const temperature = ownDataProperty(config, 'temperature', owner);
+  const pricing = ownDataProperty(config, 'pricing', owner);
   return Object.freeze({
-    ...structuredClone(serializable),
     provider,
+    model,
+    reasoningEffort,
+    maxOutputTokens,
+    timeoutMs,
+    maxIterations,
+    transportRetries,
+    samplingMode,
+    temperature,
     pricing: deepFreeze(structuredClone(pricing)),
-  });
+  }) as FixedTraceProviderStageConfig;
 }
 
 function snapshotBaseConfig(
@@ -79,26 +109,45 @@ function snapshotPlans(
   if (!Array.isArray(suppliedPlans) || suppliedPlans.length === 0) {
     throw new Error('Fixed trace diagnostic run requires one or more provider plans');
   }
+  const plans = Object.freeze(suppliedPlans.map((suppliedPlan, index) => Object.freeze({
+    // Do not validate while reading: a plan accessor must not be able to
+    // return one identity for validation and another for execution.
+    name: ownDataProperty(suppliedPlan, 'name', `provider plan ${index}`),
+    router: snapshotStageConfig(
+      ownDataProperty(suppliedPlan, 'router', `provider plan ${index}`),
+      `provider plan ${index}.router`,
+    ),
+    generation: snapshotStageConfig(
+      ownDataProperty(suppliedPlan, 'generation', `provider plan ${index}`),
+      `provider plan ${index}.generation`,
+    ),
+  })));
   const names = new Set<string>();
-  for (const plan of suppliedPlans) {
+  for (const plan of plans) {
+    const routerPolicy = fixedTraceResponsePricingPolicy(
+      plan.router.provider.id,
+      plan.router.model,
+      plan.router.pricing.profileId,
+    );
+    const generationPolicy = fixedTraceResponsePricingPolicy(
+      plan.generation.provider.id,
+      plan.generation.model,
+      plan.generation.pricing.profileId,
+    );
     if (
       typeof plan.name !== 'string'
       || plan.name.trim().length === 0
       || names.has(plan.name)
       || plan.name !== plan.router?.provider?.id
       || plan.name !== plan.generation?.provider?.id
-      || !isTrustedBudgetedFixedTraceProvider(plan.router.provider, budget, plan.router.pricing)
-      || !isTrustedBudgetedFixedTraceProvider(plan.generation.provider, budget, plan.generation.pricing)
+      || !isTrustedBudgetedFixedTraceProvider(plan.router.provider, budget, plan.router.pricing, routerPolicy)
+      || !isTrustedBudgetedFixedTraceProvider(plan.generation.provider, budget, plan.generation.pricing, generationPolicy)
     ) throw new Error('Fixed trace diagnostic provider plans require unique names matching both stage providers');
     names.add(plan.name);
   }
   // Clone every serializable stage control before a provider can run, but do
   // not claim the live ledger yet. The complete suite still needs preflight.
-  return Object.freeze(suppliedPlans.map((plan) => Object.freeze({
-    name: plan.name,
-    router: snapshotStageConfig(plan.router),
-    generation: snapshotStageConfig(plan.generation),
-  })));
+  return plans as readonly FixedTraceDiagnosticProviderPlan[];
 }
 
 function leasePlans(
@@ -258,13 +307,14 @@ function costMatches(left: number, right: number): boolean {
   return Math.abs(left - right) <= 1e-12;
 }
 
-function assertBudgetReconciliation(
+export function assertFixedTraceDiagnosticBudgetReconciliation(
   budget: ReturnType<FixedTraceBudget['snapshot']>,
   runs: ReadonlyArray<{ observations: readonly { metadata: FixedTraceRunMetadata; terminalStatus: string }[] }>,
 ): void {
   let dispatchedCalls = 0;
   let visibleSettledSpendUsd = 0;
   let allDispatchedCostsVisible = true;
+  let unpricedDispatchedResponse = false;
   let budgetRejections = 0;
 
   for (const run of runs) {
@@ -280,6 +330,9 @@ function assertBudgetReconciliation(
         ) throw new Error('Fixed trace diagnostic artifact stage dispatch evidence is invalid');
         dispatchedCalls += stageDispatchedCalls;
         if (!stage.dispatched) continue;
+        if (stage.source === 'provider' && stage.estimatedCostUsd === null) {
+          unpricedDispatchedResponse = true;
+        }
         // A stage can be local after a terminal event was settled but failed
         // stream validation. That paid call is intentionally not represented
         // as a provider observation, so exact spend equality is not claimed.
@@ -317,6 +370,9 @@ function assertBudgetReconciliation(
   }
   if (budget.budgetRejectedCalls !== budgetRejections) {
     throw new Error('Fixed trace diagnostic artifact budget rejections do not match observations');
+  }
+  if (unpricedDispatchedResponse && !budget.exposureUnknown) {
+    throw new Error('Fixed trace diagnostic artifact unpriced dispatched response lacks unknown budget exposure');
   }
   if (budget.exposureUnknown) {
     // A dispatched unknown-exposure call is never completed. The known spend
@@ -443,7 +499,7 @@ export async function runFixedTraceDiagnosticArtifact(
       assertStageCost(observation.metadata.generation, observation.metadata.generationControl);
     }
   }
-  assertBudgetReconciliation(budget, runs);
+  assertFixedTraceDiagnosticBudgetReconciliation(budget, runs);
   const toolSchemaSha256 = commonMetadata.toolSchemaSha256;
   const artifact = {
     artifactVersion: 'fixed_trace_provider_eval_v4',

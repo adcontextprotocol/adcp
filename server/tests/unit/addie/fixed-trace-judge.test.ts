@@ -10,6 +10,7 @@ import {
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
@@ -299,7 +300,12 @@ describe('fixed-trace independent judge', () => {
   it('attributes a budget rejection without dispatching the judge', async () => {
     const delegate = new ScriptedJudgeProvider('openai', '{"pass":true,"score":4,"reason":"correct"}');
     const budget = new FixedTraceBudget(0.000001);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING);
+    const provider = new BudgetedFixedTraceProvider(
+      delegate,
+      budget,
+      PRICING,
+      fixedTraceResponsePricingPolicy('openai', 'openai-judge-model', 'synthetic-judge-v1'),
+    );
     const result = await judgeFixedTraceObservation(trace, observation(trace.id), config(provider));
     expect(result).toMatchObject({
       status: 'not_dispatched_budget',

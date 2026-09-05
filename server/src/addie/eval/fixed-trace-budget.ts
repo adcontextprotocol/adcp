@@ -7,6 +7,12 @@ import type {
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../model-providers/model-provider.js';
+import {
+  GOOGLE_ROUTER_MODEL,
+  isGoogleRouterModelRevision,
+} from '../model-providers/google-generate-content-provider.js';
+import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+import type { FixedTraceModelResolutionPolicy } from './fixed-trace-suite.js';
 
 export interface FixedTraceBudgetPricing {
   inputUsdPerMillionTokens: number;
@@ -55,7 +61,66 @@ export interface FixedTraceBudgetSnapshot {
  * policy fails closed: a completed response may be observed, but its cost is
  * not settled at a requested-model rate and no later dispatch is admitted.
  */
-export type FixedTraceResponsePricingApproval = (response: ModelResponse) => boolean;
+/**
+ * Immutable, closed returned-model policy for a budgeted stage. This is data,
+ * rather than a caller-provided predicate, so a stage cannot authorize a
+ * returned model that its recorded control does not price.
+ */
+export interface FixedTraceResponsePricingPolicy {
+  readonly expectedProvider: ModelProvider['id'];
+  readonly expectedModel: string;
+  readonly pricingProfileId: string;
+  readonly modelResolutionPolicy: FixedTraceModelResolutionPolicy;
+}
+
+export function fixedTraceModelResolutionPolicy(
+  provider: ModelProvider['id'],
+  model: string,
+): FixedTraceModelResolutionPolicy {
+  return provider === 'google' && model === GOOGLE_ROUTER_MODEL
+    ? 'google_router_dated_revision_v1'
+    : 'exact_model_identity_v1';
+}
+
+function validateResponsePricingPolicy(policy: FixedTraceResponsePricingPolicy): void {
+  if (
+    !policy
+    || typeof policy.expectedProvider !== 'string'
+    || !policy.expectedProvider.trim()
+    || typeof policy.expectedModel !== 'string'
+    || !policy.expectedModel.trim()
+    || typeof policy.pricingProfileId !== 'string'
+    || !policy.pricingProfileId.trim()
+    || !['exact_model_identity_v1', 'google_router_dated_revision_v1'].includes(policy.modelResolutionPolicy)
+    || policy.modelResolutionPolicy !== fixedTraceModelResolutionPolicy(policy.expectedProvider, policy.expectedModel)
+  ) throw new Error('Fixed trace returned-model pricing policy is invalid');
+}
+
+export function fixedTraceResponsePricingPolicy(
+  expectedProvider: ModelProvider['id'],
+  expectedModel: string,
+  pricingProfileId: string,
+): FixedTraceResponsePricingPolicy {
+  const policy = Object.freeze({
+    expectedProvider,
+    expectedModel,
+    pricingProfileId,
+    modelResolutionPolicy: fixedTraceModelResolutionPolicy(expectedProvider, expectedModel),
+  });
+  validateResponsePricingPolicy(policy);
+  return policy;
+}
+
+export function fixedTraceResponseUsesPricingPolicy(
+  policy: FixedTraceResponsePricingPolicy,
+  response: ModelResponse,
+): boolean {
+  if (response.provider !== policy.expectedProvider) return false;
+  if (response.model === policy.expectedModel) return true;
+  return policy.modelResolutionPolicy === 'google_router_dated_revision_v1'
+    && policy.pricingProfileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
+    && isGoogleRouterModelRevision(response.model);
+}
 
 interface Reservation {
   readonly usd: number;
@@ -65,6 +130,7 @@ interface Reservation {
 interface BudgetedProviderBinding {
   readonly budget: FixedTraceBudget;
   readonly pricing: FixedTraceBudgetPricing;
+  readonly responsePricingPolicy: FixedTraceResponsePricingPolicy;
   lease: object | null;
 }
 
@@ -93,6 +159,16 @@ function samePricing(left: FixedTraceBudgetPricing, right: FixedTraceBudgetPrici
     && left.cacheReadAccounting === right.cacheReadAccounting
     && left.cacheWriteAccounting === right.cacheWriteAccounting
     && left.source === right.source;
+}
+
+function sameResponsePricingPolicy(
+  left: FixedTraceResponsePricingPolicy,
+  right: FixedTraceResponsePricingPolicy,
+): boolean {
+  return left.expectedProvider === right.expectedProvider
+    && left.expectedModel === right.expectedModel
+    && left.pricingProfileId === right.pricingProfileId
+    && left.modelResolutionPolicy === right.modelResolutionPolicy;
 }
 
 export function validateFixedTracePricing(pricing: FixedTraceBudgetPricing): void {
@@ -290,25 +366,31 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
   readonly #delegate: ModelProvider;
   readonly #budget: FixedTraceBudget;
   readonly #pricing: FixedTraceBudgetPricing;
-  readonly #responsePricingApproved: FixedTraceResponsePricingApproval;
+  readonly #responsePricingPolicy: FixedTraceResponsePricingPolicy;
 
   constructor(
     delegate: ModelProvider,
     budget: FixedTraceBudget,
     pricing: FixedTraceBudgetPricing,
-    responsePricingApproved: FixedTraceResponsePricingApproval = () => false,
+    responsePricingPolicy: FixedTraceResponsePricingPolicy,
   ) {
     validateFixedTracePricing(pricing);
+    validateResponsePricingPolicy(responsePricingPolicy);
     this.#delegate = delegate;
     this.#budget = budget;
     this.#pricing = snapshotPricing(pricing);
-    this.#responsePricingApproved = responsePricingApproved;
+    this.#responsePricingPolicy = Object.freeze({ ...responsePricingPolicy });
     this.id = delegate.id;
     this.capabilities = delegate.capabilities;
     if (delegate.deriveProviderToolReceipt) {
       this.deriveProviderToolReceipt = delegate.deriveProviderToolReceipt.bind(delegate);
     }
-    budgetedProviderBindings.set(this, { budget, pricing: this.#pricing, lease: null });
+    budgetedProviderBindings.set(this, {
+      budget,
+      pricing: this.#pricing,
+      responsePricingPolicy: this.#responsePricingPolicy,
+      lease: null,
+    });
     // A diagnostic run retains these exact wrapper objects by reference. Lock
     // their own properties now, before untrusted provider code can resume.
     Object.freeze(this);
@@ -351,7 +433,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
           // snapshot is therefore the sole terminal response used for
           // approval, settlement, and the outward event.
           const response = deepFreeze(structuredClone(event.response));
-          if (this.#responsePricingApproved(response)) {
+          if (fixedTraceResponseUsesPricingPolicy(this.#responsePricingPolicy, response)) {
             this.#budget.complete(reservation, response.usage, this.#pricing);
           } else {
             // Do not settle an unapproved returned identity at the requested
@@ -382,7 +464,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
       source.#delegate,
       source.#budget,
       source.#pricing,
-      source.#responsePricingApproved,
+      source.#responsePricingPolicy,
     );
     const binding = budgetedProviderBindings.get(clone);
     if (!binding) throw new Error('Fixed trace budget wrapper binding is unavailable');
@@ -405,9 +487,14 @@ export function isTrustedBudgetedFixedTraceProvider(
   provider: ModelProvider,
   budget: FixedTraceBudget,
   pricing: FixedTraceBudgetPricing,
+  responsePricingPolicy: FixedTraceResponsePricingPolicy,
 ): boolean {
   const binding = budgetedProviderBindings.get(provider);
-  if (binding?.budget !== budget || !samePricing(binding.pricing, pricing)) return false;
+  if (
+    binding?.budget !== budget
+    || !samePricing(binding.pricing, pricing)
+    || !sameResponsePricingPolicy(binding.responsePricingPolicy, responsePricingPolicy)
+  ) return false;
   if (Object.getPrototypeOf(provider) !== BudgetedFixedTraceProvider.prototype) return false;
   if ((provider as unknown as { constructor: unknown }).constructor !== BudgetedFixedTraceProvider) return false;
   return Object.isFrozen(provider)
@@ -446,7 +533,12 @@ export function claimFixedTraceBudgetDiagnosticLease(
   for (const provider of providers) {
     if (clones.has(provider)) continue;
     const binding = budgetedProviderBindings.get(provider);
-    if (!binding || !isTrustedBudgetedFixedTraceProvider(provider, budget, binding.pricing)) {
+    if (!binding || !isTrustedBudgetedFixedTraceProvider(
+      provider,
+      budget,
+      binding.pricing,
+      binding.responsePricingPolicy,
+    )) {
       throw new Error('Fixed trace diagnostic provider is not an authenticated budget wrapper');
     }
     clones.set(provider, BudgetedFixedTraceProvider.cloneForExclusiveDiagnosticRun(

@@ -28,9 +28,9 @@ import { CODE_VERSION, computeRouterRulesHash } from '../../src/addie/config-ver
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  fixedTraceResponsePricingPolicy,
 } from '../../src/addie/eval/fixed-trace-budget.js';
 import {
-  fixedTraceResponseUsesRecordedPricing,
   type FixedTraceProviderStageConfig,
 } from '../../src/addie/eval/fixed-trace-runner.js';
 import {
@@ -168,8 +168,12 @@ function budgetedStageProvider(
   model: string,
   pricing: FixedTracePricing,
 ): BudgetedFixedTraceProvider {
-  return new BudgetedFixedTraceProvider(provider, budget, pricing, (response) =>
-    fixedTraceResponseUsesRecordedPricing(provider.id, model, pricing.profileId, response));
+  return new BudgetedFixedTraceProvider(
+    provider,
+    budget,
+    pricing,
+    fixedTraceResponsePricingPolicy(provider.id, model, pricing.profileId),
+  );
 }
 
 function providerPlans(

@@ -14,6 +14,7 @@ import { runFixedTraceDiagnosticCandidate } from '../../../src/addie/eval/fixed-
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
@@ -769,7 +770,7 @@ describe('fixed trace artifact runner', () => {
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 5,
       source: 'Synthetic test pricing.',
-    });
+    }, fixedTraceResponsePricingPolicy('anthropic', 'test-model', 'synthetic-test-model-v1'));
     const generation = new ScriptedProvider([]);
 
     const observation = await runFixedTraceCase(

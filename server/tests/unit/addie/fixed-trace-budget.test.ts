@@ -4,9 +4,9 @@ import {
   FixedTraceBudget,
   FixedTraceBudgetAdmissionError,
   fixedTraceEstimatedCostUsd,
+  fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
-import { fixedTraceResponseUsesRecordedPricing } from '../../../src/addie/eval/fixed-trace-runner.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -51,6 +51,12 @@ const PRICING = {
   outputUsdPerMillionTokens: 5,
   source: 'Synthetic budget pricing.',
 };
+
+const RESPONSE_PRICING_POLICY = fixedTraceResponsePricingPolicy(
+  'openai',
+  'budget-model',
+  'openai-budget-model-v1',
+);
 
 class BudgetScriptedProvider implements ModelProvider {
   readonly id = 'openai' as const;
@@ -118,8 +124,7 @@ describe('fixed trace provider budget', () => {
     const mismatched = { ...RESPONSE, model: 'other-openai-model' };
     const delegate = new BudgetScriptedProvider([mismatched, RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, (response) =>
-      fixedTraceResponseUsesRecordedPricing('openai', 'budget-model', 'openai-budget-model-v1', response));
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).resolves.toEqual(mismatched);
     expect(budget.snapshot()).toMatchObject({
@@ -132,6 +137,17 @@ describe('fixed trace provider budget', () => {
       name: 'FixedTraceBudgetAdmissionError', reason: 'budget_exposure_unknown',
     });
     expect(delegate.dispatches).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a caller callback as returned-model pricing authority', () => {
+    const delegate = new BudgetScriptedProvider([RESPONSE]);
+    const budget = new FixedTraceBudget(1);
+    expect(() => new BudgetedFixedTraceProvider(
+      delegate,
+      budget,
+      PRICING,
+      (() => true) as unknown as typeof RESPONSE_PRICING_POLICY,
+    )).toThrow('Fixed trace returned-model pricing policy is invalid');
   });
 
   it('reserves an additive cache-write worst case before dispatch', () => {
@@ -154,7 +170,7 @@ describe('fixed trace provider budget', () => {
   it('rejects over-budget work before provider dispatch', async () => {
     const delegate = new BudgetScriptedProvider([RESPONSE]);
     const budget = new FixedTraceBudget(0.000001);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toMatchObject({
       name: 'FixedTraceBudgetAdmissionError',
@@ -175,7 +191,7 @@ describe('fixed trace provider budget', () => {
   it('releases the reserve and accounts terminal usage', async () => {
     const delegate = new BudgetScriptedProvider([RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).resolves.toEqual(RESPONSE);
     expect(budget.snapshot()).toMatchObject({
@@ -212,18 +228,14 @@ describe('fixed trace provider budget', () => {
       },
     };
     const budget = new FixedTraceBudget(1);
-    const approved = vi.fn((response: ModelResponse) => {
-      expect(Object.isFrozen(response)).toBe(true);
-      expect(Object.isFrozen(response.usage)).toBe(true);
-      return response.model === 'budget-model' && response.usage.inputTokens === 10;
-    });
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, approved);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     const collected = await collectModelResponse(provider.respond(REQUEST));
 
     expect(collected).toEqual(RESPONSE);
     expect(collected).not.toBe(original);
-    expect(approved).toHaveBeenCalledWith(collected);
+    expect(Object.isFrozen(collected)).toBe(true);
+    expect(Object.isFrozen(collected.usage)).toBe(true);
     expect(budget.snapshot()).toMatchObject({
       accountedSpendUsd: 0.000035,
       dispatchedCalls: 1,
@@ -235,7 +247,7 @@ describe('fixed trace provider budget', () => {
   it('halts later calls after a dispatched response has unknown usage', async () => {
     const delegate = new BudgetScriptedProvider([new Error('transport failed'), RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow('transport failed');
     expect(budget.snapshot()).toMatchObject({
@@ -256,7 +268,7 @@ describe('fixed trace provider budget', () => {
       usage: { inputTokens: -1, outputTokens: 5 },
     }]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow(
       'Fixed trace budget usage is invalid',
@@ -273,7 +285,7 @@ describe('fixed trace provider budget', () => {
   it('does not mark exposure unknown when the caller hook blocks dispatch', async () => {
     const delegate = new BudgetScriptedProvider([RESPONSE]);
     const budget = new FixedTraceBudget(1);
-    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, () => true);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST, {
       beforeDispatch: () => { throw new Error('local policy rejected'); },

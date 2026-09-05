@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
+  assertFixedTraceDiagnosticBudgetReconciliation,
   runFixedTraceDiagnosticArtifact,
   type FixedTraceDiagnosticProviderPlan,
 } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
@@ -126,10 +128,18 @@ function stage(
 function budgetedStage(
   provider: ModelProvider,
   budget: FixedTraceBudget,
-  responsePricingApproved: (response: ModelResponse) => boolean = () => true,
   pricing: FixedTracePricing = PRICING,
 ): FixedTraceProviderStageConfig {
-  return stage(new BudgetedFixedTraceProvider(provider, budget, pricing, responsePricingApproved), pricing);
+  const configured = stage(provider, pricing);
+  return {
+    ...configured,
+    provider: new BudgetedFixedTraceProvider(
+      provider,
+      budget,
+      pricing,
+      fixedTraceResponsePricingPolicy(provider.id, configured.model, pricing.profileId),
+    ),
+  };
 }
 
 function twoTurnProvider(
@@ -403,6 +413,57 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(readFileSync(duplicatePath, 'utf8')).toBe('');
   });
 
+  it('rejects a plan identity accessor before it can change validation into execution', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const failedPath = join(directory, 'failed-artifact.json');
+    const completedPath = join(directory, 'completed-artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const router = scriptedRouter();
+    const budget = new FixedTraceBudget(1);
+    let nameReads = 0;
+    const accessorPlan = {
+      // The old validation read this as "anthropic" six times, then copied
+      // "forged" into its execution snapshot. Accessors are now rejected
+      // before either a lease or a provider dispatch is possible.
+      get name() {
+        nameReads++;
+        return nameReads <= 6 ? 'anthropic' : 'forged';
+      },
+      router: budgetedStage(router.provider, budget),
+      generation: budgetedStage(router.provider, budget),
+    };
+    const invoke = (plans: readonly FixedTraceDiagnosticProviderPlan[], path: string) => runFixedTraceDiagnosticArtifact({
+      plans,
+      baseConfig: {
+        sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+        promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+      },
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    await expect(invoke([accessorPlan] as unknown as FixedTraceDiagnosticProviderPlan[], failedPath))
+      .rejects.toThrow('provider plan 0.name must be an own data property');
+    expect(nameReads).toBe(0);
+    expect(router.calls).toHaveLength(0);
+    expect(readFileSync(failedPath, 'utf8')).toBe('');
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0, reservedUsd: 0, dispatchedCalls: 0,
+      completedCalls: 0, budgetRejectedCalls: 0, admissionClosed: false, exposureUnknown: false,
+    });
+
+    const artifact = await invoke([{
+      name: 'anthropic', router: accessorPlan.router, generation: accessorPlan.generation,
+    }], completedPath);
+    expect(router.calls).toHaveLength(1);
+    expect(artifact.runs[0]).toMatchObject({ provider: 'anthropic', runId: 'root:anthropic' });
+  });
+
   it('does not let a final-response mutation alter its snapshotted manual artifact', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
     const path = join(directory, 'artifact.json');
@@ -480,7 +541,12 @@ describe('fixed-trace diagnostic output reservation', () => {
     const budget = new FixedTraceBudget(1);
     class BypassingBudgetProvider extends BudgetedFixedTraceProvider {
       constructor() {
-        super(delegate.provider, budget, PRICING, () => true);
+        super(
+          delegate.provider,
+          budget,
+          PRICING,
+          fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', PRICING.profileId),
+        );
       }
 
       // This was previously trusted through instanceof plus a public,
@@ -562,12 +628,11 @@ describe('fixed-trace diagnostic output reservation', () => {
     const router = scriptedRouter();
     router.response.model = 'unapproved-model';
     const budget = new FixedTraceBudget(1);
-    const approval = (response: ModelResponse) => response.model === 'synthetic-manual-model';
     const artifact = await runFixedTraceDiagnosticArtifact({
       plans: [{
         name: 'anthropic',
-        router: budgetedStage(router.provider, budget, approval),
-        generation: budgetedStage(router.provider, budget, approval),
+        router: budgetedStage(router.provider, budget),
+        generation: budgetedStage(router.provider, budget),
       }],
       baseConfig: {
         sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
@@ -588,6 +653,25 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(artifact.budget).toMatchObject({
       accountedSpendUsd: 0, dispatchedCalls: 1, completedCalls: 0, exposureUnknown: true,
     });
+  });
+
+  it('rejects a settled ledger for an unpriced dispatched provider response', () => {
+    const providerStage = {
+      source: 'provider', dispatched: true, dispatchedCalls: 1,
+      usageKnown: true, usage: { inputTokens: 10, outputTokens: 5 }, estimatedCostUsd: null,
+    };
+    const notRunStage = {
+      source: 'not_run', dispatched: false, dispatchedCalls: 0,
+      usageKnown: false, usage: null, estimatedCostUsd: 0,
+    };
+    expect(() => assertFixedTraceDiagnosticBudgetReconciliation({
+      policy: 'soft_admission_target', softMaxUsd: 1, accountedSpendUsd: 0.000035,
+      reservedUsd: 0, remainingUsd: 0.999965, dispatchedCalls: 1, completedCalls: 1,
+      budgetRejectedCalls: 0, admissionClosed: false, exposureUnknown: false,
+    }, [{ observations: [{
+      terminalStatus: 'complete',
+      metadata: { router: providerStage, generation: notRunStage },
+    }] }] as never)).toThrow('unpriced dispatched response lacks unknown budget exposure');
   });
 
   it('reconciles a pre-dispatch budget rejection with a local/not-run observation', async () => {
@@ -708,8 +792,9 @@ describe('fixed-trace diagnostic output reservation', () => {
       replace('prototype_prepare', () => Object.defineProperty(BudgetedFixedTraceProvider.prototype, 'prepare', { value: delegate.provider.prepare }));
     });
     const budget = new FixedTraceBudget(1);
-    const router = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, () => true);
-    generation = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, () => true);
+    const policy = fixedTraceResponsePricingPolicy('anthropic', 'synthetic-manual-model', ZERO_RATE_PRICING.profileId);
+    const router = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, policy);
+    generation = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, policy);
     const generationStage = stage(generation, ZERO_RATE_PRICING);
     generationStage.maxIterations = 2;
     const artifact = await runFixedTraceDiagnosticArtifact({
@@ -746,7 +831,7 @@ describe('fixed-trace diagnostic output reservation', () => {
       const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
       const provider = scriptedRouter();
       await expect(runFixedTraceDiagnosticArtifact({
-        plans: [{ name: 'anthropic', router: budgetedStage(provider.provider, budget, () => true, ZERO_RATE_PRICING), generation: budgetedStage(provider.provider, budget, () => true, ZERO_RATE_PRICING) }],
+        plans: [{ name: 'anthropic', router: budgetedStage(provider.provider, budget, ZERO_RATE_PRICING), generation: budgetedStage(provider.provider, budget, ZERO_RATE_PRICING) }],
         baseConfig: {
           sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
           promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
