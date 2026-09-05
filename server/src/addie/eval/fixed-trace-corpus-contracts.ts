@@ -54,7 +54,7 @@ const TEXT_CONFUSABLES: Readonly<Record<string, string>> = Object.freeze({
 
 const MAX_PERCENT_DECODE_ROUNDS = 2;
 const SAFE_HTML_ENTITIES: Readonly<Record<string, string>> = Object.freeze({
-  amp: '&', nbsp: ' ', period: '.', dot: '.',
+  amp: '&', nbsp: ' ', period: '.', dot: '.', newline: ' ', sol: '/', tab: ' ', percnt: '%',
 });
 
 function decodePercentEscapes(value: string): { value: string; changed: boolean; malformed: boolean } {
@@ -105,11 +105,16 @@ function decodeHtmlEntities(value: string): { value: string; changed: boolean; m
   });
   // Deliberately small named-entity set: only separators that can conceal a
   // protected identity, domain, or evaluator marker are decoded.
-  decoded = decoded.replace(/&(amp|nbsp|period|dot);/gi, (entity, name: string) => {
+  decoded = decoded.replace(/&(amp|nbsp|period|dot|newline|sol|tab|percnt);/gi, (entity, name: string) => {
     changed = true;
     return SAFE_HTML_ENTITIES[name.toLowerCase()]!;
   });
   if (/&#(?:x[0-9a-z]{0,8}|[0-9a-z]{0,8});?/i.test(decoded)) malformed = true;
+  // Unknown complete entities and malformed spellings of supported separator
+  // entities are encoding attempts, not ordinary prose. Mark them unsafe
+  // rather than allowing a new separator spelling to evade all consumers.
+  if (/&[a-z][a-z0-9]{1,31};/i.test(decoded)
+    || /&(amp|nbsp|period|dot|newline|sol|tab|percnt)(?!;)/i.test(decoded)) malformed = true;
   return { value: decoded, changed, malformed };
 }
 

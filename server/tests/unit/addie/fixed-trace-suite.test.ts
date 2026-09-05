@@ -297,15 +297,15 @@ describe('fixed cross-provider trace suite', () => {
       nearDuplicateCandidateRequests: 0,
     });
     expect(fixedTraceCoverageInventory().phaseBehavior.tuning).toMatchObject({
-      casesWithFixtures: 34,
-      fixtureTools: 44,
+      casesWithFixtures: 32,
+      fixtureTools: 42,
       confirmedMutationCases: 8,
       deniedMutationCases: 2,
       fixtureErrorCases: 9,
       toolResultInjectionCases: 3,
       multiToolCases: 9,
       boundedReplayCases: 36,
-      channelCases: 5,
+      channelCases: 7,
       authorizationBoundaryCases: 5,
       longInputCases: 3,
       degradationCases: 2,
@@ -313,6 +313,7 @@ describe('fixed cross-provider trace suite', () => {
       nearDuplicateCandidateRequests: 0,
     });
     expect(fixedTraceCoverageInventory().crossPhaseStructuralFingerprintDuplicates).toBe(0);
+    expect(fixedTraceCoverageInventory().samePhaseStructuralFingerprintDuplicates).toBe(0);
     expect(validateFixedTraceCorpus()).toEqual([]);
   });
 
@@ -379,6 +380,7 @@ describe('fixed cross-provider trace suite', () => {
       'https://nytimes%2ecom/x', 'the%5ftrade%5fdesk', 'u%5f0123456789', 'org%2ereal%2e123456',
       'Brіan O Кelley',
       'Briaп O Kelley', 'Brıan O Kelley', 'nytimes dot com', 'nytimes&#46;com', 'org&#46;real&#46;123456',
+      'Bria&NewLine;n O Kelley', 'Brian O&sol;Kelley', 'nytimes&Tab;com',
     ]) {
       const realIdentity = structuredClone(FIXED_TRACE_CORPUS);
       realIdentity[0].request.message = substitution;
@@ -486,6 +488,54 @@ describe('fixed cross-provider trace suite', () => {
     const arrayExtra = structuredClone(FIXED_TRACE_CORPUS);
     Object.defineProperty(arrayExtra, 'unreviewed', { value: 'unreviewed', enumerable: true });
     expect(validateFixedTraceCorpus(arrayExtra)).toEqual(['unsafe_corpus_snapshot:array_extra_property']);
+  });
+
+  it('recursively closes candidate-visible request data before projection', () => {
+    const extras = [
+      ['expectation', { terminalStatuses: ['complete'] }],
+      ['routing', { expectedAnswer: true }],
+      ['privateRoster', true],
+    ] as const;
+    for (const [key, value] of extras) {
+      const injected = structuredClone(FIXED_TRACE_CORPUS);
+      const trace = injected.find((candidate) => candidate.id === 'tune-channel-tool-result-injection')!;
+      Object.defineProperty(trace.request, key, { value, enumerable: true, configurable: true, writable: true });
+      expect(validateFixedTraceCorpus(injected)).toEqual(expect.arrayContaining([
+        `candidate_request_extra:${trace.id}:${key}`,
+      ]));
+      expect(JSON.stringify(candidateVisibleTraceInput(trace))).not.toContain(`"${key}"`);
+    }
+
+    const nested = structuredClone(FIXED_TRACE_CORPUS);
+    const nestedTrace = nested.find((candidate) => candidate.id === 'tune-channel-recap-thread')!;
+    Object.defineProperty(nestedTrace.request.threadContext![0], 'answerRubric', {
+      value: { refuse: true }, enumerable: true, configurable: true,
+    });
+    expect(validateFixedTraceCorpus(nested)).toEqual(expect.arrayContaining([
+      `candidate_thread_context_extra:${nestedTrace.id}:0:answerRubric`,
+    ]));
+    expect(JSON.stringify(candidateVisibleTraceInput(nestedTrace))).not.toContain('answerRubric');
+
+    const nonEnumerable = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(nonEnumerable[0].request, 'privateRoster', { value: true, enumerable: false });
+    expect(validateFixedTraceCorpus(nonEnumerable)).toEqual(['unsafe_corpus_snapshot:non_enumerable']);
+
+    const symbolic = structuredClone(FIXED_TRACE_CORPUS);
+    Object.defineProperty(symbolic[0].request, Symbol('privateRoster'), { value: true, enumerable: true });
+    expect(validateFixedTraceCorpus(symbolic)).toEqual(['unsafe_corpus_snapshot:symbol_key']);
+
+    const inherited = structuredClone(FIXED_TRACE_CORPUS);
+    Object.setPrototypeOf(inherited[0].request, { privateRoster: true });
+    expect(validateFixedTraceCorpus(inherited)).toEqual(['unsafe_corpus_snapshot:non_plain_object']);
+
+    const proxied = structuredClone(FIXED_TRACE_CORPUS);
+    let proxyTraps = 0;
+    proxied[0].request = new Proxy(proxied[0].request, {
+      get(target, property, receiver) { proxyTraps++; return Reflect.get(target, property, receiver); },
+      ownKeys(target) { proxyTraps++; return Reflect.ownKeys(target); },
+    });
+    expect(validateFixedTraceCorpus(proxied)).toEqual(['unsafe_corpus_snapshot:proxy']);
+    expect(proxyTraps).toBe(0);
   });
 
   it('rejects replay-semantic mutations against the separate reviewer authority', () => {
@@ -678,7 +728,10 @@ describe('fixed cross-provider trace suite', () => {
     expect(candidateVisibleMarkerOverlap({ message: 'typed receipт' }, ['typed receipt'])).toEqual(['typed receipt']);
     expect(candidateVisibleMarkerOverlap({ message: 'typed&#32;receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
     expect(candidateVisibleMarkerOverlap({ message: 'agenda dot timing' }, ['agenda timing'])).toEqual(['agenda timing']);
-    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing', 'typed%20receipt', 'typed%2520receipt', 'agenda%2etiming', 'typed receipт', 'typed&#32;receipt', 'typed&#x20;receipt', 'typed&amp;#32;receipt', 'typed%252520receipt', 'typ%D0%B5d%20r%D0%B5ceipt', 'typed%2Greceipt']) {
+    expect(candidateVisibleMarkerOverlap({ message: 'typed&NewLine;receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    expect(candidateVisibleMarkerOverlap({ message: 'agenda&Tab;timing' }, ['agenda timing'])).toEqual(['agenda timing']);
+    expect(candidateVisibleMarkerOverlap({ message: 'typed&percnt;20receipt' }, ['typed receipt'])).toEqual(['typed receipt']);
+    for (const value of ['typed\treceipt', 'typеd rеceipt', 'agenda[.]timing', 'typed%20receipt', 'typed%2520receipt', 'agenda%2etiming', 'typed receipт', 'typed&#32;receipt', 'typed&#x20;receipt', 'typed&amp;#32;receipt', 'typed&NewLine;receipt', 'agenda&Tab;timing', 'typed&percnt;20receipt', 'typed&amp;NewLine;receipt', 'typed&Unknown;receipt', 'typed&NewLine receipt', 'typed%252520receipt', 'typ%D0%B5d%20r%D0%B5ceipt', 'typed%2Greceipt']) {
       const escapedMarkerLeak = structuredClone(FIXED_TRACE_CORPUS);
       const id = value.startsWith('agenda') ? 'tune-long-channel-injection' : 'tune-long-doc-bounded';
       escapedMarkerLeak.find((trace) => trace.id === id)!.request.message += ` ${value}`;
@@ -701,6 +754,13 @@ describe('fixed cross-provider trace suite', () => {
     twin.toolFixtures[0].name = 'list_agents';
     twin.toolContract!.orderedCalls[0].name = 'list_agents';
     expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, twin]).crossPhaseStructuralFingerprintDuplicates).toBe(0);
+
+    const samePhaseTwin = structuredClone(FIXED_TRACE_CORPUS.find((trace) => trace.id === 'tune-working-group-list')!);
+    samePhaseTwin.request.message = 'A different fictional question about unrelated groups.';
+    expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, samePhaseTwin]).samePhaseStructuralFingerprintDuplicates).toBeGreaterThan(0);
+    samePhaseTwin.toolFixtures[0].name = 'list_agents';
+    samePhaseTwin.toolContract!.orderedCalls[0].name = 'list_agents';
+    expect(fixedTraceCoverageInventory([...FIXED_TRACE_CORPUS, samePhaseTwin]).samePhaseStructuralFingerprintDuplicates).toBe(0);
   });
 
   it('retains the exact legacy meeting union for a confirmed long three-workflow request', () => {
