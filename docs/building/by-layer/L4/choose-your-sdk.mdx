@@ -37,9 +37,10 @@ Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. T
 **No SDK currently embeds RC.1.** TypeScript beta.31 and Python beta.13 support
 the exact RC.0 protocol checkpoint; neither implies compatibility with RC.1.
 Go SDK `v3.2.0` adds 3.2 proposal and signing support, but its generated
-protocol types remain on beta.9. An
-[RC.1 update is in review](https://github.com/adcontextprotocol/adcp-go/pull/493),
-but it is not supported until a package is published. See the
+protocol types remain on beta.9. The
+[RC.1 update has merged](https://github.com/adcontextprotocol/adcp-go/pull/493),
+and [release PR #494](https://github.com/adcontextprotocol/adcp-go/pull/494)
+is preparing `adcp/v3.2.1`; it is not supported until that package is published. See the
 [3.2 prerelease program](/docs/reference/3-2-beta).
 
 Use the signed RC.1 bundle directly for raw-wire validation or code generation.
@@ -153,9 +154,10 @@ builders, signing, a compliance test controller, and partial 3.2 proposal
 support. Its `v3.2.0` generated types are pinned to protocol `3.2.0-beta.9`, so
 use TypeScript or Python for exact RC.0 schemas, and use the signed protocol
 bundle directly for exact RC.1 schemas. The
-[RC.1 regeneration PR](https://github.com/adcontextprotocol/adcp-go/pull/493)
-is work in progress, not a released support claim. The `/v3` suffix is required
-by Go semantic import versioning.
+[RC.1 regeneration has merged](https://github.com/adcontextprotocol/adcp-go/pull/493),
+and [release PR #494](https://github.com/adcontextprotocol/adcp-go/pull/494)
+is preparing `adcp/v3.2.1`, but that prospective version is not a released
+support claim. The `/v3` suffix is required by Go semantic import versioning.
 
 | Component | Import |
 |-----------|--------|
