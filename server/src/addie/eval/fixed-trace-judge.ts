@@ -22,9 +22,20 @@ import type {
 
 export const FIXED_TRACE_JUDGE_PROMPT_VERSION = 'addie-fixed-trace-blinded-judge-v2';
 export const FIXED_TRACE_MIN_INDEPENDENT_JUDGES = 2;
+/**
+ * There is no privileged calibration custody boundary in this integration
+ * draft. A caller-provided hash or boolean cannot satisfy this admission.
+ */
+export const FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION =
+  'not_admitted_missing_privileged_custodied_calibration' as const;
+function hasPrivilegedCustodiedCalibration(): boolean {
+  return false;
+}
 
 const MAX_JUDGE_INPUT_BYTES = 24 * 1024;
 const MAX_JUDGE_OUTPUT_BYTES = 8 * 1024;
+const isModelProviderId = (value: unknown): value is ModelProviderId =>
+  value === 'anthropic' || value === 'openai' || value === 'google';
 const FIXED_TRACE_JUDGE_VERDICT_SCHEMA: Readonly<JsonObject> = Object.freeze({
   type: 'object',
   properties: {
@@ -65,6 +76,7 @@ export type FixedTraceJudgeStatus =
 export type FixedTraceJudgeFailureReason =
   | 'candidate_not_judgeable'
   | 'judge_not_independent'
+  | 'judge_calibration_not_admitted'
   | 'judge_input_out_of_bounds'
   | 'judge_output_truncated'
   | 'judge_output_invalid'
@@ -331,18 +343,60 @@ function validateConfig(config: FixedTraceJudgeConfig): void {
   ) throw new Error('Judge pricing is invalid');
 }
 
-function candidateProviders(observation: FixedTraceObservation): ReadonlySet<ModelProviderId> {
-  const generation = [
-    observation.metadata.generation.requestedProvider,
-    observation.metadata.generation.returnedProvider,
-  ].filter((provider): provider is ModelProviderId => provider !== null);
-  const providers = generation.length > 0
-    ? generation
-    : [
-        observation.metadata.router.requestedProvider,
-        observation.metadata.router.returnedProvider,
-      ].filter((provider): provider is ModelProviderId => provider !== null);
-  return new Set(providers);
+function candidateProviders(
+  observation: FixedTraceObservation,
+): ReadonlySet<ModelProviderId> | null {
+  const stages = [observation.metadata.router, observation.metadata.generation];
+  const providers = new Set<ModelProviderId>();
+  for (const stage of stages) {
+    // The suite ledger is populated by the runner layer.  Keep this evidence
+    // layer structurally independent of that optional metadata declaration so
+    // it can fail closed when an older or incomplete observation is supplied.
+    const exposureStage = stage as typeof stage & {
+      providerExposures?: readonly {
+        attempt: number;
+        preparedProvider: ModelProviderId;
+        preparedModel: string;
+        returnedProvider: ModelProviderId | null;
+        returnedModel: string | null;
+      }[];
+    };
+    const dispatchedCalls = stage.dispatchedCalls ?? 0;
+    if (!exposureStage.providerExposures) return null;
+    if (stage.source === 'provider' && exposureStage.providerExposures.length === 0) return null;
+    if (exposureStage.providerExposures.length !== dispatchedCalls) return null;
+    const attempts = new Set<number>();
+    const preparedIdentities = new Set<string>();
+    const returnedIdentities = new Set<string>();
+    for (const exposure of exposureStage.providerExposures) {
+      if (
+        !Number.isSafeInteger(exposure.attempt) ||
+        exposure.attempt < 1 ||
+        !exposure.preparedModel ||
+        exposure.attempt > dispatchedCalls ||
+        !isModelProviderId(exposure.preparedProvider) ||
+        (exposure.returnedProvider === null) !== (exposure.returnedModel === null) ||
+        (exposure.returnedProvider !== null && !isModelProviderId(exposure.returnedProvider)) ||
+        (exposure.returnedModel !== null && !exposure.returnedModel)
+      ) return null;
+      const preparedIdentity = `${exposure.preparedProvider}\u0000${exposure.preparedModel}`;
+      if (attempts.has(exposure.attempt)) return null;
+      attempts.add(exposure.attempt);
+      preparedIdentities.add(preparedIdentity);
+      providers.add(exposure.preparedProvider);
+      if (exposure.returnedProvider) {
+        returnedIdentities.add(`${exposure.returnedProvider}\u0000${exposure.returnedModel}`);
+        providers.add(exposure.returnedProvider);
+      }
+    }
+    if (
+      (stage.requestedProvider === null) !== (stage.requestedModel === null) ||
+      (stage.returnedProvider === null) !== (stage.returnedModel === null) ||
+      (stage.requestedProvider !== null && !preparedIdentities.has(`${stage.requestedProvider}\u0000${stage.requestedModel}`)) ||
+      (stage.returnedProvider !== null && !returnedIdentities.has(`${stage.returnedProvider}\u0000${stage.returnedModel}`))
+    ) return null;
+  }
+  return providers.size ? providers : null;
 }
 
 export async function judgeFixedTraceObservation(
@@ -376,7 +430,7 @@ export async function judgeFixedTraceObservation(
   if (
     !trace.answerRubric?.length
     || observation.terminalStatus !== 'complete'
-    || candidateProviderIds.size === 0
+    || candidateProviderIds === null
   ) {
     return {
       traceId: trace.id,
@@ -391,6 +445,18 @@ export async function judgeFixedTraceObservation(
       traceId: trace.id,
       status: 'skipped',
       failureReason: 'judge_not_independent',
+      verdict: null,
+      metadata: metadata(config, request, [], false, startedAt, null),
+    };
+  }
+  // Do not let a planning-side calibration record authorize a provider call.
+  // A separately injected privileged, custodied calibration verifier is the
+  // prerequisite; this module intentionally has no caller-mintable seam.
+  if (!hasPrivilegedCustodiedCalibration()) {
+    return {
+      traceId: trace.id,
+      status: 'skipped',
+      failureReason: 'judge_calibration_not_admitted',
       verdict: null,
       metadata: metadata(config, request, [], false, startedAt, null),
     };
@@ -460,6 +526,8 @@ export async function runIndependentFixedTraceJudges(
   observations: ReadonlyArray<FixedTraceObservation>,
   judgeConfigs: ReadonlyArray<FixedTraceJudgeConfig>,
 ): Promise<FixedTraceJudgment[]> {
+  if (!hasPrivilegedCustodiedCalibration())
+    throw new Error('independent judge dispatch is not admitted without privileged custodied calibration');
   const configsByProvider = new Map<ModelProviderId, FixedTraceJudgeConfig>();
   for (const config of judgeConfigs) {
     if (configsByProvider.has(config.provider.id)) throw new Error('Independent judges must use unique providers');
@@ -471,6 +539,8 @@ export async function runIndependentFixedTraceJudges(
     const observation = observationsById.get(trace.id);
     if (!observation) continue;
     const candidateProviderIds = candidateProviders(observation);
+    if (!candidateProviderIds)
+      throw new Error(`Trace ${trace.id} has incomplete candidate provider exposure`);
     const independentConfigs = judgeConfigs.filter((config) => !candidateProviderIds.has(config.provider.id));
     if (independentConfigs.length < FIXED_TRACE_MIN_INDEPENDENT_JUDGES) {
       throw new Error(`Trace ${trace.id} requires at least two independent judge providers`);
@@ -506,9 +576,11 @@ export function summarizeFixedTraceJudges(
   for (const trace of applicable) {
     const group = byTrace.get(trace.id) ?? [];
     const providers = new Set(group.map((judgment) => judgment.metadata.requestedProvider));
-    const candidates = candidateProviderIds.get(trace.id) ?? new Set<ModelProviderId>();
+    const candidates = candidateProviderIds.get(trace.id);
     const complete = group.length >= FIXED_TRACE_MIN_INDEPENDENT_JUDGES
       && providers.size === group.length
+      && candidates !== null
+      && candidates !== undefined
       && candidates.size > 0
       && [...providers].every((provider) => !candidates.has(provider))
       && group.every((judgment) => judgment.status === 'judged' && judgment.verdict !== null);
@@ -529,6 +601,7 @@ export function summarizeFixedTraceJudges(
   const ratio = (count: number, denominator: number) => denominator === 0 ? 0 : count / denominator;
   const judgedJudgments = judgments.filter((judgment) => judgment.status === 'judged').length;
   const comparisonEligible = applicable.length > 0
+    && hasPrivilegedCustodiedCalibration()
     && completeCases.every(Boolean)
     && judgments.length === expectedJudgments
     && totalEstimatedCostUsd !== null;
