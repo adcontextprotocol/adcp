@@ -20,18 +20,6 @@ import type { ModelProviderId, ModelUsage } from './model-providers/model-provid
 export const GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION =
   'google-gemini-3.7-flash-through-2026-12-31' as const;
 
-/**
- * Immutable OpenAI standard rates reviewed for the fixed-trace planning
- * contract on 2026-09-05. These are deliberately model-specific; callers
- * must not infer a rate for a new model or a returned revision suffix.
- */
-export const OPENAI_GPT_5_6_PRICING_VERSION = 'openai-gpt-5.6-standard-2026-09-05' as const;
-export const OPENAI_GPT_5_6_PRICING_PER_MILLION_TOKENS = Object.freeze({
-  'gpt-5.6-luna': Object.freeze({ inputUsd: 0.20, outputUsd: 1.20 }),
-  'gpt-5.6-terra': Object.freeze({ inputUsd: 2, outputUsd: 12 }),
-  'gpt-5.6-sol': Object.freeze({ inputUsd: 4, outputUsd: 20 }),
-} as const);
-
 export interface ModelCostPricing {
   provider: ModelProviderId;
   model: string;
@@ -110,23 +98,6 @@ export function resolveModelCostPricing(
           + usage.outputTokens * 3.75,
         );
       },
-    };
-  }
-  if (provider === 'openai') {
-    const rate = OPENAI_GPT_5_6_PRICING_PER_MILLION_TOKENS[
-      model as keyof typeof OPENAI_GPT_5_6_PRICING_PER_MILLION_TOKENS
-    ];
-    if (!rate) return null;
-    return {
-      provider: 'openai',
-      model,
-      version: OPENAI_GPT_5_6_PRICING_VERSION,
-      // The plan contract is intentionally date-pinned. A later plan must
-      // add a reviewed profile instead of silently reusing this rate.
-      validBefore: new Date('2026-09-06T00:00:00.000Z'),
-      estimateCostMicros: (usage) => Math.ceil(
-        usage.inputTokens * rate.inputUsd + usage.outputTokens * rate.outputUsd,
-      ),
     };
   }
   return null;

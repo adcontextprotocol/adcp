@@ -22,14 +22,13 @@
  * provider or reads credentials. A live replay must be added as a separately
  * reviewed consumer of the versioned plan contract.
  *
- * Example:
- * npm run eval:addie-fixed-traces -- \
- *   --experiment-plan=.context/evals/plan.json \
- *   --trusted-manifest=.context/evals/trusted-manifest.json
+ * `--experiment-plan` and `--trusted-manifest` are accepted only with
+ * `--validate-only`; neither can make a caller-built manifest trusted.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { ModelConfig } from '../../src/config/models.js';
 import { CODE_VERSION, computeRouterRulesHash } from '../../src/addie/config-version.js';
 import {
@@ -46,6 +45,7 @@ import {
 } from '../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import { parseFixedTraceDiagnosticCliArguments } from '../../src/addie/eval/fixed-trace-diagnostic-cli.js';
+import { validateFixedTraceExperimentPlanOffline } from '../../src/addie/eval/fixed-trace-experiment-plan.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../src/addie/eval/fixed-trace-diagnostic-output.js';
 import { canonicalFixedTraceToolDefinitions } from '../../src/addie/eval/fixed-trace-tools.js';
 import {
@@ -125,7 +125,7 @@ const PRICING = {
 const cliArguments = parseFixedTraceDiagnosticCliArguments(process.argv.slice(2));
 
 function argument(name: string): string | undefined {
-  return cliArguments[{ providers: 'providers', 'architecture-arm': 'architectureArm', suite: 'suite', 'soft-max-usd': 'softMaxUsd', output: 'output' }[name] as keyof typeof cliArguments] as string | undefined;
+  return cliArguments[{ providers: 'providers', 'architecture-arm': 'architectureArm', suite: 'suite', 'soft-max-usd': 'softMaxUsd', output: 'output', 'experiment-plan': 'experimentPlan', 'trusted-manifest': 'trustedManifest' }[name] as keyof typeof cliArguments] as string | undefined;
 }
 
 function sha256(value: string): string {
@@ -298,9 +298,18 @@ if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
   throw new Error('--soft-max-usd is required and must be positive');
 }
 const outputArgument = argument('output');
-if (!outputArgument?.trim()) throw new Error('--output is required');
-const outputPath = resolve(outputArgument);
 if (cliArguments.validateOnly) {
+  const experimentPlanPath = argument('experiment-plan');
+  const trustedManifestPath = argument('trusted-manifest');
+  if ((experimentPlanPath === undefined) !== (trustedManifestPath === undefined)) {
+    throw new Error('--experiment-plan and --trusted-manifest must be supplied together');
+  }
+  const offlinePlan = experimentPlanPath
+    ? validateFixedTraceExperimentPlanOffline(JSON.parse(readFileSync(resolve(experimentPlanPath), 'utf8')))
+    : undefined;
+  // Deliberately parse for malformed-file feedback but never deserialize this
+  // into a resolver or treat it as authority. Authentication is absent here.
+  if (trustedManifestPath) JSON.parse(readFileSync(resolve(trustedManifestPath), 'utf8'));
   console.log(JSON.stringify({
     diagnosticOnly: true,
     judgeDispatch: 'blocked_pending_trusted_evaluator_owned_coordinator',
@@ -309,11 +318,15 @@ if (cliArguments.validateOnly) {
       architectureArm,
       suite: suiteName,
       softMaxUsd,
-      outputPath,
+      outputPath: outputArgument ? resolve(outputArgument) : undefined,
+      trustedManifestPath: trustedManifestPath ? resolve(trustedManifestPath) : undefined,
+      offlinePlan,
     },
   }));
   process.exit(0);
 }
+if (!outputArgument?.trim()) throw new Error('--output is required');
+const outputPath = resolve(outputArgument);
 throw new Error('Live fixed-trace replay is disabled pending an evaluator-owned execution-contract review');
 // This exclusive create happens before source inspection, credentials,
 // provider construction, or dispatch. Never unlink it: an empty file is the

@@ -23,22 +23,6 @@ import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const OPENAI_ROUTER_MODEL = 'gpt-5.6-luna';
-/**
- * Exact OpenAI model identifiers reviewed for offline fixed-trace planning.
- * Keep this list explicit: provider-returned revision suffixes are provenance,
- * never aliases accepted at the request boundary.
- */
-export const OPENAI_FIXED_TRACE_MODELS = Object.freeze([
-  'gpt-5.6-luna',
-  'gpt-5.6-terra',
-  'gpt-5.6-sol',
-] as const);
-
-export type OpenAIFixedTraceModel = (typeof OPENAI_FIXED_TRACE_MODELS)[number];
-
-export function isSupportedOpenAIResponsesModel(model: string): model is OpenAIFixedTraceModel {
-  return (OPENAI_FIXED_TRACE_MODELS as readonly string[]).includes(model);
-}
 
 export interface OpenAIResponsesTransport {
   responses: {
@@ -155,9 +139,7 @@ function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
 
 function toOpenAIRequest(request: ModelRequest): ResponseCreateParamsNonStreaming {
   validateModelCapabilities('openai', OPENAI_RESPONSES_CAPABILITIES, request);
-  if (!isSupportedOpenAIResponsesModel(request.model)) {
-    // Kept for compatibility with existing caller diagnostics; the supported
-    // set now also includes explicitly planned generation/control models.
+  if (request.model !== OPENAI_ROUTER_MODEL) {
     throw new Error(`Unsupported OpenAI router model: ${request.model}`);
   }
   if (request.system.some((block) => block.cacheHint !== undefined)) {

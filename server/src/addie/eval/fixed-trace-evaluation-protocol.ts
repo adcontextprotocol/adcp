@@ -2,8 +2,6 @@ import { createHash } from 'node:crypto';
 import type { ModelProviderId, ModelReasoningEffort } from '../model-providers/model-provider.js';
 import {
   GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
-  OPENAI_GPT_5_6_PRICING_PER_MILLION_TOKENS,
-  OPENAI_GPT_5_6_PRICING_VERSION,
 } from '../model-cost-pricing.js';
 import { CLAUDE_PRICING_VERSION } from '../claude-pricing.js';
 import {
@@ -87,23 +85,6 @@ export const FIXED_TRACE_PROTOCOL_PRICING = Object.freeze([
     cacheWriteAccounting: 'additive',
     source: 'Repository Anthropic standard pricing table, refreshed August 2026.',
   }),
-  ...(['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol'] as const).map((model) => Object.freeze({
-    provider: 'openai' as const,
-    model,
-    profileId: `${OPENAI_GPT_5_6_PRICING_VERSION}:${model}`,
-    version: OPENAI_GPT_5_6_PRICING_VERSION,
-    validBefore: '2026-09-06T00:00:00.000Z',
-    inputUsdPerMillionTokens: OPENAI_GPT_5_6_PRICING_PER_MILLION_TOKENS[model].inputUsd,
-    outputUsdPerMillionTokens: OPENAI_GPT_5_6_PRICING_PER_MILLION_TOKENS[model].outputUsd,
-    // The repository price pin contains no reviewed OpenAI cache profile.
-    // A cache hit is therefore outside this contract and fails execution
-    // admission rather than receiving a guessed discount or surcharge.
-    cacheReadUsdPerMillionTokens: null,
-    cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'unsupported',
-    cacheWriteAccounting: 'unsupported',
-    source: 'Repository immutable OpenAI standard pricing pin, reviewed 2026-09-05.',
-  })),
   Object.freeze({
     provider: 'google',
     model: 'gemini-3.7-flash',
@@ -150,8 +131,8 @@ export interface FixedTraceProtocolPhase {
   id: FixedTraceProtocolPhaseId;
   uniqueCaseCount: number;
   repetitions: number;
-  /** Whether this phase may choose a later candidate, never promote one. */
-  resultUse: 'smoke_only' | 'component_screening' | 'diagnostic' | 'selective' | 'promotional';
+  /** All output is diagnostic-only and cannot select or promote a candidate. */
+  resultUse: 'diagnostic_only';
   arms: readonly FixedTraceProtocolArm[];
 }
 
@@ -240,8 +221,6 @@ export interface FixedTraceProtocolEstimate {
   judgeCeilingUsd: number;
   contingencyUsd: number;
   totalCeilingUsd: number;
-  /** Round only upward to cents for an approvable provider-spend cap. */
-  approvalCeilingUsd: number;
 }
 
 function canonicalJson(value: unknown): string {
@@ -260,10 +239,6 @@ function canonicalJson(value: unknown): string {
 
 function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
-}
-
-function roundUpToCents(value: number): number {
-  return Math.ceil((value - Number.EPSILON) * 100) / 100;
 }
 
 function positiveInteger(value: number, label: string): void {
@@ -315,25 +290,16 @@ function assertArm(phase: FixedTraceProtocolPhase, arm: FixedTraceProtocolArm, p
     return;
   }
   if (generations.length !== 1 || routers.length > 1) throw new Error(`${arm.id} requires exactly one generation stage and at most one router`);
-  if (arm.architecture === 'two_stage_llm_router' || arm.architecture === 'hybrid_safe_signal_then_llm') {
+  if (arm.architecture === 'two_stage_llm_router') {
     if (routers.length !== 1) throw new Error(`${arm.id} requires a router stage`);
-  } else if (routers.length !== 0) {
-    throw new Error(`${arm.id} must not contain a router stage`);
+  } else if (arm.architecture !== 'oracle_route_diagnostic' || routers.length !== 0) {
+    throw new Error(`${arm.id} direct and hybrid substitutions are not admitted`);
   }
   if (arm.architecture === 'oracle_route_diagnostic' && phase.id !== 'oracle_generator_ceiling') {
     throw new Error(`${arm.id} oracle routing is diagnostic-only`);
   }
   for (const stage of arm.stages) assertStage(stage, `${arm.id}.${stage.role}`, pricingAsOf);
-  if (phase.id !== 'bounded_smoke') {
-    if (judges.length !== 2) throw new Error(`${arm.id} requires exactly two blinded judges`);
-    const candidates = candidateProviders(arm);
-    const judgeProviders = new Set(judges.map((judge) => judge.provider));
-    if (judgeProviders.size !== 2 || [...judgeProviders].some((provider) => candidates.has(provider))) {
-      throw new Error(`${arm.id} judges are not provider-independent`);
-    }
-  } else if (judges.length !== 0) {
-    throw new Error(`${arm.id} smoke arm must not dispatch judges`);
-  }
+  if (judges.length !== 0) throw new Error(`${arm.id} judges are blocked in the diagnostic-only protocol`);
 }
 
 /** Fingerprints every material execution and budget control; no resolver is trusted here. */
@@ -351,11 +317,16 @@ export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluatio
   }
   const phaseIds = new Set<string>();
   const armIds = new Set<string>();
+  const requiredOrder = ['bounded_smoke', 'router_screen', 'oracle_generator_ceiling', 'deployable_architecture', 'controlled_tuning', 'sealed_final'] as const;
+  if (protocol.phases.length !== requiredOrder.length || protocol.phases.some((phase, index) => phase.id !== requiredOrder[index])) {
+    throw new Error('Protocol phases must use the exact required order');
+  }
   for (const phase of protocol.phases) {
     if (phaseIds.has(phase.id)) throw new Error(`Duplicate protocol phase: ${phase.id}`);
     phaseIds.add(phase.id);
     positiveInteger(phase.uniqueCaseCount, `${phase.id}.uniqueCaseCount`);
     positiveInteger(phase.repetitions, `${phase.id}.repetitions`);
+    if (phase.resultUse !== 'diagnostic_only') throw new Error(`${phase.id} is not diagnostic-only`);
     if (!phase.arms.length) throw new Error(`${phase.id} requires at least one arm`);
     for (const arm of phase.arms) {
       if (armIds.has(arm.id)) throw new Error(`Duplicate protocol arm ID: ${arm.id}`);
@@ -363,9 +334,7 @@ export function assertFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluatio
       assertArm(phase, arm, protocol.pricingAsOf);
     }
   }
-  for (const required of ['bounded_smoke', 'router_screen', 'oracle_generator_ceiling', 'deployable_architecture', 'controlled_tuning', 'sealed_final'] as const) {
-    if (!phaseIds.has(required)) throw new Error(`Protocol is missing required phase: ${required}`);
-  }
+  for (const required of requiredOrder) if (!phaseIds.has(required)) throw new Error(`Protocol is missing required phase: ${required}`);
 }
 
 /**
@@ -376,29 +345,9 @@ export function assertFixedTraceEvaluationProtocolTrusted(
   protocol: FixedTraceEvaluationProtocol,
   resolver: FixedTraceProtocolTrustedManifestResolver,
 ): FixedTraceProtocolTrustedManifest {
-  assertFixedTraceEvaluationProtocol(protocol);
-  const trusted = resolver(protocol.trustedManifestId);
-  if (!trusted) throw new Error(`Trusted evaluation manifest is unavailable: ${protocol.trustedManifestId}`);
-  if (
-    trusted.id !== protocol.trustedManifestId
-    || trusted.protocolFingerprint !== fixedTraceEvaluationProtocolFingerprint(protocol)
-    || !trusted.sourceId.trim()
-    || !trusted.sourceRevision.trim()
-    || !/^[a-f0-9]{64}$/.test(trusted.tracePackSha256)
-    || !trusted.rawLedgerVersion.trim()
-  ) throw new Error('Trusted evaluation manifest does not bind this protocol');
-  for (const phase of protocol.phases) {
-    if (trusted.partitions[phase.id] !== phase.uniqueCaseCount) {
-      throw new Error(`Trusted evaluation manifest count mismatch for ${phase.id}`);
-    }
-    if (!/^[a-f0-9]{64}$/.test(trusted.traceSuiteSha256ByPhase[phase.id])) {
-      throw new Error(`Trusted evaluation manifest suite hash is unavailable for ${phase.id}`);
-    }
-    if (phase.arms.some((arm) => arm.admission !== 'planning_only' && !trusted.verifiedAdmissions.includes(arm.admission))) {
-      throw new Error(`Trusted evaluation manifest lacks an execution admission for ${phase.id}`);
-    }
-  }
-  return trusted;
+  void protocol;
+  void resolver;
+  throw new Error('Trusted evaluation manifest is locked pending evaluator-owned authentication');
 }
 
 export function fixedTraceEvaluationProtocolRunnerBinding(
@@ -407,25 +356,11 @@ export function fixedTraceEvaluationProtocolRunnerBinding(
   phaseId: FixedTraceProtocolPhaseId,
   traceSuite: readonly FixedTraceCase[],
 ): FixedTraceProtocolRunnerBinding {
-  const trusted = assertFixedTraceEvaluationProtocolTrusted(protocol, resolver);
-  const expectedCaseCount = trusted.partitions[phaseId];
-  if (
-    !Array.isArray(traceSuite)
-    || traceSuite.length !== expectedCaseCount
-    || traceSuite.some((trace) => typeof trace.id !== 'string' || !trace.id.trim())
-    || new Set(traceSuite.map((trace) => trace.id)).size !== traceSuite.length
-  ) throw new Error(`Evaluator-owned suite is invalid for ${phaseId}`);
-  const traceSuiteSha256 = fixedTraceSuiteSha256(traceSuite);
-  if (traceSuiteSha256 !== trusted.traceSuiteSha256ByPhase[phaseId]) {
-    throw new Error(`Evaluator-owned suite hash does not match trusted manifest for ${phaseId}`);
-  }
-  return Object.freeze({
-    trustedManifestId: trusted.id,
-    protocolFingerprint: trusted.protocolFingerprint,
-    phaseId,
-    traceSuite: Object.freeze([...traceSuite]),
-    traceSuiteSha256,
-  });
+  void protocol;
+  void resolver;
+  void phaseId;
+  void traceSuite;
+  throw new Error('Fixed-trace execution is locked pending evaluator-owned authentication');
 }
 
 function stageEstimate(
@@ -465,7 +400,7 @@ function stageEstimate(
 }
 
 /**
- * Pure deterministic approval projection. It makes no provider calls, reads
+ * Pure deterministic diagnostic projection. It makes no provider calls, reads
  * no trace body, and writes no output. `expectedSpendUsd` stays null because
  * observed tokenization and tool-loop length are deliberately not guessed.
  */
@@ -512,7 +447,6 @@ export function estimateFixedTraceEvaluationProtocol(protocol: FixedTraceEvaluat
     judgeCeilingUsd,
     contingencyUsd,
     totalCeilingUsd: candidateCeilingUsd + judgeCeilingUsd + contingencyUsd,
-    approvalCeilingUsd: roundUpToCents(candidateCeilingUsd + judgeCeilingUsd + contingencyUsd),
   });
 }
 
@@ -555,70 +489,25 @@ const judge = (
 const PRICE = Object.freeze({
   haiku: `${CLAUDE_PRICING_VERSION}:claude-haiku-4-5`,
   sonnet: `${CLAUDE_PRICING_VERSION}:claude-sonnet-5`,
-  luna: `${OPENAI_GPT_5_6_PRICING_VERSION}:gpt-5.6-luna`,
-  terra: `${OPENAI_GPT_5_6_PRICING_VERSION}:gpt-5.6-terra`,
-  sol: `${OPENAI_GPT_5_6_PRICING_VERSION}:gpt-5.6-sol`,
   gemini: `${GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION}:gemini-3.7-flash`,
 });
 
-const sonnetAndGeminiJudges = Object.freeze([
-  judge('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
-  judge('google', 'gemini-3.7-flash', 'low', PRICE.gemini),
-]);
-const terraAndGeminiJudges = Object.freeze([
-  judge('openai', 'gpt-5.6-terra', 'low', PRICE.terra),
-  judge('google', 'gemini-3.7-flash', 'low', PRICE.gemini),
-]);
-const terraAndSonnetJudges = Object.freeze([
-  judge('openai', 'gpt-5.6-terra', 'low', PRICE.terra),
-  judge('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
+/** Unsupported model names are inert metadata, never a stage or a price. */
+export const FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES = Object.freeze([
+  Object.freeze({ provider: 'openai' as const, model: 'gpt-5.6-terra', dispatchable: false as const, trustedPrice: null }),
+  Object.freeze({ provider: 'openai' as const, model: 'gpt-5.6-sol', dispatchable: false as const, trustedPrice: null }),
 ]);
 
-interface RouterScreenConfiguration {
-  id: string;
-  provider: ModelProviderId;
-  model: string;
-  effort: ModelReasoningEffort;
-  pricingProfileId: string;
-}
-
-interface OracleGeneratorConfiguration extends RouterScreenConfiguration {
-  judges: readonly FixedTraceProtocolStage[];
-}
-
-const ROUTER_SCREEN_CONFIGURATIONS: readonly RouterScreenConfiguration[] = Object.freeze([
-  { id: 'router-haiku-default', provider: 'anthropic', model: 'claude-haiku-4-5', effort: 'provider_default', pricingProfileId: PRICE.haiku },
-  { id: 'router-luna-none', provider: 'openai', model: 'gpt-5.6-luna', effort: 'none', pricingProfileId: PRICE.luna },
-  { id: 'router-luna-low', provider: 'openai', model: 'gpt-5.6-luna', effort: 'low', pricingProfileId: PRICE.luna },
-  { id: 'router-terra-none', provider: 'openai', model: 'gpt-5.6-terra', effort: 'none', pricingProfileId: PRICE.terra },
-  { id: 'router-terra-low', provider: 'openai', model: 'gpt-5.6-terra', effort: 'low', pricingProfileId: PRICE.terra },
-  { id: 'router-gemini-low', provider: 'google', model: 'gemini-3.7-flash', effort: 'low', pricingProfileId: PRICE.gemini },
-]);
-
-const ORACLE_GENERATOR_CONFIGURATIONS: readonly OracleGeneratorConfiguration[] = Object.freeze([
-  { id: 'oracle-sonnet-default', provider: 'anthropic', model: 'claude-sonnet-5', effort: 'provider_default', pricingProfileId: PRICE.sonnet, judges: terraAndGeminiJudges },
-  { id: 'oracle-sonnet-medium', provider: 'anthropic', model: 'claude-sonnet-5', effort: 'medium', pricingProfileId: PRICE.sonnet, judges: terraAndGeminiJudges },
-  { id: 'oracle-terra-low', provider: 'openai', model: 'gpt-5.6-terra', effort: 'low', pricingProfileId: PRICE.terra, judges: sonnetAndGeminiJudges },
-  { id: 'oracle-terra-medium', provider: 'openai', model: 'gpt-5.6-terra', effort: 'medium', pricingProfileId: PRICE.terra, judges: sonnetAndGeminiJudges },
-  { id: 'oracle-sol-low', provider: 'openai', model: 'gpt-5.6-sol', effort: 'low', pricingProfileId: PRICE.sol, judges: sonnetAndGeminiJudges },
-  { id: 'oracle-sol-medium', provider: 'openai', model: 'gpt-5.6-sol', effort: 'medium', pricingProfileId: PRICE.sol, judges: sonnetAndGeminiJudges },
-  { id: 'oracle-gemini-medium', provider: 'google', model: 'gemini-3.7-flash', effort: 'medium', pricingProfileId: PRICE.gemini, judges: terraAndSonnetJudges },
-]);
-
-/**
- * The exact conservative approval projection. It is intentionally
- * non-dispatchable until a future evaluator-owned trusted manifest binds the
- * real 46/36/38 corpus, raw ledger, and direct/hybrid execution contracts.
- */
+/** A closed, diagnostic-only projection with no promotion or execution path. */
 export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProtocol = Object.freeze({
   version: FIXED_TRACE_EVALUATION_PROTOCOL_VERSION,
   id: 'addie-6842-6846-staged-v1',
   trustedManifestId: 'externally-owned-addie-fixed-trace-v120',
   pricingAsOf: '2026-09-05T12:00:00.000Z',
-  contingencyBasisPoints: 1_500,
+  contingencyBasisPoints: 0,
   phases: Object.freeze([
     Object.freeze({
-      id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1, resultUse: 'smoke_only',
+      id: 'bounded_smoke', uniqueCaseCount: 8, repetitions: 1, resultUse: 'diagnostic_only',
       arms: Object.freeze([Object.freeze({
         id: 'smoke-incumbent-two-stage', architecture: 'two_stage_llm_router', admission: 'planning_only',
         stages: Object.freeze([
@@ -628,69 +517,39 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
       })]),
     }),
     Object.freeze({
-      id: 'router_screen', uniqueCaseCount: 46, repetitions: 3, resultUse: 'component_screening',
-      arms: Object.freeze(ROUTER_SCREEN_CONFIGURATIONS.map((configuration) => Object.freeze({
-        id: configuration.id, architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const,
-        stages: Object.freeze([router(configuration.provider, configuration.model, configuration.effort, configuration.pricingProfileId)]),
-      }))),
+      id: 'router_screen', uniqueCaseCount: 46, repetitions: 3, resultUse: 'diagnostic_only',
+      arms: Object.freeze([Object.freeze({ id: 'router-haiku-default', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku)]) })]),
     }),
     Object.freeze({
-      id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2, resultUse: 'diagnostic',
-      arms: Object.freeze(ORACLE_GENERATOR_CONFIGURATIONS.map((configuration) => Object.freeze({
-        id: configuration.id, architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const,
-        stages: Object.freeze([
-          generation(configuration.provider, configuration.model, configuration.effort, configuration.pricingProfileId),
-          ...configuration.judges,
-        ]),
-      }))),
+      id: 'oracle_generator_ceiling', uniqueCaseCount: 46, repetitions: 2, resultUse: 'diagnostic_only',
+      arms: Object.freeze([Object.freeze({ id: 'oracle-sonnet-default', architecture: 'oracle_route_diagnostic' as const, admission: 'planning_only' as const, stages: Object.freeze([generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet)]) })]),
     }),
     Object.freeze({
-      id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3, resultUse: 'selective',
+      id: 'deployable_architecture', uniqueCaseCount: 46, repetitions: 3, resultUse: 'diagnostic_only',
       arms: Object.freeze([
         Object.freeze({ id: 'incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
           router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku),
-          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet), ...terraAndGeminiJudges,
-        ]) }),
-        Object.freeze({ id: 'openai-luna-low-terra-medium', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('openai', 'gpt-5.6-luna', 'low', PRICE.luna),
-          generation('openai', 'gpt-5.6-terra', 'medium', PRICE.terra), ...sonnetAndGeminiJudges,
-        ]) }),
-        Object.freeze({ id: 'hybrid-safe-signal-luna-terra', architecture: 'hybrid_safe_signal_then_llm' as const, admission: 'requires_verified_hybrid_contract' as const, stages: Object.freeze([
-          router('openai', 'gpt-5.6-luna', 'low', PRICE.luna),
-          generation('openai', 'gpt-5.6-terra', 'medium', PRICE.terra), ...sonnetAndGeminiJudges,
-        ]) }),
-        Object.freeze({ id: 'openai-luna-low-sol-medium', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('openai', 'gpt-5.6-luna', 'low', PRICE.luna),
-          generation('openai', 'gpt-5.6-sol', 'medium', PRICE.sol), ...sonnetAndGeminiJudges,
+          generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
         ]) }),
         Object.freeze({ id: 'gemini-low-medium-pipeline', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
           router('google', 'gemini-3.7-flash', 'low', PRICE.gemini),
-          generation('google', 'gemini-3.7-flash', 'medium', PRICE.gemini), ...terraAndSonnetJudges,
-        ]) }),
-        Object.freeze({ id: 'direct-bounded-terra-medium', architecture: 'direct_bounded_production_shaped' as const, admission: 'requires_verified_direct_contract' as const, stages: Object.freeze([
-          generation('openai', 'gpt-5.6-terra', 'medium', PRICE.terra), ...sonnetAndGeminiJudges,
+          generation('google', 'gemini-3.7-flash', 'medium', PRICE.gemini),
         ]) }),
       ]),
     }),
     Object.freeze({
-      id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3, resultUse: 'selective',
+      id: 'controlled_tuning', uniqueCaseCount: 36, repetitions: 3, resultUse: 'diagnostic_only',
       arms: Object.freeze([
         Object.freeze({ id: 'tuning-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet), ...terraAndGeminiJudges,
-        ]) }),
-        Object.freeze({ id: 'tuning-openai-luna-terra', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('openai', 'gpt-5.6-luna', 'low', PRICE.luna), generation('openai', 'gpt-5.6-terra', 'medium', PRICE.terra), ...sonnetAndGeminiJudges,
+          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
         ]) }),
       ]),
     }),
     Object.freeze({
-      id: 'sealed_final', uniqueCaseCount: 38, repetitions: 3, resultUse: 'promotional',
+      id: 'sealed_final', uniqueCaseCount: 38, repetitions: 3, resultUse: 'diagnostic_only',
       arms: Object.freeze([
         Object.freeze({ id: 'final-incumbent-haiku-sonnet', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet), ...terraAndGeminiJudges,
-        ]) }),
-        Object.freeze({ id: 'final-openai-luna-terra', architecture: 'two_stage_llm_router' as const, admission: 'planning_only' as const, stages: Object.freeze([
-          router('openai', 'gpt-5.6-luna', 'low', PRICE.luna), generation('openai', 'gpt-5.6-terra', 'medium', PRICE.terra), ...sonnetAndGeminiJudges,
+          router('anthropic', 'claude-haiku-4-5', 'provider_default', PRICE.haiku), generation('anthropic', 'claude-sonnet-5', 'provider_default', PRICE.sonnet),
         ]) }),
       ]),
     }),

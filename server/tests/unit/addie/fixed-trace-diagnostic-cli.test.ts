@@ -7,7 +7,7 @@ import { parseFixedTraceDiagnosticCliArguments } from '../../../src/addie/eval/f
 describe('fixed-trace diagnostic CLI parser', () => {
   it('accepts only bounded dry-run forms', () => {
     expect(parseFixedTraceDiagnosticCliArguments(['--validate-only', '--providers=openai']))
-      .toEqual({ validateOnly: true, providers: 'openai', architectureArm: undefined, suite: undefined, softMaxUsd: undefined, output: undefined });
+      .toEqual({ validateOnly: true, providers: 'openai', architectureArm: undefined, suite: undefined, softMaxUsd: undefined, output: undefined, experimentPlan: undefined, trustedManifest: undefined });
     expect(parseFixedTraceDiagnosticCliArguments(['--validate-only=true']).validateOnly).toBe(true);
   });
 
@@ -50,8 +50,8 @@ describe('fixed-trace diagnostic CLI parser', () => {
 
   it.each([
     ['--soft-max-usd=0', '--output=/tmp/out.json'],
-    ['--soft-max-usd=1'],
-  ])('rejects incomplete dry run configuration', (...args) => {
+    ['--experiment-plan=/tmp/no-plan.json'],
+  ])('rejects malformed dry run configuration', (...args) => {
     expect(() => execFileSync('npx', [
       'tsx', 'server/tests/manual/fixed-trace-provider-eval.ts', '--validate-only', '--providers=openai', ...args,
     ], { cwd: process.cwd(), stdio: 'pipe' })).toThrow();

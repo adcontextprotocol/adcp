@@ -3,7 +3,6 @@ import type { Response } from 'openai/resources/responses/responses';
 import type { GenerateContentResponse } from '@google/genai';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import {
-  OPENAI_FIXED_TRACE_MODELS,
   OPENAI_ROUTER_MODEL,
   OpenAIResponsesProvider,
   normalizeOpenAIResponse,
@@ -90,11 +89,11 @@ function googleResponse(overrides: Record<string, unknown> = {}): GenerateConten
 }
 
 describe('OpenAIResponsesProvider', () => {
-  it('accepts only the explicit fixed-trace OpenAI model IDs', () => {
+  it('keeps Terra and Sol outside the production OpenAI dispatch boundary', () => {
     const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
-    for (const model of OPENAI_FIXED_TRACE_MODELS) {
-      expect(provider.prepare(request(model)).providerRequest).toMatchObject({ model });
-    }
+    expect(provider.prepare(request(OPENAI_ROUTER_MODEL)).providerRequest).toMatchObject({ model: OPENAI_ROUTER_MODEL });
+    expect(() => provider.prepare(request('gpt-5.6-terra'))).toThrow('Unsupported OpenAI router model');
+    expect(() => provider.prepare(request('gpt-5.6-sol'))).toThrow('Unsupported OpenAI router model');
     expect(() => provider.prepare(request('gpt-5.6-terra-20260905'))).toThrow('Unsupported OpenAI router model');
   });
 
