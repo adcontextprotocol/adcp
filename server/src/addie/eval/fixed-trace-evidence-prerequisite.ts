@@ -34,6 +34,7 @@ type FixedTraceTerminalStatus =
   | "malformed"
   | "provider_error"
   | "timeout_after_dispatch"
+  | "unknown_exposure"
   | "not_dispatched_budget"
   | "not_admitted_architecture";
 type FixedTraceInvocationStage = "router" | "generation" | "judge" | "simulator";
@@ -254,7 +255,7 @@ type FixedTraceExtraSchemaVersion = FixedTraceAssertTrue<FixedTraceEnumIsExhaust
 // @ts-expect-error invocation stages cannot admit a member outside their closed domain
 type FixedTraceExtraInvocationStage = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceInvocationStage, ["router", "generation", "judge", "simulator", "forged"]>>;
 // @ts-expect-error terminal statuses cannot admit a member outside their closed domain
-type FixedTraceExtraTerminalStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTerminalStatus, ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture", "forged"]>>;
+type FixedTraceExtraTerminalStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTerminalStatus, ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "unknown_exposure", "not_dispatched_budget", "not_admitted_architecture", "forged"]>>;
 // @ts-expect-error finish reasons cannot admit a member outside their closed domain
 type FixedTraceExtraFinishReason = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceFinishReason, ["stop", "tool_calls", "length", "refusal", "continue", "forged"]>>;
 // @ts-expect-error completeness outcomes cannot admit a member outside their closed domain
@@ -310,7 +311,7 @@ export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
   },
   timingAndOutcome: {
     preparedAt: { type: "utc_timestamp" }, dispatchedAt: { type: "nullable_utc_timestamp" }, completedAt: { type: "nullable_utc_timestamp" }, latencyMs: { type: "nullable_number" }, timeout: { type: "boolean" },
-    errorCode: { type: "nullable_string" }, terminalStatus: fixedTraceEnum<FixedTraceTerminalStatus>()(["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"]),
+    errorCode: { type: "nullable_string" }, terminalStatus: fixedTraceEnum<FixedTraceTerminalStatus>()(["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "unknown_exposure", "not_dispatched_budget", "not_admitted_architecture"]),
     finishReason: fixedTraceNullableEnum<FixedTraceFinishReason>()(["stop", "tool_calls", "length", "refusal", "continue"]), outputSha256: { type: "nullable_sha256" },
   },
   usageAndPricing: {

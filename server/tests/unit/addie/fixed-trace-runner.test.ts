@@ -695,6 +695,66 @@ describe('fixed trace artifact runner', () => {
       .toEqual(expect.arrayContaining(['router_model_resolution_policy_mismatch', 'router_cost_provenance_missing']));
   });
 
+  it('keeps an unapproved dispatched generation exposure unknown for grading and budget admission', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generationDelegate = new ScriptedProvider([{
+      ...response([{ type: 'text', text: 'Synthetic protocol explanation.' }]),
+      model: 'other-anthropic-model',
+    }]);
+    const budget = new FixedTraceBudget(1);
+    const pricing = stage(generationDelegate, 3).pricing;
+    const generation = new BudgetedFixedTraceProvider(
+      generationDelegate,
+      budget,
+      pricing,
+      fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', pricing),
+    );
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const grade = gradeFixedTrace(selectedTrace, observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      finishReason: 'stop',
+      flagged: true,
+      metadata: {
+        generation: {
+          source: 'provider',
+          dispatched: true,
+          usage: { inputTokens: 10, outputTokens: 5 },
+          returnedProvider: 'anthropic',
+          returnedModel: 'other-anthropic-model',
+          modelResolution: 'provider_canonicalized',
+          estimatedCostUsd: null,
+          pricingSource: null,
+          pricingProfileId: null,
+          providerExposures: [{
+            attempt: 1,
+            preparedProvider: 'anthropic',
+            preparedModel: 'claude-haiku-4-5',
+            returnedProvider: 'anthropic',
+            returnedModel: 'other-anthropic-model',
+          }],
+        },
+      },
+    });
+    expect(observation.terminalStatus).not.toBe('complete');
+    expect(observation.terminalStatus).not.toBe('not_dispatched_budget');
+    expect(grade).toMatchObject({ terminalFailure: true, deterministicPass: false });
+    expect(grade.failures).toContain('terminal_status_unexpected');
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0,
+      reservedUsd: 0,
+      remainingUsd: null,
+      dispatchedCalls: 1,
+      completedCalls: 0,
+      budgetRejectedCalls: 0,
+      exposureUnknown: true,
+    });
+  });
+
   it('records complete router and multi-turn generation provenance', async () => {
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const generation = new ScriptedProvider([

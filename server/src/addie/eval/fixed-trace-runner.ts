@@ -182,10 +182,6 @@ function fixedTraceCommonToolEnvironment(): FixedTraceCommonToolEnvironmentBindi
   });
 }
 
-/**
- * An evaluator-owned execution contract changed after its request snapshot was
- * made. This is neither a provider failure nor a scored terminal outcome.
- */
 class FixedTraceExecutionIdentityError extends Error {
   constructor(message: string) {
     super(message);
@@ -407,6 +403,43 @@ interface StageInvocationState {
   latencyMs: number;
 }
 
+function providerExposures(
+  state: StageInvocationState,
+  response?: ModelResponse,
+  recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
+): FixedTraceModelStageMetadata["providerExposures"] {
+  if (recordedExposures) return deepFreeze(recordedExposures.map((exposure) => ({ ...exposure })));
+  return deepFreeze(
+    state.invocations.map((prepared, index) => ({
+      attempt: index + 1,
+      preparedProvider: prepared.provider,
+      preparedModel: prepared.model,
+      returnedProvider:
+        response && index === state.invocations.length - 1 ? response.provider : null,
+      returnedModel:
+        response && index === state.invocations.length - 1 ? response.model : null,
+    })),
+  );
+}
+
+function hasCompleteReturnedProviderIdentities(
+  state: StageInvocationState,
+  response?: ModelResponse,
+  recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
+): boolean {
+  const exposures = providerExposures(state, response, recordedExposures) ?? [];
+  return exposures.length === state.dispatchedCalls && exposures.every(
+    (exposure, index) => {
+      const prepared = state.invocations[index];
+      return exposure.attempt === index + 1 &&
+        prepared !== undefined &&
+        exposure.preparedProvider === prepared.provider &&
+        exposure.preparedModel === prepared.model &&
+        Boolean(exposure.returnedProvider && exposure.returnedModel);
+    },
+  );
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number') {
@@ -534,6 +567,7 @@ function providerStageMetadata(
   response: ModelResponse,
   usage: ModelUsage,
   state: StageInvocationState,
+  recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
 ): FixedTraceModelStageMetadata {
   // Provider responses are outside evaluator ownership. Retaining their usage
   // object would let a later provider turn mutate already-recorded cost and
@@ -548,6 +582,7 @@ function providerStageMetadata(
     requestedModel: config.model,
     returnedProvider: response.provider,
     returnedModel: response.model,
+    providerExposures: providerExposures(state, response, recordedExposures),
     modelResolution: modelResolution(config, response),
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
@@ -575,6 +610,7 @@ function localStageMetadata(
   config: FixedTraceProviderStageConfig,
   state: StageInvocationState,
   usage?: ModelUsage,
+  recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
 ): FixedTraceModelStageMetadata {
   const recordedUsage = usage === undefined ? undefined : deepFreeze(structuredClone(usage));
   return {
@@ -585,6 +621,7 @@ function localStageMetadata(
     requestedModel: config.model,
     returnedProvider: null,
     returnedModel: null,
+    providerExposures: providerExposures(state, undefined, recordedExposures),
     modelResolution: 'local',
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
@@ -615,6 +652,7 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     requestedModel: null,
     returnedProvider: null,
     returnedModel: null,
+    providerExposures: Object.freeze([]),
     modelResolution: null,
     promptSha256: null,
     providerRequestSha256: null,
@@ -986,7 +1024,9 @@ async function executeRouter(
     const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const metadata = providerStageMetadata(request, config, response, response.usage, state);
     const output = extractRouterResponseText(response.content);
-    const status = terminalStatusForFinishReason(response.finishReason, output);
+    const status = hasCompleteReturnedProviderIdentities(state, response)
+      ? terminalStatusForFinishReason(response.finishReason, output)
+      : 'unknown_exposure';
     if (status !== 'complete') return { request, response, plan: null, output, status, metadata };
     try {
       return {
@@ -1009,12 +1049,15 @@ async function executeRouter(
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
         : 'provider_error';
+    const terminalStatus = dispatched && !hasCompleteReturnedProviderIdentities(state)
+      ? 'unknown_exposure'
+      : status;
     return {
       request,
       response: null,
       plan: null,
-      output: fallbackOutput(status),
-      status,
+      output: fallbackOutput(terminalStatus),
+      status: terminalStatus,
       metadata: localStageMetadata(request, config, state),
     };
   } finally {
@@ -1058,7 +1101,7 @@ export async function runFixedTraceCase(
   if (architectureArm.id === 'direct_generation') {
     // The evaluator's receipts and fixture facts are diagnostic only; an
     // admission result can never open a direct-production dispatch path.
-    return {
+  return {
       traceId: executionTrace.id,
       metadata: baseMetadata(
         executionTrace,
@@ -1077,8 +1120,8 @@ export async function runFixedTraceCase(
       route: null,
       tools: [],
       rejectedToolCalls: [],
-    };
-  }
+  };
+}
   const hybridDecision = architectureArm.id === 'deterministic_policy_llm_fallback_hybrid'
     ? decideFixedTraceHybridRoute({
         message: executionTrace.request.message,
@@ -1233,8 +1276,15 @@ export async function runFixedTraceCase(
       result.response,
       result.usage,
       state,
+      result.providerExposures,
     );
-    const terminalStatus = terminalStatusForFinishReason(result.response.finishReason, result.text);
+    const terminalStatus = hasCompleteReturnedProviderIdentities(
+      state,
+      undefined,
+      result.providerExposures,
+    ) && returnedModelUsesRecordedPricing(generationConfig, result.response)
+      ? terminalStatusForFinishReason(result.response.finishReason, result.text)
+      : 'unknown_exposure';
     return {
       traceId: executionTrace.id,
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
@@ -1262,21 +1312,35 @@ export async function runFixedTraceCase(
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
         : 'provider_error';
-    const generation = localStageMetadata(generationRequest, generationConfig, {
+    const state = {
       invocations,
       dispatched,
       dispatchedCalls,
       latencyMs: Date.now() - startedAt,
-    }, checkpoint?.usage);
+    };
+    const generation = localStageMetadata(
+      generationRequest,
+      generationConfig,
+      state,
+      checkpoint?.usage,
+      checkpoint?.providerExposures,
+    );
+    const finalTerminalStatus = dispatched && !hasCompleteReturnedProviderIdentities(
+      state,
+      undefined,
+      checkpoint?.providerExposures,
+    )
+      ? 'unknown_exposure'
+      : terminalStatus;
     return {
       traceId: executionTrace.id,
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
-      terminalStatus,
+      terminalStatus: finalTerminalStatus,
       boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
       localReplacementReason: null,
       finishReason: null,
-      output: fallbackOutput(terminalStatus),
+      output: fallbackOutput(finalTerminalStatus),
       flagged: true,
       route,
       tools: checkpoint ? [...checkpoint.tools] : [],

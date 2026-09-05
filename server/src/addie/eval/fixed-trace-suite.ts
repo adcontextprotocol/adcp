@@ -78,6 +78,8 @@ export type FixedTraceTerminalStatus =
   | 'malformed'
   | 'provider_error'
   | 'timeout_after_dispatch'
+  /** A dispatched attempt has no complete prepared/returned identity ledger. */
+  | 'unknown_exposure'
   | 'not_dispatched_budget'
   /** A direct architecture candidate was rejected before provider dispatch. */
   | 'not_admitted_architecture';
@@ -305,6 +307,14 @@ export interface FixedTraceModelStageMetadata {
   requestedModel: string | null;
   returnedProvider: ModelProviderId | null;
   returnedModel: string | null;
+  /** Identity-only ledger of every prepared attempt; never contains payloads. */
+  providerExposures?: readonly {
+    attempt: number;
+    preparedProvider: ModelProviderId;
+    preparedModel: string;
+    returnedProvider: ModelProviderId | null;
+    returnedModel: string | null;
+  }[];
   modelResolution: 'exact' | 'provider_canonicalized' | 'local' | null;
   promptSha256: string | null;
   providerRequestSha256: string | null;
@@ -3054,7 +3064,7 @@ export function gradeFixedTrace(
   if (observation.terminalStatus === 'refusal' && observation.finishReason !== 'refusal') failures.push('finish_reason_mismatch');
 
   const failureStatuses: ReadonlyArray<FixedTraceTerminalStatus> = [
-    'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget', 'not_admitted_architecture',
+    'malformed', 'provider_error', 'timeout_after_dispatch', 'unknown_exposure', 'not_dispatched_budget', 'not_admitted_architecture',
   ];
   if (observation.terminalStage === 'admission') {
     if (
@@ -3099,7 +3109,7 @@ export function gradeFixedTrace(
   ) failures.push('generation_stage_mismatch');
 
   const metadataPass = provenanceFailures.length === 0;
-  const terminalFailure = ['refusal', 'truncated', 'empty', 'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget', 'not_admitted_architecture']
+  const terminalFailure = ['refusal', 'truncated', 'empty', 'malformed', 'provider_error', 'timeout_after_dispatch', 'unknown_exposure', 'not_dispatched_budget', 'not_admitted_architecture']
     .includes(observation.terminalStatus);
   return {
     traceId: trace.id,
@@ -3271,6 +3281,7 @@ export function summarizeFixedTraceRun(
     empty: 0,
     malformed: 0,
     provider_error: 0,
+    unknown_exposure: 0,
     timeout_after_dispatch: 0,
     not_dispatched_budget: 0,
     not_admitted_architecture: 0,
