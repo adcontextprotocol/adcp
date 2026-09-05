@@ -1,8 +1,11 @@
 /**
- * Retry utilities for Anthropic API calls
+ * Retry utilities for one-shot Anthropic API calls.
  *
- * Handles transient errors like overloaded_error (529) and connection errors
- * with exponential backoff.
+ * This module deliberately does not expose a streaming retry wrapper. Addie
+ * owns provider-stream attempt buffering in `claude-client.ts`, while delivery
+ * adapters own interrupted-turn persistence and explicit user continuation.
+ * A generic async-generator wrapper cannot know whether a yielded value or
+ * tool action made restarting the generator unsafe.
  */
 
 import { APIError, APIConnectionError } from '@anthropic-ai/sdk';
@@ -185,7 +188,13 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Execute an async function with retry on transient errors
+ * Execute one promise-returning provider request with retry on transient errors.
+ *
+ * The callback must describe a request that is safe to submit again before it
+ * resolves. It must not expose partial output or perform an irreversible tool
+ * action. Streaming calls use Addie's buffered retry loop instead, because it
+ * can distinguish an unexposed provider attempt from an interrupted logical
+ * turn and cannot be safely merged into this helper.
  *
  * @param fn - The async function to execute
  * @param config - Retry configuration
@@ -259,94 +268,6 @@ export async function withRetry<T>(
       operation: operationName,
     },
     'Anthropic API: All retry attempts exhausted'
-  );
-
-  throw new RetriesExhaustedError(lastError, totalAttempts);
-}
-
-/**
- * Execute a streaming async generator with retry on transient errors
- *
- * Note: This retries the entire stream from the beginning if an error occurs.
- * For streaming APIs, errors typically happen during iteration, so we need
- * to restart the whole stream on retry.
- *
- * @param fn - Factory function that creates the async generator
- * @param config - Retry configuration
- * @param operationName - Name for logging purposes
- * @returns An async generator that yields from the function
- */
-export async function* withStreamRetry<T>(
-  fn: () => AsyncGenerator<T>,
-  config?: RetryConfig,
-  operationName?: string
-): AsyncGenerator<T> {
-  const finalConfig = { ...DEFAULT_CONFIG, ...config };
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= finalConfig.maxRetries + 1; attempt++) {
-    try {
-      const generator = fn();
-      for await (const item of generator) {
-        yield item;
-      }
-      // Successfully completed
-      return;
-    } catch (error) {
-      lastError = error;
-
-      // Don't retry if we've exhausted attempts
-      if (attempt > finalConfig.maxRetries) {
-        break;
-      }
-
-      // Don't retry non-retryable errors
-      if (!isRetryableError(error)) {
-        throw error;
-      }
-
-      const delayMs = calculateDelay(attempt, finalConfig);
-      const retryAfterSeconds = getProviderRetryAfterSeconds(error);
-      const providerDelayMs = retryAfterSeconds === undefined ? 0 : retryAfterSeconds * 1000;
-      if (providerDelayMs > finalConfig.maxDelayMs) {
-        logger.warn(
-          {
-            attempt,
-            maxRetries: finalConfig.maxRetries,
-            retryAfterSeconds,
-            operation: operationName,
-          },
-          'Anthropic API Stream: Retry-After exceeds request retry budget; deferring recovery',
-        );
-        throw new RetriesExhaustedError(error, attempt);
-      }
-      const scheduledDelayMs = Math.max(delayMs, providerDelayMs);
-
-      logger.warn(
-        {
-          attempt,
-          maxRetries: finalConfig.maxRetries,
-          delayMs: Math.round(scheduledDelayMs),
-          retryAfterSeconds,
-          error: error instanceof Error ? error.message : String(error),
-          operation: operationName,
-        },
-        `Anthropic API Stream: Retryable error, waiting before retry ${attempt}/${finalConfig.maxRetries}`
-      );
-
-      await sleep(scheduledDelayMs);
-    }
-  }
-
-  // All retries exhausted
-  const totalAttempts = finalConfig.maxRetries + 1;
-  logger.error(
-    {
-      totalAttempts,
-      error: lastError instanceof Error ? lastError.message : String(lastError),
-      operation: operationName,
-    },
-    'Anthropic API Stream: All retry attempts exhausted'
   );
 
   throw new RetriesExhaustedError(lastError, totalAttempts);
