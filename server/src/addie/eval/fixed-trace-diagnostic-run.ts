@@ -17,6 +17,7 @@ import {
 } from './fixed-trace-suite.js';
 import {
   FixedTraceBudget,
+  claimFixedTraceBudgetDiagnosticLease,
   fixedTraceEstimatedCostUsd,
   isTrustedBudgetedFixedTraceProvider,
 } from './fixed-trace-budget.js';
@@ -72,7 +73,7 @@ function snapshotPlans(
     throw new Error('Fixed trace diagnostic run requires one or more provider plans');
   }
   const names = new Set<string>();
-  const plans = suppliedPlans.map((plan) => {
+  for (const plan of suppliedPlans) {
     if (
       typeof plan.name !== 'string'
       || plan.name.trim().length === 0
@@ -83,12 +84,18 @@ function snapshotPlans(
       || !isTrustedBudgetedFixedTraceProvider(plan.generation.provider, budget, plan.generation.pricing)
     ) throw new Error('Fixed trace diagnostic provider plans require unique names matching both stage providers');
     names.add(plan.name);
-    // Providers are live capabilities and deliberately stay by reference;
-    // every serializable stage control is cloned before the first await.
+  }
+  const lease = claimFixedTraceBudgetDiagnosticLease(
+    budget,
+    suppliedPlans.flatMap((plan) => [plan.router.provider, plan.generation.provider]),
+  );
+  const plans = suppliedPlans.map((plan) => {
+    // Execute through lease-private wrappers and clone every serializable
+    // stage control before the first await.
     return Object.freeze({
       name: plan.name,
-      router: snapshotStageConfig(plan.router),
-      generation: snapshotStageConfig(plan.generation),
+      router: snapshotStageConfig({ ...plan.router, provider: lease.providerFor(plan.router.provider) }),
+      generation: snapshotStageConfig({ ...plan.generation, provider: lease.providerFor(plan.generation.provider) }),
     });
   });
   return Object.freeze(plans);
@@ -207,7 +214,7 @@ function assertBudgetReconciliation(
   budget: ReturnType<FixedTraceBudget['snapshot']>,
   runs: ReadonlyArray<{ observations: readonly { metadata: FixedTraceRunMetadata; terminalStatus: string }[] }>,
 ): void {
-  let dispatchedStages = 0;
+  let dispatchedCalls = 0;
   let visibleSettledSpendUsd = 0;
   let allDispatchedCostsVisible = true;
   let budgetRejections = 0;
@@ -216,8 +223,15 @@ function assertBudgetReconciliation(
     for (const observation of run.observations) {
       if (observation.terminalStatus === 'not_dispatched_budget') budgetRejections++;
       for (const stage of [observation.metadata.router, observation.metadata.generation]) {
+        const stageDispatchedCalls = stage.dispatchedCalls;
+        if (
+          stageDispatchedCalls === undefined
+          || !Number.isSafeInteger(stageDispatchedCalls)
+          || stageDispatchedCalls < 0
+          || stage.dispatched !== (stageDispatchedCalls > 0)
+        ) throw new Error('Fixed trace diagnostic artifact stage dispatch evidence is invalid');
+        dispatchedCalls += stageDispatchedCalls;
         if (!stage.dispatched) continue;
-        dispatchedStages++;
         // A stage can be local after a terminal event was settled but failed
         // stream validation. That paid call is intentionally not represented
         // as a provider observation, so exact spend equality is not claimed.
@@ -250,8 +264,8 @@ function assertBudgetReconciliation(
   if (!costMatches(budget.reservedUsd, 0)) {
     throw new Error('Fixed trace diagnostic artifact has unsettled budget reservations');
   }
-  if (budget.dispatchedCalls < dispatchedStages || budget.completedCalls > budget.dispatchedCalls) {
-    throw new Error('Fixed trace diagnostic artifact budget call counts do not cover observations');
+  if (budget.dispatchedCalls !== dispatchedCalls || budget.completedCalls > budget.dispatchedCalls) {
+    throw new Error('Fixed trace diagnostic artifact budget dispatch counts do not match observations');
   }
   if (budget.budgetRejectedCalls !== budgetRejections) {
     throw new Error('Fixed trace diagnostic artifact budget rejections do not match observations');

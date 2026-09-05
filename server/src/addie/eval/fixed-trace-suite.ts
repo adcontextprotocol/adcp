@@ -226,6 +226,8 @@ export interface FixedTraceCohortStageControl {
 export interface FixedTraceModelStageMetadata {
   source: 'provider' | 'local' | 'not_run';
   dispatched: boolean;
+  /** Exact calls which crossed the stage's before-dispatch boundary. */
+  dispatchedCalls?: number;
   requestedProvider: ModelProviderId | null;
   requestedModel: string | null;
   returnedProvider: ModelProviderId | null;

@@ -314,6 +314,7 @@ function prepareFixedTraceRequest(
 interface StageInvocationState {
   invocations: PreparedModelInvocation[];
   dispatched: boolean;
+  dispatchedCalls: number;
   latencyMs: number;
 }
 
@@ -474,6 +475,7 @@ function providerStageMetadata(
   return {
     source: 'provider',
     dispatched: state.dispatched,
+    dispatchedCalls: state.dispatchedCalls,
     requestedProvider: config.provider.id,
     requestedModel: config.model,
     returnedProvider: response.provider,
@@ -510,6 +512,7 @@ function localStageMetadata(
   return {
     source: 'local',
     dispatched: state.dispatched,
+    dispatchedCalls: state.dispatchedCalls,
     requestedProvider: config.provider.id,
     requestedModel: config.model,
     returnedProvider: null,
@@ -539,6 +542,7 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
   return {
     source: 'not_run',
     dispatched: false,
+    dispatchedCalls: 0,
     requestedProvider: null,
     requestedModel: null,
     returnedProvider: null,
@@ -836,6 +840,7 @@ async function executeRouter(
   };
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
+  let dispatchedCalls = 0;
   let timedOut = false;
   const controller = new AbortController();
   const startedAt = Date.now();
@@ -853,10 +858,11 @@ async function executeRouter(
       beforeDispatch: (prepared) => {
         assertBeforeDispatch();
         dispatched = true;
+        dispatchedCalls++;
         invocations.push(prepared);
       },
     }), config.provider.id);
-    const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const metadata = providerStageMetadata(request, config, response, response.usage, state);
     const output = extractRouterResponseText(response.content);
     const status = terminalStatusForFinishReason(response.finishReason, output);
@@ -876,7 +882,7 @@ async function executeRouter(
   } catch (error) {
     if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
     if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
-    const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const status = error instanceof FixedTraceBudgetAdmissionError
       ? 'not_dispatched_budget'
       : timedOut && dispatched
@@ -992,6 +998,7 @@ export async function runFixedTraceCase(
   );
   const invocations: PreparedModelInvocation[] = [];
   let dispatched = false;
+  let dispatchedCalls = 0;
   const startedAt = Date.now();
 
   if (executionTrace.category === 'provider_degradation' && executionConfig.injectProviderDegradation !== false) {
@@ -1003,6 +1010,7 @@ export async function runFixedTraceCase(
     const metadata = localStageMetadata(generationRequest, generationConfig, {
       invocations,
       dispatched: false,
+      dispatchedCalls: 0,
       latencyMs: Date.now() - startedAt,
     });
     return {
@@ -1043,11 +1051,12 @@ export async function runFixedTraceCase(
         beforeDispatch: (prepared) => {
           assertBeforeDispatch();
           dispatched = true;
+          dispatchedCalls++;
           invocations.push(prepared);
         },
       },
     );
-    const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
     const generation = providerStageMetadata(
       generationRequest,
       generationConfig,
@@ -1086,6 +1095,7 @@ export async function runFixedTraceCase(
     const generation = localStageMetadata(generationRequest, generationConfig, {
       invocations,
       dispatched,
+      dispatchedCalls,
       latencyMs: Date.now() - startedAt,
     }, checkpoint?.usage);
     return {

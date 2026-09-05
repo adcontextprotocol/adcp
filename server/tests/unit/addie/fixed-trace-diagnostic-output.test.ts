@@ -11,6 +11,7 @@ import {
   type FixedTraceDiagnosticProviderPlan,
 } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../../src/addie/eval/fixed-trace-diagnostic-output.js';
+import { canonicalFixedTraceToolDefinitions } from '../../../src/addie/eval/fixed-trace-tools.js';
 import type { FixedTraceProviderStageConfig } from '../../../src/addie/eval/fixed-trace-runner.js';
 import {
   FIXED_TRACE_SUITE,
@@ -48,6 +49,22 @@ const PRICING: FixedTracePricing = {
   cacheReadAccounting: 'unsupported',
   cacheWriteAccounting: 'unsupported',
   source: 'Synthetic manual artifact pricing.',
+};
+
+const ZERO_RATE_PRICING: FixedTracePricing = {
+  ...PRICING,
+  profileId: 'synthetic-zero-rate-artifact-v1',
+  inputUsdPerMillionTokens: 0,
+  outputUsdPerMillionTokens: 0,
+  source: 'Synthetic zero-rate artifact pricing.',
+};
+
+const DIAGNOSTIC_TEST_REQUEST: ModelRequest = {
+  model: 'synthetic-manual-model',
+  system: [],
+  messages: [{ role: 'user', content: [{ type: 'text', text: 'Synthetic request.' }] }],
+  tools: [],
+  maxOutputTokens: 1,
 };
 
 function scriptedRouter(
@@ -88,7 +105,10 @@ function scriptedRouter(
   return { provider, calls, response };
 }
 
-function stage(provider: ModelProvider): FixedTraceProviderStageConfig {
+function stage(
+  provider: ModelProvider,
+  pricing: FixedTracePricing = PRICING,
+): FixedTraceProviderStageConfig {
   return {
     provider,
     model: 'synthetic-manual-model',
@@ -99,7 +119,7 @@ function stage(provider: ModelProvider): FixedTraceProviderStageConfig {
     transportRetries: 0,
     samplingMode: 'provider_no_sampling_control',
     temperature: null,
-    pricing: structuredClone(PRICING),
+    pricing: structuredClone(pricing),
   };
 }
 
@@ -107,8 +127,60 @@ function budgetedStage(
   provider: ModelProvider,
   budget: FixedTraceBudget,
   responsePricingApproved: (response: ModelResponse) => boolean = () => true,
+  pricing: FixedTracePricing = PRICING,
 ): FixedTraceProviderStageConfig {
-  return stage(new BudgetedFixedTraceProvider(provider, budget, PRICING, responsePricingApproved));
+  return stage(new BudgetedFixedTraceProvider(provider, budget, pricing, responsePricingApproved), pricing);
+}
+
+function twoTurnProvider(
+  afterRouterResponse?: () => void,
+): { provider: ModelProvider; calls: ModelRequest[] } {
+  const calls: ModelRequest[] = [];
+  let generationTurn = 0;
+  const provider: ModelProvider = {
+    id: 'anthropic',
+    capabilities: CAPABILITIES,
+    prepare(request): PreparedModelInvocation {
+      return {
+        provider: 'anthropic', model: request.model, capabilities: CAPABILITIES,
+        requestMetadata: request.requestMetadata,
+        providerRequest: structuredClone(request) as unknown as Readonly<Record<string, unknown>>,
+      };
+    },
+    async *respond(request, options = {}): AsyncIterable<NormalizedModelEvent> {
+      await options.beforeDispatch?.(this.prepare(request));
+      calls.push(structuredClone(request));
+      const router = request.requestMetadata?.purpose === 'fixed_trace_router';
+      const response: ModelResponse = router
+        ? {
+            provider: 'anthropic', model: 'synthetic-manual-model', id: 'router',
+            content: [{ type: 'text', text: JSON.stringify({
+              action: 'respond', tool_sets: ['knowledge'], confidence: 'high',
+              requires_depth: false, reason: 'Synthetic route.',
+            }) }],
+            finishReason: 'stop', providerFinishReason: 'stop', usage: { inputTokens: 10, outputTokens: 5 },
+          }
+        : generationTurn++ === 0
+          ? {
+              provider: 'anthropic', model: 'synthetic-manual-model', id: 'generation-tool',
+              content: [{ type: 'tool_call', id: 'tool-1', name: 'search_docs', input: { query: 'task model' } }],
+              finishReason: 'tool_calls', providerFinishReason: 'tool_use', usage: { inputTokens: 10, outputTokens: 5 },
+            }
+          : {
+              provider: 'anthropic', model: 'synthetic-manual-model', id: 'generation-final',
+              content: [{ type: 'text', text: 'A buyer calls a seller task and receives its structured response.' }],
+              finishReason: 'stop', providerFinishReason: 'stop', usage: { inputTokens: 10, outputTokens: 5 },
+            };
+      yield { type: 'response_start', provider: 'anthropic', model: response.model, id: response.id };
+      for (const [index, content] of response.content.entries()) {
+        if (content.type === 'text') yield { type: 'text_delta', index, text: content.text };
+        if (content.type === 'tool_call') yield { type: 'tool_call', index, call: content };
+      }
+      yield { type: 'response_complete', response };
+      if (router) afterRouterResponse?.();
+    },
+  };
+  return { provider, calls };
 }
 
 describe('fixed-trace diagnostic output reservation', () => {
@@ -407,8 +479,8 @@ describe('fixed-trace diagnostic output reservation', () => {
     const delegate = scriptedRouter();
     const budget = new FixedTraceBudget(1);
     class BypassingBudgetProvider extends BudgetedFixedTraceProvider {
-      constructor(private readonly unbudgetedDelegate: ModelProvider) {
-        super(unbudgetedDelegate, budget, PRICING, () => true);
+      constructor() {
+        super(delegate.provider, budget, PRICING, () => true);
       }
 
       // This was previously trusted through instanceof plus a public,
@@ -419,10 +491,10 @@ describe('fixed-trace diagnostic output reservation', () => {
         request: ModelRequest,
         options: ModelRespondOptions = {},
       ): AsyncIterable<NormalizedModelEvent> {
-        yield* this.unbudgetedDelegate.respond(request, options);
+        yield* delegate.provider.respond(request, options);
       }
     }
-    const bypass = new BypassingBudgetProvider(delegate.provider);
+    const bypass = new BypassingBudgetProvider();
 
     await expect(runFixedTraceDiagnosticArtifact({
       plans: [{ name: 'anthropic', router: stage(bypass), generation: stage(bypass) }],
@@ -546,5 +618,93 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(artifact.budget).toMatchObject({
       accountedSpendUsd: 0, dispatchedCalls: 0, completedCalls: 0, budgetRejectedCalls: 1, exposureUnknown: false,
     });
+  });
+
+  it('prevents post-preflight method and prototype tampering in a two-turn zero-rate run', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+    const path = join(directory, 'artifact.json');
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'knowledge-task-model');
+    if (!selectedTrace) throw new Error('Missing synthetic knowledge trace');
+    const attacks: string[] = [];
+    let generation!: BudgetedFixedTraceProvider;
+    const delegate = twoTurnProvider(() => {
+      const replace = (name: string, attempt: () => void) => {
+        try { attempt(); } catch { attacks.push(name); }
+      };
+      replace('own_respond', () => Object.defineProperty(generation, 'respond', { value: delegate.provider.respond }));
+      replace('own_prepare', () => Object.defineProperty(generation, 'prepare', { value: delegate.provider.prepare }));
+      replace('prototype_swap', () => Object.setPrototypeOf(generation, {}));
+      replace('prototype_respond', () => Object.defineProperty(BudgetedFixedTraceProvider.prototype, 'respond', { value: delegate.provider.respond }));
+      replace('prototype_prepare', () => Object.defineProperty(BudgetedFixedTraceProvider.prototype, 'prepare', { value: delegate.provider.prepare }));
+    });
+    const budget = new FixedTraceBudget(1);
+    const router = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, () => true);
+    generation = new BudgetedFixedTraceProvider(delegate.provider, budget, ZERO_RATE_PRICING, () => true);
+    const generationStage = stage(generation, ZERO_RATE_PRICING);
+    generationStage.maxIterations = 2;
+    const artifact = await runFixedTraceDiagnosticArtifact({
+      plans: [{ name: 'anthropic', router: stage(router, ZERO_RATE_PRICING), generation: generationStage }],
+      baseConfig: {
+        sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+        promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+        traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]),
+        toolDefinitions: canonicalFixedTraceToolDefinitions().filter((tool) => ['search_docs', 'get_doc'].includes(tool.name)),
+        toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+      },
+      budget,
+      outputReservation: reserveFixedTraceDiagnosticOutput(path),
+      runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+      sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+    });
+
+    expect(attacks).toEqual(['own_respond', 'own_prepare', 'prototype_swap', 'prototype_respond', 'prototype_prepare']);
+    expect(delegate.calls).toHaveLength(3);
+    expect(artifact.runs[0].observations[0].metadata).toMatchObject({
+      router: { dispatchedCalls: 1, estimatedCostUsd: 0 },
+      generation: { dispatchedCalls: 2, estimatedCostUsd: 0 },
+    });
+    expect(artifact.runs[0].summary.totalEstimatedCostUsd).toBe(0);
+    expect(artifact.budget).toMatchObject({
+      accountedSpendUsd: 0, dispatchedCalls: 3, completedCalls: 3, budgetRejectedCalls: 0, exposureUnknown: false,
+    });
+  });
+
+  it('rejects a zero-rate ledger with preexisting completed, unknown, or rejected activity', async () => {
+    const selectedTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'surface-channel-chatter');
+    if (!selectedTrace) throw new Error('Missing synthetic surface trace');
+    const invoke = async (budget: FixedTraceBudget, suffix: string) => {
+      const directory = mkdtempSync(join(tmpdir(), 'fixed-trace-output-'));
+      const provider = scriptedRouter();
+      await expect(runFixedTraceDiagnosticArtifact({
+        plans: [{ name: 'anthropic', router: budgetedStage(provider.provider, budget, () => true, ZERO_RATE_PRICING), generation: budgetedStage(provider.provider, budget, () => true, ZERO_RATE_PRICING) }],
+        baseConfig: {
+          sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0', gitDirty: false,
+          promptConfigVersion: 'synthetic-manual-prompt-v1', traceSuite: [selectedTrace],
+          traceSuiteSha256: fixedTraceSuiteSha256([selectedTrace]), toolDefinitions: [],
+          toolDefinitionProvenance: 'fixture_local', architectureArm: 'two_stage_llm_router',
+        },
+        budget,
+        outputReservation: reserveFixedTraceDiagnosticOutput(join(directory, `${suffix}.json`)),
+        runRootId: 'root', runStartedAt: '2026-09-05T00:00:00.000Z',
+        sourceBundleFiles: ['synthetic.ts'], budgetNote: 'Synthetic no-network budget note.',
+      })).rejects.toThrow('budget must be pristine and exclusively claimed');
+      expect(provider.calls).toHaveLength(0);
+    };
+    const prepared = scriptedRouter().provider.prepare(DIAGNOSTIC_TEST_REQUEST);
+    const completed = new FixedTraceBudget(1);
+    const completedReservation = completed.reserve(prepared, 1, ZERO_RATE_PRICING);
+    completed.markDispatched(completedReservation);
+    completed.complete(completedReservation, { inputTokens: 1, outputTokens: 1 }, ZERO_RATE_PRICING);
+    await invoke(completed, 'completed');
+
+    const unknown = new FixedTraceBudget(1);
+    const unknownReservation = unknown.reserve(prepared, 1, ZERO_RATE_PRICING);
+    unknown.markDispatched(unknownReservation);
+    unknown.markExposureUnknown(unknownReservation);
+    await invoke(unknown, 'unknown');
+
+    const rejected = new FixedTraceBudget(0.000001);
+    expect(() => rejected.reserve(prepared, 1, PRICING)).toThrow();
+    await invoke(rejected, 'rejected');
   });
 });

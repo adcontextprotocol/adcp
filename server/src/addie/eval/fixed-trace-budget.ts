@@ -65,6 +65,7 @@ interface Reservation {
 interface BudgetedProviderBinding {
   readonly budget: FixedTraceBudget;
   readonly pricing: FixedTraceBudgetPricing;
+  lease: object | null;
 }
 
 // This is deliberately not an instance field or a public predicate. The
@@ -72,6 +73,7 @@ interface BudgetedProviderBinding {
 // binding; a subclass must not be able to claim ledger ownership while
 // replacing the dispatch path.
 const budgetedProviderBindings = new WeakMap<object, BudgetedProviderBinding>();
+const exclusiveBudgetLeases = new WeakMap<FixedTraceBudget, object>();
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -187,8 +189,13 @@ export class FixedTraceBudget {
     prepared: PreparedModelInvocation,
     maxOutputTokens: number,
     pricing: FixedTraceBudgetPricing,
+    lease?: object,
   ): Reservation {
     validateFixedTracePricing(pricing);
+    const exclusiveLease = exclusiveBudgetLeases.get(this);
+    if (exclusiveLease !== undefined && lease !== exclusiveLease) {
+      throw new Error('Fixed trace budget is reserved for an exclusive diagnostic run');
+    }
     if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) {
       throw new RangeError('Fixed trace output reserve must be a positive integer');
     }
@@ -301,7 +308,10 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     if (delegate.deriveProviderToolReceipt) {
       this.deriveProviderToolReceipt = delegate.deriveProviderToolReceipt.bind(delegate);
     }
-    budgetedProviderBindings.set(this, { budget, pricing: this.#pricing });
+    budgetedProviderBindings.set(this, { budget, pricing: this.#pricing, lease: null });
+    // A diagnostic run retains these exact wrapper objects by reference. Lock
+    // their own properties now, before untrusted provider code can resume.
+    Object.freeze(this);
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -312,6 +322,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     request: ModelRequest,
     options: ModelRespondOptions = {},
   ): AsyncIterable<NormalizedModelEvent> {
+    const lease = budgetedProviderBindings.get(this)?.lease;
     let reservation: Reservation | null = null;
     let dispatchStarted = false;
     let settled = false;
@@ -319,7 +330,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
       for await (const event of this.#delegate.respond(request, {
         ...options,
         beforeDispatch: async (prepared) => {
-          reservation = this.#budget.reserve(prepared, request.maxOutputTokens, this.#pricing);
+          reservation = this.#budget.reserve(prepared, request.maxOutputTokens, this.#pricing, lease ?? undefined);
           try {
             await options.beforeDispatch?.(prepared);
           } catch (error) {
@@ -362,10 +373,28 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
       }
     }
   }
+
+  static cloneForExclusiveDiagnosticRun(
+    source: BudgetedFixedTraceProvider,
+    lease: object,
+  ): BudgetedFixedTraceProvider {
+    const clone = new BudgetedFixedTraceProvider(
+      source.#delegate,
+      source.#budget,
+      source.#pricing,
+      source.#responsePricingApproved,
+    );
+    const binding = budgetedProviderBindings.get(clone);
+    if (!binding) throw new Error('Fixed trace budget wrapper binding is unavailable');
+    binding.lease = lease;
+    return clone;
+  }
 }
 
 const budgetedFixedTraceProviderPrepare = BudgetedFixedTraceProvider.prototype.prepare;
 const budgetedFixedTraceProviderRespond = BudgetedFixedTraceProvider.prototype.respond;
+Object.freeze(BudgetedFixedTraceProvider.prototype);
+Object.freeze(BudgetedFixedTraceProvider);
 
 /**
  * Authenticate the non-overridable ledger wrapper used by diagnostics.
@@ -381,6 +410,56 @@ export function isTrustedBudgetedFixedTraceProvider(
   if (binding?.budget !== budget || !samePricing(binding.pricing, pricing)) return false;
   if (Object.getPrototypeOf(provider) !== BudgetedFixedTraceProvider.prototype) return false;
   if ((provider as unknown as { constructor: unknown }).constructor !== BudgetedFixedTraceProvider) return false;
-  return provider.prepare === budgetedFixedTraceProviderPrepare
+  return Object.isFrozen(provider)
+    && provider.prepare === budgetedFixedTraceProviderPrepare
     && provider.respond === budgetedFixedTraceProviderRespond;
+}
+
+export interface FixedTraceBudgetDiagnosticLease {
+  providerFor(provider: ModelProvider): BudgetedFixedTraceProvider;
+}
+
+/**
+ * Claim an unused ledger for one diagnostic artifact and replace caller-held
+ * wrappers with private, frozen per-run clones. This makes the ledger's call
+ * counts exclusive to the artifact even when a caller retains the original
+ * wrapper or budget reference.
+ */
+export function claimFixedTraceBudgetDiagnosticLease(
+  budget: FixedTraceBudget,
+  providers: readonly ModelProvider[],
+): FixedTraceBudgetDiagnosticLease {
+  const snapshot = budget.snapshot();
+  if (
+    snapshot.accountedSpendUsd !== 0
+    || snapshot.reservedUsd !== 0
+    || snapshot.dispatchedCalls !== 0
+    || snapshot.completedCalls !== 0
+    || snapshot.budgetRejectedCalls !== 0
+    || snapshot.admissionClosed
+    || snapshot.exposureUnknown
+    || exclusiveBudgetLeases.has(budget)
+  ) throw new Error('Fixed trace diagnostic budget must be pristine and exclusively claimed');
+
+  const lease = Object.freeze({});
+  exclusiveBudgetLeases.set(budget, lease);
+  const clones = new Map<ModelProvider, BudgetedFixedTraceProvider>();
+  for (const provider of providers) {
+    if (clones.has(provider)) continue;
+    const binding = budgetedProviderBindings.get(provider);
+    if (!binding || !isTrustedBudgetedFixedTraceProvider(provider, budget, binding.pricing)) {
+      throw new Error('Fixed trace diagnostic provider is not an authenticated budget wrapper');
+    }
+    clones.set(provider, BudgetedFixedTraceProvider.cloneForExclusiveDiagnosticRun(
+      provider as BudgetedFixedTraceProvider,
+      lease,
+    ));
+  }
+  return Object.freeze({
+    providerFor(provider: ModelProvider): BudgetedFixedTraceProvider {
+      const clone = clones.get(provider);
+      if (!clone) throw new Error('Fixed trace diagnostic provider is missing from its exclusive lease');
+      return clone;
+    },
+  });
 }
