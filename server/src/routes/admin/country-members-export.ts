@@ -10,7 +10,7 @@ export interface CountryMemberExportRow {
   organization_names: string[];
 }
 
-function csvCell(value: unknown): string {
+export function csvCell(value: unknown): string {
   const text = value == null ? '' : String(value);
   // Country exports are commonly opened in spreadsheet applications. Prevent
   // user-controlled names and organization values from becoming formulas.
