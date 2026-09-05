@@ -250,7 +250,11 @@ describe('fixed-trace common evaluator tool universe', () => {
 
     expect(replacement).not.toHaveBeenCalled();
     expect(generation.requests).toHaveLength(2);
+    const searchDocs = FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.find(
+      (tool) => tool.definition.name === 'search_docs',
+    )!;
     expect(JSON.stringify(generation.requests[1])).toContain('synthetic_direct_tool_receipt');
+    expect(JSON.stringify(generation.requests[1])).toContain(searchDocs.handlerIdentitySha256);
     expect(result.observations[0]!.metadata.toolUniverse).toMatchObject({
       source: 'evaluator_owned_common_tool_universe',
       definitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,

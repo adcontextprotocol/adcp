@@ -52,6 +52,7 @@ describe('direct tool-universe evaluator descriptors', () => {
       kind: 'synthetic_direct_tool_receipt',
       handlerProvenance: 'evaluator_simulated_receipt',
       toolName: first.definition.name,
+      receiptHandlerIdentitySha256: first.handlerIdentitySha256,
     });
     expect(mockHandler).not.toHaveBeenCalled();
   });

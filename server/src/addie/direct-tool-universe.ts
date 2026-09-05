@@ -134,7 +134,9 @@ export function createSyntheticDirectToolReceiptHandlers(
       toolName: tool.definition.name,
       definitionSha256: tool.definitionSha256,
       handlerProvenance: 'evaluator_simulated_receipt',
-      receiptHandlerIdentitySha256: sha256(`evaluator-receipt/${tool.definition.name}/${tool.definitionSha256}`),
+      // The receipt must repeat the exact handler identity included in the
+      // universe binding, not a parallel descriptive hash.
+      receiptHandlerIdentitySha256: tool.handlerIdentitySha256,
       definitionHandlerSha256: universe.definitionHandlerSha256,
     } satisfies SyntheticDirectToolReceipt),
   })));
