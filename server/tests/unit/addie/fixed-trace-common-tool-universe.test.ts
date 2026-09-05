@@ -6,7 +6,10 @@ import {
   fixedTraceCommonToolDefinitions,
   fixedTraceCommonToolUniverseProvenance,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
-import { FIXED_TRACE_DIRECT_TOOL_HANDLERS, FIXED_TRACE_DIRECT_TOOL_UNIVERSE } from '../../../src/addie/direct-tool-universe.js';
+import {
+  createSyntheticDirectToolReceiptHandlers,
+  FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
+} from '../../../src/addie/direct-tool-universe.js';
 import { runFixedTraceDiagnosticCandidate } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { FIXED_TRACE_SUITE, fixedTraceSuiteSha256, type FixedTraceCase } from '../../../src/addie/eval/fixed-trace-suite.js';
 import type {
@@ -75,6 +78,7 @@ class ScriptedProvider implements ModelProvider {
     yield { type: 'response_start', provider: this.id, model: response.model, id: response.id };
     for (const [index, content] of response.content.entries()) {
       if (content.type === 'text') yield { type: 'text_delta', index, text: content.text };
+      else if (content.type === 'tool_call') yield { type: 'tool_call', index, call: content };
     }
     yield { type: 'response_complete', response };
   }
@@ -216,6 +220,43 @@ describe('fixed-trace common evaluator tool universe', () => {
       .toEqual(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames);
   });
 
+  it('does not consume a caller-mutated synthetic handler map or misstate its binding evidence', async () => {
+    const externalHandlerMap = new Map(createSyntheticDirectToolReceiptHandlers(
+      FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
+    ).map((handler) => [handler.definition.name, handler.handler]));
+    const replacement = vi.fn(async () => '{"attacker":"handler"}');
+    externalHandlerMap.set('search_docs', replacement);
+    const router = new ScriptedProvider([
+      scriptedResponse('router-response', JSON.stringify({
+        action: 'respond', tool_sets: [], confidence: 'high', requires_depth: false, reason: 'Synthetic route.',
+      })),
+    ]);
+    const generation = new ScriptedProvider([
+      {
+        provider: 'anthropic', model: 'claude-haiku-4-5', id: 'tool-call-response',
+        content: [{ type: 'tool_call', id: 'search-docs-probe', name: 'search_docs', input: { query: 'probe' } }],
+        finishReason: 'tool_calls', providerFinishReason: 'tool_calls', usage: { inputTokens: 10, outputTokens: 5 },
+      },
+      scriptedResponse('generation-response', 'Synthetic terminal response.'),
+    ]);
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const runConfig = {
+      ...config(router, generation, [trace]),
+      toolDefinitionProvenance: 'evaluator_owned_common_tool_universe' as const,
+    };
+    runConfig.generation.maxIterations = 2;
+
+    const result = await runFixedTraceDiagnosticCandidate(runConfig);
+
+    expect(replacement).not.toHaveBeenCalled();
+    expect(generation.requests).toHaveLength(2);
+    expect(JSON.stringify(generation.requests[1])).toContain('synthetic_direct_tool_receipt');
+    expect(result.observations[0]!.metadata.toolUniverse).toMatchObject({
+      source: 'evaluator_owned_common_tool_universe',
+      definitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+    });
+  });
+
   it.each([undefined, 'fixture_local', 'forged'])(
     'fails closed with typed provenance for missing or unknown common-universe provenance: %s',
     (provenance) => {
@@ -238,11 +279,6 @@ describe('fixed-trace common evaluator tool universe', () => {
     async (provenance) => {
     const router = new NeverDispatchProvider();
     const generation = new NeverDispatchProvider();
-    const firstTool = FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools[0]!;
-    const originalHandler = FIXED_TRACE_DIRECT_TOOL_HANDLERS.get(firstTool.definition.name)!;
-    const handler = vi.fn(originalHandler);
-    FIXED_TRACE_DIRECT_TOOL_HANDLERS.set(firstTool.definition.name, handler);
-    try {
       const runConfig = config(router, generation, [FIXED_TRACE_SUITE[0]!]);
       runConfig.toolDefinitionProvenance = provenance as unknown as FixedTraceRunnerConfig['toolDefinitionProvenance'];
       await expect(runFixedTraceDiagnosticCandidate(runConfig))
@@ -251,10 +287,6 @@ describe('fixed-trace common evaluator tool universe', () => {
       expect(router.respond).not.toHaveBeenCalled();
       expect(generation.prepare).not.toHaveBeenCalled();
       expect(generation.respond).not.toHaveBeenCalled();
-      expect(handler).not.toHaveBeenCalled();
-    } finally {
-      FIXED_TRACE_DIRECT_TOOL_HANDLERS.set(firstTool.definition.name, originalHandler);
-    }
     },
   );
 });

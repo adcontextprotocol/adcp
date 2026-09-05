@@ -45,8 +45,8 @@ import {
   fixedTraceResponseUsesPricingPolicy,
 } from './fixed-trace-budget.js';
 import {
-  FIXED_TRACE_DIRECT_TOOL_HANDLERS,
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
+  createSyntheticDirectToolReceiptHandlers,
 } from '../direct-tool-universe.js';
 import {
   admitFixedTraceDirectArm,
@@ -144,19 +144,41 @@ function usesCommonToolUniverse(config: FixedTraceRunnerConfig): boolean {
  * The direct-safe-fallback registry supplies only neutral definitions; every
  * callable entry returns an inert synthetic receipt and mutations are refused.
  */
-function fixedTraceCommonToolEnvironment(): FixedTraceEvaluatorToolEnvironment {
+interface FixedTraceCommonToolEnvironmentBinding {
+  readonly environment: FixedTraceEvaluatorToolEnvironment;
+  readonly definitionHandlerSha256: string;
+}
+
+function fixedTraceCommonToolEnvironment(): FixedTraceCommonToolEnvironmentBinding {
+  const receiptHandlers = createSyntheticDirectToolReceiptHandlers(FIXED_TRACE_DIRECT_TOOL_UNIVERSE);
+  const handlersByName = new Map(receiptHandlers.map((handler) => [handler.definition.name, handler]));
+  const definitionHandlerSha256 = sha256(receiptHandlers.map((handler) => ({
+    name: handler.definition.name,
+    definitionSha256: handler.definitionSha256,
+    handlerIdentitySha256: handler.handlerIdentitySha256,
+    handlerProvenance: handler.handlerProvenance,
+  })));
+  if (
+    handlersByName.size !== receiptHandlers.length
+    || definitionHandlerSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256
+  ) throw new Error('Fixed trace evaluator receipt handlers do not match the captured common universe');
   return Object.freeze({
-    tools: Object.freeze(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => {
-    const handler = FIXED_TRACE_DIRECT_TOOL_HANDLERS.get(tool.definition.name);
-    if (!handler) throw new Error(`Missing evaluator receipt handler: ${tool.definition.name}`);
-    return Object.freeze({
-      definition: tool.definition,
-      handler,
-      effect: tool.definition.replaySafety === 'mutation' ? 'mutation' as const : 'read' as const,
-      resultStatus: 'ok' as const,
-    });
-    })),
-    authorize: ({ isMutation }: { toolName: string; toolCallId: string; isMutation: boolean }) => ({ allowed: !isMutation }),
+    definitionHandlerSha256,
+    environment: Object.freeze({
+      tools: Object.freeze(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.map((tool) => {
+        const handler = handlersByName.get(tool.definition.name);
+        if (!handler || handler.definition !== tool.definition || handler.definitionSha256 !== tool.definitionSha256) {
+          throw new Error(`Missing evaluator receipt handler: ${tool.definition.name}`);
+        }
+        return Object.freeze({
+          definition: tool.definition,
+          handler: handler.handler,
+          effect: tool.definition.replaySafety === 'mutation' ? 'mutation' as const : 'read' as const,
+          resultStatus: 'ok' as const,
+        });
+      })),
+      authorize: ({ isMutation }: { toolName: string; toolCallId: string; isMutation: boolean }) => ({ allowed: !isMutation }),
+    }),
   });
 }
 
@@ -210,10 +232,14 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
   // has its own evaluator-owned request-fact universe below.
   if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
   if (usesCommonToolUniverse(config)) {
+    const environment = fixedTraceCommonToolEnvironment();
     validateFixedTraceToolLoopEnvironment(
       fixedTraceCommonToolDefinitions(fixedTraceArchitectureArm(config.architectureArm).id),
-      fixedTraceCommonToolEnvironment(),
+      environment.environment,
     );
+    if (environment.definitionHandlerSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256) {
+      throw new Error('Fixed trace common tool environment binding changed during preflight');
+    }
     return;
   }
   if (!Array.isArray(config.toolDefinitions)) {
@@ -1168,6 +1194,9 @@ export async function runFixedTraceCase(
   }
 
   let timedOut = false;
+  const evaluatorToolEnvironment = usesCommonToolUniverse(executionConfig)
+    ? fixedTraceCommonToolEnvironment()
+    : null;
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     timedOut = true;
@@ -1181,7 +1210,7 @@ export async function runFixedTraceCase(
       definitions,
       {
         ...(usesCommonToolUniverse(executionConfig)
-          ? { evaluatorToolEnvironment: fixedTraceCommonToolEnvironment() }
+          ? { evaluatorToolEnvironment: evaluatorToolEnvironment!.environment }
           : {}),
         signal: controller.signal,
         maxIterations: generationConfig.maxIterations,
