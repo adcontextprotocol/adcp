@@ -21,7 +21,16 @@ export {
   fixedTracePhaseSha256,
   validateFixedTraceCorpus,
 } from './fixed-trace-suite.js';
-export { validateFixedTraceCorpusToolContracts } from './fixed-trace-corpus-contracts.js';
+export {
+  candidateVisibleMarkerOverlap,
+  fixedTraceTuningSemanticSha256,
+  validateFixedTraceCorpusSemanticAuthority,
+  validateFixedTraceCorpusToolContracts,
+} from './fixed-trace-corpus-contracts.js';
+export {
+  FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY,
+  FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY_VERSION,
+} from './fixed-trace-corpus-authority.js';
 export type {
   FixedTraceCorpusCase,
   FixedTraceCorpusCoverageInventory,

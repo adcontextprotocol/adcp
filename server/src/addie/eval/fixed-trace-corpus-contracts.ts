@@ -1,5 +1,6 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import { createHash } from 'node:crypto';
 import { ADMIN_TOOLS } from '../mcp/admin-tools.js';
 import { BILLING_TOOLS } from '../mcp/billing-tools.js';
 import { BRAND_CANONICAL_TOOLS } from '../mcp/brand-canonical-tools.js';
@@ -13,6 +14,87 @@ import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
 import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
 import type { AddieTool } from '../types.js';
 import type { FixedTraceCorpusCase } from './fixed-trace-suite.js';
+import { FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY } from './fixed-trace-corpus-authority.js';
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Fixed trace authority contains a non-finite number');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  }
+  throw new Error('Fixed trace authority contains a non-JSON value');
+}
+
+/** A complete semantic snapshot is compared with a literal reviewer manifest. */
+export function fixedTraceTuningSemanticSha256(trace: FixedTraceCorpusCase): string {
+  const contract = trace.toolContract;
+  return createHash('sha256').update(canonicalJson({
+    id: trace.id,
+    caseControl: trace.caseControl,
+    terminalStatuses: trace.expectation.terminalStatuses,
+    toolFixtures: trace.toolFixtures.map((fixture) => ({
+      name: fixture.name,
+      effect: fixture.effect,
+      resultStatus: fixture.resultStatus,
+      resultSha256: createHash('sha256').update(fixture.result, 'utf8').digest('hex'),
+    })),
+    toolContract: contract && {
+      orderedCalls: contract.orderedCalls.map((call) => ({
+        name: call.name,
+        input: call.input,
+        execution: call.execution,
+        policyDisposition: call.policyDisposition,
+        resultStatus: call.resultStatus,
+        dependsOn: call.dependsOn ?? null,
+      })),
+      callBudget: contract.callBudget,
+      terminalBoundary: contract.terminalBoundary,
+      requiredReceiptDependencies: contract.requiredReceiptDependencies,
+      negativeFixtureScenario: contract.negativeFixtureScenario ?? null,
+    },
+  }), 'utf8').digest('hex');
+}
+
+/** Compact normalization makes punctuation/case variants of evaluator markers visible. */
+export function candidateVisibleMarkerOverlap(value: string, markers: readonly string[]): string[] {
+  const normalized = value.normalize('NFKD').toLocaleLowerCase('en-US').replace(/[^a-z0-9]+/g, '');
+  return markers.filter((marker) => {
+    const normalizedMarker = marker.normalize('NFKD').toLocaleLowerCase('en-US').replace(/[^a-z0-9]+/g, '');
+    return normalizedMarker.length >= 5 && normalized.includes(normalizedMarker);
+  });
+}
+
+/** The corpus cannot authorize its own semantics: all tuning cases need a reviewer record. */
+export function validateFixedTraceCorpusSemanticAuthority(
+  suite: ReadonlyArray<FixedTraceCorpusCase>,
+): string[] {
+  const failures: string[] = [];
+  const tuning = suite.filter((trace) => trace.phase === 'tuning');
+  const seen = new Set<string>();
+  for (const trace of tuning) {
+    const authority = FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY[trace.id];
+    if (!authority) {
+      failures.push(`missing_semantic_authority:${trace.id}`);
+      continue;
+    }
+    seen.add(trace.id);
+    if (fixedTraceTuningSemanticSha256(trace) !== authority.semanticSha256) {
+      failures.push(`semantic_authority_mismatch:${trace.id}`);
+    }
+    for (const marker of candidateVisibleMarkerOverlap(JSON.stringify(trace.request), authority.candidateVisibleForbiddenMarkers)) {
+      failures.push(`candidate_marker_overlap:${trace.id}:${marker}`);
+    }
+  }
+  for (const id of Object.keys(FIXED_TRACE_TUNING_SEMANTIC_AUTHORITY)) {
+    if (!seen.has(id)) failures.push(`orphan_semantic_authority:${id}`);
+  }
+  return failures;
+}
 
 const CANONICAL_SOURCES: readonly (readonly AddieTool[])[] = [
   KNOWLEDGE_TOOLS, MEMBER_TOOLS, ADMIN_TOOLS, BILLING_TOOLS, MEETING_TOOLS,
@@ -46,10 +128,10 @@ export function validateFixedTraceCorpusToolContracts(
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
 
-  for (const trace of suite.filter((candidate) => candidate.phase === 'tuning' && candidate.toolFixtures.length > 0)) {
+  for (const trace of suite.filter((candidate) => candidate.phase === 'tuning')) {
     const contract = trace.toolContract;
     if (!contract) {
-      failures.push(`missing_contract:${trace.id}`);
+      if (trace.toolFixtures.length > 0) failures.push(`missing_contract:${trace.id}`);
       continue;
     }
     if (!trace.caseControl || contract.callBudget !== trace.caseControl.maxToolCalls
