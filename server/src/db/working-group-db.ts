@@ -1708,6 +1708,8 @@ export class WorkingGroupDatabase {
     user_email: string;
     user_name: string;
     user_org_name: string;
+    city: string | null;
+    country: string | null;
     working_group_id: string;
     working_group_name: string;
     working_group_slug: string;
@@ -1719,6 +1721,8 @@ export class WorkingGroupDatabase {
       user_email: string;
       user_name: string;
       user_org_name: string;
+      city: string | null;
+      country: string | null;
       working_group_id: string;
       working_group_name: string;
       working_group_slug: string;
@@ -1730,6 +1734,8 @@ export class WorkingGroupDatabase {
          wgm.user_email,
          wgm.user_name,
          wgm.user_org_name,
+         u.city,
+         u.country,
          wg.id AS working_group_id,
          wg.name AS working_group_name,
          wg.slug AS working_group_slug,
@@ -1737,6 +1743,7 @@ export class WorkingGroupDatabase {
          wgm.joined_at
        FROM working_group_memberships wgm
        INNER JOIN working_groups wg ON wgm.working_group_id = wg.id
+       LEFT JOIN users u ON u.workos_user_id = wgm.workos_user_id
        WHERE wgm.status = 'active' AND wg.status = 'active'
        ORDER BY wgm.user_name, wg.display_order, wg.name`
     );

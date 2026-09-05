@@ -27,6 +27,7 @@ import {
   buildCountryMembersCsv,
   type CountryMemberExportRow,
 } from './country-members-export.js';
+import { buildWorkingGroupMembershipsCsv } from './working-group-memberships-export.js';
 
 const logger = createLogger('admin-users-routes');
 
@@ -516,15 +517,12 @@ export function createAdminUsersRouter(): Router {
       const wgDb = new WorkingGroupDatabase();
       const memberships = await wgDb.getAllMemberships();
 
+      res.setHeader('Cache-Control', 'private, no-store');
+
       // Check if CSV export is requested
       const format = req.query.format;
       if (format === 'csv') {
-        const csv = [
-          'User Name,Email,Organization,Working Group,Joined At',
-          ...memberships.map(m =>
-            `"${m.user_name || ''}","${m.user_email || ''}","${m.user_org_name || ''}","${m.working_group_name}","${m.joined_at ? new Date(m.joined_at).toISOString().split('T')[0] : ''}"`
-          ),
-        ].join('\n');
+        const csv = buildWorkingGroupMembershipsCsv(memberships);
 
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', 'attachment; filename="working-group-memberships.csv"');
