@@ -38,7 +38,8 @@ class StrictLedgerClient {
   }
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
-    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rowCount: 0, rows: [] };
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK'
+      || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE') return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts')
       || sql.startsWith('SELECT p.assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT status, reservation_microdollars')) return { rowCount: 1, rows: [{ status: this.authStatus, reservation_microdollars: '2819484', provider_ceiling_microdollars: '5000000' }] };
@@ -231,10 +232,12 @@ describe('private ledger state machine', () => {
     const client = new StrictLedgerClient(); const subject = ledger(client);
     await subject.recordProviderIntent(intent());
     expect(await subject.recordUnknownExposure(reservation)).toEqual({ status: 'recorded' });
+    const tableGate = client.calls.findIndex(({ sql }) => sql.startsWith('LOCK TABLE addie_fixed_trace_component_smoke_run_plan'));
     const planSet = client.calls.findIndex(({ sql }) => sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan'));
     const attempts = client.calls.findIndex(({ sql }, index) => index > planSet && sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts'));
     const authorization = client.calls.findIndex(({ sql }, index) => index > attempts && sql.startsWith('SELECT status FROM addie_fixed_trace_component_smoke_authorizations'));
-    expect(planSet).toBeGreaterThanOrEqual(0);
+    expect(tableGate).toBeGreaterThanOrEqual(0);
+    expect(planSet).toBeGreaterThan(tableGate);
     expect(attempts).toBeGreaterThan(planSet);
     expect(authorization).toBeGreaterThan(attempts);
   });

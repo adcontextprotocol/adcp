@@ -359,6 +359,41 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     }
   });
 
+  it('serializes a reverse-order multi-outcome writer before recovery locks any plan target', async () => {
+    const positioned = plan.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.disposition === 'provider_dispatch');
+    const earlier = positioned[0]!;
+    const later = positioned.at(-1)!;
+    const earlierAttempt = uniqueAttemptId();
+    const laterAttempt = uniqueAttemptId();
+    for (const [entry, attemptId] of [[earlier.entry, earlierAttempt], [later.entry, laterAttempt]] as const) {
+      await insertIntent(client!, authorizationDigest, entry, attemptId.slice('attempt_'.length));
+      await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, 'a'.repeat(64), entry.provider, entry.model, entry.effort]);
+    }
+    await client!.query('COMMIT');
+    const writer = new Client({ connectionString: databaseUrl });
+    const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+    await writer.connect();
+    try {
+      await writer.query('BEGIN');
+      // The old recovery sequence could lock `earlier` while waiting for
+      // `later`; a bounded writer lock exposes that cycle as a failure.
+      await writer.query("SET LOCAL lock_timeout = '400ms'");
+      await writer.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, later.entry.assignmentId]);
+      const recovery = new PostgresFixedTraceComponentSmokePrivateLedger(pool).recordUnknownExposure(reservationFor(authorizationDigest));
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      // Reversed physical-order target. The recovery table gate has not yet
+      // taken either row, so this cannot wait behind a recovery row lock.
+      await writer.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, earlier.entry.assignmentId]);
+      await writer.query('COMMIT');
+      expect(await recovery).toEqual({ status: 'recorded' });
+      expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure' }]);
+      expect((await client!.query('SELECT assignment_outcome FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id IN ($2,$3) ORDER BY assignment_id', [authorizationDigest, earlier.entry.assignmentId, later.entry.assignmentId])).rows).toEqual([{ assignment_outcome: 'provider_completed' }, { assignment_outcome: 'provider_completed' }]);
+    } finally {
+      await writer.query('ROLLBACK').catch(() => undefined);
+      await writer.end(); await pool.end(); await client!.query('BEGIN');
+    }
+  });
+
   it('application terminalizes a known provider failure after its fail-stop transition', async () => {
     const entry = dispatchEntry(14);
     const attemptId = uniqueAttemptId();

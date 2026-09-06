@@ -459,11 +459,18 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
   * usage, identity, response HMAC, or cost.
   */
   private async closeOpenIntentsAsUnknownExposure(client: PoolClient, reservation: FixedTraceComponentSmokeReservation): Promise<boolean> {
-    // Recovery has no single target. It first locks the complete immutable
-    // plan in assignment order, which is the insertion gate for both the
-    // application and the INSERT trigger. Only then can it snapshot every
-    // attempt safely: an intent that began earlier either committed before
-    // this point or holds a plan row we wait for; no later intent can appear.
+    // Recovery has no single target. First serialize against any direct plan
+    // writer *before* it can hold one plan row and the authorization then ask
+    // for another plan row. SHARE ROW EXCLUSIVE conflicts with UPDATE, so
+    // that writer either finishes before our snapshot or cannot acquire its
+    // first target. Attempt INSERT's RowShare table lock is compatible, but
+    // its target-row FOR UPDATE is gated by the complete row lock below.
+    await client.query('LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE');
+    // Then lock the complete immutable plan in assignment order, which is the
+    // insertion gate for both the application and the INSERT trigger. Only
+    // then can it snapshot every attempt safely: an intent that began earlier
+    // either committed before this point or holds a plan row we waited for;
+    // no later intent can appear.
     // Terminal UPDATE deliberately remains attempt -> authorization and never
     // acquires a plan row, so it cannot invert this recovery order.
     await client.query(
