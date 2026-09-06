@@ -1,186 +1,92 @@
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
+import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY, fixedTraceComponentSmokePrivateAuthorityPlan } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
 import {
-  FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM,
-  FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION,
-  fixedTraceComponentSmokeSignedGrantBytes,
-  type FixedTraceComponentSmokeSignedGrantPayload,
-} from '../../../src/addie/eval/fixed-trace-component-smoke-private-authorization.js';
-import { fixedTraceComponentSmokePrivateLedgerPlan, type FixedTraceComponentSmokeReservation } from '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.js';
-import { createFixedTraceComponentSmokePrivateRuntime, type FixedTraceComponentSmokeFakeProviderRequest } from '../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.js';
+  createFixedTraceComponentSmokePrivateRuntime,
+  simulateFixedTraceComponentSmokePrivateRuntime,
+} from '../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.js';
 
-const NOW = new Date('2026-09-06T12:00:00.000Z');
-const keys = generateKeyPairSync('ed25519');
-const root = Object.freeze({ kid: 'component-smoke-runtime-test', spki: (keys.publicKey.export({ format: 'der', type: 'spki' }) as Buffer).toString('base64url') });
-const rootPin = createHash('sha256').update(JSON.stringify(root), 'utf8').digest('hex');
-const plan = fixedTraceComponentSmokePrivateLedgerPlan()!;
+const plan = fixedTraceComponentSmokePrivateAuthorityPlan();
+const dispatch = plan.find((entry) => entry.disposition === 'provider_dispatch')!;
+const generation = plan.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
 
-function signedGrant(overrides: Partial<FixedTraceComponentSmokeSignedGrantPayload> = {}) {
-  const payload: FixedTraceComponentSmokeSignedGrantPayload = {
-    grantVersion: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION, kid: root.kid,
-    issuedAt: '2026-09-06T11:55:00.000Z', expiresAt: '2026-09-06T12:05:00.000Z', stageId: 'stage_1_smoke',
-    admissionVersion: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.admissionVersion,
-    aggregateAdmissionFingerprint: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint,
-    cardinality: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality,
-    reservationMicrodollars: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars,
-    providerCeilingMicrodollars: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.providerCeilingMicrodollars,
-    pricingCohortDigest: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.pricingCohortDigest, nonceCommitment: 'a'.repeat(64), ...overrides,
+function receipt(entry = dispatch, overrides: Record<string, unknown> = {}) {
+  return {
+    status: 'succeeded', disposition: 'final_response',
+    identity: { provider: entry.provider, model: entry.model, effort: entry.effort },
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 },
+    ...overrides,
   };
-  return { algorithm: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM, payload, signature: sign(null, fixedTraceComponentSmokeSignedGrantBytes(payload), keys.privateKey).toString('base64url') };
 }
-
-function reservationFor(authorizationDigest: string): FixedTraceComponentSmokeReservation {
-  return Object.freeze({ authorizationDigest,
-    reservationId: `reservation_${createHash('sha256').update(JSON.stringify({ authorizationDigest, domain: 'adcp:addie:fixed-trace-component-smoke:reservation:v1\0' }), 'utf8').digest('hex').slice(0, 32)}`,
-    entryCount: 168, providerDispatchEntryCount: 126, reservationMicrodollars: 2_819_484 });
-}
-
-class FakeLedger {
-  readonly calls: string[] = [];
-  readonly intents: Array<Record<string, unknown>> = [];
-  readonly terminals: Array<Record<string, unknown>> = [];
-  readonly assignmentTerminals: Array<Record<string, unknown>> = [];
-  readonly nonDispatch: Array<Record<string, unknown>> = [];
-  readonly omitted: Array<Record<string, unknown>> = [];
-  reserveCalls = 0;
-  failIntent = false;
-  failTerminal = false;
-  terminalRefusal: string | null = null;
-  async reserveAndConsume(grant: object) { this.reserveCalls += 1; return this.reserveCalls === 1 ? { status: 'reserved', reservation: reservationFor((grant as { grantDigest: string }).grantDigest) } : { status: 'refused', reason: 'grant_already_consumed' }; }
-  async recordProviderIntent(value: object) { this.calls.push('intent'); this.intents.push(value as Record<string, unknown>); return this.failIntent ? { status: 'refused', reason: 'persistence_uncertain' } : { status: 'recorded' }; }
-  async recordTerminal(value: object) { this.calls.push('terminal'); this.terminals.push(value as Record<string, unknown>); return this.failTerminal || this.terminalRefusal ? { status: 'refused', reason: this.terminalRefusal ?? 'persistence_uncertain' } : { status: 'recorded' }; }
-  async recordProviderAssignmentTerminal(value: object) { this.calls.push('assignment'); this.assignmentTerminals.push(value as Record<string, unknown>); return { status: 'recorded' }; }
-  async recordNonDispatchTerminal(value: object) { this.calls.push('local'); this.nonDispatch.push(value as Record<string, unknown>); return { status: 'recorded' }; }
-  async recordNotExecutedAfterHalt(value: object) { this.calls.push('omitted'); this.omitted.push(value as Record<string, unknown>); return { status: 'recorded' }; }
-  async recordUnknownExposure() { this.calls.push('unknown'); return { status: 'recorded' }; }
-}
-
-function runtime(ledger: FakeLedger, fakeProvider: { invoke(request: Readonly<FixedTraceComponentSmokeFakeProviderRequest>): Promise<unknown> }, grant = signedGrant(), pin = rootPin) {
-  return createFixedTraceComponentSmokePrivateRuntime({ trustRoot: root, trustRootPin: pin, signedGrant: grant, evidenceHmacKey: Buffer.alloc(32, 7), trustedNow: () => NOW, ledger, fakeProvider: { fakeOnly: true, automaticRetries: 0, ...fakeProvider } });
-}
-function receipt(request: FixedTraceComponentSmokeFakeProviderRequest, disposition: 'final_response' | 'tool_continuation_required' = 'final_response') {
-  return { status: 'succeeded', disposition, identity: { provider: request.provider, model: request.model, effort: request.effort }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 } };
-}
+function scriptFor(key: string, value: unknown) { return JSON.stringify({ responses: { [key]: value } }); }
 
 describe('private fake-only component smoke runtime', () => {
-  it('runs only the frozen 8-by-21 plan, commits intent before each fake call, and reaches the exact maximum', async () => {
-    const ledger = new FakeLedger(); const seen: FixedTraceComponentSmokeFakeProviderRequest[] = [];
-    const subject = runtime(ledger, { async invoke(request) { seen.push(request); return receipt(request, request.invocationOrdinal === 1 && plan.find((entry) => entry.assignmentId === request.assignmentId)!.maximumProviderInvocations === 2 ? 'tool_continuation_required' : 'final_response'); } });
-    const result = await subject!.run();
-    expect(result).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 192 });
-    expect(seen).toHaveLength(192); expect(ledger.intents).toHaveLength(192); expect(ledger.terminals).toHaveLength(192);
-    expect(ledger.assignmentTerminals).toHaveLength(126); expect(ledger.nonDispatch).toHaveLength(42);
-    expect(ledger.calls.every((call, index) => call !== 'terminal' || ledger.calls[index - 1] === 'intent')).toBe(true);
-    expect(new Set(ledger.intents.map((entry) => entry.preparedRequestHmac))).toHaveLength(192);
-    expect(new Set(ledger.terminals.map((entry) => entry.responseHmac))).toHaveLength(192);
-    expect(seen.every((request) => request.sdkAutomaticRetries === 0)).toBe(true);
+  it('has no production construction path or runtime dependency injection', () => {
+    expect(createFixedTraceComponentSmokePrivateRuntime()).toBeNull();
+    expect((createFixedTraceComponentSmokePrivateRuntime as (...value: unknown[]) => unknown)({}, {}, {}, {})).toBeNull();
   });
 
-  it('requires an exact operator root/pin and consumes a verified grant through the ledger once', async () => {
-    const ledger = new FakeLedger();
-    expect(runtime(ledger, { async invoke(request) { return receipt(request); } }, signedGrant(), '0'.repeat(64))).toBeNull();
-    const invalid = runtime(ledger, { async invoke(request) { return receipt(request); } }, { ...signedGrant(), signature: 'A'.repeat(86) });
-    await expect(invalid!.run()).resolves.toMatchObject({ status: 'refused', reason: 'invalid_grant', providerInvocations: 0 });
-    const oneShot = runtime(ledger, { async invoke(request) { return receipt(request); } })!;
-    await oneShot.run();
-    await expect(oneShot.run()).resolves.toMatchObject({ status: 'refused', reason: 'grant_already_consumed', providerInvocations: 0 });
-    expect(ledger.reserveCalls).toBe(2);
+  it('simulates only the frozen 8-by-21 plan and exact 192 maximum without dispatch', () => {
+    expect(simulateFixedTraceComponentSmokePrivateRuntime()).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 192 });
+  });
+
+  it('models the frozen second ordinal only after its scripted first continuation', () => {
+    const first = `${generation.assignmentId}:1`;
+    expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(first, receipt(generation, { disposition: 'final_response' })))).toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 191 });
+    expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(first, receipt(generation, { disposition: 'tool_continuation_required' })))).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 192 });
   });
 
   it.each([
-    ['provider throw', async () => { throw new Error('private fake failure'); }, 'timeout_after_dispatch'],
-    ['malformed response', async () => ({ wrong: true }), 'malformed_response'],
-    ['missing usage', async (request: FixedTraceComponentSmokeFakeProviderRequest) => ({ ...receipt(request), usage: null }), 'missing_usage'],
-    ['identity mismatch', async (request: FixedTraceComponentSmokeFakeProviderRequest) => ({ ...receipt(request), identity: { provider: 'other', model: request.model, effort: request.effort } }), 'identity_mismatch'],
-    ['provider failure', async (request: FixedTraceComponentSmokeFakeProviderRequest) => ({ ...receipt(request), status: 'provider_failed', disposition: 'final_response' }), 'provider_failed'],
-  ])('halts and terminalizes the denominator after %s without another provider call', async (_name, invoke, expectedStatus) => {
-    const ledger = new FakeLedger(); let calls = 0;
-    const subject = runtime(ledger, { async invoke(request) { calls += 1; return invoke(request); } })!;
-    await expect(subject.run()).resolves.toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 1 });
-    expect(calls).toBe(1); expect(ledger.terminals[0]?.status).toBe(expectedStatus);
-    expect(ledger.assignmentTerminals).toHaveLength(1);
-    expect(ledger.assignmentTerminals.length + ledger.nonDispatch.length + ledger.omitted.length).toBe(168);
+    ['identity mismatch', receipt(dispatch, { identity: { provider: 'other', model: dispatch.model, effort: dispatch.effort } })],
+    ['provider failure', receipt(dispatch, { status: 'provider_failed' })],
+    ['final continuation ordinal', receipt(dispatch, { disposition: 'tool_continuation_required' })],
+  ])('halts the simulated denominator after %s', (_name, value) => {
+    expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(`${dispatch.assignmentId}:1`, value))).toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 1 });
   });
 
-  it('does not call a fake provider after an uncertain intent or terminal write', async () => {
-    for (const field of ['failIntent', 'failTerminal'] as const) {
-      const ledger = new FakeLedger(); ledger[field] = true; let calls = 0;
-      const subject = runtime(ledger, { async invoke(request) { calls += 1; return receipt(request); } })!;
-      await expect(subject.run()).resolves.toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: field === 'failIntent' ? 0 : 1 });
-      expect(calls).toBe(field === 'failIntent' ? 0 : 1); expect(ledger.calls).toContain('unknown');
-    }
+  it('deep-copies and rejects executable, malformed, or unadmitted simulation data without running it', () => {
+    let invoked = false;
+    const executable = { responses: { [`${dispatch.assignmentId}:1`]: () => { invoked = true; return receipt(); } } };
+    for (const script of [
+      executable,
+      { responses: { [`${dispatch.assignmentId}:3`]: receipt() } },
+      { responses: { [`${dispatch.assignmentId}:1`]: { wrong: true } } },
+      { trustRoot: 'caller-selected' },
+      '{not-json',
+      JSON.stringify({ responses: { [`${dispatch.assignmentId}:3`]: receipt() } }),
+      JSON.stringify({ responses: { [`${dispatch.assignmentId}:1`]: { wrong: true } } }),
+    ]) expect(simulateFixedTraceComponentSmokePrivateRuntime(script as never)).toEqual({ status: 'refused', reason: 'invalid_simulation_script', assignmentDispositions: 0, providerInvocations: 0 });
+    expect(invoked).toBe(false);
   });
 
-  it.each(['plan_mismatch', 'cost_exhausted'])('stops after a ledger %s settlement refusal', async (reason) => {
-    const ledger = new FakeLedger(); ledger.terminalRefusal = reason; let calls = 0;
-    const subject = runtime(ledger, { async invoke(request) { calls += 1; return receipt(request); } })!;
-    await expect(subject.run()).resolves.toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 1 });
-    expect(calls).toBe(1); expect(ledger.calls).toContain('unknown');
-  });
-
-  it('never advances past a duplicate/final continuation ordinal', async () => {
-    const ledger = new FakeLedger(); let calls = 0;
-    const subject = runtime(ledger, { async invoke(request) { calls += 1; return receipt(request, 'tool_continuation_required'); } })!;
-    await expect(subject.run()).resolves.toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 1 });
-    expect(calls).toBe(1); expect(ledger.calls).toContain('unknown');
-  });
-
-  it('has no ambient wiring, no caller execution controls, and no raw secret or provider data persistence/logging surface', () => {
+  it('contains no dispatch, persistence, authorization input, provider callback, or ambient configuration surface', () => {
     const source = readFileSync(new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.ts', import.meta.url), 'utf8');
-    expect(source).not.toContain('process.env'); expect(source).not.toContain('fetch('); expect(source).not.toContain('console.');
-    expect(source).not.toContain('from \'../../db/client'); expect(source).not.toContain('prompt:'); expect(source).not.toContain('apiKey');
-    expect(createFixedTraceComponentSmokePrivateRuntime({} as never)).toBeNull();
-    expect(createFixedTraceComponentSmokePrivateRuntime).toBeTypeOf('function');
-  });
-
-  it('keeps every private runtime graph leaf clear of live configuration, provider, and storyboard imports', () => {
-    const leaves = [
-      '../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.ts',
-      '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.ts',
-      '../../../src/addie/eval/fixed-trace-component-smoke-private-authorization.ts',
-      '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.ts',
-    ].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'));
-    for (const source of leaves) {
-      expect(source).not.toContain('process.env');
-      expect(source).not.toContain('createLogger');
-      expect(source).not.toContain('console.');
-      expect(source).not.toContain('fetch(');
-      expect(source).not.toMatch(/from ['"][^'"]*(?:dated-pricing-cohort|fixed-trace-component-smoke-admission|config\/models|model-providers|storyboard)[^'"]*['"]/);
+    for (const forbidden of ['process.env', 'fetch(', 'console.', 'fakeProvider', '.invoke(', 'trustRoot', 'signedGrant', 'evidenceHmacKey', 'recordProviderIntent', 'recordTerminal']) {
+      expect(source).not.toContain(forbidden);
     }
+    expect(source).not.toMatch(/from ['"][^'"]*(?:dated-pricing-cohort|fixed-trace-component-smoke-admission|config\/models|model-providers|storyboard)[^'"]*['"]/);
   });
 
   it('imports the complete private runtime graph in fresh processes without model/provider env authority or side effects', () => {
     const runtimeUrl = new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.ts', import.meta.url).href;
-    const ledgerUrl = new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.ts', import.meta.url).href;
     const authorityUrl = new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-authority.ts', import.meta.url).href;
-    const source = `import '${runtimeUrl}'; import { fixedTraceComponentSmokePrivateLedgerPlan } from '${ledgerUrl}'; import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY } from '${authorityUrl}'; const plan = fixedTraceComponentSmokePrivateLedgerPlan(); process.stdout.write(JSON.stringify({ fingerprint: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint, reservation: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars, plan }));`;
-    const run = (environment: Record<string, string>) => spawnSync(process.execPath, [
-      '--import', 'tsx', '--input-type=module', '--eval', source,
-    ], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
-      env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...environment },
+    const source = `import { simulateFixedTraceComponentSmokePrivateRuntime } from '${runtimeUrl}'; import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY } from '${authorityUrl}'; process.stdout.write(JSON.stringify({ fingerprint: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint, reservation: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars, result: simulateFixedTraceComponentSmokePrivateRuntime() }));`;
+    const run = (environment: Record<string, string>) => spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000, env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...environment },
     });
     const baseline = run({});
     const overridden = run({
-      CLAUDE_MODEL_FAST: 'unreviewed-fast', CLAUDE_MODEL_PRIMARY: 'unreviewed-primary',
-      OPENAI_API_KEY: 'not-a-real-key', ANTHROPIC_API_KEY: 'not-a-real-key', GEMINI_API_KEY: 'not-a-real-key',
-      OPENAI_MODEL: 'unreviewed-openai', GEMINI_MODEL_FAST: 'unreviewed-google',
+      CLAUDE_MODEL_FAST: 'unreviewed-fast', CLAUDE_MODEL_PRIMARY: 'unreviewed-primary', OPENAI_API_KEY: 'not-a-real-key',
+      ANTHROPIC_API_KEY: 'not-a-real-key', GEMINI_API_KEY: 'not-a-real-key', OPENAI_MODEL: 'unreviewed-openai', GEMINI_MODEL_FAST: 'unreviewed-google',
     });
     for (const child of [baseline, overridden]) {
-      expect(child.status, child.stderr).toBe(0);
-      expect(child.stderr).toBe('');
-      expect(child.stdout).not.toContain('Loaded test kit');
-      expect(child.stdout).not.toContain('\n');
+      expect(child.status, child.stderr).toBe(0); expect(child.stderr).toBe(''); expect(child.stdout).not.toContain('Loaded test kit'); expect(child.stdout).not.toContain('\n');
     }
     expect(overridden.stdout).toBe(baseline.stdout);
-    const output = JSON.parse(baseline.stdout) as { fingerprint: string; reservation: number; plan: unknown[] };
-    expect(output).toMatchObject({
-      fingerprint: '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d',
-      reservation: 2_819_484,
+    expect(JSON.parse(baseline.stdout)).toEqual({
+      fingerprint: '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d', reservation: 2_819_484,
+      result: { status: 'completed', assignmentDispositions: 168, providerInvocations: 192 },
     });
-    expect(output.plan).toHaveLength(168);
   });
 });

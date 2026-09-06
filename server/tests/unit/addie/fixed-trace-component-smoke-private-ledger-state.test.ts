@@ -25,6 +25,7 @@ class StrictLedgerClient {
   readonly calls: Array<{ sql: string; params: unknown[] | undefined }> = [];
   readonly attempts = new Map<string, StoredAttempt>();
   readonly assignmentOutcomes = new Map<string, string>();
+  recoveryClosedRemainder = false;
   authStatus = 'consumed';
   priorSpend: string | null = null;
   constructor(private readonly entry: FixedTraceComponentSmokePlanEntry = dispatch) {}
@@ -52,6 +53,10 @@ class StrictLedgerClient {
       return attempt ? { rowCount: 1, rows: [{ status: attempt.status, response_disposition: attempt.responseDisposition }] } : { rowCount: 0, rows: [] };
     }
     if (sql.includes('FROM addie_fixed_trace_component_smoke_run_plan') && sql.includes('FOR UPDATE') && !sql.includes('FROM addie_fixed_trace_component_smoke_attempts a')) return { rowCount: 1, rows: [this.planRow()] };
+    if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_run_plan AS p') && sql.includes("'not_executed_after_halt'")) {
+      this.recoveryClosedRemainder = true;
+      return { rowCount: 167, rows: [] };
+    }
     if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 1, rows: [] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id')) return { rowCount: this.attempts.has(params![0] as string) ? 1 : 0, rows: [] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest')) {
@@ -243,6 +248,7 @@ describe('private ledger state machine', () => {
     expect(client.authStatus).toBe('unknown_exposure');
     expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)).toMatchObject({ status: 'unknown_exposure', responseHmac: null, cost: null });
     expect(client.assignmentOutcomes.get(dispatch.assignmentId)).toBe('provider_unknown_exposure');
+    expect(client.recoveryClosedRemainder).toBe(true);
   });
 
   it('uses complete-plan, then attempts, then authorization recovery locking', async () => {

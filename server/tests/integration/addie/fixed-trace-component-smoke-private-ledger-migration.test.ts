@@ -177,6 +177,34 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     }
   });
 
+  it('atomically terminalizes all 168 assignments when a committed intent acknowledgement is lost', async () => {
+    const entry = dispatchEntry(12);
+    const attemptId = uniqueAttemptId();
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      // The durable write succeeds, but the caller deliberately discards its
+      // acknowledgement as though the response was lost before dispatch.
+      expect(await ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId, assignmentId: entry.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) })).toEqual({ status: 'recorded' });
+      expect(await ledger.recordUnknownExposure(reservationFor(authorizationDigest))).toEqual({ status: 'recorded' });
+      expect((await client!.query(
+        `SELECT assignment_outcome, count(*)::int AS count
+           FROM addie_fixed_trace_component_smoke_run_plan
+          WHERE authorization_digest = $1 GROUP BY assignment_outcome ORDER BY assignment_outcome`,
+        [authorizationDigest],
+      )).rows).toEqual([
+        { assignment_outcome: 'not_executed_after_halt', count: 167 },
+        { assignment_outcome: 'provider_unknown_exposure', count: 1 },
+      ]);
+      expect((await client!.query(
+        'SELECT count(*)::int AS count FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_outcome IS NULL',
+        [authorizationDigest],
+      )).rows).toEqual([{ count: 0 }]);
+      expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure' }]);
+    } finally { await pool.end(); await client!.query('BEGIN'); }
+  });
+
   it('uses target-plan then authorization order against a direct outcome writer', async () => {
     const entry = dispatchEntry(15);
     const attemptId = uniqueAttemptId();

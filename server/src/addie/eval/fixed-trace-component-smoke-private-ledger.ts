@@ -521,6 +521,21 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
           AND p.assignment_outcome IS NULL`,
       [reservation.authorizationDigest],
     );
+    // This is recovery for a committed intent whose caller may never receive
+    // the acknowledgement. Finish the complete denominator in this same
+    // transaction: a later process must never need to guess which entries
+    // were already closed, nor issue individual omission writes after an
+    // ambiguous provider exposure.
+    await client.query(
+      `UPDATE addie_fixed_trace_component_smoke_run_plan AS p
+          SET assignment_outcome = 'not_executed_after_halt', assignment_terminal_at = clock_timestamp()
+        WHERE p.authorization_digest = $1 AND p.assignment_outcome IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM addie_fixed_trace_component_smoke_attempts AS a
+             WHERE a.authorization_digest = p.authorization_digest AND a.assignment_id = p.assignment_id
+          )`,
+      [reservation.authorizationDigest],
+    );
     return true;
   }
 
