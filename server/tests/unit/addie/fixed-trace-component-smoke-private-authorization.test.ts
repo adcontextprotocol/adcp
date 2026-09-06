@@ -114,6 +114,11 @@ describe('fixed-trace component smoke private signed authorization', () => {
     expect(migration).toContain('invocation_ordinal BETWEEN 1 AND 2');
     expect(migration).toContain('provider_dispatch_assignments = 126');
     expect(migration).toContain('assignments = 168');
+    expect(migration).toContain('signature_digest CHAR(64)');
+    expect(migration).not.toContain('signature BYTEA');
+    expect(source).toContain('pgSafeInt');
+    expect(source).toContain('cacheReadTokens');
+    expect(source).toContain("status = 'unknown_exposure'");
   });
 
   it('never turns a caller-selected test trust root into a ledger capability', async () => {
