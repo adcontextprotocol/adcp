@@ -80,12 +80,12 @@ function variations(sequence: readonly RationalPolynomial[], at: Rational): numb
   return signs.reduce((total, item, index) => total + (index > 0 && signs[index - 1] !== item ? 1 : 0), 0);
 }
 /** Exact Sturm sequence; no floating arithmetic is used in root enumeration. */
-function sturmSequenceWithinDeadline(value: RationalPolynomial, deadline: AlgebraicDeadline): readonly RationalPolynomial[] {
+function sturmSequenceWithinDeadline(value: RationalPolynomial, deadline?: AlgebraicDeadline): readonly RationalPolynomial[] {
   const polynomialValue = canonicalAlgebraicPolynomial(value);
   if (isZero(polynomialValue)) throw new RangeError('Sturm sequence requires a nonzero polynomial');
   const sequence: RationalPolynomial[] = [primitive(polynomialValue, deadline), primitive(derivative(polynomialValue), deadline)];
   while (!isZero(sequence[sequence.length - 1]!)) {
-    deadline.check();
+    deadline?.check();
     const [, remainder] = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
     if (isZero(remainder)) break;
     sequence.push(primitive(polynomialNegate(remainder), deadline));
@@ -120,12 +120,11 @@ function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: Ration
 }
 export interface RootIsolation { readonly exact: readonly Rational[]; readonly intervals: readonly RationalInterval[]; readonly unresolved: boolean; }
 /** Isolate every distinct interior root using Sturm counts and dyadic bisection. */
-export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits = 24): RootIsolation {
+function isolateRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number, deadline: AlgebraicDeadline | undefined): RootIsolation {
   const polynomialValue = canonicalAlgebraicPolynomial(value); const lowerBound = canonicalRational(lower, 'Root lower bound'); const upperBound = canonicalRational(upper, 'Root upper bound');
   if (compare(lowerBound, upperBound) > 0) throw new RangeError('Root lower bound must not exceed upper bound');
   if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > MAX_ROOT_REFINEMENT_BITS) throw new RangeError(`Root refinement bits must be an integer in [1, ${MAX_ROOT_REFINEMENT_BITS}]`);
   if (degree(polynomialValue) <= 0) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: false });
-  const deadline = new AlgebraicDeadline();
   let distinct: RationalPolynomial; let sequence: readonly RationalPolynomial[];
   try {
     distinct = squareFree(polynomialValue, deadline);
@@ -138,7 +137,7 @@ export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational,
   const intervals: RationalInterval[] = [];
   let unresolved = false;
   const visit = (left: Rational, right: Rational, depth: number): void => {
-    try { deadline.check(); } catch { unresolved = true; return; }
+    try { deadline?.check(); } catch { unresolved = true; return; }
     const count = rootsInOpen(sequence, distinct, left, right);
     if (count <= 0) return;
     // A singleton interval is an exact proof object. More than one root at
@@ -162,6 +161,14 @@ export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational,
   };
   visit(lowerBound, upperBound, 0);
   return Object.freeze({ exact: Object.freeze(exact), intervals: Object.freeze(intervals), unresolved });
+}
+/** Bounded direct root isolation for standalone diagnostic validation. */
+export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits = 24): RootIsolation {
+  return isolateRoots(value, lower, upper, refinementBits, new AlgebraicDeadline());
+}
+/** Engine-only path: its caller has separate state/precision/work guards. */
+export function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
+  return isolateRoots(value, lower, upper, refinementBits, undefined);
 }
 
 export interface MaximumCertificate { readonly lower: Rational; readonly upper: Rational; readonly stationaryPointCount: number; readonly indeterminate: boolean; }

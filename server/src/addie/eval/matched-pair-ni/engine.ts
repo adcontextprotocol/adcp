@@ -5,7 +5,7 @@ import { types } from 'node:util';
  * 3540-3549, doi:10.1002/sim.3229. This module is diagnostic only; see
  * admission.ts. It does not implement confidence inversion or resizing.
  */
-import { evaluateInterval, interval, intervalAdd, intervalDividePositive, intervalMultiply, intervalSubtract, isolateInteriorRoots, sqrtInterval, type RationalInterval } from './algebraic.js';
+import { evaluateInterval, interval, intervalAdd, intervalDividePositive, intervalMultiply, intervalSubtract, isolateEngineInteriorRoots, sqrtInterval, type RationalInterval } from './algebraic.js';
 import type { ExactInferenceCertificate, IndeterminateCertificate } from './certificates.js';
 import { MATCHED_PAIR_NI_ADMISSION, type MatchedPairNiAdmission } from './admission.js';
 import { constant, degree, derivative, divideWithRemainder, evaluate, isZero, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale, type RationalPolynomial } from './polynomial.js';
@@ -258,7 +258,7 @@ function probabilityRegionInterval(states: readonly ReducedMatchedPairState[], m
 }
 /** Engine-private factored maximum; its region derives only from E+M states. */
 function maximizeProbabilityRegion(region: RationalPolynomial, states: readonly ReducedMatchedPairState[], margin: Rational) {
-  const roots = isolateInteriorRoots(derivative(region), margin, ONE, MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS);
+  const roots = isolateEngineInteriorRoots(derivative(region), margin, ONE, MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS);
   let lower = evaluate(region, margin); let upper = lower;
   for (const point of [ONE, ...roots.exact]) {
     const value = evaluate(region, point);
