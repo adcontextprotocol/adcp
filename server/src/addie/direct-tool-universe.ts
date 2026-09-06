@@ -7,57 +7,6 @@ import { getSafeReadOnlyFallbackTools, SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from 
 import type { AddieTool } from './types.js';
 
 /**
- * This inventory revision adds only the two descriptors required by the
- * evaluator-only Addie smoke simulator. They are not selected by production
- * fallback policy and never carry a production handler into this module.
- */
-export const FIXED_TRACE_EVALUATOR_NEUTRAL_TOOL_UNIVERSE_VERSION =
-  'addie-fixed-trace-evaluator-neutral-tools-v2';
-
-const EVALUATOR_ONLY_SMOKE_TOOL_NAMES = Object.freeze([
-  'list_paying_members',
-  'confirm_send_invoice',
-] as const);
-
-/**
- * Reviewed production wire-schema snapshots for the two smoke-only entries.
- * Importing the production admin or billing modules would instantiate their
- * database, Slack, and billing dependencies, so these inert descriptors are
- * intentionally maintained here instead. The generic custom-tool result wire
- * shape is text; the simulator owns deterministic synthetic result strings.
- */
-const EVALUATOR_ONLY_SMOKE_TOOL_DEFINITIONS: readonly AddieTool[] = [
-  {
-    name: 'list_paying_members',
-    replaySafety: 'principal_read',
-    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
-    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, getting member contact lists, or checking for payment issues.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        include_individual: { type: 'boolean', description: 'Include individual (personal) memberships (default: true)' },
-        include_payment_issues: { type: 'boolean', description: 'Also include members with past_due or unpaid subscriptions, flagged in output (default: false)' },
-        limit: { type: 'number', description: 'Maximum results (default: 200, max: 500)' },
-      },
-    },
-  },
-  {
-    name: 'confirm_send_invoice',
-    replaySafety: 'mutation',
-    description: 'Send an invoice for the authenticated member\'s own organization after they have\nconfirmed the details shown by send_invoice. The contact email, company, and billing address come\nfrom the signed-in session — they cannot be overridden. The org must already have a billing address\non file (set via the dashboard or invite-acceptance flow).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        lookup_key: { type: 'string', description: 'The product lookup key from find_membership_products' },
-        coupon_id: { type: 'string', description: 'Explicit Stripe coupon ID to apply (optional)' },
-        payment_terms: { type: 'number', enum: [30, 45, 60, 90], description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.' },
-      },
-      required: ['lookup_key'],
-    },
-  },
-];
-
-/**
  * This module deliberately has no production registration or authentication
  * authority. It exports only evaluator-simulated descriptors for inspectable
  * fixed traces. A production direct executor must be introduced behind an
@@ -78,7 +27,6 @@ export interface CapturedDirectTool {
  * provider request. The handler functions never leave the capture boundary.
  */
 export interface CapturedDirectToolUniverse {
-  readonly version: typeof FIXED_TRACE_EVALUATOR_NEUTRAL_TOOL_UNIVERSE_VERSION;
   readonly source: 'evaluator_owned_production_definitions_simulated_receipts';
   readonly policy: 'shared_deterministic_surface_policy';
   /**
@@ -88,8 +36,6 @@ export interface CapturedDirectToolUniverse {
    */
   readonly requestThreadFactsProvenance: 'unavailable_in_evaluator';
   readonly selectedToolSets: readonly string[];
-  /** Explicit evaluator-only extension; this is not a production tool-set registration. */
-  readonly evaluatorOnlyToolNames: readonly (typeof EVALUATOR_ONLY_SMOKE_TOOL_NAMES)[number][];
   readonly toolNames: readonly string[];
   readonly toolNamesSha256: string;
   readonly toolSchemaSha256: string;
@@ -151,41 +97,23 @@ function definitionSha256(definition: AddieTool): string {
   return sha256({
     name: definition.name,
     description: definition.description,
-    usageHints: definition.usage_hints ?? null,
-    replaySafety: definition.replaySafety ?? null,
     inputSchema: definition.input_schema,
   });
 }
 
-/**
- * The shared safe fallback definitions come from their existing registries.
- * The smoke descriptors use reviewed plain-data production wire-schema
- * snapshots because importing their registry modules would load production
- * dependencies. No production handler is ever imported or registered.
- */
+/** The fixed fallback's 13 custom definitions are taken only from production registries. */
 function fixedTraceProductionDefinitions(): AddieTool[] {
   const byName = new Map<string, AddieTool>();
-  for (const definition of [
-    ...KNOWLEDGE_TOOLS,
-    ...SCHEMA_TOOLS,
-    ...URL_TOOLS,
-    ...EVALUATOR_ONLY_SMOKE_TOOL_DEFINITIONS,
-  ]) {
+  for (const definition of [...KNOWLEDGE_TOOLS, ...SCHEMA_TOOLS, ...URL_TOOLS]) {
     if (byName.has(definition.name)) throw new Error(`Duplicate production direct tool definition: ${definition.name}`);
     byName.set(definition.name, definition);
   }
-  const fallback = getSafeReadOnlyFallbackTools().flatMap((name) => {
+  return getSafeReadOnlyFallbackTools().flatMap((name) => {
     if (name === 'web_search') return [];
     const definition = byName.get(name);
     if (!definition) throw new Error(`Missing production direct tool definition: ${name}`);
     return [definition];
   });
-  const smokeDefinitions = EVALUATOR_ONLY_SMOKE_TOOL_NAMES.map((name) => {
-    const definition = byName.get(name);
-    if (!definition) throw new Error(`Missing evaluator smoke tool definition: ${name}`);
-    return definition;
-  });
-  return [...fallback, ...smokeDefinitions];
 }
 
 /**
@@ -234,12 +162,10 @@ function captureFixedTraceEvaluatorToolUniverse(): CapturedDirectToolUniverse {
   });
   const toolNames = tools.map((tool) => tool.definition.name);
   return deepFreeze({
-    version: FIXED_TRACE_EVALUATOR_NEUTRAL_TOOL_UNIVERSE_VERSION,
     source: 'evaluator_owned_production_definitions_simulated_receipts' as const,
     policy: 'shared_deterministic_surface_policy' as const,
     requestThreadFactsProvenance: 'unavailable_in_evaluator' as const,
     selectedToolSets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
-    evaluatorOnlyToolNames: [...EVALUATOR_ONLY_SMOKE_TOOL_NAMES],
     toolNames,
     toolNamesSha256: sha256(toolNames),
     toolSchemaSha256: sha256(tools.map((tool) => ({ name: tool.definition.name, definitionSha256: tool.definitionSha256 }))),

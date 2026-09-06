@@ -1923,9 +1923,7 @@ describe('fixed trace artifact runner', () => {
       expect(router.respondCalls).toHaveLength(0);
       expect(generation.respondCalls).toHaveLength(0);
     }
-    expect(thirteenEntryMockContract.bindings).toHaveLength(
-      FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.length,
-    );
+    expect(thirteenEntryMockContract.bindings).toHaveLength(13);
     expect(mockHandler).not.toHaveBeenCalled();
   });
 

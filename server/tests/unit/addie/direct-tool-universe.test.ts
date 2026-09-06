@@ -1,26 +1,22 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createSyntheticDirectToolReceiptHandlers,
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
-  FIXED_TRACE_EVALUATOR_NEUTRAL_TOOL_UNIVERSE_VERSION,
   type CapturedDirectToolUniverse,
 } from '../../../src/addie/direct-tool-universe.js';
 import { getSafeReadOnlyFallbackTools } from '../../../src/addie/tool-sets.js';
 
 describe('direct tool-universe evaluator descriptors', () => {
-  it('exposes the 13-definition fallback plus two evaluator-only smoke descriptors as simulated receipts', () => {
+  it('exposes the complete 13-definition fallback only as evaluator-simulated receipts', () => {
     const expectedCustomNames = getSafeReadOnlyFallbackTools().filter((name) => name !== 'web_search');
 
     expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE).toMatchObject({
       source: 'evaluator_owned_production_definitions_simulated_receipts',
-      version: FIXED_TRACE_EVALUATOR_NEUTRAL_TOOL_UNIVERSE_VERSION,
       requestThreadFactsProvenance: 'unavailable_in_evaluator',
       authenticatedBindingContract: 'unavailable_in_evaluator',
-      toolNames: [...expectedCustomNames, 'list_paying_members', 'confirm_send_invoice'],
-      evaluatorOnlyToolNames: ['list_paying_members', 'confirm_send_invoice'],
+      toolNames: expectedCustomNames,
     });
-    expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools).toHaveLength(15);
+    expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools).toHaveLength(13);
     expect(FIXED_TRACE_DIRECT_TOOL_UNIVERSE.tools.every((tool) => (
       tool.handlerProvenance === 'evaluator_simulated_receipt'
     ))).toBe(true);
@@ -59,11 +55,5 @@ describe('direct tool-universe evaluator descriptors', () => {
       receiptHandlerIdentitySha256: first.handlerIdentitySha256,
     });
     expect(mockHandler).not.toHaveBeenCalled();
-  });
-
-  it('does not import the production admin or billing handler registries for smoke descriptors', () => {
-    const source = readFileSync(new URL('../../../src/addie/direct-tool-universe.ts', import.meta.url), 'utf8');
-    expect(source).not.toContain("./mcp/admin-tools.js");
-    expect(source).not.toContain("./mcp/billing-tools.js");
   });
 });
