@@ -99,6 +99,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     });
     expect(outcome.mode).toBe('conditional_mcnemar_zero_margin');
     expect(outcome.diagnostic.pValue.lower).toEqual(conditionalMcNemarPValue({ n: 8, x: 2, t: 3 }));
+    expect(() => nullBoundarySizeEnvelope(2, ZERO, alpha)).toThrow(/Zero margin/);
   });
 
   it('handles zero discordance and rejects malformed/infeasible inputs', async () => {
@@ -325,5 +326,25 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(MATCHED_PAIR_NI_NO_ROOT_PROMOTION_FIELD).toBe(true);
     expect(denyMatchedPairNiPromotion(diagnostic)).toBe(MATCHED_PAIR_NI_ADMISSION);
     expect(denyMatchedPairNiPromotion(diagnostic).admitted).toBe(false);
+  });
+
+  it('rehydrates worker evidence into immutable canonical diagnostic values', async () => {
+    const diagnostic = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin, alpha });
+    expect(Object.isFrozen(diagnostic)).toBe(true);
+    expect(Object.isFrozen(diagnostic.admission)).toBe(true);
+    expect(Object.isFrozen(diagnostic.diagnostic)).toBe(true);
+    expect(Object.isFrozen(diagnostic.diagnostic.pValue)).toBe(true);
+    expect(Object.isFrozen(diagnostic.diagnostic.certificate)).toBe(true);
+    expect(Object.isFrozen(diagnostic.diagnostic.certificate?.safeCeiling)).toBe(true);
+    expect(diagnostic.admission).toBe(MATCHED_PAIR_NI_ADMISSION);
+    expect(() => { (diagnostic.admission as { admitted: boolean }).admitted = true; }).toThrow();
+    expect(() => { (diagnostic.diagnostic as { statisticalRejectNull: boolean }).statisticalRejectNull = false; }).toThrow();
+    expect(() => { (diagnostic.diagnostic.pValue as { lower: typeof ZERO }).lower = ZERO; }).toThrow();
+    expect(() => { (diagnostic.diagnostic.certificate as { stationaryPointCount: number }).stationaryPointCount = 0; }).toThrow();
+    const size = await nullBoundarySizeEnvelope(2, margin, alpha);
+    expect(Object.isFrozen(size)).toBe(true);
+    expect(Object.isFrozen(size.lower)).toBe(true);
+    expect(Object.isFrozen(size.upper)).toBe(true);
+    expect(Object.isFrozen(size.indeterminateStates)).toBe(true);
   });
 });
