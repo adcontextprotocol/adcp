@@ -10,6 +10,7 @@
  */
 import { createHash } from "node:crypto";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
+import { FIXED_TRACE_EXPERIMENTAL_DESIGN, fixedTraceExperimentalDesignFingerprint } from "./fixed-trace-experimental-design.js";
 
 export const FIXED_TRACE_HUMAN_PANEL_VERSION =
   "addie-fixed-trace-human-panel-control-plane-v1" as const;
@@ -83,7 +84,7 @@ export const FIXED_TRACE_HUMAN_PANEL_CONTRACTS = Object.freeze({
   raterAssignment: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "assignmentFingerprint", "packetFingerprint", "raterPseudonym", "role"]), role: "primary" }),
   rubricVersion: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "rubricFingerprint", "qualityValues", "safetyValues", "toolCorrectnessValues", "rules"]), endpoint: "two_blinded_human_primary_quality" }),
   independentRaterResponse: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "responseNonce", "opaqueItemId", "packetFingerprint", "assignmentFingerprint", "rubricFingerprint", "raterPseudonym", "outputCondition", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"]), access: "one_rater_only" }),
-  adjudicationPacket: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "packetFingerprint", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "prompt", "candidateOutput", "scoringContext", "outputCondition"]), forbidden: Object.freeze(["raterPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "provider", "model", "architecture", "cell", "config", "latency", "cost"]) }),
+  adjudicationPacket: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "packetFingerprint", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "prompt", "candidateOutput", "scoringContext", "safetyApplicable", "toolCorrectnessApplicable", "outputCondition"]), forbidden: Object.freeze(["raterPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "provider", "model", "architecture", "cell", "config", "latency", "cost"]) }),
   adjudicationResponse: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "adjudicatorPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"]), source: "locked_disagreement_or_missingness_only" }),
   custodyReceipt: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "receiptFingerprint", "custodianPseudonym", "packFingerprint", "restrictedMapFingerprint", "signature", "externalRecordReference"]), warning: "shape_only_no_local_custody_claim" }),
   humanCostLedger: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "entries"]), ceilingCents: FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, payment: "not_implemented" }),
@@ -129,19 +130,46 @@ export const FIXED_TRACE_HUMAN_PANEL_RUBRIC: FixedTraceHumanPanelRubric = (() =>
 
 export interface FixedTraceDiagnosticOutput {
   readonly caseOrdinal: number;
+  readonly caseSpecId: string;
+  readonly stratum: "local_terminal_eligible" | "matched_hybrid_fallback_near_miss" | "routed_tool_or_safety";
   readonly caseFingerprint: Sha256;
+  /** Derived from immutable provenance and the committed rater-safe payload. */
   readonly outputFingerprint: Sha256;
   readonly configFingerprint: Sha256;
   readonly arm: ArchitectureArm;
   readonly repetition: number;
   /** The rater-safe payload is the only candidate content copied to a packet. */
-  readonly raterPayload: { readonly prompt: string; readonly candidateOutput: string | null; readonly scoringContext: string };
+  readonly raterPayload: { readonly prompt: string; readonly candidateOutput: string | null; readonly scoringContext: string; readonly safetyApplicable: boolean; readonly toolCorrectnessApplicable: boolean };
+}
+export interface FixedTraceEvaluatorVerifier {
+  /** Injected evaluator capability; repository code cannot manufacture it. */
+  readonly verify: (artifact: Readonly<{ kind: "diagnostic_manifest" | "schedule" | "unblinding"; fingerprint: Sha256; signature: string }>) => boolean;
+}
+export interface FixedTraceOneUseNonceAuthority {
+  /** External durable replay store. Returning false rejects the nonce. */
+  readonly consumeOnce: (binding: Readonly<{ nonceCommitment: Sha256; manifestFingerprint: Sha256; scheduleFingerprint: Sha256 }>) => boolean;
+}
+export interface FixedTraceCustodiedDiagnosticManifest {
+  readonly designFingerprint: Sha256;
+  readonly outputs: readonly FixedTraceDiagnosticOutput[];
+  readonly forbiddenMarkers: readonly string[];
+  readonly manifestFingerprint: Sha256;
+  readonly signature: string;
+}
+export interface FixedTraceCommittedSchedule {
+  readonly manifestFingerprint: Sha256;
+  readonly nonceCommitment: Sha256;
+  readonly entries: readonly { readonly raterPseudonym: string; readonly opaqueItemId: string; readonly outputFingerprint: Sha256; readonly position: number }[];
+  readonly scheduleFingerprint: Sha256;
+  readonly signature: string;
 }
 export interface FixedTraceBlindedItem {
   readonly opaqueItemId: string;
   readonly prompt: string;
   readonly candidateOutput: string | null;
   readonly scoringContext: string;
+  readonly safetyApplicable: boolean;
+  readonly toolCorrectnessApplicable: boolean;
   readonly outputCondition: "complete" | "missing";
 }
 export interface FixedTraceBlindedScoringPacket {
@@ -172,17 +200,36 @@ export interface FixedTraceRaterAssignment {
 function outputBody(output: FixedTraceDiagnosticOutput): Record<string, unknown> {
   const snapshot = snapshotFixedTraceJson(output, "human-panel diagnostic output");
   const item = record(snapshot, "diagnostic output");
-  exactKeys(item, ["caseOrdinal", "caseFingerprint", "outputFingerprint", "configFingerprint", "arm", "repetition", "raterPayload"], "diagnostic output");
+  exactKeys(item, ["caseOrdinal", "caseSpecId", "stratum", "caseFingerprint", "outputFingerprint", "configFingerprint", "arm", "repetition", "raterPayload"], "diagnostic output");
   assert(integer(item.caseOrdinal, "case ordinal") >= 1 && integer(item.caseOrdinal, "case ordinal") <= FIXED_TRACE_HUMAN_PANEL_CASES, "case ordinal is outside 1..24");
   for (const field of ["caseFingerprint", "outputFingerprint", "configFingerprint"]) assert(isSha256(item[field]), `${field} must be sha256`);
   assert(FIXED_TRACE_HUMAN_PANEL_ARMS.includes(item.arm as ArchitectureArm), "diagnostic output arm is invalid");
+  assert(item.stratum === "local_terminal_eligible" || item.stratum === "matched_hybrid_fallback_near_miss" || item.stratum === "routed_tool_or_safety", "diagnostic output stratum is invalid"); text(item.caseSpecId, "diagnostic case specification ID");
   assert(integer(item.repetition, "repetition") >= 1 && integer(item.repetition, "repetition") <= FIXED_TRACE_HUMAN_PANEL_REPETITIONS, "repetition is outside 1..3");
   const payload = record(item.raterPayload, "rater payload");
-  exactKeys(payload, ["prompt", "candidateOutput", "scoringContext"], "rater payload");
+  exactKeys(payload, ["prompt", "candidateOutput", "scoringContext", "safetyApplicable", "toolCorrectnessApplicable"], "rater payload");
   text(payload.prompt, "rater prompt"); text(payload.scoringContext, "rater scoring context");
   assert(payload.candidateOutput === null || typeof payload.candidateOutput === "string", "candidate output must be string or null");
+  assert(typeof payload.safetyApplicable === "boolean" && typeof payload.toolCorrectnessApplicable === "boolean", "predeclared applicability is invalid");
   noTreatmentFields(payload, "rater payload");
   return item;
+}
+
+function outputFingerprintBody(item: Record<string, unknown>): unknown {
+  return { domain: "addie-fixed-trace-human-panel-output-v2", caseOrdinal: item.caseOrdinal, caseSpecId: item.caseSpecId, stratum: item.stratum, caseFingerprint: item.caseFingerprint, configFingerprint: item.configFingerprint, arm: item.arm, repetition: item.repetition, raterPayload: item.raterPayload };
+}
+function expectedCaseSpecs(): Map<string, string> {
+  const specs = FIXED_TRACE_EXPERIMENTAL_DESIGN.hybridArchitectureDiagnostic.caseSpecs;
+  return new Map([
+    ...specs.localTerminal.map((id) => [id, "local_terminal_eligible"] as const),
+    ...specs.matchedNearMiss.map((id) => [id, "matched_hybrid_fallback_near_miss"] as const),
+    ...specs.routedSafety.map((id) => [id, "routed_tool_or_safety"] as const),
+  ]);
+}
+function assertRaterSafePayload(payload: Record<string, unknown>, forbiddenMarkers: readonly string[]): void {
+  const joined = [payload.prompt, payload.candidateOutput, payload.scoringContext].filter((value): value is string => typeof value === "string").join("\n").toLowerCase();
+  assert(!/\b(provider|model|architecture|direct[ -]?generation|two[ -]?stage|router|hybrid|latency|cost|cell|config)\b/i.test(joined), "rater payload contains treatment-bearing text");
+  for (const marker of forbiddenMarkers) { text(marker, "case-specific forbidden marker"); assert(!joined.includes(marker.toLowerCase()), "rater payload contains a case-specific forbidden marker"); }
 }
 
 /** Exact canonical source ordering prevents arm/order substitutions before blinding. */
@@ -190,6 +237,7 @@ export function validateFixedTraceHumanPanelCohort(outputs: readonly FixedTraceD
   const snapshot = snapshotFixedTraceJson(outputs, "human-panel diagnostic cohort") as unknown[];
   assert(snapshot.length === FIXED_TRACE_HUMAN_PANEL_OUTPUTS, "cohort must contain exactly 216 outputs");
   const seenOutputs = new Set<string>(); const caseFingerprints = new Map<number, string>();
+  const specs = expectedCaseSpecs(); const seenSpecs = new Set<string>();
   const armCounts = new Map<ArchitectureArm, number>(FIXED_TRACE_HUMAN_PANEL_ARMS.map((arm) => [arm, 0]));
   snapshot.forEach((value, index) => {
     const item = outputBody(value as FixedTraceDiagnosticOutput);
@@ -202,9 +250,12 @@ export function validateFixedTraceHumanPanelCohort(outputs: readonly FixedTraceD
     const knownCase = caseFingerprints.get(item.caseOrdinal as number);
     assert(!knownCase || knownCase === item.caseFingerprint, "case fingerprint changes within a case");
     caseFingerprints.set(item.caseOrdinal as number, item.caseFingerprint as string);
+    assert(specs.get(item.caseSpecId as string) === item.stratum, "cohort case specification/stratum does not match the predeclared design"); seenSpecs.add(item.caseSpecId as string);
+    assert(item.outputFingerprint === sha256(outputFingerprintBody(item)), "output fingerprint is not derived from immutable payload and provenance");
     armCounts.set(item.arm as ArchitectureArm, armCounts.get(item.arm as ArchitectureArm)! + 1);
   });
-  assert(caseFingerprints.size === FIXED_TRACE_HUMAN_PANEL_CASES, "cohort must contain 24 immutable cases");
+  assert(caseFingerprints.size === FIXED_TRACE_HUMAN_PANEL_CASES && new Set(caseFingerprints.values()).size === FIXED_TRACE_HUMAN_PANEL_CASES, "cohort must contain 24 unique immutable case fingerprints");
+  assert(seenSpecs.size === 24 && [...specs.keys()].every((id) => seenSpecs.has(id)), "cohort must use every predeclared case specification exactly once");
   for (const arm of FIXED_TRACE_HUMAN_PANEL_ARMS) assert(armCounts.get(arm) === 72, `cohort is not balanced for ${arm}`);
   return sha256(snapshot);
 }
@@ -221,10 +272,36 @@ function raterOrder(nonce: string, rater: string, output: FixedTraceDiagnosticOu
   return sha256({ domain: "addie-fixed-trace-human-panel-rater-order-v1", nonce, rater, outputFingerprint: output.outputFingerprint });
 }
 export interface FixedTraceHumanPanelBuildInput {
+  /** 256-bit secret whose externally committed digest is consumed once. */
   readonly evaluatorControlledNonce: string;
-  readonly primaryRaterPseudonyms: readonly [string, string];
-  readonly outputs: readonly FixedTraceDiagnosticOutput[];
+  readonly custodiedDiagnosticManifest: FixedTraceCustodiedDiagnosticManifest;
+  readonly committedSchedule: FixedTraceCommittedSchedule;
+  readonly verifier: FixedTraceEvaluatorVerifier;
+  readonly nonceAuthority: FixedTraceOneUseNonceAuthority;
   readonly rubric?: FixedTraceHumanPanelRubric;
+}
+function nonceCommitment(nonce: string): Sha256 { return sha256({ domain: "addie-fixed-trace-human-panel-nonce-v1", nonce }); }
+function verifyManifest(input: FixedTraceHumanPanelBuildInput): readonly FixedTraceDiagnosticOutput[] {
+  const manifest = record(snapshotFixedTraceJson(input.custodiedDiagnosticManifest, "custodied diagnostic manifest"), "custodied diagnostic manifest");
+  exactKeys(manifest, ["designFingerprint", "outputs", "forbiddenMarkers", "manifestFingerprint", "signature"], "custodied diagnostic manifest");
+  assert(manifest.designFingerprint === fixedTraceExperimentalDesignFingerprint(), "custodied manifest design fingerprint mismatch");
+  const { manifestFingerprint, signature, ...body } = manifest; assert(isSha256(manifestFingerprint) && manifestFingerprint === sha256(body), "custodied manifest fingerprint mismatch"); const manifestSignature = text(signature, "custodied manifest signature");
+  assert(input.verifier && typeof input.verifier.verify === "function" && input.verifier.verify({ kind: "diagnostic_manifest", fingerprint: manifestFingerprint as Sha256, signature: manifestSignature }), "custodied manifest lacks an accepted external evaluator signature");
+  assert(Array.isArray(manifest.forbiddenMarkers), "custodied manifest markers are invalid"); assert(Array.isArray(manifest.outputs), "custodied manifest outputs are invalid");
+  for (const output of manifest.outputs) assertRaterSafePayload(record(record(output, "custodied output").raterPayload, "custodied rater payload"), manifest.forbiddenMarkers as string[]);
+  validateFixedTraceHumanPanelCohort(manifest.outputs as FixedTraceDiagnosticOutput[]);
+  return manifest.outputs as FixedTraceDiagnosticOutput[];
+}
+function verifySchedule(input: FixedTraceHumanPanelBuildInput, outputs: readonly FixedTraceDiagnosticOutput[]): FixedTraceCommittedSchedule {
+  const schedule = record(snapshotFixedTraceJson(input.committedSchedule, "committed schedule"), "committed schedule"); exactKeys(schedule, ["manifestFingerprint", "nonceCommitment", "entries", "scheduleFingerprint", "signature"], "committed schedule");
+  assert(schedule.manifestFingerprint === input.custodiedDiagnosticManifest.manifestFingerprint && schedule.nonceCommitment === nonceCommitment(input.evaluatorControlledNonce), "schedule is not bound to the manifest and cryptographic nonce commitment");
+  const { scheduleFingerprint, signature, ...body } = schedule; assert(isSha256(scheduleFingerprint) && scheduleFingerprint === sha256(body), "committed schedule fingerprint mismatch"); const scheduleSignature = text(signature, "committed schedule signature"); assert(input.verifier.verify({ kind: "schedule", fingerprint: scheduleFingerprint as Sha256, signature: scheduleSignature }), "committed schedule lacks an accepted external evaluator signature");
+  assert(Array.isArray(schedule.entries) && schedule.entries.length === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS, "committed schedule must have exactly 432 entries");
+  const ids = new Set<string>(); const byRater = new Map<string, Set<string>>(); const outputIds = new Set(outputs.map((output) => output.outputFingerprint));
+  for (const entry of schedule.entries) { const item = record(entry, "committed schedule entry"); exactKeys(item, ["raterPseudonym", "opaqueItemId", "outputFingerprint", "position"], "committed schedule entry"); const rater = text(item.raterPseudonym, "schedule rater"); const id = text(item.opaqueItemId, "schedule opaque ID"); assert(!ids.has(id), "committed schedule repeats an opaque ID"); ids.add(id); assert(id === privateItemId(input.evaluatorControlledNonce, rater, text(item.outputFingerprint, "schedule output fingerprint")), "committed schedule opaque mapping is swapped or forged"); assert(outputIds.has(item.outputFingerprint as string) && integer(item.position, "schedule position") >= 1 && integer(item.position, "schedule position") <= 216, "committed schedule binding is invalid"); const group = byRater.get(rater) ?? new Set<string>(); assert(!group.has(item.outputFingerprint as string), "committed schedule repeats an output for a rater"); group.add(item.outputFingerprint as string); byRater.set(rater, group); }
+  assert(byRater.size === 2 && [...byRater.values()].every((items) => items.size === 216), "committed schedule must assign every output to the same two raters");
+  assert(input.nonceAuthority && typeof input.nonceAuthority.consumeOnce === "function" && input.nonceAuthority.consumeOnce({ nonceCommitment: schedule.nonceCommitment as Sha256, manifestFingerprint: schedule.manifestFingerprint as Sha256, scheduleFingerprint: scheduleFingerprint as Sha256 }), "nonce is replayed or no external one-use authority was supplied");
+  return schedule as unknown as FixedTraceCommittedSchedule;
 }
 export interface FixedTraceHumanPanelArtifacts {
   readonly raterPackets: readonly FixedTraceBlindedScoringPacket[];
@@ -251,22 +328,23 @@ export function fixedTraceHumanPanelReadiness(): FixedTraceHumanPanelReadiness {
   });
 }
 export function buildFixedTraceHumanPanelArtifacts(input: FixedTraceHumanPanelBuildInput): FixedTraceHumanPanelArtifacts {
-  const snapshot = snapshotFixedTraceJson(input, "human-panel build input") as FixedTraceHumanPanelBuildInput;
+  const { verifier, nonceAuthority, ...serializable } = input;
+  const snapshot = { ...(snapshotFixedTraceJson(serializable, "human-panel build input") as Omit<FixedTraceHumanPanelBuildInput, "verifier" | "nonceAuthority">), verifier, nonceAuthority } as FixedTraceHumanPanelBuildInput;
   const nonce = text(snapshot.evaluatorControlledNonce, "evaluator-controlled nonce");
-  assert(nonce.length >= 16, "evaluator-controlled nonce must be at least 16 characters");
-  assert(Array.isArray(snapshot.primaryRaterPseudonyms) && snapshot.primaryRaterPseudonyms.length === 2, "exactly two primary rater pseudonyms are required");
-  const raters = snapshot.primaryRaterPseudonyms.map((rater, index) => text(rater, `primary rater ${index}`));
+  assert(/^[a-f0-9]{64}$/.test(nonce), "evaluator-controlled nonce must be a private 256-bit hexadecimal secret");
+  const outputs = verifyManifest(snapshot); const schedule = verifySchedule(snapshot, outputs);
+  const raters = [...new Set(schedule.entries.map((entry) => entry.raterPseudonym))];
   assert(raters[0] !== raters[1], "primary rater identity reuse is forbidden");
   const rubric = snapshot.rubric ?? FIXED_TRACE_HUMAN_PANEL_RUBRIC;
   validateFixedTraceHumanPanelRubric(rubric);
-  const cohortFingerprint = validateFixedTraceHumanPanelCohort(snapshot.outputs);
+  const cohortFingerprint = validateFixedTraceHumanPanelCohort(outputs);
   const packets: FixedTraceBlindedScoringPacket[] = []; const entries: Array<FixedTraceRestrictedUnblindingMap["entries"][number]> = [];
   for (const rater of raters) {
-    const ordered = [...snapshot.outputs].sort((a, b) => raterOrder(nonce, rater, a).localeCompare(raterOrder(nonce, rater, b)));
-    const items = ordered.map((output) => {
-      const opaqueItemId = privateItemId(nonce, rater, output.outputFingerprint);
+    const ordered = schedule.entries.filter((entry) => entry.raterPseudonym === rater).sort((a, b) => a.position - b.position).map((entry) => ({ entry, output: outputs.find((output) => output.outputFingerprint === entry.outputFingerprint)! }));
+    const items = ordered.map(({ entry, output }) => {
+      const opaqueItemId = entry.opaqueItemId;
       entries.push(Object.freeze({ opaqueItemId, outputFingerprint: output.outputFingerprint, caseFingerprint: output.caseFingerprint, configFingerprint: output.configFingerprint, arm: output.arm }));
-      return Object.freeze({ opaqueItemId, prompt: output.raterPayload.prompt, candidateOutput: output.raterPayload.candidateOutput, scoringContext: output.raterPayload.scoringContext, outputCondition: output.raterPayload.candidateOutput === null ? "missing" as const : "complete" as const });
+      return Object.freeze({ opaqueItemId, prompt: output.raterPayload.prompt, candidateOutput: output.raterPayload.candidateOutput, scoringContext: output.raterPayload.scoringContext, safetyApplicable: output.raterPayload.safetyApplicable, toolCorrectnessApplicable: output.raterPayload.toolCorrectnessApplicable, outputCondition: output.raterPayload.candidateOutput === null ? "missing" as const : "complete" as const });
     });
     const body = Object.freeze({ schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("blindedScoringPacket"), raterPseudonym: rater, rubricFingerprint: rubric.rubricFingerprint, items: Object.freeze(items) });
     const packet = Object.freeze({ ...body, packetFingerprint: sha256(packetBody(body)) });
@@ -298,10 +376,11 @@ export function validateFixedTraceBlindedScoringPacket(input: FixedTraceBlindedS
   assert(Array.isArray(value.items) && value.items.length === FIXED_TRACE_HUMAN_PANEL_OUTPUTS, "packet must contain exactly 216 items");
   const ids = new Set<string>();
   for (const item of value.items) {
-    const entry = record(item, "blinded packet item"); exactKeys(entry, ["opaqueItemId", "prompt", "candidateOutput", "scoringContext", "outputCondition"], "blinded packet item");
+    const entry = record(item, "blinded packet item"); exactKeys(entry, ["opaqueItemId", "prompt", "candidateOutput", "scoringContext", "safetyApplicable", "toolCorrectnessApplicable", "outputCondition"], "blinded packet item");
     const id = text(entry.opaqueItemId, "opaque item ID"); assert(!ids.has(id), "packet contains duplicate opaque item ID"); ids.add(id);
     text(entry.prompt, "packet prompt"); text(entry.scoringContext, "packet scoring context"); assert(entry.candidateOutput === null || typeof entry.candidateOutput === "string", "packet candidate output is invalid");
     assert(entry.outputCondition === "complete" || entry.outputCondition === "missing", "packet output condition is invalid"); noTreatmentFields(entry, "blinded scoring packet");
+    assert(typeof entry.safetyApplicable === "boolean" && typeof entry.toolCorrectnessApplicable === "boolean", "packet applicability is invalid");
   }
 }
 export function validateFixedTraceRestrictedUnblindingMap(input: FixedTraceRestrictedUnblindingMap, cohortFingerprint: Sha256): void {
@@ -324,7 +403,7 @@ export interface FixedTraceAdjudicationRequest {
 }
 export interface FixedTraceAdjudicationPacket {
   readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly packetFingerprint: Sha256; readonly opaqueItemId: string; readonly adjudicationRequestFingerprint: Sha256; readonly rubricFingerprint: Sha256;
-  readonly prompt: string; readonly candidateOutput: string | null; readonly scoringContext: string; readonly outputCondition: "complete" | "missing";
+  readonly prompt: string; readonly candidateOutput: string | null; readonly scoringContext: string; readonly safetyApplicable: boolean; readonly toolCorrectnessApplicable: boolean; readonly outputCondition: "complete" | "missing";
 }
 export interface FixedTraceAdjudicationResponse {
   readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly responseFingerprint: Sha256; readonly responseId: string; readonly opaqueItemId: string; readonly adjudicationRequestFingerprint: Sha256; readonly rubricFingerprint: Sha256; readonly adjudicatorPseudonym: string;
@@ -334,11 +413,11 @@ export function createFixedTraceAdjudicationPacket(request: FixedTraceAdjudicati
   assert(packets.length === 2, "adjudication packet requires exactly two primary packets");
   const source = packets.flatMap((packet) => packet.items).find((item) => item.opaqueItemId === request.opaqueItemId);
   assert(source, "locked adjudication request does not bind a blind packet item");
-  const body = Object.freeze({ schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("adjudicationPacket"), opaqueItemId: `adj_${sha256({ domain: "addie-fixed-trace-adjudication-item-v1", request: request.adjudicationRequestFingerprint }).slice(0, 24)}`, adjudicationRequestFingerprint: request.adjudicationRequestFingerprint, rubricFingerprint: request.rubricFingerprint, prompt: source.prompt, candidateOutput: source.candidateOutput, scoringContext: source.scoringContext, outputCondition: source.outputCondition });
+  const body = Object.freeze({ schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("adjudicationPacket"), opaqueItemId: `adj_${sha256({ domain: "addie-fixed-trace-adjudication-item-v1", request: request.adjudicationRequestFingerprint }).slice(0, 24)}`, adjudicationRequestFingerprint: request.adjudicationRequestFingerprint, rubricFingerprint: request.rubricFingerprint, prompt: source.prompt, candidateOutput: source.candidateOutput, scoringContext: source.scoringContext, safetyApplicable: source.safetyApplicable, toolCorrectnessApplicable: source.toolCorrectnessApplicable, outputCondition: source.outputCondition });
   const packet = Object.freeze({ ...body, packetFingerprint: sha256(body) }); validateFixedTraceAdjudicationPacket(packet); return packet;
 }
 export function validateFixedTraceAdjudicationPacket(input: FixedTraceAdjudicationPacket): void {
-  const value = record(snapshotFixedTraceJson(input, "adjudication packet"), "adjudication packet"); exactKeys(value, ["schemaVersion", "contractFingerprint", "packetFingerprint", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "prompt", "candidateOutput", "scoringContext", "outputCondition"], "adjudication packet");
+  const value = record(snapshotFixedTraceJson(input, "adjudication packet"), "adjudication packet"); exactKeys(value, ["schemaVersion", "contractFingerprint", "packetFingerprint", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "prompt", "candidateOutput", "scoringContext", "safetyApplicable", "toolCorrectnessApplicable", "outputCondition"], "adjudication packet");
   assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("adjudicationPacket"), "adjudication packet schema is stale"); const { packetFingerprint, ...body } = value; assert(isSha256(packetFingerprint) && packetFingerprint === sha256(body), "adjudication packet fingerprint mismatch");
   text(value.opaqueItemId, "adjudication opaque item ID"); assert(isSha256(value.adjudicationRequestFingerprint) && value.rubricFingerprint === FIXED_TRACE_HUMAN_PANEL_RUBRIC.rubricFingerprint, "adjudication packet binding mismatch"); text(value.prompt, "adjudication prompt"); text(value.scoringContext, "adjudication scoring context"); assert(value.candidateOutput === null || typeof value.candidateOutput === "string", "adjudication candidate output is invalid"); assert(value.outputCondition === "complete" || value.outputCondition === "missing", "adjudication output condition is invalid"); noTreatmentFields(value, "adjudication packet");
 }
@@ -358,7 +437,10 @@ export function validateFixedTraceIndependentRaterResponse(input: FixedTraceInde
   exactKeys(value, ["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "responseNonce", "opaqueItemId", "packetFingerprint", "assignmentFingerprint", "rubricFingerprint", "raterPseudonym", "outputCondition", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"], "independent rater response");
   assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("independentRaterResponse"), "primary response schema is stale"); const { responseFingerprint, ...body } = value; assert(isSha256(responseFingerprint) && responseFingerprint === sha256(body), "primary response fingerprint mismatch");
   text(value.responseId, "response ID"); text(value.responseNonce, "response nonce"); assert(value.packetFingerprint === packet.packetFingerprint && value.assignmentFingerprint === assignment.assignmentFingerprint && value.rubricFingerprint === packet.rubricFingerprint && value.raterPseudonym === assignment.raterPseudonym && assignment.packetFingerprint === packet.packetFingerprint, "primary response binding mismatch");
-  assert(packet.items.some((item) => item.opaqueItemId === value.opaqueItemId), "primary response item is not assigned to rater"); validateRatingValues(value, true);
+  const item = packet.items.find((entry) => entry.opaqueItemId === value.opaqueItemId); assert(item, "primary response item is not assigned to rater"); validateRatingValues(value, true);
+  assert(item.safetyApplicable ? value.safety !== "not_applicable" : value.safety === "not_applicable", "safety applicability must match the predeclared case");
+  assert(item.toolCorrectnessApplicable ? value.toolCorrectness !== "not_applicable" : value.toolCorrectness === "not_applicable", "tool correctness applicability must match the predeclared case");
+  assert(value.quality !== "pass" || item.safetyApplicable || item.toolCorrectnessApplicable, "a pass cannot be unqualified when both decision dimensions are not applicable");
 }
 export function createFixedTraceAdjudicationRequests(responses: readonly FixedTraceIndependentRaterResponse[], packets: readonly FixedTraceBlindedScoringPacket[], assignments: readonly FixedTraceRaterAssignment[], restrictedMap: FixedTraceRestrictedUnblindingMap): readonly FixedTraceAdjudicationRequest[] {
   const validated = validatePrimaryCoverage(responses, packets, assignments, restrictedMap, false);
@@ -367,7 +449,7 @@ export function createFixedTraceAdjudicationRequests(responses: readonly FixedTr
     const valid = pair.filter((entry): entry is FixedTraceIndependentRaterResponse => entry !== null);
     const reason = valid.length !== 2 || valid.some((entry) => entry.outputCondition !== "complete" || entry.quality === "abstain")
       ? "primary_missing_or_invalid" as const
-      : valid[0]!.quality !== valid[1]!.quality ? "quality_disagreement" as const : null;
+      : valid[0]!.quality !== valid[1]!.quality || valid[0]!.safety !== valid[1]!.safety || valid[0]!.toolCorrectness !== valid[1]!.toolCorrectness || valid[0]!.outputCondition !== valid[1]!.outputCondition ? "quality_disagreement" as const : null;
     if (!reason) continue;
     const opaqueItemId = valid[0]?.opaqueItemId ?? validated.opaqueByOutput.get(outputFingerprint)![0]!;
     const body = { opaqueItemId, rubricFingerprint: FIXED_TRACE_HUMAN_PANEL_RUBRIC.rubricFingerprint, reason };
@@ -421,12 +503,12 @@ function validatePrimaryCoverage(responses: readonly FixedTraceIndependentRaterR
 
 export interface FixedTraceCustodyReceipt { readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly receiptFingerprint: Sha256; readonly custodianPseudonym: string; readonly packFingerprint: Sha256; readonly restrictedMapFingerprint: Sha256; readonly signature: string; readonly externalRecordReference: string; }
 export interface FixedTraceCalibrationReceipt { readonly calibrationFingerprint: Sha256; readonly panelFingerprint: Sha256; readonly externalRecordReference: string; readonly signature: string; }
-export interface FixedTraceHumanCostLedgerEntry { readonly entryId: string; readonly kind: "primary" | "adjudication"; readonly quotedCents: number | null; readonly committedCents: number | null; readonly actualCents: number | null; }
+export interface FixedTraceHumanCostLedgerEntry { readonly entryId: string; readonly kind: "primary" | "adjudication"; readonly assignmentFingerprint: Sha256 | null; readonly responseFingerprint: Sha256 | null; readonly adjudicationResponseFingerprint: Sha256 | null; readonly rateAuthorizationFingerprint: Sha256; readonly quotedCents: number; readonly committedCents: number | null; readonly actualCents: number | null; }
 export interface FixedTraceHumanCostLedger { readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly ledgerFingerprint: Sha256; readonly ceilingCents: typeof FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS; readonly entries: readonly FixedTraceHumanCostLedgerEntry[]; }
 export function validateFixedTraceHumanCostLedger(input: FixedTraceHumanCostLedger): number {
   const value = record(snapshotFixedTraceJson(input, "human cost ledger"), "human cost ledger"); exactKeys(value, ["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "entries"], "human cost ledger"); assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("humanCostLedger") && value.ceilingCents === FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "cost ledger schema or ceiling is invalid"); const { ledgerFingerprint, ...body } = value; assert(isSha256(ledgerFingerprint) && ledgerFingerprint === sha256(body), "cost ledger fingerprint mismatch"); assert(Array.isArray(value.entries), "cost ledger entries are invalid");
   const ids = new Set<string>(); let total = 0;
-  for (const entry of value.entries) { const item = record(entry, "cost ledger entry"); exactKeys(item, ["entryId", "kind", "quotedCents", "committedCents", "actualCents"], "cost ledger entry"); const id = text(item.entryId, "cost ledger entry ID"); assert(!ids.has(id), "duplicate cost ledger entry"); ids.add(id); assert(item.kind === "primary" || item.kind === "adjudication", "cost ledger kind is invalid"); const amounts = [item.quotedCents, item.committedCents, item.actualCents]; assert(amounts.some((amount) => amount !== null), "cost ledger entry must retain quote, commitment, or actual amount"); const normalized = amounts.map((amount) => amount === null ? 0 : integer(amount, "cost ledger amount")); total += Math.max(...normalized); }
+  for (const entry of value.entries) { const item = record(entry, "cost ledger entry"); exactKeys(item, ["entryId", "kind", "assignmentFingerprint", "responseFingerprint", "adjudicationResponseFingerprint", "rateAuthorizationFingerprint", "quotedCents", "committedCents", "actualCents"], "cost ledger entry"); const id = text(item.entryId, "cost ledger entry ID"); assert(!ids.has(id), "duplicate cost ledger entry"); ids.add(id); assert(item.kind === "primary" || item.kind === "adjudication", "cost ledger kind is invalid"); assert(isSha256(item.rateAuthorizationFingerprint), "cost ledger lacks an externally authorized rate fingerprint"); const quote = integer(item.quotedCents, "cost ledger quote"); assert(quote > 0, "zero-dollar or unquoted ledger row cannot close an assignment"); const commitment = item.committedCents === null ? 0 : integer(item.committedCents, "cost ledger commitment"); assert(commitment === 0 || commitment >= quote, "commitment cannot understate the immutable quote"); const actual = item.actualCents === null ? 0 : integer(item.actualCents, "cost ledger actual"); assert(item.kind === "primary" ? isSha256(item.assignmentFingerprint) && isSha256(item.responseFingerprint) && item.adjudicationResponseFingerprint === null : item.assignmentFingerprint === null && item.responseFingerprint === null && isSha256(item.adjudicationResponseFingerprint), "cost ledger row has invalid assignment/response lifecycle bindings"); total += Math.max(quote, commitment, actual); }
   assert(total <= FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "human cost admission/reservation exceeds $650 ceiling"); return total;
 }
 export function reserveFixedTraceHumanCost(ledger: FixedTraceHumanCostLedger, entry: FixedTraceHumanCostLedgerEntry): FixedTraceHumanCostLedger {
@@ -504,6 +586,10 @@ export function validateFixedTraceHumanPanelWorkflow(input: FixedTraceHumanPanel
   const cost = validateFixedTraceHumanCostLedger(value.humanCostLedger as FixedTraceHumanCostLedger);
   const primaryEntries = (value.humanCostLedger as FixedTraceHumanCostLedger).entries.filter((entry) => entry.kind === "primary").length; const adjudicationEntries = (value.humanCostLedger as FixedTraceHumanCostLedger).entries.filter((entry) => entry.kind === "adjudication").length;
   assert(primaryEntries === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS && adjudicationEntries === requests.length, "human cost ledger coverage does not match the locked assignment/adjudication plan");
+  const primaryResponseFingerprints = new Set((value.primaryResponses as FixedTraceIndependentRaterResponse[]).map((response) => response.responseFingerprint));
+  const primaryAssignmentFingerprints = new Set(assignments.map((assignment) => assignment.assignmentFingerprint));
+  const adjudicationFingerprints = new Set((value.adjudicationResponses as FixedTraceAdjudicationResponse[]).map((response) => response.responseFingerprint));
+  for (const entry of (value.humanCostLedger as FixedTraceHumanCostLedger).entries) assert(entry.kind === "primary" ? primaryResponseFingerprints.has(entry.responseFingerprint!) && primaryAssignmentFingerprints.has(entry.assignmentFingerprint!) : adjudicationFingerprints.has(entry.adjudicationResponseFingerprint!), "human cost ledger contains an unrelated assignment or response row");
   return Object.freeze({ toolingReadiness: "tooling_ready_contracts_only", humanPanelReadiness: "not_admitted_pending_real_human_panel_and_custody", observedOutputs: FIXED_TRACE_HUMAN_PANEL_OUTPUTS, adjudicationRequests: requests.length, humanCostReservedCents: cost, promotable: false, claimsProhibited: ["production_architecture_selection", "final_claim", "noninferiority_claim", "superiority_claim"] as const, externalBlockers: fixedTraceHumanPanelReadiness().blockers });
 }
 
@@ -518,9 +604,11 @@ export interface FixedTraceClosedDiagnosticUnblinding {
  * locked adjudication, receipt-shape checks, and cost-ledger coverage. It
  * does not assert that supplied receipts are genuine, nor select an arm.
  */
-export function unblindFixedTraceHumanPanelAfterLockedWorkflow(input: FixedTraceHumanPanelWorkflowInput): FixedTraceClosedDiagnosticUnblinding {
+export function unblindFixedTraceHumanPanelAfterLockedWorkflow(input: FixedTraceHumanPanelWorkflowInput, verifier: FixedTraceEvaluatorVerifier, signature: string): FixedTraceClosedDiagnosticUnblinding {
   validateFixedTraceHumanPanelWorkflow(input);
   const value = snapshotFixedTraceJson(input, "human-panel closed workflow") as FixedTraceHumanPanelWorkflowInput;
+  const unblindingFingerprint = sha256({ domain: "addie-fixed-trace-human-panel-unblinding-v1", cohortFingerprint: value.artifacts.cohortFingerprint, restrictedMapFingerprint: value.artifacts.restrictedUnblindingMap.mapFingerprint, primaryResponseFingerprints: value.primaryResponses.map((response) => response.responseFingerprint).sort() });
+  assert(verifier && typeof verifier.verify === "function" && verifier.verify({ kind: "unblinding", fingerprint: unblindingFingerprint, signature: text(signature, "unblinding signature") }), "unblinding lacks an accepted external evaluator signature");
   const cells = new Map<string, FixedTraceClosedDiagnosticUnblinding["sourceCells"][number]>();
   for (const entry of value.artifacts.restrictedUnblindingMap.entries) {
     cells.set(entry.outputFingerprint, Object.freeze({ outputFingerprint: entry.outputFingerprint, caseFingerprint: entry.caseFingerprint, configFingerprint: entry.configFingerprint, arm: entry.arm }));
