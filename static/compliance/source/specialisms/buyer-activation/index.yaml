@@ -71,6 +71,14 @@ fixtures:
             pricing_model: "cpm"
             currency: "USD"
             floor_price: 5.00
+      - product_id: "ctv_premium_guaranteed"
+        delivery_type: "guaranteed"
+        channels: ["ctv"]
+        pricing_options:
+          - pricing_option_id: "cpm_guaranteed"
+            pricing_model: "cpm"
+            currency: "USD"
+            rate: 35.00
     scenarios:
       create_success:
         response_type: "synchronous"
