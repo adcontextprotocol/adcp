@@ -73,11 +73,13 @@ export function rational(numerator: bigint | number, denominator: bigint | numbe
 export const ZERO: Rational = Object.freeze({ numerator: 0n, denominator: 1n });
 export const ONE: Rational = Object.freeze({ numerator: 1n, denominator: 1n });
 export const TWO: Rational = Object.freeze({ numerator: 2n, denominator: 1n });
-normalizedRationals.add(ZERO); normalizedRationals.add(ONE); normalizedRationals.add(TWO);
 
 /** Snapshot a structural Rational exactly once into an inert canonical value. */
 export function canonicalRational(value: Rational, name = 'Rational'): Rational {
   const label = primitiveLabel(name);
+  // Keep module constants usable without a module-evaluation WeakSet mutation;
+  // emitted workers validate that mutable intrinsic before entering arithmetic.
+  if (value === ZERO || value === ONE || value === TWO) return value;
   if (typeof value === 'object' && value !== null && normalizedRationals.has(value)) return value;
   const copy = inertRecord(value, label, ['numerator', 'denominator']);
   if (typeof copy.numerator !== 'bigint' || typeof copy.denominator !== 'bigint' || copy.denominator <= 0n || bitLength(copy.numerator) > MAX_RATIONAL_BITS || bitLength(copy.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${label} exceeds the rational arithmetic ceiling`);

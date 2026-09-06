@@ -44,6 +44,18 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.status).toBe(0);
   }
 
+  /** `tsx` resolves TypeScript imports before engine evaluation. Its loader is
+   * outside the engine closure, so pre-evaluation poisoning is explicitly not
+   * a supported source-entry condition (unlike emitted JavaScript). */
+  function expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee(): void {
+    const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval',
+      `Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true }); await import(${JSON.stringify(engineUrl)}); process.exit(2);`,
+    ], { cwd: process.cwd(), encoding: 'utf8', timeout: 1_500 });
+    expect(result.error?.code).toBe('ETIMEDOUT');
+    expect(result.signal).toBe('SIGTERM');
+  }
+
   function expectsAlgebraicPoisonMatrixToTerminate(algebraicUrl: string, rationalUrl: string, loader: readonly string[]): void {
     const calls = [
       'sturmSequence([ONE, ONE])',
@@ -132,29 +144,36 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.status).toBe(0);
   }
 
-  /**
-   * The emitted worker is poisoned before module evaluation. TypeScript source
-   * needs its external tsx resolver to load before poisoning (the resolver is
-   * not part of this module's closure); its event trace proves engine import
-   * completed, then poison was installed before authorization invokes E+M.
-   */
+  /** The emitted worker is poisoned before module evaluation. TypeScript
+   * source loads tsx and engine first, then poisons before queued core work. */
   function expectsPoisonedRecreatedWorkerMatrix(engineUrl: string, workerLoader: readonly string[], sourceResolution = false): void {
     const tasks = [
       { task: 'restricted_score', payload: `{ counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
       { task: 'null_size', payload: `{ n: 4, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
     ];
     const poisons = [
-      "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })",
-      "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })",
+      { source: "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })", succeeds: true },
+      { source: "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })", succeeds: true },
+      { source: "Object.defineProperty(RegExp.prototype, 'test', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(String.prototype, 'startsWith', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(String.prototype, 'indexOf', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(String.prototype, 'slice', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(String.prototype, 'endsWith', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(Map.prototype, 'get', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(Map.prototype, 'set', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(Map.prototype, 'has', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(WeakSet.prototype, 'add', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(WeakSet.prototype, 'has', { value() { for (;;) {} }, configurable: true })", succeeds: false },
     ];
     for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
+      const poison = poisons[poisonIndex]!;
       const task = tasks[taskIndex]!;
       const directory = mkdtempSync(join(tmpdir(), 'matched-ni-poisoned-worker-'));
       const preload = join(directory, sourceResolution ? 'entry.mjs' : 'poison.mjs');
       if (sourceResolution) {
-        writeFileSync(preload, `import ${JSON.stringify(engineUrl)}; import { workerData } from 'node:worker_threads'; workerData.authorizationPort.postMessage('import_complete'); ${poisons[poisonIndex]!}; workerData.authorizationPort.postMessage('poison_ack');`);
+        writeFileSync(preload, `import ${JSON.stringify(engineUrl)}; import { workerData } from 'node:worker_threads'; workerData.authorizationPort.postMessage('import_complete'); ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
       } else {
-        writeFileSync(preload, `import { workerData } from 'node:worker_threads'; ${poisons[poisonIndex]!}; workerData.authorizationPort.postMessage('poison_ack');`);
+        writeFileSync(preload, `import { workerData } from 'node:worker_threads'; ${poison.source}; workerData.authorizationPort.postMessage('poison_ack');`);
       }
       const source = `import { MessageChannel, Worker } from 'node:worker_threads';
         const channel = new MessageChannel();
@@ -163,7 +182,9 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
         const result = await new Promise((resolve, reject) => { let ready = false; let poisonAck = false; let imported = !${sourceResolution}; const timer = setTimeout(() => reject(new Error(\`timeout after \${events.join(',')}\`)), 2_000); channel.port1.on('message', (message) => { events.push(String(message)); ready ||= message === 'exact_matched_pair_ni_ready'; poisonAck ||= message === 'poison_ack'; imported ||= message === 'import_complete'; if (ready && poisonAck && imported) { events.push('authorized'); channel.port1.postMessage('exact_matched_pair_ni_authorized'); } }); worker.once('message', (message) => { clearTimeout(timer); resolve(message); }); worker.once('error', reject); worker.once('exit', (code) => reject(new Error(\`worker exited \${code}; events=\${events.join(',')}\`))); });
         await worker.terminate();
         const poisonAt = events.indexOf('poison_ack'); const startAt = events.indexOf('core_start'); const resultAt = events.indexOf('core_complete');
-        process.exit(result?.ok === true && poisonAt >= 0 && startAt > poisonAt && resultAt > startAt && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2);`;
+        process.exit(${poison.succeeds}
+          ? (result?.ok === true && poisonAt >= 0 && startAt > poisonAt && resultAt > startAt && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2)
+          : (result?.ok === false && poisonAt >= 0 && startAt === -1 && resultAt === -1 && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2));`;
       try {
         const result = spawnSync(process.execPath, [...workerLoader, '--input-type=module', '--eval', source], {
           cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
@@ -330,7 +351,6 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expectsWorkerInternalsToBeUnimportable();
     expectsMarkerOnlyWorkerToBeDenied();
     expectsRecreatedWorkerToPreflightCostlyTasks();
-    expectsBuiltPathToRetainRootAndWorkerBounds();
   });
 
   it('terminates hostile scalar constructors without property access or coercion', () => {
@@ -373,12 +393,20 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     );
   }, 20_000);
 
-  it('keeps caller-created poisoned worker realms bounded in source and emitted builds', () => {
+  it('keeps post-loader/pre-core TypeScript worker realms bounded under mutable intrinsic poisoning', () => {
     expectsPoisonedRecreatedWorkerMatrix(
       new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href,
       ['--import', 'tsx'],
       true,
     );
+  }, 90_000);
+
+  it('does not claim TypeScript source pre-evaluation isolation from the external tsx loader', () => {
+    expectsPreEvaluationTypeScriptLoaderToRemainOutsideEngineGuarantee();
+  }, 5_000);
+
+  it('keeps emitted JavaScript workers bounded under pre-evaluation mutable-intrinsic poisoning', () => {
+    expectsBuiltPathToRetainRootAndWorkerBounds();
   }, 30_000);
 
   it('divides signed intervals outward over a strictly positive divisor', () => {

@@ -47,6 +47,40 @@ function ownSet<T>(target: T[], index: number, value: T): void {
 }
 function ownAppend<T>(target: T[], value: T): void { ownSet(target, target.length, value); }
 
+/* An emitted worker can observe modified prototypes before this module is
+ * evaluated. Do not run the core unless every mutable method it can reach is
+ * still a native method. This gate deliberately runs before any WeakSet/Map
+ * use; a TypeScript source worker has a separate tsx resolver before this
+ * module and cannot extend this guarantee to that external loader. */
+function sourceContainsNativeCodeMarker(source: string): boolean {
+  const marker = '[native code]';
+  for (let index = 0; index <= source.length - marker.length; index++) {
+    let matches = true;
+    for (let markerIndex = 0; markerIndex < marker.length; markerIndex++) {
+      if (source[index + markerIndex] !== marker[markerIndex]) { matches = false; break; }
+    }
+    if (matches) return true;
+  }
+  return false;
+}
+function isNativePrototypeMethod(prototype: object, name: string): boolean {
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
+  if (!descriptor || typeof descriptor.value !== 'function' || descriptor.get !== undefined || descriptor.set !== undefined) return false;
+  return sourceContainsNativeCodeMarker(Function.prototype.toString.call(descriptor.value));
+}
+function workerMutableIntrinsicsAreIntact(): boolean {
+  return isNativePrototypeMethod(RegExp.prototype, 'test')
+    && isNativePrototypeMethod(String.prototype, 'startsWith')
+    && isNativePrototypeMethod(String.prototype, 'indexOf')
+    && isNativePrototypeMethod(String.prototype, 'slice')
+    && isNativePrototypeMethod(String.prototype, 'endsWith')
+    && isNativePrototypeMethod(Map.prototype, 'get')
+    && isNativePrototypeMethod(Map.prototype, 'set')
+    && isNativePrototypeMethod(Map.prototype, 'has')
+    && isNativePrototypeMethod(WeakSet.prototype, 'add')
+    && isNativePrototypeMethod(WeakSet.prototype, 'has');
+}
+
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
 export interface ReducedMatchedPairState { readonly n: number; readonly x: number; readonly t: number; }
 export interface MatchedPairNiInput { readonly counts: MatchedPairCounts; readonly margin: Rational; readonly alpha: Rational; }
@@ -1006,6 +1040,10 @@ if (!isMainThread && isEngineWorkerRequest(workerData)) {
   // before the imported module's computation closure runs. It is a native
   // microtask boundary, not a caller-provided port/event callback.
   queueMicrotask(() => {
+    if (!workerMutableIntrinsicsAreIntact()) {
+      request.authorizationPort.close(); parentPort?.postMessage({ ok: false });
+      return;
+    }
     if (request.trace === true) request.authorizationPort.postMessage('core_start');
     try {
       const value = request.task === 'restricted_score'
