@@ -284,23 +284,9 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         const expected = expectedPlanEntry(parsed.assignmentId);
         if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected)
           || expected.disposition !== 'provider_dispatch' || parsed.invocationOrdinal > expected.maximumProviderInvocations) return result('refused', 'plan_mismatch');
-        const unresolved = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND status = \'intent_recorded\' LIMIT 1', [parsed.reservation.authorizationDigest]);
-        if (unresolved.rowCount !== 0) {
-          await this.closeOpenIntentsAsUnknownExposure(client, parsed.reservation);
-          return result('refused', 'unknown_exposure');
-        }
-        if (parsed.invocationOrdinal > 1) {
-          const predecessor = await client.query<{ status: string; response_disposition: string | null }>(
-            'SELECT status, response_disposition FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal = $3 FOR UPDATE',
-            [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.invocationOrdinal - 1],
-          );
-          if (predecessor.rowCount !== 1 || predecessor.rows[0]!.status !== 'succeeded'
-            || predecessor.rows[0]!.response_disposition !== 'tool_continuation_required') return result('refused', 'intent_required');
-        }
-        const duplicate = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1 FOR UPDATE', [parsed.attemptId]);
-        if (duplicate.rowCount !== 0) return result('refused', 'duplicate_attempt_id');
-        const slot = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal = $3 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.invocationOrdinal]);
-        if (slot.rowCount !== 0) return result('refused', 'duplicate_attempt_id');
+        // Do not reconcile here. This transaction owns the target plan row;
+        // standalone recovery deliberately acquires its complete target set
+        // before the authorization, so it must run only after this commits.
         const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
@@ -310,6 +296,18 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         // here: this transaction already owns a target plan row.
         const unresolvedAfterAuthorization = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND status = \'intent_recorded\' LIMIT 1', [parsed.reservation.authorizationDigest]);
         if (unresolvedAfterAuthorization.rowCount !== 0) { recoverUnresolvedIntent = true; return result('recorded'); }
+        if (parsed.invocationOrdinal > 1) {
+          const predecessor = await client.query<{ status: string; response_disposition: string | null }>(
+            'SELECT status, response_disposition FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal = $3',
+            [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.invocationOrdinal - 1],
+          );
+          if (predecessor.rowCount !== 1 || predecessor.rows[0]!.status !== 'succeeded'
+            || predecessor.rows[0]!.response_disposition !== 'tool_continuation_required') return result('refused', 'intent_required');
+        }
+        const duplicate = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [parsed.attemptId]);
+        if (duplicate.rowCount !== 0) return result('refused', 'duplicate_attempt_id');
+        const slot = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal = $3', [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.invocationOrdinal]);
+        if (slot.rowCount !== 0) return result('refused', 'duplicate_attempt_id');
         await client.query(
           `INSERT INTO addie_fixed_trace_component_smoke_attempts
            (attempt_id, authorization_digest, assignment_id, invocation_ordinal, status, prepared_request_hmac)
@@ -319,8 +317,13 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         return result('recorded');
       });
       if (!recoverUnresolvedIntent) return outcome;
-      await this.recordUnknownExposure(parsed.reservation);
-      return result('refused', 'unknown_exposure');
+      const recovery = await this.recordUnknownExposure(parsed.reservation);
+      // A caller may only treat this as durable poisoning after standalone
+      // recovery commits. A failed recovery leaves the prior open intent and
+      // authorization state intact, so report uncertainty rather than a lie.
+      return recovery.status === 'recorded'
+        ? result('refused', 'unknown_exposure')
+        : result('refused', 'persistence_uncertain');
     } catch { return result('refused', 'persistence_uncertain'); }
   }
 
@@ -369,17 +372,17 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         // The target attempt is locked before the authorization above. Every
         // direct terminal trigger follows that order, so the authorization
         // serializes settlements; never broad-lock peer attempts afterwards.
+        const auth = await client.query<{ status: string; reservation_microdollars: unknown; provider_ceiling_microdollars: unknown }>('SELECT status, reservation_microdollars, provider_ceiling_microdollars FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+        if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
+        if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
+        if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
+        if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
         const prior = await client.query<{ spent: unknown }>(
           `SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent
              FROM addie_fixed_trace_component_smoke_attempts
             WHERE authorization_digest = $1`,
           [parsed.reservation.authorizationDigest],
         );
-        const auth = await client.query<{ status: string; reservation_microdollars: unknown; provider_ceiling_microdollars: unknown }>('SELECT status, reservation_microdollars, provider_ceiling_microdollars FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
-        if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
-        if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
-        if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
-        if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
         const priorSpent = prior.rowCount === 1 ? pgSafeInt(prior.rows[0]!.spent, 5_000_000) : null;
         const reservationLimit = pgSafeInt(auth.rows[0]!.reservation_microdollars, 2_819_484);
         const providerLimit = pgSafeInt(auth.rows[0]!.provider_ceiling_microdollars, 5_000_000);
@@ -570,11 +573,13 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
           [parsed.reservation.authorizationDigest, parsed.assignmentId],
         );
         if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected)) return result('refused', 'plan_mismatch');
-        const started = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 LIMIT 1 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.assignmentId]);
-        if (started.rowCount !== 0) return result('refused', 'plan_mismatch');
         const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
         if (auth.rows[0]!.status !== 'halted' && auth.rows[0]!.status !== 'unknown_exposure') return result('refused', 'run_halted');
+        // The target plan row then authorization serialize this decision with
+        // every direct trigger. Do not broad-lock attempts after a target.
+        const started = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 LIMIT 1', [parsed.reservation.authorizationDigest, parsed.assignmentId]);
+        if (started.rowCount !== 0) return result('refused', 'plan_mismatch');
         const updated = await client.query(
           `UPDATE addie_fixed_trace_component_smoke_run_plan
               SET assignment_outcome = 'not_executed_after_halt', assignment_terminal_at = clock_timestamp()
@@ -609,6 +614,11 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         const expected = expectedPlanEntry(parsed.assignmentId);
         if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected) || expected.disposition !== 'provider_dispatch'
           || parsed.finalInvocationOrdinal > expected.maximumProviderInvocations) return result('refused', 'plan_mismatch');
+        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+        if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
+        if (auth.rows[0]!.status !== 'consumed' && !(auth.rows[0]!.status === 'unknown_exposure' && parsed.status === 'provider_failed')) return result('refused', auth.rows[0]!.status === 'unknown_exposure' ? 'unknown_exposure' : 'run_halted');
+        // Target plan then authorization is the universal ordinary-mutation
+        // order. This aggregate deliberately takes no peer-row locks.
         const evidence = await client.query<{ count: unknown; open: unknown; failures: unknown; last_response_disposition: unknown }>(
           `WITH assignment_attempts AS (
              SELECT status, response_disposition, invocation_ordinal
@@ -626,9 +636,6 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (count !== parsed.finalInvocationOrdinal || row?.open === true
           || (parsed.status === 'provider_completed' && (row?.failures === true || row?.last_response_disposition !== 'final_response'))
           || (parsed.status === 'provider_failed' && row?.failures !== true)) return result('refused', 'intent_required');
-        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
-        if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
-        if (auth.rows[0]!.status !== 'consumed' && !(auth.rows[0]!.status === 'unknown_exposure' && parsed.status === 'provider_failed')) return result('refused', auth.rows[0]!.status === 'unknown_exposure' ? 'unknown_exposure' : 'run_halted');
         const updated = await client.query(
           `UPDATE addie_fixed_trace_component_smoke_run_plan
               SET assignment_outcome = $3, assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = $4

@@ -173,6 +173,30 @@ describe('private ledger state machine', () => {
     expect(failed.authStatus).toBe('unknown_exposure');
   });
 
+  it('never reports durable poisoning when standalone recovery refuses', async () => {
+    const client = new StrictLedgerClient(); const subject = ledger(client);
+    await subject.recordProviderIntent(intent());
+    // This simulates an independently failed recovery transaction. The
+    // caller must receive uncertainty, not a false durable-poison result.
+    (subject as unknown as { recordUnknownExposure: () => Promise<unknown> }).recordUnknownExposure = async () =>
+      ({ status: 'refused', reason: 'persistence_uncertain' });
+    expect(await subject.recordProviderIntent(intent(`attempt_${'2'.repeat(32)}`))).toEqual({ status: 'refused', reason: 'persistence_uncertain' });
+    expect(client.authStatus).toBe('consumed');
+    expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)?.status).toBe('intent_recorded');
+  });
+
+  it('locks the target attempt then authorization before reading spend', async () => {
+    const client = new StrictLedgerClient(); const subject = ledger(client);
+    await subject.recordProviderIntent(intent());
+    expect(await subject.recordTerminal(terminal())).toEqual({ status: 'recorded' });
+    const target = client.calls.findIndex(({ sql }) => sql.includes('FROM addie_fixed_trace_component_smoke_attempts a'));
+    const authorization = client.calls.findIndex(({ sql }) => sql.startsWith('SELECT status, reservation_microdollars'));
+    const spend = client.calls.findIndex(({ sql }) => sql.includes('SUM(actual_cost_microdollars)'));
+    expect(target).toBeGreaterThanOrEqual(0);
+    expect(authorization).toBeGreaterThan(target);
+    expect(spend).toBeGreaterThan(authorization);
+  });
+
   it('requires a succeeded continuation predecessor before ordinal two', async () => {
     const generation = fixedTraceComponentSmokePrivateLedgerPlan()!.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
     const client = new StrictLedgerClient(generation); const subject = ledger(client);
