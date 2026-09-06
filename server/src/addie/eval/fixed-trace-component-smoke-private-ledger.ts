@@ -211,6 +211,18 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     } finally { client.release(); }
   }
 
+  /**
+   * Every ordinary plan-outcome writer takes this table gate before a target
+   * plan row. PostgreSQL direct UPDATE already takes ROW EXCLUSIVE before its
+   * row locks; matching it here prevents a ROW SHARE -> ROW EXCLUSIVE upgrade
+   * after an authorization lock while standalone recovery is waiting on that
+   * target. Recovery instead takes SHARE ROW EXCLUSIVE first, then its full
+   * deterministic plan set, attempts, and authorization.
+   */
+  private async lockPlanOutcomeWriter(client: PoolClient): Promise<void> {
+    await client.query('LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE');
+  }
+
   async reserveAndConsume(grant: FixedTraceComponentSmokeVerifiedGrant): Promise<Readonly<{ status: 'reserved'; reservation: FixedTraceComponentSmokeReservation }> | Readonly<{ status: 'refused'; reason: FixedTraceComponentSmokeLedgerRefusal }>> {
     const plan = fixedTraceComponentSmokePrivateLedgerPlan();
     const signatureDigest = fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger(grant);
@@ -537,6 +549,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     try {
       return await this.transaction(async (client) => {
         const expected = expectedPlanEntry(parsed.assignmentId);
+        await this.lockPlanOutcomeWriter(client);
         const plan = await client.query<Record<string, unknown>>(
           `SELECT probe_id, cell_id, disposition, maximum_provider_invocations, requested_provider, requested_model,
                   requested_effort, pricing_profile_id, max_input_tokens, max_output_tokens, timeout_ms, retries,
@@ -573,6 +586,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     try {
       return await this.transaction(async (client) => {
         const expected = expectedPlanEntry(parsed.assignmentId);
+        await this.lockPlanOutcomeWriter(client);
         const plan = await client.query<Record<string, unknown>>(
           `SELECT probe_id, cell_id, disposition, maximum_provider_invocations, requested_provider, requested_model,
                   requested_effort, pricing_profile_id, max_input_tokens, max_output_tokens, timeout_ms, retries,
@@ -612,6 +626,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     if (!parsed) return result('refused', 'plan_mismatch');
     try {
       return await this.transaction(async (client) => {
+        await this.lockPlanOutcomeWriter(client);
         const plan = await client.query<Record<string, unknown>>(
           `SELECT probe_id, cell_id, disposition, maximum_provider_invocations, requested_provider, requested_model,
                   requested_effort, pricing_profile_id, max_input_tokens, max_output_tokens, timeout_ms, retries,

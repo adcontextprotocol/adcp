@@ -16,6 +16,7 @@ const reservation = Object.freeze({
   reservationMicrodollars: 2_819_484 as const,
 });
 const dispatch = fixedTraceComponentSmokePrivateLedgerPlan()!.find((entry) => entry.disposition === 'provider_dispatch')!;
+const local = fixedTraceComponentSmokePrivateLedgerPlan()!.find((entry) => entry.disposition === 'local_terminal')!;
 
 type StoredAttempt = { id: string; assignmentId: string; ordinal: number; status: string; responseDisposition: string | null; cost: number | null; observedCost: number | null; returnedProvider: string | null; responseHmac: string | null };
 
@@ -39,7 +40,8 @@ class StrictLedgerClient {
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK'
-      || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE') return { rowCount: 0, rows: [] };
+      || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE'
+      || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE') return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts')
       || sql.startsWith('SELECT p.assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT status, reservation_microdollars')) return { rowCount: 1, rows: [{ status: this.authStatus, reservation_microdollars: '2819484', provider_ceiling_microdollars: '5000000' }] };
@@ -240,6 +242,17 @@ describe('private ledger state machine', () => {
     expect(planSet).toBeGreaterThan(tableGate);
     expect(attempts).toBeGreaterThan(planSet);
     expect(authorization).toBeGreaterThan(attempts);
+  });
+
+  it('takes the plan writer gate before the target row for application outcomes', async () => {
+    const client = new StrictLedgerClient(local); const subject = ledger(client);
+    expect(await subject.recordNonDispatchTerminal({ reservation, assignmentId: local.assignmentId, status: 'local_terminal' })).toEqual({ status: 'recorded' });
+    const writerGate = client.calls.findIndex(({ sql }) => sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE');
+    const target = client.calls.findIndex(({ sql }) => sql.includes('FROM addie_fixed_trace_component_smoke_run_plan') && sql.includes('FOR UPDATE'));
+    const authorization = client.calls.findIndex(({ sql }) => sql.startsWith('SELECT status FROM addie_fixed_trace_component_smoke_authorizations'));
+    expect(writerGate).toBeGreaterThanOrEqual(0);
+    expect(target).toBeGreaterThan(writerGate);
+    expect(authorization).toBeGreaterThan(target);
   });
 
   it('idempotently recovers a committed known provider failure after its unknown-exposure commit response is lost', async () => {

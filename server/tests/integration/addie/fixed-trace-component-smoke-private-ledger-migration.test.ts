@@ -394,6 +394,45 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     }
   });
 
+  it('blocks an application outcome at the recovery table gate before it locks its target', async () => {
+    const entry = plan.find((candidate) => candidate.disposition === 'local_terminal')!;
+    const recoveryAtPlanSet = deferred();
+    const releaseRecovery = deferred();
+    let blocked = false;
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl, max: 2 });
+    const recoveryPool = {
+      connect: async () => {
+        const connection = await pool.connect();
+        const mutable = connection as unknown as { query: (sql: string, values?: readonly unknown[]) => Promise<unknown> };
+        const query = mutable.query.bind(connection);
+        mutable.query = async (sql, values) => {
+          if (!blocked && sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) {
+            blocked = true;
+            recoveryAtPlanSet.resolve();
+            await releaseRecovery.promise;
+          }
+          return query(sql, values);
+        };
+        return connection;
+      },
+    };
+    try {
+      const recoveryLedger = new PostgresFixedTraceComponentSmokePrivateLedger(recoveryPool as never);
+      const applicationLedger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      const recovery = recoveryLedger.recordUnknownExposure(reservationFor(authorizationDigest));
+      await recoveryAtPlanSet.promise;
+      let applicationSettled = false;
+      const application = applicationLedger.recordNonDispatchTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'local_terminal' })
+        .then((outcome) => { applicationSettled = true; return outcome; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(applicationSettled).toBe(false);
+      releaseRecovery.resolve();
+      expect(await recovery).toEqual({ status: 'recorded' });
+      expect(await application).toEqual({ status: 'refused', reason: 'unknown_exposure' });
+    } finally { await pool.end(); await client!.query('BEGIN'); }
+  });
+
   it('application terminalizes a known provider failure after its fail-stop transition', async () => {
     const entry = dispatchEntry(14);
     const attemptId = uniqueAttemptId();
