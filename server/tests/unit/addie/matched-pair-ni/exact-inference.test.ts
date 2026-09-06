@@ -1,4 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
@@ -7,6 +10,7 @@ import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdm
 import {
   conditionalMcNemarPValue,
   enumerateReducedStates,
+  matchedPairNiSupport,
   nullBoundarySizeEnvelope,
   MATCHED_PAIR_NI_NO_ROOT_PROMOTION_FIELD,
   parseMatchedPairNiDecimal,
@@ -62,6 +66,81 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.status).toBe(0);
   }
 
+  function expectsMarkerOnlyWorkerToBeDenied(): void {
+    const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
+    const source = `import { Worker } from 'node:worker_threads';
+      const worker = new Worker(new URL(${JSON.stringify(engineUrl)}), { workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', payload: { counts: { n11: 1, n10: 0, n01: 0, n00: 0 }, margin: { numerator: 0n, denominator: 1n }, alpha: { numerator: 1n, denominator: 20n } } }, execArgv: ['--import', 'tsx'] });
+      const timer = setTimeout(() => process.exit(3), 2_000);
+      worker.once('message', () => { clearTimeout(timer); process.exit(2); });
+      worker.once('exit', () => { clearTimeout(timer); process.exit(0); });`;
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
+
+  /** A caller can create its own port/marker; the intrinsic preflight, not
+   * that marker, must make recreated expensive activation conservative. */
+  function expectsRecreatedWorkerToPreflightCostlyTasks(): void {
+    const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
+    const source = `import { MessageChannel, Worker } from 'node:worker_threads';
+      const run = (margin) => new Promise((resolve, reject) => {
+        const channel = new MessageChannel();
+        const worker = new Worker(new URL(${JSON.stringify(engineUrl)}), {
+          workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', authorizationPort: channel.port2,
+            payload: { counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin, alpha: { numerator: 1n, denominator: 20n } } },
+          transferList: [channel.port2], execArgv: ['--import', 'tsx'],
+        });
+        const timer = setTimeout(() => reject(new Error('worker timed out')), 1_500);
+        channel.port1.once('message', () => channel.port1.postMessage('exact_matched_pair_ni_authorized'));
+        worker.once('message', (message) => { clearTimeout(timer); worker.terminate(); resolve(message?.ok === true && message.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling'); });
+        worker.once('error', reject);
+      });
+      if (!await run({ numerator: 32767n, denominator: 32768n })) process.exit(2);
+      if (!await run({ numerator: 1n, denominator: 1n << 255n })) process.exit(2);`;
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
+
+  function expectsBuiltPathToRetainRootAndWorkerBounds(): void {
+    const output = mkdtempSync(join(tmpdir(), 'matched-ni-built-'));
+    try {
+      const compilation = spawnSync('npx', ['tsc', '--project', 'server/tsconfig.json', '--outDir', output, '--noEmit', 'false'], {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 20_000,
+      });
+      expect(compilation.error).toBeUndefined();
+      expect(compilation.status).toBe(0);
+      const probe = `import { MessageChannel, Worker } from 'node:worker_threads';
+        const base = \`file://\${process.env.MATCHED_NI_BUILD_DIR}/addie/eval/matched-pair-ni/\`;
+        const { isolateInteriorRoots } = await import(\`\${base}algebraic.js\`);
+        const { polynomial, polynomialMultiply } = await import(\`\${base}polynomial.js\`);
+        const { ONE, ZERO, negate, rational } = await import(\`\${base}rational.js\`);
+        let value = polynomial([ONE]);
+        for (let index = 1; index <= 25; index++) value = polynomialMultiply(value, [negate(rational(index, 26)), ONE]);
+        if (!isolateInteriorRoots(value, ZERO, ONE, 24).unresolved || !isolateInteriorRoots(polynomial([rational(1n << 513n), ONE]), ZERO, ONE, 24).unresolved) process.exit(2);
+        const channel = new MessageChannel();
+        const worker = new Worker(new URL(\`\${base}engine.js\`), { workerData: { exactMatchedPairNiWorker: true, task: 'restricted_score', authorizationPort: channel.port2, payload: { counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 32767n, denominator: 32768n }, alpha: { numerator: 1n, denominator: 20n } } }, transferList: [channel.port2], execArgv: [] });
+        const reply = await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('timeout')), 1_500); channel.port1.once('message', () => channel.port1.postMessage('exact_matched_pair_ni_authorized')); worker.once('message', (message) => { clearTimeout(timer); resolve(message); }); worker.once('error', reject); });
+        await worker.terminate();
+        process.exit(reply?.ok === true && reply.value?.diagnostic?.indeterminate?.reason === 'complexity_ceiling' ? 0 : 2);`;
+      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
+        env: { ...process.env, MATCHED_NI_BUILD_DIR: output },
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.signal).toBeNull();
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(output, { recursive: true, force: true });
+    }
+  }
+
   function expectsRootIsolationToTerminate(): void {
     const algebraicUrl = new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href;
     const polynomialUrl = new URL('../../../../src/addie/eval/matched-pair-ni/polynomial.ts', import.meta.url).href;
@@ -71,7 +150,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       import { ONE, ZERO, negate, rational } from ${JSON.stringify(rationalUrl)};
       let value = polynomial([ONE]);
       for (let index = 1; index <= 25; index++) value = polynomialMultiply(value, [negate(rational(index, 26)), ONE]);
-      process.exit(isolateInteriorRoots(value, ZERO, ONE, 24).unresolved ? 0 : 2);`;
+      if (!isolateInteriorRoots(value, ZERO, ONE, 24).unresolved) process.exit(2);
+      process.exit(isolateInteriorRoots(polynomial([rational(1n << 513n), ONE]), ZERO, ONE, 24).unresolved ? 0 : 2);`;
     const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
       cwd: process.cwd(), encoding: 'utf8', timeout: 5_000,
     });
@@ -174,6 +254,9 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
 
   it('does not export worker-only expensive cores to direct imports', () => {
     expectsWorkerInternalsToBeUnimportable();
+    expectsMarkerOnlyWorkerToBeDenied();
+    expectsRecreatedWorkerToPreflightCostlyTasks();
+    expectsBuiltPathToRetainRootAndWorkerBounds();
   });
 
   it('terminates hostile scalar constructors without property access or coercion', () => {
@@ -192,6 +275,20 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       Object.defineProperty(Object.prototype, 'counts', { set() { for (;;) {} }, configurable: true });
       const outcome = await restrictedScoreEM({ counts: { n11: 1, n10: 1, n01: 0, n00: 0 }, margin: d('0.10'), alpha: d('0.05') });
       process.exit(outcome.admission.admitted ? 2 : 0);`);
+  }, 7_000);
+
+  it('does not invoke poisoned Array prototype map or iterator after snapshotting', () => {
+    const polynomialUrl = new URL('../../../../src/addie/eval/matched-pair-ni/polynomial.ts', import.meta.url).href;
+    const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
+    expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
+      Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true });
+      process.exit(degree(polynomial([ONE, ZERO])) === 0 ? 0 : 2);`);
+    expectsPoisonedPrototypeToTerminate(`import { polynomial, degree } from ${JSON.stringify(polynomialUrl)}; import { ONE, ZERO } from ${JSON.stringify(rationalUrl)};
+      Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
+      process.exit(degree(polynomial([ONE, ZERO])) === 0 ? 0 : 2);`);
+    expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
+      Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
+      process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
   }, 7_000);
 
   it('returns unresolved before the killable root-isolation process deadline', () => {
@@ -313,6 +410,13 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin: rational(denominator - 1n, denominator), alpha,
     });
     expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
+  });
+
+  it('exposes one joint support predicate instead of a Cartesian ceiling claim', () => {
+    expect(matchedPairNiSupport('inference', 25, margin)).toMatchObject({ supported: true, reason: 'supported', estimatedWorkUnits: 492_804 });
+    expect(matchedPairNiSupport('inference', 25, rational(32767, 32768))).toMatchObject({ supported: false, reason: 'aggregate_work_ceiling' });
+    expect(matchedPairNiSupport('null_boundary_size', 9, margin)).toMatchObject({ supported: false, reason: 'size_n_ceiling' });
+    expect(matchedPairNiSupport('null_boundary_size', 8, rational(32767, 32768))).toMatchObject({ supported: true, reason: 'supported' });
   });
 
   it('does not accept a caller-provided maximum enclosure callback', () => {

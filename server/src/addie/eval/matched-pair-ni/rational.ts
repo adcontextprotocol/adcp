@@ -29,11 +29,13 @@ function inertRecord(value: unknown, name: string, fields: readonly string[]): R
     descriptors = Object.getOwnPropertyDescriptors(value);
   }
   catch { throw new RangeError(`${name} must not be a Proxy or dynamic object`); }
-  if (Reflect.ownKeys(descriptors).length !== fields.length || fields.some((field) => !Object.hasOwn(descriptors, field))) {
+  if (Reflect.ownKeys(descriptors).length !== fields.length) {
     throw new RangeError(`${name} has unexpected fields`);
   }
+  for (let index = 0; index < fields.length; index++) if (!Object.hasOwn(descriptors, fields[index]!)) throw new RangeError(`${name} has unexpected fields`);
   const copy = Object.create(null) as Record<string, unknown>;
-  for (const field of fields) {
+  for (let index = 0; index < fields.length; index++) {
+    const field = fields[index]!;
     const descriptor = descriptors[field]!;
     if (!Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) {
       throw new RangeError(`${name} must not contain accessors`);
@@ -46,7 +48,7 @@ function inertRecord(value: unknown, name: string, fields: readonly string[]): R
 function gcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left;
   let b = right < 0n ? -right : right;
-  while (b !== 0n) [a, b] = [b, a % b];
+  while (b !== 0n) { const remainder = a % b; a = b; b = remainder; }
   return a;
 }
 
@@ -61,7 +63,7 @@ export function rational(numerator: bigint | number, denominator: bigint | numbe
   if (bitLength(n) > MAX_RATIONAL_BITS || bitLength(d) > MAX_RATIONAL_BITS) throw new RangeError(`Rational exceeds ${MAX_RATIONAL_BITS}-bit arithmetic ceiling`);
   if (d === 0n) throw new RangeError('Rational denominator must not be zero');
   if (n === 0n) return ZERO;
-  if (d < 0n) [n, d] = [-n, -d];
+  if (d < 0n) { n = -n; d = -d; }
   const divisor = gcd(n, d);
   const result = Object.freeze({ numerator: n / divisor, denominator: d / divisor });
   normalizedRationals.add(result);

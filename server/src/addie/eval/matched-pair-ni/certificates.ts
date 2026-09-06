@@ -8,6 +8,8 @@ export interface ExactInferenceCertificate {
   readonly evaluatedEndpoints: true;
   readonly stationaryPointCount: number;
   readonly pValue: Readonly<{ lower: Rational; upper: Rational }>;
+  /** Canonical request identity carried across the worker boundary. */
+  readonly request: Readonly<{ n: number; x: number; t: number; margin: Rational; alpha: Rational }>;
   readonly safeCeiling: Readonly<{ maxN: number; maxPolynomialDegree: number; maxRootBisections: number }>;
   readonly exactness: 'certified_enclosure_only';
 }

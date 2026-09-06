@@ -4,7 +4,7 @@ import { canonicalPolynomial, degree, derivative, divideWithRemainder, evaluate,
 
 function integerGcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left; let b = right < 0n ? -right : right;
-  while (b !== 0n) [a, b] = [b, a % b];
+  while (b !== 0n) { const remainder = a % b; a = b; b = remainder; }
   return a;
 }
 const MAX_ALGEBRAIC_DEGREE = 25;
