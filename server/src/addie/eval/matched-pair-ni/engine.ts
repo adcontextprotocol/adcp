@@ -1,15 +1,15 @@
 import { types } from 'node:util';
-import { Worker, isMainThread } from 'node:worker_threads';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 /**
  * Restricted-score E+M exact-unconditional matched-pair noninferiority
  * diagnostic after Lloyd & Moldovan (2008), Statistics in Medicine 27,
  * 3540-3549, doi:10.1002/sim.3229. This module is diagnostic only; see
  * admission.ts. It does not implement confidence inversion or resizing.
  */
-import { evaluateInterval, interval, intervalAdd, intervalDividePositive, intervalMultiply, intervalSubtract, isolateEngineInteriorRoots, sqrtInterval, type RationalInterval } from './algebraic.js';
+import { evaluateInterval, interval, intervalAdd, intervalDividePositive, intervalMultiply, intervalSubtract, sqrtInterval, type RationalInterval, type RootIsolation } from './algebraic.js';
 import type { ExactInferenceCertificate, IndeterminateCertificate } from './certificates.js';
 import { MATCHED_PAIR_NI_ADMISSION, type MatchedPairNiAdmission } from './admission.js';
-import { canonicalPolynomial, constant, degree, derivative, divideWithRemainder, evaluate, isZero, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale, type RationalPolynomial } from './polynomial.js';
+import { canonicalPolynomial, constant, degree, derivative, divideWithRemainder, evaluate, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialNegate, polynomialPow, polynomialScale, type RationalPolynomial } from './polynomial.js';
 import { add, canonicalRational, choose, compare, decimal, divide, equal, multiply, negate, pow, rational, rationalBitLength, subtract, type Rational, ONE, TWO, validateExternalRational, ZERO } from './rational.js';
 
 export const MATCHED_PAIR_NI_MAX_N = 25;
@@ -31,6 +31,9 @@ export const MATCHED_PAIR_NI_MAX_WORK_UNITS = 1_500_000;
 /** Diagnostic CPU deadline checked at deterministic E-step work boundaries. */
 export const MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS = 12_000;
 export const MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS = 20_000;
+/** At most two isolated computations may consume process memory concurrently. */
+export const MATCHED_PAIR_NI_MAX_CONCURRENT_WORKERS = 2;
+/** This is V8 old-space only, not a total RSS/cgroup assertion. */
 export const MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB = 64;
 
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
@@ -72,6 +75,74 @@ class WorkBudget {
     if (this.used > this.limit || Date.now() > this.deadline) throw new RangeError('Exact E+M aggregate work ceiling exceeded');
   }
 }
+/* This isolation path is deliberately module-private. It is reachable only
+ * from the managed worker core below, whose full computation has a wall-clock
+ * and memory boundary. Public direct isolation stays deadline-bounded in
+ * algebraic.ts. */
+function engineIntegerGcd(left: bigint, right: bigint): bigint {
+  let a = left < 0n ? -left : left; let b = right < 0n ? -right : right;
+  while (b !== 0n) [a, b] = [b, a % b];
+  return a;
+}
+function enginePrimitive(value: RationalPolynomial): RationalPolynomial {
+  const normalized = canonicalPolynomial(value, 'Engine root polynomial');
+  let common = 1n;
+  for (const coefficient of normalized) common = common / engineIntegerGcd(common, coefficient.denominator) * coefficient.denominator;
+  const integers = normalized.map((coefficient) => coefficient.numerator * (common / coefficient.denominator));
+  const content = integers.reduce((result, coefficient) => engineIntegerGcd(result, coefficient), 0n) || 1n;
+  return polynomial(integers.map((coefficient) => rational(coefficient / content)));
+}
+function engineSturm(value: RationalPolynomial): readonly RationalPolynomial[] {
+  const polynomialValue = enginePrimitive(value);
+  if (isZero(polynomialValue)) throw new RangeError('Sturm sequence requires a nonzero polynomial');
+  const sequence: RationalPolynomial[] = [polynomialValue, enginePrimitive(derivative(polynomialValue))];
+  while (!isZero(sequence[sequence.length - 1]!)) {
+    const [, remainder] = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
+    if (isZero(remainder)) break;
+    sequence.push(enginePrimitive(polynomialNegate(remainder)));
+  }
+  return Object.freeze(sequence);
+}
+function enginePolynomialGcd(left: RationalPolynomial, right: RationalPolynomial): RationalPolynomial {
+  let a = enginePrimitive(left); let b = enginePrimitive(right);
+  while (!isZero(b)) {
+    const [, remainder] = divideWithRemainder(a, b);
+    a = b; b = isZero(remainder) ? remainder : enginePrimitive(remainder);
+  }
+  return a;
+}
+function engineSquareFree(value: RationalPolynomial): RationalPolynomial {
+  const slope = derivative(value);
+  if (isZero(slope)) return value;
+  const divisor = enginePolynomialGcd(value, slope);
+  const [quotient, remainder] = divideWithRemainder(value, divisor);
+  if (!isZero(remainder)) throw new RangeError('Polynomial square-free division was not exact');
+  return enginePrimitive(quotient);
+}
+function engineVariations(sequence: readonly RationalPolynomial[], at: Rational): number {
+  const signs = sequence.map((item) => compare(evaluate(item, at), ZERO)).filter((item) => item !== 0);
+  return signs.reduce((total, item, index) => total + (index > 0 && signs[index - 1] !== item ? 1 : 0), 0);
+}
+function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
+  const polynomialValue = canonicalPolynomial(value, 'Engine root polynomial');
+  const lowerBound = canonicalRational(lower, 'Engine root lower bound'); const upperBound = canonicalRational(upper, 'Engine root upper bound');
+  if (compare(lowerBound, upperBound) > 0) throw new RangeError('Root lower bound must not exceed upper bound');
+  if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS) throw new RangeError(`Root refinement bits must be an integer in [1, ${MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS}]`);
+  if (degree(polynomialValue) <= 0) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: false });
+  const distinct = engineSquareFree(polynomialValue); const sequence = engineSturm(distinct);
+  const exact: Rational[] = []; const intervals: RationalInterval[] = []; let unresolved = false;
+  const rootsInOpen = (left: Rational, right: Rational): number => engineVariations(sequence, left) - engineVariations(sequence, right) - (compare(evaluate(distinct, right), ZERO) === 0 ? 1 : 0);
+  const visit = (left: Rational, right: Rational, depth: number): void => {
+    const count = rootsInOpen(left, right);
+    if (count <= 0) return;
+    if (depth >= refinementBits) { if (count === 1) intervals.push(interval(left, right)); else unresolved = true; return; }
+    const middle = divide(add(left, right), TWO);
+    if (compare(evaluate(polynomialValue, middle), ZERO) === 0) { exact.push(middle); visit(left, middle, depth + 1); visit(middle, right, depth + 1); return; }
+    visit(left, middle, depth + 1); visit(middle, right, depth + 1);
+  };
+  visit(lowerBound, upperBound, 0);
+  return Object.freeze({ exact: Object.freeze(exact), intervals: Object.freeze(intervals), unresolved });
+}
 function workBudgetFor(n: number, margin: Rational, _alpha: Rational, exhaustiveSize: boolean): WorkBudget | null {
   // Alpha is only compared after the exact p-value has been certified; it
   // does not enter score/root arithmetic, so nuisance-margin bits govern work.
@@ -89,11 +160,11 @@ function inertRecord(value: unknown, name: string, fields: readonly string[]): R
     descriptors = Object.getOwnPropertyDescriptors(value);
   } catch { throw new RangeError(`${name} must not be a Proxy or dynamic object`); }
   if (Reflect.ownKeys(descriptors).length !== fields.length || fields.some((field) => !Object.hasOwn(descriptors, field))) throw new RangeError(`${name} has unexpected fields`);
-  const copy: Record<string, unknown> = {};
+  const copy = Object.create(null) as Record<string, unknown>;
   for (const field of fields) {
     const descriptor = descriptors[field]!;
     if (!Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) throw new RangeError(`${name} must not contain accessors`);
-    copy[field] = descriptor.value;
+    Object.defineProperty(copy, field, { value: descriptor.value, enumerable: true, writable: false, configurable: false });
   }
   return Object.freeze(copy);
 }
@@ -107,11 +178,11 @@ function inertList(value: unknown, name: string): readonly unknown[] {
   if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value') || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) throw new RangeError(`${name} has invalid length`);
   const length = lengthDescriptor.value as number;
   if (Reflect.ownKeys(descriptors).length !== length + 1) throw new RangeError(`${name} must not be sparse or extended`);
-  const result: unknown[] = [];
+  const result: unknown[] = new Array(length);
   for (let index = 0; index < length; index++) {
     const descriptor = descriptors[String(index)];
     if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) throw new RangeError(`${name} must not contain accessors`);
-    result.push(descriptor.value);
+    Object.defineProperty(result, index, { value: descriptor.value, enumerable: true, writable: false, configurable: false });
   }
   return Object.freeze(result);
 }
@@ -124,12 +195,12 @@ function inertRecordWithOptional(value: unknown, name: string, required: readonl
   } catch { throw new RangeError(`${name} must not be a Proxy or dynamic object`); }
   const allowed = new Set([...required, ...optional]);
   if (Reflect.ownKeys(descriptors).some((key) => typeof key !== 'string' || !allowed.has(key)) || required.some((field) => !Object.hasOwn(descriptors, field))) throw new RangeError(`${name} has unexpected fields`);
-  const copy: Record<string, unknown> = {};
+  const copy = Object.create(null) as Record<string, unknown>;
   for (const field of [...required, ...optional]) {
     const descriptor = descriptors[field];
     if (!descriptor) continue;
     if (!Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) throw new RangeError(`${name} must not contain accessors`);
-    copy[field] = descriptor.value;
+    Object.defineProperty(copy, field, { value: descriptor.value, enumerable: true, writable: false, configurable: false });
   }
   return Object.freeze(copy);
 }
@@ -185,9 +256,7 @@ function snapshotInput(input: MatchedPairNiInput): MatchedPairNiInput {
 }
 type WorkerTask = 'restricted_score' | 'null_size';
 function workerUrl(): URL {
-  const result = new URL(import.meta.url);
-  result.pathname = result.pathname.replace(/\.js$/, '-worker.js').replace(/\.ts$/, '-worker.ts');
-  return result;
+  return new URL(import.meta.url);
 }
 function hydratePValue(value: unknown, name: string): Readonly<{ lower: Rational; upper: Rational }> {
   const copy = inertRecord(value, name, ['lower', 'upper']);
@@ -204,8 +273,8 @@ function hydrateCertificate(value: unknown, pValue: Readonly<{ lower: Rational; 
   const certificatePValue = hydratePValue(copy.pValue, 'Worker certificate p-value');
   if (!equal(certificatePValue.lower, pValue.lower) || !equal(certificatePValue.upper, pValue.upper)) throw new RangeError('Worker certificate p-value disagrees with result');
   const ceiling = inertRecord(copy.safeCeiling, 'Worker safe ceiling', ['maxN', 'maxPolynomialDegree', 'maxRootBisections']);
-  for (const field of ['maxN', 'maxPolynomialDegree', 'maxRootBisections']) if (!Number.isSafeInteger(ceiling[field]) || (ceiling[field] as number) < 0) throw new RangeError('Worker safe ceiling is invalid');
-  return Object.freeze({ method: copy.method, nullBoundary: copy.nullBoundary, maximization: copy.maximization, evaluatedEndpoints: true, stationaryPointCount: copy.stationaryPointCount as number, pValue, safeCeiling: Object.freeze({ maxN: ceiling.maxN as number, maxPolynomialDegree: ceiling.maxPolynomialDegree as number, maxRootBisections: ceiling.maxRootBisections as number }), exactness: copy.exactness });
+  if (ceiling.maxN !== MATCHED_PAIR_NI_MAX_N || ceiling.maxPolynomialDegree !== MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE || ceiling.maxRootBisections !== MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS) throw new RangeError('Worker safe ceiling is invalid');
+  return Object.freeze({ method: copy.method, nullBoundary: copy.nullBoundary, maximization: copy.maximization, evaluatedEndpoints: true, stationaryPointCount: copy.stationaryPointCount as number, pValue, safeCeiling: Object.freeze({ maxN: MATCHED_PAIR_NI_MAX_N, maxPolynomialDegree: MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE, maxRootBisections: MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS }), exactness: copy.exactness });
 }
 function hydrateIndeterminate(value: unknown): IndeterminateCertificate {
   const copy = inertRecord(value, 'Worker indeterminate certificate', ['method', 'reason', 'reject']);
@@ -213,21 +282,28 @@ function hydrateIndeterminate(value: unknown): IndeterminateCertificate {
   return Object.freeze({ method: copy.method, reason: copy.reason as IndeterminateCertificate['reason'], reject: false });
 }
 /** Rebuild a worker result from canonical values; structured clone drops freezes. */
-function hydrateMatchedPairNiResult(value: unknown): MatchedPairNiResult {
+function hydrateMatchedPairNiResult(value: unknown, input: MatchedPairNiInput): MatchedPairNiResult {
   const result = inertRecord(value, 'Worker diagnostic result', ['mode', 'admission', 'diagnostic']);
   if (result.mode !== 'restricted_score_e_plus_m' && result.mode !== 'conditional_mcnemar_zero_margin') throw new RangeError('Worker diagnostic mode is invalid');
   const diagnostic = inertRecordWithOptional(result.diagnostic, 'Worker diagnostic', ['statisticalRejectNull', 'alphaDecision', 'pValue'], ['certificate', 'indeterminate']);
   if (typeof diagnostic.statisticalRejectNull !== 'boolean' || !['reject_certified', 'nonreject_certified', 'indeterminate_alpha_overlap'].includes(diagnostic.alphaDecision as string) || (diagnostic.certificate !== undefined && diagnostic.indeterminate !== undefined)) throw new RangeError('Worker diagnostic is invalid');
   const pValue = hydratePValue(diagnostic.pValue, 'Worker diagnostic p-value');
+  if (compare(pValue.lower, ZERO) < 0 || compare(pValue.upper, ONE) > 0) throw new RangeError('Worker diagnostic p-value is outside [0, 1]');
   const certificate = diagnostic.certificate === undefined ? undefined : hydrateCertificate(diagnostic.certificate, pValue);
   const indeterminate = diagnostic.indeterminate === undefined ? undefined : hydrateIndeterminate(diagnostic.indeterminate);
-  if ((diagnostic.alphaDecision === 'reject_certified') !== diagnostic.statisticalRejectNull || (indeterminate !== undefined && diagnostic.statisticalRejectNull)) throw new RangeError('Worker diagnostic decision is inconsistent');
+  const expectedDecision = compare(pValue.upper, input.alpha) <= 0 ? 'reject_certified'
+    : compare(pValue.lower, input.alpha) > 0 ? 'nonreject_certified' : 'indeterminate_alpha_overlap';
+  if ((diagnostic.alphaDecision === 'reject_certified') !== diagnostic.statisticalRejectNull || diagnostic.alphaDecision !== expectedDecision || (indeterminate !== undefined && diagnostic.statisticalRejectNull) || (result.mode === 'restricted_score_e_plus_m' && certificate === undefined && indeterminate === undefined) || (result.mode === 'conditional_mcnemar_zero_margin' && (certificate !== undefined || indeterminate !== undefined)) || (equal(input.margin, ZERO) !== (result.mode === 'conditional_mcnemar_zero_margin')) || (indeterminate !== undefined && (!equal(pValue.lower, ZERO) || !equal(pValue.upper, ONE)))) throw new RangeError('Worker diagnostic decision is inconsistent');
   return Object.freeze({ mode: result.mode, admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: diagnostic.statisticalRejectNull, alphaDecision: diagnostic.alphaDecision as MatchedPairNiResult['diagnostic']['alphaDecision'], pValue, ...(certificate ? { certificate } : {}), ...(indeterminate ? { indeterminate } : {}) }) });
 }
 function hydrateStates(value: unknown, name: string): readonly ReducedMatchedPairState[] {
   return Object.freeze(inertList(value, name).map((state) => canonicalState(state as ReducedMatchedPairState)));
 }
-function hydrateSizeEnvelope(value: unknown): NullBoundarySizeEnvelope {
+function polynomialEqual(left: RationalPolynomial, right: RationalPolynomial): boolean {
+  return left.length === right.length && left.every((coefficient, index) => equal(coefficient, right[index]!));
+}
+function stateKeySet(states: readonly ReducedMatchedPairState[]): Set<string> { return new Set(states.map((state) => stateKey(state))); }
+function hydrateSizeEnvelope(value: unknown, n: number): NullBoundarySizeEnvelope {
   const copy = inertRecord(value, 'Worker size envelope', ['status', 'lower', 'upper', 'indeterminateStates', 'engineIndeterminacy', 'alphaOverlapStates', 'reason']);
   if (copy.status !== 'certified' && copy.status !== 'indeterminate') throw new RangeError('Worker size envelope status is invalid');
   const lower = canonicalPolynomial(copy.lower as RationalPolynomial, 'Worker size lower polynomial');
@@ -240,6 +316,11 @@ function hydrateSizeEnvelope(value: unknown): NullBoundarySizeEnvelope {
     return Object.freeze({ state: canonicalState(item.state as ReducedMatchedPairState), reason: item.reason as IndeterminateCertificate['reason'] });
   }));
   if (copy.reason !== null && !['ambiguous_score_ordering', 'ambiguous_e_ordering', 'root_isolation_ceiling', 'complexity_ceiling', 'overlapping_p_value', 'size_complexity_ceiling'].includes(copy.reason as string)) throw new RangeError('Worker size envelope reason is invalid');
+  const allStates = stateKeySet(enumerateReducedStates(n));
+  const indeterminateKeys = stateKeySet(indeterminateStates); const overlapKeys = stateKeySet(alphaOverlapStates); const engineKeys = stateKeySet(engineIndeterminacy.map((entry) => entry.state));
+  if (indeterminateKeys.size !== indeterminateStates.length || overlapKeys.size !== alphaOverlapStates.length || engineKeys.size !== engineIndeterminacy.length || [...indeterminateKeys, ...overlapKeys, ...engineKeys].some((key) => !allStates.has(key)) || [...overlapKeys].some((key) => engineKeys.has(key)) || [...indeterminateKeys].some((key) => !overlapKeys.has(key) && !engineKeys.has(key)) || [...overlapKeys, ...engineKeys].some((key) => !indeterminateKeys.has(key))) throw new RangeError('Worker size envelope state lists are inconsistent');
+  const expectedReason = engineIndeterminacy[0]?.reason ?? (alphaOverlapStates.length > 0 ? 'overlapping_p_value' : null);
+  if ((copy.status === 'certified' && (indeterminateStates.length !== 0 || copy.reason !== null || !polynomialEqual(lower, upper))) || (copy.status === 'indeterminate' && (indeterminateStates.length === 0 || copy.reason !== expectedReason))) throw new RangeError('Worker size envelope status is inconsistent');
   return Object.freeze({ status: copy.status, lower, upper, indeterminateStates, engineIndeterminacy, alphaOverlapStates, reason: copy.reason as NullBoundarySizeEnvelope['reason'] });
 }
 function workerResponse(value: unknown): Readonly<{ ok: boolean; value?: unknown }> {
@@ -247,21 +328,32 @@ function workerResponse(value: unknown): Readonly<{ ok: boolean; value?: unknown
   if (typeof copy.ok !== 'boolean' || (copy.ok && !Object.hasOwn(copy, 'value')) || (!copy.ok && Object.hasOwn(copy, 'value'))) throw new RangeError('Worker response is invalid');
   return copy as Readonly<{ ok: boolean; value?: unknown }>;
 }
+let activeWorkers = 0;
 function runBoundedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T, fallback: () => T): Promise<T> {
   return new Promise((resolve) => {
-    const worker = new Worker(workerUrl(), {
-      workerData: Object.freeze({ task, payload }), resourceLimits: { maxOldGenerationSizeMb: MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB },
-      execArgv: import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : undefined,
-    });
+    // There is deliberately no unbounded queue: a saturated caller gets
+    // conservative evidence immediately instead of an unbounded wait.
+    if (activeWorkers >= MATCHED_PAIR_NI_MAX_CONCURRENT_WORKERS) { resolve(fallback()); return; }
+    activeWorkers++;
     let settled = false;
-    const finish = (result: T): void => { if (!settled) { settled = true; clearTimeout(timer); resolve(result); } };
-    const timer = setTimeout(() => { void worker.terminate().finally(() => finish(fallback())); }, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (result: T): void => {
+      if (!settled) { settled = true; if (timer) clearTimeout(timer); activeWorkers--; resolve(result); }
+    };
+    let worker: Worker;
+    try {
+      worker = new Worker(workerUrl(), {
+        workerData: Object.freeze({ exactMatchedPairNiWorker: true, task, payload }), resourceLimits: { maxOldGenerationSizeMb: MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB },
+        execArgv: import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : undefined,
+      });
+    } catch { finish(fallback()); return; }
+    timer = setTimeout(() => { void worker.terminate().finally(() => finish(fallback())); }, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
     worker.once('message', (message: unknown) => {
       try { const response = workerResponse(message); finish(response.ok ? hydrate(response.value) : fallback()); }
       catch { finish(fallback()); }
     });
     worker.once('error', () => finish(fallback()));
-    worker.once('exit', (code) => { if (code !== 0) finish(fallback()); });
+    worker.once('exit', () => finish(fallback()));
   });
 }
 export function enumerateReducedStates(n: number): readonly ReducedMatchedPairState[] {
@@ -489,10 +581,11 @@ export function conditionalMcNemarPValue(state: ReducedMatchedPairState): Ration
 }
 
 export function restrictedScoreEM(input: MatchedPairNiInput): Promise<MatchedPairNiResult> {
-  return runBoundedWorker('restricted_score', snapshotInput(input), hydrateMatchedPairNiResult, () => indeterminate('complexity_ceiling'));
+  const normalized = snapshotInput(input);
+  return runBoundedWorker('restricted_score', normalized, (value) => hydrateMatchedPairNiResult(value, normalized), () => indeterminate('complexity_ceiling'));
 }
 /** Runs only inside the bounded worker; not a runtime/admission API. */
-export function restrictedScoreEMWorker(input: MatchedPairNiInput): MatchedPairNiResult {
+function restrictedScoreEMWorker(input: MatchedPairNiInput): MatchedPairNiResult {
   if (isMainThread) throw new RangeError('Exact E+M core is worker-only');
   const normalizedInput = snapshotInput(input);
   const observed = reduceMatchedPairCounts(normalizedInput.counts);
@@ -575,10 +668,10 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
     status: 'indeterminate', lower: constant(ZERO), upper: constant(ONE), indeterminateStates: states,
     engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling',
   });
-  return runBoundedWorker('null_size', Object.freeze({ n: normalized.state.n, margin: normalized.margin, alpha: normalized.alpha }), hydrateSizeEnvelope, fallback);
+  return runBoundedWorker('null_size', Object.freeze({ n: normalized.state.n, margin: normalized.margin, alpha: normalized.alpha }), (value) => hydrateSizeEnvelope(value, normalized.state.n), fallback);
 }
 /** Runs only inside the bounded worker; not a runtime/admission API. */
-export function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
+function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
   if (isMainThread) throw new RangeError('Exact E+M core is worker-only');
   const normalized = validate({ n, x: 0, t: 0 }, margin, alpha);
   if (equal(normalized.margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
@@ -637,3 +730,31 @@ export function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alph
 export interface MatchedPairNiConfidenceInversion { readonly status: 'not_implemented_non_admitting'; }
 export interface MatchedPairNiAdaptiveResizing { readonly status: 'not_implemented_non_admitting'; }
 export const parseMatchedPairNiDecimal = decimal;
+
+/* The only route to the unexported complete-computation cores. The parent
+ * always supplies Worker resource limits and terminates at the wall-clock
+ * ceiling; importing this module in another worker exposes only the public,
+ * bounded API. */
+interface EngineWorkerRequest {
+  readonly exactMatchedPairNiWorker: true;
+  readonly task: WorkerTask;
+  readonly payload: MatchedPairNiInput | Readonly<{ n: number; margin: Rational; alpha: Rational }>;
+}
+function isEngineWorkerRequest(value: unknown): value is EngineWorkerRequest {
+  return Boolean(value && typeof value === 'object' && (value as { exactMatchedPairNiWorker?: unknown }).exactMatchedPairNiWorker === true);
+}
+if (!isMainThread && isEngineWorkerRequest(workerData)) {
+  try {
+    const request = workerData;
+    const value = request.task === 'restricted_score'
+      ? restrictedScoreEMWorker(request.payload as MatchedPairNiInput)
+      : nullBoundarySizeEnvelopeWorker(
+        (request.payload as { n: number }).n,
+        (request.payload as { margin: Rational }).margin,
+        (request.payload as { alpha: Rational }).alpha,
+      );
+    parentPort?.postMessage({ ok: true, value });
+  } catch {
+    parentPort?.postMessage({ ok: false });
+  }
+}

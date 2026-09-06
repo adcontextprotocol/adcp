@@ -1,6 +1,5 @@
 import { types } from 'node:util';
-import { isMainThread } from 'node:worker_threads';
-import { add, canonicalRational, compare, divide, midpoint, multiply, pow, rational, subtract, type Rational, ONE, ZERO } from './rational.js';
+import { add, canonicalRational, compare, divide, midpoint, multiply, pow, rational, rationalBitLength, subtract, type Rational, ONE, ZERO } from './rational.js';
 import { canonicalPolynomial, degree, derivative, divideWithRemainder, evaluate, isZero, polynomial, polynomialNegate, type RationalPolynomial } from './polynomial.js';
 
 function integerGcd(left: bigint, right: bigint): bigint {
@@ -9,18 +8,17 @@ function integerGcd(left: bigint, right: bigint): bigint {
   return a;
 }
 const MAX_ALGEBRAIC_DEGREE = 25;
-/** Public root isolation shares the engine's bounded 24-bit refinement cap. */
+/** Public syntax cap; the smaller direct work domain is checked separately. */
 const MAX_ROOT_REFINEMENT_BITS = 24;
-/** Root work must resolve conservatively rather than monopolize a process. */
-const MAX_ALGEBRAIC_ROOT_MILLISECONDS = 3_000;
-class AlgebraicDeadline {
-  private readonly until = Date.now() + MAX_ALGEBRAIC_ROOT_MILLISECONDS;
-  check(): void { if (Date.now() > this.until) throw new RangeError('Algebraic root isolation deadline exceeded'); }
-}
+/** Direct validation helpers have a small deterministic coefficient budget. */
+const MAX_DIRECT_ROOT_DEGREE = 8;
+const MAX_DIRECT_ROOT_REFINEMENT_BITS = 24;
+const MAX_DIRECT_ROOT_COEFFICIENT_BITS = 512;
+const MAX_DIRECT_ROOT_TOTAL_BITS = 4_096;
 /** Positive primitive scaling preserves every Sturm sign while preventing fraction swell. */
-function primitive(value: RationalPolynomial, deadline?: AlgebraicDeadline): RationalPolynomial {
+function primitive(value: RationalPolynomial): RationalPolynomial {
   let common = 1n;
-  for (const coefficient of value) { deadline?.check(); common = common / integerGcd(common, coefficient.denominator) * coefficient.denominator; }
+  for (const coefficient of value) common = common / integerGcd(common, coefficient.denominator) * coefficient.denominator;
   const integers = value.map((coefficient) => coefficient.numerator * (common / coefficient.denominator));
   const content = integers.reduce((result, coefficient) => integerGcd(result, coefficient), 0n) || 1n;
   return polynomial(integers.map((coefficient) => rational(coefficient / content)));
@@ -81,39 +79,39 @@ function variations(sequence: readonly RationalPolynomial[], at: Rational): numb
   return signs.reduce((total, item, index) => total + (index > 0 && signs[index - 1] !== item ? 1 : 0), 0);
 }
 /** Exact Sturm sequence; no floating arithmetic is used in root enumeration. */
-function sturmSequenceWithinDeadline(value: RationalPolynomial, deadline?: AlgebraicDeadline): readonly RationalPolynomial[] {
+function sturmSequenceWithinBudget(value: RationalPolynomial): readonly RationalPolynomial[] {
   const polynomialValue = canonicalAlgebraicPolynomial(value);
   if (isZero(polynomialValue)) throw new RangeError('Sturm sequence requires a nonzero polynomial');
-  const sequence: RationalPolynomial[] = [primitive(polynomialValue, deadline), primitive(derivative(polynomialValue), deadline)];
+  const sequence: RationalPolynomial[] = [primitive(polynomialValue), primitive(derivative(polynomialValue))];
   while (!isZero(sequence[sequence.length - 1]!)) {
-    deadline?.check();
     const [, remainder] = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
     if (isZero(remainder)) break;
-    sequence.push(primitive(polynomialNegate(remainder), deadline));
+    sequence.push(primitive(polynomialNegate(remainder)));
   }
   return Object.freeze(sequence);
 }
 export function sturmSequence(value: RationalPolynomial): readonly RationalPolynomial[] {
-  return sturmSequenceWithinDeadline(value, new AlgebraicDeadline());
+  const normalized = canonicalAlgebraicPolynomial(value);
+  if (!withinDirectRootBudget(normalized, MAX_DIRECT_ROOT_REFINEMENT_BITS)) throw new RangeError('Direct Sturm sequence exceeds deterministic validation budget');
+  return sturmSequenceWithinBudget(normalized);
 }
 /** Exact Euclidean gcd, scaled only by positive content. */
-function polynomialGcd(left: RationalPolynomial, right: RationalPolynomial, deadline?: AlgebraicDeadline): RationalPolynomial {
-  let a = primitive(left, deadline); let b = primitive(right, deadline);
+function polynomialGcd(left: RationalPolynomial, right: RationalPolynomial): RationalPolynomial {
+  let a = primitive(left); let b = primitive(right);
   while (!isZero(b)) {
-    deadline?.check();
     const [, remainder] = divideWithRemainder(a, b);
-    a = b; b = isZero(remainder) ? remainder : primitive(remainder, deadline);
+    a = b; b = isZero(remainder) ? remainder : primitive(remainder);
   }
   return a;
 }
 /** Distinct roots only: repeated endpoint roots must not corrupt Sturm signs. */
-function squareFree(value: RationalPolynomial, deadline?: AlgebraicDeadline): RationalPolynomial {
+function squareFree(value: RationalPolynomial): RationalPolynomial {
   const slope = derivative(value);
   if (isZero(slope)) return value;
-  const divisor = polynomialGcd(value, slope, deadline);
+  const divisor = polynomialGcd(value, slope);
   const [quotient, remainder] = divideWithRemainder(value, divisor);
   if (!isZero(remainder)) throw new RangeError('Polynomial square-free division was not exact');
-  return primitive(quotient, deadline);
+  return primitive(quotient);
 }
 function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: RationalPolynomial, lower: Rational, upper: Rational): number {
   const inclusiveUpper = variations(sequence, lower) - variations(sequence, upper);
@@ -121,24 +119,20 @@ function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: Ration
 }
 export interface RootIsolation { readonly exact: readonly Rational[]; readonly intervals: readonly RationalInterval[]; readonly unresolved: boolean; }
 /** Isolate every distinct interior root using Sturm counts and dyadic bisection. */
-function isolateRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number, deadline: AlgebraicDeadline | undefined): RootIsolation {
+function withinDirectRootBudget(value: RationalPolynomial, refinementBits: number): boolean {
+  const totalBits = value.reduce((total, coefficient) => total + rationalBitLength(coefficient), 0);
+  return degree(value) <= MAX_DIRECT_ROOT_DEGREE && refinementBits <= MAX_DIRECT_ROOT_REFINEMENT_BITS && totalBits <= MAX_DIRECT_ROOT_TOTAL_BITS && value.every((coefficient) => rationalBitLength(coefficient) <= MAX_DIRECT_ROOT_COEFFICIENT_BITS);
+}
+function isolateRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
   const polynomialValue = canonicalAlgebraicPolynomial(value); const lowerBound = canonicalRational(lower, 'Root lower bound'); const upperBound = canonicalRational(upper, 'Root upper bound');
   if (compare(lowerBound, upperBound) > 0) throw new RangeError('Root lower bound must not exceed upper bound');
   if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > MAX_ROOT_REFINEMENT_BITS) throw new RangeError(`Root refinement bits must be an integer in [1, ${MAX_ROOT_REFINEMENT_BITS}]`);
   if (degree(polynomialValue) <= 0) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: false });
-  let distinct: RationalPolynomial; let sequence: readonly RationalPolynomial[];
-  try {
-    distinct = squareFree(polynomialValue, deadline);
-    sequence = sturmSequenceWithinDeadline(distinct, deadline);
-  } catch (error) {
-    if (error instanceof RangeError && /deadline/.test(error.message)) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: true });
-    throw error;
-  }
+  const distinct = squareFree(polynomialValue); const sequence = sturmSequenceWithinBudget(distinct);
   const exact: Rational[] = [];
   const intervals: RationalInterval[] = [];
   let unresolved = false;
   const visit = (left: Rational, right: Rational, depth: number): void => {
-    try { deadline?.check(); } catch { unresolved = true; return; }
     const count = rootsInOpen(sequence, distinct, left, right);
     if (count <= 0) return;
     // A singleton interval is an exact proof object. More than one root at
@@ -164,15 +158,12 @@ function isolateRoots(value: RationalPolynomial, lower: Rational, upper: Rationa
   return Object.freeze({ exact: Object.freeze(exact), intervals: Object.freeze(intervals), unresolved });
 }
 /** Bounded direct root isolation for standalone diagnostic validation. */
-export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits = 24): RootIsolation {
-  return isolateRoots(value, lower, upper, refinementBits, new AlgebraicDeadline());
+export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits = MAX_DIRECT_ROOT_REFINEMENT_BITS): RootIsolation {
+  const polynomialValue = canonicalAlgebraicPolynomial(value); const lowerBound = canonicalRational(lower, 'Root lower bound'); const upperBound = canonicalRational(upper, 'Root upper bound');
+  if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > MAX_ROOT_REFINEMENT_BITS) throw new RangeError(`Root refinement bits must be an integer in [1, ${MAX_ROOT_REFINEMENT_BITS}]`);
+  if (!withinDirectRootBudget(polynomialValue, refinementBits)) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: true });
+  return isolateRoots(polynomialValue, lowerBound, upperBound, refinementBits);
 }
-/** Engine-only path: its caller has separate state/precision/work guards. */
-export function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
-  if (isMainThread) throw new RangeError('Engine root isolation is worker-only');
-  return isolateRoots(value, lower, upper, refinementBits, undefined);
-}
-
 export interface MaximumCertificate { readonly lower: Rational; readonly upper: Rational; readonly stationaryPointCount: number; readonly indeterminate: boolean; }
 /**
  * A certified enclosure of max p(x) on a closed rational interval. Endpoints
@@ -180,7 +171,7 @@ export interface MaximumCertificate { readonly lower: Rational; readonly upper: 
  * at irrational stationary points.
  */
 export function maximizePolynomial(
-  value: RationalPolynomial, lower: Rational, upper: Rational, maxSplits = 24,
+  value: RationalPolynomial, lower: Rational, upper: Rational, maxSplits = MAX_DIRECT_ROOT_REFINEMENT_BITS,
 ): MaximumCertificate {
   const polynomialValue = canonicalAlgebraicPolynomial(value); const lowerBound = canonicalRational(lower, 'Maximum lower bound'); const upperBound = canonicalRational(upper, 'Maximum upper bound');
   if (!Number.isSafeInteger(maxSplits) || maxSplits < 1 || maxSplits > MAX_ROOT_REFINEMENT_BITS) throw new RangeError(`Maximum root refinement must be an integer in [1, ${MAX_ROOT_REFINEMENT_BITS}]`);

@@ -6,6 +6,12 @@ export type RationalPolynomial = readonly Rational[];
 export const MAX_RATIONAL_POLYNOMIAL_DEGREE = 25;
 const normalizedPolynomials = new WeakSet<object>();
 
+function primitiveLabel(value: unknown, fallback = 'Polynomial'): string {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string') throw new RangeError('Polynomial label must be a primitive string');
+  return value;
+}
+
 /** Reject sparse, accessor, and Proxy arrays before copying coefficients once. */
 function inertCoefficients(value: RationalPolynomial, name: string): readonly Rational[] {
   if (typeof value === 'object' && value !== null && normalizedPolynomials.has(value)) return value;
@@ -16,21 +22,22 @@ function inertCoefficients(value: RationalPolynomial, name: string): readonly Ra
   const lengthDescriptor = descriptors.length;
   if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value') || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value === 0 || lengthDescriptor.value - 1 > MAX_RATIONAL_POLYNOMIAL_DEGREE) throw new RangeError(`${name} degree must be in [0, ${MAX_RATIONAL_POLYNOMIAL_DEGREE}]`);
   const length = lengthDescriptor.value as number;
-  const raw: Rational[] = [];
+  const raw: Rational[] = new Array(length);
   try {
     for (let index = 0; index < length; index++) {
       const descriptor = descriptors[String(index)];
       if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) throw new TypeError();
     }
     if (Reflect.ownKeys(descriptors).some((key) => key !== 'length' && (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/.test(key)))) throw new TypeError();
-    for (let index = 0; index < length; index++) raw.push(descriptors[String(index)]!.value as Rational);
+    for (let index = 0; index < length; index++) Object.defineProperty(raw, index, { value: descriptors[String(index)]!.value as Rational, enumerable: true, writable: false, configurable: false });
   } catch { throw new RangeError(`${name} must not be sparse, accessor-backed, or a Proxy`); }
   return Object.freeze(raw.map((coefficient) => canonicalRational(coefficient, `${name} coefficient`)));
 }
 /** Snapshot a canonical polynomial before it is read by another public helper. */
 export function canonicalPolynomial(value: RationalPolynomial, name = 'Polynomial'): RationalPolynomial {
-  const copied = inertCoefficients(value, name);
-  if (copied.length > 1 && compare(copied[copied.length - 1]!, ZERO) === 0) throw new RangeError(`${name} must be canonical (no trailing zero coefficient)`);
+  const label = primitiveLabel(name);
+  const copied = inertCoefficients(value, label);
+  if (copied.length > 1 && compare(copied[copied.length - 1]!, ZERO) === 0) throw new RangeError(`${label} must be canonical (no trailing zero coefficient)`);
   const result = Object.freeze([...copied]);
   normalizedPolynomials.add(result);
   return result;

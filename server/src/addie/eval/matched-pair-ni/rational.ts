@@ -7,6 +7,13 @@ export const MAX_EXTERNAL_DECIMAL_CHARACTERS = 80;
 export const MAX_RATIONAL_BITS = 8_192;
 const normalizedRationals = new WeakSet<object>();
 
+/** Labels are part of the untrusted diagnostic boundary, never coercion hooks. */
+function primitiveLabel(value: unknown, fallback = 'Rational'): string {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string') throw new RangeError('Rational label must be a primitive string');
+  return value;
+}
+
 /**
  * Reject dynamic structured values before exact arithmetic observes them.
  * Node identifies Proxies without invoking their traps; descriptor inspection
@@ -25,13 +32,13 @@ function inertRecord(value: unknown, name: string, fields: readonly string[]): R
   if (Reflect.ownKeys(descriptors).length !== fields.length || fields.some((field) => !Object.hasOwn(descriptors, field))) {
     throw new RangeError(`${name} has unexpected fields`);
   }
-  const copy: Record<string, unknown> = {};
+  const copy = Object.create(null) as Record<string, unknown>;
   for (const field of fields) {
     const descriptor = descriptors[field]!;
     if (!Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) {
       throw new RangeError(`${name} must not contain accessors`);
     }
-    copy[field] = descriptor.value;
+    Object.defineProperty(copy, field, { value: descriptor.value, enumerable: true, writable: false, configurable: false });
   }
   return Object.freeze(copy);
 }
@@ -68,10 +75,11 @@ normalizedRationals.add(ZERO); normalizedRationals.add(ONE); normalizedRationals
 
 /** Snapshot a structural Rational exactly once into an inert canonical value. */
 export function canonicalRational(value: Rational, name = 'Rational'): Rational {
+  const label = primitiveLabel(name);
   if (typeof value === 'object' && value !== null && normalizedRationals.has(value)) return value;
-  const copy = inertRecord(value, name, ['numerator', 'denominator']);
-  if (typeof copy.numerator !== 'bigint' || typeof copy.denominator !== 'bigint' || copy.denominator <= 0n || bitLength(copy.numerator) > MAX_RATIONAL_BITS || bitLength(copy.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${name} exceeds the rational arithmetic ceiling`);
-  if ((copy.numerator === 0n && copy.denominator !== 1n) || (copy.numerator !== 0n && gcd(copy.numerator, copy.denominator) !== 1n)) throw new RangeError(`${name} must be normalized`);
+  const copy = inertRecord(value, label, ['numerator', 'denominator']);
+  if (typeof copy.numerator !== 'bigint' || typeof copy.denominator !== 'bigint' || copy.denominator <= 0n || bitLength(copy.numerator) > MAX_RATIONAL_BITS || bitLength(copy.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${label} exceeds the rational arithmetic ceiling`);
+  if ((copy.numerator === 0n && copy.denominator !== 1n) || (copy.numerator !== 0n && gcd(copy.numerator, copy.denominator) !== 1n)) throw new RangeError(`${label} must be normalized`);
   return rational(copy.numerator, copy.denominator);
 }
 export function validateBoundedRational(value: Rational, name: string): void { canonicalRational(value, name); }

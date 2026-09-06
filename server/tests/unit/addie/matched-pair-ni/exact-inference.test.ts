@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
-import { interval, isolateEngineInteriorRoots, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { interval, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
@@ -13,8 +13,6 @@ import {
   reducedStateProbabilityPolynomial,
   restrictedPhiInterval,
   restrictedScoreEM,
-  restrictedScoreEMWorker,
-  nullBoundarySizeEnvelopeWorker,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
 import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 
@@ -25,8 +23,40 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   function expectsHostileConstructorToTerminate(expression: string): void {
     const moduleUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
     const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval',
-      `import { decimal, rational } from ${JSON.stringify(moduleUrl)}; try { ${expression}; process.exit(2); } catch { process.exit(0); }`,
+      `import { canonicalRational, decimal, rational } from ${JSON.stringify(moduleUrl)}; try { ${expression}; process.exit(2); } catch { process.exit(0); }`,
     ], { cwd: process.cwd(), encoding: 'utf8', timeout: 2_000 });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
+
+  function expectsPoisonedPrototypeToTerminate(source: string): void {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
+
+  function expectsWorkerInternalsToBeUnimportable(): void {
+    const algebraicUrl = new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href;
+    const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
+    const moduleProbe = `import * as algebraic from ${JSON.stringify(algebraicUrl)}; import * as engine from ${JSON.stringify(engineUrl)};
+      const forbidden = ['isolateEngineInteriorRoots', 'restrictedScoreEMWorker', 'nullBoundarySizeEnvelopeWorker'];
+      if (forbidden.some((name) => name in algebraic || name in engine)) process.exit(2);`;
+    const workerProbe = `import { parentPort } from 'node:worker_threads'; import * as algebraic from ${JSON.stringify(algebraicUrl)}; import * as engine from ${JSON.stringify(engineUrl)};
+      const forbidden = ['isolateEngineInteriorRoots', 'restrictedScoreEMWorker', 'nullBoundarySizeEnvelopeWorker'];
+      parentPort.postMessage(forbidden.some((name) => name in algebraic || name in engine));`;
+    const source = `${moduleProbe}
+      import { Worker } from 'node:worker_threads';
+      const worker = new Worker(${JSON.stringify(workerProbe)}, { eval: true, type: 'module', execArgv: ['--import', 'tsx'] });
+      const timer = setTimeout(() => process.exit(3), 2_000);
+      worker.once('message', (forbidden) => { clearTimeout(timer); process.exit(forbidden ? 2 : 0); });
+      worker.once('error', () => { clearTimeout(timer); process.exit(3); });`;
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
+    });
     expect(result.error).toBeUndefined();
     expect(result.signal).toBeNull();
     expect(result.status).toBe(0);
@@ -142,16 +172,27 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => interval(new Proxy({ numerator: 1n, denominator: 2n }, {}), ONE)).toThrow(/Proxy/);
   });
 
-  it('does not expose worker-only expensive cores on the main thread', () => {
-    expect(() => isolateEngineInteriorRoots([ONE, ONE], ZERO, ONE, 1)).toThrow(/worker-only/);
-    expect(() => restrictedScoreEMWorker({ counts: { n11: 3, n10: 1, n01: 0, n00: 1 }, margin, alpha })).toThrow(/worker-only/);
-    expect(() => nullBoundarySizeEnvelopeWorker(2, margin, alpha)).toThrow(/worker-only/);
+  it('does not export worker-only expensive cores to direct imports', () => {
+    expectsWorkerInternalsToBeUnimportable();
   });
 
   it('terminates hostile scalar constructors without property access or coercion', () => {
     expectsHostileConstructorToTerminate('decimal({ get length() { for (;;) {} } })');
     expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
+    expectsHostileConstructorToTerminate('canonicalRational({ numerator: 1n, denominator: 2n }, { [Symbol.toPrimitive]() { for (;;) {} } })');
   }, 5_000);
+
+  it('never dispatches descriptor snapshots through poisoned prototype setters', () => {
+    const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
+    expectsPoisonedPrototypeToTerminate(`import { canonicalRational } from ${JSON.stringify(rationalUrl)};
+      Object.defineProperty(Object.prototype, 'numerator', { set() { for (;;) {} }, configurable: true });
+      process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
+    const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
+    expectsPoisonedPrototypeToTerminate(`import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
+      Object.defineProperty(Object.prototype, 'counts', { set() { for (;;) {} }, configurable: true });
+      const outcome = await restrictedScoreEM({ counts: { n11: 1, n10: 1, n01: 0, n00: 0 }, margin: d('0.10'), alpha: d('0.05') });
+      process.exit(outcome.admission.admitted ? 2 : 0);`);
+  }, 7_000);
 
   it('returns unresolved before the killable root-isolation process deadline', () => {
     expectsRootIsolationToTerminate();
@@ -347,4 +388,13 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(Object.isFrozen(size.upper)).toBe(true);
     expect(Object.isFrozen(size.indeterminateStates)).toBe(true);
   });
+
+  it('fails closed rather than creating an unbounded worker queue under contention', async () => {
+    const input = { counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin, alpha };
+    const started = Date.now();
+    const outcomes = await Promise.all([restrictedScoreEM(input), restrictedScoreEM(input), restrictedScoreEM(input)]);
+    expect(Date.now() - started).toBeLessThan(25_000);
+    expect(outcomes.every((outcome) => outcome.admission.admitted === false)).toBe(true);
+    expect(outcomes.some((outcome) => outcome.diagnostic.indeterminate?.reason === 'complexity_ceiling')).toBe(true);
+  }, 30_000);
 });
