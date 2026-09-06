@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { buildSync } from "esbuild";
+import { build, buildSync } from "esbuild";
 import { describe, expect, it } from "vitest";
 
 function bundledModule(entryPoint: string): { readonly source: string; readonly inputs: readonly string[] } {
@@ -28,16 +28,56 @@ const probe = `
   )}, "base64").toString());
   let clockReads = 0;
   let randomReads = 0;
+  const environmentKeys = [];
   Date.now = () => { clockReads += 1; return 0; };
   Math.random = () => { randomReads += 1; return 0; };
+  process.env = new Proxy(process.env, {
+    get: (_target, key) => { environmentKeys.push(String(key)); return undefined; },
+    ownKeys: () => { environmentKeys.push("<ownKeys>"); return []; },
+  });
   const [judge, coordinator] = await Promise.all(bundles.map((source) =>
     import("data:text/javascript;base64," + Buffer.from(source).toString("base64")),
   ));
   judge.fixedTraceJudgeUnavailable();
   judge.fixedTraceJudgeSummaryUnavailable();
   coordinator.fixedTraceEvaluatorCoordinatorUnavailable();
-  process.stdout.write(JSON.stringify({ clockReads, randomReads }));
+  process.stdout.write(JSON.stringify({ clockReads, randomReads, environmentKeys }));
 `;
+
+async function hostileManifestProbe(hostileExpression: string): Promise<string> {
+  const result = await build({
+  stdin: {
+    resolveDir: process.cwd(),
+    sourcefile: "fixed-trace-hostile-manifest-probe.ts",
+    contents: `
+      import { fixedTraceEvidencePrerequisiteDiagnostic } from "./server/src/addie/eval/fixed-trace-evidence-prerequisite.ts";
+      import { reads } from "./server/src/addie/eval/fixed-trace-a-prerequisite-manifest.js";
+      process.stdout.write(JSON.stringify({ diagnostic: fixedTraceEvidencePrerequisiteDiagnostic(), reads }));
+    `,
+  },
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  target: "node20",
+  write: false,
+  plugins: [{
+    name: "hostile-fixed-trace-manifest",
+    setup(build) {
+      build.onResolve({ filter: /fixed-trace-a-prerequisite-manifest\.js$/ }, () => ({
+        path: "hostile-manifest", namespace: "hostile-manifest",
+      }));
+      build.onLoad({ filter: /.*/, namespace: "hostile-manifest" }, () => ({
+        contents: `
+          export const reads = { get: 0, ownKeys: 0, getter: 0, primitive: 0, json: 0 };
+          export const FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON = ${hostileExpression};
+        `,
+        loader: "js",
+      }));
+    },
+  }],
+  });
+  return result.outputFiles[0]!.text;
+}
 
 describe("fixed-trace B import boundary", () => {
   it("has only the pure A manifest and refusal modules in its import closure", () => {
@@ -50,14 +90,55 @@ describe("fixed-trace B import boundary", () => {
     expect([...new Set([...judgeModule.inputs, ...coordinatorModule.inputs])].sort()).toEqual(expected);
   });
 
-  it("traps clock and random before importing or invoking every bundled public refusal entry", () => {
+  it("traps clock, random, and environment before importing or invoking every bundled public refusal entry", () => {
     const child = spawnSync(process.execPath, [
-      "--import", "tsx", "--input-type=module", "--eval", probe,
+      "--input-type=module", "--eval", probe,
     ], {
       cwd: process.cwd(), encoding: "utf8", timeout: 10_000, killSignal: "SIGKILL",
     });
     expect(child.error).toBeUndefined();
     expect(child.status, child.stderr).toBe(0);
-    expect(JSON.parse(child.stdout)).toEqual({ clockReads: 0, randomReads: 0 });
+    expect(JSON.parse(child.stdout)).toEqual({
+      clockReads: 0,
+      randomReads: 0,
+      // Node's ESM loader performs this capability-reporting lookup; the
+      // bundled B closure itself has no environment access.
+      environmentKeys: ["WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES"],
+    });
+  });
+
+  it.each([
+    ["proxy", `new Proxy({}, {
+      get() { reads.get += 1; throw new Error("hostile get"); },
+      ownKeys() { reads.ownKeys += 1; throw new Error("hostile ownKeys"); },
+    })`],
+    ["accessor", `Object.defineProperty({}, "manifest", {
+      get() { reads.getter += 1; throw new Error("hostile getter"); },
+    })`],
+    ["custom prototype", `Object.create({ inherited: "not consulted" })`],
+    ["cycle", `(() => { const value = {}; value.self = value; return value; })()`],
+    ["coercion hooks", `{
+      [Symbol.toPrimitive]() { reads.primitive += 1; throw new Error("coerced"); },
+      toJSON() { reads.json += 1; throw new Error("serialized"); },
+    }`],
+  ])("killably refuses an actual hostile %s manifest export without a trap read", async (_kind, hostileExpression) => {
+    const hostileProbe = await hostileManifestProbe(hostileExpression);
+    const child = spawnSync(process.execPath, [
+      "--input-type=module", "--eval",
+      `await import("data:text/javascript;base64," + Buffer.from(${JSON.stringify(hostileProbe)}).toString("base64"));`,
+    ], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 10_000, killSignal: "SIGKILL",
+    });
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(JSON.parse(child.stdout)).toEqual({
+      diagnostic: {
+        status: "pin_drift",
+        code: "fixed_trace_A_prerequisite_pin_drift",
+        reason: "manifest_invalid_or_pin_mismatch",
+        mismatchedFields: ["manifest_shape"],
+      },
+      reads: { get: 0, ownKeys: 0, getter: 0, primitive: 0, json: 0 },
+    });
   });
 });

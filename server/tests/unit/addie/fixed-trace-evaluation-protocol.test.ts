@@ -42,24 +42,54 @@ const screeningResult = (cell = FIXED_TRACE_ADMITTED_CELLS[0]!, index = 0) => ({
 });
 
 describe("fixed-trace staged protocol", () => {
-  it("has A itself reject a mismatched dependency-free prerequisite manifest", async () => {
+  it.each([
+    ["version", (root: Record<string, unknown>) => { root.version = "drift"; }],
+    ["sourceCommit", (root: Record<string, unknown>) => { root.sourceCommit = "0".repeat(40); }],
+    ["corpus.suiteVersion", (root: Record<string, unknown>) => { (root.corpus as Record<string, unknown>).suiteVersion = "drift"; }],
+    ["corpus.suiteSha256", (root: Record<string, unknown>) => { (root.corpus as Record<string, unknown>).suiteSha256 = "0".repeat(64); }],
+    ["partitionManifestSha256", (root: Record<string, unknown>) => { root.partitionManifestSha256 = "0".repeat(64); }],
+    ["experimentalDesignFingerprint", (root: Record<string, unknown>) => { root.experimentalDesignFingerprint = "0".repeat(64); }],
+    ["measurement.version", (root: Record<string, unknown>) => { (root.measurement as Record<string, unknown>).version = "drift"; }],
+    ["measurement.sha256", (root: Record<string, unknown>) => { (root.measurement as Record<string, unknown>).sha256 = "0".repeat(64); }],
+    ["randomization.scheduleDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).randomization) as Record<string, unknown>).scheduleDigest = "x"; }],
+    ["randomization.episodeClusterManifestDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).randomization) as Record<string, unknown>).episodeClusterManifestDigest = "x"; }],
+    ["pricingWindow.id", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).id = "x"; }],
+    ["pricingWindow.effectiveFrom", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).effectiveFrom = "x"; }],
+    ["pricingWindow.effectiveBefore", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).effectiveBefore = "x"; }],
+    ["pricingWindow.digest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).digest = "x"; }],
+    ["calibration.status", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).calibration) as Record<string, unknown>).status = "available"; }],
+    ["calibration.allowedRelationshipToScoredDevelopment", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).calibration) as Record<string, unknown>).allowedRelationshipToScoredDevelopment = "drift"; }],
+    ["calibration.digest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).calibration) as Record<string, unknown>).digest = "x"; }],
+    ["custody.status", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).status = "available"; }],
+    ["custody.custodianIdentity", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).custodianIdentity = "x"; }],
+    ["custody.packDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).packDigest = "x"; }],
+    ["custody.signature", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).signature = "x"; }],
+    ["custody.collisionAuditDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).collisionAuditDigest = "x"; }],
+    ["providerExposure.status", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).providerExposure) as Record<string, unknown>).status = "available"; }],
+    ["providerExposure.digest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).providerExposure) as Record<string, unknown>).digest = "x"; }],
+  ])("has A itself reject a changed authoritative prerequisite leaf: %s", async (_leaf, mutate) => {
     vi.resetModules();
     vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
       const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
         "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
       );
-      return {
-        ...actual,
-        FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST: Object.freeze({
-          ...actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
-          sourceCommit: "mismatched-A-source",
-        }),
-        fixedTraceAPurePrerequisiteManifest: () => Object.freeze({
-          ...actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
-          sourceCommit: "mismatched-A-source",
-        }) as never,
-      };
+      const manifest = JSON.parse(actual.FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON) as Record<string, unknown>;
+      mutate(manifest);
+      return { ...actual, FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: JSON.stringify(manifest) };
     });
+    try {
+      await expect(import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js"))
+        .rejects.toThrow("fixed-trace A pure prerequisite manifest parity mismatch");
+    } finally {
+      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
+      vi.resetModules();
+    }
+  });
+  it.each(["{}", "[]", "not-json"])("has A fail its single parity boundary for malformed manifest source: %s", async (manifest) => {
+    vi.resetModules();
+    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", () => ({
+      FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: manifest,
+    }));
     try {
       await expect(import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js"))
         .rejects.toThrow("fixed-trace A pure prerequisite manifest parity mismatch");

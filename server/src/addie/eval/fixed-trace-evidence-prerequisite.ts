@@ -3,16 +3,27 @@
  * and an independent literal pin; neither is an execution authority.
  */
 import {
-  fixedTraceAPurePrerequisiteManifest,
-  validateFixedTraceAPurePrerequisiteManifest,
-  type FixedTraceAPurePrerequisiteManifest,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
 } from "./fixed-trace-a-prerequisite-manifest.js";
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION =
   "not_admitted_missing_validated_A_schedule_pricing_custody_calibration_and_C_sealed_authority" as const;
 
-type FixedTraceSha256 = string;
-type FixedTraceUtcTimestamp = string;
+declare const fixedTraceSha256Brand: unique symbol;
+type FixedTraceSha256 = string & { readonly [fixedTraceSha256Brand]: "sha256" };
+type FixedTraceUtcTimestamp = `${number}-${number}-${number}T${string}Z`;
+type FixedTraceTerminalStatus =
+  | "complete"
+  | "ignored"
+  | "reacted"
+  | "refusal"
+  | "truncated"
+  | "empty"
+  | "malformed"
+  | "provider_error"
+  | "timeout_after_dispatch"
+  | "not_dispatched_budget"
+  | "not_admitted_architecture";
 
 /**
  * Exhaustive future-C record shape. It is a required schema declaration, not
@@ -99,7 +110,9 @@ export interface FixedTraceSealedEvidenceRequirements {
     readonly latencyMs: number | null;
     readonly timeout: boolean;
     readonly errorCode: string | null;
-    readonly terminalStatus: string;
+    readonly terminalStatus: FixedTraceTerminalStatus;
+    /** Exact normalized finish reason returned by the provider. */
+    readonly finishReason: "stop" | "tool_calls" | "length" | "refusal" | "continue" | null;
     readonly outputSha256: FixedTraceSha256 | null;
   };
   readonly usageAndPricing: {
@@ -142,10 +155,36 @@ export interface FixedTraceSealedEvidenceRequirements {
   };
 }
 
+type FixedTraceEvidenceLeafSchema<Value> =
+  [Value] extends [FixedTraceSha256] ? { readonly type: "sha256" }
+    : [Value] extends [FixedTraceUtcTimestamp] ? { readonly type: "utc_timestamp" }
+      : [Value] extends [null] ? { readonly type: "null" }
+        : [Exclude<Value, null>] extends [FixedTraceSha256]
+          ? { readonly type: "nullable_sha256" }
+          : [Exclude<Value, null>] extends [FixedTraceUtcTimestamp]
+            ? { readonly type: "nullable_utc_timestamp" }
+            : [Value] extends [number]
+              ? { readonly type: "number" }
+              : [Exclude<Value, null>] extends [number]
+                ? { readonly type: "nullable_number" }
+                : [Value] extends [boolean]
+                  ? { readonly type: "boolean" }
+                  : [Value] extends [string]
+                    ? string extends Value
+                      ? { readonly type: "string" }
+                      : { readonly type: "enum"; readonly values: readonly Value[] }
+                    : [Exclude<Value, null>] extends [string]
+                      ? string extends Exclude<Value, null>
+                        ? { readonly type: "nullable_string" }
+                        : { readonly type: "nullable_enum"; readonly values: readonly Exclude<Value, null>[] }
+                      : never;
+
 type FixedTraceEvidenceRequirementManifest<Value> =
   [Value] extends [object]
-    ? { readonly [Key in keyof Value]: FixedTraceEvidenceRequirementManifest<Value[Key]> }
-    : true;
+    ? Value extends FixedTraceSha256 | FixedTraceUtcTimestamp
+      ? FixedTraceEvidenceLeafSchema<Value>
+      : { readonly [Key in keyof Value]: FixedTraceEvidenceRequirementManifest<Value[Key]> }
+    : FixedTraceEvidenceLeafSchema<Value>;
 
 export type FixedTraceSealedEvidenceRequirementManifest =
   FixedTraceEvidenceRequirementManifest<FixedTraceSealedEvidenceRequirements>;
@@ -158,102 +197,124 @@ function deepFreeze<Value>(value: Value): Value {
   return value;
 }
 
-/** Recursively mapped: a required nested schema leaf cannot be omitted here. */
+/**
+ * Recursively typed canonical C schema. Unlike a boolean key marker, each
+ * leaf binds a concrete runtime kind and every closed literal domain.
+ */
 export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
   FixedTraceSealedEvidenceRequirementManifest = deepFreeze({
-  schemaVersion: true,
+  schemaVersion: { type: "enum", values: ["addie-fixed-trace-sealed-evidence-v1"] },
   plan: {
-    protocolFingerprint: true, corpusSuiteVersion: true, corpusSuiteSha256: true,
-    partitionManifestSha256: true, experimentalDesignFingerprint: true,
-    measurementManifestSha256: true, packManifestSha256: true, packCustodySignature: true,
+    protocolFingerprint: { type: "sha256" }, corpusSuiteVersion: { type: "string" }, corpusSuiteSha256: { type: "sha256" },
+    partitionManifestSha256: { type: "sha256" }, experimentalDesignFingerprint: { type: "sha256" },
+    measurementManifestSha256: { type: "sha256" }, packManifestSha256: { type: "sha256" }, packCustodySignature: { type: "string" },
   },
   assignment: {
-    runId: true, phaseId: true, armId: true, architectureId: true, caseId: true,
-    episodeId: true, clusterId: true, stratumId: true, repetition: true, blockId: true,
-    order: true, position: true, randomizationSeed: true, scheduleDigest: true, workerIdentity: true,
+    runId: { type: "string" }, phaseId: { type: "string" }, armId: { type: "string" }, architectureId: { type: "string" }, caseId: { type: "string" },
+    episodeId: { type: "string" }, clusterId: { type: "string" }, stratumId: { type: "string" }, repetition: { type: "number" }, blockId: { type: "string" },
+    order: { type: "number" }, position: { type: "number" }, randomizationSeed: { type: "string" }, scheduleDigest: { type: "sha256" }, workerIdentity: { type: "string" },
   },
   invocation: {
-    stage: true, invocation: true, attempt: true, requestedProvider: true, requestedModel: true,
-    requestedEffort: true, returnedProvider: true, returnedModel: true, returnedEffort: true,
-    identityPolicy: true, fallbackOfAttempt: true,
+    stage: { type: "enum", values: ["router", "generation", "judge", "simulator"] }, invocation: { type: "number" }, attempt: { type: "number" }, requestedProvider: { type: "string" }, requestedModel: { type: "string" },
+    requestedEffort: { type: "string" }, returnedProvider: { type: "nullable_string" }, returnedModel: { type: "nullable_string" }, returnedEffort: { type: "nullable_string" },
+    identityPolicy: { type: "string" }, fallbackOfAttempt: { type: "nullable_number" },
   },
   requestIntegrity: {
-    systemSha256: true, promptSha256: true, messagesSha256: true, toolSchemaSha256: true,
-    providerRequestSha256: true, presentedToolNamesSha256: true, presentedToolOrderSha256: true,
-    requestFactsSha256: true, sourceThreadBindingSha256: true,
+    systemSha256: { type: "sha256" }, promptSha256: { type: "sha256" }, messagesSha256: { type: "sha256" }, toolSchemaSha256: { type: "sha256" },
+    providerRequestSha256: { type: "sha256" }, presentedToolNamesSha256: { type: "sha256" }, presentedToolOrderSha256: { type: "sha256" },
+    requestFactsSha256: { type: "sha256" }, sourceThreadBindingSha256: { type: "sha256" },
   },
   toolAndSimulatorEvidence: {
-    toolCallSha256: true, toolInputSha256: true, toolResultSha256: true,
-    simulatorReceiptSha256: true, simulatorFaultProvenanceSha256: true, simulatorControlsSha256: true,
+    toolCallSha256: { type: "nullable_sha256" }, toolInputSha256: { type: "nullable_sha256" }, toolResultSha256: { type: "nullable_sha256" },
+    simulatorReceiptSha256: { type: "nullable_sha256" }, simulatorFaultProvenanceSha256: { type: "nullable_sha256" }, simulatorControlsSha256: { type: "sha256" },
   },
   configuration: {
-    architectureSha256: true, admissionSha256: true, configSha256: true, promptConfigSha256: true,
-    softwareSha256: true, adapterSha256: true, limitsSha256: true, retryPolicySha256: true,
-    cachePolicySha256: true, samplingPolicySha256: true,
+    architectureSha256: { type: "sha256" }, admissionSha256: { type: "sha256" }, configSha256: { type: "sha256" }, promptConfigSha256: { type: "sha256" },
+    softwareSha256: { type: "sha256" }, adapterSha256: { type: "sha256" }, limitsSha256: { type: "sha256" }, retryPolicySha256: { type: "sha256" },
+    cachePolicySha256: { type: "sha256" }, samplingPolicySha256: { type: "sha256" },
   },
   timingAndOutcome: {
-    preparedAt: true, dispatchedAt: true, completedAt: true, latencyMs: true, timeout: true,
-    errorCode: true, terminalStatus: true, outputSha256: true,
+    preparedAt: { type: "utc_timestamp" }, dispatchedAt: { type: "nullable_utc_timestamp" }, completedAt: { type: "nullable_utc_timestamp" }, latencyMs: { type: "nullable_number" }, timeout: { type: "boolean" },
+    errorCode: { type: "nullable_string" }, terminalStatus: { type: "enum", values: ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"] },
+    finishReason: { type: "nullable_enum", values: ["stop", "tool_calls", "length", "refusal", "continue"] }, outputSha256: { type: "nullable_sha256" },
   },
   usageAndPricing: {
-    usageSha256: true, inputTokens: true, cachedInputTokens: true, outputTokens: true,
-    pricingCohortId: true, pricingCohortSha256: true, pricingEffectiveFrom: true,
-    pricingEffectiveBefore: true, computedCostUsd: true, reservationId: true,
-    reservationCeilingUsd: true, settlementSha256: true,
+    usageSha256: { type: "nullable_sha256" }, inputTokens: { type: "nullable_number" }, cachedInputTokens: { type: "nullable_number" }, outputTokens: { type: "nullable_number" },
+    pricingCohortId: { type: "string" }, pricingCohortSha256: { type: "sha256" }, pricingEffectiveFrom: { type: "utc_timestamp" },
+    pricingEffectiveBefore: { type: "nullable_utc_timestamp" }, computedCostUsd: { type: "nullable_number" }, reservationId: { type: "string" },
+    reservationCeilingUsd: { type: "number" }, settlementSha256: { type: "nullable_sha256" },
   },
   denominatorAndSequence: {
-    denominatorId: true, failureEvidenceSha256: true, missingnessSha256: true,
-    expectedSequenceSha256: true, actualSequenceSha256: true, completeness: true, tamperClass: true,
+    denominatorId: { type: "string" }, failureEvidenceSha256: { type: "sha256" }, missingnessSha256: { type: "sha256" },
+    expectedSequenceSha256: { type: "sha256" }, actualSequenceSha256: { type: "sha256" }, completeness: { type: "enum", values: ["complete", "incomplete", "unknown_exposure"] }, tamperClass: { type: "enum", values: ["none", "omission", "insertion", "duplication", "substitution", "reordering"] },
   },
   judgeAndCustody: {
-    calibrationDigest: true, blindedPresentationSha256: true, adjudicationBinding: true,
-    providerExposureLedgerSha256: true, custodyBinding: true, signerKeyId: true, signature: true,
+    calibrationDigest: { type: "sha256" }, blindedPresentationSha256: { type: "sha256" }, adjudicationBinding: { type: "sha256" },
+    providerExposureLedgerSha256: { type: "sha256" }, custodyBinding: { type: "sha256" }, signerKeyId: { type: "string" }, signature: { type: "string" },
   },
   replayProtection: {
-    authorityId: true, nonce: true, oneUseConsumptionSha256: true, replayStatus: true,
+    authorityId: { type: "string" }, nonce: { type: "string" }, oneUseConsumptionSha256: { type: "sha256" }, replayStatus: { type: "enum", values: ["consumed"] },
   },
 });
 
 export interface FixedTraceEvidencePrerequisitePin {
   readonly version: string;
   readonly sourceCommit: string;
-  readonly protocolFingerprint: string;
   readonly corpusSuiteVersion: string;
   readonly corpusSuiteSha256: string;
   readonly partitionManifestSha256: string;
   readonly experimentalDesignFingerprint: string;
-  readonly measurementManifestSha256: string;
-  readonly schedule: { readonly status: "unavailable"; readonly digest: null };
+  readonly measurement: { readonly version: string; readonly sha256: string };
+  readonly randomization: {
+    readonly scheduleDigest: null;
+    readonly episodeClusterManifestDigest: null;
+  };
   readonly pricingWindow: {
-    readonly status: "unavailable";
-    readonly cohortId: null;
+    readonly id: null;
     readonly effectiveFrom: null;
     readonly effectiveBefore: null;
     readonly digest: null;
   };
-  readonly calibration: { readonly status: "unavailable"; readonly digest: null };
+  readonly calibration: {
+    readonly status: "unavailable";
+    readonly allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only";
+    readonly digest: null;
+  };
   readonly providerExposure: { readonly status: "unavailable"; readonly digest: null };
-  readonly custody: { readonly status: "unavailable"; readonly digest: null };
+  readonly custody: {
+    readonly status: "unavailable";
+    readonly custodianIdentity: null;
+    readonly packDigest: null;
+    readonly signature: null;
+    readonly collisionAuditDigest: null;
+  };
 }
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN: FixedTraceEvidencePrerequisitePin =
   Object.freeze({
-    version: "addie-fixed-trace-A-prerequisite-manifest-v1",
+    version: "addie-fixed-trace-A-prerequisite-manifest-v2",
     sourceCommit: "5094c5c0242ea10c2fd8452a21c0ea1bf33a68a3",
-    protocolFingerprint: "b9ef28a8451ca606bbc77e48ff709405e90290c55833bb76e8047a7633e6c7dd",
     corpusSuiteVersion: "addie-fixed-traces-v32",
     corpusSuiteSha256: "5f7f0a6d653a4757991728a1d9de8aee69b40d580dafb65e98941c1f9e3fea83",
     partitionManifestSha256: "99a0727723fd84bcc4c7f40852a0e2392b578964bb4e7b0954739946451e4b96",
     experimentalDesignFingerprint: "d4f54eae99a90426ba43c5a4a26a7196102bc524537cdec56d32f0df8d9fb153",
-    measurementManifestSha256: "ba46e9ddd18171602b4d17ff0e5bf6e1ad6bfee997236bdb1b345c3c817a41e0",
-    schedule: Object.freeze({ status: "unavailable", digest: null }),
+    measurement: Object.freeze({
+      version: "addie-fixed-trace-measurement-manifest-v1",
+      sha256: "c465bc7b5b69f3bf6e8151a5b4ff57d10d630d3f8ddc64c1cce4d504ad80fb5a",
+    }),
+    randomization: Object.freeze({ scheduleDigest: null, episodeClusterManifestDigest: null }),
     pricingWindow: Object.freeze({
-      status: "unavailable", cohortId: null, effectiveFrom: null,
+      id: null, effectiveFrom: null,
       effectiveBefore: null, digest: null,
     }),
-    calibration: Object.freeze({ status: "unavailable", digest: null }),
+    calibration: Object.freeze({
+      status: "unavailable", allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only", digest: null,
+    }),
     providerExposure: Object.freeze({ status: "unavailable", digest: null }),
-    custody: Object.freeze({ status: "unavailable", digest: null }),
+    custody: Object.freeze({
+      status: "unavailable", custodianIdentity: null, packDigest: null,
+      signature: null, collisionAuditDigest: null,
+    }),
   });
 
 export type FixedTraceEvidencePrerequisiteDiagnostic =
@@ -269,55 +330,104 @@ export type FixedTraceEvidencePrerequisiteDiagnostic =
     mismatchedFields: readonly string[];
   }>;
 
-function mismatchedFields(
-  manifest: FixedTraceAPurePrerequisiteManifest,
-): readonly string[] {
+interface ParsedFixedTraceAPrerequisiteManifest {
+  readonly version: string;
+  readonly sourceCommit: string;
+  readonly corpus: { readonly suiteVersion: string; readonly suiteSha256: string };
+  readonly partitionManifestSha256: string;
+  readonly experimentalDesignFingerprint: string;
+  readonly measurement: { readonly version: string; readonly sha256: string };
+  readonly finalPrerequisites: {
+    readonly randomization: { readonly scheduleDigest: null; readonly episodeClusterManifestDigest: null };
+    readonly pricingWindow: { readonly id: null; readonly effectiveFrom: null; readonly effectiveBefore: null; readonly digest: null };
+    readonly calibration: { readonly status: "unavailable"; readonly allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only"; readonly digest: null };
+    readonly custody: { readonly status: "unavailable"; readonly custodianIdentity: null; readonly packDigest: null; readonly signature: null; readonly collisionAuditDigest: null };
+    readonly providerExposure: { readonly status: "unavailable"; readonly digest: null };
+  };
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).sort().join(",") === [...keys].sort().join(",");
+}
+
+/** The only B parser is private and accepts only a primitive JSON string. */
+function parseFixedTraceAPrerequisiteManifest(): ParsedFixedTraceAPrerequisiteManifest | null {
+  if (typeof FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const root = parsed as Record<string, unknown>;
+    if (!exactKeys(root, ["version", "sourceCommit", "corpus", "partitionManifestSha256", "experimentalDesignFingerprint", "measurement", "finalPrerequisites"])) return null;
+    const corpus = root.corpus;
+    const measurement = root.measurement;
+    const final = root.finalPrerequisites;
+    if (!corpus || typeof corpus !== "object" || Array.isArray(corpus)
+      || !measurement || typeof measurement !== "object" || Array.isArray(measurement)
+      || !final || typeof final !== "object" || Array.isArray(final)
+      || !exactKeys(corpus as Record<string, unknown>, ["suiteVersion", "suiteSha256"])
+      || !exactKeys(measurement as Record<string, unknown>, ["version", "sha256"])
+      || !exactKeys(final as Record<string, unknown>, ["randomization", "pricingWindow", "calibration", "custody", "providerExposure"])) return null;
+    const f = final as Record<string, unknown>;
+    const objects = [f.randomization, f.pricingWindow, f.calibration, f.custody, f.providerExposure];
+    if (objects.some((value) => !value || typeof value !== "object" || Array.isArray(value))) return null;
+    if (!exactKeys(f.randomization as Record<string, unknown>, ["scheduleDigest", "episodeClusterManifestDigest"])
+      || !exactKeys(f.pricingWindow as Record<string, unknown>, ["id", "effectiveFrom", "effectiveBefore", "digest"])
+      || !exactKeys(f.calibration as Record<string, unknown>, ["status", "allowedRelationshipToScoredDevelopment", "digest"])
+      || !exactKeys(f.custody as Record<string, unknown>, ["status", "custodianIdentity", "packDigest", "signature", "collisionAuditDigest"])
+      || !exactKeys(f.providerExposure as Record<string, unknown>, ["status", "digest"])) return null;
+    return parsed as ParsedFixedTraceAPrerequisiteManifest;
+  } catch {
+    return null;
+  }
+}
+
+function mismatchedFields(manifest: ParsedFixedTraceAPrerequisiteManifest): readonly string[] {
   const pin = FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN;
+  const final = manifest.finalPrerequisites;
   return Object.freeze([
     ...(manifest.version !== pin.version ? ["version"] : []),
     ...(manifest.sourceCommit !== pin.sourceCommit ? ["sourceCommit"] : []),
-    ...(manifest.protocolFingerprint !== pin.protocolFingerprint ? ["protocolFingerprint"] : []),
     ...(manifest.corpus.suiteVersion !== pin.corpusSuiteVersion ? ["corpus.suiteVersion"] : []),
     ...(manifest.corpus.suiteSha256 !== pin.corpusSuiteSha256 ? ["corpus.suiteSha256"] : []),
     ...(manifest.partitionManifestSha256 !== pin.partitionManifestSha256 ? ["partitionManifestSha256"] : []),
     ...(manifest.experimentalDesignFingerprint !== pin.experimentalDesignFingerprint ? ["experimentalDesignFingerprint"] : []),
-    ...(manifest.measurementManifestSha256 !== pin.measurementManifestSha256 ? ["measurementManifestSha256"] : []),
-    ...(manifest.schedule.status !== pin.schedule.status || manifest.schedule.digest !== pin.schedule.digest ? ["schedule"] : []),
-    ...(manifest.pricingWindow.status !== pin.pricingWindow.status
-      || manifest.pricingWindow.cohortId !== pin.pricingWindow.cohortId
-      || manifest.pricingWindow.effectiveFrom !== pin.pricingWindow.effectiveFrom
-      || manifest.pricingWindow.effectiveBefore !== pin.pricingWindow.effectiveBefore
-      || manifest.pricingWindow.digest !== pin.pricingWindow.digest ? ["pricingWindow"] : []),
-    ...(manifest.calibration.status !== pin.calibration.status || manifest.calibration.digest !== pin.calibration.digest ? ["calibration"] : []),
-    ...(manifest.providerExposure.status !== pin.providerExposure.status
-      || manifest.providerExposure.digest !== pin.providerExposure.digest ? ["providerExposure"] : []),
-    ...(manifest.custody.status !== pin.custody.status || manifest.custody.digest !== pin.custody.digest ? ["custody"] : []),
+    ...(manifest.measurement.version !== pin.measurement.version ? ["measurement.version"] : []),
+    ...(manifest.measurement.sha256 !== pin.measurement.sha256 ? ["measurement.sha256"] : []),
+    ...(final.randomization.scheduleDigest !== pin.randomization.scheduleDigest ? ["finalPrerequisites.randomization.scheduleDigest"] : []),
+    ...(final.randomization.episodeClusterManifestDigest !== pin.randomization.episodeClusterManifestDigest ? ["finalPrerequisites.randomization.episodeClusterManifestDigest"] : []),
+    ...(final.pricingWindow.id !== pin.pricingWindow.id ? ["finalPrerequisites.pricingWindow.id"] : []),
+    ...(final.pricingWindow.effectiveFrom !== pin.pricingWindow.effectiveFrom ? ["finalPrerequisites.pricingWindow.effectiveFrom"] : []),
+    ...(final.pricingWindow.effectiveBefore !== pin.pricingWindow.effectiveBefore ? ["finalPrerequisites.pricingWindow.effectiveBefore"] : []),
+    ...(final.pricingWindow.digest !== pin.pricingWindow.digest ? ["finalPrerequisites.pricingWindow.digest"] : []),
+    ...(final.calibration.status !== pin.calibration.status ? ["finalPrerequisites.calibration.status"] : []),
+    ...(final.calibration.allowedRelationshipToScoredDevelopment !== pin.calibration.allowedRelationshipToScoredDevelopment ? ["finalPrerequisites.calibration.allowedRelationshipToScoredDevelopment"] : []),
+    ...(final.calibration.digest !== pin.calibration.digest ? ["finalPrerequisites.calibration.digest"] : []),
+    ...(final.custody.status !== pin.custody.status ? ["finalPrerequisites.custody.status"] : []),
+    ...(final.custody.custodianIdentity !== pin.custody.custodianIdentity ? ["finalPrerequisites.custody.custodianIdentity"] : []),
+    ...(final.custody.packDigest !== pin.custody.packDigest ? ["finalPrerequisites.custody.packDigest"] : []),
+    ...(final.custody.signature !== pin.custody.signature ? ["finalPrerequisites.custody.signature"] : []),
+    ...(final.custody.collisionAuditDigest !== pin.custody.collisionAuditDigest ? ["finalPrerequisites.custody.collisionAuditDigest"] : []),
+    ...(final.providerExposure.status !== pin.providerExposure.status ? ["finalPrerequisites.providerExposure.status"] : []),
+    ...(final.providerExposure.digest !== pin.providerExposure.digest ? ["finalPrerequisites.providerExposure.digest"] : []),
   ]);
 }
 
 /** No caller input: the B boundary always compares its literal pin to A's pure manifest. */
 export function fixedTraceEvidencePrerequisiteDiagnostic(): FixedTraceEvidencePrerequisiteDiagnostic {
-  try {
-    const manifest = validateFixedTraceAPurePrerequisiteManifest(
-      fixedTraceAPurePrerequisiteManifest(),
-    );
-    // A normally returns a validated snapshot. Keep this B boundary robust
-    // under a malformed/reloaded dependency before any nested dereference.
-    const fields = mismatchedFields(manifest);
-    if (fields.length > 0) return Object.freeze({
+  const manifest = parseFixedTraceAPrerequisiteManifest();
+  if (!manifest) return Object.freeze({
+    status: "pin_drift",
+    code: "fixed_trace_A_prerequisite_pin_drift",
+    reason: "manifest_invalid_or_pin_mismatch",
+    mismatchedFields: Object.freeze(["manifest_shape"]),
+  });
+  const fields = mismatchedFields(manifest);
+  if (fields.length > 0) return Object.freeze({
       status: "pin_drift",
       code: "fixed_trace_A_prerequisite_pin_drift",
       reason: "manifest_invalid_or_pin_mismatch",
       mismatchedFields: fields,
-    });
-  } catch {
-    return Object.freeze({
-      status: "pin_drift",
-      code: "fixed_trace_A_prerequisite_pin_drift",
-      reason: "manifest_invalid_or_pin_mismatch",
-      mismatchedFields: Object.freeze(["manifest_shape"]),
-    });
-  }
+  });
   return Object.freeze({
     status: "ordinary_unavailable",
     code: FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,

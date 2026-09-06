@@ -4,14 +4,34 @@ import {
   fixedTraceEvaluatorCoordinatorUnavailable,
 } from "../../../src/addie/eval/fixed-trace-evaluator-coordinator.js";
 import {
-  FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
-  fixedTraceAPurePrerequisiteManifest,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
 } from "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js";
 import {
   FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN,
   fixedTraceEvidencePrerequisiteDiagnostic,
 } from "../../../src/addie/eval/fixed-trace-evidence-prerequisite.js";
 import * as prerequisiteExports from "../../../src/addie/eval/fixed-trace-evidence-prerequisite.js";
+
+const manifestModule = "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js";
+type JsonRecord = Record<string, unknown>;
+
+function parsedManifest(): JsonRecord {
+  return JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON) as JsonRecord;
+}
+
+async function withManifest(value: unknown, verify: () => Promise<void> | void): Promise<void> {
+  vi.resetModules();
+  vi.doMock(manifestModule, async () => {
+    const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(manifestModule);
+    return { ...actual, FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: value };
+  });
+  try {
+    await verify();
+  } finally {
+    vi.doUnmock(manifestModule);
+    vi.resetModules();
+  }
+}
 
 function hostileArguments() {
   const reads = { getter: 0, get: 0, ownKeys: 0, primitive: 0, json: 0 };
@@ -45,39 +65,29 @@ describe("fixed-trace evaluator coordinator refusal boundary", () => {
     });
   });
 
-  it("pins every pure A fingerprint and unavailable descriptor, including exposure", () => {
-    const pin = FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN;
-    const manifest = FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST;
-    expect(pin.version).toBe(manifest.version);
-    expect(pin.sourceCommit).toBe(manifest.sourceCommit);
-    expect(pin.protocolFingerprint).toBe(manifest.protocolFingerprint);
-    expect(pin.corpusSuiteVersion).toBe(manifest.corpus.suiteVersion);
-    expect(pin.corpusSuiteSha256).toBe(manifest.corpus.suiteSha256);
-    expect(pin.partitionManifestSha256).toBe(manifest.partitionManifestSha256);
-    expect(pin.experimentalDesignFingerprint).toBe(manifest.experimentalDesignFingerprint);
-    expect(pin.measurementManifestSha256).toBe(manifest.measurementManifestSha256);
-    expect(pin.schedule).toEqual(manifest.schedule);
-    expect(pin.pricingWindow).toEqual(manifest.pricingWindow);
-    expect(pin.calibration).toEqual(manifest.calibration);
-    expect(pin.providerExposure).toEqual(manifest.providerExposure);
-    expect(pin.custody).toEqual(manifest.custody);
-    expect(Object.isFrozen(manifest)).toBe(true);
+  it("pins every A-owned authority leaf without an aggregate protocol-hash surrogate", () => {
+    const manifest = parsedManifest();
+    const final = manifest.finalPrerequisites as JsonRecord;
+    expect(FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN).toMatchObject({
+      version: manifest.version,
+      sourceCommit: manifest.sourceCommit,
+      corpusSuiteVersion: (manifest.corpus as JsonRecord).suiteVersion,
+      corpusSuiteSha256: (manifest.corpus as JsonRecord).suiteSha256,
+      partitionManifestSha256: manifest.partitionManifestSha256,
+      experimentalDesignFingerprint: manifest.experimentalDesignFingerprint,
+      measurement: manifest.measurement,
+      randomization: final.randomization,
+      pricingWindow: final.pricingWindow,
+      calibration: final.calibration,
+      custody: final.custody,
+      providerExposure: final.providerExposure,
+    });
+    expect("protocolFingerprint" in FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN).toBe(false);
+    expect("validateFixedTraceAPurePrerequisiteManifest" in prerequisiteExports).toBe(false);
     expect("FixedTraceEvidencePrerequisitePinDriftError" in prerequisiteExports).toBe(false);
   });
 
-  it("takes a detached deeply frozen A snapshot before B compares its pin", () => {
-    const snapshot = fixedTraceAPurePrerequisiteManifest();
-    expect(snapshot).not.toBe(FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST);
-    expect(Object.isFrozen(snapshot)).toBe(true);
-    expect(Object.isFrozen(snapshot.corpus)).toBe(true);
-    expect(Object.isFrozen(snapshot.schedule)).toBe(true);
-    expect(Object.isFrozen(snapshot.pricingWindow)).toBe(true);
-    expect(Object.isFrozen(snapshot.calibration)).toBe(true);
-    expect(Object.isFrozen(snapshot.providerExposure)).toBe(true);
-    expect(Object.isFrozen(snapshot.custody)).toBe(true);
-  });
-
-  it("does not inspect extra hostile arguments, including accessors, traps, cycles, or coercion", () => {
+  it("does not inspect extra hostile arguments", () => {
     const hostile = hostileArguments();
     const entry = fixedTraceEvaluatorCoordinatorUnavailable as unknown as (...args: unknown[]) => unknown;
     expect(entry(...hostile.values)).toMatchObject({ status: "unavailable" });
@@ -85,148 +95,81 @@ describe("fixed-trace evaluator coordinator refusal boundary", () => {
   });
 
   it.each([
-    ["version", (manifest: any) => ({ ...manifest, version: "drift" })],
-    ["sourceCommit", (manifest: any) => ({ ...manifest, sourceCommit: "drift" })],
-    ["protocolFingerprint", (manifest: any) => ({ ...manifest, protocolFingerprint: "0".repeat(64) })],
-    ["corpus.suiteVersion", (manifest: any) => ({ ...manifest, corpus: { ...manifest.corpus, suiteVersion: "drift" } })],
-    ["corpus.suiteSha256", (manifest: any) => ({ ...manifest, corpus: { ...manifest.corpus, suiteSha256: "0".repeat(64) } })],
-    ["partitionManifestSha256", (manifest: any) => ({ ...manifest, partitionManifestSha256: "0".repeat(64) })],
-    ["experimentalDesignFingerprint", (manifest: any) => ({ ...manifest, experimentalDesignFingerprint: "0".repeat(64) })],
-    ["measurementManifestSha256", (manifest: any) => ({ ...manifest, measurementManifestSha256: "0".repeat(64) })],
-    ["schedule.status", (manifest: any) => ({ ...manifest, schedule: { ...manifest.schedule, status: "available" } })],
-    ["schedule.digest", (manifest: any) => ({ ...manifest, schedule: { ...manifest.schedule, digest: "0".repeat(64) } })],
-    ["pricingWindow.status", (manifest: any) => ({ ...manifest, pricingWindow: { ...manifest.pricingWindow, status: "available" } })],
-    ["pricingWindow.digest", (manifest: any) => ({ ...manifest, pricingWindow: { ...manifest.pricingWindow, digest: "0".repeat(64) } })],
-    ["pricingWindow.cohortId", (manifest: any) => ({ ...manifest, pricingWindow: { ...manifest.pricingWindow, cohortId: "cohort" } })],
-    ["pricingWindow.effectiveFrom", (manifest: any) => ({ ...manifest, pricingWindow: { ...manifest.pricingWindow, effectiveFrom: "2026-01-01T00:00:00Z" } })],
-    ["pricingWindow.effectiveBefore", (manifest: any) => ({ ...manifest, pricingWindow: { ...manifest.pricingWindow, effectiveBefore: "2026-01-01T00:00:00Z" } })],
-    ["calibration.status", (manifest: any) => ({ ...manifest, calibration: { ...manifest.calibration, status: "available" } })],
-    ["calibration.digest", (manifest: any) => ({ ...manifest, calibration: { ...manifest.calibration, digest: "0".repeat(64) } })],
-    ["providerExposure.status", (manifest: any) => ({ ...manifest, providerExposure: { ...manifest.providerExposure, status: "available" } })],
-    ["providerExposure.digest", (manifest: any) => ({ ...manifest, providerExposure: { ...manifest.providerExposure, digest: "0".repeat(64) } })],
-    ["custody.status", (manifest: any) => ({ ...manifest, custody: { ...manifest.custody, status: "available" } })],
-    ["custody.digest", (manifest: any) => ({ ...manifest, custody: { ...manifest.custody, digest: "0".repeat(64) } })],
-  ])("reports reloaded %s drift distinctly rather than swallowing it", async (field, mutate) => {
-    vi.resetModules();
-    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
-      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
-        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
-      );
-      return {
-        ...actual,
-        FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST: Object.freeze(
-          mutate(actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST),
-        ),
-        fixedTraceAPurePrerequisiteManifest: () => Object.freeze(
-          mutate(actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST),
-        ),
-      };
-    });
-    try {
+    ["getter-backed object", () => {
+      const reads = { count: 0 };
+      const value = Object.defineProperty({}, "manifest", { get: () => { reads.count += 1; throw new Error("getter"); } });
+      return { value, reads };
+    }],
+    ["proxy-backed object", () => {
+      const reads = { count: 0 };
+      const value = new Proxy({}, { get: () => { reads.count += 1; throw new Error("get"); }, ownKeys: () => { reads.count += 1; throw new Error("keys"); } });
+      return { value, reads };
+    }],
+    ["custom-prototype object", () => ({ value: Object.create({ inherited: true }), reads: { count: 0 } })],
+    ["cycle", () => { const value: { self?: unknown } = {}; value.self = value; return { value, reads: { count: 0 } }; }],
+    ["partial JSON", () => ({ value: "{}", reads: { count: 0 } })],
+    ["wrong-type JSON", () => ({ value: "[]", reads: { count: 0 } })],
+  ])("rejects %s at the actual primitive manifest boundary without hostile inspection", async (_name, create) => {
+    const hostile = create();
+    await withManifest(hostile.value, async () => {
       const prerequisite = await import("../../../src/addie/eval/fixed-trace-evidence-prerequisite.js");
       const coordinator = await import("../../../src/addie/eval/fixed-trace-evaluator-coordinator.js");
-      const judge = await import("../../../src/addie/eval/fixed-trace-judge.js");
-      expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toEqual({
-        status: "pin_drift",
-        code: "fixed_trace_A_prerequisite_pin_drift",
-        reason: "manifest_invalid_or_pin_mismatch",
-        mismatchedFields: [
-          ["schedule", "pricingWindow", "calibration", "providerExposure", "custody"].some((prefix) => field.startsWith(`${prefix}.`))
-            ? "manifest_shape"
-            : field,
-        ],
+      expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toMatchObject({
+        status: "pin_drift", mismatchedFields: ["manifest_shape"],
       });
       expect(() => coordinator.fixedTraceEvaluatorCoordinatorUnavailable())
         .toThrow("fixed_trace_A_prerequisite_pin_drift");
-      expect(() => judge.fixedTraceJudgeUnavailable())
-        .toThrow("fixed_trace_A_prerequisite_pin_drift");
-    } finally {
-      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
-      vi.resetModules();
-    }
+      expect(hostile.reads.count).toBe(0);
+    });
   });
 
-  it("turns a malformed reloaded manifest into a frozen typed drift diagnostic", async () => {
-    vi.resetModules();
-    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
-      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
-        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
-      );
-      return {
-        ...actual,
-        FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST: Object.freeze({
-          ...actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
-          corpus: undefined,
-        }),
-        fixedTraceAPurePrerequisiteManifest: () => Object.freeze({
-          ...actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
-          corpus: undefined,
-        }) as never,
-      };
-    });
-    try {
+  it.each([
+    ["version", (root: JsonRecord) => { root.version = "drift"; }],
+    ["sourceCommit", (root: JsonRecord) => { root.sourceCommit = "0".repeat(40); }],
+    ["corpus.suiteVersion", (root: JsonRecord) => { (root.corpus as JsonRecord).suiteVersion = "drift"; }],
+    ["corpus.suiteSha256", (root: JsonRecord) => { (root.corpus as JsonRecord).suiteSha256 = "0".repeat(64); }],
+    ["partitionManifestSha256", (root: JsonRecord) => { root.partitionManifestSha256 = "0".repeat(64); }],
+    ["experimentalDesignFingerprint", (root: JsonRecord) => { root.experimentalDesignFingerprint = "0".repeat(64); }],
+    ["measurement.version", (root: JsonRecord) => { (root.measurement as JsonRecord).version = "drift"; }],
+    ["measurement.sha256", (root: JsonRecord) => { (root.measurement as JsonRecord).sha256 = "0".repeat(64); }],
+    ["finalPrerequisites.randomization.scheduleDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).randomization as JsonRecord).scheduleDigest = "x"; }],
+    ["finalPrerequisites.randomization.episodeClusterManifestDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).randomization as JsonRecord).episodeClusterManifestDigest = "x"; }],
+    ["finalPrerequisites.pricingWindow.id", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).pricingWindow as JsonRecord).id = "x"; }],
+    ["finalPrerequisites.pricingWindow.effectiveFrom", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).pricingWindow as JsonRecord).effectiveFrom = "x"; }],
+    ["finalPrerequisites.pricingWindow.effectiveBefore", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).pricingWindow as JsonRecord).effectiveBefore = "x"; }],
+    ["finalPrerequisites.pricingWindow.digest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).pricingWindow as JsonRecord).digest = "x"; }],
+    ["finalPrerequisites.calibration.status", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).calibration as JsonRecord).status = "available"; }],
+    ["finalPrerequisites.calibration.allowedRelationshipToScoredDevelopment", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).calibration as JsonRecord).allowedRelationshipToScoredDevelopment = "drift"; }],
+    ["finalPrerequisites.calibration.digest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).calibration as JsonRecord).digest = "x"; }],
+    ["finalPrerequisites.custody.status", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).custody as JsonRecord).status = "available"; }],
+    ["finalPrerequisites.custody.custodianIdentity", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).custody as JsonRecord).custodianIdentity = "x"; }],
+    ["finalPrerequisites.custody.packDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).custody as JsonRecord).packDigest = "x"; }],
+    ["finalPrerequisites.custody.signature", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).custody as JsonRecord).signature = "x"; }],
+    ["finalPrerequisites.custody.collisionAuditDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).custody as JsonRecord).collisionAuditDigest = "x"; }],
+    ["finalPrerequisites.providerExposure.status", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).providerExposure as JsonRecord).status = "available"; }],
+    ["finalPrerequisites.providerExposure.digest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).providerExposure as JsonRecord).digest = "x"; }],
+  ])("reports reloaded %s drift distinctly", async (field, mutate) => {
+    const manifest = parsedManifest();
+    mutate(manifest);
+    await withManifest(JSON.stringify(manifest), async () => {
       const prerequisite = await import("../../../src/addie/eval/fixed-trace-evidence-prerequisite.js");
-      const coordinator = await import("../../../src/addie/eval/fixed-trace-evaluator-coordinator.js");
-      expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toEqual({
-        status: "pin_drift",
-        code: "fixed_trace_A_prerequisite_pin_drift",
-        reason: "manifest_invalid_or_pin_mismatch",
-        mismatchedFields: ["manifest_shape"],
+      expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toMatchObject({
+        status: "pin_drift", mismatchedFields: [field],
       });
+    });
+  });
+
+  it("freezes its private typed drift error", async () => {
+    await withManifest("{}", async () => {
+      const coordinator = await import("../../../src/addie/eval/fixed-trace-evaluator-coordinator.js");
       try {
         coordinator.fixedTraceEvaluatorCoordinatorUnavailable();
         throw new Error("expected typed drift error");
       } catch (error) {
-        expect(error).toMatchObject({
-          name: "FixedTraceEvidencePrerequisitePinDriftError",
-          status: "pin_drift",
-          code: "fixed_trace_A_prerequisite_pin_drift",
-          diagnostic: { mismatchedFields: ["manifest_shape"] },
-        });
+        expect(error).toMatchObject({ status: "pin_drift", code: "fixed_trace_A_prerequisite_pin_drift" });
         expect(Object.isFrozen(error)).toBe(true);
-        expect(Object.isFrozen((error as { diagnostic: unknown }).diagnostic)).toBe(true);
         expect(Reflect.set(error as object, "status", "ordinary_unavailable")).toBe(false);
-        expect(Reflect.set(error as object, "code", "mutated")).toBe(false);
       }
-    } finally {
-      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
-      vi.resetModules();
-    }
-  });
-
-  it.each([
-    ["missing root", () => undefined],
-    ["empty root", () => ({})],
-    ["missing corpus", () => ({ ...FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST, corpus: undefined })],
-    ["unknown root key", () => ({ ...FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST, extra: true })],
-    ["throwing proxy", () => new Proxy({}, {
-      ownKeys: () => { throw new Error("ownKeys"); },
-      get: () => { throw new Error("get"); },
-    })],
-  ])("contains malformed reloaded A state (%s) at the frozen typed drift boundary", async (_name, produce) => {
-    vi.resetModules();
-    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
-      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
-        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
-      );
-      return {
-        ...actual,
-        fixedTraceAPurePrerequisiteManifest: () => produce() as never,
-      };
     });
-    try {
-      const prerequisite = await import("../../../src/addie/eval/fixed-trace-evidence-prerequisite.js");
-      expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toEqual({
-        status: "pin_drift",
-        code: "fixed_trace_A_prerequisite_pin_drift",
-        reason: "manifest_invalid_or_pin_mismatch",
-        mismatchedFields: ["manifest_shape"],
-      });
-      expect(() => prerequisite.assertFixedTraceEvidencePrerequisitePinned())
-        .toThrow("fixed_trace_A_prerequisite_pin_drift");
-    } finally {
-      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
-      vi.resetModules();
-    }
   });
 });

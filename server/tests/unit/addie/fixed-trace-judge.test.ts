@@ -17,14 +17,18 @@ describe("fixed-trace judge refusal boundary", () => {
       requiredSealedEvidence: FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
     });
     const leaves = (value: unknown, prefix = ""): string[] => {
-      if (value === true) return [prefix];
+      if (typeof value === "object" && value !== null && "type" in value) return [prefix];
       return Object.entries(value as Record<string, unknown>)
         .flatMap(([key, nested]) => leaves(nested, prefix ? `${prefix}.${key}` : key));
     };
-    const isDeeplyFrozen = (value: unknown): boolean => value === true || (
-      typeof value === "object" && value !== null && Object.isFrozen(value)
-      && Object.values(value).every(isDeeplyFrozen)
-    );
+    const isDeeplyFrozen = (value: unknown): boolean => {
+      if (typeof value !== "object" || value === null || !Object.isFrozen(value)) return false;
+      if ("type" in value) {
+        const values = (value as { values?: unknown }).values;
+        return values === undefined || (Array.isArray(values) && Object.isFrozen(values));
+      }
+      return Object.values(value).every(isDeeplyFrozen);
+    };
     expect(leaves(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS)).toEqual(`
 schemaVersion
 plan.protocolFingerprint
@@ -93,6 +97,7 @@ timingAndOutcome.latencyMs
 timingAndOutcome.timeout
 timingAndOutcome.errorCode
 timingAndOutcome.terminalStatus
+timingAndOutcome.finishReason
 timingAndOutcome.outputSha256
 usageAndPricing.usageSha256
 usageAndPricing.inputTokens
@@ -125,6 +130,14 @@ replayProtection.nonce
 replayProtection.oneUseConsumptionSha256
 replayProtection.replayStatus`.trim().split("\n"));
     expect(isDeeplyFrozen(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS)).toBe(true);
+    expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.assignment.runId).toEqual({ type: "string" });
+    expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.assignment.repetition).toEqual({ type: "number" });
+    expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.timingAndOutcome.finishReason).toEqual({
+      type: "nullable_enum", values: ["stop", "tool_calls", "length", "refusal", "continue"],
+    });
+    expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.timingAndOutcome.terminalStatus).toEqual({
+      type: "enum", values: ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"],
+    });
   });
 
   it("has no positive dispatch/configuration entrypoint to consume hostile values", () => {
