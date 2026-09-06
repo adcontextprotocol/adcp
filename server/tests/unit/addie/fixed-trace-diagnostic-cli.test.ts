@@ -58,6 +58,10 @@ describe("fixed-trace diagnostic CLI parser", () => {
       dispatchable: false,
       outputWritten: false,
       providerCalls: 0,
+      architectureDiagnostic: {
+        haikuRouter: { dispatchable: false, productionEligible: false, canaryEligible: false },
+        lunaRouter: { dispatchable: false, productionEligible: false, canaryEligible: false },
+      },
     });
   }, 20_000);
 

@@ -349,6 +349,8 @@ export interface FixedTraceRunMetadata {
   stageControlVersion: typeof FIXED_TRACE_STAGE_CONTROL_VERSION;
   /** Hash of the immutable architecture/configuration cohort contract. */
   architectureConfigSha256: string;
+  /** Set only by the exact synthetic architecture diagnostic pack. */
+  architectureDiagnosticMode?: 'synthetic_pack_v1' | null;
   /** Candidate policy, not an outcome of the degradation trace. */
   providerDegradationInjectionEnabled: boolean;
   repetition: number;
@@ -379,6 +381,8 @@ export interface FixedTraceObservation {
   /** Stage that made the terminal decision or surfaced the terminal failure. */
   terminalStage: 'admission' | 'surface' | 'router' | 'generation';
   terminalStatus: FixedTraceTerminalStatus;
+  /** Per-case routing disposition; architecture-level provenance is in metadata. */
+  routeDisposition?: 'direct_surface_policy' | 'incumbent_llm_router' | 'reviewed_local_terminal' | 'fixture_oracle' | 'not_admitted';
   /** Closed reason for a fixed-trace tool-loop boundary rejection, otherwise null. */
   boundaryReason: FixedTraceBoundaryReason | null;
   /** Reason provider prose was replaced locally after a completed generation, otherwise null. */
@@ -2483,6 +2487,7 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
   | 'routerControl'
   | 'generationControl'
   | 'providerDegradationInjectionEnabled'
+  | 'architectureDiagnosticMode'
 >): Record<string, unknown> {
   const cohortToolUniverse = {
     source: metadata.toolUniverse.source,
@@ -2516,6 +2521,7 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
       : metadata.routerControl,
     generationControl: metadata.generationControl,
     providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
+    architectureDiagnosticMode: metadata.architectureDiagnosticMode ?? null,
   };
 }
 

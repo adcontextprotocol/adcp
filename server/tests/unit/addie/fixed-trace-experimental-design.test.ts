@@ -4,6 +4,7 @@ import {
   assertFixedTraceExperimentalDesign,
   fixedTraceExperimentalDesignFingerprint,
 } from "../../../src/addie/eval/fixed-trace-experimental-design.js";
+import { FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST } from "../../../src/addie/eval/fixed-trace-architecture-diagnostic.js";
 
 describe("fixed-trace experimental-design admission", () => {
   it("pins distinct pack purposes, named smoke IDs, strata, and the mechanical-only cap", () => {
@@ -15,9 +16,9 @@ describe("fixed-trace experimental-design admission", () => {
       repetitions: 1, cells: 21, providerCeilingUsd: 5,
     });
     expect(FIXED_TRACE_EXPERIMENTAL_DESIGN.hybridArchitectureDiagnostic).toMatchObject({
-      status: "not_admitted_pending_independently_custodied_stratified_pack",
-      totalCases: 24, casesPerStratum: 8, contentDigest: null,
-      excludesHandpickedPolicyFixtures: true,
+      status: "predeclared_synthetic_development_diagnostic_only",
+      totalCases: 24, casesPerStratum: 8, contentDigest: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
+      excludesHandpickedPolicyFixtures: false,
     });
     for (const estimand of FIXED_TRACE_EXPERIMENTAL_DESIGN.estimands.slice(2)) {
       expect(estimand).toMatchObject({

@@ -48,6 +48,7 @@ import {
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
   createSyntheticDirectToolReceiptHandlers,
 } from '../direct-tool-universe.js';
+import { assertFixedTraceArchitectureDiagnosticSuite } from './fixed-trace-architecture-diagnostic.js';
 import {
   admitFixedTraceDirectArm,
   decideFixedTraceHybridRoute,
@@ -110,6 +111,12 @@ export interface FixedTraceRunnerConfig {
   architectureArm?: FixedTraceArchitectureArmId;
   /** Required only by the diagnostic hybrid; default policy is versioned. */
   hybridPolicy?: FixedTraceHybridPolicy;
+  /**
+   * An opt-in, exact-pack-only evaluator path.  This is not a production
+   * capability: it accepts only the declared synthetic architecture pack and
+   * the inert common receipt environment.
+   */
+  architectureDiagnosticMode?: 'synthetic_pack_v1';
   /** One-based repetition identifier; runs are never silently pooled. */
   repetition?: number;
   router: FixedTraceProviderStageConfig;
@@ -128,6 +135,7 @@ interface FixedTraceExecutionIdentity {
   traceSuiteSha256: string;
   toolSchemaSha256: string;
   architectureConfigSha256: string;
+  architectureDiagnosticMode: 'synthetic_pack_v1' | null;
   runProvenanceSha256: string;
 }
 
@@ -324,6 +332,18 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
   } else if (config.hybridPolicy !== undefined) {
     throw new Error('Fixed trace hybrid policy is only valid for the hybrid architecture arm');
   }
+  if (config.architectureDiagnosticMode !== undefined && config.architectureDiagnosticMode !== 'synthetic_pack_v1') {
+    throw new Error('Fixed trace architecture diagnostic mode is invalid');
+  }
+  if (config.architectureDiagnosticMode === 'synthetic_pack_v1') {
+    if (architectureArm.id === 'oracle_route_diagnostic') {
+      throw new Error('Fixed trace architecture diagnostic mode excludes fixture oracle routing');
+    }
+    if (config.toolDefinitionProvenance !== 'evaluator_owned_common_tool_universe') {
+      throw new Error('Fixed trace architecture diagnostic mode requires the evaluator-owned common tool universe');
+    }
+    assertFixedTraceArchitectureDiagnosticSuite(config.traceSuite);
+  }
 }
 
 function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
@@ -342,6 +362,7 @@ function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
     toolDefinitionProvenance,
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     repetition: config.repetition ?? 1,
+    architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
   });
 }
 
@@ -354,6 +375,7 @@ function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionI
     traceSuiteSha256: config.traceSuiteSha256,
     toolSchemaSha256,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+    architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
     runProvenanceSha256: runProvenanceSha256(config),
   };
 }
@@ -372,6 +394,7 @@ function assertExecutionIdentity(
     actual.traceSuiteSha256 !== expected.traceSuiteSha256
     || actual.toolSchemaSha256 !== expected.toolSchemaSha256
     || actual.architectureConfigSha256 !== expected.architectureConfigSha256
+    || actual.architectureDiagnosticMode !== expected.architectureDiagnosticMode
     || actual.runProvenanceSha256 !== expected.runProvenanceSha256
   ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed before provider dispatch');
 }
@@ -790,6 +813,7 @@ export function fixedTraceArchitectureConfigSha256(
     routerControl: cohortStageControl(config.router),
     generationControl: cohortStageControl(config.generation),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
+    architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
   });
 }
 
@@ -874,6 +898,7 @@ function baseMetadata(
       : config.toolDefinitionProvenance ?? 'fixture_local',
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
+    architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     repetition: config.repetition ?? 1,
     architectureArm,
@@ -971,6 +996,18 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
   if (status === 'timeout_after_dispatch') return 'The provider timed out. Please try again.';
   if (status === 'provider_error') return 'The provider is temporarily unavailable. Please try again.';
   return '';
+}
+
+function routeDisposition(
+  architectureArm: FixedTraceArchitectureArmId,
+  hybridLocalTerminal = false,
+): NonNullable<FixedTraceObservation['routeDisposition']> {
+  if (architectureArm === 'direct_generation') return 'direct_surface_policy';
+  if (architectureArm === 'oracle_route_diagnostic') return 'fixture_oracle';
+  if (architectureArm === 'deterministic_policy_llm_fallback_hybrid' && hybridLocalTerminal) {
+    return 'reviewed_local_terminal';
+  }
+  return 'incumbent_llm_router';
 }
 
 async function executeRouter(
@@ -1082,6 +1119,7 @@ export async function runFixedTraceCase(
       boundIdentity.traceSuiteSha256 !== identity.traceSuiteSha256
       || boundIdentity.toolSchemaSha256 !== identity.toolSchemaSha256
       || boundIdentity.architectureConfigSha256 !== identity.architectureConfigSha256
+      || boundIdentity.architectureDiagnosticMode !== identity.architectureDiagnosticMode
       || boundIdentity.runProvenanceSha256 !== identity.runProvenanceSha256
     )
   ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed after dispatch binding');
@@ -1098,7 +1136,7 @@ export async function runFixedTraceCase(
   const generationConfig = generationConfigForTrace(executionTrace, executionConfig);
   validateStageConfig('generation', generationConfig);
   const architectureArm = fixedTraceArchitectureArm(executionConfig.architectureArm);
-  if (architectureArm.id === 'direct_generation') {
+  if (architectureArm.id === 'direct_generation' && executionConfig.architectureDiagnosticMode !== 'synthetic_pack_v1') {
     // The evaluator's receipts and fixture facts are diagnostic only; an
     // admission result can never open a direct-production dispatch path.
   return {
@@ -1112,6 +1150,7 @@ export async function runFixedTraceCase(
       ),
       terminalStage: 'admission',
       terminalStatus: 'not_admitted_architecture',
+      routeDisposition: 'not_admitted',
       boundaryReason: null,
       localReplacementReason: null,
       finishReason: null,
@@ -1132,7 +1171,24 @@ export async function runFixedTraceCase(
         policy: fixedTraceHybridPolicy(executionConfig.hybridPolicy),
       })
     : null;
-  const routed = architectureArm.id === 'oracle_route_diagnostic'
+  const routed = architectureArm.id === 'direct_generation'
+    ? {
+        request: null,
+        response: null,
+        // Direct generation is deliberately a fixed surface policy: it does
+        // not inspect routing expectations, fixtures, rubric, or grades.
+        plan: {
+          action: 'respond' as const,
+          tool_sets: [],
+          confidence: 'high' as const,
+          requires_depth: false,
+          reason: 'Evaluator-owned shared deterministic surface policy.',
+        },
+        output: '',
+        status: null,
+        metadata: notRunStageMetadata(executionTrace),
+      }
+    : architectureArm.id === 'oracle_route_diagnostic'
     ? {
         request: null,
         response: null,
@@ -1159,6 +1215,7 @@ export async function runFixedTraceCase(
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generationNotRun),
       terminalStage: 'router',
       terminalStatus: status,
+      routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: null,
       finishReason: routed.response?.finishReason ?? null,
@@ -1180,6 +1237,7 @@ export async function runFixedTraceCase(
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generationNotRun),
       terminalStage: 'surface',
       terminalStatus: routed.plan.action === 'ignore' ? 'ignored' : 'reacted',
+      routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: null,
       finishReason: null,
@@ -1225,6 +1283,7 @@ export async function runFixedTraceCase(
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, metadata),
       terminalStage: 'generation',
       terminalStatus: 'provider_error',
+      routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: null,
       finishReason: null,
@@ -1290,6 +1349,7 @@ export async function runFixedTraceCase(
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
       terminalStatus,
+      routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: result.localReplacementReason ? 'failed_lookup_evidence' : null,
       finishReason: result.response.finishReason,
@@ -1337,6 +1397,7 @@ export async function runFixedTraceCase(
       metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
       terminalStage: 'generation',
       terminalStatus: finalTerminalStatus,
+      routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
       localReplacementReason: null,
       finishReason: null,
@@ -1367,5 +1428,25 @@ export async function runFixedTraceSuite(
     observations.push(await runFixedTraceCase(trace, config, identity.toolSchemaSha256));
   }
   assertExecutionIdentity(config, identity);
+  return observations;
+}
+
+/**
+ * Explicit entrypoint for the three-arm synthetic architecture diagnostic.
+ * It has no provider construction, credential lookup, output writer, or
+ * production registration; callers supply only an already-owned test/evaluator
+ * provider through the ordinary runner contract. Every one of the fixed 24
+ * cases is returned, including provider and boundary failures.
+ */
+export async function runFixedTraceArchitectureDiagnosticSuite(
+  config: FixedTraceRunnerConfig,
+): Promise<FixedTraceObservation[]> {
+  if (config.architectureDiagnosticMode !== 'synthetic_pack_v1') {
+    throw new Error('Fixed trace architecture diagnostic runner requires synthetic_pack_v1 mode');
+  }
+  const observations = await runFixedTraceSuite(config);
+  if (observations.length !== 24) {
+    throw new Error('Fixed trace architecture diagnostic runner did not preserve the complete denominator');
+  }
   return observations;
 }
