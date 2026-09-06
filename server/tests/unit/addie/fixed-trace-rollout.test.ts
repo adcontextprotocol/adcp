@@ -4,12 +4,31 @@ import {
   evaluateFixedTraceRollout,
 } from '../../../src/addie/eval/fixed-trace-rollout.js';
 import type { FixedTraceBudgetSnapshot } from '../../../src/addie/eval/fixed-trace-budget.js';
-import type { FixedTraceJudgeSummary } from '../../../src/addie/eval/fixed-trace-judge.js';
+import { fixedTraceJudgeSummaryUnavailable } from '../../../src/addie/eval/fixed-trace-judge.js';
 import type { FixedTraceSummary } from '../../../src/addie/eval/fixed-trace-suite.js';
 
 const summary: FixedTraceSummary = {
   diagnosticOnly: true,
   promotionBlocker: 'trusted_evaluator_context_unavailable',
+  cohort: {
+    architectureArm: {
+      id: 'two_stage_llm_router',
+      routeSource: 'llm_router',
+      rolloutEligible: false,
+      diagnosticOnly: true,
+    },
+    architectureConfigSha256: '0'.repeat(64),
+    toolUniverse: {
+      source: 'fixture_local_routed_replay',
+      intentNarrowing: 'llm_router',
+      bounded: true,
+      deployable: false,
+      toolNames: null,
+    },
+    executionEnvelope: { source: 'fixture_expectation', deployable: false },
+    requestThreadFacts: { source: 'not_applicable', traceFacts: [] },
+    repetition: 1,
+  },
   expected: 11,
   observed: 11,
   omitted: 0,
@@ -32,25 +51,15 @@ const summary: FixedTraceSummary = {
     provider_error: 1,
     timeout_after_dispatch: 0,
     not_dispatched_budget: 0,
+    not_admitted_architecture: 0,
   },
   latencyP95Ms: 20_000,
   totalEstimatedCostUsd: 0.2,
+  hybridCoverage: null,
   comparisonEligible: true,
 };
 
-const judges: FixedTraceJudgeSummary = {
-  expectedCases: 7,
-  expectedJudgments: 14,
-  observedJudgments: 14,
-  judgedJudgments: 14,
-  complete: true,
-  judgmentCoverageRate: 1,
-  consensusPassRate: 1,
-  disagreementRate: 0,
-  latencyP95Ms: 10_000,
-  totalEstimatedCostUsd: 0.1,
-  comparisonEligible: true,
-};
+const judges = fixedTraceJudgeSummaryUnavailable();
 
 const budget: FixedTraceBudgetSnapshot = {
   policy: 'soft_admission_target',
@@ -66,12 +75,21 @@ const budget: FixedTraceBudgetSnapshot = {
 };
 
 describe('fixed-trace rollout policy', () => {
-  it('passes only when every answer, tool, safety, latency, cost, and judge gate passes', () => {
+  it('remains hard-locked when otherwise passing candidate gates have unavailable judges', () => {
     const gate = evaluateFixedTraceRollout(summary, judges, budget);
     expect(gate).toMatchObject({
       policyVersion: FIXED_TRACE_ROLLOUT_POLICY_VERSION,
       pass: false,
-      failedDimensions: ['trusted_evaluator_context_unavailable'],
+      failedDimensions: [
+        'trusted_evaluator_context_unavailable',
+        'judge_eligible',
+        'judge_coverage',
+        'judge_consensus',
+        'judge_disagreement',
+        'judge_latency',
+        'judge_cost',
+        'combined_cost',
+      ],
     });
     expect(gate.checks).toHaveLength(18);
     expect(gate.failedDimensions).toContain('trusted_evaluator_context_unavailable');
@@ -80,7 +98,7 @@ describe('fixed-trace rollout policy', () => {
   it('fails closed for missing judge consensus and unknown budget exposure', () => {
     const gate = evaluateFixedTraceRollout(
       summary,
-      { ...judges, consensusPassRate: null, comparisonEligible: false },
+      judges,
       { ...budget, exposureUnknown: true, remainingUsd: null },
     );
     expect(gate.pass).toBe(false);
@@ -108,13 +126,7 @@ describe('fixed-trace rollout policy', () => {
         latencyP95Ms: 60_000,
         totalEstimatedCostUsd: 0.4,
       },
-      {
-        ...judges,
-        consensusPassRate: 0.8,
-        disagreementRate: 0.2,
-        latencyP95Ms: 40_000,
-        totalEstimatedCostUsd: 0.2,
-      },
+      judges,
       budget,
     );
     expect(gate.pass).toBe(false);

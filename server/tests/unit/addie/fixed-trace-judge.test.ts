@@ -146,6 +146,7 @@ replayProtection.replayStatus`.trim().split("\n"));
       expect(Object.isFrozen(descriptor.values)).toBe(true);
       expect(Reflect.deleteProperty(descriptor.values, 0)).toBe(false);
       expect(Reflect.set(descriptor.values, 0, "forged")).toBe(false);
+      expect(Reflect.set(descriptor.values, descriptor.values.length, "forged")).toBe(false);
     }
   });
 

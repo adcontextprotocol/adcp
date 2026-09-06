@@ -23,6 +23,7 @@ export const FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION =
 declare const fixedTraceSha256Brand: unique symbol;
 type FixedTraceSha256 = string & { readonly [fixedTraceSha256Brand]: "sha256" };
 type FixedTraceUtcTimestamp = `${number}-${number}-${number}T${string}Z`;
+type FixedTraceSealedEvidenceSchemaVersion = "addie-fixed-trace-sealed-evidence-v1";
 type FixedTraceTerminalStatus =
   | "complete"
   | "ignored"
@@ -39,6 +40,7 @@ type FixedTraceInvocationStage = "router" | "generation" | "judge" | "simulator"
 type FixedTraceFinishReason = "stop" | "tool_calls" | "length" | "refusal" | "continue";
 type FixedTraceCompleteness = "complete" | "incomplete" | "unknown_exposure";
 type FixedTraceTamperClass = "none" | "omission" | "insertion" | "duplication" | "substitution" | "reordering";
+type FixedTraceReplayStatus = "consumed";
 
 /**
  * Exhaustive future-C record shape. It is a required schema declaration, not
@@ -46,7 +48,7 @@ type FixedTraceTamperClass = "none" | "omission" | "insertion" | "duplication" |
  * and authenticate every nested value behind its sealed one-use authority.
  */
 export interface FixedTraceSealedEvidenceRequirements {
-  readonly schemaVersion: "addie-fixed-trace-sealed-evidence-v1";
+  readonly schemaVersion: FixedTraceSealedEvidenceSchemaVersion;
   readonly plan: {
     readonly protocolFingerprint: FixedTraceSha256;
     readonly corpusSuiteVersion: string;
@@ -166,7 +168,7 @@ export interface FixedTraceSealedEvidenceRequirements {
     readonly authorityId: string;
     readonly nonce: string;
     readonly oneUseConsumptionSha256: FixedTraceSha256;
-    readonly replayStatus: "consumed";
+    readonly replayStatus: FixedTraceReplayStatus;
   };
 }
 
@@ -246,7 +248,21 @@ type FixedTraceMissingCompleteness = FixedTraceAssertTrue<FixedTraceEnumIsExhaus
 // @ts-expect-error tamper classes must be exhaustive
 type FixedTraceMissingTamperClass = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTamperClass, ["none"]>>;
 // @ts-expect-error replay status cannot omit its only value
-type FixedTraceMissingReplayStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<"consumed", []>>;
+type FixedTraceMissingReplayStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceReplayStatus, []>>;
+// @ts-expect-error schemaVersion cannot admit a member outside its closed domain
+type FixedTraceExtraSchemaVersion = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceSealedEvidenceSchemaVersion, ["addie-fixed-trace-sealed-evidence-v1", "v2"]>>;
+// @ts-expect-error invocation stages cannot admit a member outside their closed domain
+type FixedTraceExtraInvocationStage = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceInvocationStage, ["router", "generation", "judge", "simulator", "forged"]>>;
+// @ts-expect-error terminal statuses cannot admit a member outside their closed domain
+type FixedTraceExtraTerminalStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTerminalStatus, ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture", "forged"]>>;
+// @ts-expect-error finish reasons cannot admit a member outside their closed domain
+type FixedTraceExtraFinishReason = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceFinishReason, ["stop", "tool_calls", "length", "refusal", "continue", "forged"]>>;
+// @ts-expect-error completeness outcomes cannot admit a member outside their closed domain
+type FixedTraceExtraCompleteness = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceCompleteness, ["complete", "incomplete", "unknown_exposure", "forged"]>>;
+// @ts-expect-error tamper classes cannot admit a member outside their closed domain
+type FixedTraceExtraTamperClass = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTamperClass, ["none", "omission", "insertion", "duplication", "substitution", "reordering", "forged"]>>;
+// @ts-expect-error replay status cannot admit a member outside its closed domain
+type FixedTraceExtraReplayStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceReplayStatus, ["consumed", "available"]>>;
 
 function deepFreeze<Value>(value: Value): Value {
   if (value && typeof value === "object") {
@@ -262,7 +278,7 @@ function deepFreeze<Value>(value: Value): Value {
  */
 export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
   FixedTraceSealedEvidenceRequirementManifest = deepFreeze({
-  schemaVersion: fixedTraceEnum<"addie-fixed-trace-sealed-evidence-v1">()(["addie-fixed-trace-sealed-evidence-v1"]),
+  schemaVersion: fixedTraceEnum<FixedTraceSealedEvidenceSchemaVersion>()(["addie-fixed-trace-sealed-evidence-v1"]),
   plan: {
     protocolFingerprint: { type: "sha256" }, corpusSuiteVersion: { type: "string" }, corpusSuiteSha256: { type: "sha256" },
     partitionManifestSha256: { type: "sha256" }, experimentalDesignFingerprint: { type: "sha256" },
@@ -312,7 +328,7 @@ export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
     providerExposureLedgerSha256: { type: "sha256" }, custodyBinding: { type: "sha256" }, signerKeyId: { type: "string" }, signature: { type: "string" },
   },
   replayProtection: {
-    authorityId: { type: "string" }, nonce: { type: "string" }, oneUseConsumptionSha256: { type: "sha256" }, replayStatus: fixedTraceEnum<"consumed">()(["consumed"]),
+    authorityId: { type: "string" }, nonce: { type: "string" }, oneUseConsumptionSha256: { type: "sha256" }, replayStatus: fixedTraceEnum<FixedTraceReplayStatus>()(["consumed"]),
   },
 });
 
