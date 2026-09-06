@@ -5,6 +5,7 @@ import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed
 import {
   FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM,
   FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION,
+  createFixedTraceComponentSmokeOneShotGrantVerifier,
   fixedTraceComponentSmokeSignedGrantBytes,
   verifyFixedTraceComponentSmokeSignedGrant,
   verifyFixedTraceComponentSmokeSignedGrantForTest,
@@ -134,6 +135,13 @@ describe('fixed-trace component smoke private signed authorization', () => {
     expect(source).not.toContain('apiKey');
     expect(source).not.toContain('prompt:');
     expect(source).not.toContain('output:');
+  });
+
+  it('keeps arbitrary injected roots and structural lookalikes fail-closed until a reviewed pin exists', () => {
+    const spki = (keys.publicKey.export({ format: 'der', type: 'spki' }) as Buffer).toString('base64url');
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ kid: TEST_KID, spki })).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ kid: TEST_KID, spki, extra: true })).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ verify: () => grant() })).toBeNull();
   });
 
   it('rejects a wrong or cross-reservation envelope before it can mutate a ledger', async () => {

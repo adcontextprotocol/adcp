@@ -63,6 +63,8 @@ export interface FixedTraceComponentSmokeTerminal {
   readonly reservation: FixedTraceComponentSmokeReservation;
   readonly attemptId: string;
   readonly status: 'succeeded' | 'provider_failed' | 'timeout_after_dispatch' | 'malformed_response' | 'identity_mismatch' | 'missing_usage';
+  /** HMAC-bound normalized response effect; only successes can be final or continue. */
+  readonly responseDisposition: 'final_response' | 'tool_continuation_required' | null;
   readonly usage: Readonly<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; latencyMs: number }> | null;
   readonly returnedIdentity: Readonly<{ provider: string; model: string; effort: string }> | null;
   readonly responseHmac: string | null;
@@ -71,6 +73,18 @@ export interface FixedTraceComponentSmokeNonDispatchTerminal {
   readonly reservation: FixedTraceComponentSmokeReservation;
   readonly assignmentId: string;
   readonly status: 'local_terminal' | 'pre_dispatch_fault';
+}
+/** Zero-call assignment outcome used only to close an already halted denominator. */
+export interface FixedTraceComponentSmokeNotExecutedAfterHalt {
+  readonly reservation: FixedTraceComponentSmokeReservation;
+  readonly assignmentId: string;
+}
+/** One terminal outcome for a provider-dispatch assignment, never an attempt. */
+export interface FixedTraceComponentSmokeProviderAssignmentTerminal {
+  readonly reservation: FixedTraceComponentSmokeReservation;
+  readonly assignmentId: string;
+  readonly status: 'provider_completed' | 'provider_failed';
+  readonly finalInvocationOrdinal: number;
 }
 
 const HEX = /^[a-f0-9]{64}$/;
@@ -313,27 +327,30 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         const maxOutput = pgSafeInt(row.max_output_tokens, 1_000_000);
         const timeout = pgSafeInt(row.timeout_ms, MAX_LATENCY_MS);
         if (ordinal === null || maxInput === null || maxOutput === null || timeout === null) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
-        if (parsed.usage && (parsed.usage.inputTokens + parsed.usage.cacheReadTokens + parsed.usage.cacheWriteTokens > maxInput
-          || parsed.usage.outputTokens > maxOutput || parsed.usage.latencyMs > timeout)) return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted');
         const reservedForOrdinal = pgSafeInt(row.reserved_microdollars[ordinal - 1], 2_819_484);
         const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === row.pricing_profile_id);
         if (parsed.usage && (!profile || profile.provider !== row.requested_provider || profile.model !== row.requested_model)) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
-        let spent = 0;
-        try { spent = parsed.usage ? datedPricingCostMicros(profile!, parsed.usage) : 0; } catch { return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure'); }
+        let spent: number | null = null;
+        try { spent = parsed.usage ? datedPricingCostMicros(profile!, parsed.usage) : null; } catch { return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure'); }
+        // A complete receipt remains accounting evidence even if it breaches a
+        // pinned input/output/timeout limit. Never replace known exposure with
+        // NULL merely because this one-shot run must halt.
+        if (parsed.usage && (parsed.usage.inputTokens + parsed.usage.cacheReadTokens + parsed.usage.cacheWriteTokens > maxInput
+          || parsed.usage.outputTokens > maxOutput || parsed.usage.latencyMs > timeout)) return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'plan_mismatch', spent);
         const prior = await client.query<{ spent: unknown }>('SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [parsed.reservation.authorizationDigest]);
         const priorSpent = prior.rowCount === 1 ? pgSafeInt(prior.rows[0]!.spent, 5_000_000) : null;
         const reservationLimit = pgSafeInt(auth.rows[0]!.reservation_microdollars, 2_819_484);
         const providerLimit = pgSafeInt(auth.rows[0]!.provider_ceiling_microdollars, 5_000_000);
-        if (reservedForOrdinal === null || spent > reservedForOrdinal || priorSpent === null || reservationLimit === null || providerLimit === null
-          || priorSpent + spent > reservationLimit || priorSpent + spent > providerLimit) {
-          return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'cost_exhausted');
+        if (reservedForOrdinal === null || priorSpent === null || reservationLimit === null || providerLimit === null
+          || (spent !== null && (spent > reservedForOrdinal || priorSpent + spent > reservationLimit || priorSpent + spent > providerLimit))) {
+          return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'cost_exhausted', spent);
         }
         await client.query(
           `UPDATE addie_fixed_trace_component_smoke_attempts
-           SET status = $3, input_tokens = $4, output_tokens = $5, cache_read_tokens = $6, cache_write_tokens = $7, actual_cost_microdollars = $8, latency_ms = $9, response_hmac = $10,
-               returned_provider = $11, returned_model = $12, returned_effort = $13, terminal_at = clock_timestamp()
+          SET status = $3, response_disposition = $4, input_tokens = $5, output_tokens = $6, cache_read_tokens = $7, cache_write_tokens = $8, actual_cost_microdollars = $9, latency_ms = $10, response_hmac = $11,
+               returned_provider = $12, returned_model = $13, returned_effort = $14, terminal_at = clock_timestamp()
            WHERE attempt_id = $1 AND authorization_digest = $2`,
-          [parsed.attemptId, parsed.reservation.authorizationDigest, parsed.status, parsed.usage?.inputTokens ?? null,
+          [parsed.attemptId, parsed.reservation.authorizationDigest, parsed.status, parsed.responseDisposition, parsed.usage?.inputTokens ?? null,
             parsed.usage?.outputTokens ?? null, parsed.usage?.cacheReadTokens ?? null, parsed.usage?.cacheWriteTokens ?? null,
             parsed.usage ? spent : null, parsed.usage?.latencyMs ?? null, parsed.responseHmac,
             parsed.returnedIdentity?.provider ?? null, parsed.returnedIdentity?.model ?? null, parsed.returnedIdentity?.effort ?? null],
@@ -358,15 +375,16 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     terminalStatus: 'invalid_limits' | 'pricing_unavailable' | 'identity_mismatch',
     authorizationStatus: 'halted' | 'unknown_exposure',
     refusal: FixedTraceComponentSmokeLedgerRefusal = 'plan_mismatch',
+    observedCostMicrodollars: number | null = null,
   ): Promise<Readonly<{ status: 'refused'; reason: FixedTraceComponentSmokeLedgerRefusal }>> {
     await client.query(
       `UPDATE addie_fixed_trace_component_smoke_attempts
           SET status = $3, input_tokens = $4, output_tokens = $5, cache_read_tokens = $6, cache_write_tokens = $7,
-              actual_cost_microdollars = NULL, latency_ms = $8, response_hmac = $9, returned_provider = $10,
-              returned_model = $11, returned_effort = $12, terminal_at = clock_timestamp()
+              actual_cost_microdollars = NULL, observed_cost_microdollars = $8, latency_ms = $9, response_hmac = $10, returned_provider = $11,
+              returned_model = $12, returned_effort = $13, terminal_at = clock_timestamp()
         WHERE attempt_id = $1 AND authorization_digest = $2 AND status = 'intent_recorded'`,
       [parsed.attemptId, parsed.reservation.authorizationDigest, terminalStatus, parsed.usage?.inputTokens ?? null,
-        parsed.usage?.outputTokens ?? null, parsed.usage?.cacheReadTokens ?? null, parsed.usage?.cacheWriteTokens ?? null,
+        parsed.usage?.outputTokens ?? null, parsed.usage?.cacheReadTokens ?? null, parsed.usage?.cacheWriteTokens ?? null, observedCostMicrodollars,
         parsed.usage?.latencyMs ?? null, parsed.responseHmac, parsed.returnedIdentity?.provider ?? null,
         parsed.returnedIdentity?.model ?? null, parsed.returnedIdentity?.effort ?? null],
     );
@@ -415,9 +433,94 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
           || expected.disposition !== parsed.status) return result('refused', 'plan_mismatch');
         const updated = await client.query(
           `UPDATE addie_fixed_trace_component_smoke_run_plan
-           SET non_dispatch_status = $3, non_dispatch_terminal_at = clock_timestamp()
-           WHERE authorization_digest = $1 AND assignment_id = $2 AND disposition = $3 AND non_dispatch_status IS NULL`,
+          SET assignment_outcome = $3, assignment_terminal_at = clock_timestamp()
+           WHERE authorization_digest = $1 AND assignment_id = $2 AND disposition = $3 AND assignment_outcome IS NULL`,
           [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.status],
+        );
+        return updated.rowCount === 1 ? result('recorded') : result('refused', 'plan_mismatch');
+      });
+    } catch { return result('refused', 'persistence_uncertain'); }
+  }
+
+  /**
+   * Closes an unstarted assignment after permanent halt without claiming an
+   * intent, provider invocation, HMAC, receipt, or cost. It remains a failed
+   * denominator entry, never a provider attempt terminal.
+   */
+  async recordNotExecutedAfterHalt(input: unknown): Promise<Readonly<{ status: 'recorded' }> | Readonly<{ status: 'refused'; reason: FixedTraceComponentSmokeLedgerRefusal }>> {
+    const parsed = parseNotExecutedAfterHalt(input);
+    if (!parsed) return result('refused', 'plan_mismatch');
+    try {
+      return await this.transaction(async (client) => {
+        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+        if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
+        if (auth.rows[0]!.status !== 'halted' && auth.rows[0]!.status !== 'unknown_exposure') return result('refused', 'run_halted');
+        const expected = expectedPlanEntry(parsed.assignmentId);
+        const plan = await client.query<Record<string, unknown>>(
+          `SELECT probe_id, cell_id, disposition, maximum_provider_invocations, requested_provider, requested_model,
+                  requested_effort, pricing_profile_id, max_input_tokens, max_output_tokens, timeout_ms, retries,
+                  reserved_microdollars
+             FROM addie_fixed_trace_component_smoke_run_plan
+            WHERE authorization_digest = $1 AND assignment_id = $2 FOR UPDATE`,
+          [parsed.reservation.authorizationDigest, parsed.assignmentId],
+        );
+        if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected)) return result('refused', 'plan_mismatch');
+        const started = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 LIMIT 1 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.assignmentId]);
+        if (started.rowCount !== 0) return result('refused', 'plan_mismatch');
+        const updated = await client.query(
+          `UPDATE addie_fixed_trace_component_smoke_run_plan
+              SET assignment_outcome = 'not_executed_after_halt', assignment_terminal_at = clock_timestamp()
+            WHERE authorization_digest = $1 AND assignment_id = $2 AND assignment_outcome IS NULL`,
+          [parsed.reservation.authorizationDigest, parsed.assignmentId],
+        );
+        return updated.rowCount === 1 ? result('recorded') : result('refused', 'plan_mismatch');
+      });
+    } catch { return result('refused', 'persistence_uncertain'); }
+  }
+
+  /**
+   * Records the single denominator outcome for a provider assignment only
+   * after its contiguous terminal invocation evidence is durable. Completion
+   * requires the last started ordinal to carry a final-response disposition;
+   * a continuation requires the next eligible ordinal first. Neither case is
+   * a provider-attempt terminal itself.
+   */
+  async recordProviderAssignmentTerminal(input: unknown): Promise<Readonly<{ status: 'recorded' }> | Readonly<{ status: 'refused'; reason: FixedTraceComponentSmokeLedgerRefusal }>> {
+    const parsed = parseProviderAssignmentTerminal(input);
+    if (!parsed) return result('refused', 'plan_mismatch');
+    try {
+      return await this.transaction(async (client) => {
+        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+        if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
+        const expected = expectedPlanEntry(parsed.assignmentId);
+        const plan = await client.query<Record<string, unknown>>(
+          `SELECT probe_id, cell_id, disposition, maximum_provider_invocations, requested_provider, requested_model,
+                  requested_effort, pricing_profile_id, max_input_tokens, max_output_tokens, timeout_ms, retries,
+                  reserved_microdollars
+             FROM addie_fixed_trace_component_smoke_run_plan
+            WHERE authorization_digest = $1 AND assignment_id = $2 FOR UPDATE`,
+          [parsed.reservation.authorizationDigest, parsed.assignmentId],
+        );
+        if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected) || expected.disposition !== 'provider_dispatch'
+          || parsed.finalInvocationOrdinal > expected.maximumProviderInvocations) return result('refused', 'plan_mismatch');
+        const evidence = await client.query<{ count: unknown; open: unknown; failures: unknown; last_response_disposition: unknown }>(
+          `SELECT count(*)::bigint AS count, bool_or(status = 'intent_recorded') AS open,
+                  bool_or(status <> 'succeeded') AS failures,
+                  (array_agg(response_disposition ORDER BY invocation_ordinal DESC))[1] AS last_response_disposition
+             FROM addie_fixed_trace_component_smoke_attempts
+            WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal <= $3 FOR UPDATE`,
+          [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.finalInvocationOrdinal],
+        );
+        const row = evidence.rows[0];
+        const count = row ? pgSafeInt(row.count, 2) : null;
+        if (count !== parsed.finalInvocationOrdinal || row?.open === true
+          || (parsed.status === 'provider_completed' && (row?.failures === true || row?.last_response_disposition !== 'final_response'))
+          || (parsed.status === 'provider_failed' && row?.failures !== true)) return result('refused', 'intent_required');
+        const updated = await client.query(
+          `UPDATE addie_fixed_trace_component_smoke_run_plan
+              SET assignment_outcome = $3, assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = $4
+            WHERE authorization_digest = $1 AND assignment_id = $2 AND assignment_outcome IS NULL`,
+          [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.status, parsed.finalInvocationOrdinal],
         );
         return updated.rowCount === 1 ? result('recorded') : result('refused', 'plan_mismatch');
       });
@@ -447,7 +550,7 @@ function parseTerminal(value: unknown): FixedTraceComponentSmokeTerminal | null 
   try {
     const object = snapshotFixedTraceJson(value, 'provider terminal') as Record<string, unknown>;
     const statuses = new Set(['succeeded', 'provider_failed', 'timeout_after_dispatch', 'malformed_response', 'identity_mismatch', 'missing_usage']);
-    if (!exactKeys(object, ['attemptId', 'reservation', 'responseHmac', 'returnedIdentity', 'status', 'usage']) || !exactReservation(object.reservation)
+    if (!exactKeys(object, ['attemptId', 'reservation', 'responseDisposition', 'responseHmac', 'returnedIdentity', 'status', 'usage']) || !exactReservation(object.reservation)
       || typeof object.attemptId !== 'string' || !ATTEMPT_ID.test(object.attemptId) || typeof object.status !== 'string' || !statuses.has(object.status)) return null;
     const usageIsExact = object.usage !== null && typeof object.usage === 'object'
       && exactKeys(object.usage, ['cacheReadTokens', 'cacheWriteTokens', 'inputTokens', 'latencyMs', 'outputTokens'])
@@ -461,6 +564,8 @@ function parseTerminal(value: unknown): FixedTraceComponentSmokeTerminal | null 
     const responseBearing = object.status === 'succeeded' || object.status === 'provider_failed'
       || object.status === 'malformed_response' || object.status === 'identity_mismatch' || object.status === 'missing_usage';
     if (responseBearing && !isHash(object.responseHmac)) return null;
+    if (object.status === 'succeeded' && object.responseDisposition !== 'final_response' && object.responseDisposition !== 'tool_continuation_required') return null;
+    if (object.status !== 'succeeded' && object.responseDisposition !== null) return null;
     if (object.status === 'timeout_after_dispatch' && (object.usage !== null || object.responseHmac !== null || object.returnedIdentity !== null)) return null;
     if ((object.status === 'succeeded' || object.status === 'provider_failed' || object.status === 'identity_mismatch')
       && (!usageIsExact || !exactIdentity(object.returnedIdentity))) return null;
@@ -482,5 +587,21 @@ function parseNonDispatchTerminal(value: unknown): FixedTraceComponentSmokeNonDi
     if (!exactKeys(object, ['assignmentId', 'reservation', 'status']) || !exactReservation(object.reservation)
       || !isHash(object.assignmentId) || (object.status !== 'local_terminal' && object.status !== 'pre_dispatch_fault')) return null;
     return Object.freeze(object) as unknown as FixedTraceComponentSmokeNonDispatchTerminal;
+  } catch { return null; }
+}
+function parseNotExecutedAfterHalt(value: unknown): FixedTraceComponentSmokeNotExecutedAfterHalt | null {
+  try {
+    const object = snapshotFixedTraceJson(value, 'post-halt assignment omission') as Record<string, unknown>;
+    if (!exactKeys(object, ['assignmentId', 'reservation']) || !exactReservation(object.reservation) || !isHash(object.assignmentId)) return null;
+    return Object.freeze(object) as unknown as FixedTraceComponentSmokeNotExecutedAfterHalt;
+  } catch { return null; }
+}
+function parseProviderAssignmentTerminal(value: unknown): FixedTraceComponentSmokeProviderAssignmentTerminal | null {
+  try {
+    const object = snapshotFixedTraceJson(value, 'provider assignment terminal') as Record<string, unknown>;
+    if (!exactKeys(object, ['assignmentId', 'finalInvocationOrdinal', 'reservation', 'status']) || !exactReservation(object.reservation)
+      || !isHash(object.assignmentId) || !Number.isSafeInteger(object.finalInvocationOrdinal) || (object.finalInvocationOrdinal as number) < 1
+      || (object.status !== 'provider_completed' && object.status !== 'provider_failed')) return null;
+    return Object.freeze(object) as unknown as FixedTraceComponentSmokeProviderAssignmentTerminal;
   } catch { return null; }
 }

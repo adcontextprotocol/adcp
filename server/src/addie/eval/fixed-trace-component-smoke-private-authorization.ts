@@ -51,6 +51,18 @@ export interface FixedTraceComponentSmokeTestGrantVerification {
   readonly valid: true;
   readonly signedPayloadDigest: string;
 }
+/**
+ * An explicitly supplied SPKI is useful only when it matches the separately
+ * provisioned module pin. The pin is deliberately null in this tranche, so
+ * this shape is not an authority-minting caller-selected-root escape hatch.
+ */
+export interface FixedTraceComponentSmokeOneShotTrustRoot {
+  readonly kid: string;
+  readonly spki: string;
+}
+export interface FixedTraceComponentSmokeOneShotGrantVerifier {
+  verify(value: unknown, now: Date): FixedTraceComponentSmokeVerifiedGrant | null;
+}
 /** A one-shot smoke grant may not outlive this bounded interval. */
 export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS = 15 * 60 * 1_000;
 
@@ -61,6 +73,8 @@ export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS = 15 * 60 * 1_0
  * null registry in a dedicated change before it can verify anything.
  */
 const PRODUCTION_SPKI_BY_KID: Readonly<Record<string, string>> | null = null;
+/** Separate deployment authority must pin this SHA-256 before a root can be used. */
+const PRODUCTION_ONE_SHOT_TRUST_ROOT_PIN: string | null = null;
 /** Capability marker: only this verifier can create an input accepted by the ledger. */
 const VERIFIED_GRANTS = new WeakMap<object, Buffer>();
 
@@ -168,6 +182,30 @@ function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record
     if (mintLedgerCapability) VERIFIED_GRANTS.set(verified, Buffer.from(parsed.signature));
     return verified;
   } catch { return null; }
+}
+
+function exactOneShotTrustRoot(value: unknown): FixedTraceComponentSmokeOneShotTrustRoot | null {
+  try {
+    const root = snapshotFixedTraceJson(value, 'private one-shot trust root') as Record<string, unknown>;
+    if (!exactKeys(root, ['kid', 'spki']) || !kid(root.kid) || typeof root.spki !== 'string' || !/^[A-Za-z0-9_-]+$/.test(root.spki)) return null;
+    const publicKey = createPublicKey({ key: Buffer.from(root.spki, 'base64url'), format: 'der', type: 'spki' });
+    return publicKey.asymmetricKeyType === 'ed25519' ? Object.freeze({ kid: root.kid, spki: root.spki }) : null;
+  } catch { return null; }
+}
+
+/**
+ * A later isolated composition root may inject one exact separately provisioned
+ * root. Until that root's immutable module pin is reviewed and provisioned,
+ * this always returns null: arbitrary callers cannot mint ledger authority.
+ */
+export function createFixedTraceComponentSmokeOneShotGrantVerifier(
+  trustRoot: unknown,
+): FixedTraceComponentSmokeOneShotGrantVerifier | null {
+  const root = exactOneShotTrustRoot(trustRoot);
+  if (!root || PRODUCTION_ONE_SHOT_TRUST_ROOT_PIN === null
+    || createHash('sha256').update(canonicalJson(root), 'utf8').digest('hex') !== PRODUCTION_ONE_SHOT_TRUST_ROOT_PIN) return null;
+  const registry = Object.freeze({ [root.kid]: root.spki });
+  return Object.freeze({ verify: (value: unknown, now: Date) => verifyWithRegistry(value, now, registry, true) });
 }
 
 /** Production entry point: always fail-closed until its module-owned registry is provisioned. */
