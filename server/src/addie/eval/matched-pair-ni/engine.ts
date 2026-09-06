@@ -1,3 +1,4 @@
+import { types } from 'node:util';
 /**
  * Restricted-score E+M exact-unconditional matched-pair noninferiority
  * diagnostic after Lloyd & Moldovan (2008), Statistics in Medicine 27,
@@ -17,9 +18,15 @@ export const MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS = 24;
 export const MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE = 25;
 /** Measured synchronous ceiling for exhaustive rejection-region certification. */
 export const MATCHED_PAIR_NI_MAX_SIZE_N = 8;
-/** Preflight limits prevent legal-but-expensive precision from entering Sturm work. */
-export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE = 128;
+/**
+ * Preflight limits prevent legal-but-expensive precision from entering Sturm
+ * work. At n=8, 16 bits bounds the exhaustive estimate below the aggregate
+ * ceiling; 17 bits and every former 128-bit boundary fail before enumeration.
+ */
+export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE = 16;
 export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE = 16;
+/** Aggregate deterministic budget, checked before and during exhaustive work. */
+export const MATCHED_PAIR_NI_MAX_WORK_UNITS = 1_500_000;
 
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
 export interface ReducedMatchedPairState { readonly n: number; readonly x: number; readonly t: number; }
@@ -40,42 +47,96 @@ export interface MatchedPairNiResult {
 type NoRootPromotionField = 'reject' extends keyof MatchedPairNiResult ? never : 'decision' extends keyof MatchedPairNiResult ? never : true;
 /** Compile-time sentinel: adding a root promotion decision fails typecheck. */
 export const MATCHED_PAIR_NI_NO_ROOT_PROMOTION_FIELD: NoRootPromotionField = true;
-function exceedsPrecisionBudget(state: ReducedMatchedPairState, margin: Rational, alpha: Rational): boolean {
-  const limit = state.n <= MATCHED_PAIR_NI_MAX_SIZE_N
-    ? MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE : MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE;
-  return rationalBitLength(margin) > limit || rationalBitLength(alpha) > limit;
+function reducedStateCount(n: number): number { return (n + 1) * (n + 2) / 2; }
+function exceedsPrecisionBudget(state: ReducedMatchedPairState, margin: Rational, _alpha: Rational, exhaustiveSize = false): boolean {
+  const limit = exhaustiveSize ? MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE : MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE;
+  return rationalBitLength(margin) > limit;
+}
+function estimatedWorkUnits(n: number, precisionBits: number, exhaustiveSize: boolean): number {
+  const states = reducedStateCount(n);
+  // Each E-step comparison is charged as one unit below. One diagnostic has
+  // O(S^2) comparisons; an S-state size envelope has O(S^3), S=(n+1)(n+2)/2.
+  return (exhaustiveSize ? states * states * states : states * states) * precisionBits;
+}
+class WorkBudget {
+  private used = 0;
+  constructor(private readonly limit: number) {}
+  charge(units = 1): void {
+    this.used += units;
+    if (this.used > this.limit) throw new RangeError('Exact E+M aggregate work ceiling exceeded');
+  }
+}
+function workBudgetFor(n: number, margin: Rational, _alpha: Rational, exhaustiveSize: boolean): WorkBudget | null {
+  // Alpha is only compared after the exact p-value has been certified; it
+  // does not enter score/root arithmetic, so nuisance-margin bits govern work.
+  const bits = rationalBitLength(margin);
+  const estimate = estimatedWorkUnits(n, bits, exhaustiveSize);
+  return estimate > MATCHED_PAIR_NI_MAX_WORK_UNITS ? null : new WorkBudget(MATCHED_PAIR_NI_MAX_WORK_UNITS);
+}
+
+function inertRecord(value: unknown, name: string, fields: readonly string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RangeError(`${name} must be an inert record`);
+  let descriptors: PropertyDescriptorMap;
+  try {
+    if (types.isProxy(value)) throw new TypeError();
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new TypeError();
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch { throw new RangeError(`${name} must not be a Proxy or dynamic object`); }
+  if (Reflect.ownKeys(descriptors).length !== fields.length || fields.some((field) => !Object.hasOwn(descriptors, field))) throw new RangeError(`${name} has unexpected fields`);
+  const copy: Record<string, unknown> = {};
+  for (const field of fields) {
+    const descriptor = descriptors[field]!;
+    if (!Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) throw new RangeError(`${name} must not contain accessors`);
+    copy[field] = descriptor.value;
+  }
+  return Object.freeze(copy);
+}
+const normalizedStates = new WeakSet<object>();
+const normalizedCounts = new WeakSet<object>();
+function canonicalState(state: ReducedMatchedPairState): ReducedMatchedPairState {
+  if (typeof state === 'object' && state !== null && normalizedStates.has(state)) return state;
+  const copy = inertRecord(state, 'Reduced state', ['n', 'x', 't']);
+  finiteCount(copy.n as number, 'n'); finiteCount(copy.x as number, 'x'); finiteCount(copy.t as number, 't');
+  const result = Object.freeze({ n: copy.n as number, x: copy.x as number, t: copy.t as number }); normalizedStates.add(result); return result;
+}
+function canonicalCounts(counts: MatchedPairCounts): MatchedPairCounts {
+  if (typeof counts === 'object' && counts !== null && normalizedCounts.has(counts)) return counts;
+  const copy = inertRecord(counts, 'Matched-pair counts', ['n11', 'n10', 'n01', 'n00']);
+  for (const name of ['n11', 'n10', 'n01', 'n00'] as const) finiteCount(copy[name] as number, name);
+  const result = Object.freeze({ n11: copy.n11 as number, n10: copy.n10 as number, n01: copy.n01 as number, n00: copy.n00 as number }); normalizedCounts.add(result); return result;
 }
 
 function finiteCount(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`${name} must be a nonnegative safe integer`);
 }
-function validateState(state: ReducedMatchedPairState): void {
-  finiteCount(state.n, 'n'); finiteCount(state.x, 'x'); finiteCount(state.t, 't');
-  if (state.n === 0) throw new RangeError('At least one matched pair is required');
-  if (state.x > state.t || state.t > state.n) throw new RangeError('Reduced state must satisfy 0 <= x <= t <= n');
-  if (state.n > MATCHED_PAIR_NI_MAX_N) throw new RangeError(`Diagnostic ceiling is n <= ${MATCHED_PAIR_NI_MAX_N}; no confirmatory sample-size claim is made`);
+function validateState(state: ReducedMatchedPairState): ReducedMatchedPairState {
+  const normalized = canonicalState(state);
+  if (normalized.n === 0) throw new RangeError('At least one matched pair is required');
+  if (normalized.x > normalized.t || normalized.t > normalized.n) throw new RangeError('Reduced state must satisfy 0 <= x <= t <= n');
+  if (normalized.n > MATCHED_PAIR_NI_MAX_N) throw new RangeError(`Diagnostic ceiling is n <= ${MATCHED_PAIR_NI_MAX_N}; no confirmatory sample-size claim is made`);
+  return normalized;
 }
-function validateMargin(margin: Rational): void {
-  validateExternalRational(margin, 'Margin');
-  if (compare(margin, ZERO) < 0 || compare(margin, ONE) >= 0) throw new RangeError('Margin must be in [0, 1)');
+function validateMargin(margin: Rational): Rational {
+  const normalized = validateExternalRational(margin, 'Margin');
+  if (compare(normalized, ZERO) < 0 || compare(normalized, ONE) >= 0) throw new RangeError('Margin must be in [0, 1)');
+  return normalized;
 }
 export function reduceMatchedPairCounts(counts: MatchedPairCounts): ReducedMatchedPairState {
-  for (const [name, value] of Object.entries(counts)) finiteCount(value, name);
-  const n = counts.n11 + counts.n10 + counts.n01 + counts.n00;
+  const normalized = canonicalCounts(counts);
+  const n = normalized.n11 + normalized.n10 + normalized.n01 + normalized.n00;
   if (!Number.isSafeInteger(n)) throw new RangeError('Total count is not a safe integer');
   if (n === 0 || n > MATCHED_PAIR_NI_MAX_N) throw new RangeError(`Matched-pair total must be in [1, ${MATCHED_PAIR_NI_MAX_N}]`);
-  return Object.freeze({ n, x: counts.n10, t: counts.n10 + counts.n01 });
+  return canonicalState({ n, x: normalized.n10, t: normalized.n10 + normalized.n01 });
 }
-function validate(state: ReducedMatchedPairState, margin: Rational, alpha: Rational): void {
-  validateMargin(margin);
-  validateExternalRational(alpha, 'Alpha');
-  validateState(state);
-  if (compare(alpha, ZERO) <= 0 || compare(alpha, ONE) >= 0) throw new RangeError('Alpha must be in (0, 1)');
+function validate(state: ReducedMatchedPairState, margin: Rational, alpha: Rational): Readonly<{ state: ReducedMatchedPairState; margin: Rational; alpha: Rational }> {
+  const normalizedState = validateState(state); const normalizedMargin = validateMargin(margin); const normalizedAlpha = validateExternalRational(alpha, 'Alpha');
+  if (compare(normalizedAlpha, ZERO) <= 0 || compare(normalizedAlpha, ONE) >= 0) throw new RangeError('Alpha must be in (0, 1)');
+  return Object.freeze({ state: normalizedState, margin: normalizedMargin, alpha: normalizedAlpha });
 }
 export function enumerateReducedStates(n: number): readonly ReducedMatchedPairState[] {
   finiteCount(n, 'n');
   if (n === 0 || n > MATCHED_PAIR_NI_MAX_N) throw new RangeError(`Reduced-state enumeration requires n in [1, ${MATCHED_PAIR_NI_MAX_N}]`);
-  return Object.freeze(Array.from({ length: n + 1 }, (_, t) => Array.from({ length: t + 1 }, (_, x) => Object.freeze({ n, x, t }))).flat());
+  return Object.freeze(Array.from({ length: n + 1 }, (_, t) => Array.from({ length: t + 1 }, (_, x) => canonicalState({ n, x, t }))).flat());
 }
 function stateEquals(a: ReducedMatchedPairState, b: ReducedMatchedPairState): boolean { return a.n === b.n && a.x === b.x && a.t === b.t; }
 function thetaHat(state: ReducedMatchedPairState): Rational { return divide(rational(2 * state.x - state.t), rational(state.n)); }
@@ -83,11 +144,11 @@ function phiHat(state: ReducedMatchedPairState): Rational { return divide(ration
 
 /** Larger constrained root from the published score statistic's quadratic. */
 export function restrictedPhiInterval(state: ReducedMatchedPairState, margin: Rational, squareRootRounds = 56): RationalInterval {
-  validateState(state); validateMargin(margin);
+  const normalizedState = validateState(state); const normalizedMargin = validateMargin(margin);
   if (!Number.isSafeInteger(squareRootRounds) || squareRootRounds < 1 || squareRootRounds > 256) throw new RangeError('Square-root rounds must be an integer in [1, 256]');
-  const theta = thetaHat(state);
-  const phi = phiHat(state);
-  const theta0 = negate(margin);
+  const theta = thetaHat(normalizedState);
+  const phi = phiHat(normalizedState);
+  const theta0 = negate(normalizedMargin);
   const a = add(phi, multiply(theta, theta0));
   const b = subtract(multiply(theta, theta0), multiply(subtract(ONE, phi), pow(theta0, 2)));
   const discriminant = subtract(pow(a, 2), multiply(rational(4), b));
@@ -95,11 +156,11 @@ export function restrictedPhiInterval(state: ReducedMatchedPairState, margin: Ra
   const unconstrained = intervalDividePositive(intervalAdd(interval(a, a), root), interval(TWO, TWO));
   // Bisection encloses the algebraic root, so trim only the harmless spill
   // outside the feasible nuisance interval; a disjoint root is invalid data.
-  if (compare(unconstrained.upper, margin) < 0 || compare(unconstrained.lower, ONE) > 0) {
+  if (compare(unconstrained.upper, normalizedMargin) < 0 || compare(unconstrained.lower, ONE) > 0) {
     throw new RangeError('Restricted nuisance estimate is outside [margin, 1]');
   }
   return interval(
-    compare(unconstrained.lower, margin) < 0 ? margin : unconstrained.lower,
+    compare(unconstrained.lower, normalizedMargin) < 0 ? normalizedMargin : unconstrained.lower,
     compare(unconstrained.upper, ONE) > 0 ? ONE : unconstrained.upper,
   );
 }
@@ -167,12 +228,12 @@ function provenEqualScoreSquared(
 
 /** P(X=x,T=t | theta=-m, phi), as a rational polynomial in phi. */
 export function reducedStateProbabilityPolynomial(state: ReducedMatchedPairState, margin: Rational): RationalPolynomial {
-  validateState(state); validateMargin(margin);
-  const coefficient = divide(rational(choose(state.n, state.t) * choose(state.t, state.x)), pow(TWO, state.t));
+  const normalizedState = validateState(state); const normalizedMargin = validateMargin(margin);
+  const coefficient = divide(rational(choose(normalizedState.n, normalizedState.t) * choose(normalizedState.t, normalizedState.x)), pow(TWO, normalizedState.t));
   return polynomialScale(
     polynomialMultiply(
-      polynomialMultiply(polynomialPow([negate(margin), ONE], state.x), polynomialPow([margin, ONE], state.t - state.x)),
-      polynomialPow([ONE, negate(ONE)], state.n - state.t),
+      polynomialMultiply(polynomialPow([negate(normalizedMargin), ONE], normalizedState.x), polynomialPow([normalizedMargin, ONE], normalizedState.t - normalizedState.x)),
+      polynomialPow([ONE, negate(ONE)], normalizedState.n - normalizedState.t),
     ), coefficient,
   );
 }
@@ -216,7 +277,7 @@ function maximizeProbabilityRegion(region: RationalPolynomial, states: readonly 
 }
 function stateKey(state: ReducedMatchedPairState): string { return `${state.x}:${state.t}`; }
 /** Caches the exhaustive E step, keeping the certified result deterministic. */
-function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational) {
+function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational, budget: WorkBudget) {
   const phis = new Map<string, RationalInterval>();
   const scores = new Map<string, Score>();
   const ePolynomials = new Map<string, RationalPolynomial | null>();
@@ -225,15 +286,16 @@ function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational
   let orderingAmbiguous = false;
   const phi = (state: ReducedMatchedPairState) => {
     const key = stateKey(state); let value = phis.get(key);
-    if (!value) { value = restrictedPhiInterval(state, margin); phis.set(key, value); }
+    if (!value) { budget.charge(); value = restrictedPhiInterval(state, margin); phis.set(key, value); }
     return value;
   };
   const scoreFor = (state: ReducedMatchedPairState) => {
     const key = stateKey(state); let value = scores.get(key);
-    if (!value) { value = score(state, margin, phi(state)); scores.set(key, value); }
+    if (!value) { budget.charge(); value = score(state, margin, phi(state)); scores.set(key, value); }
     return value;
   };
   const order = (a: ReducedMatchedPairState, b: ReducedMatchedPairState): -1 | 0 | 1 | null => {
+    budget.charge();
     if (stateEquals(a, b)) return 0;
     const left = scoreFor(a); const right = scoreFor(b);
     if (left.direction !== right.direction) return left.direction < right.direction ? -1 : 1;
@@ -242,6 +304,7 @@ function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational
     return coarse ?? compareScorePrecisely(a, b, margin);
   };
   const ePolynomial = (source: ReducedMatchedPairState): RationalPolynomial | null => {
+    budget.charge(states.length);
     const key = stateKey(source);
     if (ePolynomials.has(key)) return ePolynomials.get(key)!;
     // Form all upper score tails once. This is the same E step as a nested
@@ -266,7 +329,7 @@ function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational
         const member = ordered[index]!;
         const memberKey = stateKey(member);
         let probability = probabilities.get(memberKey);
-        if (!probability) { probability = reducedStateProbabilityPolynomial(member, margin); probabilities.set(memberKey, probability); }
+        if (!probability) { budget.charge(); probability = reducedStateProbabilityPolynomial(member, margin); probabilities.set(memberKey, probability); }
         tail = polynomialAdd(tail, probability);
       }
       for (let index = start; index <= end; index++) ePolynomials.set(stateKey(ordered[index]!), tail);
@@ -275,6 +338,7 @@ function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational
     return ePolynomials.get(key)!;
   };
   const eValue = (source: ReducedMatchedPairState): RationalInterval | null => {
+    budget.charge();
     const key = stateKey(source);
     if (eValues.has(key)) return eValues.get(key)!;
     const value = ePolynomial(source);
@@ -286,25 +350,28 @@ function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational
 }
 
 export function conditionalMcNemarPValue(state: ReducedMatchedPairState): Rational {
-  validateState(state);
-  if (state.t === 0) return ONE;
+  const normalizedState = validateState(state);
+  if (normalizedState.t === 0) return ONE;
   let numerator = ZERO;
-  for (let x = state.x; x <= state.t; x++) numerator = add(numerator, divide(rational(choose(state.t, x)), pow(TWO, state.t)));
+  for (let x = normalizedState.x; x <= normalizedState.t; x++) numerator = add(numerator, divide(rational(choose(normalizedState.t, x)), pow(TWO, normalizedState.t)));
   return numerator;
 }
 
 export function restrictedScoreEM(input: MatchedPairNiInput): MatchedPairNiResult {
-  const observed = reduceMatchedPairCounts(input.counts);
-  validate(observed, input.margin, input.alpha);
-  if (equal(input.margin, ZERO)) {
+  const inputCopy = inertRecord(input, 'Matched-pair NI input', ['counts', 'margin', 'alpha']);
+  const observed = reduceMatchedPairCounts(inputCopy.counts as MatchedPairCounts);
+  const normalized = validate(observed, inputCopy.margin as Rational, inputCopy.alpha as Rational);
+  if (equal(normalized.margin, ZERO)) {
     const p = conditionalMcNemarPValue(observed);
-    return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, input.alpha) <= 0, alphaDecision: compare(p, input.alpha) <= 0 ? 'reject_certified' : 'nonreject_certified', pValue: Object.freeze({ lower: p, upper: p }) }) });
+    return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, normalized.alpha) <= 0, alphaDecision: compare(p, normalized.alpha) <= 0 ? 'reject_certified' : 'nonreject_certified', pValue: Object.freeze({ lower: p, upper: p }) }) });
   }
-  if (exceedsPrecisionBudget(observed, input.margin, input.alpha)) return indeterminate('complexity_ceiling');
+  if (exceedsPrecisionBudget(normalized.state, normalized.margin, normalized.alpha)) return indeterminate('complexity_ceiling');
+  const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, false);
+  if (!budget) return indeterminate('complexity_ceiling');
   try {
-    const states = enumerateReducedStates(observed.n);
-    const eStep = buildEStep(states, input.margin);
-    return restrictedScoreEMReduced(observed, input.margin, input.alpha, states, eStep);
+    const states = enumerateReducedStates(normalized.state.n);
+    const eStep = buildEStep(states, normalized.margin, budget);
+    return restrictedScoreEMReduced(normalized.state, normalized.margin, normalized.alpha, states, eStep, budget);
   } catch (error) {
     if (error instanceof RangeError && /ceiling/.test(error.message)) return indeterminate('complexity_ceiling');
     throw error;
@@ -312,13 +379,15 @@ export function restrictedScoreEM(input: MatchedPairNiInput): MatchedPairNiResul
 }
 function restrictedScoreEMReduced(
   observed: ReducedMatchedPairState, margin: Rational, alpha: Rational,
-  states: readonly ReducedMatchedPairState[], eStep: ReturnType<typeof buildEStep>,
+  states: readonly ReducedMatchedPairState[], eStep: ReturnType<typeof buildEStep>, budget: WorkBudget,
 ): MatchedPairNiResult {
+  budget.charge();
   const observedE = eStep.eValue(observed);
   if (!observedE || eStep.hasAmbiguousOrdering()) return indeterminate('ambiguous_score_ordering');
   let region = constant(ZERO);
   const regionStates: ReducedMatchedPairState[] = [];
   for (const state of states) {
+    budget.charge();
     const current = eStep.eValue(state);
     if (!current) return indeterminate('ambiguous_score_ordering');
     if (stateEquals(state, observed) || compare(current.upper, observedE.lower) <= 0) {
@@ -363,24 +432,25 @@ export interface NullBoundarySizeEnvelope {
  * in the upper polynomial, never silently discarded from a claimed exact size.
  */
 export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
-  validate({ n, x: 0, t: 0 }, margin, alpha);
-  if (equal(margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
-  const states = enumerateReducedStates(n);
-  if (exceedsPrecisionBudget({ n, x: 0, t: 0 }, margin, alpha)) {
+  const normalized = validate({ n, x: 0, t: 0 }, margin, alpha);
+  if (equal(normalized.margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
+  const states = enumerateReducedStates(normalized.state.n);
+  if (exceedsPrecisionBudget(normalized.state, normalized.margin, normalized.alpha, true)) {
     return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: constant(ONE), indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
-  if (n > MATCHED_PAIR_NI_MAX_SIZE_N) {
+  const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, true);
+  if (!budget || normalized.state.n > MATCHED_PAIR_NI_MAX_SIZE_N) {
     let upper = constant(ZERO);
-    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, margin));
+    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, normalized.margin));
     return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   let eStep: ReturnType<typeof buildEStep>;
   try {
-    eStep = buildEStep(states, margin);
+    eStep = buildEStep(states, normalized.margin, budget);
   } catch (error) {
     if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
     let upper = constant(ZERO);
-    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, margin));
+    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, normalized.margin));
     return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   let lower = constant(ZERO); let upper = constant(ZERO);
@@ -389,9 +459,10 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
   const alphaOverlapStates: ReducedMatchedPairState[] = [];
   try {
     for (const state of states) {
-      const counts = { n11: n - state.t, n10: state.x, n01: state.t - state.x, n00: 0 };
-      const outcome = restrictedScoreEMReduced(reduceMatchedPairCounts(counts), margin, alpha, states, eStep);
-      const probability = reducedStateProbabilityPolynomial(state, margin);
+      budget.charge();
+      const counts = { n11: normalized.state.n - state.t, n10: state.x, n01: state.t - state.x, n00: 0 };
+      const outcome = restrictedScoreEMReduced(reduceMatchedPairCounts(counts), normalized.margin, normalized.alpha, states, eStep, budget);
+      const probability = reducedStateProbabilityPolynomial(state, normalized.margin);
       if (outcome.diagnostic.indeterminate) {
         upper = polynomialAdd(upper, probability);
         indeterminateStates.push(state);
@@ -410,7 +481,7 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
   } catch (error) {
     if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
     let fallbackUpper = constant(ZERO);
-    for (const state of states) fallbackUpper = polynomialAdd(fallbackUpper, reducedStateProbabilityPolynomial(state, margin));
+    for (const state of states) fallbackUpper = polynomialAdd(fallbackUpper, reducedStateProbabilityPolynomial(state, normalized.margin));
     return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: fallbackUpper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   return Object.freeze({

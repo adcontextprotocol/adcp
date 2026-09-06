@@ -7,6 +7,35 @@ export const MAX_EXTERNAL_DECIMAL_CHARACTERS = 80;
 export const MAX_RATIONAL_BITS = 8_192;
 const normalizedRationals = new WeakSet<object>();
 
+/**
+ * Reject dynamic structured values before exact arithmetic observes them.
+ * Node identifies Proxies without invoking their traps; descriptor inspection
+ * then rejects accessors without invoking them. The returned record is never
+ * the caller's object, so later mutation cannot alter a certificate.
+ */
+function inertRecord(value: unknown, name: string, fields: readonly string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RangeError(`${name} must be an inert record`);
+  let descriptors: PropertyDescriptorMap;
+  try {
+    if (types.isProxy(value)) throw new TypeError();
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new TypeError();
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  }
+  catch { throw new RangeError(`${name} must not be a Proxy or dynamic object`); }
+  if (Reflect.ownKeys(descriptors).length !== fields.length || fields.some((field) => !Object.hasOwn(descriptors, field))) {
+    throw new RangeError(`${name} has unexpected fields`);
+  }
+  const copy: Record<string, unknown> = {};
+  for (const field of fields) {
+    const descriptor = descriptors[field]!;
+    if (!Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) {
+      throw new RangeError(`${name} must not contain accessors`);
+    }
+    copy[field] = descriptor.value;
+  }
+  return Object.freeze(copy);
+}
+
 function gcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left;
   let b = right < 0n ? -right : right;
@@ -32,31 +61,35 @@ export const ONE: Rational = Object.freeze({ numerator: 1n, denominator: 1n });
 export const TWO: Rational = Object.freeze({ numerator: 2n, denominator: 1n });
 normalizedRationals.add(ZERO); normalizedRationals.add(ONE); normalizedRationals.add(TWO);
 
-export function validateBoundedRational(value: Rational, name: string): void {
-  if (typeof value === 'object' && value !== null && normalizedRationals.has(value)) return;
-  if (typeof value?.numerator !== 'bigint' || typeof value?.denominator !== 'bigint' || value.denominator <= 0n || bitLength(value.numerator) > MAX_RATIONAL_BITS || bitLength(value.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${name} exceeds the rational arithmetic ceiling`);
-  if ((value.numerator === 0n && value.denominator !== 1n) || (value.numerator !== 0n && gcd(value.numerator, value.denominator) !== 1n)) throw new RangeError(`${name} must be normalized`);
+/** Snapshot a structural Rational exactly once into an inert canonical value. */
+export function canonicalRational(value: Rational, name = 'Rational'): Rational {
+  if (typeof value === 'object' && value !== null && normalizedRationals.has(value)) return value;
+  const copy = inertRecord(value, name, ['numerator', 'denominator']);
+  if (typeof copy.numerator !== 'bigint' || typeof copy.denominator !== 'bigint' || copy.denominator <= 0n || bitLength(copy.numerator) > MAX_RATIONAL_BITS || bitLength(copy.denominator) > MAX_RATIONAL_BITS) throw new RangeError(`${name} exceeds the rational arithmetic ceiling`);
+  if ((copy.numerator === 0n && copy.denominator !== 1n) || (copy.numerator !== 0n && gcd(copy.numerator, copy.denominator) !== 1n)) throw new RangeError(`${name} must be normalized`);
+  return rational(copy.numerator, copy.denominator);
 }
-export function add(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator); }
-export function subtract(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.denominator - b.numerator * a.denominator, a.denominator * b.denominator); }
-export function multiply(a: Rational, b: Rational): Rational { validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational'); return rational(a.numerator * b.numerator, a.denominator * b.denominator); }
+export function validateBoundedRational(value: Rational, name: string): void { canonicalRational(value, name); }
+export function add(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return rational(left.numerator * right.denominator + right.numerator * left.denominator, left.denominator * right.denominator); }
+export function subtract(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return rational(left.numerator * right.denominator - right.numerator * left.denominator, left.denominator * right.denominator); }
+export function multiply(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return rational(left.numerator * right.numerator, left.denominator * right.denominator); }
 export function divide(a: Rational, b: Rational): Rational {
-  validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational');
-  if (b.numerator === 0n) throw new RangeError('Rational division by zero');
-  return rational(a.numerator * b.denominator, a.denominator * b.numerator);
+  const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational');
+  if (right.numerator === 0n) throw new RangeError('Rational division by zero');
+  return rational(left.numerator * right.denominator, left.denominator * right.numerator);
 }
-export function negate(a: Rational): Rational { validateBoundedRational(a, 'Rational'); return rational(-a.numerator, a.denominator); }
+export function negate(a: Rational): Rational { const normalized = canonicalRational(a); return rational(-normalized.numerator, normalized.denominator); }
 export function compare(a: Rational, b: Rational): -1 | 0 | 1 {
-  validateBoundedRational(a, 'Left rational'); validateBoundedRational(b, 'Right rational');
-  const value = a.numerator * b.denominator - b.numerator * a.denominator;
+  const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational');
+  const value = left.numerator * right.denominator - right.numerator * left.denominator;
   return value < 0n ? -1 : value > 0n ? 1 : 0;
 }
 export function equal(a: Rational, b: Rational): boolean { return compare(a, b) === 0; }
-export function abs(a: Rational): Rational { validateBoundedRational(a, 'Rational'); return a.numerator < 0n ? negate(a) : a; }
+export function abs(a: Rational): Rational { const normalized = canonicalRational(a); return normalized.numerator < 0n ? negate(normalized) : normalized; }
 export function pow(a: Rational, exponent: number): Rational {
-  validateBoundedRational(a, 'Rational');
+  const normalized = canonicalRational(a);
   if (!Number.isSafeInteger(exponent) || exponent < 0) throw new RangeError('Rational exponent must be a nonnegative safe integer');
-  let base = a;
+  let base = normalized;
   let result = ONE;
   for (let e = exponent; e > 0; e = Math.floor(e / 2)) {
     if (e % 2 === 1) result = multiply(result, base);
@@ -81,17 +114,15 @@ export function choose(n: number, k: number): bigint {
   for (let i = 1; i <= selected; i++) result = result * BigInt(n - selected + i) / BigInt(i);
   return result;
 }
-export function display(a: Rational): string { validateBoundedRational(a, 'Rational'); return a.denominator === 1n ? String(a.numerator) : `${a.numerator}/${a.denominator}`; }
+export function display(a: Rational): string { const normalized = canonicalRational(a); return normalized.denominator === 1n ? String(normalized.numerator) : `${normalized.numerator}/${normalized.denominator}`; }
 function bitLength(value: bigint): number { return (value < 0n ? -value : value).toString(2).length; }
-export function rationalBitLength(value: Rational): number { validateBoundedRational(value, 'Rational'); return Math.max(bitLength(value.numerator), bitLength(value.denominator)); }
+export function rationalBitLength(value: Rational): number { const normalized = canonicalRational(value); return Math.max(bitLength(normalized.numerator), bitLength(normalized.denominator)); }
 /** Validate untrusted structural Rational values at the engine boundary. */
-export function validateExternalRational(value: Rational, name: string): void {
-  if (typeof value?.numerator !== 'bigint' || typeof value?.denominator !== 'bigint' || value.denominator <= 0n) {
-    throw new RangeError(`${name} must be a normalized Rational`);
-  }
-  if (bitLength(value.numerator) > MAX_EXTERNAL_RATIONAL_BITS || bitLength(value.denominator) > MAX_EXTERNAL_RATIONAL_BITS) {
+export function validateExternalRational(value: Rational, name: string): Rational {
+  const normalized = canonicalRational(value, name);
+  if (bitLength(normalized.numerator) > MAX_EXTERNAL_RATIONAL_BITS || bitLength(normalized.denominator) > MAX_EXTERNAL_RATIONAL_BITS) {
     throw new RangeError(`${name} exceeds the ${MAX_EXTERNAL_RATIONAL_BITS}-bit diagnostic ceiling`);
   }
-  if (value.numerator === 0n && value.denominator !== 1n) throw new RangeError(`${name} must be normalized`);
-  if (value.numerator !== 0n && gcd(value.numerator, value.denominator) !== 1n) throw new RangeError(`${name} must be normalized`);
+  return normalized;
 }
+import { types } from 'node:util';

@@ -71,6 +71,32 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => isZero([ZERO, ZERO])).toThrow(/canonical/);
     expect(() => sturmSequence([ZERO, ZERO])).toThrow(/canonical/);
     expect(() => divideWithRemainder([ONE], [ZERO, ZERO])).toThrow(/canonical/);
+    expect(() => isolateInteriorRoots([ZERO], ZERO, ONE, -1)).toThrow(/\[1, 64\]/);
+    expect(() => isolateInteriorRoots(Array.from({ length: 27 }, () => ONE), ZERO, ONE)).toThrow(/degree/);
+    expect(() => isolateInteriorRoots([{ numerator: 2n, denominator: 2n }], ZERO, ONE)).toThrow(/normalized/);
+    expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, 65)).toThrow(/\[1, 64\]/);
+    expect(isolateInteriorRoots([ZERO], ZERO, ONE).unresolved).toBe(false);
+  });
+
+  it('rejects accessors and Proxies before snapshotting an exact certificate input', () => {
+    const getterInput = {
+      counts: { n11: 3, n10: 1, n01: 0, n00: 1 },
+      get margin(): never { throw new Error('getter must not execute'); }, alpha,
+    };
+    expect(() => restrictedScoreEM(getterInput)).toThrow(/accessors/);
+    expect(() => restrictedScoreEM(new Proxy({
+      counts: { n11: 3, n10: 1, n01: 0, n00: 1 }, margin, alpha,
+    }, {}))).toThrow(/Proxy/);
+    expect(() => maximizePolynomial(new Proxy([ZERO, ONE], {}), ZERO, ONE)).toThrow(/Proxy/);
+    expect(() => interval(new Proxy({ numerator: 1n, denominator: 2n }, {}), ONE)).toThrow(/Proxy/);
+  });
+
+  it('snapshots aliases into immutable values before certification', () => {
+    const shared = { numerator: 1n, denominator: 2n };
+    const snapped = interval(shared, shared);
+    shared.numerator = 0n;
+    expect(snapped.lower).toEqual(rational(1, 2));
+    expect(snapped.upper).toEqual(rational(1, 2));
   });
 
   it('exhaustively reduces four-cell null probabilities for every small table', () => {
@@ -160,6 +186,26 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     });
     expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
     expect(outcome.diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
+  });
+
+  it('preflights high-precision n=8 size inputs before exhaustive work', () => {
+    for (const bits of [17, 128, 129]) {
+      const denominator = 1n << BigInt(bits - 1);
+      const outcome = nullBoundarySizeEnvelope(8, rational(denominator - 1n, denominator), alpha);
+      expect(outcome.status).toBe('indeterminate');
+      expect(outcome.reason).toBe('size_complexity_ceiling');
+    }
+    const boundaryDenominator = 1n << 15n;
+    const withinBoundary = nullBoundarySizeEnvelope(8, rational(boundaryDenominator - 1n, boundaryDenominator), alpha);
+    expect(withinBoundary.reason).not.toBe('size_complexity_ceiling');
+  });
+
+  it('uses the aggregate work estimate to fail closed before a costly n=25 call', () => {
+    const denominator = 1n << 15n;
+    const outcome = restrictedScoreEM({
+      counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin: rational(denominator - 1n, denominator), alpha,
+    });
+    expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
   });
 
   it('does not accept a caller-provided maximum enclosure callback', () => {
