@@ -11,6 +11,12 @@ import { query } from '../db/client.js';
 import { notifyUser } from '../notifications/notification-service.js';
 import { isUuid } from '../utils/uuid.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
+import { getAuthorizationEnforcementWorkos } from '../auth/workos-client.js';
+import {
+  evaluateOrganizationAuthorizationCanary,
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+  recordOrganizationAuthorizationCanaryDecision,
+} from '../middleware/organization-authorization-canary.js';
 import {
   CertifierNotConfiguredError,
   CredentialNameRequiredError,
@@ -1031,10 +1037,33 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-stalled — count of stalled learners
   orgRouter.get('/:orgId/certification-stalled', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
       const { orgId } = req.params;
 
-      if (!await isOrgMember(userId, orgId)) {
+      const canaryDecision = await evaluateOrganizationAuthorizationCanary({
+        boundary:
+          ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_CERTIFICATION_STALLED_COUNT_READ,
+        principal: req.user!,
+        organizationId: orgId,
+        getWorkos: getAuthorizationEnforcementWorkos,
+        minimumRole: 'member',
+      });
+
+      if (canaryDecision.enforced) {
+        recordOrganizationAuthorizationCanaryDecision(
+          ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_CERTIFICATION_STALLED_COUNT_READ,
+          canaryDecision,
+        );
+        if (canaryDecision.status === 'unavailable') {
+          return res.status(503).json({
+            error: 'Authorization temporarily unavailable',
+            message: 'Organization access could not be verified. Please retry.',
+          });
+        }
+        if (canaryDecision.status === 'forbidden') {
+          return res.status(403).json({ error: 'You are not a member of this organization' });
+        }
+      } else if (!await isOrgMember(req.user!.id, orgId)) {
+        // Kill-switch/default path: preserve the shipped membership check exactly.
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
