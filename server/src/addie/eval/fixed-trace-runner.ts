@@ -48,7 +48,14 @@ import {
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
   createSyntheticDirectToolReceiptHandlers,
 } from '../direct-tool-universe.js';
-import { assertFixedTraceArchitectureDiagnosticSuite } from './fixed-trace-architecture-diagnostic.js';
+import {
+  assertFixedTraceArchitectureDiagnosticPilotSuite,
+  assertFixedTraceArchitectureDiagnosticSuite,
+  fixedTraceArchitectureDiagnosticCaseProvenance,
+  fixedTraceArchitectureDiagnosticPilotStageControls,
+  fixedTraceArchitectureDiagnosticStageControls,
+  type FixedTraceArchitectureDiagnosticStageControl,
+} from './fixed-trace-architecture-diagnostic.js';
 import {
   admitFixedTraceDirectArm,
   decideFixedTraceHybridRoute,
@@ -116,7 +123,7 @@ export interface FixedTraceRunnerConfig {
    * capability: it accepts only the declared synthetic architecture pack and
    * the inert common receipt environment.
    */
-  architectureDiagnosticMode?: 'synthetic_pack_v1';
+  architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1';
   /** One-based repetition identifier; runs are never silently pooled. */
   repetition?: number;
   router: FixedTraceProviderStageConfig;
@@ -135,7 +142,7 @@ interface FixedTraceExecutionIdentity {
   traceSuiteSha256: string;
   toolSchemaSha256: string;
   architectureConfigSha256: string;
-  architectureDiagnosticMode: 'synthetic_pack_v1' | null;
+  architectureDiagnosticMode: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | null;
   runProvenanceSha256: string;
 }
 
@@ -332,18 +339,62 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
   } else if (config.hybridPolicy !== undefined) {
     throw new Error('Fixed trace hybrid policy is only valid for the hybrid architecture arm');
   }
-  if (config.architectureDiagnosticMode !== undefined && config.architectureDiagnosticMode !== 'synthetic_pack_v1') {
+  if (
+    config.architectureDiagnosticMode !== undefined
+    && config.architectureDiagnosticMode !== 'synthetic_pack_v1'
+    && config.architectureDiagnosticMode !== 'synthetic_pilot_v1'
+  ) {
     throw new Error('Fixed trace architecture diagnostic mode is invalid');
   }
-  if (config.architectureDiagnosticMode === 'synthetic_pack_v1') {
+  if (config.architectureDiagnosticMode !== undefined) {
     if (architectureArm.id === 'oracle_route_diagnostic') {
       throw new Error('Fixed trace architecture diagnostic mode excludes fixture oracle routing');
     }
     if (config.toolDefinitionProvenance !== 'evaluator_owned_common_tool_universe') {
       throw new Error('Fixed trace architecture diagnostic mode requires the evaluator-owned common tool universe');
     }
-    assertFixedTraceArchitectureDiagnosticSuite(config.traceSuite);
+    if (config.architectureDiagnosticMode === 'synthetic_pack_v1') {
+      assertFixedTraceArchitectureDiagnosticSuite(config.traceSuite);
+      const haiku = fixedTraceArchitectureDiagnosticStageControls('haiku');
+      const luna = fixedTraceArchitectureDiagnosticStageControls('luna');
+      if (!stageMatches(config.generation, haiku.generation)
+        || (!stageMatches(config.router, haiku.router) && !stageMatches(config.router, luna.router))) {
+        throw new Error('Fixed trace architecture diagnostic pack differs from builder-owned exact stage controls');
+      }
+    } else {
+      assertFixedTraceArchitectureDiagnosticPilotSuite(config.traceSuite);
+      const pilot = fixedTraceArchitectureDiagnosticPilotStageControls();
+      if (!stageMatches(config.router, pilot.router) || !stageMatches(config.generation, pilot.generation)) {
+        throw new Error('Fixed trace architecture diagnostic pilot differs from reviewed candidate controls');
+      }
+    }
   }
+}
+
+/** No caller-provided stage knob may diverge from the declared candidate cell. */
+function stageMatches(
+  actual: FixedTraceProviderStageConfig,
+  expected: FixedTraceArchitectureDiagnosticStageControl,
+): boolean {
+  const pricing = actual.pricing;
+  const controls = expected.pricing;
+  return actual.provider.id === expected.providerId
+    && actual.model === expected.model
+    && actual.reasoningEffort === expected.reasoningEffort
+    && actual.maxOutputTokens === expected.maxOutputTokens
+    && actual.timeoutMs === expected.timeoutMs
+    && actual.maxIterations === expected.maxIterations
+    && actual.transportRetries === expected.transportRetries
+    && actual.samplingMode === expected.samplingMode
+    && actual.temperature === expected.temperature
+    && pricing.profileId === controls.profileId
+    && pricing.inputUsdPerMillionTokens === controls.inputUsdPerMillionTokens
+    && pricing.outputUsdPerMillionTokens === controls.outputUsdPerMillionTokens
+    && pricing.cacheReadUsdPerMillionTokens === controls.cacheReadUsdPerMillionTokens
+    && pricing.cacheWriteUsdPerMillionTokens === controls.cacheWriteUsdPerMillionTokens
+    && pricing.cacheReadAccounting === controls.cacheReadAccounting
+    && pricing.cacheWriteAccounting === controls.cacheWriteAccounting
+    && pricing.source === controls.source;
 }
 
 function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
@@ -899,6 +950,9 @@ function baseMetadata(
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
+    architectureDiagnostic: config.architectureDiagnosticMode === undefined
+      ? null
+      : fixedTraceArchitectureDiagnosticCaseProvenance(config.architectureDiagnosticMode, trace.id),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     repetition: config.repetition ?? 1,
     architectureArm,
@@ -1136,7 +1190,7 @@ export async function runFixedTraceCase(
   const generationConfig = generationConfigForTrace(executionTrace, executionConfig);
   validateStageConfig('generation', generationConfig);
   const architectureArm = fixedTraceArchitectureArm(executionConfig.architectureArm);
-  if (architectureArm.id === 'direct_generation' && executionConfig.architectureDiagnosticMode !== 'synthetic_pack_v1') {
+  if (architectureArm.id === 'direct_generation' && executionConfig.architectureDiagnosticMode === undefined) {
     // The evaluator's receipts and fixture facts are diagnostic only; an
     // admission result can never open a direct-production dispatch path.
   return {
@@ -1447,6 +1501,24 @@ export async function runFixedTraceArchitectureDiagnosticSuite(
   const observations = await runFixedTraceSuite(config);
   if (observations.length !== 24) {
     throw new Error('Fixed trace architecture diagnostic runner did not preserve the complete denominator');
+  }
+  return observations;
+}
+
+/**
+ * Exact, smaller no-dispatch pilot runner. Its three-case denominator and
+ * reviewed candidate controls are both validated before the first provider
+ * boundary, so it cannot be repurposed as an arbitrary cheap subset.
+ */
+export async function runFixedTraceArchitectureDiagnosticPilot(
+  config: FixedTraceRunnerConfig,
+): Promise<FixedTraceObservation[]> {
+  if (config.architectureDiagnosticMode !== 'synthetic_pilot_v1') {
+    throw new Error('Fixed trace architecture diagnostic pilot requires synthetic_pilot_v1 mode');
+  }
+  const observations = await runFixedTraceSuite(config);
+  if (observations.length !== 3) {
+    throw new Error('Fixed trace architecture diagnostic pilot did not preserve the complete denominator');
   }
   return observations;
 }

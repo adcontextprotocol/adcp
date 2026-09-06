@@ -349,8 +349,16 @@ export interface FixedTraceRunMetadata {
   stageControlVersion: typeof FIXED_TRACE_STAGE_CONTROL_VERSION;
   /** Hash of the immutable architecture/configuration cohort contract. */
   architectureConfigSha256: string;
-  /** Set only by the exact synthetic architecture diagnostic pack. */
-  architectureDiagnosticMode?: 'synthetic_pack_v1' | null;
+  /** Set only by an exact synthetic architecture diagnostic declaration. */
+  architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | null;
+  /** Evaluator-only pack/pilot and cluster binding for architecture diagnostics. */
+  architectureDiagnostic?: {
+    packDigest: string;
+    pilotDigest: string | null;
+    clusterId: string;
+    stratum: string;
+    localNearPairId: string | null;
+  } | null;
   /** Candidate policy, not an outcome of the degradation trace. */
   providerDegradationInjectionEnabled: boolean;
   repetition: number;
@@ -2513,10 +2521,12 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     toolUniverse: cohortToolUniverse,
     executionEnvelope: metadata.executionEnvelope,
     requestThreadFacts: metadata.requestThreadFacts,
-    // Direct and fixture-oracle arms never route. The hybrid retains the
-    // incumbent router as its fallback, so its router controls remain part of
-    // the candidate fingerprint.
+    // Direct and fixture-oracle arms ordinarily never route. A declared
+    // synthetic architecture diagnostic is an exception for provenance: its
+    // supplied (but never dispatched) router controls are independently
+    // reviewed and must remain in the candidate fingerprint.
     routerControl: ['direct_generation', 'oracle_route_diagnostic'].includes(metadata.architectureArm.id)
+      && metadata.architectureDiagnosticMode == null
       ? { status: 'not_run' }
       : metadata.routerControl,
     generationControl: metadata.generationControl,

@@ -139,7 +139,7 @@ describe('private fake-only component smoke runtime', () => {
     }
     expect(overridden.stdout).toBe(baseline.stdout);
     expect(JSON.parse(baseline.stdout)).toEqual({
-      fingerprint: '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d', reservation: 2_819_484,
+      fingerprint: '817ab57d30cc89dab4a81016f5c826857b8dc2a83e2f73aa0b7eb9c82f0b5d71', reservation: 2_819_484,
       result: { status: 'completed', assignmentDispositions: 168, providerInvocations: 192 },
     });
   });

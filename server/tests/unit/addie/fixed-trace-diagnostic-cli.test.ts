@@ -59,6 +59,13 @@ describe("fixed-trace diagnostic CLI parser", () => {
       outputWritten: false,
       providerCalls: 0,
       architectureDiagnostic: {
+        pilot: {
+          plan: {
+            dispatchable: false,
+            candidateCeiling: { totalCalls: 21, candidateCostUsd: 1.431710 },
+            separatelyReviewedPaidLauncherJudges: { included: false, additionalMaximumCalls: 18 },
+          },
+        },
         haikuRouter: { dispatchable: false, productionEligible: false, canaryEligible: false },
         lunaRouter: { dispatchable: false, productionEligible: false, canaryEligible: false },
       },
