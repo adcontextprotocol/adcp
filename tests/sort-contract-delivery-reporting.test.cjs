@@ -22,6 +22,19 @@ const SORTABLE_DIMENSIONS = [
   "placement_property",
 ];
 
+// The bounded-enum dimensions get cursor pagination for their truncated
+// breakdowns (#5671). geo is deliberately excluded: at postal_area
+// granularity it can reach tens of thousands of rows, closer to a
+// bulk-export shape than per-package cursor pagination — deferred to the
+// bulk-export/security work tracked in #5669/#5666 rather than shipping a
+// second retrieval mechanism here.
+const PAGINATED_DIMENSIONS = [
+  "device_type",
+  "device_platform",
+  "audience",
+  "placement",
+];
+
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
   return JSON.parse(
@@ -198,5 +211,74 @@ describe("delivery reporting sort contract", () => {
         `by_${name}_sort_direction echo missing`
       );
     }
+  });
+
+  for (const dimension of PAGINATED_DIMENSIONS) {
+    it(`request schema declares a cursor for ${dimension}`, () => {
+      const dimensionSchema = dereference(
+        requestJson.properties.reporting_dimensions.properties[dimension]
+      );
+      assert.ok(dimensionSchema, `missing dimension schema for ${dimension}`);
+      assert.equal(dimensionSchema.properties.cursor.type, "string");
+    });
+
+    it(`response declares by_${dimension}_pagination reusing the shared pagination-response shape`, () => {
+      const paginationField = `by_${dimension}_pagination`;
+      const properties = byPackageExtension.properties;
+      assert.equal(
+        properties[paginationField]?.$ref,
+        "/schemas/core/pagination-response.json",
+        `${paginationField} missing or not reusing the shared shape`
+      );
+    });
+
+    it(`accepts a cursor on a ${dimension} breakdown request and rejects a non-string cursor`, () => {
+      assert.equal(
+        validateRequest({
+          reporting_dimensions: {
+            [dimension]: { cursor: "eyJvZmZzZXQiOjI1fQ==" },
+          },
+        }),
+        true,
+        JSON.stringify(validateRequest.errors)
+      );
+      assert.equal(
+        validateRequest({
+          reporting_dimensions: { [dimension]: { cursor: 25 } },
+        }),
+        false
+      );
+    });
+
+    it(`accepts a well-formed by_${dimension}_pagination and rejects one missing has_more`, () => {
+      const paginationField = `by_${dimension}_pagination`;
+      assert.equal(
+        validateByPackage({
+          ...BASE_PACKAGE,
+          [paginationField]: {
+            has_more: true,
+            cursor: "eyJvZmZzZXQiOjI1fQ==",
+            total_count: 3104,
+          },
+        }),
+        true,
+        JSON.stringify(validateByPackage.errors)
+      );
+      assert.equal(
+        validateByPackage({
+          ...BASE_PACKAGE,
+          [paginationField]: { cursor: "eyJvZmZzZXQiOjI1fQ==" },
+        }),
+        false
+      );
+    });
+  }
+
+  it("geo does not get per-package cursor pagination (deferred to bulk-export, #5669/#5666)", () => {
+    const geoSchema = dereference(
+      requestJson.properties.reporting_dimensions.properties.geo
+    );
+    assert.equal(geoSchema.properties.cursor, undefined);
+    assert.equal(byPackageExtension.properties.by_geo_pagination, undefined);
   });
 });

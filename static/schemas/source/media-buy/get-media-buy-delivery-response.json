@@ -625,6 +625,10 @@
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_device_type ordering. Sellers MUST return this field whenever by_device_type is present."
                     },
+                    "by_device_type_pagination": {
+                      "$ref": "/schemas/core/pagination-response.json",
+                      "description": "Cursor to retrieve the remaining by_device_type rows when by_device_type_truncated is true. Sellers MUST return this field whenever by_device_type_truncated is true; omit when false or when by_device_type is absent. Pass the cursor back in the corresponding request's reporting_dimensions.device_type.cursor to fetch the next page; other reporting_dimensions.device_type request fields (limit, sort_by, sort_direction) MUST be repeated unchanged across paged requests."
+                    },
                     "by_device_platform": {
                       "type": "array",
                       "description": "Delivery by operating system within this package. Available when the buyer requests device_platform breakdown via reporting_dimensions and the seller supports it. Useful for CTV campaigns where tvOS vs Roku OS vs Fire OS matters.",
@@ -661,6 +665,10 @@
                     "by_device_platform_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_device_platform ordering. Sellers MUST return this field whenever by_device_platform is present."
+                    },
+                    "by_device_platform_pagination": {
+                      "$ref": "/schemas/core/pagination-response.json",
+                      "description": "Cursor to retrieve the remaining by_device_platform rows when by_device_platform_truncated is true. Sellers MUST return this field whenever by_device_platform_truncated is true; omit when false or when by_device_platform is absent. Pass the cursor back in the corresponding request's reporting_dimensions.device_platform.cursor to fetch the next page; other reporting_dimensions.device_platform request fields (limit, sort_by, sort_direction) MUST be repeated unchanged across paged requests."
                     },
                     "by_audience": {
                       "type": "array",
@@ -708,6 +716,10 @@
                     "by_audience_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_audience ordering. Sellers MUST return this field whenever by_audience is present."
+                    },
+                    "by_audience_pagination": {
+                      "$ref": "/schemas/core/pagination-response.json",
+                      "description": "Cursor to retrieve the remaining by_audience rows when by_audience_truncated is true. Sellers MUST return this field whenever by_audience_truncated is true; omit when false or when by_audience is absent. Pass the cursor back in the corresponding request's reporting_dimensions.audience.cursor to fetch the next page; other reporting_dimensions.audience request fields (limit, sort_by, sort_direction) MUST be repeated unchanged across paged requests."
                     },
                     "by_demographic": {
                       "type": "array",
@@ -779,6 +791,10 @@
                     "by_placement_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_placement ordering. Sellers MUST return this field whenever by_placement is present."
+                    },
+                    "by_placement_pagination": {
+                      "$ref": "/schemas/core/pagination-response.json",
+                      "description": "Cursor to retrieve the remaining by_placement rows when by_placement_truncated is true. Sellers MUST return this field whenever by_placement_truncated is true; omit when false or when by_placement is absent. Pass the cursor back in the corresponding request's reporting_dimensions.placement.cursor to fetch the next page; other reporting_dimensions.placement request fields (limit, sort_by, sort_direction) MUST be repeated unchanged across paged requests."
                     },
                     "by_property": {
                       "type": "array",

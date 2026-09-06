@@ -56,9 +56,12 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // held at ~394 KiB. Reporting Core adds two compact operational inputs to the
 // same profile. Product-scoped daypart timezone modes and exact IANA support
 // add two shared definitions. Reliable Reporting adjustment receipts add one
-// more shared input definition; keep the resulting prompt view within 412 KiB.
+// more shared input definition, holding the prompt view within 412 KiB.
+// Bounded delivery-breakdown pagination adds one small per-dimension cursor
+// input to get_media_buy_delivery (device_type, device_platform, audience,
+// placement); keep the resulting prompt view within 413 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 412,
+  'media-buy': 413,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
