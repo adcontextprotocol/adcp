@@ -15,6 +15,7 @@ import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.j
 import {
   datedPricingCostUsd,
   datedPricingProfilesForFixedTrace,
+  datedPricingReservationCostUsd,
   pricingProfileForCandidate,
   resolveCurrentEvaluationPricingCohort,
   type EvaluationPricingCandidateId,
@@ -371,18 +372,12 @@ export class FixedTraceBudget {
       this.budgetRejectedCalls++;
       throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
     }
-    // Request bytes are a deliberately high token bound for the request. An
-    // additive cache bucket is separately billable, so reserve that same
-    // bound for each such bucket as well. Subset buckets are already covered
-    // by inputTokens. This keeps the pre-dispatch reserve conservative under
-    // the recorded, fingerprinted cache formula.
+    // Request bytes are a deliberately high token bound for the request.
+    // The common dated-pricing helper includes every additive bucket and the
+    // highest-cost mutually-exclusive subset bucket (including an OpenAI
+    // cache write whose replacement rate exceeds ordinary input).
     const inputTokens = requestBytes(prepared);
-    const usd = fixedTraceEstimatedCostUsd({
-      inputTokens,
-      outputTokens: maxOutputTokens,
-      cacheReadTokens: pricing.cacheReadAccounting === 'additive' ? inputTokens : 0,
-      cacheWriteTokens: pricing.cacheWriteAccounting === 'additive' ? inputTokens : 0,
-    }, pricing);
+    const usd = datedPricingReservationCostUsd(pricing, inputTokens, maxOutputTokens);
     if (this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
       this.admissionClosed = true;
       this.budgetRejectedCalls++;

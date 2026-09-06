@@ -23,6 +23,12 @@ describe('dated prospective evaluation pricing cohort', () => {
     if (all.status !== 'available') return;
     expect(pricingProfileForCandidate(all.cohort, 'openai-router-generator').identityDependency)
       .toBe('exact_returned_model_identity_enforced');
+    expect(pricingProfileForCandidate(all.cohort, 'openai-router-generator')).toMatchObject({
+      cacheReadUsdPerMillionTokens: 0.02,
+      cacheReadAccounting: 'subset',
+      cacheWriteUsdPerMillionTokens: 0.25,
+      cacheWriteAccounting: 'subset',
+    });
 
     const available = resolveCurrentEvaluationPricingCohort(AT, ['anthropic-router', 'anthropic-generation', 'google-router-generator']);
     expect(available.status).toBe('available');

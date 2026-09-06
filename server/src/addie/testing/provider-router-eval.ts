@@ -21,6 +21,9 @@ import {
 import { getValidToolSetNames } from '../tool-sets.js';
 import {
   datedPricingCostUsd,
+  datedPricingProfileIdentity,
+  datedPricingReservationCostUsd,
+  type DatedPricingProfileIdentity,
   type DatedPricingProfile,
 } from '../eval/dated-pricing-cohort.js';
 
@@ -128,6 +131,13 @@ interface RouterEvalReservation {
   active: boolean;
 }
 
+interface RouterEvalReservationPricingBinding {
+  /** The exact module-issued profile object selected before dispatch. */
+  readonly pricing: DatedPricingProfile;
+  /** Snapshot of its issued digest, candidate, provider, and model. */
+  readonly pricingIdentity: DatedPricingProfileIdentity;
+}
+
 /**
  * Serial diagnostic ledger for router comparisons. Its cache exposure and
  * terminal accounting deliberately use the same dated-profile formula as the
@@ -141,6 +151,9 @@ export class RouterEvalBudget {
   private budgetRejectedCalls = 0;
   private admissionClosed = false;
   private exposureUnknown = false;
+  // Keep provenance outside the caller-held mutable reservation handle. This
+  // also makes a reservation issued by one ledger unusable by another.
+  private readonly reservationPricingBindings = new WeakMap<RouterEvalReservation, RouterEvalReservationPricingBinding>();
 
   constructor(readonly softMaxUsd: number) {
     if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
@@ -164,6 +177,7 @@ export class RouterEvalBudget {
       this.budgetRejectedCalls++;
       throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
     }
+    const pricingIdentity = assertImmutableDatedPricingProfile(pricing);
     const usd = RouterEvalBudget.reservationUsd(prepared, maxOutputTokens, pricing);
     if (!shouldDispatchWithinSoftBudget(this.accountedSpendUsd + this.reservedUsd, usd, this.softMaxUsd)) {
       this.admissionClosed = true;
@@ -171,7 +185,9 @@ export class RouterEvalBudget {
       throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
     }
     this.reservedUsd += usd;
-    return { usd, active: true };
+    const reservation = { usd, active: true };
+    this.reservationPricingBindings.set(reservation, { pricing, pricingIdentity });
+    return reservation;
   }
 
   static reservationUsd(
@@ -180,15 +196,9 @@ export class RouterEvalBudget {
     pricing: DatedPricingProfile,
   ): number {
     assertImmutableDatedPricingProfile(pricing);
+    assertPreparedDatedPricingIdentity(prepared, pricing);
     const inputTokens = Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8');
-    return datedPricingCostUsd(pricing, {
-      inputTokens,
-      outputTokens: maxOutputTokens,
-      // Input is already the ceiling for subset buckets. Each independently
-      // additive bucket can consume the full request ceiling as well.
-      cacheReadTokens: pricing.cacheReadAccounting === 'additive' ? inputTokens : 0,
-      cacheWriteTokens: pricing.cacheWriteAccounting === 'additive' ? inputTokens : 0,
-    });
+    return datedPricingReservationCostUsd(pricing, inputTokens, maxOutputTokens);
   }
 
   markDispatched(reservation: RouterEvalReservation): void {
@@ -197,7 +207,8 @@ export class RouterEvalBudget {
   }
 
   complete(reservation: RouterEvalReservation, usage: ModelUsage, pricing: DatedPricingProfile): number {
-    assertImmutableDatedPricingProfile(pricing);
+    const pricingIdentity = assertImmutableDatedPricingProfile(pricing);
+    this.assertReservationPricing(reservation, pricing, pricingIdentity);
     const actualCostUsd = datedPricingCostUsd(pricing, usage);
     this.release(reservation);
     this.accountedSpendUsd += actualCostUsd;
@@ -231,7 +242,9 @@ export class RouterEvalBudget {
   }
 
   private requireActive(reservation: RouterEvalReservation): void {
-    if (!reservation.active) throw new Error('Router eval budget reservation is inactive');
+    if (!reservation.active || !this.reservationPricingBindings.has(reservation)) {
+      throw new Error('Router eval budget reservation is inactive');
+    }
   }
 
   private release(reservation: RouterEvalReservation): void {
@@ -239,11 +252,39 @@ export class RouterEvalBudget {
     reservation.active = false;
     this.reservedUsd = Math.max(0, this.reservedUsd - reservation.usd);
   }
+
+  private assertReservationPricing(
+    reservation: RouterEvalReservation,
+    pricing: DatedPricingProfile,
+    pricingIdentity: DatedPricingProfileIdentity,
+  ): void {
+    const binding = this.reservationPricingBindings.get(reservation);
+    if (
+      !binding
+      || binding.pricing !== pricing
+      || binding.pricingIdentity.digest !== pricingIdentity.digest
+      || binding.pricingIdentity.candidateId !== pricingIdentity.candidateId
+      || binding.pricingIdentity.profileId !== pricingIdentity.profileId
+      || binding.pricingIdentity.provider !== pricingIdentity.provider
+      || binding.pricingIdentity.model !== pricingIdentity.model
+    ) throw new Error('Router eval budget reservation pricing profile does not match settlement profile');
+  }
 }
 
-function assertImmutableDatedPricingProfile(pricing: DatedPricingProfile): void {
-  if (!Object.isFrozen(pricing) || !Object.isFrozen(pricing.sourceEvidence)) {
+function assertImmutableDatedPricingProfile(pricing: DatedPricingProfile): DatedPricingProfileIdentity {
+  try {
+    return datedPricingProfileIdentity(pricing);
+  } catch {
     throw new Error('Router eval pricing profile must be an immutable dated cohort profile');
+  }
+}
+
+function assertPreparedDatedPricingIdentity(
+  prepared: PreparedModelInvocation,
+  pricing: DatedPricingProfile,
+): void {
+  if (prepared.provider !== pricing.provider || prepared.model !== pricing.model) {
+    throw new Error('Router eval prepared invocation identity does not match pricing profile');
   }
 }
 

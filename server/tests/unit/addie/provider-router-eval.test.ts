@@ -88,11 +88,28 @@ const PREPARED_ROUTER_CALL = {
   capabilities: fakeProvider('').capabilities,
   providerRequest: { model: 'gpt-5.6-luna', input: 'synthetic' },
 };
+const PREPARED_ANTHROPIC_ROUTER_CALL = {
+  ...PREPARED_ROUTER_CALL,
+  provider: 'anthropic' as const,
+  model: 'claude-haiku-4-5',
+  providerRequest: { model: 'claude-haiku-4-5', input: 'synthetic' },
+};
 
 describe('router evaluation dated-pricing ledger', () => {
   it('prices subset cached input once and matches fixed-trace accounting', () => {
     const usage = { inputTokens: 100, outputTokens: 20, cacheReadTokens: 40 };
     const expected = 0.0000368;
+    expect(datedPricingCostUsd(OPENAI_PRICING, usage)).toBe(expected);
+    expect(fixedTraceEstimatedCostUsd(usage, OPENAI_PRICING)).toBe(expected);
+  });
+
+  it('prices documented OpenAI cache writes as a subset replacement and matches fixed-trace accounting', () => {
+    const usage = { inputTokens: 100, outputTokens: 20, cacheWriteTokens: 40 };
+    const expected = 0.000046;
+    expect(OPENAI_PRICING).toMatchObject({
+      cacheWriteUsdPerMillionTokens: 0.25,
+      cacheWriteAccounting: 'subset',
+    });
     expect(datedPricingCostUsd(OPENAI_PRICING, usage)).toBe(expected);
     expect(fixedTraceEstimatedCostUsd(usage, OPENAI_PRICING)).toBe(expected);
   });
@@ -104,35 +121,37 @@ describe('router evaluation dated-pricing ledger', () => {
     expect(datedPricingCostUsd(ANTHROPIC_PRICING, { inputTokens: 100, outputTokens: 20 })).toBe(0.0002);
   });
 
-  it('fails closed for malformed usage, unsupported cache categories, and overlapping subset buckets', () => {
+  it('fails closed for malformed usage and overlapping subset buckets', () => {
     expect(() => datedPricingCostUsd(OPENAI_PRICING, { inputTokens: -1, outputTokens: 0 })).toThrow('Invalid input');
     expect(() => datedPricingCostUsd(OPENAI_PRICING, { inputTokens: 10, outputTokens: 0, cacheReadTokens: 11 })).toThrow('Subset cache-read');
-    expect(() => datedPricingCostUsd(OPENAI_PRICING, { inputTokens: 10, outputTokens: 0, cacheWriteTokens: 1 })).toThrow('Cache-write');
-    const overlappingSubset = {
-      ...OPENAI_PRICING,
-      cacheWriteAccounting: 'subset' as const,
-      cacheWriteUsdPerMillionTokens: 0.1,
-    };
-    expect(() => datedPricingCostUsd(overlappingSubset, {
+    expect(() => datedPricingCostUsd(OPENAI_PRICING, {
       inputTokens: 10, outputTokens: 0, cacheReadTokens: 6, cacheWriteTokens: 5,
     })).toThrow('Subset cache-write');
   });
 
-  it('reserves all additive cache exposure, settles exact usage, refunds cancellation, and closes before dispatch at the ceiling', () => {
+  it('reserves maximum OpenAI cache-write exposure, settles exact usage, refunds cancellation, and closes before dispatch at the ceiling', () => {
     const probe = new RouterEvalBudget(1);
-    const conservative = RouterEvalBudget.reservationUsd(PREPARED_ROUTER_CALL, 300, ANTHROPIC_PRICING);
+    const conservative = RouterEvalBudget.reservationUsd(PREPARED_ANTHROPIC_ROUTER_CALL, 300, ANTHROPIC_PRICING);
     const baseOnly = datedPricingCostUsd(ANTHROPIC_PRICING, {
-      inputTokens: Buffer.byteLength(JSON.stringify(PREPARED_ROUTER_CALL.providerRequest), 'utf8'),
+      inputTokens: Buffer.byteLength(JSON.stringify(PREPARED_ANTHROPIC_ROUTER_CALL.providerRequest), 'utf8'),
       outputTokens: 300,
     });
     expect(conservative).toBeGreaterThan(baseOnly);
+    const requestBytes = Buffer.byteLength(JSON.stringify(PREPARED_ROUTER_CALL.providerRequest), 'utf8');
+    const openaiReserve = RouterEvalBudget.reservationUsd(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
+    expect(openaiReserve).toBe(datedPricingCostUsd(OPENAI_PRICING, {
+      inputTokens: requestBytes, outputTokens: 300, cacheWriteTokens: requestBytes,
+    }));
+    expect(openaiReserve).toBeGreaterThan(datedPricingCostUsd(OPENAI_PRICING, {
+      inputTokens: requestBytes, outputTokens: 300,
+    }));
 
     const budget = new RouterEvalBudget(1);
     const completed = budget.reserve(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
     expect(budget.snapshot().reservedUsd).toBeGreaterThan(0);
     budget.markDispatched(completed);
-    const actual = budget.complete(completed, { inputTokens: 100, outputTokens: 20, cacheReadTokens: 40 }, OPENAI_PRICING);
-    expect(actual).toBe(0.0000368);
+    const actual = budget.complete(completed, { inputTokens: 100, outputTokens: 20, cacheWriteTokens: 40 }, OPENAI_PRICING);
+    expect(actual).toBe(0.000046);
     expect(budget.snapshot()).toMatchObject({ accountedSpendUsd: actual, reservedUsd: 0, dispatchedCalls: 1, completedCalls: 1 });
 
     const cancelled = budget.reserve(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
@@ -140,12 +159,34 @@ describe('router evaluation dated-pricing ledger', () => {
     expect(budget.snapshot()).toMatchObject({ accountedSpendUsd: actual, reservedUsd: 0 });
 
     const overBudget = new RouterEvalBudget(conservative / 2);
-    expect(() => overBudget.reserve(PREPARED_ROUTER_CALL, 300, ANTHROPIC_PRICING))
+    expect(() => overBudget.reserve(PREPARED_ANTHROPIC_ROUTER_CALL, 300, ANTHROPIC_PRICING))
       .toThrow(RouterEvalBudgetAdmissionError);
     expect(overBudget.snapshot()).toMatchObject({ reservedUsd: 0, dispatchedCalls: 0, budgetRejectedCalls: 1, admissionClosed: true });
     expect(probe.snapshot().reservedUsd).toBe(0);
+    expect(() => RouterEvalBudget.reservationUsd(PREPARED_ROUTER_CALL, 300, ANTHROPIC_PRICING))
+      .toThrow('prepared invocation identity does not match pricing profile');
     expect(() => RouterEvalBudget.reservationUsd(PREPARED_ROUTER_CALL, 300, structuredClone(OPENAI_PRICING)))
       .toThrow('immutable dated cohort profile');
+  });
+
+  it('binds settlement to the exact issued profile, not a frozen substitute or another genuine profile', () => {
+    const budget = new RouterEvalBudget(1);
+    const reservation = budget.reserve(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
+    budget.markDispatched(reservation);
+
+    expect(() => budget.complete(reservation, { inputTokens: 10, outputTokens: 2 }, ANTHROPIC_PRICING))
+      .toThrow('reservation pricing profile does not match settlement profile');
+    expect(budget.snapshot()).toMatchObject({ accountedSpendUsd: 0, reservedUsd: reservation.usd, completedCalls: 0 });
+    budget.markExposureUnknown(reservation);
+
+    const frozenSubstitute = Object.freeze({
+      ...structuredClone(OPENAI_PRICING),
+      sourceEvidence: Object.freeze(structuredClone(OPENAI_PRICING.sourceEvidence)),
+    });
+    expect(() => RouterEvalBudget.reservationUsd(PREPARED_ROUTER_CALL, 300, frozenSubstitute))
+      .toThrow('immutable dated cohort profile');
+    expect(() => { (OPENAI_PRICING as { model: string }).model = 'forged'; }).toThrow();
+    expect(OPENAI_PRICING.model).toBe('gpt-5.6-luna');
   });
 });
 

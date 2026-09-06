@@ -18,6 +18,7 @@ import {
 import type { ModelProviderId } from '../model-providers/model-provider.js';
 
 const COHORT_DIGEST_DOMAIN = 'adcp:addie:dated-prospective-pricing-cohort:v1\0';
+const PROFILE_DIGEST_DOMAIN = 'adcp:addie:dated-prospective-pricing-profile:v1\0';
 const CHECKED_AT = '2026-09-05T23:55:26.000Z';
 
 export type EvaluationPricingCandidateId =
@@ -78,6 +79,18 @@ export interface DatedPricingProfile {
   readonly effectiveFrom: string;
   readonly effectiveBefore: string | null;
   readonly identityDependency: DatedPricingRecord['identityDependency'];
+}
+
+/**
+ * Module-issued identity for an immutable profile. It prevents a diagnostic
+ * ledger from accepting a frozen lookalike at admission or settlement.
+ */
+export interface DatedPricingProfileIdentity {
+  readonly digest: string;
+  readonly candidateId: EvaluationPricingCandidateId;
+  readonly profileId: string;
+  readonly provider: ModelProviderId;
+  readonly model: string;
 }
 
 export interface DatedPricingUsage {
@@ -171,13 +184,16 @@ const OFFICIAL_PRICING_RECORDS: readonly DatedPricingRecord[] = deepFreeze([
     profileId: 'openai-gpt-5.6-luna-standard-2026-09-05',
     rates: {
       inputUsdPerMillionTokens: 0.2, outputUsdPerMillionTokens: 1.2,
-      cacheReadUsdPerMillionTokens: 0.02, cacheWriteUsdPerMillionTokens: null,
-      cacheReadAccounting: 'subset', cacheWriteAccounting: 'unsupported',
+      cacheReadUsdPerMillionTokens: 0.02, cacheWriteUsdPerMillionTokens: 0.25,
+      // Responses reports these as portions of input_tokens. Cached reads
+      // replace their input rate; cache writes replace it at the documented
+      // 1.25x multiplier rather than adding a second input charge.
+      cacheReadAccounting: 'subset', cacheWriteAccounting: 'subset',
     },
     source: {
       provider: 'openai', url: 'https://developers.openai.com/api/docs/models/gpt-5.6-luna',
       retrievedAt: CHECKED_AT, unit: 'USD per 1M tokens', serviceTier: 'standard', currency: 'USD',
-      evidence: 'Responses API model card lists input, cached-input, and output rates. The adapter exposes cache-write usage, but no official normalized cache-write accounting relationship is established here, so that category is unavailable.',
+      evidence: 'Responses API model card lists input, cached-input, and output rates, and states cache writes are billed at 1.25x uncached input. The normalized cache read/write categories are portions of input_tokens.',
     },
     sourceLabel: 'OpenAI gpt-5.6-luna standard, checked 2026-09-05.',
     // origin/main@712ddc676 routes this same typed predicate through the
@@ -207,6 +223,42 @@ function deepFreeze<T>(value: T): T {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
   return Object.freeze(value);
+}
+
+const datedPricingProfileIdentities = new WeakMap<DatedPricingProfile, DatedPricingProfileIdentity>();
+
+function canonicalProfile(profile: DatedPricingProfile): Record<string, unknown> {
+  return {
+    candidateId: profile.candidateId, provider: profile.provider, model: profile.model, profileId: profile.profileId,
+    effectiveFrom: profile.effectiveFrom, effectiveBefore: profile.effectiveBefore, identityDependency: profile.identityDependency,
+    rates: {
+      input: profile.inputUsdPerMillionTokens, output: profile.outputUsdPerMillionTokens,
+      cacheRead: profile.cacheReadUsdPerMillionTokens, cacheWrite: profile.cacheWriteUsdPerMillionTokens,
+      cacheReadAccounting: profile.cacheReadAccounting, cacheWriteAccounting: profile.cacheWriteAccounting,
+    },
+    source: profile.sourceEvidence,
+  };
+}
+
+function bindDatedPricingProfile(profile: DatedPricingProfile): DatedPricingProfile {
+  const identity = Object.freeze({
+    digest: `sha256:${createHash('sha256').update(PROFILE_DIGEST_DOMAIN, 'utf8').update(JSON.stringify(canonicalProfile(profile)), 'utf8').digest('hex')}`,
+    candidateId: profile.candidateId,
+    profileId: profile.profileId,
+    provider: profile.provider,
+    model: profile.model,
+  });
+  datedPricingProfileIdentities.set(profile, identity);
+  return profile;
+}
+
+/** Returns the module-issued identity only for an exact immutable cohort profile. */
+export function datedPricingProfileIdentity(profile: DatedPricingProfile): DatedPricingProfileIdentity {
+  const identity = datedPricingProfileIdentities.get(profile);
+  if (!identity || !Object.isFrozen(profile) || !Object.isFrozen(profile.sourceEvidence)) {
+    throw new Error('Dated pricing profile must be an immutable dated cohort profile');
+  }
+  return identity;
 }
 
 function safeDate(value: unknown): number | null {
@@ -307,12 +359,12 @@ function assertRecord(record: unknown): asserts record is DatedPricingRecord {
 }
 
 function profileFrom(record: DatedPricingRecord): DatedPricingProfile {
-  return deepFreeze({
+  return bindDatedPricingProfile(deepFreeze({
     candidateId: record.candidateId, provider: record.provider, model: record.model, serviceTier: record.serviceTier, profileId: record.profileId,
     ...record.rates, source: record.sourceLabel, sourceEvidence: { ...record.source },
     effectiveFrom: record.effectiveFrom, effectiveBefore: record.effectiveBefore,
     identityDependency: record.identityDependency,
-  });
+  }));
 }
 
 /** Validates a copied registry before it can become a cohort; no caller object is retained. */
@@ -355,14 +407,7 @@ function byCandidate<T extends { candidateId: string }>(left: T, right: T): numb
 }
 
 function cohortDigest(profiles: readonly DatedPricingProfile[]): string {
-  const canonical = profiles.map((profile) => ({
-    candidateId: profile.candidateId, provider: profile.provider, model: profile.model, profileId: profile.profileId,
-    effectiveFrom: profile.effectiveFrom, effectiveBefore: profile.effectiveBefore, identityDependency: profile.identityDependency, rates: {
-      input: profile.inputUsdPerMillionTokens, output: profile.outputUsdPerMillionTokens,
-      cacheRead: profile.cacheReadUsdPerMillionTokens, cacheWrite: profile.cacheWriteUsdPerMillionTokens,
-      cacheReadAccounting: profile.cacheReadAccounting, cacheWriteAccounting: profile.cacheWriteAccounting,
-    }, source: profile.sourceEvidence,
-  }));
+  const canonical = profiles.map(canonicalProfile);
   return `sha256:${createHash('sha256').update(COHORT_DIGEST_DOMAIN, 'utf8').update(JSON.stringify(canonical), 'utf8').digest('hex')}`;
 }
 
@@ -529,6 +574,36 @@ function pricingCostFraction(
 export function datedPricingCostUsd(profile: DatedPricingCostProfile, usage: DatedPricingUsage): number {
   const [total, denominator] = pricingCostFraction(profile, usage);
   return total / denominator / 1_000_000;
+}
+
+/**
+ * Worst-case supported cache exposure for one request. Subset categories
+ * replace input charges, so use the highest priced mutually-exclusive subset
+ * bucket; additive categories can each consume the complete input ceiling.
+ */
+export function datedPricingReservationCostUsd(
+  profile: DatedPricingCostProfile,
+  inputTokens: number,
+  outputTokens: number,
+): number {
+  const input = Number.isSafeInteger(inputTokens) && inputTokens >= 0 ? inputTokens : null;
+  const output = Number.isSafeInteger(outputTokens) && outputTokens >= 0 ? outputTokens : null;
+  if (input === null || output === null) throw new Error('Invalid reservation token count');
+  const candidates: Array<readonly ['cacheReadTokens' | 'cacheWriteTokens' | null, number]> = [[null, profile.inputUsdPerMillionTokens]];
+  if (profile.cacheReadAccounting === 'subset' && profile.cacheReadUsdPerMillionTokens !== null && profile.cacheReadUsdPerMillionTokens !== undefined) {
+    candidates.push(['cacheReadTokens', profile.cacheReadUsdPerMillionTokens]);
+  }
+  if (profile.cacheWriteAccounting === 'subset' && profile.cacheWriteUsdPerMillionTokens !== null && profile.cacheWriteUsdPerMillionTokens !== undefined) {
+    candidates.push(['cacheWriteTokens', profile.cacheWriteUsdPerMillionTokens]);
+  }
+  const [subsetField] = candidates.reduce((highest, candidate) => candidate[1] > highest[1] ? candidate : highest);
+  return datedPricingCostUsd(profile, {
+    inputTokens: input,
+    outputTokens: output,
+    ...(profile.cacheReadAccounting === 'additive' ? { cacheReadTokens: input } : {}),
+    ...(profile.cacheWriteAccounting === 'additive' ? { cacheWriteTokens: input } : {}),
+    ...(subsetField === null ? {} : { [subsetField]: input }),
+  });
 }
 
 /** Exact integer-micro accounting for a cohort profile; fractional micros round up once. */
