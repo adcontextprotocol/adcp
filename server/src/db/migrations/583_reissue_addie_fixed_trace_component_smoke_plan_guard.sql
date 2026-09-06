@@ -47,3 +47,23 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- A plan written and committed under migration 582 never changes again, so
+-- its deferred plan trigger cannot observe this reissue.  Gate every *new*
+-- dispatch intent through the reissued authority instead.  Historical plans
+-- and attempt evidence remain readable; only new provider-facing work needs
+-- to satisfy the current exact admission fingerprint and manifest.
+CREATE OR REPLACE FUNCTION addie_fixed_trace_component_smoke_guard_attempt_plan() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM addie_fixed_trace_component_smoke_check_plan_group(NEW.authorization_digest);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS addie_fixed_trace_component_smoke_attempt_plan_guard
+  ON addie_fixed_trace_component_smoke_attempts;
+
+CREATE TRIGGER addie_fixed_trace_component_smoke_attempt_plan_guard
+BEFORE INSERT ON addie_fixed_trace_component_smoke_attempts
+FOR EACH ROW EXECUTE FUNCTION addie_fixed_trace_component_smoke_guard_attempt_plan();
