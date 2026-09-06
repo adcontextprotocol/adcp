@@ -44,8 +44,13 @@ function gcd(left: bigint, right: bigint): bigint {
 }
 
 export function rational(numerator: bigint | number, denominator: bigint | number = 1n): Rational {
-  let n = BigInt(numerator);
-  let d = BigInt(denominator);
+  const integer = (value: bigint | number, name: string): bigint => {
+    if (typeof value === 'bigint') return value;
+    if (typeof value === 'number' && Number.isSafeInteger(value)) return BigInt(value);
+    throw new RangeError(`${name} must be a bigint or safe integer number`);
+  };
+  let n = integer(numerator, 'Rational numerator');
+  let d = integer(denominator, 'Rational denominator');
   if (bitLength(n) > MAX_RATIONAL_BITS || bitLength(d) > MAX_RATIONAL_BITS) throw new RangeError(`Rational exceeds ${MAX_RATIONAL_BITS}-bit arithmetic ceiling`);
   if (d === 0n) throw new RangeError('Rational denominator must not be zero');
   if (n === 0n) return ZERO;
@@ -99,6 +104,7 @@ export function pow(a: Rational, exponent: number): Rational {
 }
 export function midpoint(a: Rational, b: Rational): Rational { return divide(add(a, b), TWO); }
 export function decimal(value: string): Rational {
+  if (typeof value !== 'string') throw new RangeError('Decimal literal must be a primitive string');
   if (value.length > MAX_EXTERNAL_DECIMAL_CHARACTERS) throw new RangeError(`Decimal literal exceeds ${MAX_EXTERNAL_DECIMAL_CHARACTERS}-character diagnostic ceiling`);
   if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) throw new RangeError('Margin and alpha must be finite decimal literals');
   const negative = value.startsWith('-');

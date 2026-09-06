@@ -9,18 +9,21 @@ const normalizedPolynomials = new WeakSet<object>();
 /** Reject sparse, accessor, and Proxy arrays before copying coefficients once. */
 function inertCoefficients(value: RationalPolynomial, name: string): readonly Rational[] {
   if (typeof value === 'object' && value !== null && normalizedPolynomials.has(value)) return value;
-  if (!Array.isArray(value) || types.isProxy(value)) throw new RangeError(`${name} must not be sparse, accessor-backed, or a Proxy`);
-  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+  if (!Array.isArray(value) || types.isProxy(value) || Object.getPrototypeOf(value) !== Array.prototype) throw new RangeError(`${name} must not be sparse, accessor-backed, aliased, or a Proxy`);
+  let descriptors: Record<PropertyKey, PropertyDescriptor>;
+  try { descriptors = Object.getOwnPropertyDescriptors(value) as unknown as Record<PropertyKey, PropertyDescriptor>; }
+  catch { throw new RangeError(`${name} must not be sparse, accessor-backed, aliased, or a Proxy`); }
+  const lengthDescriptor = descriptors.length;
   if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value') || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value === 0 || lengthDescriptor.value - 1 > MAX_RATIONAL_POLYNOMIAL_DEGREE) throw new RangeError(`${name} degree must be in [0, ${MAX_RATIONAL_POLYNOMIAL_DEGREE}]`);
   const length = lengthDescriptor.value as number;
   const raw: Rational[] = [];
   try {
     for (let index = 0; index < length; index++) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      const descriptor = descriptors[String(index)];
       if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.get !== undefined || descriptor.set !== undefined) throw new TypeError();
     }
-    if (Reflect.ownKeys(value).some((key) => key !== 'length' && (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/.test(key)))) throw new TypeError();
-    for (let index = 0; index < length; index++) raw.push(Object.getOwnPropertyDescriptor(value, String(index))!.value as Rational);
+    if (Reflect.ownKeys(descriptors).some((key) => key !== 'length' && (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/.test(key)))) throw new TypeError();
+    for (let index = 0; index < length; index++) raw.push(descriptors[String(index)]!.value as Rational);
   } catch { throw new RangeError(`${name} must not be sparse, accessor-backed, or a Proxy`); }
   return Object.freeze(raw.map((coefficient) => canonicalRational(coefficient, `${name} coefficient`)));
 }

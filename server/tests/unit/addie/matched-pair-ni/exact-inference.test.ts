@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
@@ -18,6 +19,34 @@ import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, 
 describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   const margin = parseMatchedPairNiDecimal('0.10');
   const alpha = parseMatchedPairNiDecimal('0.05');
+
+  function expectsHostileConstructorToTerminate(expression: string): void {
+    const moduleUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval',
+      `import { decimal, rational } from ${JSON.stringify(moduleUrl)}; try { ${expression}; process.exit(2); } catch { process.exit(0); }`,
+    ], { cwd: process.cwd(), encoding: 'utf8', timeout: 2_000 });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
+
+  function expectsRootIsolationToTerminate(): void {
+    const algebraicUrl = new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href;
+    const polynomialUrl = new URL('../../../../src/addie/eval/matched-pair-ni/polynomial.ts', import.meta.url).href;
+    const rationalUrl = new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href;
+    const source = `import { isolateInteriorRoots } from ${JSON.stringify(algebraicUrl)};
+      import { polynomial, polynomialMultiply } from ${JSON.stringify(polynomialUrl)};
+      import { ONE, ZERO, negate, rational } from ${JSON.stringify(rationalUrl)};
+      let value = polynomial([ONE]);
+      for (let index = 1; index <= 25; index++) value = polynomialMultiply(value, [negate(rational(index, 26)), ONE]);
+      process.exit(isolateInteriorRoots(value, ZERO, ONE, 24).unresolved ? 0 : 2);`;
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 5_000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(0);
+  }
 
   it('reproduces the published n=25, x=2, t=2 score E+M fixture to four decimals', () => {
     expect(fixture.schema_version).toBe(1);
@@ -61,7 +90,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     })).toThrow(/256-bit/);
     expect(() => enumerateReducedStates(100_000)).toThrow(/n in \[1, 25\]/);
     expect(() => restrictedPhiInterval({ n: 5, x: 6, t: 5 }, margin)).toThrow(/0 <= x <= t <= n/);
-    expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, -1)).toThrow(/\[1, 64\]/);
+    expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, -1)).toThrow(/\[1, 24\]/);
     expect(() => interval({ numerator: 2n, denominator: 2n }, ONE)).toThrow(/normalized/);
     expect(() => polynomial([{ numerator: 2n, denominator: 2n }])).toThrow(/normalized/);
     expect(() => abs({ numerator: 2n, denominator: 2n })).toThrow(/normalized/);
@@ -71,10 +100,10 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => isZero([ZERO, ZERO])).toThrow(/canonical/);
     expect(() => sturmSequence([ZERO, ZERO])).toThrow(/canonical/);
     expect(() => divideWithRemainder([ONE], [ZERO, ZERO])).toThrow(/canonical/);
-    expect(() => isolateInteriorRoots([ZERO], ZERO, ONE, -1)).toThrow(/\[1, 64\]/);
+    expect(() => isolateInteriorRoots([ZERO], ZERO, ONE, -1)).toThrow(/\[1, 24\]/);
     expect(() => isolateInteriorRoots(Array.from({ length: 27 }, () => ONE), ZERO, ONE)).toThrow(/degree/);
     expect(() => isolateInteriorRoots([{ numerator: 2n, denominator: 2n }], ZERO, ONE)).toThrow(/normalized/);
-    expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, 65)).toThrow(/\[1, 64\]/);
+    expect(() => isolateInteriorRoots([ONE, ONE], ZERO, ONE, 25)).toThrow(/\[1, 24\]/);
     expect(isolateInteriorRoots([ZERO], ZERO, ONE).unresolved).toBe(false);
   });
 
@@ -90,6 +119,15 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => maximizePolynomial(new Proxy([ZERO, ONE], {}), ZERO, ONE)).toThrow(/Proxy/);
     expect(() => interval(new Proxy({ numerator: 1n, denominator: 2n }, {}), ONE)).toThrow(/Proxy/);
   });
+
+  it('terminates hostile scalar constructors without property access or coercion', () => {
+    expectsHostileConstructorToTerminate('decimal({ get length() { for (;;) {} } })');
+    expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
+  }, 5_000);
+
+  it('returns unresolved before the killable root-isolation process deadline', () => {
+    expectsRootIsolationToTerminate();
+  }, 6_000);
 
   it('snapshots aliases into immutable values before certification', () => {
     const shared = { numerator: 1n, denominator: 2n };

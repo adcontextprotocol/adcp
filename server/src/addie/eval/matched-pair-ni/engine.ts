@@ -27,6 +27,8 @@ export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE = 16;
 export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE = 16;
 /** Aggregate deterministic E-step comparison-work budget, checked before and during exhaustive work. */
 export const MATCHED_PAIR_NI_MAX_WORK_UNITS = 1_500_000;
+/** Diagnostic CPU deadline checked at deterministic E-step work boundaries. */
+export const MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS = 12_000;
 
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
 export interface ReducedMatchedPairState { readonly n: number; readonly x: number; readonly t: number; }
@@ -60,10 +62,11 @@ function estimatedWorkUnits(n: number, precisionBits: number, exhaustiveSize: bo
 }
 class WorkBudget {
   private used = 0;
+  private readonly deadline = Date.now() + MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS;
   constructor(private readonly limit: number) {}
   charge(units = 1): void {
     this.used += units;
-    if (this.used > this.limit) throw new RangeError('Exact E+M aggregate work ceiling exceeded');
+    if (this.used > this.limit || Date.now() > this.deadline) throw new RangeError('Exact E+M aggregate work ceiling exceeded');
   }
 }
 function workBudgetFor(n: number, margin: Rational, _alpha: Rational, exhaustiveSize: boolean): WorkBudget | null {
