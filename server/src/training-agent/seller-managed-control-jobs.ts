@@ -16,6 +16,7 @@ const LEASE_MS = 30_000;
 const LEASE_HEARTBEAT_MS = 10_000;
 const TASK_CREATE_GRACE_MS = 2_000;
 const RECONCILE_INTERVAL_MS = 5_000;
+const RECONCILE_FAILURE_THRESHOLD = 3;
 const FRAMEWORK_WEBHOOK_GRACE_MS = 60_000;
 
 export interface SellerManagedControlJobContext extends Record<string, unknown> {
@@ -803,6 +804,15 @@ export function withSellerManagedIdempotencyReplay(
 
 type ExecuteJob = (job: SellerManagedControlJob) => Promise<Record<string, unknown>>;
 type NotifyJob = (job: SellerManagedControlJob) => Promise<void>;
+type NotifySystemError = (context: { source: string; errorMessage: string }) => void;
+
+const defaultNotifySystemError: NotifySystemError = context => {
+  // Lazy import keeps the durable-job module usable in isolated protocol tests
+  // that intentionally provide a minimal logger mock.
+  void import('../addie/error-notifier.js')
+    .then(({ notifySystemError }) => notifySystemError(context))
+    .catch(err => logger.warn({ err }, 'Failed to load seller-control error notifier'));
+};
 
 function structuredErrorFromResult(result: Record<string, unknown>): AdcpStructuredError | null {
   const errors = Array.isArray(result.errors) ? result.errors : [];
@@ -828,6 +838,9 @@ class RetryableSellerControlError extends Error {}
 export class SellerManagedControlJobCoordinator {
   private readonly workerId = `seller-control-${randomUUID()}`;
   private timer?: NodeJS.Timeout;
+  private reconciliationInFlight = false;
+  private consecutiveReconciliationFailures = 0;
+  private reconciliationAlerted = false;
 
   constructor(
     private readonly taskRegistry: TaskRegistry,
@@ -837,6 +850,7 @@ export class SellerManagedControlJobCoordinator {
       : new InMemorySellerManagedControlJobStore(),
     private readonly notify: NotifyJob = async () => {},
     private readonly isDatabaseReady: () => boolean = isDatabaseInitialized,
+    private readonly notifySystemError: NotifySystemError = defaultNotifySystemError,
   ) {}
 
   start(): void {
@@ -859,7 +873,50 @@ export class SellerManagedControlJobCoordinator {
       logger.debug('Deferring seller-control reconciliation until database initialization');
       return;
     }
-    void this.runAvailable().catch(err => logger.error({ err }, errorMessage));
+    // setInterval does not wait for async work. During a database outage a
+    // claim can take longer than the five-second cadence, so allowing overlap
+    // would multiply pool pressure exactly when PostgreSQL is least healthy.
+    if (this.reconciliationInFlight) {
+      logger.debug('Skipping seller-control reconciliation because the previous run is still active');
+      return;
+    }
+
+    this.reconciliationInFlight = true;
+    void this.runAvailable()
+      .then(() => {
+        if (this.reconciliationAlerted) {
+          logger.info(
+            { priorFailures: this.consecutiveReconciliationFailures },
+            'Seller-control reconciliation recovered',
+          );
+        }
+        this.consecutiveReconciliationFailures = 0;
+        this.reconciliationAlerted = false;
+      })
+      .catch(err => {
+        this.consecutiveReconciliationFailures += 1;
+        const context = {
+          err,
+          consecutiveFailures: this.consecutiveReconciliationFailures,
+          threshold: RECONCILE_FAILURE_THRESHOLD,
+        };
+        if (this.consecutiveReconciliationFailures === RECONCILE_FAILURE_THRESHOLD) {
+          this.reconciliationAlerted = true;
+          // Alert directly so delivery does not depend on PostHog. Keep the
+          // log below error level so its hook cannot send a duplicate page.
+          logger.warn(context, `${errorMessage} (alert threshold reached)`);
+          const detail = err instanceof Error ? err.message : String(err);
+          this.notifySystemError({
+            source: 'seller-managed-control-jobs',
+            errorMessage: `${errorMessage} (${this.consecutiveReconciliationFailures} consecutive): ${detail}`,
+          });
+        } else {
+          logger.warn(context, errorMessage);
+        }
+      })
+      .finally(() => {
+        this.reconciliationInFlight = false;
+      });
   }
 
   async enqueue(input: SellerManagedControlJobInput): Promise<SellerManagedControlJob> {

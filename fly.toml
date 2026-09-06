@@ -105,6 +105,8 @@ primary_region = 'iad'
 
 [[vm]]
   processes = ["worker"]
-  memory = "4gb"
+  # Persist the production incident remediation from PR #7282; keeping the
+  # worker resize in config prevents the next deploy from undoing it.
+  memory = "8gb"
   cpu_kind = "performance"
   cpus = 2

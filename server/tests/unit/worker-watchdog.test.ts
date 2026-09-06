@@ -140,6 +140,80 @@ describe('worker-watchdog', () => {
       expect(startCall).toBeUndefined();
     });
 
+    it('leases and restarts a started worker after the failure threshold', async () => {
+      for (let i = 0; i < 2; i++) {
+        fetchSpy.mockRejectedValueOnce(new Error('unreachable'));
+        fetchSpy.mockResolvedValueOnce(
+          new Response(JSON.stringify([
+            { id: 'wk1', state: 'started', config: { metadata: { fly_process_group: 'worker' } } },
+          ]), { status: 200 }),
+        );
+      }
+      fetchSpy.mockRejectedValueOnce(new Error('unreachable'));
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify([
+          { id: 'wk1', state: 'started', config: { metadata: { fly_process_group: 'worker' } } },
+        ]), { status: 200 }),
+      );
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'success', data: { nonce: 'lease-1' } }), { status: 201 }),
+      );
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+      await _internals.tick();
+      await _internals.tick();
+      await _internals.tick();
+
+      const stopCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith('/machines/wk1/stop'));
+      const startCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith('/machines/wk1/start'));
+      const releaseCall = fetchSpy.mock.calls.find(([url, init]) =>
+        String(url).endsWith('/machines/wk1/lease') && init?.method === 'DELETE'
+      );
+      expect(stopCall).toBeDefined();
+      expect(startCall).toBeDefined();
+      expect(releaseCall).toBeUndefined();
+      expect(stopCall?.[1]).toMatchObject({
+        headers: expect.objectContaining({ 'fly-machine-lease-nonce': 'lease-1' }),
+      });
+      expect(startCall?.[1]).toMatchObject({
+        headers: expect.objectContaining({ 'fly-machine-lease-nonce': 'lease-1' }),
+      });
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ machineId: 'wk1' }),
+        'Restarted unreachable worker machine',
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ recovery: expect.objectContaining({ restarted: 1 }) }),
+        expect.any(String),
+      );
+    });
+
+    it('holds a successful restart lease as a cross-replica recovery fence', async () => {
+      const worker = {
+        id: 'wk1',
+        state: 'started',
+        config: { metadata: { fly_process_group: 'worker' } },
+      };
+      fetchSpy.mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'success', data: { nonce: 'lease-1' } }), { status: 201 }),
+      );
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      // A staggered replica reaches its threshold after the first restart. Fly
+      // still holds the successful replica's lease, so it receives a conflict.
+      fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 409 }));
+
+      const first = await _internals.restartStartedWorker('adcp-docs', 'test-token', worker);
+      const second = await _internals.restartStartedWorker('adcp-docs', 'test-token', worker);
+
+      expect(first).toEqual({ restarted: true });
+      expect(second).toEqual({ restarted: false, reason: 'Worker recovery lease already held' });
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/stop'))).toHaveLength(1);
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/start'))).toHaveLength(1);
+      expect(fetchSpy.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+    });
+
     it('still alerts at threshold when recovery does not help', async () => {
       // Recovery on every failure tick: list returns empty (nothing to start).
       // Three probe failures, three list calls → alert fires once.
