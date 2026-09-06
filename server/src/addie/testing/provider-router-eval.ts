@@ -19,6 +19,13 @@ import {
   type StrictRouterPlan,
 } from '../router.js';
 import { getValidToolSetNames } from '../tool-sets.js';
+import {
+  datedPricingCostUsd,
+  datedPricingProfileIdentity,
+  datedPricingReservationCostUsd,
+  type DatedPricingProfileIdentity,
+  type DatedPricingProfile,
+} from '../eval/dated-pricing-cohort.js';
 
 export {
   parseStrictRouterPlan,
@@ -93,6 +100,212 @@ export interface RouterEvalMatrixRun<TCell extends RouterEvalMatrixCell> {
   complete: boolean;
   comparisonEligible: boolean;
   abortedAfter: RouterEvalMatrixCoordinate<TCell> | null;
+}
+
+export type RouterEvalBudgetRejectionReason =
+  | 'budget_exposure_unknown'
+  | 'soft_limit_exceeded';
+
+/** A local admission failure; providers have not been called when this is thrown. */
+export class RouterEvalBudgetAdmissionError extends Error {
+  constructor(readonly reason: RouterEvalBudgetRejectionReason) {
+    super(reason);
+    this.name = 'RouterEvalBudgetAdmissionError';
+  }
+}
+
+export interface RouterEvalBudgetSnapshot {
+  readonly softMaxUsd: number;
+  readonly accountedSpendUsd: number;
+  readonly reservedUsd: number;
+  readonly remainingUsd: number | null;
+  readonly dispatchedCalls: number;
+  readonly completedCalls: number;
+  readonly budgetRejectedCalls: number;
+  readonly admissionClosed: boolean;
+  readonly exposureUnknown: boolean;
+}
+
+declare const routerEvalReservationToken: unique symbol;
+
+/** Opaque frozen capability token; no accounting state is caller-visible. */
+interface RouterEvalReservation {
+  readonly [routerEvalReservationToken]: never;
+}
+
+interface RouterEvalReservationState {
+  readonly usd: number;
+  active: boolean;
+  dispatched: boolean;
+  /** The exact module-issued profile object selected before dispatch. */
+  readonly pricing: DatedPricingProfile;
+  /** Snapshot of its issued digest, candidate, provider, and model. */
+  readonly pricingIdentity: DatedPricingProfileIdentity;
+}
+
+/**
+ * Serial diagnostic ledger for router comparisons. Its cache exposure and
+ * terminal accounting deliberately use the same dated-profile formula as the
+ * fixed-trace ledger.
+ */
+export class RouterEvalBudget {
+  private accountedSpendUsd = 0;
+  private reservedUsd = 0;
+  private dispatchedCalls = 0;
+  private completedCalls = 0;
+  private budgetRejectedCalls = 0;
+  private admissionClosed = false;
+  private exposureUnknown = false;
+  // Every mutable reservation value is private. The returned frozen token is
+  // only a WeakMap identity capability, so it cannot alter its own refund or
+  // active state and cannot be replayed through another ledger.
+  private readonly reservationStates = new WeakMap<RouterEvalReservation, RouterEvalReservationState>();
+
+  constructor(readonly softMaxUsd: number) {
+    if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
+      throw new RangeError('Router eval soft budget must be positive');
+    }
+  }
+
+  reserve(
+    prepared: PreparedModelInvocation,
+    maxOutputTokens: number,
+    pricing: DatedPricingProfile,
+  ): RouterEvalReservation {
+    if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) {
+      throw new RangeError('Router eval output reserve must be a positive integer');
+    }
+    if (this.exposureUnknown) {
+      this.budgetRejectedCalls++;
+      throw new RouterEvalBudgetAdmissionError('budget_exposure_unknown');
+    }
+    if (this.admissionClosed) {
+      this.budgetRejectedCalls++;
+      throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
+    }
+    const pricingIdentity = assertImmutableDatedPricingProfile(pricing);
+    const usd = RouterEvalBudget.reservationUsd(prepared, maxOutputTokens, pricing);
+    if (!shouldDispatchWithinSoftBudget(this.accountedSpendUsd + this.reservedUsd, usd, this.softMaxUsd)) {
+      this.admissionClosed = true;
+      this.budgetRejectedCalls++;
+      throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
+    }
+    this.reservedUsd += usd;
+    const reservation = Object.freeze({}) as RouterEvalReservation;
+    this.reservationStates.set(reservation, {
+      usd, active: true, dispatched: false, pricing, pricingIdentity,
+    });
+    return reservation;
+  }
+
+  static reservationUsd(
+    prepared: PreparedModelInvocation,
+    maxOutputTokens: number,
+    pricing: DatedPricingProfile,
+  ): number {
+    assertImmutableDatedPricingProfile(pricing);
+    assertPreparedDatedPricingIdentity(prepared, pricing);
+    const inputTokens = Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8');
+    return datedPricingReservationCostUsd(pricing, inputTokens, maxOutputTokens);
+  }
+
+  markDispatched(reservation: RouterEvalReservation): void {
+    const state = this.requireActive(reservation);
+    if (state.dispatched) throw new Error('Router eval budget reservation was already dispatched');
+    state.dispatched = true;
+    this.dispatchedCalls++;
+  }
+
+  complete(reservation: RouterEvalReservation, usage: ModelUsage, pricing: DatedPricingProfile): number {
+    const state = this.requireActive(reservation);
+    if (!state.dispatched) throw new Error('Router eval budget reservation was not dispatched');
+    const pricingIdentity = assertImmutableDatedPricingProfile(pricing);
+    this.assertReservationPricing(state, pricing, pricingIdentity);
+    const actualCostUsd = datedPricingCostUsd(pricing, usage);
+    this.release(reservation);
+    this.accountedSpendUsd += actualCostUsd;
+    this.completedCalls++;
+    return actualCostUsd;
+  }
+
+  cancel(reservation: RouterEvalReservation): void {
+    const state = this.requireActive(reservation);
+    if (state.dispatched) throw new Error('Router eval budget dispatched reservation cannot be cancelled');
+    this.release(reservation);
+  }
+
+  markExposureUnknown(reservation: RouterEvalReservation): void {
+    const state = this.requireActive(reservation);
+    if (!state.dispatched) throw new Error('Router eval budget reservation was not dispatched');
+    this.release(reservation);
+    this.exposureUnknown = true;
+  }
+
+  snapshot(): RouterEvalBudgetSnapshot {
+    return Object.freeze({
+      softMaxUsd: this.softMaxUsd,
+      accountedSpendUsd: this.accountedSpendUsd,
+      reservedUsd: this.reservedUsd,
+      remainingUsd: this.exposureUnknown
+        ? null
+        : Math.max(0, this.softMaxUsd - this.accountedSpendUsd - this.reservedUsd),
+      dispatchedCalls: this.dispatchedCalls,
+      completedCalls: this.completedCalls,
+      budgetRejectedCalls: this.budgetRejectedCalls,
+      admissionClosed: this.admissionClosed,
+      exposureUnknown: this.exposureUnknown,
+    });
+  }
+
+  private requireActive(reservation: RouterEvalReservation): RouterEvalReservationState {
+    const state = this.reservationStates.get(reservation);
+    if (!state || !state.active) {
+      throw new Error('Router eval budget reservation is inactive');
+    }
+    return state;
+  }
+
+  private release(reservation: RouterEvalReservation): void {
+    const state = this.requireActive(reservation);
+    const nextReservedUsd = this.reservedUsd - state.usd;
+    if (nextReservedUsd < -Number.EPSILON) {
+      throw new Error('Router eval budget reservation ledger is inconsistent');
+    }
+    state.active = false;
+    this.reservedUsd = nextReservedUsd <= Number.EPSILON ? 0 : nextReservedUsd;
+  }
+
+  private assertReservationPricing(
+    state: RouterEvalReservationState,
+    pricing: DatedPricingProfile,
+    pricingIdentity: DatedPricingProfileIdentity,
+  ): void {
+    if (
+      state.pricing !== pricing
+      || state.pricingIdentity.digest !== pricingIdentity.digest
+      || state.pricingIdentity.candidateId !== pricingIdentity.candidateId
+      || state.pricingIdentity.profileId !== pricingIdentity.profileId
+      || state.pricingIdentity.provider !== pricingIdentity.provider
+      || state.pricingIdentity.model !== pricingIdentity.model
+    ) throw new Error('Router eval budget reservation pricing profile does not match settlement profile');
+  }
+}
+
+function assertImmutableDatedPricingProfile(pricing: DatedPricingProfile): DatedPricingProfileIdentity {
+  try {
+    return datedPricingProfileIdentity(pricing);
+  } catch {
+    throw new Error('Router eval pricing profile must be an immutable dated cohort profile');
+  }
+}
+
+function assertPreparedDatedPricingIdentity(
+  prepared: PreparedModelInvocation,
+  pricing: DatedPricingProfile,
+): void {
+  if (prepared.provider !== pricing.provider || prepared.model !== pricing.model) {
+    throw new Error('Router eval prepared invocation identity does not match pricing profile');
+  }
 }
 
 export const ROUTER_PLAN_SCHEMA = Object.freeze({
@@ -308,6 +521,9 @@ export async function evaluateRouterCase(
     }
   } catch (error) {
     if (controller.signal.aborted) status = 'timeout_after_dispatch';
+    else if (error instanceof RouterEvalBudgetAdmissionError) {
+      status = 'not_dispatched_budget';
+    }
     else if (error instanceof UnexpectedModelIdentityError) {
       returnedModel = error.actualModel;
       status = 'provider_error';
@@ -542,17 +758,4 @@ export function shouldDispatchWithinSoftBudget(
     && expectedNextCallUsd >= 0
     && softMaxUsd > 0
     && accountedSpendUsd + expectedNextCallUsd <= softMaxUsd;
-}
-
-export function accountRouterCallCostUsd(
-  usage: ModelUsage,
-  ratesPerMillion: { input: number; output: number },
-): number {
-  const inputTokens = usage.inputTokens;
-  const outputTokens = usage.outputTokens;
-  if (
-    ![inputTokens, outputTokens, ratesPerMillion.input, ratesPerMillion.output].every(Number.isFinite)
-    || inputTokens < 0 || outputTokens < 0 || ratesPerMillion.input < 0 || ratesPerMillion.output < 0
-  ) throw new Error('Invalid router eval cost inputs');
-  return (inputTokens * ratesPerMillion.input + outputTokens * ratesPerMillion.output) / 1_000_000;
 }

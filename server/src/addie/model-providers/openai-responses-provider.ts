@@ -24,6 +24,15 @@ import { validateNormalizedModelResponse } from './events.js';
 
 export const OPENAI_ROUTER_MODEL = 'gpt-5.6-luna';
 
+/**
+ * The Responses adapter has no reviewed alias allowlist. Keep this exported
+ * predicate as the shared, typed billing-identity boundary for consumers that
+ * must prove a returned response has the requested model's exact price.
+ */
+export function openaiReturnedModelIdentityMatches(requestedModel: string, returnedModel: string): boolean {
+  return requestedModel === returnedModel;
+}
+
 export interface OpenAIResponsesTransport {
   responses: {
     create(
@@ -309,7 +318,7 @@ export class OpenAIResponsesProvider implements ModelProvider {
     // Returned model identity is a billing and trust boundary. This adapter has
     // no reviewed, literal canonical-alias allowlist, so aliases and suffixes
     // must not inherit the requested model's approval or pricing.
-    if (normalized.model !== request.model) {
+    if (!openaiReturnedModelIdentityMatches(request.model, normalized.model)) {
       throw new UnexpectedModelIdentityError('openai', request.model, normalized.model);
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };

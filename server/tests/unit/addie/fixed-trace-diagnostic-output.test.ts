@@ -13,6 +13,7 @@ import {
   type FixedTraceDiagnosticProviderPlan,
 } from '../../../src/addie/eval/fixed-trace-diagnostic-run.js';
 import { reserveFixedTraceDiagnosticOutput } from '../../../src/addie/eval/fixed-trace-diagnostic-output.js';
+import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 import {
   fixedTraceCommonToolDefinitions,
   fixedTraceHybridPolicy,
@@ -45,29 +46,27 @@ const CAPABILITIES: ModelProviderCapabilities = {
   documentInput: false,
 };
 
-const PRICING: FixedTracePricing = {
-  profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
-  inputUsdPerMillionTokens: 1,
-  outputUsdPerMillionTokens: 5,
-  cacheReadUsdPerMillionTokens: 0.1,
-  cacheWriteUsdPerMillionTokens: 1.25,
-  cacheReadAccounting: 'additive',
-  cacheWriteAccounting: 'additive',
-  source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
-};
+const DATED_PROFILES = datedPricingProfilesForFixedTrace();
+function approvedFixturePricing(candidateId: 'anthropic-router' | 'openai-router-generator'): FixedTracePricing {
+  const profile = DATED_PROFILES.find((entry) => entry.candidateId === candidateId);
+  if (!profile) throw new Error(`Missing dated pricing fixture for ${candidateId}`);
+  return {
+    profileId: profile.profileId,
+    inputUsdPerMillionTokens: profile.inputUsdPerMillionTokens,
+    outputUsdPerMillionTokens: profile.outputUsdPerMillionTokens,
+    cacheReadUsdPerMillionTokens: profile.cacheReadUsdPerMillionTokens,
+    cacheWriteUsdPerMillionTokens: profile.cacheWriteUsdPerMillionTokens,
+    cacheReadAccounting: profile.cacheReadAccounting,
+    cacheWriteAccounting: profile.cacheWriteAccounting,
+    source: profile.source,
+  };
+}
+
+const PRICING = approvedFixturePricing('anthropic-router');
 
 const MODEL = 'claude-haiku-4-5';
 const OPENAI_MODEL = 'gpt-5.6-luna';
-const OPENAI_PRICING: FixedTracePricing = {
-  profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
-  inputUsdPerMillionTokens: 0.2,
-  outputUsdPerMillionTokens: 1.2,
-  cacheReadUsdPerMillionTokens: 0.02,
-  cacheWriteUsdPerMillionTokens: null,
-  cacheReadAccounting: 'subset',
-  cacheWriteAccounting: 'unsupported',
-  source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
-};
+const OPENAI_PRICING = approvedFixturePricing('openai-router-generator');
 
 const ZERO_RATE_PRICING: FixedTracePricing = {
   ...PRICING,
@@ -411,7 +410,7 @@ describe('fixed-trace diagnostic output reservation', () => {
     expect(persisted.runs[1].requestedConfig.router).toMatchObject({
       provider: 'openai',
       maxOutputTokens: 300,
-      pricing: { source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.' },
+      pricing: { source: 'OpenAI gpt-5.6-luna standard, checked 2026-09-05.' },
     });
     expect(persisted.runs[0].observations[0].metadata.router).toMatchObject({
       usage: { inputTokens: 10, outputTokens: 5 },

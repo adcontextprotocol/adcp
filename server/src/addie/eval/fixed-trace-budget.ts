@@ -12,6 +12,14 @@ import {
   isGoogleRouterModelRevision,
 } from '../model-providers/google-generate-content-provider.js';
 import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+import {
+  datedPricingCostUsd,
+  datedPricingProfilesForFixedTrace,
+  datedPricingReservationCostUsd,
+  pricingProfileForCandidate,
+  resolveCurrentEvaluationPricingCohort,
+  type EvaluationPricingCandidateId,
+} from './dated-pricing-cohort.js';
 import type { FixedTraceModelResolutionPolicy } from './fixed-trace-suite.js';
 
 export interface FixedTraceBudgetPricing {
@@ -62,6 +70,7 @@ export interface FixedTraceBudgetSnapshot {
  * by supplying a matching-looking policy object or a zero-rate tuple.
  */
 interface FixedTraceApprovedPricing extends FixedTraceBudgetPricing {
+  readonly candidateId: EvaluationPricingCandidateId;
   readonly profileId: string;
   readonly expectedProvider: ModelProvider['id'];
   readonly expectedModel: string;
@@ -77,44 +86,22 @@ export function fixedTraceModelResolutionPolicy(
     : 'exact_model_identity_v1';
 }
 
-const FIXED_TRACE_APPROVED_PRICING = Object.freeze(([
-  {
-    expectedProvider: 'anthropic', expectedModel: 'claude-haiku-4-5',
-    profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
-    cacheReadUsdPerMillionTokens: 0.1, cacheWriteUsdPerMillionTokens: 1.25,
-    cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
-    source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
-    modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'anthropic', expectedModel: 'claude-sonnet-5',
-    profileId: 'anthropic-standard-2026-09:claude-sonnet-5',
-    inputUsdPerMillionTokens: 2, outputUsdPerMillionTokens: 10,
-    cacheReadUsdPerMillionTokens: 0.2, cacheWriteUsdPerMillionTokens: 2.5,
-    cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
-    source: 'Anthropic pricing page: Claude Sonnet 5 standard (5-minute cache write), checked 2026-09-05.',
-    modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'openai', expectedModel: 'gpt-5.6-luna',
-    profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
-    inputUsdPerMillionTokens: 0.2, outputUsdPerMillionTokens: 1.2,
-    cacheReadUsdPerMillionTokens: 0.02, cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'subset', cacheWriteAccounting: 'unsupported',
-    source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
-    modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'google', expectedModel: GOOGLE_ROUTER_MODEL,
-    profileId: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
-    inputUsdPerMillionTokens: 0.75, outputUsdPerMillionTokens: 3.75,
-    cacheReadUsdPerMillionTokens: 0.075, cacheWriteUsdPerMillionTokens: 0.75,
-    cacheReadAccounting: 'subset', cacheWriteAccounting: 'additive',
-    source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
-    modelResolutionPolicy: 'google_router_dated_revision_v1',
-  },
-] satisfies readonly FixedTraceApprovedPricing[]).map((entry) => Object.freeze(entry)));
+const FIXED_TRACE_APPROVED_PRICING = Object.freeze(datedPricingProfilesForFixedTrace().map((profile) => Object.freeze({
+  candidateId: profile.candidateId,
+  expectedProvider: profile.provider,
+  expectedModel: profile.model,
+  profileId: profile.profileId,
+  inputUsdPerMillionTokens: profile.inputUsdPerMillionTokens,
+  outputUsdPerMillionTokens: profile.outputUsdPerMillionTokens,
+  cacheReadUsdPerMillionTokens: profile.cacheReadUsdPerMillionTokens,
+  cacheWriteUsdPerMillionTokens: profile.cacheWriteUsdPerMillionTokens,
+  cacheReadAccounting: profile.cacheReadAccounting,
+  cacheWriteAccounting: profile.cacheWriteAccounting,
+  source: profile.source,
+  modelResolutionPolicy: profile.provider === 'google'
+    ? 'google_router_dated_revision_v1' as const
+    : 'exact_model_identity_v1' as const,
+} satisfies FixedTraceApprovedPricing)));
 
 /**
  * The complete live approval surface. It is intentionally inspectable for
@@ -182,6 +169,14 @@ export function fixedTraceResponsePricingPolicy(
     && sameApprovedPricing(entry, pricing)
   ));
   if (!approved) throw new Error('Fixed trace pricing profile is not evaluator approved');
+  const currentCohort = resolveCurrentEvaluationPricingCohort(new Date(), [approved.candidateId]);
+  if (currentCohort.status !== 'available') {
+    throw new Error('Fixed trace pricing profile is not currently effective');
+  }
+  const current = pricingProfileForCandidate(currentCohort.cohort, approved.candidateId);
+  if (current.profileId !== approved.profileId || !sameApprovedPricing(approved, current)) {
+    throw new Error('Fixed trace pricing profile does not match the current cohort');
+  }
   const policy = Object.freeze({
     expectedProvider: approved.expectedProvider,
     expectedModel: approved.expectedModel,
@@ -314,43 +309,23 @@ export function fixedTraceEstimatedCostUsd(
   pricing: FixedTraceBudgetPricing,
 ): number {
   validateFixedTracePricing(pricing);
-  const { inputTokens, outputTokens } = usage;
-  if (
-    !Number.isSafeInteger(inputTokens)
-    || inputTokens < 0
-    || !Number.isSafeInteger(outputTokens)
-    || outputTokens < 0
-  ) throw new Error('Fixed trace budget usage is invalid');
-  const cacheReadTokens = usage.cacheReadTokens ?? 0;
-  const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
-  if (
-    !Number.isSafeInteger(cacheReadTokens) || cacheReadTokens < 0
-    || !Number.isSafeInteger(cacheWriteTokens) || cacheWriteTokens < 0
-  ) throw new Error('Fixed trace cache usage is invalid');
-  const readAccounting = pricing.cacheReadAccounting ?? 'unsupported';
-  const writeAccounting = pricing.cacheWriteAccounting ?? 'unsupported';
-  if (cacheReadTokens > 0 && readAccounting === 'unsupported') throw new Error('Fixed trace cache read accounting is unavailable');
-  if (cacheWriteTokens > 0 && writeAccounting === 'unsupported') throw new Error('Fixed trace cache write accounting is unavailable');
-  if (readAccounting === 'subset' && cacheReadTokens > inputTokens) throw new Error('Fixed trace subset cache read usage is invalid');
-  // A subset read and additive write (Google's profile) is valid. Two subset
-  // buckets must jointly fit the provider's normalized input total.
-  if (readAccounting === 'subset' && writeAccounting === 'subset' && cacheReadTokens + cacheWriteTokens > inputTokens) {
-    throw new Error('Fixed trace subset cache usage is invalid');
+  try {
+    return datedPricingCostUsd(pricing, usage);
+  } catch (error) {
+    // Keep fixed-trace's established error contract while delegating the
+    // category arithmetic itself to the dated-profile accounting model.
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'Invalid input token count' || message === 'Invalid output token count') {
+      throw new Error('Fixed trace budget usage is invalid');
+    }
+    if (message === 'Invalid cache-read token count' || message === 'Invalid cache-write token count') {
+      throw new Error('Fixed trace cache usage is invalid');
+    }
+    if (message === 'Cache-read pricing is unavailable') throw new Error('Fixed trace cache read accounting is unavailable');
+    if (message === 'Cache-write pricing is unavailable') throw new Error('Fixed trace cache write accounting is unavailable');
+    if (message.startsWith('Subset cache-')) throw new Error('Fixed trace subset cache usage is invalid');
+    throw error;
   }
-  if (cacheReadTokens > 0 && pricing.cacheReadUsdPerMillionTokens == null) {
-    throw new Error('Fixed trace cache read pricing is unavailable');
-  }
-  if (cacheWriteTokens > 0 && pricing.cacheWriteUsdPerMillionTokens == null) {
-    throw new Error('Fixed trace cache write pricing is unavailable');
-  }
-  return (
-    (inputTokens
-      - (readAccounting === 'subset' ? cacheReadTokens : 0)
-      - (writeAccounting === 'subset' ? cacheWriteTokens : 0)) * pricing.inputUsdPerMillionTokens
-    + outputTokens * pricing.outputUsdPerMillionTokens
-    + cacheReadTokens * (pricing.cacheReadUsdPerMillionTokens ?? 0)
-    + cacheWriteTokens * (pricing.cacheWriteUsdPerMillionTokens ?? 0)
-  ) / 1_000_000;
 }
 
 /**
@@ -397,18 +372,12 @@ export class FixedTraceBudget {
       this.budgetRejectedCalls++;
       throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
     }
-    // Request bytes are a deliberately high token bound for the request. An
-    // additive cache bucket is separately billable, so reserve that same
-    // bound for each such bucket as well. Subset buckets are already covered
-    // by inputTokens. This keeps the pre-dispatch reserve conservative under
-    // the recorded, fingerprinted cache formula.
+    // Request bytes are a deliberately high token bound for the request.
+    // The common dated-pricing helper includes every additive bucket and the
+    // highest-cost mutually-exclusive subset bucket (including an OpenAI
+    // cache write whose replacement rate exceeds ordinary input).
     const inputTokens = requestBytes(prepared);
-    const usd = fixedTraceEstimatedCostUsd({
-      inputTokens,
-      outputTokens: maxOutputTokens,
-      cacheReadTokens: pricing.cacheReadAccounting === 'additive' ? inputTokens : 0,
-      cacheWriteTokens: pricing.cacheWriteAccounting === 'additive' ? inputTokens : 0,
-    }, pricing);
+    const usd = datedPricingReservationCostUsd(pricing, inputTokens, maxOutputTokens);
     if (this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
       this.admissionClosed = true;
       this.budgetRejectedCalls++;

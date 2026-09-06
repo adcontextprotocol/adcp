@@ -7,6 +7,7 @@ import {
   fixedTraceApprovedPricingProfiles,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
+import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import type {
   ModelProvider,
@@ -47,16 +48,8 @@ const RESPONSE: ModelResponse = {
   usage: { inputTokens: 10, outputTokens: 5 },
 };
 
-const PRICING = {
-  profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
-  inputUsdPerMillionTokens: 0.2,
-  outputUsdPerMillionTokens: 1.2,
-  cacheReadUsdPerMillionTokens: 0.02,
-  cacheWriteUsdPerMillionTokens: null,
-  cacheReadAccounting: 'subset' as const,
-  cacheWriteAccounting: 'unsupported' as const,
-  source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
-};
+const DATED_PROFILES = datedPricingProfilesForFixedTrace();
+const PRICING = DATED_PROFILES.find((profile) => profile.candidateId === 'openai-router-generator')!;
 
 const RESPONSE_PRICING_POLICY = fixedTraceResponsePricingPolicy(
   'openai',
@@ -64,38 +57,9 @@ const RESPONSE_PRICING_POLICY = fixedTraceResponsePricingPolicy(
   PRICING,
 );
 
-const SONNET_5_PRICING = {
-  profileId: 'anthropic-standard-2026-09:claude-sonnet-5',
-  inputUsdPerMillionTokens: 2,
-  outputUsdPerMillionTokens: 10,
-  cacheReadUsdPerMillionTokens: 0.2,
-  cacheWriteUsdPerMillionTokens: 2.5,
-  cacheReadAccounting: 'additive' as const,
-  cacheWriteAccounting: 'additive' as const,
-  source: 'Anthropic pricing page: Claude Sonnet 5 standard (5-minute cache write), checked 2026-09-05.',
-};
-
-const HAIKU_4_5_PRICING = {
-  profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
-  inputUsdPerMillionTokens: 1,
-  outputUsdPerMillionTokens: 5,
-  cacheReadUsdPerMillionTokens: 0.1,
-  cacheWriteUsdPerMillionTokens: 1.25,
-  cacheReadAccounting: 'additive' as const,
-  cacheWriteAccounting: 'additive' as const,
-  source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
-};
-
-const GOOGLE_PRICING = {
-  profileId: 'google-gemini-3.7-flash-through-2026-12-31',
-  inputUsdPerMillionTokens: 0.75,
-  outputUsdPerMillionTokens: 3.75,
-  cacheReadUsdPerMillionTokens: 0.075,
-  cacheWriteUsdPerMillionTokens: 0.75,
-  cacheReadAccounting: 'subset' as const,
-  cacheWriteAccounting: 'additive' as const,
-  source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
-};
+const SONNET_5_PRICING = DATED_PROFILES.find((profile) => profile.candidateId === 'anthropic-generation')!;
+const HAIKU_4_5_PRICING = DATED_PROFILES.find((profile) => profile.candidateId === 'anthropic-router')!;
+const GOOGLE_PRICING = DATED_PROFILES.find((profile) => profile.candidateId === 'google-router-generator')!;
 
 class BudgetScriptedProvider implements ModelProvider {
   readonly id = 'openai' as const;
@@ -160,7 +124,7 @@ describe('fixed trace provider budget', () => {
       expect.objectContaining({
         expectedProvider: 'openai',
         expectedModel: 'gpt-5.6-luna',
-        profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
+        profileId: 'openai-gpt-5.6-luna-standard-2026-09-05',
       }),
       expect.objectContaining({
         expectedProvider: 'google',
