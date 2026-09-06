@@ -112,7 +112,7 @@ export const FIXED_TRACE_HUMAN_PANEL_CONTRACTS = Object.freeze({
   adjudicationPacket: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "packetFingerprint", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "prompt", "candidateOutput", "scoringContext", "safetyApplicable", "toolCorrectnessApplicable", "outputCondition"]), forbidden: Object.freeze(["raterPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "provider", "model", "architecture", "cell", "config", "latency", "cost"]) }),
   adjudicationResponse: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "adjudicatorPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"]), source: "locked_disagreement_or_missingness_only" }),
   custodyReceipt: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "receiptFingerprint", "custodianPseudonym", "packFingerprint", "restrictedMapFingerprint", "signature", "externalRecordReference"]), warning: "shape_only_no_local_custody_claim" }),
-  humanCostLedger: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "events"]), eventChain: "signed_monotonic_reservation_then_reconciliation", ceilingCents: FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, payment: "not_implemented" }),
+  humanCostLedger: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "events"]), eventChain: "signed_monotonic_reservation_then_assignment_then_reconciliation", ceilingCents: FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, payment: "not_implemented" }),
 } as const);
 export type FixedTraceHumanPanelContractName = keyof typeof FIXED_TRACE_HUMAN_PANEL_CONTRACTS;
 export const FIXED_TRACE_HUMAN_PANEL_CONTRACT_FINGERPRINTS = Object.freeze(
@@ -578,6 +578,19 @@ export interface FixedTraceHumanCostReservation {
   readonly eventFingerprint: Sha256;
   readonly signature: string;
 }
+/** Signed dispatch evidence. This is deliberately separate from the planned assignment artifact. */
+export interface FixedTraceHumanCostAssignment {
+  readonly phase: "assignment";
+  readonly trustRootId: string;
+  readonly reservationId: string;
+  /** The primary assignment fingerprint or locked adjudication-request fingerprint. */
+  readonly subjectFingerprint: Sha256;
+  readonly eventIndex: number;
+  readonly previousEventDigest: Sha256 | null;
+  readonly timestamp: string;
+  readonly eventFingerprint: Sha256;
+  readonly signature: string;
+}
 export interface FixedTraceHumanCostReconciliation {
   readonly phase: "reconciliation";
   readonly trustRootId: string;
@@ -591,36 +604,38 @@ export interface FixedTraceHumanCostReconciliation {
   readonly eventFingerprint: Sha256;
   readonly signature: string;
 }
-export type FixedTraceHumanCostEvent = FixedTraceHumanCostReservation | FixedTraceHumanCostReconciliation;
+export type FixedTraceHumanCostEvent = FixedTraceHumanCostReservation | FixedTraceHumanCostAssignment | FixedTraceHumanCostReconciliation;
 export interface FixedTraceHumanCostLedger { readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly ledgerFingerprint: Sha256; readonly ceilingCents: typeof FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS; readonly events: readonly FixedTraceHumanCostEvent[]; }
 export interface FixedTraceCostReconciliationExpectation { readonly subjectFingerprint: Sha256; readonly completedResponseFingerprint: Sha256; }
-interface ValidatedCostChain { readonly reservations: Map<string, FixedTraceHumanCostReservation>; readonly reconciliations: Map<string, FixedTraceHumanCostReconciliation>; readonly exposureCents: number; }
+interface ValidatedCostChain { readonly reservations: Map<string, FixedTraceHumanCostReservation>; readonly assignments: Map<string, FixedTraceHumanCostAssignment>; readonly reconciliations: Map<string, FixedTraceHumanCostReconciliation>; readonly exposureCents: number; }
 function costEventFingerprintBody(event: Record<string, unknown>): Record<string, unknown> { const { eventFingerprint: _fingerprint, signature: _signature, ...body } = event; return body; }
 function costEventShape(event: unknown): Record<string, unknown> {
   const value = record(event, "human cost event");
   const common = ["phase", "trustRootId", "reservationId", "subjectFingerprint", "eventIndex", "previousEventDigest", "timestamp", "eventFingerprint", "signature"];
   if (value.phase === "reservation") exactKeys(value, [...common, "authorizedRateCents", "committedCents"], "human cost reservation");
+  else if (value.phase === "assignment") exactKeys(value, common, "human cost assignment");
   else if (value.phase === "reconciliation") exactKeys(value, [...common, "completedResponseFingerprint", "actualCents"], "human cost reconciliation");
   else assert(false, "human cost event phase is invalid");
   text(value.trustRootId, "cost event trust-root ID"); text(value.reservationId, "cost reservation ID"); assert(isSha256(value.subjectFingerprint) && isSha256(value.eventFingerprint), "cost event fingerprint is invalid");
   assert(value.previousEventDigest === null || isSha256(value.previousEventDigest), "cost event previous digest is invalid"); integer(value.eventIndex, "cost event index");
   assert(typeof value.timestamp === "string" && Number.isFinite(Date.parse(value.timestamp)), "cost event timestamp is invalid"); text(value.signature, "cost event signature");
   if (value.phase === "reservation") { const rate = integer(value.authorizedRateCents, "authorized rate"); const commitment = integer(value.committedCents, "committed reservation"); assert(rate > 0 && commitment >= rate && commitment > 0, "reservation requires a positive authorized rate and committed cents"); }
-  else { assert(isSha256(value.completedResponseFingerprint), "reconciliation completed response fingerprint is invalid"); integer(value.actualCents, "reconciled actual cents"); }
+  else if (value.phase === "reconciliation") { assert(isSha256(value.completedResponseFingerprint), "reconciliation completed response fingerprint is invalid"); integer(value.actualCents, "reconciled actual cents"); }
   assert(value.eventFingerprint === sha256(costEventFingerprintBody(value)), "cost event fingerprint mismatch"); return value;
 }
 export function validateFixedTraceHumanCostLedger(input: FixedTraceHumanCostLedger, expectedReconciliations?: readonly FixedTraceCostReconciliationExpectation[]): number {
   const value = record(snapshotFixedTraceJson(input, "human cost ledger"), "human cost ledger"); exactKeys(value, ["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "events"], "human cost ledger"); assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("humanCostLedger") && value.ceilingCents === FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "cost ledger schema or ceiling is invalid"); const { ledgerFingerprint, ...body } = value; assert(isSha256(ledgerFingerprint) && ledgerFingerprint === sha256(body), "cost ledger fingerprint mismatch"); assert(Array.isArray(value.events), "cost ledger events are invalid");
-  const reservations = new Map<string, FixedTraceHumanCostReservation>(); const reconciliations = new Map<string, FixedTraceHumanCostReconciliation>(); const subjects = new Set<string>(); let previous: Sha256 | null = null; let previousTimestamp = -Infinity;
+  const reservations = new Map<string, FixedTraceHumanCostReservation>(); const assignments = new Map<string, FixedTraceHumanCostAssignment>(); const reconciliations = new Map<string, FixedTraceHumanCostReconciliation>(); const subjects = new Set<string>(); let previous: Sha256 | null = null; let previousTimestamp = -Infinity;
   for (const [offset, raw] of value.events.entries()) {
     const event = costEventShape(raw); assert(event.eventIndex === offset + 1 && event.previousEventDigest === previous, "cost event chain is reordered, forked, or has a gap"); const parsedTimestamp = Date.parse(text(event.timestamp, "cost event timestamp")); assert(parsedTimestamp > previousTimestamp, "cost event timestamps are not strictly monotonic"); previousTimestamp = parsedTimestamp; previous = event.eventFingerprint as Sha256;
     if (event.phase === "reservation") { assert(!reservations.has(event.reservationId as string) && !subjects.has(event.subjectFingerprint as string), "duplicate cost reservation subject or ID"); reservations.set(event.reservationId as string, event as unknown as FixedTraceHumanCostReservation); subjects.add(event.subjectFingerprint as string); }
-    else { const reservation = reservations.get(event.reservationId as string); assert(reservation && reservation.subjectFingerprint === event.subjectFingerprint, "reconciliation precedes or is mismatched with its reservation"); assert(!reconciliations.has(event.reservationId as string), "duplicate cost reconciliation"); reconciliations.set(event.reservationId as string, event as unknown as FixedTraceHumanCostReconciliation); }
+    else if (event.phase === "assignment") { const reservation = reservations.get(event.reservationId as string); assert(reservation && reservation.subjectFingerprint === event.subjectFingerprint, "assignment precedes or is mismatched with its reservation"); assert(!assignments.has(event.reservationId as string), "duplicate cost assignment"); assignments.set(event.reservationId as string, event as unknown as FixedTraceHumanCostAssignment); }
+    else { const assignment = assignments.get(event.reservationId as string); assert(assignment && assignment.subjectFingerprint === event.subjectFingerprint, "reconciliation precedes or is mismatched with its reservation/assignment"); assert(!reconciliations.has(event.reservationId as string), "duplicate cost reconciliation"); reconciliations.set(event.reservationId as string, event as unknown as FixedTraceHumanCostReconciliation); }
   }
   let exposure = 0;
   for (const reservation of reservations.values()) exposure += Math.max(reservation.committedCents, reconciliations.get(reservation.reservationId)?.actualCents ?? 0);
   if (expectedReconciliations !== undefined) {
-    assert(expectedReconciliations.length === reservations.size && expectedReconciliations.length === reconciliations.size, "cost chain has missing or unrelated reservation/reconciliation subjects");
+    assert(expectedReconciliations.length === reservations.size && expectedReconciliations.length === assignments.size && expectedReconciliations.length === reconciliations.size, "cost chain has missing or unrelated reservation/assignment/reconciliation subjects");
     const expected = new Map(expectedReconciliations.map((entry) => [entry.subjectFingerprint, entry.completedResponseFingerprint]));
     assert(expected.size === expectedReconciliations.length, "cost chain has duplicate expected subjects");
     for (const reconciliation of reconciliations.values()) assert(expected.get(reconciliation.subjectFingerprint) === reconciliation.completedResponseFingerprint, "cost reconciliation completed response does not match its reserved subject");
@@ -630,9 +645,9 @@ export function validateFixedTraceHumanCostLedger(input: FixedTraceHumanCostLedg
 }
 function validateSignedCostChain(input: FixedTraceHumanCostLedger, expectedReconciliations: readonly FixedTraceCostReconciliationExpectation[]): ValidatedCostChain {
   validateFixedTraceHumanCostLedger(input, expectedReconciliations);
-  const reservations = new Map<string, FixedTraceHumanCostReservation>(); const reconciliations = new Map<string, FixedTraceHumanCostReconciliation>();
-  for (const event of input.events) { verifyPinnedEvaluatorSignature("rate_authorization", event.trustRootId, event.eventFingerprint, event.signature); if (event.phase === "reservation") reservations.set(event.reservationId, event); else reconciliations.set(event.reservationId, event); }
-  return { reservations, reconciliations, exposureCents: validateFixedTraceHumanCostLedger(input, expectedReconciliations) };
+  const reservations = new Map<string, FixedTraceHumanCostReservation>(); const assignments = new Map<string, FixedTraceHumanCostAssignment>(); const reconciliations = new Map<string, FixedTraceHumanCostReconciliation>();
+  for (const event of input.events) { verifyPinnedEvaluatorSignature("rate_authorization", event.trustRootId, event.eventFingerprint, event.signature); if (event.phase === "reservation") reservations.set(event.reservationId, event); else if (event.phase === "assignment") assignments.set(event.reservationId, event); else reconciliations.set(event.reservationId, event); }
+  return { reservations, assignments, reconciliations, exposureCents: validateFixedTraceHumanCostLedger(input, expectedReconciliations) };
 }
 
 function validateFixedTraceRaterAssignment(input: FixedTraceRaterAssignment, packet: FixedTraceBlindedScoringPacket): void {
@@ -731,8 +746,10 @@ export function validateFixedTraceHumanPanelWorkflow(input: FixedTraceHumanPanel
   const chain = validateSignedCostChain(value.humanCostLedger as FixedTraceHumanCostLedger, expectedReconciliations);
   const reservationBySubject = new Map([...chain.reservations.values()].map((reservation) => [reservation.subjectFingerprint, reservation]));
   assert(chain.reservations.size === expectedSubjects.size && reservationBySubject.size === expectedSubjects.size && [...expectedSubjects].every((subject) => reservationBySubject.has(subject)), "human cost chain must reserve exactly once for every assignment/adjudication request before response");
+  assert(chain.assignments.size === expectedSubjects.size, "human cost chain must dispatch exactly once after reservation for every assignment/adjudication subject");
   assert(chain.reconciliations.size === expectedSubjects.size, "human cost chain must reconcile exactly once for every assignment/adjudication subject");
   for (const [subject, reservation] of reservationBySubject) {
+    const assignment = chain.assignments.get(reservation.reservationId); assert(assignment && assignment.subjectFingerprint === subject, "cost assignment does not follow its exact reservation subject");
     const reconciliation = chain.reconciliations.get(reservation.reservationId); assert(reconciliation && reconciliation.subjectFingerprint === subject, "cost reconciliation does not close its exact reservation subject");
     const primary = primaryByAssignment.get(subject); const adjudication = adjudicationByRequest.get(subject);
     assert((primary || adjudication) && reconciliation.completedResponseFingerprint === (primary?.responseFingerprint ?? adjudication?.responseFingerprint), "cost reconciliation response does not match its reserved assignment/adjudication subject");
