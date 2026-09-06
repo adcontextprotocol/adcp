@@ -789,7 +789,7 @@ function isPendingWorkOSMembershipError(error: unknown): boolean {
  * Consecutive failed DB health probes on this machine. A single transient
  * connect timeout — common during a rolling deploy or a Managed Postgres
  * failover, when the direct endpoint briefly stops accepting connections —
- * should not page #admin-errors. We only escalate (Slack + error-level log)
+ * should not page #admin-errors. We only escalate through the explicit notifier
  * once the database has been unreachable across HEALTH_DB_ALERT_THRESHOLD
  * consecutive probes. At Fly's 15s probe interval that is ~45s of sustained
  * unreachability, which is a real outage rather than deploy-window noise.
@@ -797,6 +797,7 @@ function isPendingWorkOSMembershipError(error: unknown): boolean {
  * out of the load balancer immediately.
  */
 let consecutiveDbHealthFailures = 0;
+let dbHealthAlerted = false;
 const HEALTH_DB_ALERT_THRESHOLD = 3;
 
 /**
@@ -3086,7 +3087,14 @@ export class HTTPServer {
         // succeed even when the pool is fully occupied under load.
         await healthCheck(5000);
         checks.database = true;
+        if (dbHealthAlerted) {
+          logger.info(
+            { priorFailures: consecutiveDbHealthFailures },
+            'Database health check recovered',
+          );
+        }
         consecutiveDbHealthFailures = 0;
+        dbHealthAlerted = false;
       } catch (dbErr) {
         checks.database = false;
         const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
@@ -3095,12 +3103,15 @@ export class HTTPServer {
 
         // Debounce alerting: a single transient connect timeout during a
         // rolling deploy or Postgres failover is not an outage. Escalate to
-        // Slack (and error-level logs, which PostHog forwards as alerts) only
-        // after the DB has been unreachable across several consecutive probes.
-        if (consecutiveDbHealthFailures >= HEALTH_DB_ALERT_THRESHOLD) {
-          logger.error(
+        // through the explicit Slack notifier only after the DB has been
+        // unreachable across several consecutive probes. Keep the companion
+        // log below warning-level so PostHog's error hook does not send a
+        // duplicate alert through a second source.
+        if (consecutiveDbHealthFailures === HEALTH_DB_ALERT_THRESHOLD) {
+          dbHealthAlerted = true;
+          logger.warn(
             { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
-            'Database health check failed',
+            'Database health check alert threshold reached',
           );
           notifySystemError({
             source: 'health-check',
@@ -3109,7 +3120,9 @@ export class HTTPServer {
         } else {
           logger.warn(
             { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
-            'Database health check failed (transient, not yet alerting)',
+            consecutiveDbHealthFailures < HEALTH_DB_ALERT_THRESHOLD
+              ? 'Database health check failed (transient, not yet alerting)'
+              : 'Database health check remains unavailable',
           );
         }
       }

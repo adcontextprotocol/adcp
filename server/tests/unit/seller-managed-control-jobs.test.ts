@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryTaskRegistry } from '@adcp/sdk/server';
+import { logger } from '../../src/logger.js';
+import { notifySystemError } from '../../src/addie/error-notifier.js';
 import {
   InMemorySellerManagedControlJobStore,
   PostgresSellerManagedControlJobStore,
@@ -9,6 +11,13 @@ import {
   withSellerManagedTaskReplay,
   type SellerManagedControlJob,
 } from '../../src/training-agent/seller-managed-control-jobs.js';
+
+vi.mock('../../src/addie/error-notifier.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/addie/error-notifier.js')>(
+    '../../src/addie/error-notifier.js',
+  );
+  return { ...actual, notifySystemError: vi.fn() };
+});
 
 const INPUT = {
   taskId: 'smc_recovery_test',
@@ -28,6 +37,7 @@ const TASK_SCOPE = { accountId: INPUT.accountId, ownerScope: INPUT.ownerScope };
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 async function registerTask(taskRegistry: ReturnType<typeof createInMemoryTaskRegistry>): Promise<void> {
@@ -61,6 +71,74 @@ describe('seller-managed control durable jobs', () => {
     databaseReady = true;
     await vi.advanceTimersByTimeAsync(5_000);
     expect(claim).toHaveBeenCalledOnce();
+    coordinator.stop();
+  });
+
+  it('does not overlap periodic reconciliation while a database claim is pending', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NODE_ENV', 'production');
+    let resolveFirstClaim!: (value: null) => void;
+    const firstClaim = new Promise<null>(resolve => { resolveFirstClaim = resolve; });
+    const store = new PostgresSellerManagedControlJobStore();
+    const claim = vi.spyOn(store, 'claim')
+      .mockReturnValueOnce(firstClaim)
+      .mockResolvedValue(null);
+    const coordinator = new SellerManagedControlJobCoordinator(
+      createInMemoryTaskRegistry(),
+      async () => ({}),
+      store,
+      async () => {},
+      () => true,
+    );
+
+    coordinator.start();
+    expect(claim).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(claim).toHaveBeenCalledOnce();
+
+    resolveFirstClaim(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(claim).toHaveBeenCalledTimes(2);
+    coordinator.stop();
+  });
+
+  it('alerts once after sustained reconciliation failures and logs recovery', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('NODE_ENV', 'production');
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+    const notifyMock = vi.mocked(notifySystemError);
+    notifyMock.mockClear();
+    const store = new PostgresSellerManagedControlJobStore();
+    const claim = vi.spyOn(store, 'claim').mockRejectedValue(new Error('database unavailable'));
+    const coordinator = new SellerManagedControlJobCoordinator(
+      createInMemoryTaskRegistry(),
+      async () => ({}),
+      store,
+      async () => {},
+      () => true,
+    );
+
+    coordinator.start();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(notifyMock).toHaveBeenCalledOnce();
+    expect(notifyMock).toHaveBeenCalledWith({
+      source: 'seller-managed-control-jobs',
+      errorMessage: 'Seller-control reconciliation failed (3 consecutive): database unavailable',
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(notifyMock).toHaveBeenCalledOnce();
+
+    claim.mockResolvedValue(null);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ priorFailures: 5 }),
+      'Seller-control reconciliation recovered',
+    );
     coordinator.stop();
   });
 
