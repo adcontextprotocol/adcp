@@ -144,26 +144,31 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.status).toBe(0);
   }
 
-  /** The emitted worker is poisoned before module evaluation. TypeScript
-   * source loads tsx and engine first, then poisons before queued core work. */
+  /**
+   * The emitted worker is poisoned before module evaluation. TypeScript source
+   * loads tsx and engine first, then poisons before queued core work.
+   * Array poison must complete because the core does not invoke Array helpers
+   * or the iterator. Each named non-Array intrinsic must instead settle with
+   * the worker's conservative `{ ok: false }` response before core telemetry.
+   */
   function expectsPoisonedRecreatedWorkerMatrix(engineUrl: string, workerLoader: readonly string[], sourceResolution = false): void {
     const tasks = [
       { task: 'restricted_score', payload: `{ counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
       { task: 'null_size', payload: `{ n: 4, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
     ];
     const poisons = [
-      { source: "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })", succeeds: true },
-      { source: "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })", succeeds: true },
-      { source: "Object.defineProperty(RegExp.prototype, 'test', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(String.prototype, 'startsWith', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(String.prototype, 'indexOf', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(String.prototype, 'slice', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(String.prototype, 'endsWith', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(Map.prototype, 'get', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(Map.prototype, 'set', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(Map.prototype, 'has', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(WeakSet.prototype, 'add', { value() { for (;;) {} }, configurable: true })", succeeds: false },
-      { source: "Object.defineProperty(WeakSet.prototype, 'has', { value() { for (;;) {} }, configurable: true })", succeeds: false },
+      { source: "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })", expected: 'normal_completion' },
+      { source: "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })", expected: 'normal_completion' },
+      { source: "Object.defineProperty(RegExp.prototype, 'test', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(String.prototype, 'startsWith', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(String.prototype, 'indexOf', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(String.prototype, 'slice', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(String.prototype, 'endsWith', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(Map.prototype, 'get', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(Map.prototype, 'set', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(Map.prototype, 'has', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(WeakSet.prototype, 'add', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
+      { source: "Object.defineProperty(WeakSet.prototype, 'has', { value() { for (;;) {} }, configurable: true })", expected: 'safe_refusal' },
     ];
     for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
       const poison = poisons[poisonIndex]!;
@@ -182,7 +187,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
         const result = await new Promise((resolve, reject) => { let ready = false; let poisonAck = false; let imported = !${sourceResolution}; const timer = setTimeout(() => reject(new Error(\`timeout after \${events.join(',')}\`)), 2_000); channel.port1.on('message', (message) => { events.push(String(message)); ready ||= message === 'exact_matched_pair_ni_ready'; poisonAck ||= message === 'poison_ack'; imported ||= message === 'import_complete'; if (ready && poisonAck && imported) { events.push('authorized'); channel.port1.postMessage('exact_matched_pair_ni_authorized'); } }); worker.once('message', (message) => { clearTimeout(timer); resolve(message); }); worker.once('error', reject); worker.once('exit', (code) => reject(new Error(\`worker exited \${code}; events=\${events.join(',')}\`))); });
         await worker.terminate();
         const poisonAt = events.indexOf('poison_ack'); const startAt = events.indexOf('core_start'); const resultAt = events.indexOf('core_complete');
-        process.exit(${poison.succeeds}
+        process.exit(${poison.expected === 'normal_completion'}
           ? (result?.ok === true && poisonAt >= 0 && startAt > poisonAt && resultAt > startAt && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2)
           : (result?.ok === false && poisonAt >= 0 && startAt === -1 && resultAt === -1 && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2));`;
       try {
