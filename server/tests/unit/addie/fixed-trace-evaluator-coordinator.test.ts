@@ -4,6 +4,7 @@ import {
   fixedTraceEvaluatorCoordinatorUnavailable,
 } from "../../../src/addie/eval/fixed-trace-evaluator-coordinator.js";
 import {
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
 } from "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js";
 import {
@@ -19,11 +20,25 @@ function parsedManifest(): JsonRecord {
   return JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON) as JsonRecord;
 }
 
-async function withManifest(value: unknown, verify: () => Promise<void> | void): Promise<void> {
+function reorderedManifest(): string {
+  const manifest = parsedManifest();
+  const { version, protocolVersion, ...rest } = manifest;
+  return JSON.stringify({ protocolVersion, version, ...rest });
+}
+
+async function withManifest(
+  value: unknown,
+  verify: () => Promise<void> | void,
+  canonical = FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
+): Promise<void> {
   vi.resetModules();
   vi.doMock(manifestModule, async () => {
     const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(manifestModule);
-    return { ...actual, FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: value };
+    return {
+      ...actual,
+      FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON: canonical,
+      FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: value,
+    };
   });
   try {
     await verify();
@@ -93,6 +108,27 @@ describe("fixed-trace evaluator coordinator refusal boundary", () => {
     const entry = fixedTraceEvaluatorCoordinatorUnavailable as unknown as (...args: unknown[]) => unknown;
     expect(entry(...hostile.values)).toMatchObject({ status: "unavailable" });
     expect(hostile.reads).toEqual({ getter: 0, get: 0, ownKeys: 0, primitive: 0, json: 0 });
+  });
+
+  it.each([
+    ["duplicate root", FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace(
+      '"version":"addie-fixed-trace-A-prerequisite-manifest-v3"',
+      '"version":"forged","version":"addie-fixed-trace-A-prerequisite-manifest-v3"',
+    )],
+    ["duplicate nested", FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace(
+      '"providerExposure":{"status":"unavailable","digest":null}',
+      '"providerExposure":{"status":"forged","status":"unavailable","digest":null}',
+    )],
+    ["leading whitespace", ` ${FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON}`],
+    ["reordered root", reorderedManifest()],
+    ["alternate escape", FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace("addie-fixed-trace-A", "addie\\u002dfixed-trace-A")],
+  ])("rejects a simultaneous canonical/source alias mutation: %s", async (_name, source) => {
+    await withManifest(source, async () => {
+      const prerequisite = await import("../../../src/addie/eval/fixed-trace-evidence-prerequisite.js");
+      expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toMatchObject({
+        status: "pin_drift", mismatchedFields: ["manifest_shape"],
+      });
+    }, source);
   });
 
   it.each([

@@ -99,6 +99,39 @@ describe("fixed-trace staged protocol", () => {
       vi.resetModules();
     }
   });
+  it("fails closed with a frozen typed error when both canonical source exports drift", async () => {
+    vi.resetModules();
+    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
+      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
+        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
+      );
+      const drifted = actual.FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace(
+        "addie-fixed-trace-A", "addie\\u002dfixed-trace-A",
+      );
+      return {
+        ...actual,
+        FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON: drifted,
+        FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: drifted,
+      };
+    });
+    try {
+      try {
+        await import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js");
+        throw new Error("expected parity failure");
+      } catch (error) {
+        expect(error).toMatchObject({
+          status: "parity_failure",
+          code: "fixed_trace_A_prerequisite_manifest_parity_mismatch",
+          diagnostic: { reason: "noncanonical_or_malformed_source" },
+        });
+        expect(Object.isFrozen(error)).toBe(true);
+        expect(Reflect.set(error as object, "status", "forged")).toBe(false);
+      }
+    } finally {
+      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
+      vi.resetModules();
+    }
+  });
   it("derives the complete 46 development / 36 tuning partitions from corpus authority", () => {
     assertFixedTracePartitionManifest();
     expect(FIXED_TRACE_PARTITION_MANIFEST.development).toHaveLength(46);

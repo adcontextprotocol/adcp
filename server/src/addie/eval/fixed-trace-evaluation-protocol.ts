@@ -34,7 +34,6 @@ import {
 import {
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
-  FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES,
 } from "./fixed-trace-a-prerequisite-manifest.js";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
 import {
@@ -88,6 +87,32 @@ export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY = Object.freeze({
 });
 export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256 =
   "fa4755eb1357c6a52bfe59f71b95700dd33d1cce66cee414847c8d14d29a8623" as const;
+
+/** Independently pinned by A's consumer boundary, not imported as policy. */
+const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN = 16 * 1024;
+const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN =
+  "b9eb7e38b822d8982b2d4c9ac3f1f1ef1992d41da0726c4497732bdd50c656dc" as const;
+
+type FixedTraceAPrerequisiteManifestParityDiagnostic = Readonly<{
+  status: "parity_failure";
+  code: "fixed_trace_A_prerequisite_manifest_parity_mismatch";
+  reason: "noncanonical_or_malformed_source" | "A_authority_leaf_mismatch";
+}>;
+
+class FixedTraceAPrerequisiteManifestParityError extends Error {
+  readonly status: "parity_failure";
+  readonly code: "fixed_trace_A_prerequisite_manifest_parity_mismatch";
+  readonly diagnostic: FixedTraceAPrerequisiteManifestParityDiagnostic;
+
+  constructor(reason: FixedTraceAPrerequisiteManifestParityDiagnostic["reason"]) {
+    super("fixed-trace A pure prerequisite manifest parity mismatch");
+    this.name = "FixedTraceAPrerequisiteManifestParityError";
+    this.status = "parity_failure";
+    this.code = "fixed_trace_A_prerequisite_manifest_parity_mismatch";
+    this.diagnostic = Object.freeze({ status: this.status, code: this.code, reason });
+    Object.freeze(this);
+  }
+}
 
 export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
   version: "addie-fixed-trace-confirmatory-power-v2",
@@ -1080,9 +1105,13 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
     // B never accepts an arbitrary object as a manifest.
     if (typeof FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON !== "string"
       || Buffer.byteLength(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8")
-        > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES
+        > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN
       || FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON
-        !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON) throw new Error("not canonical");
+        !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON
+      || createHash("sha256").update(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8").digest("hex")
+        !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN) {
+      throw new FixedTraceAPrerequisiteManifestParityError("noncanonical_or_malformed_source");
+    }
     const parsed: unknown = JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
     manifest = parsed as Manifest;
@@ -1106,8 +1135,9 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
       || !hasExactKeys(final.calibration, ["status", "allowedRelationshipToScoredDevelopment", "digest"])
       || !hasExactKeys(final.custody, ["status", "custodianIdentity", "packDigest", "signature", "collisionAuditDigest"])
       || !hasExactKeys(final.providerExposure, ["status", "digest"])) throw new Error("unexpected shape");
-  } catch {
-    throw new Error("fixed-trace A pure prerequisite manifest parity mismatch");
+  } catch (error) {
+    if (error instanceof FixedTraceAPrerequisiteManifestParityError) throw error;
+    throw new FixedTraceAPrerequisiteManifestParityError("noncanonical_or_malformed_source");
   }
   const final = protocol.finalProtocol;
   if (
@@ -1143,7 +1173,7 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
     || manifest.finalPrerequisites.custody.collisionAuditDigest !== final.externalPackCustody.collisionAuditDigest
     || manifest.finalPrerequisites.providerExposure.status !== final.providerExposure.status
     || manifest.finalPrerequisites.providerExposure.digest !== final.providerExposure.digest
-  ) throw new Error("fixed-trace A pure prerequisite manifest parity mismatch");
+  ) throw new FixedTraceAPrerequisiteManifestParityError("A_authority_leaf_mismatch");
 }
 export function fixedTraceEvaluationProtocolFingerprint(
   protocol: FixedTraceEvaluationProtocol,

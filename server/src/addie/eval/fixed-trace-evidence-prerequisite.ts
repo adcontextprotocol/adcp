@@ -2,11 +2,20 @@
  * B's refusal-only prerequisite. It reads only the dependency-free A manifest
  * and an independent literal pin; neither is an execution authority.
  */
+import { createHash } from "node:crypto";
 import {
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
-  FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES,
 } from "./fixed-trace-a-prerequisite-manifest.js";
+
+/** Independently pinned by this consumer; do not trust source-module policy. */
+const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN = 16 * 1024;
+const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN =
+  "b9eb7e38b822d8982b2d4c9ac3f1f1ef1992d41da0726c4497732bdd50c656dc" as const;
+
+function fixedTracePrerequisiteSourceSha256(source: string): string {
+  return createHash("sha256").update(source, "utf8").digest("hex");
+}
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION =
   "not_admitted_missing_validated_A_schedule_pricing_custody_calibration_and_C_sealed_authority" as const;
@@ -199,6 +208,11 @@ type ExactEnumValues<Domain extends string, Values extends readonly Domain[]> =
   Exclude<Domain, Values[number]> extends never
     ? Exclude<Values[number], Domain> extends never ? Values : never
     : never;
+type FixedTraceAssertTrue<Value extends true> = Value;
+type FixedTraceEnumIsExhaustive<Domain extends string, Values extends readonly Domain[]> =
+  Exclude<Domain, Values[number]> extends never
+    ? Exclude<Values[number], Domain> extends never ? true : false
+    : false;
 
 /**
  * Contextual `readonly Domain[]` types permit omitted members. These helpers
@@ -218,23 +232,21 @@ function fixedTraceNullableEnum<Domain extends string>() {
 }
 
 // Compile-time negative probes: deleting a member from any closed domain is
-// an error. They are unreachable and generate no runtime surface.
-if (false) {
-  // @ts-expect-error closed schemaVersion domain cannot omit its only value
-  fixedTraceEnum<"addie-fixed-trace-sealed-evidence-v1">()([]);
-  // @ts-expect-error invocation stages must be exhaustive
-  fixedTraceEnum<FixedTraceInvocationStage>()(["router"]);
-  // @ts-expect-error terminal statuses must be exhaustive
-  fixedTraceEnum<FixedTraceTerminalStatus>()(["complete"]);
-  // @ts-expect-error finish reasons must be exhaustive
-  fixedTraceNullableEnum<FixedTraceFinishReason>()(["stop"]);
-  // @ts-expect-error completeness outcomes must be exhaustive
-  fixedTraceEnum<FixedTraceCompleteness>()(["complete"]);
-  // @ts-expect-error tamper classes must be exhaustive
-  fixedTraceEnum<FixedTraceTamperClass>()(["none"]);
-  // @ts-expect-error replay status must be exhaustive
-  fixedTraceEnum<"consumed">()([]);
-}
+// an error. These are type-only checks; no unreachable runtime statements.
+// @ts-expect-error closed schemaVersion domain cannot omit its only value
+type FixedTraceMissingSchemaVersion = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<"addie-fixed-trace-sealed-evidence-v1", []>>;
+// @ts-expect-error invocation stages must be exhaustive
+type FixedTraceMissingInvocationStage = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceInvocationStage, ["router"]>>;
+// @ts-expect-error terminal statuses must be exhaustive
+type FixedTraceMissingTerminalStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTerminalStatus, ["complete"]>>;
+// @ts-expect-error finish reasons must be exhaustive
+type FixedTraceMissingFinishReason = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceFinishReason, ["stop"]>>;
+// @ts-expect-error completeness outcomes must be exhaustive
+type FixedTraceMissingCompleteness = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceCompleteness, ["complete"]>>;
+// @ts-expect-error tamper classes must be exhaustive
+type FixedTraceMissingTamperClass = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTamperClass, ["none"]>>;
+// @ts-expect-error replay status cannot omit its only value
+type FixedTraceMissingReplayStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<"consumed", []>>;
 
 function deepFreeze<Value>(value: Value): Value {
   if (value && typeof value === "object") {
@@ -410,9 +422,11 @@ function parseFixedTraceAPrerequisiteManifest(): ParsedFixedTraceAPrerequisiteMa
   // order, and prototype-pollution encodings before JSON.parse can collapse
   // any of them. Bound the byte length first to cap hostile reload work.
   if (Buffer.byteLength(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8")
-    > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES
+    > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN
     || FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON
-      !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON) return null;
+      !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON
+    || fixedTracePrerequisiteSourceSha256(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON)
+      !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN) return null;
   try {
     const parsed: unknown = JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;

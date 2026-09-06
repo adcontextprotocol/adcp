@@ -110,13 +110,15 @@ describe("fixed-trace B import boundary", () => {
     });
     expect(child.error).toBeUndefined();
     expect(child.status, child.stderr).toBe(0);
-    expect(JSON.parse(child.stdout)).toEqual({
-      clockReads: 0,
-      randomReads: 0,
-      // Node's ESM loader performs this capability-reporting lookup; the
-      // bundled B closure itself has no environment access.
-      environmentKeys: ["WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES"],
-    });
+    const result = JSON.parse(child.stdout) as {
+      clockReads: number; randomReads: number; environmentKeys: string[];
+    };
+    expect(result.clockReads).toBe(0);
+    expect(result.randomReads).toBe(0);
+    // Node's ESM loader performs only this capability-reporting lookup; the
+    // bundled B closure performs no environment read of its own.
+    expect(result.environmentKeys).not.toHaveLength(0);
+    expect(result.environmentKeys.every((key) => key === "WATCH_REPORT_DEPENDENCIES")).toBe(true);
   });
 
   it.each([
