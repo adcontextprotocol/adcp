@@ -1,4 +1,8 @@
 import {
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY,
+  fixedTraceComponentSmokePrivateAuthorityCostMicros,
+  fixedTraceComponentSmokePrivateAuthorityHasAdditiveCache,
+  fixedTraceComponentSmokePrivateAuthorityIdentityMatches,
   fixedTraceComponentSmokePrivateAuthorityPlan,
   type FixedTraceComponentSmokePrivateAuthorityPlanEntry,
 } from './fixed-trace-component-smoke-private-authority.js';
@@ -100,20 +104,41 @@ export function simulateFixedTraceComponentSmokePrivateRuntime(
   const responses = scriptResponses(script, plan);
   if (!responses) return Object.freeze({ status: 'refused', reason: 'invalid_simulation_script', assignmentDispositions: 0, providerInvocations: 0 });
   let invocations = 0;
+  let spentMicrodollars = 0;
   for (const entry of plan) {
     if (entry.disposition !== 'provider_dispatch') continue;
     for (let ordinal = 1; ordinal <= entry.maximumProviderInvocations; ordinal += 1) {
       const receipt = responses.get(`${entry.assignmentId}:${ordinal}`) ?? defaultReceipt(entry, ordinal);
       invocations += 1;
       if (receipt.identity.provider !== entry.provider || receipt.identity.model !== entry.model || receipt.identity.effort !== entry.effort
+        || !fixedTraceComponentSmokePrivateAuthorityIdentityMatches(entry.pricingProfileId, receipt.identity)
         || receipt.status !== 'succeeded'
         || (receipt.disposition === 'tool_continuation_required' && ordinal === entry.maximumProviderInvocations)) {
         return Object.freeze({ status: 'halted', assignmentDispositions: 168, providerInvocations: invocations });
       }
+      let costMicrodollars: number;
+      try {
+        const additiveCacheOverLimit = fixedTraceComponentSmokePrivateAuthorityHasAdditiveCache(entry.pricingProfileId)
+          && (receipt.usage.cacheReadTokens > entry.maxInputTokens || receipt.usage.cacheWriteTokens > entry.maxInputTokens);
+        if (receipt.usage.inputTokens > entry.maxInputTokens || additiveCacheOverLimit
+          || receipt.usage.outputTokens > entry.maxOutputTokens || receipt.usage.latencyMs > entry.timeoutMs) {
+          return Object.freeze({ status: 'halted', assignmentDispositions: 168, providerInvocations: invocations });
+        }
+        costMicrodollars = fixedTraceComponentSmokePrivateAuthorityCostMicros(entry.pricingProfileId, receipt.usage);
+      } catch {
+        return Object.freeze({ status: 'halted', assignmentDispositions: 168, providerInvocations: invocations });
+      }
+      const reservedForOrdinal = entry.reservedMicrodollars[ordinal - 1];
+      if (reservedForOrdinal === undefined || costMicrodollars > reservedForOrdinal
+        || spentMicrodollars + costMicrodollars > FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars
+        || spentMicrodollars + costMicrodollars > FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.providerCeilingMicrodollars) {
+        return Object.freeze({ status: 'halted', assignmentDispositions: 168, providerInvocations: invocations });
+      }
+      spentMicrodollars += costMicrodollars;
       if (receipt.disposition === 'final_response') break;
     }
   }
-  return invocations === 192
+  return invocations <= FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality.maximumProviderInvocations
     ? Object.freeze({ status: 'completed', assignmentDispositions: 168, providerInvocations: invocations })
     : Object.freeze({ status: 'halted', assignmentDispositions: 168, providerInvocations: invocations });
 }

@@ -1,7 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY, fixedTraceComponentSmokePrivateAuthorityPlan } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
+import {
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY,
+  fixedTraceComponentSmokePrivateAuthorityCostMicros,
+  fixedTraceComponentSmokePrivateAuthorityPlan,
+} from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
 import {
   createFixedTraceComponentSmokePrivateRuntime,
   simulateFixedTraceComponentSmokePrivateRuntime,
@@ -10,6 +14,8 @@ import {
 const plan = fixedTraceComponentSmokePrivateAuthorityPlan();
 const dispatch = plan.find((entry) => entry.disposition === 'provider_dispatch')!;
 const generation = plan.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
+const anthropic = plan.find((entry) => entry.disposition === 'provider_dispatch' && entry.provider === 'anthropic')!;
+const google = plan.find((entry) => entry.disposition === 'provider_dispatch' && entry.provider === 'google')!;
 
 function receipt(entry = dispatch, overrides: Record<string, unknown> = {}) {
   return {
@@ -20,6 +26,30 @@ function receipt(entry = dispatch, overrides: Record<string, unknown> = {}) {
   };
 }
 function scriptFor(key: string, value: unknown) { return JSON.stringify({ responses: { [key]: value } }); }
+function firstInvocationPosition(entry: typeof dispatch) {
+  return plan.slice(0, plan.indexOf(entry) + 1).reduce((total, candidate) => (
+    total + (candidate.disposition === 'provider_dispatch' ? 1 : 0)
+  ), 0);
+}
+function maximumUsage(entry: typeof dispatch) {
+  return {
+    inputTokens: entry.maxInputTokens, outputTokens: entry.maxOutputTokens, latencyMs: entry.timeoutMs,
+    cacheReadTokens: entry.provider === 'anthropic' ? entry.maxInputTokens : 0,
+    cacheWriteTokens: entry.provider === 'anthropic' || entry.provider === 'openai' ? entry.maxInputTokens : 0,
+  };
+}
+function fullReservationScript() {
+  const responses: Record<string, unknown> = {};
+  for (const entry of plan) if (entry.disposition === 'provider_dispatch') {
+    for (let ordinal = 1; ordinal <= entry.maximumProviderInvocations; ordinal += 1) {
+      responses[`${entry.assignmentId}:${ordinal}`] = receipt(entry, {
+        disposition: ordinal === 1 && entry.maximumProviderInvocations === 2 ? 'tool_continuation_required' : 'final_response',
+        usage: maximumUsage(entry),
+      });
+    }
+  }
+  return JSON.stringify({ responses });
+}
 
 describe('private fake-only component smoke runtime', () => {
   it('has no production construction path or runtime dependency injection', () => {
@@ -31,9 +61,9 @@ describe('private fake-only component smoke runtime', () => {
     expect(simulateFixedTraceComponentSmokePrivateRuntime()).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 192 });
   });
 
-  it('models the frozen second ordinal only after its scripted first continuation', () => {
+  it('allows an eligible first-ordinal final response to complete below the invocation ceiling', () => {
     const first = `${generation.assignmentId}:1`;
-    expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(first, receipt(generation, { disposition: 'final_response' })))).toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 191 });
+    expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(first, receipt(generation, { disposition: 'final_response' })))).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 191 });
     expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(first, receipt(generation, { disposition: 'tool_continuation_required' })))).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 192 });
   });
 
@@ -43,6 +73,30 @@ describe('private fake-only component smoke runtime', () => {
     ['final continuation ordinal', receipt(dispatch, { disposition: 'tool_continuation_required' })],
   ])('halts the simulated denominator after %s', (_name, value) => {
     expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(`${dispatch.assignmentId}:1`, value))).toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: 1 });
+  });
+
+  it.each([
+    ['input token limit', dispatch, { ...maximumUsage(dispatch), inputTokens: dispatch.maxInputTokens + 1 }],
+    ['output token limit', dispatch, { ...maximumUsage(dispatch), outputTokens: dispatch.maxOutputTokens + 1 }],
+    ['latency limit', dispatch, { ...maximumUsage(dispatch), latencyMs: dispatch.timeoutMs + 1 }],
+    ['additive cache and per-attempt cost limit', anthropic, { ...maximumUsage(anthropic), cacheReadTokens: anthropic.maxInputTokens + 1 }],
+    ['unsupported cache accounting', google, { ...maximumUsage(google), cacheWriteTokens: 1 }],
+  ])('halts rather than falsely complete on a scripted %s breach', (_name, entry, usage) => {
+    expect(simulateFixedTraceComponentSmokePrivateRuntime(scriptFor(`${entry.assignmentId}:1`, receipt(entry, { usage })))).toEqual({ status: 'halted', assignmentDispositions: 168, providerInvocations: firstInvocationPosition(entry) });
+  });
+
+  it('settles the exact immutable reservation boundary with integer authority pricing', () => {
+    const expected = plan.filter((entry) => entry.disposition === 'provider_dispatch').reduce((total, entry) => (
+      total + entry.reservedMicrodollars.reduce((entryTotal, reservation) => entryTotal + reservation, 0)
+    ), 0);
+    const priced = plan.filter((entry) => entry.disposition === 'provider_dispatch').reduce((total, entry) => (
+      total + entry.reservedMicrodollars.reduce((entryTotal) => entryTotal
+        + fixedTraceComponentSmokePrivateAuthorityCostMicros(entry.pricingProfileId, maximumUsage(entry)), 0)
+    ), 0);
+    expect(expected).toBe(FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars);
+    expect(priced).toBe(expected);
+    expect(expected).toBeLessThanOrEqual(FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.providerCeilingMicrodollars);
+    expect(simulateFixedTraceComponentSmokePrivateRuntime(fullReservationScript())).toEqual({ status: 'completed', assignmentDispositions: 168, providerInvocations: 192 });
   });
 
   it('deep-copies and rejects executable, malformed, or unadmitted simulation data without running it', () => {

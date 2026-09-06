@@ -49,14 +49,6 @@ export interface FixedTraceComponentSmokeTestGrantVerification {
   readonly valid: true;
   readonly signedPayloadDigest: string;
 }
-/** Exact public root supplied only by the isolated one-shot composition root. */
-export interface FixedTraceComponentSmokeOneShotTrustRoot {
-  readonly kid: string;
-  readonly spki: string;
-}
-export interface FixedTraceComponentSmokeOneShotGrantVerifier {
-  verify(value: unknown, now: Date): FixedTraceComponentSmokeVerifiedGrant | null;
-}
 /** A one-shot smoke grant may not outlive this bounded interval. */
 export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS = 15 * 60 * 1_000;
 
@@ -66,9 +58,6 @@ export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS = 15 * 60 * 1_0
  * A later separately-reviewed private deployment must replace this module-owned
  * null registry in a dedicated change before it can verify anything.
  */
-const PRODUCTION_SPKI_BY_KID: Readonly<Record<string, string>> | null = null;
-/** Capability marker: only this verifier can create an input accepted by the ledger. */
-const VERIFIED_GRANTS = new WeakMap<object, Buffer>();
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -154,7 +143,7 @@ function parseGrant(value: unknown): { payload: FixedTraceComponentSmokeSignedGr
   } catch { return null; }
 }
 
-function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record<string, string>> | null, mintLedgerCapability: boolean): FixedTraceComponentSmokeVerifiedGrant | null {
+function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record<string, string>> | null): FixedTraceComponentSmokeVerifiedGrant | null {
   if (!(now instanceof Date) || !Number.isFinite(now.valueOf()) || registry === null) return null;
   const parsed = parseGrant(value);
   if (!parsed || Date.parse(parsed.payload.issuedAt) > now.valueOf() || Date.parse(parsed.payload.expiresAt) <= now.valueOf()
@@ -168,58 +157,23 @@ function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record
     const verified = Object.freeze({ signedPayloadDigest,
       grantDigest: createHash('sha256').update(parsed.signature).update(signedPayloadDigest, 'utf8').digest('hex'),
       payload: parsed.payload });
-    if (mintLedgerCapability) VERIFIED_GRANTS.set(verified, Buffer.from(parsed.signature));
     return verified;
   } catch { return null; }
 }
 
-function exactOneShotTrustRoot(value: unknown): FixedTraceComponentSmokeOneShotTrustRoot | null {
-  try {
-    const root = snapshotFixedTraceJson(value, 'private one-shot trust root') as Record<string, unknown>;
-    if (!exactKeys(root, ['kid', 'spki']) || !kid(root.kid) || typeof root.spki !== 'string' || !/^[A-Za-z0-9_-]+$/.test(root.spki)) return null;
-    const publicKey = createPublicKey({ key: Buffer.from(root.spki, 'base64url'), format: 'der', type: 'spki' });
-    return publicKey.asymmetricKeyType === 'ed25519' ? Object.freeze({ kid: root.kid, spki: root.spki }) : null;
-  } catch { return null; }
+/** Production entry point: permanently fail-closed in this unprovisioned slice. */
+export function verifyFixedTraceComponentSmokeSignedGrant(_value: unknown, _now: Date): FixedTraceComponentSmokeVerifiedGrant | null {
+  return null;
 }
 
-/**
- * Constructs the private one-shot verifier only when an operator supplies both
- * an exact Ed25519 root and the independently governed SHA-256 pin of that
- * root's canonical JSON. The isolated composition root/operator is the
- * authority: no route, job, ambient configuration, or untrusted caller may
- * control both values. Neither value is read from process state here.
- *
- * Source independence is an operational boundary, not a cryptographic
- * property of two public inputs. Therefore this function must remain private
- * to that isolated composition root; it is not a general caller-selected-root
- * verification API.
- */
-export function createFixedTraceComponentSmokeOneShotGrantVerifier(
-  trustRoot: unknown,
-  expectedTrustRootPin: unknown,
-): FixedTraceComponentSmokeOneShotGrantVerifier | null {
-  const root = exactOneShotTrustRoot(trustRoot);
-  if (!root || !hexDigest(expectedTrustRootPin)
-    || createHash('sha256').update(canonicalJson(root), 'utf8').digest('hex') !== expectedTrustRootPin) return null;
-  const registry = Object.freeze({ [root.kid]: root.spki });
-  return Object.freeze({ verify: (value: unknown, now: Date) => verifyWithRegistry(value, now, registry, true) });
+/** No caller-visible path can mint the adjacent ledger's production capability. */
+export function isFixedTraceComponentSmokeVerifiedGrant(_value: unknown): _value is FixedTraceComponentSmokeVerifiedGrant {
+  return false;
 }
 
-/** Production entry point: always fail-closed until its module-owned registry is provisioned. */
-export function verifyFixedTraceComponentSmokeSignedGrant(value: unknown, now: Date): FixedTraceComponentSmokeVerifiedGrant | null {
-  return verifyWithRegistry(value, now, PRODUCTION_SPKI_BY_KID, true);
-}
-
-/** Internal capability check used by the adjacent private ledger, never a boolean authorization API. */
-export function isFixedTraceComponentSmokeVerifiedGrant(value: unknown): value is FixedTraceComponentSmokeVerifiedGrant {
-  return typeof value === 'object' && value !== null && VERIFIED_GRANTS.has(value);
-}
-
-/** Returns only an irreversible digest; raw signatures never cross into the ledger. */
-export function fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger(value: unknown): string | null {
-  if (!isFixedTraceComponentSmokeVerifiedGrant(value)) return null;
-  const signature = VERIFIED_GRANTS.get(value);
-  return signature ? createHash('sha256').update(signature).digest('hex') : null;
+/** There is consequently no signature digest for the unconstructible production path. */
+export function fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger(_value: unknown): string | null {
+  return null;
 }
 
 /**
@@ -234,6 +188,6 @@ export function verifyFixedTraceComponentSmokeSignedGrantForTest(
 ): FixedTraceComponentSmokeTestGrantVerification | null {
   if (!kid(testTrustRoot.kid) || testTrustRoot.publicKey.asymmetricKeyType !== 'ed25519') return null;
   const spki = testTrustRoot.publicKey.export({ format: 'der', type: 'spki' }) as Buffer;
-  const verified = verifyWithRegistry(value, now, Object.freeze({ [testTrustRoot.kid]: spki.toString('base64url') }), false);
+  const verified = verifyWithRegistry(value, now, Object.freeze({ [testTrustRoot.kid]: spki.toString('base64url') }));
   return verified ? Object.freeze({ valid: true as const, signedPayloadDigest: verified.signedPayloadDigest }) : null;
 }
