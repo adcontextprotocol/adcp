@@ -23,14 +23,96 @@ import {
 } from "./fixed-trace-architecture.js";
 import {
   FIXED_TRACE_PARTITION_MANIFEST,
+  FIXED_TRACE_PARTITION_MANIFEST_SHA256,
   assertFixedTracePartitionManifest,
 } from "./fixed-trace-partition.js";
-import { assertFixedTraceExperimentalDesign } from "./fixed-trace-experimental-design.js";
+import {
+  FIXED_TRACE_EXPERIMENTAL_DESIGN,
+  assertFixedTraceExperimentalDesign,
+  fixedTraceExperimentalDesignFingerprint,
+} from "./fixed-trace-experimental-design.js";
+import {
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
+} from "./fixed-trace-a-prerequisite-manifest.js";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
-import { FIXED_TRACE_CORPUS } from "./fixed-trace-suite.js";
+import {
+  FIXED_TRACE_CORPUS,
+  FIXED_TRACE_SUITE,
+  FIXED_TRACE_SUITE_VERSION,
+  fixedTraceSuiteSha256,
+} from "./fixed-trace-suite.js";
 
 export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
   "addie-fixed-trace-evaluation-protocol-v3" as const;
+
+/** A's explicit measurement authority; it is not an identity/privacy manifest. */
+export const FIXED_TRACE_MEASUREMENT_MANIFEST = Object.freeze({
+  version: "addie-fixed-trace-measurement-manifest-v1",
+  primaryEndpoint: "two-judge blinded quality success rate",
+  deterministicGrading: "fixed_trace_observation_contract_v1",
+  failureDenominator: "hard_failures_and_missing_evidence_remain_in_denominator",
+});
+export const FIXED_TRACE_MEASUREMENT_MANIFEST_SHA256 =
+  "c465bc7b5b69f3bf6e8151a5b4ff57d10d630d3f8ddc64c1cce4d504ad80fb5a" as const;
+
+/**
+ * The A-owned source for the post-base final prerequisites. Its digest is a
+ * reproducible content identity, rather than a commit that predates it.
+ */
+export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY = Object.freeze({
+  finalRandomization: Object.freeze({
+    scheduleDigest: null,
+    episodeClusterManifestDigest: null,
+  }),
+  judgeCalibration: Object.freeze({
+    status: "unavailable" as const,
+    allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only" as const,
+    digest: null,
+  }),
+  providerExposure: Object.freeze({ status: "unavailable" as const, digest: null }),
+  prospectivePricingCohort: Object.freeze({
+    id: null,
+    effectiveFrom: null,
+    effectiveBefore: null,
+    digest: null,
+  }),
+  externalPackCustody: Object.freeze({
+    status: "unavailable" as const,
+    custodianIdentity: null,
+    packDigest: null,
+    signature: null,
+    collisionAuditDigest: null,
+  }),
+});
+export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256 =
+  "fa4755eb1357c6a52bfe59f71b95700dd33d1cce66cee414847c8d14d29a8623" as const;
+
+/** Independently pinned by A's consumer boundary, not imported as policy. */
+const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN = 16 * 1024;
+const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN =
+  "b9eb7e38b822d8982b2d4c9ac3f1f1ef1992d41da0726c4497732bdd50c656dc" as const;
+
+type FixedTraceAPrerequisiteManifestParityDiagnostic = Readonly<{
+  status: "parity_failure";
+  code: "fixed_trace_A_prerequisite_manifest_parity_mismatch";
+  reason: "noncanonical_or_malformed_source" | "A_authority_leaf_mismatch";
+}>;
+
+class FixedTraceAPrerequisiteManifestParityError extends Error {
+  readonly status: "parity_failure";
+  readonly code: "fixed_trace_A_prerequisite_manifest_parity_mismatch";
+  readonly diagnostic: FixedTraceAPrerequisiteManifestParityDiagnostic;
+
+  constructor(reason: FixedTraceAPrerequisiteManifestParityDiagnostic["reason"]) {
+    super("fixed-trace A pure prerequisite manifest parity mismatch");
+    this.name = "FixedTraceAPrerequisiteManifestParityError";
+    this.status = "parity_failure";
+    this.code = "fixed_trace_A_prerequisite_manifest_parity_mismatch";
+    this.diagnostic = Object.freeze({ status: this.status, code: this.code, reason });
+    Object.freeze(this);
+  }
+}
 
 export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
   version: "addie-fixed-trace-confirmatory-power-v2",
@@ -460,6 +542,10 @@ export interface FixedTraceEvaluationProtocol {
       readonly scheduleDigest: null;
       readonly episodeClusterManifestDigest: null;
     };
+    readonly providerExposure: {
+      readonly status: "unavailable";
+      readonly digest: null;
+    };
     readonly prospectivePricingCohort: {
       readonly id: null;
       readonly effectiveFrom: null;
@@ -678,21 +764,10 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
         conservativeDiscordanceUpperBound: null,
         digest: null,
       }),
-      judgeCalibration: Object.freeze({
-        status: "unavailable",
-        allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only",
-        digest: null,
-      }),
-      finalRandomization: Object.freeze({
-        scheduleDigest: null,
-        episodeClusterManifestDigest: null,
-      }),
-      prospectivePricingCohort: Object.freeze({
-        id: null,
-        effectiveFrom: null,
-        effectiveBefore: null,
-        digest: null,
-      }),
+      judgeCalibration: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.judgeCalibration,
+      finalRandomization: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.finalRandomization,
+      providerExposure: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.providerExposure,
+      prospectivePricingCohort: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.prospectivePricingCohort,
       lloydMoldovanEM: Object.freeze({
         status: "unavailable", identity: null, version: null,
         implementationDigest: null, nuisanceConventionDigest: null,
@@ -716,10 +791,7 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
       missingnessDeviationAdmission: Object.freeze({
         status: "unavailable", specificationDigest: null, result: null, uncertainty: null,
       }),
-      externalPackCustody: Object.freeze({
-        status: "unavailable", custodianIdentity: null, packDigest: null,
-        signature: null, collisionAuditDigest: null,
-      }),
+      externalPackCustody: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.externalPackCustody,
     }),
     phases: Object.freeze([
       Object.freeze({
@@ -1001,6 +1073,108 @@ function sha256(value: unknown): string {
     .update(JSON.stringify(value), "utf8")
     .digest("hex");
 }
+
+/**
+ * A owns the parity check for the dependency-free manifest consumed by B.
+ * This deliberately derives executable fingerprints here, while the manifest
+ * itself remains import-safe data for refusal-only consumers.
+ */
+function assertFixedTraceAPurePrerequisiteManifestParity(
+  protocol: FixedTraceEvaluationProtocol,
+): void {
+  type Manifest = {
+    version: string;
+    protocolVersion: string;
+    corpus: { suiteVersion: string; suiteSha256: string };
+    partitionManifestSha256: string;
+    experimentalDesignFingerprint: string;
+    measurement: { version: string; sha256: string };
+    authorityDigests: { finalPrerequisitesSha256: string };
+    finalPrerequisites: {
+      randomization: { scheduleDigest: null; episodeClusterManifestDigest: null };
+      pricingWindow: { id: null; effectiveFrom: null; effectiveBefore: null; digest: null };
+      calibration: { status: string; allowedRelationshipToScoredDevelopment: string; digest: null };
+      custody: { status: string; custodianIdentity: null; packDigest: null; signature: null; collisionAuditDigest: null };
+      providerExposure: { status: string; digest: null };
+    };
+  };
+  let manifest: Manifest;
+  try {
+    // The dependency-free source is intentionally a primitive JSON literal.
+    // Reject malformed build state at this single A-owned parity boundary;
+    // B never accepts an arbitrary object as a manifest.
+    if (typeof FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON !== "string"
+      || Buffer.byteLength(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8")
+        > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN
+      || FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON
+        !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON
+      || createHash("sha256").update(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8").digest("hex")
+        !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN) {
+      throw new FixedTraceAPrerequisiteManifestParityError("noncanonical_or_malformed_source");
+    }
+    const parsed: unknown = JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+    manifest = parsed as Manifest;
+    const final = manifest.finalPrerequisites;
+    const hasExactKeys = (value: object, keys: readonly string[]) =>
+      Object.keys(value).sort().join(",") === [...keys].sort().join(",");
+    if (!manifest.corpus || !manifest.measurement || !manifest.authorityDigests || !final
+      || typeof manifest.corpus !== "object" || typeof manifest.measurement !== "object"
+      || typeof manifest.authorityDigests !== "object"
+      || typeof final !== "object"
+      || !final.randomization || !final.pricingWindow || !final.calibration || !final.custody || !final.providerExposure) {
+      throw new Error("incomplete");
+    }
+    if (!hasExactKeys(manifest, ["version", "protocolVersion", "corpus", "partitionManifestSha256", "experimentalDesignFingerprint", "measurement", "authorityDigests", "finalPrerequisites"])
+      || !hasExactKeys(manifest.corpus, ["suiteVersion", "suiteSha256"])
+      || !hasExactKeys(manifest.measurement, ["version", "sha256"])
+      || !hasExactKeys(manifest.authorityDigests, ["finalPrerequisitesSha256"])
+      || !hasExactKeys(final, ["randomization", "pricingWindow", "calibration", "custody", "providerExposure"])
+      || !hasExactKeys(final.randomization, ["scheduleDigest", "episodeClusterManifestDigest"])
+      || !hasExactKeys(final.pricingWindow, ["id", "effectiveFrom", "effectiveBefore", "digest"])
+      || !hasExactKeys(final.calibration, ["status", "allowedRelationshipToScoredDevelopment", "digest"])
+      || !hasExactKeys(final.custody, ["status", "custodianIdentity", "packDigest", "signature", "collisionAuditDigest"])
+      || !hasExactKeys(final.providerExposure, ["status", "digest"])) throw new Error("unexpected shape");
+  } catch (error) {
+    if (error instanceof FixedTraceAPrerequisiteManifestParityError) throw error;
+    throw new FixedTraceAPrerequisiteManifestParityError("noncanonical_or_malformed_source");
+  }
+  const final = protocol.finalProtocol;
+  if (
+    manifest.version !== "addie-fixed-trace-A-prerequisite-manifest-v3"
+    || manifest.protocolVersion !== FIXED_TRACE_EVALUATION_PROTOCOL_VERSION
+    || manifest.corpus.suiteVersion !== FIXED_TRACE_SUITE_VERSION
+    || manifest.corpus.suiteSha256 !== fixedTraceSuiteSha256(FIXED_TRACE_SUITE)
+    || manifest.partitionManifestSha256 !== FIXED_TRACE_PARTITION_MANIFEST_SHA256
+    || manifest.experimentalDesignFingerprint
+      !== fixedTraceExperimentalDesignFingerprint(FIXED_TRACE_EXPERIMENTAL_DESIGN)
+    || manifest.measurement.version !== FIXED_TRACE_MEASUREMENT_MANIFEST.version
+    || manifest.measurement.sha256 !== FIXED_TRACE_MEASUREMENT_MANIFEST_SHA256
+    || sha256(FIXED_TRACE_MEASUREMENT_MANIFEST) !== FIXED_TRACE_MEASUREMENT_MANIFEST_SHA256
+    || manifest.authorityDigests.finalPrerequisitesSha256
+      !== FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256
+    || sha256(FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY)
+      !== FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256
+    || manifest.finalPrerequisites.randomization.scheduleDigest !== final.finalRandomization.scheduleDigest
+    || manifest.finalPrerequisites.randomization.episodeClusterManifestDigest
+      !== final.finalRandomization.episodeClusterManifestDigest
+    || manifest.finalPrerequisites.pricingWindow.id !== final.prospectivePricingCohort.id
+    || manifest.finalPrerequisites.pricingWindow.effectiveFrom !== final.prospectivePricingCohort.effectiveFrom
+    || manifest.finalPrerequisites.pricingWindow.effectiveBefore !== final.prospectivePricingCohort.effectiveBefore
+    || manifest.finalPrerequisites.pricingWindow.digest !== final.prospectivePricingCohort.digest
+    || manifest.finalPrerequisites.calibration.status !== final.judgeCalibration.status
+    || manifest.finalPrerequisites.calibration.allowedRelationshipToScoredDevelopment
+      !== final.judgeCalibration.allowedRelationshipToScoredDevelopment
+    || manifest.finalPrerequisites.calibration.digest !== final.judgeCalibration.digest
+    || manifest.finalPrerequisites.custody.status !== final.externalPackCustody.status
+    || manifest.finalPrerequisites.custody.custodianIdentity !== final.externalPackCustody.custodianIdentity
+    || manifest.finalPrerequisites.custody.packDigest !== final.externalPackCustody.packDigest
+    || manifest.finalPrerequisites.custody.signature !== final.externalPackCustody.signature
+    || manifest.finalPrerequisites.custody.collisionAuditDigest !== final.externalPackCustody.collisionAuditDigest
+    || manifest.finalPrerequisites.providerExposure.status !== final.providerExposure.status
+    || manifest.finalPrerequisites.providerExposure.digest !== final.providerExposure.digest
+  ) throw new FixedTraceAPrerequisiteManifestParityError("A_authority_leaf_mismatch");
+}
 export function fixedTraceEvaluationProtocolFingerprint(
   protocol: FixedTraceEvaluationProtocol,
 ): string {
@@ -1036,7 +1210,7 @@ function validateFixedTraceEvaluationProtocol(
       "status", "familywiseAlpha", "hypothesisIds", "endpoint", "externalPackDigest",
       "externalN", "candidatePipelineId", "comparatorPipelineId", "architectureArmId",
       "pairedTest", "bootstrap", "exclusions", "fingerprint", "powerResult", "sizingPilot",
-      "judgeCalibration", "finalRandomization", "prospectivePricingCohort", "lloydMoldovanEM",
+      "judgeCalibration", "finalRandomization", "providerExposure", "prospectivePricingCohort", "lloydMoldovanEM",
       "exactPower", "typeIValidation", "operationalGates", "missingnessDeviationAdmission",
       "externalPackCustody",
     ]) ||
@@ -1047,6 +1221,8 @@ function validateFixedTraceEvaluationProtocol(
     !hasExactKeys(final.judgeCalibration, ["status", "allowedRelationshipToScoredDevelopment", "digest"]) ||
     final.judgeCalibration.allowedRelationshipToScoredDevelopment !== "separate_or_cross_fitted_only" ||
     !hasExactKeys(final.finalRandomization, ["scheduleDigest", "episodeClusterManifestDigest"]) ||
+    !hasExactKeys(final.providerExposure, ["status", "digest"]) ||
+    final.providerExposure.status !== "unavailable" || final.providerExposure.digest !== null ||
     !hasExactKeys(final.prospectivePricingCohort, ["id", "effectiveFrom", "effectiveBefore", "digest"]) ||
     !hasExactKeys(final.lloydMoldovanEM, [
       "status", "identity", "version", "implementationDigest", "nuisanceConventionDigest",
@@ -1114,6 +1290,8 @@ function validateFixedTraceEvaluationProtocol(
     protocol.finalProtocol.judgeCalibration.digest !== null ||
     protocol.finalProtocol.finalRandomization.scheduleDigest !== null ||
     protocol.finalProtocol.finalRandomization.episodeClusterManifestDigest !== null ||
+    protocol.finalProtocol.providerExposure.status !== "unavailable" ||
+    protocol.finalProtocol.providerExposure.digest !== null ||
     protocol.finalProtocol.prospectivePricingCohort.id !== null ||
     protocol.finalProtocol.prospectivePricingCohort.effectiveFrom !== null ||
     protocol.finalProtocol.prospectivePricingCohort.effectiveBefore !== null ||
@@ -1400,3 +1578,10 @@ export function assertPromotionGradeDualJudgeFeasibility(
     semanticJudgeCandidateProviders(arm),
   );
 }
+
+// Keep the dependency-free B manifest owned by and parity-checked from A's
+// executable declaration. This runs once after the canonical protocol exists;
+// generic hostile protocol validation remains field-specific above.
+assertFixedTraceAPurePrerequisiteManifestParity(
+  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+);

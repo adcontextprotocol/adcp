@@ -326,6 +326,38 @@ describe('executeFixedTraceToolLoop', () => {
     expect(create).toHaveBeenCalledOnce();
   });
 
+  it('snapshots the returned identity when a tool-input boundary follows it', async () => {
+    const returned = anthropicResponse([{
+      type: 'tool_use', id: 'tool_1', name: 'search_docs', input: {},
+    }], 'tool_use', 'msg_1');
+    returned.model = 'claude-fallback-for-boundary';
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create: vi.fn().mockResolvedValue(returned) } },
+    } as AnthropicMessagesTransport);
+
+    try {
+      await executeFixedTraceToolLoop(
+        provider,
+        request('claude-test'),
+        trace('knowledge-task-model'),
+        [tool('search_docs', ['query']), tool('get_doc')],
+      );
+      throw new Error('Expected a tool-input boundary');
+    } catch (error) {
+      expect(error).toBeInstanceOf(FixedTraceToolLoopBoundaryError);
+      const checkpoint = (error as FixedTraceToolLoopBoundaryError).checkpoint!;
+      expect(checkpoint.providerExposures).toEqual([{
+        attempt: 1,
+        preparedProvider: 'anthropic',
+        preparedModel: 'claude-test',
+        returnedProvider: 'anthropic',
+        returnedModel: 'claude-fallback-for-boundary',
+      }]);
+      expect(Object.isFrozen(checkpoint.providerExposures)).toBe(true);
+      expect(Object.isFrozen(checkpoint.providerExposures[0])).toBe(true);
+    }
+  });
+
   it('rejects duplicate mutation names within one provider response before execution', async () => {
     const duplicateMutationTrace = structuredClone(trace('knowledge-task-model'));
     duplicateMutationTrace.toolFixtures = [
@@ -372,6 +404,34 @@ describe('executeFixedTraceToolLoop', () => {
       },
     });
     expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('keeps ordered exposures through a later duplicate-tool boundary', async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_1', name: 'search_docs', input: { query: 'task model' },
+      }], 'tool_use', 'msg_1'))
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_2', name: 'search_docs', input: { query: 'task model' },
+      }], 'tool_use', 'msg_2'));
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create } },
+    } as AnthropicMessagesTransport);
+
+    await expect(executeFixedTraceToolLoop(
+      provider,
+      request('claude-test'),
+      trace('knowledge-task-model'),
+      [tool('search_docs', ['query']), tool('get_doc')],
+    )).rejects.toMatchObject({
+      reason: 'duplicate_tool_call',
+      checkpoint: {
+        providerExposures: [
+          { attempt: 1, returnedProvider: 'anthropic', returnedModel: 'claude-test' },
+          { attempt: 2, returnedProvider: 'anthropic', returnedModel: 'claude-test' },
+        ],
+      },
+    });
   });
 
   it('requires an exact one-to-one fixture and schema registry', async () => {

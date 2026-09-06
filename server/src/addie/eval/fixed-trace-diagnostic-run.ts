@@ -22,6 +22,8 @@ import {
   fixedTraceResponsePricingPolicy,
   isTrustedBudgetedFixedTraceProvider,
 } from './fixed-trace-budget.js';
+import { types } from 'node:util';
+import { snapshotFixedTraceJson } from './fixed-trace-safe-snapshot.js';
 
 export interface FixedTraceDiagnosticProviderPlan {
   readonly name: string;
@@ -63,6 +65,17 @@ function ownDataProperty(source: unknown, name: string, owner: string): unknown 
   return descriptor.value;
 }
 
+function assertClosedOwnDataRecord(source: unknown, fields: readonly string[], owner: string): void {
+  if (typeof source !== 'object' || source === null || types.isProxy(source) || Object.getPrototypeOf(source) !== Object.prototype) {
+    throw new Error(`Fixed trace diagnostic ${owner} must be a plain non-Proxy object`);
+  }
+  const keys = Reflect.ownKeys(source);
+  if (keys.length !== fields.length || keys.some((key) => typeof key !== 'string' || !fields.includes(key))) {
+    throw new Error(`Fixed trace diagnostic ${owner} must contain exactly its approved fields`);
+  }
+  for (const field of fields) ownDataProperty(source, field, owner);
+}
+
 const DIAGNOSTIC_PRICING_FIELDS = [
   'profileId',
   'inputUsdPerMillionTokens',
@@ -75,19 +88,7 @@ const DIAGNOSTIC_PRICING_FIELDS = [
 ] as const;
 
 function snapshotPricing(pricing: unknown, owner: string): FixedTracePricing {
-  const prototype = typeof pricing === 'object' && pricing !== null
-    ? Object.getPrototypeOf(pricing)
-    : null;
-  if (
-    typeof pricing !== 'object'
-    || pricing === null
-    || (prototype !== Object.prototype && prototype !== null)
-  ) throw new Error(`Fixed trace diagnostic ${owner} must be a plain pricing object`);
-  const keys = Reflect.ownKeys(pricing);
-  if (
-    keys.length !== DIAGNOSTIC_PRICING_FIELDS.length
-    || keys.some((key) => typeof key !== 'string' || !DIAGNOSTIC_PRICING_FIELDS.includes(key as typeof DIAGNOSTIC_PRICING_FIELDS[number]))
-  ) throw new Error(`Fixed trace diagnostic ${owner} must contain only approved pricing fields`);
+  assertClosedOwnDataRecord(pricing, DIAGNOSTIC_PRICING_FIELDS, owner);
   // Structured cloning calls nested getters. Copy each approved data
   // descriptor instead, so a price cannot change between validation and use.
   return Object.freeze({
@@ -105,6 +106,10 @@ function snapshotPricing(pricing: unknown, owner: string): FixedTracePricing {
 function snapshotStageConfig(config: unknown, owner: string): FixedTraceProviderStageConfig {
   // Read each untrusted stage property exactly once. Later checks use only
   // this detached plain object, never a caller-controlled getter or proxy.
+  assertClosedOwnDataRecord(config, [
+    'provider', 'model', 'reasoningEffort', 'maxOutputTokens', 'timeoutMs',
+    'maxIterations', 'transportRetries', 'samplingMode', 'temperature', 'pricing',
+  ], owner);
   const provider = ownDataProperty(config, 'provider', owner);
   const model = ownDataProperty(config, 'model', owner);
   const reasoningEffort = ownDataProperty(config, 'reasoningEffort', owner);
@@ -132,12 +137,7 @@ function snapshotStageConfig(config: unknown, owner: string): FixedTraceProvider
 function snapshotBaseConfig(
   config: FixedTraceDiagnosticArtifactOptions['baseConfig'],
 ): FixedTraceDiagnosticArtifactOptions['baseConfig'] {
-  const { traceSuite, toolDefinitions, ...serializable } = config;
-  return Object.freeze({
-    ...structuredClone(serializable),
-    traceSuite: deepFreeze(structuredClone(traceSuite)),
-    toolDefinitions: deepFreeze(structuredClone(toolDefinitions)),
-  });
+  return snapshotFixedTraceJson(config, 'fixed trace diagnostic base config') as FixedTraceDiagnosticArtifactOptions['baseConfig'];
 }
 
 function snapshotPlans(
@@ -146,6 +146,19 @@ function snapshotPlans(
 ): readonly FixedTraceDiagnosticProviderPlan[] {
   if (!Array.isArray(suppliedPlans) || suppliedPlans.length === 0) {
     throw new Error('Fixed trace diagnostic run requires one or more provider plans');
+  }
+  if (types.isProxy(suppliedPlans) || Object.getPrototypeOf(suppliedPlans) !== Array.prototype || Object.getOwnPropertySymbols(suppliedPlans).length !== 0) {
+    throw new Error('Fixed trace diagnostic provider plans must be a plain non-Proxy array');
+  }
+  const planDescriptors = Object.getOwnPropertyDescriptors(suppliedPlans);
+  for (const key of Object.keys(planDescriptors)) {
+    if (key === 'length') continue;
+    if (!/^(0|[1-9][0-9]*)$/.test(key) || !('value' in planDescriptors[key]!) || !planDescriptors[key]!.enumerable) {
+      throw new Error('Fixed trace diagnostic provider plans contain an accessor or extra property');
+    }
+  }
+  for (const [index, suppliedPlan] of suppliedPlans.entries()) {
+    assertClosedOwnDataRecord(suppliedPlan, ['name', 'router', 'generation'], `provider plan ${index}`);
   }
   const plans = Object.freeze(suppliedPlans.map((suppliedPlan, index) => Object.freeze({
     // Do not validate while reading: a plan accessor must not be able to

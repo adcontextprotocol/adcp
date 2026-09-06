@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   FIXED_TRACE_ADMITTED_CELLS,
   FIXED_TRACE_ARCHITECTURE_CELL_TRUTH,
@@ -42,6 +42,96 @@ const screeningResult = (cell = FIXED_TRACE_ADMITTED_CELLS[0]!, index = 0) => ({
 });
 
 describe("fixed-trace staged protocol", () => {
+  it.each([
+    ["version", (root: Record<string, unknown>) => { root.version = "drift"; }],
+    ["protocolVersion", (root: Record<string, unknown>) => { root.protocolVersion = "drift"; }],
+    ["corpus.suiteVersion", (root: Record<string, unknown>) => { (root.corpus as Record<string, unknown>).suiteVersion = "drift"; }],
+    ["corpus.suiteSha256", (root: Record<string, unknown>) => { (root.corpus as Record<string, unknown>).suiteSha256 = "0".repeat(64); }],
+    ["partitionManifestSha256", (root: Record<string, unknown>) => { root.partitionManifestSha256 = "0".repeat(64); }],
+    ["experimentalDesignFingerprint", (root: Record<string, unknown>) => { root.experimentalDesignFingerprint = "0".repeat(64); }],
+    ["measurement.version", (root: Record<string, unknown>) => { (root.measurement as Record<string, unknown>).version = "drift"; }],
+    ["measurement.sha256", (root: Record<string, unknown>) => { (root.measurement as Record<string, unknown>).sha256 = "0".repeat(64); }],
+    ["authorityDigests.finalPrerequisitesSha256", (root: Record<string, unknown>) => { (root.authorityDigests as Record<string, unknown>).finalPrerequisitesSha256 = "0".repeat(64); }],
+    ["randomization.scheduleDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).randomization) as Record<string, unknown>).scheduleDigest = "x"; }],
+    ["randomization.episodeClusterManifestDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).randomization) as Record<string, unknown>).episodeClusterManifestDigest = "x"; }],
+    ["pricingWindow.id", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).id = "x"; }],
+    ["pricingWindow.effectiveFrom", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).effectiveFrom = "x"; }],
+    ["pricingWindow.effectiveBefore", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).effectiveBefore = "x"; }],
+    ["pricingWindow.digest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).digest = "x"; }],
+    ["calibration.status", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).calibration) as Record<string, unknown>).status = "available"; }],
+    ["calibration.allowedRelationshipToScoredDevelopment", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).calibration) as Record<string, unknown>).allowedRelationshipToScoredDevelopment = "drift"; }],
+    ["calibration.digest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).calibration) as Record<string, unknown>).digest = "x"; }],
+    ["custody.status", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).status = "available"; }],
+    ["custody.custodianIdentity", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).custodianIdentity = "x"; }],
+    ["custody.packDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).packDigest = "x"; }],
+    ["custody.signature", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).signature = "x"; }],
+    ["custody.collisionAuditDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).custody) as Record<string, unknown>).collisionAuditDigest = "x"; }],
+    ["providerExposure.status", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).providerExposure) as Record<string, unknown>).status = "available"; }],
+    ["providerExposure.digest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).providerExposure) as Record<string, unknown>).digest = "x"; }],
+  ])("has A itself reject a changed authoritative prerequisite leaf: %s", async (_leaf, mutate) => {
+    vi.resetModules();
+    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
+      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
+        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
+      );
+      const manifest = JSON.parse(actual.FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON) as Record<string, unknown>;
+      mutate(manifest);
+      return { ...actual, FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: JSON.stringify(manifest) };
+    });
+    try {
+      await expect(import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js"))
+        .rejects.toThrow("fixed-trace A pure prerequisite manifest parity mismatch");
+    } finally {
+      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
+      vi.resetModules();
+    }
+  });
+  it.each(["{}", "[]", "not-json"])("has A fail its single parity boundary for malformed manifest source: %s", async (manifest) => {
+    vi.resetModules();
+    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", () => ({
+      FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: manifest,
+    }));
+    try {
+      await expect(import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js"))
+        .rejects.toThrow("fixed-trace A pure prerequisite manifest parity mismatch");
+    } finally {
+      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
+      vi.resetModules();
+    }
+  });
+  it("fails closed with a frozen typed error when both canonical source exports drift", async () => {
+    vi.resetModules();
+    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
+      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
+        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
+      );
+      const drifted = actual.FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace(
+        "addie-fixed-trace-A", "addie\\u002dfixed-trace-A",
+      );
+      return {
+        ...actual,
+        FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON: drifted,
+        FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON: drifted,
+      };
+    });
+    try {
+      try {
+        await import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js");
+        throw new Error("expected parity failure");
+      } catch (error) {
+        expect(error).toMatchObject({
+          status: "parity_failure",
+          code: "fixed_trace_A_prerequisite_manifest_parity_mismatch",
+          diagnostic: { reason: "noncanonical_or_malformed_source" },
+        });
+        expect(Object.isFrozen(error)).toBe(true);
+        expect(Reflect.set(error as object, "status", "forged")).toBe(false);
+      }
+    } finally {
+      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
+      vi.resetModules();
+    }
+  });
   it("derives the complete 46 development / 36 tuning partitions from corpus authority", () => {
     assertFixedTracePartitionManifest();
     expect(FIXED_TRACE_PARTITION_MANIFEST.development).toHaveLength(46);
