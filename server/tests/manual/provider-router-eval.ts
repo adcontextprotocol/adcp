@@ -26,14 +26,14 @@ import {
   buildRouterEvalRequest,
   MODEL_ROUTER_CORPUS,
   summarizeRouterEval,
-  shouldDispatchWithinSoftBudget,
-  accountRouterCallCostUsd,
+  RouterEvalBudget,
   runRouterEvalMatrix,
   SYNTHETIC_ROUTER_CORPUS,
   type RouterEvalResult,
 } from '../../src/addie/testing/provider-router-eval.js';
 import {
   pricingProfileForCandidate,
+  cohortReturnedModelMatches,
   resolveCurrentEvaluationPricingCohort,
   type DatedPricingProfile,
   type EvaluationPricingCandidateId,
@@ -82,6 +82,12 @@ const RATES: Record<ProviderName, DatedPricingProfile> = {
     ? pricingProfileForCandidate(cohortResult.cohort, 'google-router-generator')
     : undefined as never,
 };
+const requestedCells = providerNames.flatMap((provider) => profiles.map((profile) => ({ provider, profile })));
+const excludedCells = requestedCells
+  .filter((cell) => cell.provider === 'anthropic' && cell.profile === 'native_structured')
+  .map((cell) => ({ ...cell, reason: 'anthropic_router_has_no_native_structured_profile' as const }));
+const plannedCells = requestedCells.filter((cell) => !(cell.provider === 'anthropic' && cell.profile === 'native_structured'));
+if (plannedCells.length === 0) throw new Error('Requested provider/profile matrix has no supported cells');
 
 // This is intentionally before credential reads and provider construction.
 // It validates the candidate cohort only; it cannot establish a provider
@@ -95,6 +101,9 @@ if (validateOnly) {
       repetitions,
       softMaxUsd,
       pricingCohortDigest: cohortResult.cohort.digest,
+      requestedCells,
+      plannedCells,
+      excludedCells,
     },
   }));
   process.exit(0);
@@ -118,12 +127,6 @@ if (providerNames.includes('google')) {
   providers.google = { provider: new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY), model: GOOGLE_ROUTER_MODEL };
 }
 
-const requestedCells = providerNames.flatMap((provider) => profiles.map((profile) => ({ provider, profile })));
-const excludedCells = requestedCells
-  .filter((cell) => cell.provider === 'anthropic' && cell.profile === 'native_structured')
-  .map((cell) => ({ ...cell, reason: 'anthropic_router_has_no_native_structured_profile' as const }));
-const plannedCells = requestedCells.filter((cell) => !(cell.provider === 'anthropic' && cell.profile === 'native_structured'));
-if (plannedCells.length === 0) throw new Error('Requested provider/profile matrix has no supported cells');
 const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 const sourceFiles = [
   'package.json',
@@ -144,22 +147,26 @@ const sourceBundleSha256 = sha256(sourceFiles.map((file) => [file, readFileSync(
 const gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const workingTreeDirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0;
 const projectedReservedCost = plannedCells.reduce((total, cell) => {
-  const rate = RATES[cell.provider];
   const reservedOutput = cell.provider === 'google' ? 1_200 : 300;
   const selected = providers[cell.provider]!;
   const reasoningEffort = cell.provider === 'openai' ? 'none' as const : cell.provider === 'google' ? 'low' as const : undefined;
-  const reservedInput = MODEL_ROUTER_CORPUS.reduce((tokens, testCase) => {
+  const perRepetition = MODEL_ROUTER_CORPUS.reduce((usd, testCase) => {
     const request = buildRouterEvalRequest(selected.model, cell.profile, testCase, reasoningEffort);
-    return tokens + Buffer.byteLength(JSON.stringify(selected.provider.prepare(request).providerRequest), 'utf8');
+    return usd + RouterEvalBudget.reservationUsd(
+      selected.provider.prepare(request),
+      reservedOutput,
+      RATES[cell.provider],
+    );
   }, 0);
-  return total + repetitions * ((reservedInput * rate.inputUsdPerMillionTokens + MODEL_ROUTER_CORPUS.length * reservedOutput * rate.outputUsdPerMillionTokens) / 1_000_000);
+  return total + repetitions * perRepetition;
 }, 0);
 if (projectedReservedCost > softMaxUsd) {
   throw new Error(`Projected reserved cost $${projectedReservedCost.toFixed(4)} exceeds --soft-max-usd=$${softMaxUsd.toFixed(4)}`);
 }
 
 const dispatchedInvocations: Array<Record<string, unknown>> = [];
-let accountedSpendUsd = 0;
+const budget = new RouterEvalBudget(softMaxUsd);
+const settledCosts = new WeakMap<RouterEvalResult, number>();
 const matrixRun = await runRouterEvalMatrix({
   repetitions,
   cases: MODEL_ROUTER_CORPUS,
@@ -173,33 +180,8 @@ const matrixRun = await runRouterEvalMatrix({
           ? 'low' as const
           : undefined;
       const evalRequest = buildRouterEvalRequest(selected.model, cell.profile, testCase, reasoningEffort);
-      const prepared = selected.provider.prepare(evalRequest);
-      const reserveInputTokens = Buffer.byteLength(
-        JSON.stringify(prepared.providerRequest),
-        'utf8',
-      );
       const reserveOutputTokens = cell.provider === 'google' ? 1_200 : 300;
-      const reserveUsd = (reserveInputTokens * rate.inputUsdPerMillionTokens + reserveOutputTokens * rate.outputUsdPerMillionTokens) / 1_000_000;
-      if (!shouldDispatchWithinSoftBudget(accountedSpendUsd, reserveUsd, softMaxUsd)) {
-        return {
-          caseId: testCase.id,
-          provider: cell.provider,
-          requestedModel: selected.model,
-          profile: cell.profile,
-          status: 'not_dispatched_budget',
-          latencyMs: 0,
-          scores: {
-            actionExact: false, toolsExact: false, privilegeLeak: false, invalidToolSet: false,
-            confidenceExact: false, depthExact: false, emojiExact: false,
-          },
-          applicable: {
-            tools: testCase.expected.action === 'respond',
-            confidence: testCase.expected.confidence !== undefined,
-            depth: testCase.expected.requiresDepth !== undefined,
-            emoji: testCase.expected.emoji !== undefined,
-          },
-        };
-      }
+      let reservation: ReturnType<RouterEvalBudget['reserve']> | null = null;
       const result = await evaluateRouterCase(
         selected.provider,
         selected.model,
@@ -209,26 +191,51 @@ const matrixRun = await runRouterEvalMatrix({
           reasoningEffort,
           timeoutMs: 120_000,
           beforeDispatch: (actualPrepared) => {
-            dispatchedInvocations.push({
-              repetition,
-              caseId: testCase.id,
-              provider: cell.provider,
-              profile: cell.profile,
-              reasoningEffort: reasoningEffort ?? 'provider_default',
-              providerRequest: actualPrepared.providerRequest,
-            });
+            if (actualPrepared.provider !== rate.provider || actualPrepared.model !== rate.model) {
+              throw new Error(`Dated pricing prepared invocation drift: expected ${rate.provider}/${rate.model}, received ${actualPrepared.provider}/${actualPrepared.model}`);
+            }
+            reservation = budget.reserve(actualPrepared, reserveOutputTokens, rate);
+            try {
+              dispatchedInvocations.push({
+                repetition,
+                caseId: testCase.id,
+                provider: cell.provider,
+                profile: cell.profile,
+                pricingProfileId: rate.profileId,
+                pricingCohortDigest: cohortResult.cohort.digest,
+                reasoningEffort: reasoningEffort ?? 'provider_default',
+                providerRequest: actualPrepared.providerRequest,
+              });
+              budget.markDispatched(reservation);
+            } catch (error) {
+              budget.cancel(reservation);
+              reservation = null;
+              throw error;
+            }
           },
         },
       );
-      if (result.usage) accountedSpendUsd += accountRouterCallCostUsd(result.usage, {
-        input: rate.inputUsdPerMillionTokens,
-        output: rate.outputUsdPerMillionTokens,
-      });
+      if (!reservation) return result;
+      if (!result.usage) {
+        budget.markExposureUnknown(reservation);
+        return result;
+      }
+      if (!result.returnedModel || !cohortReturnedModelMatches(rate, result.returnedModel)) {
+        budget.markExposureUnknown(reservation);
+        throw new Error(`Dated pricing returned-model drift: expected ${rate.provider}/${rate.model}, received ${result.returnedModel ?? 'missing'}`);
+      }
+      try {
+        settledCosts.set(result, budget.complete(reservation, result.usage, rate));
+      } catch (error) {
+        budget.markExposureUnknown(reservation);
+        throw error;
+      }
       return result;
   },
 });
 const results = matrixRun.results;
-const budgetExposureUnknown = matrixRun.abortedAfter !== null;
+const budgetSnapshot = budget.snapshot();
+const budgetExposureUnknown = budgetSnapshot.exposureUnknown;
 const runAbortedAfter = matrixRun.abortedAfter && {
   repetition: matrixRun.abortedAfter.repetition,
   caseId: matrixRun.abortedAfter.testCase.id,
@@ -240,7 +247,7 @@ const report = plannedCells.map((cell) => {
   const cellResults = results.filter((result) => result.provider === cell.provider && result.profile === cell.profile);
   const summary = summarizeRouterEval(cellResults, repetitions * MODEL_ROUTER_CORPUS.length);
   const rate = RATES[cell.provider];
-  const actualCostUsd = (summary.inputTokens * rate.inputUsdPerMillionTokens + summary.outputTokens * rate.outputUsdPerMillionTokens) / 1_000_000;
+  const actualCostUsd = cellResults.reduce((total, result) => total + (settledCosts.get(result) ?? 0), 0);
   return {
     provider: cell.provider,
     requestedModel: providers[cell.provider]!.model,
@@ -250,6 +257,11 @@ const report = plannedCells.map((cell) => {
     pricingSource: rate.sourceEvidence.url,
     pricingCheckedAt: rate.sourceEvidence.retrievedAt,
     pricingCohortDigest: cohortResult.cohort.digest,
+    pricingProfileId: rate.profileId,
+    cacheAccounting: {
+      cacheRead: rate.cacheReadAccounting,
+      cacheWrite: rate.cacheWriteAccounting,
+    },
     ...summary,
     actualCostUsd,
     cases: cellResults.map((result) => ({
@@ -259,16 +271,24 @@ const report = plannedCells.map((cell) => {
       scores: result.scores,
       latencyMs: result.latencyMs,
       usage: result.usage,
+      actualCostUsd: settledCosts.get(result) ?? 0,
     })),
   };
 });
+const reportedSpendUsd = report.reduce((total, cell) => total + cell.actualCostUsd, 0);
+if (Math.abs(reportedSpendUsd - budgetSnapshot.accountedSpendUsd) > Number.EPSILON * Math.max(1, reportedSpendUsd, budgetSnapshot.accountedSpendUsd)) {
+  throw new Error('Router evaluation pricing evidence does not reconcile with its reservation ledger');
+}
 
 const exactInvocationBundle = plannedCells.flatMap((cell) => {
   const selected = providers[cell.provider]!;
   const reasoningEffort = cell.provider === 'openai' ? 'none' as const : cell.provider === 'google' ? 'low' as const : undefined;
+  const rate = RATES[cell.provider];
   return MODEL_ROUTER_CORPUS.map((testCase) => ({
     provider: cell.provider,
     profile: cell.profile,
+    pricingProfileId: rate.profileId,
+    pricingCohortDigest: cohortResult.cohort.digest,
     caseId: testCase.id,
     request: selected.provider.prepare(
       buildRouterEvalRequest(selected.model, cell.profile, testCase, reasoningEffort),
@@ -302,6 +322,7 @@ console.log(JSON.stringify({
   budgetNote: 'The target gates dispatch using a per-call reserve; it is not a hard spend cap. Remote work may continue after a client timeout. The run halts after any dispatched call whose provider omits usage.',
   budgetExposureUnknown,
   runAbortedAfter,
-  accountedSpendUsd,
+  budget: budgetSnapshot,
+  accountedSpendUsd: budgetSnapshot.accountedSpendUsd,
   report,
 }, null, 2));

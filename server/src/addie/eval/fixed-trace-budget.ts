@@ -13,6 +13,7 @@ import {
 } from '../model-providers/google-generate-content-provider.js';
 import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
 import {
+  datedPricingCostUsd,
   datedPricingProfilesForFixedTrace,
   pricingProfileForCandidate,
   resolveCurrentEvaluationPricingCohort,
@@ -307,43 +308,23 @@ export function fixedTraceEstimatedCostUsd(
   pricing: FixedTraceBudgetPricing,
 ): number {
   validateFixedTracePricing(pricing);
-  const { inputTokens, outputTokens } = usage;
-  if (
-    !Number.isSafeInteger(inputTokens)
-    || inputTokens < 0
-    || !Number.isSafeInteger(outputTokens)
-    || outputTokens < 0
-  ) throw new Error('Fixed trace budget usage is invalid');
-  const cacheReadTokens = usage.cacheReadTokens ?? 0;
-  const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
-  if (
-    !Number.isSafeInteger(cacheReadTokens) || cacheReadTokens < 0
-    || !Number.isSafeInteger(cacheWriteTokens) || cacheWriteTokens < 0
-  ) throw new Error('Fixed trace cache usage is invalid');
-  const readAccounting = pricing.cacheReadAccounting ?? 'unsupported';
-  const writeAccounting = pricing.cacheWriteAccounting ?? 'unsupported';
-  if (cacheReadTokens > 0 && readAccounting === 'unsupported') throw new Error('Fixed trace cache read accounting is unavailable');
-  if (cacheWriteTokens > 0 && writeAccounting === 'unsupported') throw new Error('Fixed trace cache write accounting is unavailable');
-  if (readAccounting === 'subset' && cacheReadTokens > inputTokens) throw new Error('Fixed trace subset cache read usage is invalid');
-  // A subset read and additive write (Google's profile) is valid. Two subset
-  // buckets must jointly fit the provider's normalized input total.
-  if (readAccounting === 'subset' && writeAccounting === 'subset' && cacheReadTokens + cacheWriteTokens > inputTokens) {
-    throw new Error('Fixed trace subset cache usage is invalid');
+  try {
+    return datedPricingCostUsd(pricing, usage);
+  } catch (error) {
+    // Keep fixed-trace's established error contract while delegating the
+    // category arithmetic itself to the dated-profile accounting model.
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'Invalid input token count' || message === 'Invalid output token count') {
+      throw new Error('Fixed trace budget usage is invalid');
+    }
+    if (message === 'Invalid cache-read token count' || message === 'Invalid cache-write token count') {
+      throw new Error('Fixed trace cache usage is invalid');
+    }
+    if (message === 'Cache-read pricing is unavailable') throw new Error('Fixed trace cache read accounting is unavailable');
+    if (message === 'Cache-write pricing is unavailable') throw new Error('Fixed trace cache write accounting is unavailable');
+    if (message.startsWith('Subset cache-')) throw new Error('Fixed trace subset cache usage is invalid');
+    throw error;
   }
-  if (cacheReadTokens > 0 && pricing.cacheReadUsdPerMillionTokens == null) {
-    throw new Error('Fixed trace cache read pricing is unavailable');
-  }
-  if (cacheWriteTokens > 0 && pricing.cacheWriteUsdPerMillionTokens == null) {
-    throw new Error('Fixed trace cache write pricing is unavailable');
-  }
-  return (
-    (inputTokens
-      - (readAccounting === 'subset' ? cacheReadTokens : 0)
-      - (writeAccounting === 'subset' ? cacheWriteTokens : 0)) * pricing.inputUsdPerMillionTokens
-    + outputTokens * pricing.outputUsdPerMillionTokens
-    + cacheReadTokens * (pricing.cacheReadUsdPerMillionTokens ?? 0)
-    + cacheWriteTokens * (pricing.cacheWriteUsdPerMillionTokens ?? 0)
-  ) / 1_000_000;
 }
 
 /**

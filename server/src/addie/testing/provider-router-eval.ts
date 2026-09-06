@@ -19,6 +19,10 @@ import {
   type StrictRouterPlan,
 } from '../router.js';
 import { getValidToolSetNames } from '../tool-sets.js';
+import {
+  datedPricingCostUsd,
+  type DatedPricingProfile,
+} from '../eval/dated-pricing-cohort.js';
 
 export {
   parseStrictRouterPlan,
@@ -93,6 +97,154 @@ export interface RouterEvalMatrixRun<TCell extends RouterEvalMatrixCell> {
   complete: boolean;
   comparisonEligible: boolean;
   abortedAfter: RouterEvalMatrixCoordinate<TCell> | null;
+}
+
+export type RouterEvalBudgetRejectionReason =
+  | 'budget_exposure_unknown'
+  | 'soft_limit_exceeded';
+
+/** A local admission failure; providers have not been called when this is thrown. */
+export class RouterEvalBudgetAdmissionError extends Error {
+  constructor(readonly reason: RouterEvalBudgetRejectionReason) {
+    super(reason);
+    this.name = 'RouterEvalBudgetAdmissionError';
+  }
+}
+
+export interface RouterEvalBudgetSnapshot {
+  readonly softMaxUsd: number;
+  readonly accountedSpendUsd: number;
+  readonly reservedUsd: number;
+  readonly remainingUsd: number | null;
+  readonly dispatchedCalls: number;
+  readonly completedCalls: number;
+  readonly budgetRejectedCalls: number;
+  readonly admissionClosed: boolean;
+  readonly exposureUnknown: boolean;
+}
+
+interface RouterEvalReservation {
+  readonly usd: number;
+  active: boolean;
+}
+
+/**
+ * Serial diagnostic ledger for router comparisons. Its cache exposure and
+ * terminal accounting deliberately use the same dated-profile formula as the
+ * fixed-trace ledger.
+ */
+export class RouterEvalBudget {
+  private accountedSpendUsd = 0;
+  private reservedUsd = 0;
+  private dispatchedCalls = 0;
+  private completedCalls = 0;
+  private budgetRejectedCalls = 0;
+  private admissionClosed = false;
+  private exposureUnknown = false;
+
+  constructor(readonly softMaxUsd: number) {
+    if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
+      throw new RangeError('Router eval soft budget must be positive');
+    }
+  }
+
+  reserve(
+    prepared: PreparedModelInvocation,
+    maxOutputTokens: number,
+    pricing: DatedPricingProfile,
+  ): RouterEvalReservation {
+    if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) {
+      throw new RangeError('Router eval output reserve must be a positive integer');
+    }
+    if (this.exposureUnknown) {
+      this.budgetRejectedCalls++;
+      throw new RouterEvalBudgetAdmissionError('budget_exposure_unknown');
+    }
+    if (this.admissionClosed) {
+      this.budgetRejectedCalls++;
+      throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
+    }
+    const usd = RouterEvalBudget.reservationUsd(prepared, maxOutputTokens, pricing);
+    if (!shouldDispatchWithinSoftBudget(this.accountedSpendUsd + this.reservedUsd, usd, this.softMaxUsd)) {
+      this.admissionClosed = true;
+      this.budgetRejectedCalls++;
+      throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
+    }
+    this.reservedUsd += usd;
+    return { usd, active: true };
+  }
+
+  static reservationUsd(
+    prepared: PreparedModelInvocation,
+    maxOutputTokens: number,
+    pricing: DatedPricingProfile,
+  ): number {
+    assertImmutableDatedPricingProfile(pricing);
+    const inputTokens = Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8');
+    return datedPricingCostUsd(pricing, {
+      inputTokens,
+      outputTokens: maxOutputTokens,
+      // Input is already the ceiling for subset buckets. Each independently
+      // additive bucket can consume the full request ceiling as well.
+      cacheReadTokens: pricing.cacheReadAccounting === 'additive' ? inputTokens : 0,
+      cacheWriteTokens: pricing.cacheWriteAccounting === 'additive' ? inputTokens : 0,
+    });
+  }
+
+  markDispatched(reservation: RouterEvalReservation): void {
+    this.requireActive(reservation);
+    this.dispatchedCalls++;
+  }
+
+  complete(reservation: RouterEvalReservation, usage: ModelUsage, pricing: DatedPricingProfile): number {
+    assertImmutableDatedPricingProfile(pricing);
+    const actualCostUsd = datedPricingCostUsd(pricing, usage);
+    this.release(reservation);
+    this.accountedSpendUsd += actualCostUsd;
+    this.completedCalls++;
+    return actualCostUsd;
+  }
+
+  cancel(reservation: RouterEvalReservation): void {
+    this.release(reservation);
+  }
+
+  markExposureUnknown(reservation: RouterEvalReservation): void {
+    this.release(reservation);
+    this.exposureUnknown = true;
+  }
+
+  snapshot(): RouterEvalBudgetSnapshot {
+    return Object.freeze({
+      softMaxUsd: this.softMaxUsd,
+      accountedSpendUsd: this.accountedSpendUsd,
+      reservedUsd: this.reservedUsd,
+      remainingUsd: this.exposureUnknown
+        ? null
+        : Math.max(0, this.softMaxUsd - this.accountedSpendUsd - this.reservedUsd),
+      dispatchedCalls: this.dispatchedCalls,
+      completedCalls: this.completedCalls,
+      budgetRejectedCalls: this.budgetRejectedCalls,
+      admissionClosed: this.admissionClosed,
+      exposureUnknown: this.exposureUnknown,
+    });
+  }
+
+  private requireActive(reservation: RouterEvalReservation): void {
+    if (!reservation.active) throw new Error('Router eval budget reservation is inactive');
+  }
+
+  private release(reservation: RouterEvalReservation): void {
+    this.requireActive(reservation);
+    reservation.active = false;
+    this.reservedUsd = Math.max(0, this.reservedUsd - reservation.usd);
+  }
+}
+
+function assertImmutableDatedPricingProfile(pricing: DatedPricingProfile): void {
+  if (!Object.isFrozen(pricing) || !Object.isFrozen(pricing.sourceEvidence)) {
+    throw new Error('Router eval pricing profile must be an immutable dated cohort profile');
+  }
 }
 
 export const ROUTER_PLAN_SCHEMA = Object.freeze({
@@ -308,6 +460,9 @@ export async function evaluateRouterCase(
     }
   } catch (error) {
     if (controller.signal.aborted) status = 'timeout_after_dispatch';
+    else if (error instanceof RouterEvalBudgetAdmissionError) {
+      status = 'not_dispatched_budget';
+    }
     else if (error instanceof UnexpectedModelIdentityError) {
       returnedModel = error.actualModel;
       status = 'provider_error';
@@ -542,17 +697,4 @@ export function shouldDispatchWithinSoftBudget(
     && expectedNextCallUsd >= 0
     && softMaxUsd > 0
     && accountedSpendUsd + expectedNextCallUsd <= softMaxUsd;
-}
-
-export function accountRouterCallCostUsd(
-  usage: ModelUsage,
-  ratesPerMillion: { input: number; output: number },
-): number {
-  const inputTokens = usage.inputTokens;
-  const outputTokens = usage.outputTokens;
-  if (
-    ![inputTokens, outputTokens, ratesPerMillion.input, ratesPerMillion.output].every(Number.isFinite)
-    || inputTokens < 0 || outputTokens < 0 || ratesPerMillion.input < 0 || ratesPerMillion.output < 0
-  ) throw new Error('Invalid router eval cost inputs');
-  return (inputTokens * ratesPerMillion.input + outputTokens * ratesPerMillion.output) / 1_000_000;
 }

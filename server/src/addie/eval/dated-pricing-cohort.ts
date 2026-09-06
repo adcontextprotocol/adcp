@@ -87,6 +87,20 @@ export interface DatedPricingUsage {
   readonly cacheWriteTokens?: number;
 }
 
+/**
+ * The rate-bearing portion of a dated profile.  Keep this structural so every
+ * diagnostic ledger can use the same cache accounting model without copying
+ * provider-specific arithmetic.
+ */
+export interface DatedPricingCostProfile {
+  readonly inputUsdPerMillionTokens: number;
+  readonly outputUsdPerMillionTokens: number;
+  readonly cacheReadUsdPerMillionTokens?: number | null;
+  readonly cacheWriteUsdPerMillionTokens?: number | null;
+  readonly cacheReadAccounting?: CacheAccounting;
+  readonly cacheWriteAccounting?: CacheAccounting;
+}
+
 export type DatedPricingUnavailabilityReason =
   | 'candidate_model_drift'
   | 'returned_model_identity_unproven'
@@ -447,7 +461,10 @@ function decimalFraction(rate: number): readonly [number, number] {
 }
 
 /** Exact integer-micro accounting for a cohort profile; fractional micros round up once. */
-export function datedPricingCostMicros(profile: DatedPricingProfile, usage: DatedPricingUsage): number {
+function pricedUsageCategories(
+  profile: DatedPricingCostProfile,
+  usage: DatedPricingUsage,
+): Array<readonly [number, number | null]> {
   const token = (value: unknown, name: string): number => {
     if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error(`Invalid ${name}`);
     return value as number;
@@ -456,16 +473,43 @@ export function datedPricingCostMicros(profile: DatedPricingProfile, usage: Date
   const output = token(usage.outputTokens, 'output token count');
   const read = token(usage.cacheReadTokens ?? 0, 'cache-read token count');
   const write = token(usage.cacheWriteTokens ?? 0, 'cache-write token count');
-  if (profile.cacheReadAccounting === 'unsupported' && read > 0) throw new Error('Cache-read pricing is unavailable');
-  if (profile.cacheWriteAccounting === 'unsupported' && write > 0) throw new Error('Cache-write pricing is unavailable');
-  if (profile.cacheReadAccounting === 'subset' && read > input) throw new Error('Subset cache-read usage exceeds input');
-  if (profile.cacheWriteAccounting === 'subset' && write > input - (profile.cacheReadAccounting === 'subset' ? read : 0)) {
+  const readAccounting = profile.cacheReadAccounting ?? 'unsupported';
+  const writeAccounting = profile.cacheWriteAccounting ?? 'unsupported';
+  const readRate = profile.cacheReadUsdPerMillionTokens ?? null;
+  const writeRate = profile.cacheWriteUsdPerMillionTokens ?? null;
+  if (!(['additive', 'subset', 'unsupported'] as const).includes(readAccounting)) {
+    throw new Error('Cache-read accounting is invalid');
+  }
+  if (!(['additive', 'subset', 'unsupported'] as const).includes(writeAccounting)) {
+    throw new Error('Cache-write accounting is invalid');
+  }
+  for (const [rate, name] of [
+    [profile.inputUsdPerMillionTokens, 'input'],
+    [profile.outputUsdPerMillionTokens, 'output'],
+    [readRate, 'cache-read'],
+    [writeRate, 'cache-write'],
+  ] as const) {
+    if (rate !== null && (!Number.isFinite(rate) || rate < 0)) throw new Error(`Invalid ${name} pricing rate`);
+  }
+  if ((readAccounting === 'unsupported') !== (readRate === null)) throw new Error('Cache-read pricing is ambiguous');
+  if ((writeAccounting === 'unsupported') !== (writeRate === null)) throw new Error('Cache-write pricing is ambiguous');
+  if (readAccounting === 'unsupported' && read > 0) throw new Error('Cache-read pricing is unavailable');
+  if (writeAccounting === 'unsupported' && write > 0) throw new Error('Cache-write pricing is unavailable');
+  if (readAccounting === 'subset' && read > input) throw new Error('Subset cache-read usage exceeds input');
+  if (writeAccounting === 'subset' && write > input - (readAccounting === 'subset' ? read : 0)) {
     throw new Error('Subset cache-write usage exceeds input');
   }
-  const categories: Array<readonly [number, number | null]> = [
-    [input - (profile.cacheReadAccounting === 'subset' ? read : 0) - (profile.cacheWriteAccounting === 'subset' ? write : 0), profile.inputUsdPerMillionTokens],
-    [output, profile.outputUsdPerMillionTokens], [read, profile.cacheReadUsdPerMillionTokens], [write, profile.cacheWriteUsdPerMillionTokens],
+  return [
+    [input - (readAccounting === 'subset' ? read : 0) - (writeAccounting === 'subset' ? write : 0), profile.inputUsdPerMillionTokens],
+    [output, profile.outputUsdPerMillionTokens], [read, readRate], [write, writeRate],
   ];
+}
+
+function pricingCostFraction(
+  profile: DatedPricingCostProfile,
+  usage: DatedPricingUsage,
+): readonly [number, number] {
+  const categories = pricedUsageCategories(profile, usage);
   let denominator = 1;
   const fractions = categories.map(([count, rate]) => {
     if (rate === null && count !== 0) throw new Error('Cache pricing is unavailable');
@@ -478,6 +522,18 @@ export function datedPricingCostMicros(profile: DatedPricingProfile, usage: Date
     if (!Number.isSafeInteger(contribution) || !Number.isSafeInteger(sum + contribution)) throw new Error('Pricing cost exceeds exact accounting range');
     return sum + contribution;
   }, 0);
+  return [total, denominator];
+}
+
+/** Provider-profiled, unrounded accounting used by live diagnostic ledgers. */
+export function datedPricingCostUsd(profile: DatedPricingCostProfile, usage: DatedPricingUsage): number {
+  const [total, denominator] = pricingCostFraction(profile, usage);
+  return total / denominator / 1_000_000;
+}
+
+/** Exact integer-micro accounting for a cohort profile; fractional micros round up once. */
+export function datedPricingCostMicros(profile: DatedPricingCostProfile, usage: DatedPricingUsage): number {
+  const [total, denominator] = pricingCostFraction(profile, usage);
   return Math.ceil(total / denominator);
 }
 
