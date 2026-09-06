@@ -5,6 +5,7 @@ export const ORGANIZATION_AUTHORIZATION_BOUNDARIES = {
   ORGANIZATION_PENDING_JOIN_REQUEST_COUNT_READ: 'organization_pending_join_request_count_read',
   ORGANIZATION_PENDING_JOIN_REQUESTS_READ: 'organization_pending_join_requests_read',
   ORGANIZATION_REFERRAL_CODES_READ: 'organization_referral_codes_read',
+  ORGANIZATION_CERTIFICATION_STALLED_COUNT_READ: 'organization_certification_stalled_count_read',
 } as const;
 
 export type OrganizationAuthorizationBoundary =

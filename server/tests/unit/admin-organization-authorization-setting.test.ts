@@ -41,6 +41,8 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
       "organization_pending_join_requests_read",
     ORGANIZATION_REFERRAL_CODES_READ:
       "organization_referral_codes_read",
+    ORGANIZATION_CERTIFICATION_STALLED_COUNT_READ:
+      "organization_certification_stalled_count_read",
   },
   isOrganizationAuthorizationBoundaryAllowedByEnvironment: environmentAllowsBoundaryMock,
   invalidateOrganizationAuthorizationRuntimeSettingCache: invalidateCacheMock,
@@ -235,6 +237,67 @@ describe("organization authorization runtime admin setting", () => {
         boundaries: ["organization_referral_codes_read"],
       },
       "user_authenticated_admin",
+    );
+  });
+
+  it("persists the certification-stalled-count boundary independently", async () => {
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_certification_stalled_count_read"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(setSettingMock).toHaveBeenCalledWith(
+      { enabled: true, boundaries: ["organization_certification_stalled_count_read"] },
+      "user_authenticated_admin",
+    );
+  });
+
+  it("rejects six-boundary activation until the certification ceiling is staged", async () => {
+    environmentAllowsBoundaryMock.mockImplementation(
+      (boundary: string) => boundary !== "organization_certification_stalled_count_read",
+    );
+
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+          "organization_pending_join_requests_read",
+          "organization_referral_codes_read",
+          "organization_certification_stalled_count_read",
+        ],
+      });
+
+    expect(response.status).toBe(409);
+    expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  it("supports six-boundary activation and candidate-only rollback", async () => {
+    const app = createApp();
+    const currentFive = [
+      "organization_roles_read",
+      "organization_domains_read",
+      "organization_pending_join_request_count_read",
+      "organization_pending_join_requests_read",
+      "organization_referral_codes_read",
+    ];
+    const activation = await request(app)
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({ enabled: true, boundaries: [...currentFive, "organization_certification_stalled_count_read"] });
+    const rollback = await request(app)
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({ enabled: true, boundaries: currentFive });
+
+    expect(activation.status).toBe(200);
+    expect(rollback.status).toBe(200);
+    expect(setSettingMock).toHaveBeenNthCalledWith(
+      2, { enabled: true, boundaries: currentFive }, "user_authenticated_admin",
     );
   });
 

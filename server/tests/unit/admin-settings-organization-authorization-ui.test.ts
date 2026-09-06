@@ -26,6 +26,7 @@ function loadControls(currentSettings: Record<string, unknown>) {
     <input type="checkbox" id="organizationAuthorizationPendingJoinRequestCountRead">
     <input type="checkbox" id="organizationAuthorizationPendingJoinRequestsRead">
     <input type="checkbox" id="organizationAuthorizationReferralCodesRead">
+    <input type="checkbox" id="organizationAuthorizationCertificationStalledCountRead">
     <button id="saveOrganizationAuthorizationBtn" disabled>Save</button>
   `);
   const fetchMock = vi.fn();
@@ -68,6 +69,20 @@ function loadControls(currentSettings: Record<string, unknown>) {
 }
 
 describe("admin organization authorization runtime control", () => {
+  it("contains the certification-stalled-count checkbox in the real admin settings page", () => {
+    const dom = new JSDOM(source);
+    const checkbox = dom.window.document.querySelector<HTMLInputElement>(
+      "#organizationAuthorizationCertificationStalledCountRead",
+    );
+
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.type).toBe("checkbox");
+    expect(checkbox?.closest("label")?.textContent).toContain(
+      "organization_certification_stalled_count_read",
+    );
+    dom.window.close();
+  });
+
   it("renders configured boundaries and disables only unavailable additions", () => {
     const controls = loadControls({
       organization_authorization_enforcement: {
@@ -109,6 +124,9 @@ describe("admin organization authorization runtime control", () => {
     ) as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById(
       "organizationAuthorizationReferralCodesRead",
+    ) as HTMLInputElement).disabled).toBe(true);
+    expect((document.getElementById(
+      "organizationAuthorizationCertificationStalledCountRead",
     ) as HTMLInputElement).disabled).toBe(true);
     expect(document.getElementById("currentOrganizationAuthorizationStatus")?.textContent)
       .toContain("roles read");
@@ -301,6 +319,96 @@ describe("admin organization authorization runtime control", () => {
       boundaries: ["organization_referral_codes_read"],
     });
 
+    controls.dom.window.close();
+  });
+
+  it("saves a certification-stalled-count-only staged selection independently", async () => {
+    const controls = loadControls({
+      organization_authorization_enforcement: { enabled: false, boundaries: [] },
+      organization_authorization_environment_ceiling: {
+        boundaries: ["organization_certification_stalled_count_read"],
+      },
+    });
+    controls.updateOrganizationAuthorizationDisplay();
+    const document = controls.dom.window.document;
+    const checkbox = document.getElementById(
+      "organizationAuthorizationCertificationStalledCountRead",
+    ) as HTMLInputElement;
+    expect(checkbox.disabled).toBe(false);
+    (document.getElementById("organizationAuthorizationEnabled") as HTMLSelectElement).value = "true";
+    checkbox.checked = true;
+    controls.fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      organization_authorization_enforcement: {
+        enabled: true,
+        boundaries: ["organization_certification_stalled_count_read"],
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    await controls.saveOrganizationAuthorizationEnforcement();
+    const [, init] = controls.fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      enabled: true,
+      boundaries: ["organization_certification_stalled_count_read"],
+    });
+    controls.dom.window.close();
+  });
+
+  it("keeps the configured certification-stalled-count checkbox editable for candidate-only rollback", async () => {
+    const controls = loadControls({
+      organization_authorization_enforcement: {
+        enabled: true,
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+          "organization_pending_join_requests_read",
+          "organization_referral_codes_read",
+          "organization_certification_stalled_count_read",
+        ],
+      },
+      organization_authorization_environment_ceiling: {
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+          "organization_pending_join_requests_read",
+          "organization_referral_codes_read",
+        ],
+      },
+    });
+    controls.updateOrganizationAuthorizationDisplay();
+    const document = controls.dom.window.document;
+    const candidate = document.getElementById(
+      "organizationAuthorizationCertificationStalledCountRead",
+    ) as HTMLInputElement;
+    expect(candidate.checked).toBe(true);
+    expect(candidate.disabled).toBe(false);
+    candidate.checked = false;
+    controls.fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      organization_authorization_enforcement: {
+        enabled: true,
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+          "organization_pending_join_requests_read",
+          "organization_referral_codes_read",
+        ],
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    await controls.saveOrganizationAuthorizationEnforcement();
+    const [, init] = controls.fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      enabled: true,
+      boundaries: [
+        "organization_roles_read",
+        "organization_domains_read",
+        "organization_pending_join_request_count_read",
+        "organization_pending_join_requests_read",
+        "organization_referral_codes_read",
+      ],
+    });
     controls.dom.window.close();
   });
 

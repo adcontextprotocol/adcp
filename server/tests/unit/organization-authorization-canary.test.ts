@@ -42,6 +42,8 @@ const PENDING_REQUESTS_BOUNDARY =
   ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_PENDING_JOIN_REQUESTS_READ;
 const REFERRAL_CODES_BOUNDARY =
   ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_REFERRAL_CODES_READ;
+const CERTIFICATION_STALLED_COUNT_BOUNDARY =
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_CERTIFICATION_STALLED_COUNT_READ;
 
 describe("organization authorization canary", () => {
   beforeEach(() => {
@@ -175,6 +177,7 @@ describe("organization authorization canary", () => {
       PENDING_COUNT_BOUNDARY,
       PENDING_REQUESTS_BOUNDARY,
       REFERRAL_CODES_BOUNDARY,
+      CERTIFICATION_STALLED_COUNT_BOUNDARY,
     ].flatMap((requestedBoundary) =>
       [
         BOUNDARY,
@@ -182,6 +185,7 @@ describe("organization authorization canary", () => {
         PENDING_COUNT_BOUNDARY,
         PENDING_REQUESTS_BOUNDARY,
         REFERRAL_CODES_BOUNDARY,
+        CERTIFICATION_STALLED_COUNT_BOUNDARY,
       ]
         .filter((enabledBoundary) => enabledBoundary !== requestedBoundary)
         .map((enabledBoundary) => [requestedBoundary, enabledBoundary] as const),
@@ -191,21 +195,23 @@ describe("organization authorization canary", () => {
     async (requestedBoundary, enabledBoundary) => {
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
-        `${BOUNDARY},${DOMAINS_BOUNDARY},${PENDING_COUNT_BOUNDARY},${PENDING_REQUESTS_BOUNDARY},${REFERRAL_CODES_BOUNDARY}`;
+        `${BOUNDARY},${DOMAINS_BOUNDARY},${PENDING_COUNT_BOUNDARY},${PENDING_REQUESTS_BOUNDARY},${REFERRAL_CODES_BOUNDARY},${CERTIFICATION_STALLED_COUNT_BOUNDARY}`;
       const getWorkos = vi.fn();
+      const getRuntimeSetting = vi.fn().mockResolvedValue({
+        enabled: true,
+        boundaries: [enabledBoundary],
+      });
 
       const decision = await evaluateOrganizationAuthorizationCanary({
         boundary: requestedBoundary,
         principal: { id: "user_test" },
         organizationId: "org_test",
         getWorkos,
-        getRuntimeSetting: vi.fn().mockResolvedValue({
-          enabled: true,
-          boundaries: [enabledBoundary],
-        }),
+        getRuntimeSetting,
       });
 
       expect(decision).toEqual({ enforced: false });
+      expect(getRuntimeSetting).toHaveBeenCalledOnce();
       expect(getWorkos).not.toHaveBeenCalled();
       expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
     },
@@ -367,6 +373,39 @@ describe("organization authorization canary", () => {
       },
       "org_test",
     );
+    expect(evaluateUserOrgRoleAuthorizationMock).toHaveBeenCalledWith(
+      { status: "authorized" },
+      "member",
+    );
+  });
+
+  it("enforces the certification-stalled-count boundary when both rollout gates select it", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
+      CERTIFICATION_STALLED_COUNT_BOUNDARY;
+    const getRuntimeSetting = vi.fn().mockResolvedValue({
+      enabled: true,
+      boundaries: [CERTIFICATION_STALLED_COUNT_BOUNDARY],
+    });
+    const workos = { userManagement: {} };
+    resolveUserOrgAuthorizationMock.mockResolvedValue({ status: "authorized" });
+    evaluateUserOrgRoleAuthorizationMock.mockReturnValue({
+      status: "authorized",
+      membership: {
+        organizationId: "org_test",
+        role: "member",
+        source: "credential_grant",
+      },
+    });
+
+    await expect(evaluateOrganizationAuthorizationCanary({
+      boundary: CERTIFICATION_STALLED_COUNT_BOUNDARY,
+      principal: { id: "user_canonical", authWorkosUserId: "user_authenticated" },
+      organizationId: "org_test",
+      getWorkos: () => workos as never,
+      getRuntimeSetting,
+      minimumRole: "member",
+    })).resolves.toMatchObject({ enforced: true, status: "authorized" });
     expect(evaluateUserOrgRoleAuthorizationMock).toHaveBeenCalledWith(
       { status: "authorized" },
       "member",

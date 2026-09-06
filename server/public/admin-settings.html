@@ -414,6 +414,10 @@
                 <input type="checkbox" id="organizationAuthorizationReferralCodesRead">
                 Referral codes read (<code>organization_referral_codes_read</code>)
               </label>
+              <label>
+                <input type="checkbox" id="organizationAuthorizationCertificationStalledCountRead">
+                Certification stalled count read (<code>organization_certification_stalled_count_read</code>)
+              </label>
               <small>Only deployment-staged boundaries can be selected. Disable here for rollback within five seconds.</small>
             </div>
             <button class="btn btn-primary" id="saveOrganizationAuthorizationBtn" onclick="saveOrganizationAuthorizationEnforcement()" disabled>
@@ -1165,6 +1169,11 @@ loadAuditHistory();
           label: 'referral codes read',
           checkboxId: 'organizationAuthorizationReferralCodesRead',
         },
+        {
+          value: 'organization_certification_stalled_count_read',
+          label: 'certification stalled count read',
+          checkboxId: 'organizationAuthorizationCertificationStalledCountRead',
+        },
       ];
       const configuredBoundaries = new Set(Array.isArray(setting.boundaries) ? setting.boundaries : []);
       const stagedBoundaries = new Set(
@@ -1220,6 +1229,10 @@ loadAuditHistory();
         [
           'organization_referral_codes_read',
           'organizationAuthorizationReferralCodesRead',
+        ],
+        [
+          'organization_certification_stalled_count_read',
+          'organizationAuthorizationCertificationStalledCountRead',
         ],
       ]
         .filter(([, checkboxId]) => document.getElementById(checkboxId).checked)
