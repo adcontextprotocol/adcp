@@ -5,7 +5,7 @@ import {
   fixedTraceComponentSmokePrivateLedgerPlan,
   type FixedTraceComponentSmokePlanEntry,
 } from '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.js';
-import { datedPricingCostMicros, datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
+import { fixedTraceComponentSmokePrivateAuthorityCostMicros } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
 
 const digest = 'a'.repeat(64);
 const reservation = Object.freeze({
@@ -176,8 +176,7 @@ describe('private ledger state machine', () => {
     ['openai-gpt-5.6-luna-standard-2026-09-05', { inputTokens: 2, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 1 }, 1],
     ['google-gemini-3.7-flash-through-2026-12-31', { inputTokens: 1, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 0 }, 1],
   ])('uses exact rounded microdollar pricing for %s', (profileId, usage, expectedMicros) => {
-    const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === profileId)!;
-    expect(datedPricingCostMicros(profile, usage)).toBe(expectedMicros);
+    expect(fixedTraceComponentSmokePrivateAuthorityCostMicros(profileId, usage)).toBe(expectedMicros);
   });
 
   it('poisons an authorization with an unresolved intent and maps response failures to unknown exposure', async () => {

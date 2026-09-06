@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
-import { fixedTraceComponentSmokeAdmission } from './fixed-trace-component-smoke-admission.js';
-import { datedPricingCostMicros, datedPricingProfilesForFixedTrace } from './dated-pricing-cohort.js';
+import {
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY,
+  fixedTraceComponentSmokePrivateAuthorityCostMicros,
+  fixedTraceComponentSmokePrivateAuthorityHasAdditiveCache,
+  fixedTraceComponentSmokePrivateAuthorityIdentityMatches,
+  fixedTraceComponentSmokePrivateAuthorityPlan,
+  type FixedTraceComponentSmokePrivateAuthorityPlanEntry,
+} from './fixed-trace-component-smoke-private-authority.js';
 import {
   fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger,
   isFixedTraceComponentSmokeVerifiedGrant,
@@ -29,8 +35,7 @@ export const FIXED_TRACE_COMPONENT_SMOKE_RESPONSE_HMAC_DOMAIN =
 export const FIXED_TRACE_COMPONENT_SMOKE_LEDGER_LOCK_TIMEOUT_MS = 250 as const;
 export const FIXED_TRACE_COMPONENT_SMOKE_LEDGER_STATEMENT_TIMEOUT_MS = 1_000 as const;
 
-type Admission = ReturnType<typeof fixedTraceComponentSmokeAdmission>;
-type Disposition = Admission['privateRuntimePlan'][number]['dispatchDisposition'];
+type Disposition = FixedTraceComponentSmokePrivateAuthorityPlanEntry['disposition'];
 export type FixedTraceComponentSmokeLedgerRefusal =
   | 'grant_not_active' | 'grant_already_consumed' | 'admission_drift'
   | 'unknown_exposure' | 'run_halted' | 'duplicate_attempt_id' | 'intent_required'
@@ -43,22 +48,7 @@ export interface FixedTraceComponentSmokeReservation {
   readonly providerDispatchEntryCount: 126;
   readonly reservationMicrodollars: 2819484;
 }
-export interface FixedTraceComponentSmokePlanEntry {
-  readonly assignmentId: string;
-  readonly probeId: string;
-  readonly cellId: string;
-  readonly disposition: Disposition;
-  readonly maximumProviderInvocations: number;
-  readonly provider: string;
-  readonly model: string;
-  readonly effort: string;
-  readonly pricingProfileId: string;
-  readonly maxInputTokens: number;
-  readonly maxOutputTokens: number;
-  readonly timeoutMs: number;
-  readonly retries: 0;
-  readonly reservedMicrodollars: readonly number[];
-}
+export type FixedTraceComponentSmokePlanEntry = FixedTraceComponentSmokePrivateAuthorityPlanEntry;
 export interface FixedTraceComponentSmokeProviderIntent {
   readonly reservation: FixedTraceComponentSmokeReservation;
   readonly attemptId: string;
@@ -133,7 +123,7 @@ function safeString(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= max && /^[a-z0-9._:-]+$/i.test(value);
 }
 function expectedPlanEntry(assignmentId: string): FixedTraceComponentSmokePlanEntry | null {
-  return fixedTraceComponentSmokePrivateLedgerPlan()?.find((entry) => entry.assignmentId === assignmentId) ?? null;
+  return fixedTraceComponentSmokePrivateLedgerPlan().find((entry) => entry.assignmentId === assignmentId) ?? null;
 }
 function pgPlanMatches(row: Record<string, unknown>, expected: FixedTraceComponentSmokePlanEntry): boolean {
   const reservations = row.reserved_microdollars;
@@ -151,39 +141,19 @@ function pgPlanMatches(row: Record<string, unknown>, expected: FixedTraceCompone
 }
 
 /** Derives, rather than accepts, the exact 168-entry admitted plan. */
-export function fixedTraceComponentSmokePrivateLedgerPlan(): readonly FixedTraceComponentSmokePlanEntry[] | null {
-  const admission = fixedTraceComponentSmokeAdmission();
-  if (admission.status !== 'ready_for_explicit_paid_authorization'
-    || admission.fingerprints.aggregateAdmission !== '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d'
-    || admission.cardinality.caseCellAssignments !== 168
-    || admission.cardinality.providerDispatchCaseCellAssignments !== 126
-    || admission.cardinality.preDispatchFaultCaseCellAssignments !== 21
-    || admission.cardinality.maximumProviderInvocations !== 192
-    || admission.pricing.reservationMicrodollars !== 2_819_484
-    || admission.pricing.providerCeilingUsd !== 5) return null;
-  const cells = new Map(admission.cells.map((cell) => [cell.id, cell]));
-  const entries = admission.privateRuntimePlan.map((entry) => {
-    const cell = cells.get(entry.cellId);
-    if (!cell || entry.maximumProviderInvocations !== entry.perAttemptReservationMicrodollars.length || entry.sdkAutomaticRetries !== 0) return null;
-    return Object.freeze({
-      assignmentId: sha256({ domain: 'adcp:addie:fixed-trace-component-smoke:plan-entry:v1\0', fingerprint: admission.fingerprints.aggregateAdmission, probeId: entry.probeId, cellId: entry.cellId }),
-      probeId: entry.probeId, cellId: entry.cellId, disposition: entry.dispatchDisposition,
-      maximumProviderInvocations: entry.maximumProviderInvocations, provider: cell.provider, model: cell.model, effort: cell.effort,
-      pricingProfileId: entry.pricingProfileId, maxInputTokens: entry.maxInputTokensPerInvocation,
-      maxOutputTokens: entry.maxOutputTokensPerInvocation, timeoutMs: entry.timeoutMs, retries: 0 as const,
-      reservedMicrodollars: Object.freeze([...entry.perAttemptReservationMicrodollars]),
-    });
-  });
-  if (entries.some((entry) => entry === null)) return null;
-  const plan = entries as FixedTraceComponentSmokePlanEntry[];
-  const total = plan.reduce((sum, entry) => sum + entry.reservedMicrodollars.reduce((subtotal, micros) => subtotal + micros, 0), 0);
+export function fixedTraceComponentSmokePrivateLedgerPlan(): readonly FixedTraceComponentSmokePlanEntry[] {
+  const plan = fixedTraceComponentSmokePrivateAuthorityPlan();
+  const authority = FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY;
   const dispatch = plan.filter((entry) => entry.disposition === 'provider_dispatch');
-  const nonDispatchValid = plan.filter((entry) => entry.disposition !== 'provider_dispatch')
-    .every((entry) => entry.maximumProviderInvocations === 0 && entry.reservedMicrodollars.length === 0);
-  return plan.length === 168 && new Set(plan.map((entry) => entry.assignmentId)).size === 168
-    && dispatch.length === 126 && dispatch.reduce((sum, entry) => sum + entry.maximumProviderInvocations, 0) === 192
-    && total === 2_819_484 && plan.every((entry) => entry.reservedMicrodollars.every((micros) => Number.isSafeInteger(micros) && micros > 0 && micros <= 2_819_484))
-    && nonDispatchValid ? Object.freeze(plan) : null;
+  const total = plan.reduce((sum, entry) => sum + entry.reservedMicrodollars.reduce((subtotal, micros) => subtotal + micros, 0), 0);
+  if (plan.length !== authority.cardinality.caseCellAssignments
+    || dispatch.length !== authority.cardinality.providerDispatchCaseCellAssignments
+    || dispatch.reduce((sum, entry) => sum + entry.maximumProviderInvocations, 0) !== authority.cardinality.maximumProviderInvocations
+    || total !== authority.reservationMicrodollars
+    || plan.some((entry) => entry.retries !== 0 || (entry.disposition === 'provider_dispatch') !== (entry.maximumProviderInvocations > 0))) {
+    throw new Error('private ledger authority integrity failure');
+  }
+  return plan;
 }
 
 function reservationIdForAuthorizationDigest(authorizationDigest: string): string {
@@ -376,10 +346,11 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (ordinal === null || maxInput === null || maxOutput === null || timeout === null) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
         const reservedForOrdinal = pgSafeInt(row.reserved_microdollars[ordinal - 1], 2_819_484);
         const maximumInvocations = pgSafeInt(row.maximum_provider_invocations, 2);
-        const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === row.pricing_profile_id);
-        if (parsed.usage && (!profile || profile.provider !== row.requested_provider || profile.model !== row.requested_model)) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
+        if (parsed.usage && !fixedTraceComponentSmokePrivateAuthorityIdentityMatches(row.pricing_profile_id, {
+          provider: row.requested_provider, model: row.requested_model,
+        })) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
         let spent: number | null = null;
-        try { spent = parsed.usage ? datedPricingCostMicros(profile!, parsed.usage) : null; } catch { return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure'); }
+        try { spent = parsed.usage ? fixedTraceComponentSmokePrivateAuthorityCostMicros(row.pricing_profile_id, parsed.usage) : null; } catch { return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure'); }
         if (parsed.status === 'succeeded' && parsed.responseDisposition === 'tool_continuation_required'
           && (maximumInvocations === null || ordinal === maximumInvocations)) {
           return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'plan_mismatch', spent);
@@ -387,10 +358,9 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         // A complete receipt remains accounting evidence even if it breaches a
         // pinned input/output/timeout limit. Never replace known exposure with
         // NULL merely because this one-shot run must halt.
-        const additiveCacheOverLimit = parsed.usage !== null && profile !== undefined && (
-          (profile.cacheReadAccounting === 'additive' && parsed.usage.cacheReadTokens > maxInput)
-          || (profile.cacheWriteAccounting === 'additive' && parsed.usage.cacheWriteTokens > maxInput)
-        );
+        const additiveCacheOverLimit = parsed.usage !== null
+          && fixedTraceComponentSmokePrivateAuthorityHasAdditiveCache(row.pricing_profile_id)
+          && (parsed.usage.cacheReadTokens > maxInput || parsed.usage.cacheWriteTokens > maxInput);
         if (parsed.usage && (parsed.usage.inputTokens > maxInput || additiveCacheOverLimit
           || parsed.usage.outputTokens > maxOutput || parsed.usage.latencyMs > timeout)) return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'plan_mismatch', spent);
         // The target attempt is locked before the authorization above. Every

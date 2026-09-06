@@ -1,8 +1,7 @@
 import { createHash, createPublicKey, verify, type KeyObject } from 'node:crypto';
 import {
-  FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
-  fixedTraceComponentSmokeAdmission,
-} from './fixed-trace-component-smoke-admission.js';
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY,
+} from './fixed-trace-component-smoke-private-authority.js';
 import { snapshotFixedTraceJson } from './fixed-trace-safe-snapshot.js';
 
 /**
@@ -16,8 +15,7 @@ export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM = 'Ed25519' as c
 export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_DOMAIN =
   'adcp:addie:fixed-trace-component-smoke:private-grant:v1\0' as const;
 
-type Admission = ReturnType<typeof fixedTraceComponentSmokeAdmission>;
-type Cardinality = Admission['cardinality'];
+type Cardinality = typeof FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality;
 
 export interface FixedTraceComponentSmokeSignedGrantPayload {
   readonly grantVersion: typeof FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION;
@@ -25,7 +23,7 @@ export interface FixedTraceComponentSmokeSignedGrantPayload {
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly stageId: 'stage_1_smoke';
-  readonly admissionVersion: typeof FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION;
+  readonly admissionVersion: typeof FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.admissionVersion;
   readonly aggregateAdmissionFingerprint: string;
   readonly cardinality: Cardinality;
   readonly reservationMicrodollars: number;
@@ -108,11 +106,11 @@ function exactIso(value: unknown): value is string {
 function base64url(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{86}$/.test(value);
 }
-function exactCardinality(value: unknown, admission: Admission): value is Cardinality {
+function exactCardinality(value: unknown): value is Cardinality {
   try {
     const candidate = snapshotFixedTraceJson(value, 'signed grant cardinality') as Record<string, unknown>;
-    return exactKeys(candidate, Object.keys(admission.cardinality))
-      && canonicalJson(candidate) === canonicalJson(admission.cardinality);
+    return exactKeys(candidate, Object.keys(FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality))
+      && canonicalJson(candidate) === canonicalJson(FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality);
   } catch { return false; }
 }
 
@@ -125,33 +123,31 @@ export function fixedTraceComponentSmokeSignedPayloadDigest(payload: FixedTraceC
   return createHash('sha256').update(fixedTraceComponentSmokeSignedGrantBytes(payload)).digest('hex');
 }
 
-function parsePayload(value: unknown, admission: Admission): FixedTraceComponentSmokeSignedGrantPayload | null {
+function parsePayload(value: unknown): FixedTraceComponentSmokeSignedGrantPayload | null {
   try {
     const payload = snapshotFixedTraceJson(value, 'signed private grant payload') as Record<string, unknown>;
-    const pricing = admission.pricing;
-    if (pricing.cohortDigest === null || pricing.reservationMicrodollars === null) return null;
     if (!exactKeys(payload, ['admissionVersion', 'aggregateAdmissionFingerprint', 'cardinality', 'expiresAt', 'grantVersion', 'issuedAt', 'kid', 'nonceCommitment', 'pricingCohortDigest', 'providerCeilingMicrodollars', 'reservationMicrodollars', 'stageId'])) return null;
     if (payload.grantVersion !== FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION
       || !kid(payload.kid) || !exactIso(payload.issuedAt) || !exactIso(payload.expiresAt)
-      || payload.stageId !== admission.stageControls.phaseId
-      || payload.admissionVersion !== FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION
-      || payload.aggregateAdmissionFingerprint !== admission.fingerprints.aggregateAdmission
-      || !exactCardinality(payload.cardinality, admission)
-      || payload.reservationMicrodollars !== pricing.reservationMicrodollars
-      || payload.providerCeilingMicrodollars !== pricing.providerCeilingUsd * 1_000_000
-      || !pricingCohortDigest(payload.pricingCohortDigest) || payload.pricingCohortDigest !== pricing.cohortDigest
+      || payload.stageId !== 'stage_1_smoke'
+      || payload.admissionVersion !== FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.admissionVersion
+      || payload.aggregateAdmissionFingerprint !== FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint
+      || !exactCardinality(payload.cardinality)
+      || payload.reservationMicrodollars !== FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars
+      || payload.providerCeilingMicrodollars !== FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.providerCeilingMicrodollars
+      || !pricingCohortDigest(payload.pricingCohortDigest) || payload.pricingCohortDigest !== FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.pricingCohortDigest
       || !hexDigest(payload.nonceCommitment)
       || Date.parse(payload.issuedAt as string) >= Date.parse(payload.expiresAt as string)) return null;
     return Object.freeze(payload) as unknown as FixedTraceComponentSmokeSignedGrantPayload;
   } catch { return null; }
 }
 
-function parseGrant(value: unknown, admission: Admission): { payload: FixedTraceComponentSmokeSignedGrantPayload; signature: Buffer } | null {
+function parseGrant(value: unknown): { payload: FixedTraceComponentSmokeSignedGrantPayload; signature: Buffer } | null {
   try {
     const grant = snapshotFixedTraceJson(value, 'signed private grant') as Record<string, unknown>;
     if (!exactKeys(grant, ['algorithm', 'payload', 'signature'])
       || grant.algorithm !== FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM || !base64url(grant.signature)) return null;
-    const payload = parsePayload(grant.payload, admission);
+    const payload = parsePayload(grant.payload);
     if (!payload) return null;
     const signature = Buffer.from(grant.signature, 'base64url');
     return signature.length === 64 ? { payload, signature } : null;
@@ -159,9 +155,8 @@ function parseGrant(value: unknown, admission: Admission): { payload: FixedTrace
 }
 
 function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record<string, string>> | null, mintLedgerCapability: boolean): FixedTraceComponentSmokeVerifiedGrant | null {
-  const admission = fixedTraceComponentSmokeAdmission();
   if (!(now instanceof Date) || !Number.isFinite(now.valueOf()) || registry === null) return null;
-  const parsed = parseGrant(value, admission);
+  const parsed = parseGrant(value);
   if (!parsed || Date.parse(parsed.payload.issuedAt) > now.valueOf() || Date.parse(parsed.payload.expiresAt) <= now.valueOf()
     || Date.parse(parsed.payload.expiresAt) - Date.parse(parsed.payload.issuedAt) > FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS) return null;
   const spki = registry[parsed.payload.kid];

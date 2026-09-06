@@ -1,7 +1,7 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
+import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
 import {
   FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM,
   FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION,
@@ -26,16 +26,15 @@ const trustRoot = Object.freeze({
 const trustRootPin = createHash('sha256').update(JSON.stringify(trustRoot), 'utf8').digest('hex');
 
 function payload(overrides: Partial<FixedTraceComponentSmokeSignedGrantPayload> = {}): FixedTraceComponentSmokeSignedGrantPayload {
-  const admission = fixedTraceComponentSmokeAdmission();
-  if (!admission.pricing.cohortDigest || admission.pricing.reservationMicrodollars === null) throw new Error('expected pinned pricing');
   return {
     grantVersion: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION, kid: TEST_KID,
     issuedAt: '2026-09-06T11:55:00.000Z', expiresAt: '2026-09-06T12:05:00.000Z',
-    stageId: 'stage_1_smoke', admissionVersion: admission.version,
-    aggregateAdmissionFingerprint: admission.fingerprints.aggregateAdmission,
-    cardinality: admission.cardinality, reservationMicrodollars: admission.pricing.reservationMicrodollars,
-    providerCeilingMicrodollars: admission.pricing.providerCeilingUsd * 1_000_000,
-    pricingCohortDigest: admission.pricing.cohortDigest,
+    stageId: 'stage_1_smoke', admissionVersion: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.admissionVersion,
+    aggregateAdmissionFingerprint: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint,
+    cardinality: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality,
+    reservationMicrodollars: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars,
+    providerCeilingMicrodollars: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.providerCeilingMicrodollars,
+    pricingCohortDigest: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.pricingCohortDigest,
     nonceCommitment: 'a'.repeat(64), ...overrides,
   };
 }

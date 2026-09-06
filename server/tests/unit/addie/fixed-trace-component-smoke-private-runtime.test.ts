@@ -1,7 +1,8 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
+import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
 import {
   FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM,
   FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION,
@@ -18,13 +19,15 @@ const rootPin = createHash('sha256').update(JSON.stringify(root), 'utf8').digest
 const plan = fixedTraceComponentSmokePrivateLedgerPlan()!;
 
 function signedGrant(overrides: Partial<FixedTraceComponentSmokeSignedGrantPayload> = {}) {
-  const admission = fixedTraceComponentSmokeAdmission();
   const payload: FixedTraceComponentSmokeSignedGrantPayload = {
     grantVersion: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION, kid: root.kid,
     issuedAt: '2026-09-06T11:55:00.000Z', expiresAt: '2026-09-06T12:05:00.000Z', stageId: 'stage_1_smoke',
-    admissionVersion: admission.version, aggregateAdmissionFingerprint: admission.fingerprints.aggregateAdmission,
-    cardinality: admission.cardinality, reservationMicrodollars: 2_819_484, providerCeilingMicrodollars: 5_000_000,
-    pricingCohortDigest: admission.pricing.cohortDigest!, nonceCommitment: 'a'.repeat(64), ...overrides,
+    admissionVersion: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.admissionVersion,
+    aggregateAdmissionFingerprint: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint,
+    cardinality: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.cardinality,
+    reservationMicrodollars: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars,
+    providerCeilingMicrodollars: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.providerCeilingMicrodollars,
+    pricingCohortDigest: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.pricingCohortDigest, nonceCommitment: 'a'.repeat(64), ...overrides,
   };
   return { algorithm: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM, payload, signature: sign(null, fixedTraceComponentSmokeSignedGrantBytes(payload), keys.privateKey).toString('base64url') };
 }
@@ -131,5 +134,53 @@ describe('private fake-only component smoke runtime', () => {
     expect(source).not.toContain('from \'../../db/client'); expect(source).not.toContain('prompt:'); expect(source).not.toContain('apiKey');
     expect(createFixedTraceComponentSmokePrivateRuntime({} as never)).toBeNull();
     expect(createFixedTraceComponentSmokePrivateRuntime).toBeTypeOf('function');
+  });
+
+  it('keeps every private runtime graph leaf clear of live configuration, provider, and storyboard imports', () => {
+    const leaves = [
+      '../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.ts',
+      '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.ts',
+      '../../../src/addie/eval/fixed-trace-component-smoke-private-authorization.ts',
+      '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.ts',
+    ].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'));
+    for (const source of leaves) {
+      expect(source).not.toContain('process.env');
+      expect(source).not.toContain('createLogger');
+      expect(source).not.toContain('console.');
+      expect(source).not.toContain('fetch(');
+      expect(source).not.toMatch(/from ['"][^'"]*(?:dated-pricing-cohort|fixed-trace-component-smoke-admission|config\/models|model-providers|storyboard)[^'"]*['"]/);
+    }
+  });
+
+  it('imports the complete private runtime graph in fresh processes without model/provider env authority or side effects', () => {
+    const runtimeUrl = new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-runtime.ts', import.meta.url).href;
+    const ledgerUrl = new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.ts', import.meta.url).href;
+    const authorityUrl = new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-authority.ts', import.meta.url).href;
+    const source = `import '${runtimeUrl}'; import { fixedTraceComponentSmokePrivateLedgerPlan } from '${ledgerUrl}'; import { FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY } from '${authorityUrl}'; const plan = fixedTraceComponentSmokePrivateLedgerPlan(); process.stdout.write(JSON.stringify({ fingerprint: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint, reservation: FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.reservationMicrodollars, plan }));`;
+    const run = (environment: Record<string, string>) => spawnSync(process.execPath, [
+      '--import', 'tsx', '--input-type=module', '--eval', source,
+    ], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
+      env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...environment },
+    });
+    const baseline = run({});
+    const overridden = run({
+      CLAUDE_MODEL_FAST: 'unreviewed-fast', CLAUDE_MODEL_PRIMARY: 'unreviewed-primary',
+      OPENAI_API_KEY: 'not-a-real-key', ANTHROPIC_API_KEY: 'not-a-real-key', GEMINI_API_KEY: 'not-a-real-key',
+      OPENAI_MODEL: 'unreviewed-openai', GEMINI_MODEL_FAST: 'unreviewed-google',
+    });
+    for (const child of [baseline, overridden]) {
+      expect(child.status, child.stderr).toBe(0);
+      expect(child.stderr).toBe('');
+      expect(child.stdout).not.toContain('Loaded test kit');
+      expect(child.stdout).not.toContain('\n');
+    }
+    expect(overridden.stdout).toBe(baseline.stdout);
+    const output = JSON.parse(baseline.stdout) as { fingerprint: string; reservation: number; plan: unknown[] };
+    expect(output).toMatchObject({
+      fingerprint: '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d',
+      reservation: 2_819_484,
+    });
+    expect(output.plan).toHaveLength(168);
   });
 });
