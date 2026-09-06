@@ -50,6 +50,7 @@ const summary: FixedTraceSummary = {
     malformed: 0,
     provider_error: 1,
     timeout_after_dispatch: 0,
+    unknown_exposure: 0,
     not_dispatched_budget: 0,
     not_admitted_architecture: 0,
   },
