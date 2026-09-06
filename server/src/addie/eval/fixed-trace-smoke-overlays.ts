@@ -29,7 +29,7 @@ type InputAttestation = 'parent_input_not_locked' | 'exact_parent_input';
 type SemanticAssessment = 'requires_external_judge';
 
 export type FixedTraceComponentSmokeEvidenceUse =
-  | 'component_model_loop_admission'
+  | 'custodial_execution_evidence_only'
   | 'tuning'
   | 'final'
   | 'architecture_comparison'
@@ -104,7 +104,10 @@ export interface FixedTraceComponentSmokeProbe {
   readonly terminalInvariant: SmokeTerminalInvariant;
   readonly evidence: {
     readonly owner: 'evaluator';
-    readonly permittedUse: 'component_model_loop_admission';
+    /** A separate trusted custodian may attest a returned execution digest. */
+    readonly permittedUse: 'custodial_execution_evidence_only';
+    readonly admissionEligible: false;
+    readonly qualityEligible: false;
     readonly finalEligible: false;
     readonly architectureComparisonEligible: false;
     readonly tuningEligible: false;
@@ -140,10 +143,11 @@ export interface FixedTraceComponentSmokeTerminal {
   readonly providerDispatched: false;
 }
 
-export interface FixedTraceComponentSmokeJudgment {
-  readonly probeId: string;
-  readonly probeSemanticSha256: string;
-  readonly assessment: 'externally_judged_pass';
+/** Optional execution identity, attested only as opaque run provenance. */
+export interface FixedTraceComponentSmokeExecutionIdentity {
+  readonly runId?: string;
+  readonly cellId?: string;
+  readonly modelId?: string;
 }
 
 export class FixedTraceComponentSmokeError extends Error {
@@ -281,7 +285,7 @@ function deriveProbe(raw: typeof RAW_PROBES[number]): FixedTraceComponentSmokePr
     fixtureSequence: raw.fixtureSequence,
     executionSequence: executionSequence(raw.parent.id, raw.fixtureSequence),
     terminalInvariant: raw.terminalInvariant,
-    evidence: Object.freeze({ owner: 'evaluator', permittedUse: 'component_model_loop_admission', finalEligible: false, architectureComparisonEligible: false, tuningEligible: false, noninferiorityEligible: false, corpusCountEligible: false } as const),
+    evidence: Object.freeze({ owner: 'evaluator', permittedUse: 'custodial_execution_evidence_only', admissionEligible: false, qualityEligible: false, finalEligible: false, architectureComparisonEligible: false, tuningEligible: false, noninferiorityEligible: false, corpusCountEligible: false } as const),
   } satisfies Omit<FixedTraceComponentSmokeProbe, 'semanticSha256'>;
   return Object.freeze({ ...base, semanticSha256: probeSemanticSha256(base) });
 }
@@ -376,10 +380,10 @@ function validateProbeShape(value: unknown): FixedTraceComponentSmokeProbe {
   booleanValue(invariant.requiresEmptyOutput, 'probe.terminalInvariant.requiresEmptyOutput');
 
   const evidence = plainRecord(probe.evidence, 'probe.evidence');
-  requiredKeys(evidence, ['owner', 'permittedUse', 'finalEligible', 'architectureComparisonEligible', 'tuningEligible', 'noninferiorityEligible', 'corpusCountEligible'], 'probe.evidence');
+  requiredKeys(evidence, ['owner', 'permittedUse', 'admissionEligible', 'qualityEligible', 'finalEligible', 'architectureComparisonEligible', 'tuningEligible', 'noninferiorityEligible', 'corpusCountEligible'], 'probe.evidence');
   stringValue(evidence.owner, 'probe.evidence.owner');
   stringValue(evidence.permittedUse, 'probe.evidence.permittedUse');
-  ['finalEligible', 'architectureComparisonEligible', 'tuningEligible', 'noninferiorityEligible', 'corpusCountEligible'].forEach((key) => booleanValue(evidence[key], `probe.evidence.${key}`));
+  ['admissionEligible', 'qualityEligible', 'finalEligible', 'architectureComparisonEligible', 'tuningEligible', 'noninferiorityEligible', 'corpusCountEligible'].forEach((key) => booleanValue(evidence[key], `probe.evidence.${key}`));
   return probe as unknown as FixedTraceComponentSmokeProbe;
 }
 
@@ -427,25 +431,12 @@ export function assertFixedTraceComponentSmokeParentBinding(parentCase: unknown,
   }
 }
 
-function externalSemanticJudgment(value: unknown, probe: FixedTraceComponentSmokeProbe): FixedTraceComponentSmokeJudgment {
-  const detached = detachFixedTraceSnapshot(value);
-  if (!detached.snapshot) throw new FixedTraceComponentSmokeError(`unsafe_semantic_judgment:${detached.error ?? 'not_plain_data'}`);
-  const judgment = plainRecord(detached.snapshot, 'semantic_judgment');
-  requiredKeys(judgment, ['probeId', 'probeSemanticSha256', 'assessment'], 'semantic_judgment');
-  Object.entries(judgment).forEach(([key, item]) => stringValue(item, `semantic_judgment.${key}`));
-  if (judgment.probeId !== probe.id || judgment.probeSemanticSha256 !== probe.semanticSha256 || judgment.assessment !== 'externally_judged_pass') {
-    throw new FixedTraceComponentSmokeError(`external_semantic_judgment_mismatch:${probe.id}`);
-  }
-  return judgment as unknown as FixedTraceComponentSmokeJudgment;
-}
-
-/** Admission never treats deterministic structural validation as semantic success. */
-export function assertFixedTraceComponentSmokeEvidenceUse(probe: unknown, use: unknown, judgment?: unknown): void {
-  const registered = registeredProbe(probe);
+/** Component execution evidence is permanently non-promotable in this module. */
+export function assertFixedTraceComponentSmokeEvidenceUse(probe: unknown, use: unknown, ...unexpected: readonly unknown[]): void {
+  registeredProbe(probe);
+  if (unexpected.length > 0) throw new FixedTraceComponentSmokeError('unexpected_evidence_argument');
   if (typeof use !== 'string') throw new FixedTraceComponentSmokeError('evidence_promotion_blocked:malformed_use');
-  if (use !== 'component_model_loop_admission') throw new FixedTraceComponentSmokeError(`evidence_promotion_blocked:${use}`);
-  if (judgment === undefined) throw new FixedTraceComponentSmokeError(`external_semantic_judgment_required:${registered.id}`);
-  externalSemanticJudgment(judgment, registered);
+  throw new FixedTraceComponentSmokeError(`evidence_promotion_blocked:${use}`);
 }
 
 function compareAdminAbsence(events: readonly FixedTraceComponentSmokeEvent[]): readonly string[] {
@@ -510,12 +501,40 @@ function detachedTerminal(value: unknown): FixedTraceComponentSmokeTerminal {
   return terminalResult as unknown as FixedTraceComponentSmokeTerminal;
 }
 
+function detachedExecutionIdentity(value: unknown): Readonly<FixedTraceComponentSmokeExecutionIdentity> {
+  if (value === undefined) return Object.freeze({});
+  const detached = detachFixedTraceSnapshot(value);
+  if (!detached.snapshot) throw new FixedTraceComponentSmokeError(`unsafe_execution_identity:${detached.error ?? 'not_plain_data'}`);
+  const identity = plainRecord(detached.snapshot, 'execution_identity');
+  allowedKeys(identity, [], ['runId', 'cellId', 'modelId'], 'execution_identity');
+  Object.entries(identity).forEach(([key, item]) => stringValue(item, `execution_identity.${key}`));
+  return Object.freeze(identity as FixedTraceComponentSmokeExecutionIdentity);
+}
+
+function executionEvidenceSha256(
+  probe: FixedTraceComponentSmokeProbe,
+  parentSemanticSha256: string,
+  events: readonly FixedTraceComponentSmokeEvent[],
+  terminalResult: FixedTraceComponentSmokeTerminal,
+  executionIdentity: Readonly<FixedTraceComponentSmokeExecutionIdentity>,
+): string {
+  return digest(`${FIXED_TRACE_COMPONENT_SMOKE_VERSION}/execution-evidence/v1`, {
+    probe: { id: probe.id, semanticSha256: probe.semanticSha256, version: probe.version },
+    parent: { id: probe.parent.id, semanticSha256: parentSemanticSha256 },
+    events,
+    terminal: terminalResult,
+    executionIdentity,
+  });
+}
+
 export interface FixedTraceComponentSmokeSimulator {
-  execute(events: unknown, terminal: unknown): {
+  execute(events: unknown, terminal: unknown, executionIdentity?: unknown): {
     readonly status: TerminalStatus;
     readonly providerDispatched: false;
     readonly derivedAbsentMemberIds: readonly string[];
+    readonly executionEvidenceSha256: string;
     readonly semanticAssessment: SemanticAssessment;
+    readonly semanticPass: false;
     readonly admissionEligible: false;
     readonly qualityPass: false;
   };
@@ -531,10 +550,12 @@ export function createFixedTraceComponentSmokeSimulator(
 ): FixedTraceComponentSmokeSimulator {
   const registered = registeredProbe(probe);
   assertFixedTraceComponentSmokeParentBinding(parentCase, registered);
+  const parentSemanticSha256 = fixedTraceComponentSmokeParentSemanticSha256(parentCase);
   return Object.freeze({
-    execute(events: unknown, terminalResult: unknown) {
+    execute(events: unknown, terminalResult: unknown, executionIdentity?: unknown) {
       const suppliedEvents = detachedEvents(events);
       const suppliedTerminal = detachedTerminal(terminalResult);
+      const suppliedExecutionIdentity = detachedExecutionIdentity(executionIdentity);
       if (canonicalJson(suppliedEvents) !== canonicalJson(registered.executionSequence)) throw new FixedTraceComponentSmokeError(`fixture_sequence_mismatch:${registered.id}`);
       if (suppliedTerminal.providerDispatched !== false) throw new FixedTraceComponentSmokeError(`provider_dispatch_forbidden:${registered.id}`);
       const invariant = registered.terminalInvariant;
@@ -560,7 +581,9 @@ export function createFixedTraceComponentSmokeSimulator(
         status: suppliedTerminal.status,
         providerDispatched: false as const,
         derivedAbsentMemberIds,
+        executionEvidenceSha256: executionEvidenceSha256(registered, parentSemanticSha256, suppliedEvents, suppliedTerminal, suppliedExecutionIdentity),
         semanticAssessment: 'requires_external_judge' as const,
+        semanticPass: false as const,
         admissionEligible: false as const,
         qualityPass: false as const,
       });

@@ -60,7 +60,7 @@ describe('fixed-trace evaluator-owned component smoke probes', () => {
       expect(candidate.id).not.toBe(candidate.parent.id);
       expect(FIXED_TRACE_CORPUS.some((trace) => trace.id === candidate.id)).toBe(false);
       expect(fixedTraceComponentSmokeParentSemanticSha256(parent(candidate.parent.id))).toBe(candidate.parent.semanticSha256);
-      expect(candidate.evidence).toMatchObject({ finalEligible: false, architectureComparisonEligible: false, tuningEligible: false, noninferiorityEligible: false, corpusCountEligible: false });
+      expect(candidate.evidence).toMatchObject({ permittedUse: 'custodial_execution_evidence_only', admissionEligible: false, qualityEligible: false, finalEligible: false, architectureComparisonEligible: false, tuningEligible: false, noninferiorityEligible: false, corpusCountEligible: false });
     }
   });
 
@@ -198,7 +198,7 @@ describe('fixed-trace evaluator-owned component smoke probes', () => {
     expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(accessorProbe, 'component_model_loop_admission'))).toBe('unsafe_probe:accessor');
   });
 
-  it('attests locked inputs, descriptors, execution identity, and semantic admission separately', () => {
+  it('attests locked inputs, descriptors, execution identity, and permanently separates semantic admission', () => {
     const retry = probe('dev-tool-error-retry');
     const retrySimulator = createFixedTraceComponentSmokeSimulator(parent(retry.parent.id), retry);
     expect(retry.toolDescriptors[0]!.definition).toMatchObject({
@@ -235,10 +235,53 @@ describe('fixed-trace evaluator-owned component smoke probes', () => {
     const knowledge = probe('knowledge-task-model');
     const structuralOnly = createFixedTraceComponentSmokeSimulator(parent(knowledge.parent.id), knowledge)
       .execute(knowledge.executionSequence, terminal(knowledge.parent.id, 'A buyer sends a task to a seller who returns a response, and also receives an unsupported lifetime billing guarantee.'));
-    expect(structuralOnly).toMatchObject({ semanticAssessment: 'requires_external_judge', admissionEligible: false, qualityPass: false });
-    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(knowledge, 'component_model_loop_admission'))).toBe(`external_semantic_judgment_required:${knowledge.id}`);
-    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(knowledge, 'component_model_loop_admission', {
-      probeId: knowledge.id, probeSemanticSha256: knowledge.semanticSha256, assessment: 'requires_external_judge',
-    }))).toBe(`external_semantic_judgment_mismatch:${knowledge.id}`);
+    expect(structuralOnly).toMatchObject({ semanticAssessment: 'requires_external_judge', semanticPass: false, admissionEligible: false, qualityPass: false });
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(knowledge, 'component_model_loop_admission'))).toBe('evidence_promotion_blocked:component_model_loop_admission');
+  });
+
+  it('binds immutable execution evidence to supplied execution data and rejects judgment replay', () => {
+    const knowledge = probe('knowledge-task-model');
+    const simulator = createFixedTraceComponentSmokeSimulator(parent(knowledge.parent.id), knowledge);
+    const baseTerminal = terminal(knowledge.parent.id, 'A buyer sends a task to a seller who returns a response.');
+    const identity = { runId: 'run-a', cellId: 'cell-a', modelId: 'model-a' };
+    const first = simulator.execute(knowledge.executionSequence, baseTerminal, identity);
+    const repeated = simulator.execute(knowledge.executionSequence, baseTerminal, identity);
+    const changedOutput = simulator.execute(knowledge.executionSequence, terminal(knowledge.parent.id, 'A buyer submits a task request and the seller returns a structured response.'), identity);
+    const changedCell = simulator.execute(knowledge.executionSequence, baseTerminal, { ...identity, cellId: 'cell-b' });
+    const changedModel = simulator.execute(knowledge.executionSequence, baseTerminal, { ...identity, modelId: 'model-b' });
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(first.executionEvidenceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(repeated.executionEvidenceSha256).toBe(first.executionEvidenceSha256);
+    expect(changedOutput.executionEvidenceSha256).not.toBe(first.executionEvidenceSha256);
+    expect(changedCell.executionEvidenceSha256).not.toBe(first.executionEvidenceSha256);
+    expect(changedModel.executionEvidenceSha256).not.toBe(first.executionEvidenceSha256);
+
+    const changedEvents = structuredClone(knowledge.executionSequence);
+    changedEvents[0]!.result = 'Changed supplied result.';
+    expect(rejectionCode(() => simulator.execute(changedEvents, baseTerminal, identity))).toMatch(/^fixture_sequence_mismatch:/);
+    expect(rejectionCode(() => simulator.execute(knowledge.executionSequence, { ...baseTerminal, status: 'ignored' }, identity))).toMatch(/^terminal_invariant_mismatch:/);
+
+    const fabricatedJudgment = {
+      probeId: knowledge.id,
+      probeSemanticSha256: knowledge.semanticSha256,
+      assessment: 'externally_judged_pass',
+    };
+    const evidenceUse = assertFixedTraceComponentSmokeEvidenceUse as (...args: unknown[]) => void;
+    expect(rejectionCode(() => evidenceUse(knowledge, 'component_model_loop_admission', fabricatedJudgment))).toBe('unexpected_evidence_argument');
+    expect(rejectionCode(() => evidenceUse(knowledge, 'component_model_loop_admission', fabricatedJudgment))).toBe('unexpected_evidence_argument');
+    expect(rejectionCode(() => evidenceUse(knowledge, 'component_model_loop_admission', {
+      ...fabricatedJudgment, executionEvidenceSha256: first.executionEvidenceSha256,
+    }))).toBe('unexpected_evidence_argument');
+  });
+
+  it('fails closed for extra, proxied, and accessor execution identity input', () => {
+    const knowledge = probe('knowledge-task-model');
+    const simulator = createFixedTraceComponentSmokeSimulator(parent(knowledge.parent.id), knowledge);
+    const validTerminal = terminal(knowledge.parent.id, 'A buyer sends a task to a seller who returns a response.');
+    expect(rejectionCode(() => simulator.execute(knowledge.executionSequence, validTerminal, { runId: 'run-a', extra: true }))).toBe('unknown_or_missing_fields:execution_identity');
+    const accessorIdentity = { runId: 'run-a' } as Record<string, unknown>;
+    Object.defineProperty(accessorIdentity, 'cellId', { enumerable: true, get: () => 'cell-a' });
+    expect(rejectionCode(() => simulator.execute(knowledge.executionSequence, validTerminal, accessorIdentity))).toBe('unsafe_execution_identity:accessor');
+    expect(rejectionCode(() => simulator.execute(knowledge.executionSequence, validTerminal, new Proxy({ runId: 'run-a' }, {})))).toBe('unsafe_execution_identity:proxy');
   });
 });
