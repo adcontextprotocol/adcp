@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
+import {
+  FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
+  fixedTraceComponentSmokeAdmission,
+} from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
 import {
   FIXED_TRACE_COMPONENT_SMOKE_GRANT_VERSION,
   FIXED_TRACE_COMPONENT_SMOKE_RUNTIME_DISABLED,
@@ -43,9 +46,11 @@ describe('fixed-trace component-smoke private execution control', () => {
     const ledger = { durability: 'private_durable_atomic', reserveAndConsume: vi.fn(), recordAttemptIntent: vi.fn(), recordAttemptTerminal: vi.fn() };
     expect(fixedTraceComponentSmokeGrantIssuanceRequest()).toMatchObject({
       stageId: FIXED_TRACE_COMPONENT_SMOKE_STAGE_ID,
+      aggregateAdmissionFingerprint: fixedTraceComponentSmokeAdmission().fingerprints.aggregateAdmission,
       cardinality: fixedTraceComponentSmokeAdmission().cardinality,
       pricing: fixedTraceComponentSmokeAdmission().pricing,
     });
+    expect(fixedTraceComponentSmokeAdmission().version).toBe(FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION);
     await expect(runFixedTraceComponentSmoke({ grant: undefined, now: NOW })).resolves.toEqual({ status: 'refused', reason: 'invalid_grant' });
     await expect(runFixedTraceComponentSmoke({ grant: grant(), adapter: { invoke }, runtimeEnablement: FIXED_TRACE_COMPONENT_SMOKE_RUNTIME_DISABLED, now: NOW })).resolves.toEqual({ status: 'refused', reason: 'runtime_not_enabled' });
     await expect(runFixedTraceComponentSmoke({ grant: grant(), ledger: ledger as never, adapter: { invoke }, runtimeEnablement: enabled(), now: NOW })).resolves.toEqual({ status: 'refused', reason: 'private_durable_runtime_unavailable' });
@@ -67,6 +72,7 @@ describe('fixed-trace component-smoke private execution control', () => {
     ['future issued', { issuedAt: '2026-09-06T12:00:00.001Z' }],
     ['hostile grant id', { grantId: 'Authorization:Bearer_PRIVATE_GRANT_123' }],
     ['hostile nonce', { nonce: 'Bearer_PRIVATE_GRANT_123' }],
+    ['v1 admission fingerprint', { binding: { ...grant().binding, aggregateAdmissionFingerprint: 'fcd48ebdfa1c89a500a660edebe66b82bfa18f363cd2c176df7890003bd00d38' } }],
     ['stale fingerprint', { binding: { ...grant().binding, aggregateAdmissionFingerprint: '0'.repeat(64) } }],
     ['altered cardinality', { binding: { ...grant().binding, cardinality: { ...grant().binding.cardinality, maximumProviderInvocations: 257 } } }],
     ['altered reservation', { binding: { ...grant().binding, pricing: { ...grant().binding.pricing, maximumReservationUsd: 3.8 } } }],
@@ -126,13 +132,13 @@ describe('fixed-trace component-smoke private execution control', () => {
     ledger.seedIssuedGrant(value);
     const reserved = await ledger.reserveAndConsume({ grant: value, admission: fixedTraceComponentSmokeAdmission() });
     if (reserved.status !== 'reserved') throw new Error('expected reservation');
-    expect(reserved.reservation).toMatchObject({ maximumProviderInvocations: 256, maximumReservationUsd: 3.759296 });
-    expect(reserved.reservation.maximumReservationUsd).toBe(3.759296);
+    expect(reserved.reservation).toMatchObject({ maximumProviderInvocations: 192, maximumReservationUsd: 2.819484 });
+    expect(reserved.reservation.maximumReservationUsd).toBe(2.819484);
     expect(reserved.reservation).not.toHaveProperty('grantId');
-    for (let index = 0; index < 256; index += 1) {
+    for (let index = 0; index < 192; index += 1) {
       await expect(ledger.recordAttemptIntent({ reservation: reserved.reservation, attemptCorrelationId: attemptId(index), probeId: 'probe', cellId: 'cell', invocationOrdinal: 1 })).resolves.toEqual({ status: 'recorded' });
     }
-    await expect(ledger.recordAttemptIntent({ reservation: reserved.reservation, attemptCorrelationId: attemptId(256), probeId: 'probe', cellId: 'cell', invocationOrdinal: 1 })).resolves.toEqual({ status: 'refused', reason: 'count_exhausted' });
+    await expect(ledger.recordAttemptIntent({ reservation: reserved.reservation, attemptCorrelationId: attemptId(192), probeId: 'probe', cellId: 'cell', invocationOrdinal: 1 })).resolves.toEqual({ status: 'refused', reason: 'count_exhausted' });
     const stored = JSON.stringify(ledger.snapshotForTest());
     expect(ledger.snapshotForTest().consumedGrantCount).toBe(1);
     expect(stored).not.toContain(value.grantId);

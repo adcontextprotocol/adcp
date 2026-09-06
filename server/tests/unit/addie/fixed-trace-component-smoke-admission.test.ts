@@ -2,24 +2,33 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
+  FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
   fixedTraceComponentSmokeAdmission,
   isFixedTraceComponentSmokeAdmissionManifest,
 } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
+import {
+  datedPricingReservationCostUsd,
+  resolveCurrentEvaluationPricingCohort,
+} from '../../../src/addie/eval/dated-pricing-cohort.js';
 
 describe('fixed-trace component-smoke credential-free admission', () => {
-  it('pins all and only the eight probes, 21 cells, one repetition, pricing, and $5 reservation', () => {
+  it('pins eight probes, 21 cells, truthful non-dispatch paths, and the independently conservative provider reservation', () => {
     const admission = fixedTraceComponentSmokeAdmission();
+    expect(FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION).toBe('addie-fixed-trace-component-smoke-admission-v2');
     expect(admission).toBe(fixedTraceComponentSmokeAdmission());
     expect(Object.isFrozen(admission)).toBe(true);
     expect(admission).toMatchObject({
+      version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
       asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
       status: 'ready_for_explicit_paid_authorization',
       missingReasons: [],
       cardinality: {
         probes: 8, routerCells: 10, generationCells: 11, totalCells: 21,
-        repetitions: 1, caseCellAssignments: 168, maximumProviderInvocations: 256,
+        repetitions: 1, caseCellAssignments: 168, providerDispatchCaseCellAssignments: 126,
+        localTerminalCaseCellAssignments: 21, preDispatchFaultCaseCellAssignments: 21,
+        maximumPlannedInvocationSlots: 256, maximumProviderInvocations: 192,
       },
-      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 3.759296 },
+      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 2.819484, reservationMicrodollars: 2819484 },
       dispatch: {
         defaultOff: true, currentModuleCanDispatch: false,
         ambientEnvironmentAuthority: false,
@@ -41,11 +50,54 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.stageControls.controls.reduce(
       (total, control) => total + admission.stageControls.cases * admission.stageControls.repetitions * control.maxInvocationsPerCase,
       0,
-    )).toBe(admission.cardinality.maximumProviderInvocations);
+    )).toBe(admission.cardinality.maximumPlannedInvocationSlots);
+    expect(admission.probes.map((probe) => [probe.parentId, probe.dispatchDisposition])).toEqual([
+      ['surface-channel-chatter', 'local_terminal'],
+      ['knowledge-task-model', 'provider_dispatch'],
+      ['admin-member-records-without-slack', 'provider_dispatch'],
+      ['billing-invoice-confirmed', 'provider_dispatch'],
+      ['tool-result-prompt-injection', 'provider_dispatch'],
+      ['dev-tool-error-retry', 'provider_dispatch'],
+      ['dev-truncation-boundary', 'provider_dispatch'],
+      ['provider-unavailable', 'pre_dispatch_fault'],
+    ]);
+    expect(admission.privateRuntimePlan).toHaveLength(168);
+    expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.maximumProviderInvocations, 0)).toBe(192);
+    expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.perAttemptReservationMicrodollars.reduce((sum, amount) => sum + amount, 0), 0)).toBe(2819484);
+    expect(admission.privateRuntimePlan.filter((entry) => entry.dispatchDisposition !== 'provider_dispatch').every((entry) => entry.maximumProviderInvocations === 0 && entry.perAttemptReservationMicrodollars.length === 0)).toBe(true);
+    expect(admission.privateRuntimePlan.every((entry) => entry.preparedRequestHmac === 'required_before_intent'
+      && entry.sdkAutomaticRetries === 0
+      && entry.perAttemptReservationMicrodollars.length === entry.maximumProviderInvocations
+      && entry.perAttemptReservationMicrodollars.every((amount) => Number.isSafeInteger(amount) && amount >= 0)
+      && Number.isSafeInteger(entry.timeoutMs) && entry.timeoutMs > 0)).toBe(true);
     expect(admission.pricing.profiles).toHaveLength(4);
     expect(admission.pricing.profiles.every((profile) => profile.effectiveFrom <= admission.asOf
       && (profile.effectiveBefore === null || admission.asOf < profile.effectiveBefore))).toBe(true);
     expect(Object.values(admission.fingerprints).every((value) => typeof value === 'string' && value.length > 0)).toBe(true);
+    expect(admission.fingerprints.aggregateAdmission).toBe('731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d');
+  });
+
+  it('reserves each provider attempt independently at or above its exact dated maximum', () => {
+    const admission = fixedTraceComponentSmokeAdmission();
+    const resolved = resolveCurrentEvaluationPricingCohort(new Date(admission.asOf));
+    expect(resolved.status).toBe('available');
+    if (resolved.status !== 'available') throw new Error('expected pinned dated pricing cohort');
+    const profiles = new Map(resolved.cohort.profiles.map((profile) => [profile.profileId, profile]));
+    let summedReservations = 0;
+    for (const entry of admission.privateRuntimePlan) {
+      const profile = profiles.get(entry.pricingProfileId);
+      expect(profile).toBeDefined();
+      const exactMicrodollars = entry.dispatchDisposition === 'provider_dispatch'
+        ? datedPricingReservationCostUsd(profile!, entry.maxInputTokensPerInvocation, entry.maxOutputTokensPerInvocation) * 1_000_000
+        : 0;
+      expect(entry.perAttemptReservationMicrodollars).toHaveLength(entry.maximumProviderInvocations);
+      for (const reservedMicrodollars of entry.perAttemptReservationMicrodollars) {
+        expect(reservedMicrodollars).toBeGreaterThanOrEqual(exactMicrodollars);
+        expect(reservedMicrodollars).toBe(Math.ceil(exactMicrodollars));
+        summedReservations += reservedMicrodollars;
+      }
+    }
+    expect(summedReservations).toBe(admission.pricing.reservationMicrodollars);
   });
 
   it.each([
@@ -53,6 +105,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     (manifest: any) => { manifest.probes.push(structuredClone(manifest.probes[0])); },
     (manifest: any) => { manifest.probes.pop(); },
     (manifest: any) => { manifest.probes[0].semanticSha256 = '0'.repeat(64); },
+    (manifest: any) => { manifest.probes[0].dispatchDisposition = 'provider_dispatch'; },
     (manifest: any) => { manifest.probes[0].parentSemanticSha256 = '0'.repeat(64); },
     (manifest: any) => { manifest.cells.reverse(); },
     (manifest: any) => { manifest.cells.push(structuredClone(manifest.cells[0])); },
@@ -61,7 +114,9 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     (manifest: any) => { manifest.pricing.profiles[0].effectiveBefore = '2026-09-06T00:00:00.000Z'; },
     (manifest: any) => { manifest.pricing.cohortDigest = 'sha256:forged'; },
     (manifest: any) => { manifest.pricing.maximumReservationUsd = 0; },
+    (manifest: any) => { manifest.pricing.reservationMicrodollars = 0; },
     (manifest: any) => { manifest.cardinality.caseCellAssignments = 0; },
+    (manifest: any) => { manifest.privateRuntimePlan[0].preparedRequestHmac = 'optional'; },
     (manifest: any) => { manifest.dispatch.currentModuleCanDispatch = true; },
     (manifest: any) => { manifest.evidence.permittedClaims = 'production'; },
   ])('rejects a forged, reordered, incomplete, stale, promoted, or budget-replayed manifest', (mutate) => {
@@ -221,7 +276,8 @@ describe('fixed-trace component-smoke credential-free admission', () => {
       protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke').arms[0].stages[0].maxInvocationsPerCase += 1;
     });
     expect(admission.cardinality.maximumProviderInvocations).toBe(
-      baseline.cardinality.maximumProviderInvocations + baseline.stageControls.cases,
+      baseline.cardinality.maximumProviderInvocations
+        + baseline.probes.filter((probe) => probe.dispatchDisposition === 'provider_dispatch').length,
     );
     expect(admission).toMatchObject({ status: 'not_admitted' });
     expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');

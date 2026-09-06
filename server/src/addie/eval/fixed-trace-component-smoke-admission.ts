@@ -46,7 +46,7 @@ import { FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY } from './fixed-trace-comp
  */
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF = '2026-09-06T00:00:00.000Z' as const;
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION =
-  'addie-fixed-trace-component-smoke-admission-v1' as const;
+  'addie-fixed-trace-component-smoke-admission-v2' as const;
 
 /** One detached, evaluator-owned source for every emitted readiness policy value. */
 const FIXED_TRACE_COMPONENT_SMOKE_READINESS = Object.freeze({
@@ -71,6 +71,9 @@ export type FixedTraceComponentSmokeAdmissionReason =
   | 'component_budget_ceiling_exceeded'
   | 'component_admission_fingerprint_mismatch'
   | 'component_protocol_or_design_invalid';
+
+type FixedTraceComponentSmokeDispatchDisposition =
+  | 'provider_dispatch' | 'local_terminal' | 'pre_dispatch_fault';
 
 interface FixedTraceComponentSmokeStageControl {
   readonly armId: string;
@@ -108,7 +111,14 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
   readonly asOf: typeof FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF;
   readonly status: 'ready_for_explicit_paid_authorization' | 'not_admitted';
   readonly missingReasons: readonly FixedTraceComponentSmokeAdmissionReason[];
-  readonly probes: readonly { readonly id: string; readonly semanticSha256: string; readonly parentId: string; readonly parentSemanticSha256: string }[];
+  readonly probes: readonly {
+    readonly id: string;
+    readonly semanticSha256: string;
+    readonly parentId: string;
+    readonly parentSemanticSha256: string;
+    /** Terminal-path disposition, pinned before any private runtime exists. */
+    readonly dispatchDisposition: FixedTraceComponentSmokeDispatchDisposition;
+  }[];
   readonly cells: readonly { readonly id: string; readonly role: 'router' | 'generation'; readonly provider: string; readonly model: string; readonly effort: string; readonly pricingProfileId: string; readonly adapterCapabilitySource: string }[];
   readonly stageControls: Readonly<{
     phaseId: 'stage_1_smoke';
@@ -125,6 +135,10 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
     totalCells: 21;
     repetitions: 1;
     caseCellAssignments: number;
+    providerDispatchCaseCellAssignments: number;
+    localTerminalCaseCellAssignments: number;
+    preDispatchFaultCaseCellAssignments: number;
+    maximumPlannedInvocationSlots: number;
     maximumProviderInvocations: number;
   }>;
   readonly pricing: Readonly<{
@@ -132,8 +146,27 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
     checkedAt: string | null;
     profiles: readonly { readonly candidateId: string; readonly profileId: string; readonly effectiveFrom: string; readonly effectiveBefore: string | null }[];
     maximumReservationUsd: number | null;
+    reservationMicrodollars: number | null;
     providerCeilingUsd: 5;
   }>;
+  /**
+   * Exact, admission-pinned provider disposition and per-attempt reservation.
+   * Prepared-request HMAC, limits, timeout, profile and reservation are here
+   * so a later private runtime cannot invent them after authorization.
+   */
+  readonly privateRuntimePlan: ReadonlyArray<Readonly<{
+    readonly probeId: string;
+    readonly cellId: string;
+    readonly dispatchDisposition: FixedTraceComponentSmokeDispatchDisposition;
+    readonly maximumProviderInvocations: number;
+    readonly pricingProfileId: string;
+    readonly preparedRequestHmac: 'required_before_intent';
+    readonly maxInputTokensPerInvocation: number;
+    readonly maxOutputTokensPerInvocation: number;
+    readonly timeoutMs: number;
+    readonly sdkAutomaticRetries: 0;
+    readonly perAttemptReservationMicrodollars: readonly number[];
+  }>>;
   readonly fingerprints: Readonly<{
     protocol: string;
     corpus: string;
@@ -178,7 +211,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
 
 /** Independently reviewed integrity pin; it is never an authorization artifact. */
 const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
-  'c8e386ae7e218e7c731bf6ea71af2c03f6372b8207ea680e32ab0fc875aefe7b' as const;
+  '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d' as const;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -257,30 +290,71 @@ function validStageOnePlan(plan: FixedTraceComponentSmokeStagePlan | null): plan
   });
 }
 
-function maximumReservationUsd(
+function dispatchDispositionForProbe(probe: typeof FIXED_TRACE_COMPONENT_SMOKE_PROBES[number]): FixedTraceComponentSmokeDispatchDisposition | null {
+  if (probe.terminalInvariant.path === 'model_loop') return 'provider_dispatch';
+  if (probe.terminalInvariant.path === 'local_terminal') return 'local_terminal';
+  if (probe.terminalInvariant.path === 'pre_dispatch_fault') return 'pre_dispatch_fault';
+  return null;
+}
+
+/** Derived from the same terminal-path dispositions placed in the pinned manifest. */
+function pinnedDispatchDispositionCounts(): Readonly<Record<FixedTraceComponentSmokeDispatchDisposition, number>> | null {
+  const counts: Record<FixedTraceComponentSmokeDispatchDisposition, number> = {
+    provider_dispatch: 0, local_terminal: 0, pre_dispatch_fault: 0,
+  };
+  for (const probe of FIXED_TRACE_COMPONENT_SMOKE_PROBES) {
+    const disposition = dispatchDispositionForProbe(probe);
+    if (!disposition) return null;
+    counts[disposition] += 1;
+  }
+  return Object.freeze(counts);
+}
+
+function privateRuntimePlan(
   cohort: DatedPricingCohort,
   plan: FixedTraceComponentSmokeStagePlan,
-): number {
-  const unnormalized = plan.controls.reduce((total, control) => {
-    const cell = FIXED_TRACE_ADMITTED_CELLS.find((candidate) => candidate.id === control.cellId);
-    if (!cell) throw new Error('unknown component cell');
-    const candidateId = candidateIdFor(cell);
-    if (!candidateId) throw new Error('unknown component pricing candidate');
-    const profile = pricingProfileForCandidate(cohort, candidateId);
-    const invocations = plan.cases * plan.repetitions * control.maxInvocationsPerCase;
-    return total + invocations * datedPricingReservationCostUsd(
-      profile,
-      control.maxInputTokensPerInvocation,
-      control.maxOutputTokensPerInvocation,
-    );
-  }, 0);
-  // Admission currency is pinned in integer microdollars. This is the source
-  // artifact used by the aggregate fingerprint, never a runner-edge display fix.
-  const microdollars = Math.round(unnormalized * 1_000_000);
-  if (!Number.isSafeInteger(microdollars)) {
-    throw new Error('component reservation is not representable in microdollars');
+): FixedTraceComponentSmokeAdmissionManifest['privateRuntimePlan'] {
+  const cells = new Map(FIXED_TRACE_ADMITTED_CELLS.map((cell) => [cell.id, cell]));
+  const pricedEntries: Array<{ entry: Omit<FixedTraceComponentSmokeAdmissionManifest['privateRuntimePlan'][number], 'perAttemptReservationMicrodollars'>; rawMicrodollars: number }> = [];
+  for (const probe of FIXED_TRACE_COMPONENT_SMOKE_PROBES) {
+    const dispatchDisposition = dispatchDispositionForProbe(probe);
+    if (!dispatchDisposition) throw new Error('unknown probe disposition');
+    for (const control of plan.controls) {
+      const cell = cells.get(control.cellId);
+      if (!cell) throw new Error('unknown component cell');
+      const candidateId = candidateIdFor(cell);
+      if (!candidateId) throw new Error('unknown component pricing candidate');
+      const profile = pricingProfileForCandidate(cohort, candidateId);
+      const rawMicrodollars = dispatchDisposition === 'provider_dispatch'
+        ? datedPricingReservationCostUsd(profile, control.maxInputTokensPerInvocation, control.maxOutputTokensPerInvocation) * 1_000_000
+        : 0;
+      pricedEntries.push({
+        entry: Object.freeze({ probeId: probe.id, cellId: cell.id, dispatchDisposition,
+          maximumProviderInvocations: dispatchDisposition === 'provider_dispatch' ? control.maxInvocationsPerCase : 0,
+          pricingProfileId: profile.profileId, preparedRequestHmac: 'required_before_intent' as const,
+          maxInputTokensPerInvocation: control.maxInputTokensPerInvocation,
+          maxOutputTokensPerInvocation: control.maxOutputTokensPerInvocation, timeoutMs: control.timeoutMs,
+          sdkAutomaticRetries: 0 as const }),
+        rawMicrodollars,
+      });
+    }
   }
-  return microdollars / 1_000_000;
+  return Object.freeze(pricedEntries.map(({ entry, rawMicrodollars }) => {
+    // Reservation is a ceiling per independently dispatchable attempt. Never
+    // redistribute fractional micros across positions: a later attempt could
+    // otherwise be under-reserved before it is ever eligible for dispatch.
+    const perAttemptReservationMicrodollars = entry.maximumProviderInvocations === 0
+      ? 0
+      : Math.ceil(rawMicrodollars);
+    if (!Number.isSafeInteger(perAttemptReservationMicrodollars) || perAttemptReservationMicrodollars < 0) {
+      throw new Error('component per-attempt reservation is not representable in microdollars');
+    }
+    return Object.freeze({ ...entry,
+      perAttemptReservationMicrodollars: Object.freeze(
+        Array.from({ length: entry.maximumProviderInvocations }, () => perAttemptReservationMicrodollars),
+      ),
+    });
+  }));
 }
 
 function reasonsForPinnedArtifacts(
@@ -324,10 +398,12 @@ function pricingForPinnedArtifacts(plan: FixedTraceComponentSmokeStagePlan | nul
   readonly reasons: readonly FixedTraceComponentSmokeAdmissionReason[];
   readonly cohort: DatedPricingCohort | null;
   readonly reservation: number | null;
+  readonly reservationMicrodollars: number | null;
+  readonly privateRuntimePlan: FixedTraceComponentSmokeAdmissionManifest['privateRuntimePlan'];
 } {
-  if (!validStageOnePlan(plan)) return { reasons: Object.freeze(['component_cell_set_mismatch']), cohort: null, reservation: null };
+  if (!validStageOnePlan(plan)) return { reasons: Object.freeze(['component_cell_set_mismatch']), cohort: null, reservation: null, reservationMicrodollars: null, privateRuntimePlan: Object.freeze([]) };
   const resolved = resolveCurrentEvaluationPricingCohort(new Date(FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF));
-  if (resolved.status !== 'available') return { reasons: Object.freeze(['component_pricing_unavailable']), cohort: null, reservation: null };
+  if (resolved.status !== 'available') return { reasons: Object.freeze(['component_pricing_unavailable']), cohort: null, reservation: null, reservationMicrodollars: null, privateRuntimePlan: Object.freeze([]) };
   try {
     for (const cell of FIXED_TRACE_ADMITTED_CELLS) {
       const candidateId = candidateIdFor(cell);
@@ -337,32 +413,47 @@ function pricingForPinnedArtifacts(plan: FixedTraceComponentSmokeStagePlan | nul
         throw new Error('cell/profile mismatch');
       }
     }
-    const reservation = maximumReservationUsd(resolved.cohort, plan);
-    if (!Number.isFinite(reservation) || reservation > FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd) {
-      return { reasons: Object.freeze(['component_budget_ceiling_exceeded']), cohort: resolved.cohort, reservation };
+    const planForRuntime = privateRuntimePlan(resolved.cohort, plan);
+    const reservationMicrodollars = planForRuntime.reduce(
+      (total, entry) => total + entry.perAttemptReservationMicrodollars.reduce((sum, amount) => sum + amount, 0), 0,
+    );
+    if (!Number.isSafeInteger(reservationMicrodollars) || reservationMicrodollars < 0) {
+      throw new Error('component total reservation is not representable in microdollars');
     }
-    return { reasons: Object.freeze([]), cohort: resolved.cohort, reservation };
+    const reservation = reservationMicrodollars / 1_000_000;
+    if (!Number.isFinite(reservation) || reservation > FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd) {
+      return { reasons: Object.freeze(['component_budget_ceiling_exceeded']), cohort: resolved.cohort, reservation, reservationMicrodollars, privateRuntimePlan: planForRuntime };
+    }
+    return { reasons: Object.freeze([]), cohort: resolved.cohort, reservation, reservationMicrodollars, privateRuntimePlan: planForRuntime };
   } catch {
-    return { reasons: Object.freeze(['component_pricing_cell_mismatch']), cohort: resolved.cohort, reservation: null };
+    return { reasons: Object.freeze(['component_pricing_cell_mismatch']), cohort: resolved.cohort, reservation: null, reservationMicrodollars: null, privateRuntimePlan: Object.freeze([]) };
   }
 }
 
 function cardinalityForPinnedPlan(
   plan: FixedTraceComponentSmokeStagePlan | null,
 ): FixedTraceComponentSmokeAdmissionManifest['cardinality'] {
-  if (!plan || !validStageOnePlan(plan)) return Object.freeze({
+  const dispositionCounts = pinnedDispatchDispositionCounts();
+  if (!plan || !validStageOnePlan(plan) || !dispositionCounts) return Object.freeze({
     probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
     totalCells: 21 as const, repetitions: 1 as const,
-    caseCellAssignments: 0,
+    caseCellAssignments: 0, providerDispatchCaseCellAssignments: 0,
+    localTerminalCaseCellAssignments: 0, preDispatchFaultCaseCellAssignments: 0,
+    maximumPlannedInvocationSlots: 0,
     maximumProviderInvocations: 0,
   });
   return Object.freeze({
     probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
     totalCells: 21 as const, repetitions: 1 as const,
     caseCellAssignments: plan.cases * plan.repetitions * plan.controls.length,
+    providerDispatchCaseCellAssignments: dispositionCounts.provider_dispatch * plan.controls.length,
+    localTerminalCaseCellAssignments: dispositionCounts.local_terminal * plan.controls.length,
+    preDispatchFaultCaseCellAssignments: dispositionCounts.pre_dispatch_fault * plan.controls.length,
+    maximumPlannedInvocationSlots: plan.controls.reduce(
+      (total, control) => total + plan.cases * plan.repetitions * control.maxInvocationsPerCase, 0,
+    ),
     maximumProviderInvocations: plan.controls.reduce(
-      (total, control) => total + plan.cases * plan.repetitions * control.maxInvocationsPerCase,
-      0,
+      (total, control) => total + dispositionCounts.provider_dispatch * plan.repetitions * control.maxInvocationsPerCase, 0,
     ),
   });
 }
@@ -381,6 +472,7 @@ function pricingManifestForPinnedArtifacts(
       effectiveBefore: profile.effectiveBefore,
     }))),
     maximumReservationUsd: pricing.reservation,
+    reservationMicrodollars: pricing.reservationMicrodollars,
     providerCeilingUsd: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd,
   });
 }
@@ -392,9 +484,10 @@ function aggregateAdmissionFingerprint(
   cohort: DatedPricingCohort | null,
   cardinality: FixedTraceComponentSmokeAdmissionManifest['cardinality'],
   pricing: FixedTraceComponentSmokeAdmissionManifest['pricing'],
+  runtimePlan: FixedTraceComponentSmokeAdmissionManifest['privateRuntimePlan'],
 ): string {
   return sha256({
-    domain: 'adcp:addie:fixed-trace-component-smoke-admission:v1\0',
+    domain: 'adcp:addie:fixed-trace-component-smoke-admission:v2\0',
     version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
     asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
     probes,
@@ -416,7 +509,7 @@ function aggregateAdmissionFingerprint(
     screeningConfiguration: FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT,
     pricingCohort: cohort,
     readiness: FIXED_TRACE_COMPONENT_SMOKE_READINESS,
-    derived: { cardinality, pricing },
+    derived: { cardinality, pricing, runtimePlan },
   });
 }
 
@@ -424,10 +517,15 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
   const plan = stageOnePlan();
   const pricing = pricingForPinnedArtifacts(plan);
   const reasons = [...reasonsForPinnedArtifacts(plan), ...pricing.reasons];
-  const probes = FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((probe) => Object.freeze({
+  const probes = FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((probe) => {
+    const dispatchDisposition = dispatchDispositionForProbe(probe);
+    if (!dispatchDisposition) throw new Error('unknown component smoke dispatch disposition');
+    return Object.freeze({
     id: probe.id, semanticSha256: probe.semanticSha256,
     parentId: probe.parent.id, parentSemanticSha256: probe.parent.semanticSha256,
-  }));
+    dispatchDisposition,
+    });
+  });
   const cells = FIXED_TRACE_ADMITTED_CELLS.map((cell) => Object.freeze({
     id: cell.id, role: cell.role, provider: cell.provider, model: cell.model,
     effort: cell.effort, pricingProfileId: cell.pricingProfileId ?? '',
@@ -437,7 +535,7 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
   const cardinality = cardinalityForPinnedPlan(plan);
   const pricingManifest = pricingManifestForPinnedArtifacts(pricing);
   const aggregate = aggregateAdmissionFingerprint(
-    probes, cells, plan, cohort, cardinality, pricingManifest,
+    probes, cells, plan, cohort, cardinality, pricingManifest, pricing.privateRuntimePlan,
   );
   if (aggregate !== FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN) {
     reasons.push('component_admission_fingerprint_mismatch');
@@ -458,6 +556,7 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
     }),
     cardinality,
     pricing: pricingManifest,
+    privateRuntimePlan: pricing.privateRuntimePlan,
     fingerprints: Object.freeze({
       protocol: fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL),
       corpus: fixedTraceCorpusSha256(FIXED_TRACE_CORPUS), partition: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
