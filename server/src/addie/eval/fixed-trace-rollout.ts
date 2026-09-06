@@ -107,7 +107,9 @@ export function evaluateFixedTraceRollout(
     // This summary contract carries only serializable diagnostics. No value a
     // caller can put on it can constitute evaluator-owned promotion evidence.
     equals('trusted_evaluator_context_unavailable', false, true),
-    equals('candidate_eligible', summary.comparisonEligible, true),
+    // Do not allow a caller to make an incomplete summary eligible by merely
+    // changing its serializable eligibility marker.
+    equals('candidate_eligible', summary.comparisonEligible && summary.complete, true),
     equals('budget_exposure', !budget.exposureUnknown && !budget.admissionClosed, true),
     atLeast('deterministic', summary.deterministicPassRate, FIXED_TRACE_ROLLOUT_THRESHOLDS.deterministicPassRate),
     atLeast('answer', summary.answerPassRate, FIXED_TRACE_ROLLOUT_THRESHOLDS.answerPassRate),
