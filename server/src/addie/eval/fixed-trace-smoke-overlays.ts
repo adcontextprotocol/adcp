@@ -229,45 +229,138 @@ function requiredKeys(value: Record<string, unknown>, keys: readonly string[], o
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) throw new FixedTraceComponentSmokeError(`unknown_or_missing_fields:${owner}`);
 }
 
+function allowedKeys(value: Record<string, unknown>, required: readonly string[], optional: readonly string[], owner: string): void {
+  const keys = Object.keys(value);
+  if (keys.some((key) => !required.includes(key) && !optional.includes(key)) || required.some((key) => !Object.hasOwn(value, key))) {
+    throw new FixedTraceComponentSmokeError(`unknown_or_missing_fields:${owner}`);
+  }
+}
+
+function plainRecord(value: unknown, owner: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new FixedTraceComponentSmokeError(`malformed_${owner}:not_object`);
+  return value as Record<string, unknown>;
+}
+
+function stringValue(value: unknown, owner: string): void {
+  if (typeof value !== 'string') throw new FixedTraceComponentSmokeError(`malformed_${owner}:not_string`);
+}
+
+function booleanValue(value: unknown, owner: string): void {
+  if (typeof value !== 'boolean') throw new FixedTraceComponentSmokeError(`malformed_${owner}:not_boolean`);
+}
+
+function numberOrNull(value: unknown, owner: string): void {
+  if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) throw new FixedTraceComponentSmokeError(`malformed_${owner}:not_number_or_null`);
+}
+
+function arrayValue(value: unknown, owner: string): unknown[] {
+  if (!Array.isArray(value)) throw new FixedTraceComponentSmokeError(`malformed_${owner}:not_array`);
+  return value;
+}
+
+function validateStringArray(value: unknown, owner: string): void {
+  arrayValue(value, owner).forEach((item, index) => stringValue(item, `${owner}:${index}`));
+}
+
+function validateProbeShape(value: unknown): FixedTraceComponentSmokeProbe {
+  const probe = plainRecord(value, 'probe');
+  requiredKeys(probe, ['version', 'id', 'parent', 'visibleFacts', 'toolDescriptors', 'fixtureSequence', 'terminalInvariant', 'evidence', 'semanticSha256'], 'probe');
+  stringValue(probe.version, 'probe.version');
+  stringValue(probe.id, 'probe.id');
+  stringValue(probe.semanticSha256, 'probe.semanticSha256');
+
+  const parentRecord = plainRecord(probe.parent, 'probe.parent');
+  requiredKeys(parentRecord, ['id', 'corpusVersion', 'phase', 'semanticSha256'], 'probe.parent');
+  Object.entries(parentRecord).forEach(([key, item]) => stringValue(item, `probe.parent.${key}`));
+
+  const facts = plainRecord(probe.visibleFacts, 'probe.visibleFacts');
+  requiredKeys(facts, ['source', 'message', 'nowUtc', 'isAdmin', 'privacy', 'threadContext'], 'probe.visibleFacts');
+  stringValue(facts.source, 'probe.visibleFacts.source');
+  stringValue(facts.message, 'probe.visibleFacts.message');
+  stringValue(facts.nowUtc, 'probe.visibleFacts.nowUtc');
+  booleanValue(facts.isAdmin, 'probe.visibleFacts.isAdmin');
+  stringValue(facts.privacy, 'probe.visibleFacts.privacy');
+  arrayValue(facts.threadContext, 'probe.visibleFacts.threadContext').forEach((entry, index) => {
+    const threadEntry = plainRecord(entry, `probe.visibleFacts.threadContext:${index}`);
+    requiredKeys(threadEntry, ['user', 'text'], `probe.visibleFacts.threadContext:${index}`);
+    stringValue(threadEntry.user, `probe.visibleFacts.threadContext:${index}.user`);
+    stringValue(threadEntry.text, `probe.visibleFacts.threadContext:${index}.text`);
+  });
+
+  arrayValue(probe.toolDescriptors, 'probe.toolDescriptors').forEach((entry, index) => {
+    const descriptor = plainRecord(entry, `probe.toolDescriptors:${index}`);
+    requiredKeys(descriptor, ['name', 'effect', 'definitionSha256'], `probe.toolDescriptors:${index}`);
+    Object.entries(descriptor).forEach(([key, item]) => stringValue(item, `probe.toolDescriptors:${index}.${key}`));
+  });
+  arrayValue(probe.fixtureSequence, 'probe.fixtureSequence').forEach((entry, index) => validateSmokeEvent(entry, `probe.fixtureSequence:${index}`));
+
+  const invariant = plainRecord(probe.terminalInvariant, 'probe.terminalInvariant');
+  requiredKeys(invariant, ['path', 'status', 'requiredOutputAny', 'forbiddenOutputMarkers', 'requiresMutation', 'maxOutputTokens', 'maxWords', 'requiresFlaggedTerminal'], 'probe.terminalInvariant');
+  stringValue(invariant.path, 'probe.terminalInvariant.path');
+  stringValue(invariant.status, 'probe.terminalInvariant.status');
+  arrayValue(invariant.requiredOutputAny, 'probe.terminalInvariant.requiredOutputAny').forEach((group, index) => validateStringArray(group, `probe.terminalInvariant.requiredOutputAny:${index}`));
+  validateStringArray(invariant.forbiddenOutputMarkers, 'probe.terminalInvariant.forbiddenOutputMarkers');
+  booleanValue(invariant.requiresMutation, 'probe.terminalInvariant.requiresMutation');
+  numberOrNull(invariant.maxOutputTokens, 'probe.terminalInvariant.maxOutputTokens');
+  numberOrNull(invariant.maxWords, 'probe.terminalInvariant.maxWords');
+  booleanValue(invariant.requiresFlaggedTerminal, 'probe.terminalInvariant.requiresFlaggedTerminal');
+
+  const evidence = plainRecord(probe.evidence, 'probe.evidence');
+  requiredKeys(evidence, ['owner', 'permittedUse', 'finalEligible', 'architectureComparisonEligible', 'tuningEligible', 'noninferiorityEligible', 'corpusCountEligible'], 'probe.evidence');
+  stringValue(evidence.owner, 'probe.evidence.owner');
+  stringValue(evidence.permittedUse, 'probe.evidence.permittedUse');
+  ['finalEligible', 'architectureComparisonEligible', 'tuningEligible', 'noninferiorityEligible', 'corpusCountEligible'].forEach((key) => booleanValue(evidence[key], `probe.evidence.${key}`));
+  return probe as unknown as FixedTraceComponentSmokeProbe;
+}
+
+function detachedProbe(value: unknown): FixedTraceComponentSmokeProbe {
+  const detached = detachFixedTraceSnapshot(value);
+  if (!detached.snapshot) throw new FixedTraceComponentSmokeError(`unsafe_probe:${detached.error ?? 'not_plain_data'}`);
+  return validateProbeShape(detached.snapshot);
+}
+
+/** Only the immutable registered records can cross a public evaluator boundary. */
+function registeredProbe(value: unknown): FixedTraceComponentSmokeProbe {
+  const candidate = detachedProbe(value);
+  const registered = FIXED_TRACE_COMPONENT_SMOKE_PROBES.find((probe) => probe.id === candidate.id);
+  if (!registered) throw new FixedTraceComponentSmokeError(`unknown_probe_id:${candidate.id}`);
+  if (canonicalJson(candidate) !== canonicalJson(registered)) throw new FixedTraceComponentSmokeError(`canonical_probe_mismatch:${candidate.id}`);
+  return registered;
+}
+
 export function assertFixedTraceComponentSmokeContracts(
-  probes: readonly FixedTraceComponentSmokeProbe[] = FIXED_TRACE_COMPONENT_SMOKE_PROBES,
+  probes: unknown = FIXED_TRACE_COMPONENT_SMOKE_PROBES,
 ): void {
   const detached = detachFixedTraceSnapshot(probes);
   if (!detached.snapshot || !Array.isArray(detached.snapshot)) throw new FixedTraceComponentSmokeError(`unsafe_snapshot:${detached.error ?? 'non_array'}`);
   if (detached.snapshot.length !== RAW_PROBES.length) throw new FixedTraceComponentSmokeError('probe_count_mismatch');
   const seenIds = new Set<string>();
   const seenHashes = new Set<string>();
-  for (const [index, probe] of detached.snapshot.entries()) {
-    const expected = deriveProbe(RAW_PROBES[index]!);
-    requiredKeys(probe as Record<string, unknown>, ['version', 'id', 'parent', 'visibleFacts', 'toolDescriptors', 'fixtureSequence', 'terminalInvariant', 'evidence', 'semanticSha256'], `probe:${index}`);
+  const candidates = detached.snapshot.map(detachedProbe);
+  for (const probe of candidates) {
     if (seenIds.has(probe.id)) throw new FixedTraceComponentSmokeError(`probe_id_collision:${probe.id}`);
     if (seenHashes.has(probe.semanticSha256)) throw new FixedTraceComponentSmokeError(`probe_hash_collision:${probe.semanticSha256}`);
     seenIds.add(probe.id);
     seenHashes.add(probe.semanticSha256);
-    if (probe.id !== expected.id || canonicalJson(probe.parent) !== canonicalJson(expected.parent)) throw new FixedTraceComponentSmokeError(`parent_lineage_mismatch:${index}`);
-    if (canonicalJson(probe.visibleFacts) !== canonicalJson(expected.visibleFacts)
-      || canonicalJson(probe.toolDescriptors) !== canonicalJson(expected.toolDescriptors)
-      || canonicalJson(probe.fixtureSequence) !== canonicalJson(expected.fixtureSequence)
-      || canonicalJson(probe.terminalInvariant) !== canonicalJson(expected.terminalInvariant)) {
-      throw new FixedTraceComponentSmokeError(`parent_semantics_mismatch:${probe.parent.id}`);
-    }
-    if (canonicalJson(probe.evidence) !== canonicalJson(expected.evidence)) throw new FixedTraceComponentSmokeError(`evidence_boundary_mismatch:${probe.id}`);
-    const { semanticSha256: _semanticSha256, ...base } = probe;
-    if (probe.semanticSha256 !== probeSemanticSha256(base)) throw new FixedTraceComponentSmokeError(`derived_semantic_hash_mismatch:${probe.id}`);
   }
+  for (const candidate of candidates) {
+    registeredProbe(candidate);
+  }
+  if (seenIds.size !== FIXED_TRACE_COMPONENT_SMOKE_PROBES.length) throw new FixedTraceComponentSmokeError('registered_probe_set_mismatch');
 }
 
 /** Bind each derived probe to the caller's exact locked parent at execution time. */
-export function assertFixedTraceComponentSmokeParentBinding(parentCase: unknown, probe: FixedTraceComponentSmokeProbe): void {
-  assertFixedTraceComponentSmokeContracts(FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((candidate) => candidate.id === probe.id ? probe : candidate));
-  if (fixedTraceComponentSmokeParentSemanticSha256(parentCase) !== probe.parent.semanticSha256) {
-    throw new FixedTraceComponentSmokeError(`parent_lineage_drift:${probe.parent.id}`);
+export function assertFixedTraceComponentSmokeParentBinding(parentCase: unknown, probe: unknown): void {
+  const registered = registeredProbe(probe);
+  if (fixedTraceComponentSmokeParentSemanticSha256(parentCase) !== registered.parent.semanticSha256) {
+    throw new FixedTraceComponentSmokeError(`parent_lineage_drift:${registered.parent.id}`);
   }
 }
 
 /** Promotion attempts are rejected before a caller can label a probe as scored evidence. */
-export function assertFixedTraceComponentSmokeEvidenceUse(probe: FixedTraceComponentSmokeProbe, use: FixedTraceComponentSmokeEvidenceUse): void {
-  assertFixedTraceComponentSmokeContracts(FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((candidate) => candidate.id === probe.id ? probe : candidate));
+export function assertFixedTraceComponentSmokeEvidenceUse(probe: unknown, use: unknown): void {
+  registeredProbe(probe);
+  if (typeof use !== 'string') throw new FixedTraceComponentSmokeError('evidence_promotion_blocked:malformed_use');
   if (use !== 'component_model_loop_admission') throw new FixedTraceComponentSmokeError(`evidence_promotion_blocked:${use}`);
 }
 
@@ -282,8 +375,35 @@ function wordCount(text: string): number {
   return words?.length ?? 0;
 }
 
+function validateSmokeEvent(value: unknown, owner: string): FixedTraceComponentSmokeEvent {
+  const event = plainRecord(value, owner);
+  requiredKeys(event, ['name', 'effect', 'resultStatus', 'result'], owner);
+  Object.entries(event).forEach(([key, item]) => stringValue(item, `${owner}.${key}`));
+  return event as unknown as FixedTraceComponentSmokeEvent;
+}
+
+function detachedEvents(value: unknown): readonly FixedTraceComponentSmokeEvent[] {
+  const detached = detachFixedTraceSnapshot(value);
+  if (!detached.snapshot) throw new FixedTraceComponentSmokeError(`unsafe_events:${detached.error ?? 'not_plain_data'}`);
+  const events = arrayValue(detached.snapshot, 'events');
+  return Object.freeze(events.map((event, index) => validateSmokeEvent(event, `events:${index}`)));
+}
+
+function detachedTerminal(value: unknown): FixedTraceComponentSmokeTerminal {
+  const detached = detachFixedTraceSnapshot(value);
+  if (!detached.snapshot) throw new FixedTraceComponentSmokeError(`unsafe_terminal:${detached.error ?? 'not_plain_data'}`);
+  const terminalResult = plainRecord(detached.snapshot, 'terminal');
+  allowedKeys(terminalResult, ['status', 'output', 'providerDispatched'], ['configuredMaxOutputTokens', 'flagged'], 'terminal');
+  stringValue(terminalResult.status, 'terminal.status');
+  stringValue(terminalResult.output, 'terminal.output');
+  booleanValue(terminalResult.providerDispatched, 'terminal.providerDispatched');
+  if (Object.hasOwn(terminalResult, 'configuredMaxOutputTokens')) numberOrNull(terminalResult.configuredMaxOutputTokens, 'terminal.configuredMaxOutputTokens');
+  if (Object.hasOwn(terminalResult, 'flagged')) booleanValue(terminalResult.flagged, 'terminal.flagged');
+  return terminalResult as unknown as FixedTraceComponentSmokeTerminal;
+}
+
 export interface FixedTraceComponentSmokeSimulator {
-  execute(events: readonly FixedTraceComponentSmokeEvent[], terminal: FixedTraceComponentSmokeTerminal): {
+  execute(events: unknown, terminal: unknown): {
     readonly status: TerminalStatus;
     readonly providerDispatched: false;
     readonly derivedAbsentMemberIds: readonly string[];
@@ -296,35 +416,35 @@ export interface FixedTraceComponentSmokeSimulator {
  */
 export function createFixedTraceComponentSmokeSimulator(
   parentCase: unknown,
-  probe: FixedTraceComponentSmokeProbe,
+  probe: unknown,
 ): FixedTraceComponentSmokeSimulator {
-  assertFixedTraceComponentSmokeParentBinding(parentCase, probe);
+  const registered = registeredProbe(probe);
+  assertFixedTraceComponentSmokeParentBinding(parentCase, registered);
   return Object.freeze({
-    execute(events: readonly FixedTraceComponentSmokeEvent[], terminalResult: FixedTraceComponentSmokeTerminal) {
-      const detached = detachFixedTraceSnapshot({ events, terminalResult });
-      if (!detached.snapshot) throw new FixedTraceComponentSmokeError(`unsafe_execution:${detached.error}`);
-      const execution = detached.snapshot as { events: FixedTraceComponentSmokeEvent[]; terminalResult: FixedTraceComponentSmokeTerminal };
-      if (canonicalJson(execution.events) !== canonicalJson(probe.fixtureSequence)) throw new FixedTraceComponentSmokeError(`fixture_sequence_mismatch:${probe.id}`);
-      if (execution.terminalResult.providerDispatched !== false) throw new FixedTraceComponentSmokeError(`provider_dispatch_forbidden:${probe.id}`);
-      const invariant = probe.terminalInvariant;
-      const output = execution.terminalResult.output.toLocaleLowerCase('en-US');
-      const derivedAbsentMemberIds = probe.parent.id === 'admin-member-records-without-slack'
-        ? compareAdminAbsence(execution.events) : Object.freeze([]);
-      if (probe.parent.id === 'admin-member-records-without-slack' && (
+    execute(events: unknown, terminalResult: unknown) {
+      const suppliedEvents = detachedEvents(events);
+      const suppliedTerminal = detachedTerminal(terminalResult);
+      if (canonicalJson(suppliedEvents) !== canonicalJson(registered.fixtureSequence)) throw new FixedTraceComponentSmokeError(`fixture_sequence_mismatch:${registered.id}`);
+      if (suppliedTerminal.providerDispatched !== false) throw new FixedTraceComponentSmokeError(`provider_dispatch_forbidden:${registered.id}`);
+      const invariant = registered.terminalInvariant;
+      const output = suppliedTerminal.output.toLocaleLowerCase('en-US');
+      const derivedAbsentMemberIds = registered.parent.id === 'admin-member-records-without-slack'
+        ? compareAdminAbsence(suppliedEvents) : Object.freeze([]);
+      if (registered.parent.id === 'admin-member-records-without-slack' && (
         derivedAbsentMemberIds.length !== 1
         || !output.includes(derivedAbsentMemberIds[0]!.toLocaleLowerCase('en-US'))
-        || !/\b(no|without)\s+slack\b/i.test(execution.terminalResult.output)
-      )) throw new FixedTraceComponentSmokeError(`admin_comparison_not_derived:${probe.id}`);
-      if (execution.terminalResult.status !== invariant.status
+        || !/\b(no|without)\s+slack\b/i.test(suppliedTerminal.output)
+      )) throw new FixedTraceComponentSmokeError(`admin_comparison_not_derived:${registered.id}`);
+      if (suppliedTerminal.status !== invariant.status
         || invariant.requiredOutputAny.some((group) => !group.some((marker) => output.includes(marker.toLocaleLowerCase('en-US'))))
         || invariant.forbiddenOutputMarkers.some((marker) => output.includes(marker.toLocaleLowerCase('en-US')))
-        || (invariant.requiresMutation !== execution.events.some((event) => event.effect === 'mutation'))
-        || (invariant.maxOutputTokens !== null && execution.terminalResult.configuredMaxOutputTokens !== invariant.maxOutputTokens)
-        || (invariant.maxWords !== null && wordCount(execution.terminalResult.output) > invariant.maxWords)
-        || (invariant.requiresFlaggedTerminal && execution.terminalResult.flagged !== true)) {
-        throw new FixedTraceComponentSmokeError(`terminal_invariant_mismatch:${probe.id}`);
+        || (invariant.requiresMutation !== suppliedEvents.some((event) => event.effect === 'mutation'))
+        || (invariant.maxOutputTokens !== null && suppliedTerminal.configuredMaxOutputTokens !== invariant.maxOutputTokens)
+        || (invariant.maxWords !== null && wordCount(suppliedTerminal.output) > invariant.maxWords)
+        || (invariant.requiresFlaggedTerminal && suppliedTerminal.flagged !== true)) {
+        throw new FixedTraceComponentSmokeError(`terminal_invariant_mismatch:${registered.id}`);
       }
-      return Object.freeze({ status: execution.terminalResult.status, providerDispatched: false as const, derivedAbsentMemberIds });
+      return Object.freeze({ status: suppliedTerminal.status, providerDispatched: false as const, derivedAbsentMemberIds });
     },
   });
 }

@@ -114,7 +114,7 @@ describe('fixed-trace evaluator-owned component smoke probes', () => {
     expect(rejectionCode(() => assertFixedTraceComponentSmokeContracts(hashCollision))).toMatch(/^probe_hash_collision:/);
     const binding = structuredClone(probe('admin-member-records-without-slack'));
     binding.parent.semanticSha256 = '0'.repeat(64);
-    expect(rejectionCode(() => assertFixedTraceComponentSmokeContracts(FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((candidate) => candidate.id === binding.id ? binding : candidate)))).toBe('parent_lineage_mismatch:2');
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeContracts(FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((candidate) => candidate.id === binding.id ? binding : candidate)))).toBe(`canonical_probe_mismatch:${binding.id}`);
     const driftedParent = structuredClone(parent('admin-member-records-without-slack'));
     driftedParent.toolFixtures[1]!.result = 'altered roster';
     expect(rejectionCode(() => assertFixedTraceComponentSmokeParentBinding(driftedParent, probe('admin-member-records-without-slack')))).toBe('parent_lineage_drift:admin-member-records-without-slack');
@@ -145,5 +145,53 @@ describe('fixed-trace evaluator-owned component smoke probes', () => {
     for (const use of ['tuning', 'final', 'architecture_comparison', 'model_quality_scoring', 'noninferiority', 'corpus_count'] as const) {
       expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(admin, use))).toBe(`evidence_promotion_blocked:${use}`);
     }
+  });
+
+  it('rejects unregistered and semantically forged probes before every public admission boundary', () => {
+    const admin = probe('admin-member-records-without-slack');
+    const unknown = structuredClone(admin);
+    unknown.id = 'component-smoke-unregistered-v1';
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeParentBinding(parent(admin.parent.id), unknown))).toBe('unknown_probe_id:component-smoke-unregistered-v1');
+    expect(rejectionCode(() => createFixedTraceComponentSmokeSimulator(parent(admin.parent.id), unknown))).toBe('unknown_probe_id:component-smoke-unregistered-v1');
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(unknown, 'component_model_loop_admission'))).toBe('unknown_probe_id:component-smoke-unregistered-v1');
+
+    const copiedIdAndHash = structuredClone(admin);
+    copiedIdAndHash.semanticSha256 = probe('knowledge-task-model').semanticSha256;
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(copiedIdAndHash, 'component_model_loop_admission'))).toBe(`canonical_probe_mismatch:${admin.id}`);
+    const forgedTerminal = structuredClone(admin);
+    forgedTerminal.terminalInvariant.status = 'provider_error';
+    expect(rejectionCode(() => createFixedTraceComponentSmokeSimulator(parent(admin.parent.id), forgedTerminal))).toBe(`canonical_probe_mismatch:${admin.id}`);
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(admin, Symbol('arm')))).toBe('evidence_promotion_blocked:malformed_use');
+  });
+
+  it('strictly detaches probe, event, and terminal data without raw exceptions or architecture tags', () => {
+    const admin = probe('admin-member-records-without-slack');
+    const simulator = createFixedTraceComponentSmokeSimulator(parent(admin.parent.id), admin);
+    const validTerminal = terminal(admin.parent.id, 'synthetic-member-bravo has no Slack account.');
+    const armTaggedProbe = structuredClone(admin) as Record<string, unknown>;
+    armTaggedProbe.architectureArm = 'direct_generation';
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(armTaggedProbe, 'component_model_loop_admission'))).toBe('unknown_or_missing_fields:probe');
+    const armTaggedNestedProbe = structuredClone(admin) as { terminalInvariant: Record<string, unknown> };
+    armTaggedNestedProbe.terminalInvariant.architectureArm = 'routed_generation';
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(armTaggedNestedProbe, 'component_model_loop_admission'))).toBe('unknown_or_missing_fields:probe.terminalInvariant');
+    const armTaggedDescriptor = structuredClone(admin) as { toolDescriptors: Array<Record<string, unknown>> };
+    armTaggedDescriptor.toolDescriptors[0]!.architectureArm = 'hybrid_generation';
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(armTaggedDescriptor, 'component_model_loop_admission'))).toBe('unknown_or_missing_fields:probe.toolDescriptors:0');
+    expect(rejectionCode(() => simulator.execute([{ ...admin.fixtureSequence[0]!, architectureArm: 'hybrid_generation' }, admin.fixtureSequence[1]!], validTerminal))).toBe('unknown_or_missing_fields:events:0');
+    expect(rejectionCode(() => simulator.execute(admin.fixtureSequence, { ...validTerminal, architectureArm: 'direct_generation' }))).toBe('unknown_or_missing_fields:terminal');
+    expect(rejectionCode(() => simulator.execute(admin.fixtureSequence, null))).toBe('unsafe_terminal:not_plain_data');
+    expect(rejectionCode(() => simulator.execute([null, admin.fixtureSequence[1]!] as never, validTerminal))).toBe('malformed_events:0:not_object');
+
+    const accessorTerminal = { ...validTerminal } as Record<string, unknown>;
+    Object.defineProperty(accessorTerminal, 'output', { enumerable: true, get: () => 'synthetic-member-bravo has no Slack account.' });
+    expect(rejectionCode(() => simulator.execute(admin.fixtureSequence, accessorTerminal))).toBe('unsafe_terminal:accessor');
+    expect(rejectionCode(() => simulator.execute(admin.fixtureSequence, new Proxy(validTerminal, {})))).toBe('unsafe_terminal:proxy');
+    const accessorEvent = { ...admin.fixtureSequence[0]! } as Record<string, unknown>;
+    Object.defineProperty(accessorEvent, 'result', { enumerable: true, get: () => 'Synthetic paid member records: synthetic-member-alpha and synthetic-member-bravo.' });
+    expect(rejectionCode(() => simulator.execute([accessorEvent, admin.fixtureSequence[1]!] as never, validTerminal))).toBe('unsafe_events:accessor');
+    expect(rejectionCode(() => simulator.execute([new Proxy(admin.fixtureSequence[0]!, {}), admin.fixtureSequence[1]!] as never, validTerminal))).toBe('unsafe_events:proxy');
+    const accessorProbe = structuredClone(admin) as Record<string, unknown>;
+    Object.defineProperty(accessorProbe, 'id', { enumerable: true, get: () => admin.id });
+    expect(rejectionCode(() => assertFixedTraceComponentSmokeEvidenceUse(accessorProbe, 'component_model_loop_admission'))).toBe('unsafe_probe:accessor');
   });
 });
