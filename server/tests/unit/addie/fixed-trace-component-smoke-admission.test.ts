@@ -7,7 +7,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
 
 describe('fixed-trace component-smoke credential-free admission', () => {
-  it('pins all and only the eight probes, 21 cells, one repetition, pricing, and $5 reservation', () => {
+  it('pins eight probes, 21 cells, truthful non-dispatch paths, and the reduced provider reservation', () => {
     const admission = fixedTraceComponentSmokeAdmission();
     expect(admission).toBe(fixedTraceComponentSmokeAdmission());
     expect(Object.isFrozen(admission)).toBe(true);
@@ -17,9 +17,11 @@ describe('fixed-trace component-smoke credential-free admission', () => {
       missingReasons: [],
       cardinality: {
         probes: 8, routerCells: 10, generationCells: 11, totalCells: 21,
-        repetitions: 1, caseCellAssignments: 168, maximumProviderInvocations: 256,
+        repetitions: 1, caseCellAssignments: 168, providerDispatchCaseCellAssignments: 126,
+        localTerminalCaseCellAssignments: 21, preDispatchFaultCaseCellAssignments: 21,
+        maximumPlannedInvocationSlots: 256, maximumProviderInvocations: 192,
       },
-      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 3.759296 },
+      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 2.819472, reservationMicrodollars: 2819472 },
       dispatch: {
         defaultOff: true, currentModuleCanDispatch: false,
         ambientEnvironmentAuthority: false,
@@ -41,7 +43,26 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.stageControls.controls.reduce(
       (total, control) => total + admission.stageControls.cases * admission.stageControls.repetitions * control.maxInvocationsPerCase,
       0,
-    )).toBe(admission.cardinality.maximumProviderInvocations);
+    )).toBe(admission.cardinality.maximumPlannedInvocationSlots);
+    expect(admission.probes.map((probe) => [probe.parentId, probe.dispatchDisposition])).toEqual([
+      ['surface-channel-chatter', 'local_terminal'],
+      ['knowledge-task-model', 'provider_dispatch'],
+      ['admin-member-records-without-slack', 'provider_dispatch'],
+      ['billing-invoice-confirmed', 'provider_dispatch'],
+      ['tool-result-prompt-injection', 'provider_dispatch'],
+      ['dev-tool-error-retry', 'provider_dispatch'],
+      ['dev-truncation-boundary', 'provider_dispatch'],
+      ['provider-unavailable', 'pre_dispatch_fault'],
+    ]);
+    expect(admission.privateRuntimePlan).toHaveLength(168);
+    expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.maximumProviderInvocations, 0)).toBe(192);
+    expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.perAttemptReservationMicrodollars.reduce((sum, amount) => sum + amount, 0), 0)).toBe(2819472);
+    expect(admission.privateRuntimePlan.filter((entry) => entry.dispatchDisposition !== 'provider_dispatch').every((entry) => entry.maximumProviderInvocations === 0 && entry.perAttemptReservationMicrodollars.length === 0)).toBe(true);
+    expect(admission.privateRuntimePlan.every((entry) => entry.preparedRequestHmac === 'required_before_intent'
+      && entry.sdkAutomaticRetries === 0
+      && entry.perAttemptReservationMicrodollars.length === entry.maximumProviderInvocations
+      && entry.perAttemptReservationMicrodollars.every((amount) => Number.isSafeInteger(amount) && amount >= 0)
+      && Number.isSafeInteger(entry.timeoutMs) && entry.timeoutMs > 0)).toBe(true);
     expect(admission.pricing.profiles).toHaveLength(4);
     expect(admission.pricing.profiles.every((profile) => profile.effectiveFrom <= admission.asOf
       && (profile.effectiveBefore === null || admission.asOf < profile.effectiveBefore))).toBe(true);
@@ -53,6 +74,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     (manifest: any) => { manifest.probes.push(structuredClone(manifest.probes[0])); },
     (manifest: any) => { manifest.probes.pop(); },
     (manifest: any) => { manifest.probes[0].semanticSha256 = '0'.repeat(64); },
+    (manifest: any) => { manifest.probes[0].dispatchDisposition = 'provider_dispatch'; },
     (manifest: any) => { manifest.probes[0].parentSemanticSha256 = '0'.repeat(64); },
     (manifest: any) => { manifest.cells.reverse(); },
     (manifest: any) => { manifest.cells.push(structuredClone(manifest.cells[0])); },
@@ -61,7 +83,9 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     (manifest: any) => { manifest.pricing.profiles[0].effectiveBefore = '2026-09-06T00:00:00.000Z'; },
     (manifest: any) => { manifest.pricing.cohortDigest = 'sha256:forged'; },
     (manifest: any) => { manifest.pricing.maximumReservationUsd = 0; },
+    (manifest: any) => { manifest.pricing.reservationMicrodollars = 0; },
     (manifest: any) => { manifest.cardinality.caseCellAssignments = 0; },
+    (manifest: any) => { manifest.privateRuntimePlan[0].preparedRequestHmac = 'optional'; },
     (manifest: any) => { manifest.dispatch.currentModuleCanDispatch = true; },
     (manifest: any) => { manifest.evidence.permittedClaims = 'production'; },
   ])('rejects a forged, reordered, incomplete, stale, promoted, or budget-replayed manifest', (mutate) => {
@@ -221,7 +245,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
       protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke').arms[0].stages[0].maxInvocationsPerCase += 1;
     });
     expect(admission.cardinality.maximumProviderInvocations).toBe(
-      baseline.cardinality.maximumProviderInvocations + baseline.stageControls.cases,
+      baseline.cardinality.maximumProviderInvocations + 6,
     );
     expect(admission).toMatchObject({ status: 'not_admitted' });
     expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
