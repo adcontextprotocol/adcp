@@ -10,7 +10,6 @@ import {
 import { isDatabaseInitialized, query } from '../db/client.js';
 import { decrypt, deriveKey, encrypt } from '../db/encryption.js';
 import { createLogger } from '../logger.js';
-import { notifySystemError } from '../addie/error-notifier.js';
 
 const logger = createLogger('seller-managed-control-jobs');
 const LEASE_MS = 30_000;
@@ -805,6 +804,15 @@ export function withSellerManagedIdempotencyReplay(
 
 type ExecuteJob = (job: SellerManagedControlJob) => Promise<Record<string, unknown>>;
 type NotifyJob = (job: SellerManagedControlJob) => Promise<void>;
+type NotifySystemError = (context: { source: string; errorMessage: string }) => void;
+
+const defaultNotifySystemError: NotifySystemError = context => {
+  // Lazy import keeps the durable-job module usable in isolated protocol tests
+  // that intentionally provide a minimal logger mock.
+  void import('../addie/error-notifier.js')
+    .then(({ notifySystemError }) => notifySystemError(context))
+    .catch(err => logger.warn({ err }, 'Failed to load seller-control error notifier'));
+};
 
 function structuredErrorFromResult(result: Record<string, unknown>): AdcpStructuredError | null {
   const errors = Array.isArray(result.errors) ? result.errors : [];
@@ -842,6 +850,7 @@ export class SellerManagedControlJobCoordinator {
       : new InMemorySellerManagedControlJobStore(),
     private readonly notify: NotifyJob = async () => {},
     private readonly isDatabaseReady: () => boolean = isDatabaseInitialized,
+    private readonly notifySystemError: NotifySystemError = defaultNotifySystemError,
   ) {}
 
   start(): void {
@@ -897,7 +906,7 @@ export class SellerManagedControlJobCoordinator {
           // log below error level so its hook cannot send a duplicate page.
           logger.warn(context, `${errorMessage} (alert threshold reached)`);
           const detail = err instanceof Error ? err.message : String(err);
-          notifySystemError({
+          this.notifySystemError({
             source: 'seller-managed-control-jobs',
             errorMessage: `${errorMessage} (${this.consecutiveReconciliationFailures} consecutive): ${detail}`,
           });

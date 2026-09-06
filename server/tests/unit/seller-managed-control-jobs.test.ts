@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryTaskRegistry } from '@adcp/sdk/server';
 import { logger } from '../../src/logger.js';
-import { notifySystemError } from '../../src/addie/error-notifier.js';
 import {
   InMemorySellerManagedControlJobStore,
   PostgresSellerManagedControlJobStore,
@@ -11,13 +10,6 @@ import {
   withSellerManagedTaskReplay,
   type SellerManagedControlJob,
 } from '../../src/training-agent/seller-managed-control-jobs.js';
-
-vi.mock('../../src/addie/error-notifier.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/addie/error-notifier.js')>(
-    '../../src/addie/error-notifier.js',
-  );
-  return { ...actual, notifySystemError: vi.fn() };
-});
 
 const INPUT = {
   taskId: 'smc_recovery_test',
@@ -108,8 +100,7 @@ describe('seller-managed control durable jobs', () => {
     vi.stubEnv('NODE_ENV', 'production');
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => logger);
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
-    const notifyMock = vi.mocked(notifySystemError);
-    notifyMock.mockClear();
+    const notifyMock = vi.fn();
     const store = new PostgresSellerManagedControlJobStore();
     const claim = vi.spyOn(store, 'claim').mockRejectedValue(new Error('database unavailable'));
     const coordinator = new SellerManagedControlJobCoordinator(
@@ -118,6 +109,7 @@ describe('seller-managed control durable jobs', () => {
       store,
       async () => {},
       () => true,
+      notifyMock,
     );
 
     coordinator.start();
