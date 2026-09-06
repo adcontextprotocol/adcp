@@ -56,7 +56,7 @@ class FakeLedgerClient {
   private readonly authorizations = new Map<string, string>();
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
-    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rowCount: 0, rows: [] };
+    if (sql === 'BEGIN' || sql === "SET LOCAL lock_timeout = '250ms'" || sql === "SET LOCAL statement_timeout = '1000ms'" || sql === 'COMMIT' || sql === 'ROLLBACK') return { rowCount: 0, rows: [] };
     if (sql.startsWith('INSERT INTO addie_fixed_trace_component_smoke_authorizations')) {
       const digest = params?.[0] as string;
       if (this.authorizations.has(digest)) return { rowCount: 0, rows: [] };

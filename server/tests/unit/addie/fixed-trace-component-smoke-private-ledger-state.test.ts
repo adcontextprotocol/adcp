@@ -39,7 +39,7 @@ class StrictLedgerClient {
   }
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
-    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK'
+    if (sql === 'BEGIN' || sql === "SET LOCAL lock_timeout = '250ms'" || sql === "SET LOCAL statement_timeout = '1000ms'" || sql === 'COMMIT' || sql === 'ROLLBACK'
       || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE'
       || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE') return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts')
@@ -125,6 +125,22 @@ function terminal(overrides: Record<string, unknown> = {}) {
 function ledger(client: StrictLedgerClient) { return new PostgresFixedTraceComponentSmokePrivateLedger({ connect: async () => client } as never); }
 
 describe('private ledger state machine', () => {
+  it('sets bounded DB-only local timeouts immediately after BEGIN and fails closed before ledger work on timeout', async () => {
+    const client = new StrictLedgerClient();
+    const originalQuery = client.query.bind(client);
+    client.query = async (sql: string, params?: unknown[]) => {
+      if (sql === "SET LOCAL statement_timeout = '1000ms'") {
+        client.calls.push({ sql, params });
+        throw new Error('statement timeout');
+      }
+      return originalQuery(sql, params);
+    };
+    expect(await ledger(client).recordProviderIntent(intent())).toEqual({ status: 'refused', reason: 'persistence_uncertain' });
+    expect(client.calls.map(({ sql }) => sql)).toEqual([
+      'BEGIN', "SET LOCAL lock_timeout = '250ms'", "SET LOCAL statement_timeout = '1000ms'", 'ROLLBACK',
+    ]);
+  });
+
   it('records a provider intent and terminal using realistic pg int8 and int8[] strings', async () => {
     const client = new StrictLedgerClient();
     expect(await ledger(client).recordProviderIntent(intent())).toEqual({ status: 'recorded' });

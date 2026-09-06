@@ -20,6 +20,14 @@ export const FIXED_TRACE_COMPONENT_SMOKE_PREPARED_REQUEST_HMAC_DOMAIN =
   'adcp:addie:fixed-trace-component-smoke:prepared-request:v1\0' as const;
 export const FIXED_TRACE_COMPONENT_SMOKE_RESPONSE_HMAC_DOMAIN =
   'adcp:addie:fixed-trace-component-smoke:provider-response:v1\0' as const;
+/**
+ * Ledger transactions contain database bookkeeping only: a provider call is
+ * always outside them. These deliberately small, fixed PostgreSQL-local
+ * bounds therefore fail closed on contention/query stalls without ever
+ * bounding (or spanning) provider work.
+ */
+export const FIXED_TRACE_COMPONENT_SMOKE_LEDGER_LOCK_TIMEOUT_MS = 250 as const;
+export const FIXED_TRACE_COMPONENT_SMOKE_LEDGER_STATEMENT_TIMEOUT_MS = 1_000 as const;
 
 type Admission = ReturnType<typeof fixedTraceComponentSmokeAdmission>;
 type Disposition = Admission['privateRuntimePlan'][number]['dispatchDisposition'];
@@ -202,6 +210,10 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     let began = false;
     try {
       await client.query('BEGIN'); began = true;
+      // These must be the first commands in every transaction. SET LOCAL
+      // cannot escape COMMIT/ROLLBACK and neither value is caller-controlled.
+      await client.query(`SET LOCAL lock_timeout = '${FIXED_TRACE_COMPONENT_SMOKE_LEDGER_LOCK_TIMEOUT_MS}ms'`);
+      await client.query(`SET LOCAL statement_timeout = '${FIXED_TRACE_COMPONENT_SMOKE_LEDGER_STATEMENT_TIMEOUT_MS}ms'`);
       const output = await work(client);
       await client.query('COMMIT');
       return output;
@@ -640,7 +652,14 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
           || parsed.finalInvocationOrdinal > expected.maximumProviderInvocations) return result('refused', 'plan_mismatch');
         const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
-        if (auth.rows[0]!.status !== 'consumed' && !(auth.rows[0]!.status === 'unknown_exposure' && parsed.status === 'provider_failed')) return result('refused', auth.rows[0]!.status === 'unknown_exposure' ? 'unknown_exposure' : 'run_halted');
+        // A limit breach has already settled the attempt and permanently
+        // halted the authorization. Its provider assignment must still close
+        // as failed so the 168-entry denominator is never left open.
+        if (auth.rows[0]!.status !== 'consumed'
+          && !(auth.rows[0]!.status === 'unknown_exposure' && parsed.status === 'provider_failed')
+          && !(auth.rows[0]!.status === 'halted' && parsed.status === 'provider_failed')) {
+          return result('refused', auth.rows[0]!.status === 'unknown_exposure' ? 'unknown_exposure' : 'run_halted');
+        }
         // Target plan then authorization is the universal ordinary-mutation
         // order. This aggregate deliberately takes no peer-row locks.
         const evidence = await client.query<{ count: unknown; open: unknown; failures: unknown; last_response_disposition: unknown }>(
