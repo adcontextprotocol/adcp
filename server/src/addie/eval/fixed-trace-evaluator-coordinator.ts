@@ -7,52 +7,46 @@
  * adjudication, custody, and missingness bindings.
  */
 import {
-  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
-  fixedTraceEvaluationProtocolFingerprint,
-} from "./fixed-trace-evaluation-protocol.js";
+  FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
+  assertFixedTraceEvidencePrerequisiteUnavailable,
+  type FixedTraceSealedEvidenceRequirements,
+} from "./fixed-trace-evidence-prerequisite.js";
 
 export const FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION =
-  "not_admitted_missing_validated_A_schedule_pricing_custody_and_calibration" as const;
+  FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION;
 
 export interface FixedTraceCoordinatorUnavailable {
   readonly status: "unavailable";
   readonly admission: typeof FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION;
+  /** C must supply this whole sealed contract; B exports no positive ledger. */
+  readonly requiredSealedEvidence: readonly (keyof FixedTraceSealedEvidenceRequirements)[];
 }
 
-export class FixedTraceEvaluatorCoordinatorUnavailableError extends Error {
-  constructor() {
-    super(FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION);
-    this.name = "FixedTraceEvaluatorCoordinatorUnavailableError";
-  }
-}
+const REQUIRED_SEALED_EVIDENCE = Object.freeze([
+  "protocolFingerprint", "corpusSuiteVersion", "corpusSuiteSha256",
+  "partitionManifestSha256", "experimentalDesignFingerprint",
+  "measurementManifestSha256", "phase", "arm", "caseId", "repetition",
+  "episodeId", "blockId", "order", "position", "randomizationSeed",
+  "scheduleDigest", "workerIdentity", "adjudicationBinding", "custodyBinding",
+  "missingnessBinding", "pricingCohortDigest", "pricingEffectiveFrom",
+  "pricingEffectiveBefore", "calibrationDigest", "providerExposureLedgerDigest",
+] as const satisfies readonly (keyof FixedTraceSealedEvidenceRequirements)[]);
 
-const FIXED_TRACE_COORDINATOR_PREREQUISITE = Object.freeze({
-  protocolFingerprint: fixedTraceEvaluationProtocolFingerprint(
-    FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
-  ),
-  scheduleDigest: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.finalRandomization.scheduleDigest,
-  pricingCohortDigest: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.prospectivePricingCohort.digest,
-  calibrationStatus: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.judgeCalibration.status,
-  custodyStatus: FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol.externalPackCustody.status,
-} as const);
+const UNAVAILABLE_COORDINATOR: FixedTraceCoordinatorUnavailable = Object.freeze({
+  status: "unavailable",
+  admission: FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION,
+  requiredSealedEvidence: REQUIRED_SEALED_EVIDENCE,
+});
 
 /**
  * Deliberately accepts no capability and examines no caller data. It has no
  * signer, validator, issuance method, replay store, or ledger shape.
  */
-export function fixedTraceEvaluatorCoordinatorUnavailable(): never {
-  const finalProtocol = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol;
-  if (
-    fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL)
-      !== FIXED_TRACE_COORDINATOR_PREREQUISITE.protocolFingerprint
-    || finalProtocol.finalRandomization.scheduleDigest
-      !== FIXED_TRACE_COORDINATOR_PREREQUISITE.scheduleDigest
-    || finalProtocol.prospectivePricingCohort.digest
-      !== FIXED_TRACE_COORDINATOR_PREREQUISITE.pricingCohortDigest
-    || finalProtocol.judgeCalibration.status
-      !== FIXED_TRACE_COORDINATOR_PREREQUISITE.calibrationStatus
-    || finalProtocol.externalPackCustody.status
-      !== FIXED_TRACE_COORDINATOR_PREREQUISITE.custodyStatus
-  ) throw new FixedTraceEvaluatorCoordinatorUnavailableError();
-  throw new FixedTraceEvaluatorCoordinatorUnavailableError();
+export function fixedTraceEvaluatorCoordinatorUnavailable(): FixedTraceCoordinatorUnavailable {
+  try {
+    assertFixedTraceEvidencePrerequisiteUnavailable();
+  } catch {
+    return UNAVAILABLE_COORDINATOR;
+  }
+  return UNAVAILABLE_COORDINATOR;
 }
