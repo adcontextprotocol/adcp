@@ -38,15 +38,19 @@ import {
   fixedTraceCorpusSha256,
 } from './fixed-trace-suite.js';
 import { FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY } from './fixed-trace-component-smoke-admission-policy.js';
+import {
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY,
+  fixedTraceComponentSmokePrivateAuthorityMatchesAdmission,
+} from './fixed-trace-component-smoke-private-authority.js';
 
 /**
  * Stage 1 is admitted against this pinned instant, never an ambient clock.
  * A later paid-run coordinator must obtain a fresh admission rather than
  * treating this static review as a live authorization.
  */
-export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF = '2026-09-06T00:00:00.000Z' as const;
+export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF = FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.asOf;
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION =
-  'addie-fixed-trace-component-smoke-admission-v2' as const;
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.admissionVersion;
 
 /** One detached, evaluator-owned source for every emitted readiness policy value. */
 const FIXED_TRACE_COMPONENT_SMOKE_READINESS = Object.freeze({
@@ -211,7 +215,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
 
 /** Independently reviewed integrity pin; it is never an authorization artifact. */
 const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
-  '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d' as const;
+  FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY.aggregateAdmissionFingerprint;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -540,6 +544,11 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
   if (aggregate !== FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN) {
     reasons.push('component_admission_fingerprint_mismatch');
   }
+  if (!fixedTraceComponentSmokePrivateAuthorityMatchesAdmission({
+    version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION, probes, cells, cardinality,
+    pricing: pricingManifest, privateRuntimePlan: pricing.privateRuntimePlan,
+    fingerprints: { aggregateAdmission: aggregate },
+  })) reasons.push('component_admission_fingerprint_mismatch');
   return Object.freeze({
     version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
     asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,

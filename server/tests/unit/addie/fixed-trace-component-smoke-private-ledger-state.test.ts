@@ -5,7 +5,7 @@ import {
   fixedTraceComponentSmokePrivateLedgerPlan,
   type FixedTraceComponentSmokePlanEntry,
 } from '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.js';
-import { datedPricingCostMicros, datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
+import { fixedTraceComponentSmokePrivateAuthorityCostMicros } from '../../../src/addie/eval/fixed-trace-component-smoke-private-authority.js';
 
 const digest = 'a'.repeat(64);
 const reservation = Object.freeze({
@@ -25,6 +25,7 @@ class StrictLedgerClient {
   readonly calls: Array<{ sql: string; params: unknown[] | undefined }> = [];
   readonly attempts = new Map<string, StoredAttempt>();
   readonly assignmentOutcomes = new Map<string, string>();
+  recoveryClosedRemainder = false;
   authStatus = 'consumed';
   priorSpend: string | null = null;
   constructor(private readonly entry: FixedTraceComponentSmokePlanEntry = dispatch) {}
@@ -39,7 +40,7 @@ class StrictLedgerClient {
   }
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
-    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK'
+    if (sql === 'BEGIN' || sql === "SET LOCAL lock_timeout = '250ms'" || sql === "SET LOCAL statement_timeout = '1000ms'" || sql === 'COMMIT' || sql === 'ROLLBACK'
       || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE'
       || sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE') return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts')
@@ -52,6 +53,10 @@ class StrictLedgerClient {
       return attempt ? { rowCount: 1, rows: [{ status: attempt.status, response_disposition: attempt.responseDisposition }] } : { rowCount: 0, rows: [] };
     }
     if (sql.includes('FROM addie_fixed_trace_component_smoke_run_plan') && sql.includes('FOR UPDATE') && !sql.includes('FROM addie_fixed_trace_component_smoke_attempts a')) return { rowCount: 1, rows: [this.planRow()] };
+    if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_run_plan AS p') && sql.includes("'not_executed_after_halt'")) {
+      this.recoveryClosedRemainder = true;
+      return { rowCount: 167, rows: [] };
+    }
     if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 1, rows: [] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id')) return { rowCount: this.attempts.has(params![0] as string) ? 1 : 0, rows: [] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest')) {
@@ -125,6 +130,22 @@ function terminal(overrides: Record<string, unknown> = {}) {
 function ledger(client: StrictLedgerClient) { return new PostgresFixedTraceComponentSmokePrivateLedger({ connect: async () => client } as never); }
 
 describe('private ledger state machine', () => {
+  it('sets bounded DB-only local timeouts immediately after BEGIN and fails closed before ledger work on timeout', async () => {
+    const client = new StrictLedgerClient();
+    const originalQuery = client.query.bind(client);
+    client.query = async (sql: string, params?: unknown[]) => {
+      if (sql === "SET LOCAL statement_timeout = '1000ms'") {
+        client.calls.push({ sql, params });
+        throw new Error('statement timeout');
+      }
+      return originalQuery(sql, params);
+    };
+    expect(await ledger(client).recordProviderIntent(intent())).toEqual({ status: 'refused', reason: 'persistence_uncertain' });
+    expect(client.calls.map(({ sql }) => sql)).toEqual([
+      'BEGIN', "SET LOCAL lock_timeout = '250ms'", "SET LOCAL statement_timeout = '1000ms'", 'ROLLBACK',
+    ]);
+  });
+
   it('records a provider intent and terminal using realistic pg int8 and int8[] strings', async () => {
     const client = new StrictLedgerClient();
     expect(await ledger(client).recordProviderIntent(intent())).toEqual({ status: 'recorded' });
@@ -160,8 +181,7 @@ describe('private ledger state machine', () => {
     ['openai-gpt-5.6-luna-standard-2026-09-05', { inputTokens: 2, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 1 }, 1],
     ['google-gemini-3.7-flash-through-2026-12-31', { inputTokens: 1, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 0 }, 1],
   ])('uses exact rounded microdollar pricing for %s', (profileId, usage, expectedMicros) => {
-    const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === profileId)!;
-    expect(datedPricingCostMicros(profile, usage)).toBe(expectedMicros);
+    expect(fixedTraceComponentSmokePrivateAuthorityCostMicros(profileId, usage)).toBe(expectedMicros);
   });
 
   it('poisons an authorization with an unresolved intent and maps response failures to unknown exposure', async () => {
@@ -228,6 +248,7 @@ describe('private ledger state machine', () => {
     expect(client.authStatus).toBe('unknown_exposure');
     expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)).toMatchObject({ status: 'unknown_exposure', responseHmac: null, cost: null });
     expect(client.assignmentOutcomes.get(dispatch.assignmentId)).toBe('provider_unknown_exposure');
+    expect(client.recoveryClosedRemainder).toBe(true);
   });
 
   it('uses complete-plan, then attempts, then authorization recovery locking', async () => {
