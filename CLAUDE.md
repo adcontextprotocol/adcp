@@ -14,3 +14,5 @@ lives in `.agents/playbook.md`.
 ## PR Completion Gate
 
 Follow the canonical **PR Preparation Checklist** in `.agents/playbook.md`.
+Completion is forbidden until every review thread is resolved after its fix or
+specific evidence-backed disposition; enumeration alone is insufficient.

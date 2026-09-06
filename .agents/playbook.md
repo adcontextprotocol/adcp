@@ -791,31 +791,48 @@ Apply this pattern when restructuring protocol sections.
 
 Before creating or updating a PR, always:
 
-1. **Clear all actionable review feedback.** Before declaring a PR done, ready,
-   mergeable, or complete—or enabling or expecting its merge—enumerate every
-   review thread (including inline bot and human threads), top-level PR
-   conversation comment, submitted review body, and inline review comment. Give
-   every actionable item a specific, evidence-backed fix or disposition. Record
-   the feedback URL or ID and evidence for each item: a commit and file/line or
-   focused check for a fix; or the concrete repository, policy, or reproduction
-   evidence that makes it already fixed or inapplicable. For each thread,
-   individually record whether it was fixed, verified already fixed, or
-   documented inapplicable before resolving it. Only review threads can be
-   GitHub-resolved; top-level feedback still requires a disposition.
-   Passing CI, approval, dismissal, bot authorship, or outdated status never
-   justifies blanket or automatic resolution.
-2. **Initialize and validate `PR_NUMBER`, then use GitHub GraphQL as the
-   authoritative thread inventory.** Set it to the PR number, require a
-   positive integer, and verify it names the intended pull request before
-   querying feedback:
+1. **Clear all actionable review feedback.** Completion is forbidden until
+   every review thread is GitHub-resolved after its fix or specific,
+   evidence-backed disposition has been recorded; enumeration and recording
+   state alone are insufficient. Before declaring a PR done, ready, mergeable,
+   or complete—or enabling or expecting its merge—enumerate every review thread
+   (including inline bot and human threads), top-level PR conversation comment,
+   submitted review body, and inline review comment. Give every actionable item
+   a specific, evidence-backed fix or disposition. Record the feedback URL or
+   ID and evidence for each item: a commit and file/line or focused check for a
+   fix; or the concrete repository, policy, or reproduction evidence that makes
+   it already fixed or inapplicable. For each thread, individually record
+   whether it was fixed, verified already fixed, or documented inapplicable
+   before resolving it. Only review threads can be GitHub-resolved; top-level
+   feedback still requires a disposition. Passing CI, approval, dismissal, bot
+   authorship, or outdated status never justifies blanket or automatic
+   resolution.
+2. **Require caller-supplied `PR_NUMBER` and `EXPECTED_PR_HEAD`, then use
+   GitHub GraphQL as the authoritative thread inventory.** Do not default
+   either value. Require a positive PR number and verify that it identifies the
+   intended pull request's exact head OID before querying feedback:
 
    ```bash
-   PR_NUMBER=7310
+   set -euo pipefail
+   : "${PR_NUMBER:?Set PR_NUMBER to the intended pull-request number}"
+   : "${EXPECTED_PR_HEAD:?Set EXPECTED_PR_HEAD to the intended pull request head OID}"
    case "$PR_NUMBER" in
      ''|*[!0-9]*|0) echo 'PR_NUMBER must be a positive integer' >&2; exit 1 ;;
    esac
-   test "$(gh pr view "$PR_NUMBER" --repo adcontextprotocol/adcp --json number --jq .number)" = "$PR_NUMBER" \
+   case "$EXPECTED_PR_HEAD" in
+     *[!0-9a-f]*) echo 'EXPECTED_PR_HEAD must be a lowercase hexadecimal OID' >&2; exit 1 ;;
+   esac
+   test "${#EXPECTED_PR_HEAD}" -eq 40 \
+     || { echo 'EXPECTED_PR_HEAD must be a 40-character OID' >&2; exit 1; }
+   actual_pr="$(gh pr view "$PR_NUMBER" --repo adcontextprotocol/adcp \
+     --json number,headRefOid --jq '[.number, .headRefOid] | @tsv')" \
      || { echo "PR #$PR_NUMBER was not found" >&2; exit 1; }
+   actual_number="${actual_pr%%$'\t'*}"
+   actual_head="${actual_pr#*$'\t'}"
+   test "$actual_number" != "$actual_pr" \
+     && test "$actual_number" = "$PR_NUMBER" \
+     && test "$actual_head" = "$EXPECTED_PR_HEAD" \
+     || { echo "PR_NUMBER=$PR_NUMBER does not identify the intended PR head $EXPECTED_PR_HEAD" >&2; exit 1; }
 
    gh api graphql \
      -F owner=adcontextprotocol \
