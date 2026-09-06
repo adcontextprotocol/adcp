@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
+  FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
   fixedTraceComponentSmokeAdmission,
   isFixedTraceComponentSmokeAdmissionManifest,
 } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
@@ -13,9 +14,11 @@ import {
 describe('fixed-trace component-smoke credential-free admission', () => {
   it('pins eight probes, 21 cells, truthful non-dispatch paths, and the independently conservative provider reservation', () => {
     const admission = fixedTraceComponentSmokeAdmission();
+    expect(FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION).toBe('addie-fixed-trace-component-smoke-admission-v2');
     expect(admission).toBe(fixedTraceComponentSmokeAdmission());
     expect(Object.isFrozen(admission)).toBe(true);
     expect(admission).toMatchObject({
+      version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
       asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
       status: 'ready_for_explicit_paid_authorization',
       missingReasons: [],
@@ -71,6 +74,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.pricing.profiles.every((profile) => profile.effectiveFrom <= admission.asOf
       && (profile.effectiveBefore === null || admission.asOf < profile.effectiveBefore))).toBe(true);
     expect(Object.values(admission.fingerprints).every((value) => typeof value === 'string' && value.length > 0)).toBe(true);
+    expect(admission.fingerprints.aggregateAdmission).toBe('731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d');
   });
 
   it('reserves each provider attempt independently at or above its exact dated maximum', () => {

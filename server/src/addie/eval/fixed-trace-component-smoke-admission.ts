@@ -46,7 +46,7 @@ import { FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY } from './fixed-trace-comp
  */
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF = '2026-09-06T00:00:00.000Z' as const;
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION =
-  'addie-fixed-trace-component-smoke-admission-v1' as const;
+  'addie-fixed-trace-component-smoke-admission-v2' as const;
 
 /** One detached, evaluator-owned source for every emitted readiness policy value. */
 const FIXED_TRACE_COMPONENT_SMOKE_READINESS = Object.freeze({
@@ -211,7 +211,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
 
 /** Independently reviewed integrity pin; it is never an authorization artifact. */
 const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
-  'fcd48ebdfa1c89a500a660edebe66b82bfa18f363cd2c176df7890003bd00d38' as const;
+  '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d' as const;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -487,7 +487,7 @@ function aggregateAdmissionFingerprint(
   runtimePlan: FixedTraceComponentSmokeAdmissionManifest['privateRuntimePlan'],
 ): string {
   return sha256({
-    domain: 'adcp:addie:fixed-trace-component-smoke-admission:v1\0',
+    domain: 'adcp:addie:fixed-trace-component-smoke-admission:v2\0',
     version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
     asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
     probes,
