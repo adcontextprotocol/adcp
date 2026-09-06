@@ -97,10 +97,18 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
   UNIQUE (authorization_digest, assignment_id, invocation_ordinal),
   CHECK ((status = 'intent_recorded') = (terminal_at IS NULL)),
   CHECK ((returned_provider IS NULL) = (returned_model IS NULL) AND (returned_provider IS NULL) = (returned_effort IS NULL)),
-  CHECK (status <> 'succeeded' OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND actual_cost_microdollars IS NOT NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL)),
+  CHECK (actual_cost_microdollars IS NULL OR status IN ('succeeded', 'provider_failed')),
+  CHECK (observed_cost_microdollars IS NULL OR status = 'invalid_limits'),
+  CHECK (actual_cost_microdollars IS NULL OR observed_cost_microdollars IS NULL),
+  CHECK (status <> 'intent_recorded' OR (response_disposition IS NULL AND response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
+  CHECK (status NOT IN ('succeeded', 'provider_failed') OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND cache_read_tokens IS NOT NULL AND cache_write_tokens IS NOT NULL AND actual_cost_microdollars IS NOT NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL AND returned_provider IS NOT NULL)),
   CHECK ((status = 'succeeded') = (response_disposition IS NOT NULL)),
-  CHECK (status NOT IN ('malformed_response', 'missing_usage') OR (input_tokens IS NULL AND output_tokens IS NULL AND actual_cost_microdollars IS NULL)),
-  CHECK (status <> 'timeout_after_dispatch' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND actual_cost_microdollars IS NULL)),
+  CHECK (status NOT IN ('malformed_response', 'missing_usage') OR (input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
+  CHECK (status <> 'malformed_response' OR returned_provider IS NULL),
+  CHECK (status <> 'missing_usage' OR returned_provider IS NOT NULL),
+  CHECK (status <> 'identity_mismatch' OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND cache_read_tokens IS NOT NULL AND cache_write_tokens IS NOT NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL AND returned_provider IS NOT NULL)),
+  CHECK (status <> 'invalid_limits' OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND cache_read_tokens IS NOT NULL AND cache_write_tokens IS NOT NULL AND actual_cost_microdollars IS NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL AND returned_provider IS NOT NULL)),
+  CHECK (status <> 'timeout_after_dispatch' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
   CHECK (status <> 'unknown_exposure' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
   CHECK (status NOT IN ('succeeded', 'provider_failed', 'malformed_response', 'identity_mismatch', 'missing_usage') OR response_hmac IS NOT NULL)
 );
@@ -197,9 +205,12 @@ BEGIN
   IF NEW.assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure') AND OLD.disposition <> 'provider_dispatch' THEN
     RAISE EXCEPTION 'provider assignment outcome requires provider dispatch';
   END IF;
+  -- Every assignment outcome serializes on this authorization row.  This
+  -- makes the last-two-outcomes completion transition race-safe.
+  SELECT status INTO authorization_status FROM addie_fixed_trace_component_smoke_authorizations
+   WHERE authorization_digest = NEW.authorization_digest FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'assignment authorization is absent'; END IF;
   IF NEW.assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure') THEN
-    SELECT status INTO authorization_status FROM addie_fixed_trace_component_smoke_authorizations
-     WHERE authorization_digest = NEW.authorization_digest FOR UPDATE;
     SELECT count(*), bool_or(status = 'intent_recorded'), bool_or(status <> 'succeeded')
       INTO terminal_count, open_attempt, failed_attempt
       FROM addie_fixed_trace_component_smoke_attempts
@@ -383,6 +394,11 @@ BEGIN
      AND (NEW.returned_provider IS DISTINCT FROM requested_provider OR NEW.returned_model IS DISTINCT FROM requested_model
           OR NEW.returned_effort IS DISTINCT FROM requested_effort) THEN
     RAISE EXCEPTION 'succeeded attempt identity differs from admitted plan';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.status = 'identity_mismatch'
+     AND NEW.returned_provider = requested_provider AND NEW.returned_model = requested_model
+     AND NEW.returned_effort = requested_effort THEN
+    RAISE EXCEPTION 'identity mismatch requires differing returned identity';
   END IF;
   IF TG_OP = 'UPDATE' AND NEW.actual_cost_microdollars IS NOT NULL
      AND (NEW.returned_provider IS DISTINCT FROM requested_provider OR NEW.returned_model IS DISTINCT FROM requested_model
