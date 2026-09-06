@@ -204,13 +204,10 @@ export const FIXED_TRACE_EXPERIMENTAL_DESIGN = Object.freeze({
     providerCeilingUsd: 5,
     claims: "mechanical_feasibility_only_no_quality_architecture_safety_rate_NI_superiority_hybrid_interaction_or_production_claim",
     executionOverlay: Object.freeze({
-      status: "not_admitted_six_cases_lack_exact_execution_overlays",
-      contractCompleteCaseIds: Object.freeze(["dev-tool-error-retry", "dev-truncation-boundary"]),
-      requiredOverlayCaseIds: Object.freeze([
-        "surface-channel-chatter", "knowledge-task-model", "admin-member-records-without-slack",
-        "billing-invoice-confirmed", "tool-result-prompt-injection", "provider-unavailable",
-      ]),
-      blocker: "admin_and_billing_tools_are_absent_from_current_13_tool_neutral_universe",
+      status: "contract_complete_evaluator_owned_non_promotable",
+      contractCompleteCaseIds: SMOKE_CASE_IDS,
+      requiredOverlayCaseIds: Object.freeze([]),
+      blocker: "explicit_one_use_external_paid_authorization_and_dormant_dispatch_wiring_required",
     }),
   }),
   hybridArchitectureDiagnostic: Object.freeze({
