@@ -178,7 +178,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
 
 /** Independently reviewed integrity pin; it is never an authorization artifact. */
 const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
-  'db39f66ccce734727ded358a6269c7fe99e40a0c3d5b9afcf2e3ff96d21a407d' as const;
+  'c8e386ae7e218e7c731bf6ea71af2c03f6372b8207ea680e32ab0fc875aefe7b' as const;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -261,7 +261,7 @@ function maximumReservationUsd(
   cohort: DatedPricingCohort,
   plan: FixedTraceComponentSmokeStagePlan,
 ): number {
-  return plan.controls.reduce((total, control) => {
+  const unnormalized = plan.controls.reduce((total, control) => {
     const cell = FIXED_TRACE_ADMITTED_CELLS.find((candidate) => candidate.id === control.cellId);
     if (!cell) throw new Error('unknown component cell');
     const candidateId = candidateIdFor(cell);
@@ -274,6 +274,13 @@ function maximumReservationUsd(
       control.maxOutputTokensPerInvocation,
     );
   }, 0);
+  // Admission currency is pinned in integer microdollars. This is the source
+  // artifact used by the aggregate fingerprint, never a runner-edge display fix.
+  const microdollars = Math.round(unnormalized * 1_000_000);
+  if (!Number.isSafeInteger(microdollars)) {
+    throw new Error('component reservation is not representable in microdollars');
+  }
+  return microdollars / 1_000_000;
 }
 
 function reasonsForPinnedArtifacts(

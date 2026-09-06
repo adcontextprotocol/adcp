@@ -19,7 +19,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
         probes: 8, routerCells: 10, generationCells: 11, totalCells: 21,
         repetitions: 1, caseCellAssignments: 168, maximumProviderInvocations: 256,
       },
-      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 3.7592960000000017 },
+      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 3.759296 },
       dispatch: {
         defaultOff: true, currentModuleCanDispatch: false,
         ambientEnvironmentAuthority: false,
