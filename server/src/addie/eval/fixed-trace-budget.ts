@@ -12,6 +12,12 @@ import {
   isGoogleRouterModelRevision,
 } from '../model-providers/google-generate-content-provider.js';
 import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+import {
+  datedPricingProfilesForFixedTrace,
+  pricingProfileForCandidate,
+  resolveCurrentEvaluationPricingCohort,
+  type EvaluationPricingCandidateId,
+} from './dated-pricing-cohort.js';
 import type { FixedTraceModelResolutionPolicy } from './fixed-trace-suite.js';
 
 export interface FixedTraceBudgetPricing {
@@ -62,6 +68,7 @@ export interface FixedTraceBudgetSnapshot {
  * by supplying a matching-looking policy object or a zero-rate tuple.
  */
 interface FixedTraceApprovedPricing extends FixedTraceBudgetPricing {
+  readonly candidateId: EvaluationPricingCandidateId;
   readonly profileId: string;
   readonly expectedProvider: ModelProvider['id'];
   readonly expectedModel: string;
@@ -77,44 +84,22 @@ export function fixedTraceModelResolutionPolicy(
     : 'exact_model_identity_v1';
 }
 
-const FIXED_TRACE_APPROVED_PRICING = Object.freeze(([
-  {
-    expectedProvider: 'anthropic', expectedModel: 'claude-haiku-4-5',
-    profileId: 'anthropic-standard-2026-09:claude-haiku-4-5',
-    inputUsdPerMillionTokens: 1, outputUsdPerMillionTokens: 5,
-    cacheReadUsdPerMillionTokens: 0.1, cacheWriteUsdPerMillionTokens: 1.25,
-    cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
-    source: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
-    modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'anthropic', expectedModel: 'claude-sonnet-5',
-    profileId: 'anthropic-standard-2026-09:claude-sonnet-5',
-    inputUsdPerMillionTokens: 2, outputUsdPerMillionTokens: 10,
-    cacheReadUsdPerMillionTokens: 0.2, cacheWriteUsdPerMillionTokens: 2.5,
-    cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
-    source: 'Anthropic pricing page: Claude Sonnet 5 standard (5-minute cache write), checked 2026-09-05.',
-    modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'openai', expectedModel: 'gpt-5.6-luna',
-    profileId: 'openai-gpt-5.6-luna-standard-2026-08-25',
-    inputUsdPerMillionTokens: 0.2, outputUsdPerMillionTokens: 1.2,
-    cacheReadUsdPerMillionTokens: 0.02, cacheWriteUsdPerMillionTokens: null,
-    cacheReadAccounting: 'subset', cacheWriteAccounting: 'unsupported',
-    source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25.',
-    modelResolutionPolicy: 'exact_model_identity_v1',
-  },
-  {
-    expectedProvider: 'google', expectedModel: GOOGLE_ROUTER_MODEL,
-    profileId: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
-    inputUsdPerMillionTokens: 0.75, outputUsdPerMillionTokens: 3.75,
-    cacheReadUsdPerMillionTokens: 0.075, cacheWriteUsdPerMillionTokens: 0.75,
-    cacheReadAccounting: 'subset', cacheWriteAccounting: 'additive',
-    source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25.',
-    modelResolutionPolicy: 'google_router_dated_revision_v1',
-  },
-] satisfies readonly FixedTraceApprovedPricing[]).map((entry) => Object.freeze(entry)));
+const FIXED_TRACE_APPROVED_PRICING = Object.freeze(datedPricingProfilesForFixedTrace().map((profile) => Object.freeze({
+  candidateId: profile.candidateId,
+  expectedProvider: profile.provider,
+  expectedModel: profile.model,
+  profileId: profile.profileId,
+  inputUsdPerMillionTokens: profile.inputUsdPerMillionTokens,
+  outputUsdPerMillionTokens: profile.outputUsdPerMillionTokens,
+  cacheReadUsdPerMillionTokens: profile.cacheReadUsdPerMillionTokens,
+  cacheWriteUsdPerMillionTokens: profile.cacheWriteUsdPerMillionTokens,
+  cacheReadAccounting: profile.cacheReadAccounting,
+  cacheWriteAccounting: profile.cacheWriteAccounting,
+  source: profile.source,
+  modelResolutionPolicy: profile.provider === 'google'
+    ? 'google_router_dated_revision_v1' as const
+    : 'exact_model_identity_v1' as const,
+} satisfies FixedTraceApprovedPricing)));
 
 /**
  * The complete live approval surface. It is intentionally inspectable for
@@ -182,6 +167,14 @@ export function fixedTraceResponsePricingPolicy(
     && sameApprovedPricing(entry, pricing)
   ));
   if (!approved) throw new Error('Fixed trace pricing profile is not evaluator approved');
+  const currentCohort = resolveCurrentEvaluationPricingCohort(new Date(), [approved.candidateId]);
+  if (currentCohort.status !== 'available') {
+    throw new Error('Fixed trace pricing profile is not currently effective');
+  }
+  const current = pricingProfileForCandidate(currentCohort.cohort, approved.candidateId);
+  if (current.profileId !== approved.profileId || !sameApprovedPricing(approved, current)) {
+    throw new Error('Fixed trace pricing profile does not match the current cohort');
+  }
   const policy = Object.freeze({
     expectedProvider: approved.expectedProvider,
     expectedModel: approved.expectedModel,

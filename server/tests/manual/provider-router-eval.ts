@@ -32,15 +32,15 @@ import {
   SYNTHETIC_ROUTER_CORPUS,
   type RouterEvalResult,
 } from '../../src/addie/testing/provider-router-eval.js';
+import {
+  pricingProfileForCandidate,
+  resolveCurrentEvaluationPricingCohort,
+  type DatedPricingProfile,
+  type EvaluationPricingCandidateId,
+} from '../../src/addie/eval/dated-pricing-cohort.js';
 
 type ProviderName = 'anthropic' | 'openai' | 'google';
 type Profile = 'prompt_parity' | 'native_structured';
-
-const RATES: Record<ProviderName, { input: number; output: number; source: string }> = {
-  anthropic: { input: 1, output: 5, source: 'Anthropic Haiku 4.5 standard, checked 2026-08-25' },
-  openai: { input: 0.2, output: 1.2, source: 'OpenAI gpt-5.6-luna standard, checked 2026-08-25' },
-  google: { input: 0.75, output: 3.75, source: 'Google Gemini 3.7 Flash introductory standard, checked 2026-08-25' },
-};
 
 function argument(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -51,12 +51,54 @@ const providerNames = (argument('providers') ?? 'anthropic,openai,google').split
 const profiles = (argument('profiles') ?? 'prompt_parity,native_structured').split(',') as Profile[];
 const repetitions = Number(argument('repetitions') ?? '3');
 const softMaxUsd = Number(argument('soft-max-usd'));
+const validateOnly = process.argv.includes('--validate-only');
 if (!Number.isSafeInteger(repetitions) || repetitions < 1 || repetitions > 10) throw new Error('--repetitions must be 1..10');
 if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) throw new Error('--soft-max-usd is required and must be positive');
 if (providerNames.some((name) => !['anthropic', 'openai', 'google'].includes(name))) throw new Error('Unknown --providers value');
 if (profiles.some((name) => !['prompt_parity', 'native_structured'].includes(name))) throw new Error('Unknown --profiles value');
 if (new Set(providerNames).size !== providerNames.length) throw new Error('--providers must not contain duplicates');
 if (new Set(profiles).size !== profiles.length) throw new Error('--profiles must not contain duplicates');
+
+const cohortCandidateForProvider: Record<ProviderName, EvaluationPricingCandidateId> = {
+  anthropic: 'anthropic-router',
+  openai: 'openai-router-generator',
+  google: 'google-router-generator',
+};
+const cohortResult = resolveCurrentEvaluationPricingCohort(
+  new Date(),
+  providerNames.map((provider) => cohortCandidateForProvider[provider]),
+);
+if (cohortResult.status !== 'available') {
+  throw new Error(`Dated pricing cohort unavailable: ${cohortResult.reasons.map((entry) => `${entry.candidateId}:${entry.reason}`).join(', ')}`);
+}
+const RATES: Record<ProviderName, DatedPricingProfile> = {
+  anthropic: providerNames.includes('anthropic')
+    ? pricingProfileForCandidate(cohortResult.cohort, 'anthropic-router')
+    : undefined as never,
+  openai: providerNames.includes('openai')
+    ? pricingProfileForCandidate(cohortResult.cohort, 'openai-router-generator')
+    : undefined as never,
+  google: providerNames.includes('google')
+    ? pricingProfileForCandidate(cohortResult.cohort, 'google-router-generator')
+    : undefined as never,
+};
+
+// This is intentionally before credential reads and provider construction.
+// It validates the candidate cohort only; it cannot establish a provider
+// request bundle or authorize a live comparison.
+if (validateOnly) {
+  console.log(JSON.stringify({
+    diagnosticOnly: true,
+    validated: {
+      providers: providerNames,
+      profiles,
+      repetitions,
+      softMaxUsd,
+      pricingCohortDigest: cohortResult.cohort.digest,
+    },
+  }));
+  process.exit(0);
+}
 
 const providers: Partial<Record<ProviderName, { provider: ModelProvider; model: string }>> = {};
 if (providerNames.includes('anthropic')) {
@@ -95,6 +137,7 @@ const sourceFiles = [
   'server/src/addie/model-providers/anthropic-router-provider.ts',
   'server/src/addie/model-providers/openai-responses-provider.ts',
   'server/src/addie/model-providers/google-generate-content-provider.ts',
+  'server/src/addie/eval/dated-pricing-cohort.ts',
   'server/tests/manual/provider-router-eval.ts',
 ];
 const sourceBundleSha256 = sha256(sourceFiles.map((file) => [file, readFileSync(file, 'utf8')]));
@@ -109,7 +152,7 @@ const projectedReservedCost = plannedCells.reduce((total, cell) => {
     const request = buildRouterEvalRequest(selected.model, cell.profile, testCase, reasoningEffort);
     return tokens + Buffer.byteLength(JSON.stringify(selected.provider.prepare(request).providerRequest), 'utf8');
   }, 0);
-  return total + repetitions * ((reservedInput * rate.input + MODEL_ROUTER_CORPUS.length * reservedOutput * rate.output) / 1_000_000);
+  return total + repetitions * ((reservedInput * rate.inputUsdPerMillionTokens + MODEL_ROUTER_CORPUS.length * reservedOutput * rate.outputUsdPerMillionTokens) / 1_000_000);
 }, 0);
 if (projectedReservedCost > softMaxUsd) {
   throw new Error(`Projected reserved cost $${projectedReservedCost.toFixed(4)} exceeds --soft-max-usd=$${softMaxUsd.toFixed(4)}`);
@@ -136,7 +179,7 @@ const matrixRun = await runRouterEvalMatrix({
         'utf8',
       );
       const reserveOutputTokens = cell.provider === 'google' ? 1_200 : 300;
-      const reserveUsd = (reserveInputTokens * rate.input + reserveOutputTokens * rate.output) / 1_000_000;
+      const reserveUsd = (reserveInputTokens * rate.inputUsdPerMillionTokens + reserveOutputTokens * rate.outputUsdPerMillionTokens) / 1_000_000;
       if (!shouldDispatchWithinSoftBudget(accountedSpendUsd, reserveUsd, softMaxUsd)) {
         return {
           caseId: testCase.id,
@@ -177,7 +220,10 @@ const matrixRun = await runRouterEvalMatrix({
           },
         },
       );
-      if (result.usage) accountedSpendUsd += accountRouterCallCostUsd(result.usage, rate);
+      if (result.usage) accountedSpendUsd += accountRouterCallCostUsd(result.usage, {
+        input: rate.inputUsdPerMillionTokens,
+        output: rate.outputUsdPerMillionTokens,
+      });
       return result;
   },
 });
@@ -194,14 +240,16 @@ const report = plannedCells.map((cell) => {
   const cellResults = results.filter((result) => result.provider === cell.provider && result.profile === cell.profile);
   const summary = summarizeRouterEval(cellResults, repetitions * MODEL_ROUTER_CORPUS.length);
   const rate = RATES[cell.provider];
-  const actualCostUsd = (summary.inputTokens * rate.input + summary.outputTokens * rate.output) / 1_000_000;
+  const actualCostUsd = (summary.inputTokens * rate.inputUsdPerMillionTokens + summary.outputTokens * rate.outputUsdPerMillionTokens) / 1_000_000;
   return {
     provider: cell.provider,
     requestedModel: providers[cell.provider]!.model,
     returnedModels: [...new Set(cellResults.map((result) => result.returnedModel).filter(Boolean))],
     profile: cell.profile,
     reasoningEffort: cell.provider === 'openai' ? 'none' : cell.provider === 'google' ? 'low' : 'provider_default',
-    pricingSource: rate.source,
+    pricingSource: rate.sourceEvidence.url,
+    pricingCheckedAt: rate.sourceEvidence.retrievedAt,
+    pricingCohortDigest: cohortResult.cohort.digest,
     ...summary,
     actualCostUsd,
     cases: cellResults.map((result) => ({
