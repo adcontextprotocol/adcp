@@ -1,4 +1,5 @@
 import { types } from 'node:util';
+import { isMainThread } from 'node:worker_threads';
 import { add, canonicalRational, compare, divide, midpoint, multiply, pow, rational, subtract, type Rational, ONE, ZERO } from './rational.js';
 import { canonicalPolynomial, degree, derivative, divideWithRemainder, evaluate, isZero, polynomial, polynomialNegate, type RationalPolynomial } from './polynomial.js';
 
@@ -168,6 +169,7 @@ export function isolateInteriorRoots(value: RationalPolynomial, lower: Rational,
 }
 /** Engine-only path: its caller has separate state/precision/work guards. */
 export function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
+  if (isMainThread) throw new RangeError('Engine root isolation is worker-only');
   return isolateRoots(value, lower, upper, refinementBits, undefined);
 }
 

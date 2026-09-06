@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
-import { interval, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { interval, isolateEngineInteriorRoots, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
@@ -13,6 +13,8 @@ import {
   reducedStateProbabilityPolynomial,
   restrictedPhiInterval,
   restrictedScoreEM,
+  restrictedScoreEMWorker,
+  nullBoundarySizeEnvelopeWorker,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
 import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 
@@ -48,7 +50,22 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.status).toBe(0);
   }
 
-  it('reproduces the published n=25, x=2, t=2 score E+M fixture to four decimals', () => {
+  function expectsColdWorkerFixtureToBeDeterminate(): void {
+    const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const source = `import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
+        const outcome = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: d("0.10"), alpha: d("0.05") });
+        process.exit(outcome.diagnostic.indeterminate ? 2 : 0);`;
+      const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source], {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 25_000,
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.signal).toBeNull();
+      expect(result.status).toBe(0);
+    }
+  }
+
+  it('reproduces the published n=25, x=2, t=2 score E+M fixture to four decimals', async () => {
     expect(fixture.schema_version).toBe(1);
     expect(fixture.provenance.kind).toBe('published_claim_pending_independent_reference_match');
     expect(fixture.margin).toMatch(/^0\.[0-9]+$/);
@@ -57,7 +74,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     const fixtureMargin = parseMatchedPairNiDecimal(fixture.margin);
     const reported = decimal(fixture.reported_p_value);
     const fourDecimalHalfUnit = decimal('0.00005');
-    const outcome = restrictedScoreEM({
+    const outcome = await restrictedScoreEM({
       counts: {
         n11: fixture.counts.n - fixture.counts.t, n10: fixture.counts.x,
         n01: fixture.counts.t - fixture.counts.x, n00: 0,
@@ -72,16 +89,20 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(outcome.diagnostic.certificate?.maximization).toBe('rational_sturm_and_interval_bisection');
   }, 30_000);
 
-  it('routes an exactly zero margin only to exact conditional McNemar', () => {
-    const outcome = restrictedScoreEM({
+  it('repeats the published fixture in killable cold worker processes', () => {
+    expectsColdWorkerFixtureToBeDeterminate();
+  }, 80_000);
+
+  it('routes an exactly zero margin only to exact conditional McNemar', async () => {
+    const outcome = await restrictedScoreEM({
       counts: { n11: 2, n10: 2, n01: 1, n00: 3 }, margin: ZERO, alpha,
     });
     expect(outcome.mode).toBe('conditional_mcnemar_zero_margin');
     expect(outcome.diagnostic.pValue.lower).toEqual(conditionalMcNemarPValue({ n: 8, x: 2, t: 3 }));
   });
 
-  it('handles zero discordance and rejects malformed/infeasible inputs', () => {
-    expect(restrictedScoreEM({ counts: { n11: 3, n10: 0, n01: 0, n00: 2 }, margin, alpha }).diagnostic.pValue.upper).toBeDefined();
+  it('handles zero discordance and rejects malformed/infeasible inputs', async () => {
+    expect((await restrictedScoreEM({ counts: { n11: 3, n10: 0, n01: 0, n00: 2 }, margin, alpha })).diagnostic.pValue.upper).toBeDefined();
     expect(() => restrictedScoreEM({ counts: { n11: 0, n10: -1, n01: 1, n00: 1 }, margin, alpha })).toThrow(/nonnegative/);
     expect(() => restrictedScoreEM({ counts: { n11: 0, n10: 26, n01: 0, n00: 0 }, margin, alpha })).toThrow(/\[1, 25\]/);
     expect(() => restrictedScoreEM({
@@ -120,6 +141,12 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(() => interval(new Proxy({ numerator: 1n, denominator: 2n }, {}), ONE)).toThrow(/Proxy/);
   });
 
+  it('does not expose worker-only expensive cores on the main thread', () => {
+    expect(() => isolateEngineInteriorRoots([ONE, ONE], ZERO, ONE, 1)).toThrow(/worker-only/);
+    expect(() => restrictedScoreEMWorker({ counts: { n11: 3, n10: 1, n01: 0, n00: 1 }, margin, alpha })).toThrow(/worker-only/);
+    expect(() => nullBoundarySizeEnvelopeWorker(2, margin, alpha)).toThrow(/worker-only/);
+  });
+
   it('terminates hostile scalar constructors without property access or coercion', () => {
     expectsHostileConstructorToTerminate('decimal({ get length() { for (;;) {} } })');
     expectsHostileConstructorToTerminate('rational({ [Symbol.toPrimitive]() { for (;;) {} } })');
@@ -156,11 +183,11 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     }
   });
 
-  it('certifies a practical small-n/margin/alpha null-boundary matrix continuously', () => {
+  it('certifies a practical small-n/margin/alpha null-boundary matrix continuously', async () => {
     for (const [n, candidateMargin, candidateAlpha] of [[3, '0.10', '0.05'], [4, '0.10', '0.05'], [3, '0.20', '0.10']] as const) {
       const parsedMargin = decimal(candidateMargin);
       const parsedAlpha = decimal(candidateAlpha);
-      const size = nullBoundarySizeEnvelope(n, parsedMargin, parsedAlpha);
+      const size = await nullBoundarySizeEnvelope(n, parsedMargin, parsedAlpha);
       expect(size.status).toBe('certified');
       const certificate = maximizePolynomial(size.upper, parsedMargin, ONE);
       expect(certificate.indeterminate).toBe(false);
@@ -177,8 +204,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(interiorOnly.stationaryPointCount).toBeGreaterThan(0);
   });
 
-  it('finds the published-review repeated-endpoint Sturm counterexample interior maximum', () => {
-    const outcome = restrictedScoreEM({
+  it('finds the published-review repeated-endpoint Sturm counterexample interior maximum', async () => {
+    const outcome = await restrictedScoreEM({
       counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: decimal('0.07'), alpha,
     });
     expect(outcome.diagnostic.statisticalRejectNull).toBe(false);
@@ -187,16 +214,16 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(compare(outcome.diagnostic.pValue.upper, decimal('0.05889'))).toBeLessThan(0);
   });
 
-  it('matches the independent n=5,m=.20 tie and size-oracle regression', () => {
+  it('matches the independent n=5,m=.20 tie and size-oracle regression', async () => {
     const tieCases = [[2, 2], [3, 3], [4, 4], [5, 5]] as const;
     for (const [x, t] of tieCases) {
-      const outcome = restrictedScoreEM({
+      const outcome = await restrictedScoreEM({
         counts: { n11: 5 - t, n10: x, n01: t - x, n00: 0 }, margin: decimal('0.20'), alpha,
       });
       expect(outcome.diagnostic.indeterminate).toBeUndefined();
       expect(outcome.diagnostic.statisticalRejectNull).toBe(true);
     }
-    const size = nullBoundarySizeEnvelope(5, decimal('0.20'), alpha);
+    const size = await nullBoundarySizeEnvelope(5, decimal('0.20'), alpha);
     expect(size.status).toBe('certified');
     expect(size.indeterminateStates).toEqual([]);
     const maximum = maximizePolynomial(size.upper, decimal('0.20'), ONE);
@@ -204,43 +231,43 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(compare(maximum.upper, decimal('0.0420'))).toBeLessThan(0);
   });
 
-  it('returns an explicitly indeterminate envelope at the size-work ceiling', () => {
-    const size = nullBoundarySizeEnvelope(9, margin, alpha);
+  it('returns an explicitly indeterminate envelope at the size-work ceiling', async () => {
+    const size = await nullBoundarySizeEnvelope(9, margin, alpha);
     expect(size.status).toBe('indeterminate');
     expect(size.reason).toBe('size_complexity_ceiling');
     expect(size.indeterminateStates).toHaveLength(55);
   });
 
-  it('converts an accepted precision that exceeds algebraic work bounds into indeterminacy', () => {
+  it('converts an accepted precision that exceeds algebraic work bounds into indeterminacy', async () => {
     const tinyMargin = decimal(`0.${'0'.repeat(74)}1`);
-    const envelope = nullBoundarySizeEnvelope(8, tinyMargin, alpha);
+    const envelope = await nullBoundarySizeEnvelope(8, tinyMargin, alpha);
     expect(envelope.status).toBe('indeterminate');
     expect(envelope.reason).toBe('size_complexity_ceiling');
   });
 
-  it('preflights a legal 256-bit margin before n=25 algebraic work', () => {
-    const outcome = restrictedScoreEM({
+  it('preflights a legal 256-bit margin before n=25 algebraic work', async () => {
+    const outcome = await restrictedScoreEM({
       counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: rational(1n, 1n << 255n), alpha,
     });
     expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
     expect(outcome.diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
   });
 
-  it('preflights high-precision n=8 size inputs before exhaustive work', () => {
+  it('preflights high-precision n=8 size inputs before exhaustive work', async () => {
     for (const bits of [17, 128, 129]) {
       const denominator = 1n << BigInt(bits - 1);
-      const outcome = nullBoundarySizeEnvelope(8, rational(denominator - 1n, denominator), alpha);
+      const outcome = await nullBoundarySizeEnvelope(8, rational(denominator - 1n, denominator), alpha);
       expect(outcome.status).toBe('indeterminate');
       expect(outcome.reason).toBe('size_complexity_ceiling');
     }
     const boundaryDenominator = 1n << 15n;
-    const withinBoundary = nullBoundarySizeEnvelope(8, rational(boundaryDenominator - 1n, boundaryDenominator), alpha);
+    const withinBoundary = await nullBoundarySizeEnvelope(8, rational(boundaryDenominator - 1n, boundaryDenominator), alpha);
     expect(withinBoundary.reason).not.toBe('size_complexity_ceiling');
   });
 
-  it('uses the aggregate work estimate to fail closed before a costly n=25 call', () => {
+  it('uses the aggregate work estimate to fail closed before a costly n=25 call', async () => {
     const denominator = 1n << 15n;
-    const outcome = restrictedScoreEM({
+    const outcome = await restrictedScoreEM({
       counts: { n11: 22, n10: 3, n01: 0, n00: 0 }, margin: rational(denominator - 1n, denominator), alpha,
     });
     expect(outcome.diagnostic.indeterminate?.reason).toBe('complexity_ceiling');
@@ -256,8 +283,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(withForgedExtraArgument).toEqual(honest);
   });
 
-  it('keeps engine ambiguity distinct from a determinate alpha overlap in size envelopes', () => {
-    const ambiguous = nullBoundarySizeEnvelope(2, decimal('0.20'), alpha);
+  it('keeps engine ambiguity distinct from a determinate alpha overlap in size envelopes', async () => {
+    const ambiguous = await nullBoundarySizeEnvelope(2, decimal('0.20'), alpha);
     expect(ambiguous.status).toBe('indeterminate');
     expect(ambiguous.reason).toBe('ambiguous_e_ordering');
     expect(ambiguous.alphaOverlapStates).toEqual([]);
@@ -266,19 +293,19 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     ]));
   });
 
-  it('conservatively propagates a real overlapping p-value matrix into upper envelopes', () => {
+  it('conservatively propagates a real overlapping p-value matrix into upper envelopes', async () => {
     for (const fixtureCase of [
       { counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, n: 4, x: 3, t: 3, margin: decimal('0.07') },
       { counts: { n11: 3, n10: 2, n01: 0, n00: 0 }, n: 5, x: 2, t: 2, margin: decimal('0.20') },
     ]) {
-      const p = restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha }).diagnostic.pValue;
-      const uncertain = nullBoundarySizeEnvelope(fixtureCase.n, fixtureCase.margin, midpoint(p.lower, p.upper));
+      const p = (await restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha })).diagnostic.pValue;
+      const uncertain = await nullBoundarySizeEnvelope(fixtureCase.n, fixtureCase.margin, midpoint(p.lower, p.upper));
       expect(uncertain.status).toBe('indeterminate');
       expect(uncertain.reason).toBe('overlapping_p_value');
       expect(uncertain.engineIndeterminacy).toEqual([]);
       expect(uncertain.alphaOverlapStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
       expect(uncertain.indeterminateStates).toContainEqual({ n: fixtureCase.n, x: fixtureCase.x, t: fixtureCase.t });
-      expect(restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha: midpoint(p.lower, p.upper) }).diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
+      expect((await restrictedScoreEM({ counts: fixtureCase.counts, margin: fixtureCase.margin, alpha: midpoint(p.lower, p.upper) })).diagnostic.alphaDecision).toBe('indeterminate_alpha_overlap');
     }
   });
 
@@ -291,8 +318,8 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     ]));
   });
 
-  it('has no promotion-shaped result field and always denies a promotion consumer', () => {
-    const diagnostic = restrictedScoreEM({ counts: { n11: 3, n10: 1, n01: 0, n00: 1 }, margin, alpha });
+  it('has no promotion-shaped result field and always denies a promotion consumer', async () => {
+    const diagnostic = await restrictedScoreEM({ counts: { n11: 3, n10: 1, n01: 0, n00: 1 }, margin, alpha });
     expect(Object.hasOwn(diagnostic, 'reject')).toBe(false);
     expect(Object.hasOwn(diagnostic, 'decision')).toBe(false);
     expect(MATCHED_PAIR_NI_NO_ROOT_PROMOTION_FIELD).toBe(true);

@@ -1,4 +1,5 @@
 import { types } from 'node:util';
+import { Worker, isMainThread } from 'node:worker_threads';
 /**
  * Restricted-score E+M exact-unconditional matched-pair noninferiority
  * diagnostic after Lloyd & Moldovan (2008), Statistics in Medicine 27,
@@ -29,6 +30,8 @@ export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE = 16;
 export const MATCHED_PAIR_NI_MAX_WORK_UNITS = 1_500_000;
 /** Diagnostic CPU deadline checked at deterministic E-step work boundaries. */
 export const MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS = 12_000;
+export const MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS = 20_000;
+export const MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB = 64;
 
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
 export interface ReducedMatchedPairState { readonly n: number; readonly x: number; readonly t: number; }
@@ -135,6 +138,34 @@ function validate(state: ReducedMatchedPairState, margin: Rational, alpha: Ratio
   const normalizedState = validateState(state); const normalizedMargin = validateMargin(margin); const normalizedAlpha = validateExternalRational(alpha, 'Alpha');
   if (compare(normalizedAlpha, ZERO) <= 0 || compare(normalizedAlpha, ONE) >= 0) throw new RangeError('Alpha must be in (0, 1)');
   return Object.freeze({ state: normalizedState, margin: normalizedMargin, alpha: normalizedAlpha });
+}
+function snapshotInput(input: MatchedPairNiInput): MatchedPairNiInput {
+  const copy = inertRecord(input, 'Matched-pair NI input', ['counts', 'margin', 'alpha']);
+  const counts = canonicalCounts(copy.counts as MatchedPairCounts);
+  const margin = validateMargin(copy.margin as Rational);
+  const alpha = validateExternalRational(copy.alpha as Rational, 'Alpha');
+  validate(reduceMatchedPairCounts(counts), margin, alpha);
+  return Object.freeze({ counts, margin, alpha });
+}
+type WorkerTask = 'restricted_score' | 'null_size';
+function workerUrl(): URL {
+  const result = new URL(import.meta.url);
+  result.pathname = result.pathname.replace(/\.js$/, '-worker.js').replace(/\.ts$/, '-worker.ts');
+  return result;
+}
+function runBoundedWorker<T>(task: WorkerTask, payload: unknown): Promise<T> {
+  return new Promise((resolve) => {
+    const worker = new Worker(workerUrl(), {
+      workerData: Object.freeze({ task, payload }), resourceLimits: { maxOldGenerationSizeMb: MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB },
+      execArgv: import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : undefined,
+    });
+    let settled = false;
+    const finish = (result: T): void => { if (!settled) { settled = true; clearTimeout(timer); resolve(result); } };
+    const timer = setTimeout(() => { void worker.terminate().finally(() => finish(indeterminate('complexity_ceiling') as T)); }, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
+    worker.once('message', (message: { readonly ok: boolean; readonly value?: T }) => finish(message.ok ? message.value! : indeterminate('complexity_ceiling') as T));
+    worker.once('error', () => finish(indeterminate('complexity_ceiling') as T));
+    worker.once('exit', (code) => { if (code !== 0) finish(indeterminate('complexity_ceiling') as T); });
+  });
 }
 export function enumerateReducedStates(n: number): readonly ReducedMatchedPairState[] {
   finiteCount(n, 'n');
@@ -360,10 +391,15 @@ export function conditionalMcNemarPValue(state: ReducedMatchedPairState): Ration
   return numerator;
 }
 
-export function restrictedScoreEM(input: MatchedPairNiInput): MatchedPairNiResult {
-  const inputCopy = inertRecord(input, 'Matched-pair NI input', ['counts', 'margin', 'alpha']);
-  const observed = reduceMatchedPairCounts(inputCopy.counts as MatchedPairCounts);
-  const normalized = validate(observed, inputCopy.margin as Rational, inputCopy.alpha as Rational);
+export function restrictedScoreEM(input: MatchedPairNiInput): Promise<MatchedPairNiResult> {
+  return runBoundedWorker('restricted_score', snapshotInput(input));
+}
+/** Runs only inside the bounded worker; not a runtime/admission API. */
+export function restrictedScoreEMWorker(input: MatchedPairNiInput): MatchedPairNiResult {
+  if (isMainThread) throw new RangeError('Exact E+M core is worker-only');
+  const normalizedInput = snapshotInput(input);
+  const observed = reduceMatchedPairCounts(normalizedInput.counts);
+  const normalized = validate(observed, normalizedInput.margin, normalizedInput.alpha);
   if (equal(normalized.margin, ZERO)) {
     const p = conditionalMcNemarPValue(observed);
     return Object.freeze({ mode: 'conditional_mcnemar_zero_margin', admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: compare(p, normalized.alpha) <= 0, alphaDecision: compare(p, normalized.alpha) <= 0 ? 'reject_certified' : 'nonreject_certified', pValue: Object.freeze({ lower: p, upper: p }) }) });
@@ -434,7 +470,13 @@ export interface NullBoundarySizeEnvelope {
  * Certified null-boundary size envelope. Any unresolved p-value is included
  * in the upper polynomial, never silently discarded from a claimed exact size.
  */
-export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
+export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rational): Promise<NullBoundarySizeEnvelope> {
+  const normalized = validate({ n, x: 0, t: 0 }, margin, alpha);
+  return runBoundedWorker('null_size', Object.freeze({ n: normalized.state.n, margin: normalized.margin, alpha: normalized.alpha }));
+}
+/** Runs only inside the bounded worker; not a runtime/admission API. */
+export function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
+  if (isMainThread) throw new RangeError('Exact E+M core is worker-only');
   const normalized = validate({ n, x: 0, t: 0 }, margin, alpha);
   if (equal(normalized.margin, ZERO)) throw new RangeError('Zero margin has conditional McNemar size, not an E+M polynomial');
   const states = enumerateReducedStates(normalized.state.n);
