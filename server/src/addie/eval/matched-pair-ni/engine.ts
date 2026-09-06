@@ -429,16 +429,24 @@ let activeWorkers = 0;
 function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T): Promise<T | null> {
   return new Promise((resolve) => {
     const channel = new MessageChannel();
-    let settled = false;
+    let resultSettled = false;
+    let handleReleased = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let reply: T | null = null;
-    const finish = (result: T | null): void => {
-      if (!settled) {
-        settled = true;
+    const settleResult = (result: T | null): void => {
+      if (!resultSettled) {
+        resultSettled = true;
         if (timer) clearTimeout(timer);
+        resolve(result);
+      }
+    };
+    const releaseHandle = (): void => {
+      // A slot represents a live worker handle, not a settled Promise. Never
+      // reopen it until exit confirms that the isolate is gone.
+      if (!handleReleased) {
+        handleReleased = true;
         channel.port1.close();
         activeWorkers--;
-        resolve(result);
       }
     };
     let worker: Worker | undefined;
@@ -447,18 +455,23 @@ function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (v
         workerData: { exactMatchedPairNiWorker: true, task, payload, authorizationPort: channel.port2 }, transferList: [channel.port2], resourceLimits: { maxOldGenerationSizeMb: MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB },
         execArgv: import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : undefined,
       });
-    } catch { finish(null); return; }
+    } catch {
+      // No worker handle was created, so this reserved slot can be returned.
+      releaseHandle();
+      settleResult(null);
+      return;
+    }
     const terminate = (): void => {
-      // Completion is accounted only from `exit`, never from a message.  A
-      // rejected terminate is still conservative and cannot strand a slot.
-      void worker!.terminate().catch(() => finish(null));
+      // Termination failure is a conservative result but *not* a handle
+      // release. A no-exit worker remains quarantined and consumes its slot.
+      void worker!.terminate().catch(() => settleResult(null));
     };
     channel.port1.once('message', (message: unknown) => {
       if (message === 'exact_matched_pair_ni_ready') channel.port1.postMessage('exact_matched_pair_ni_authorized');
       else terminate();
     });
     channel.port1.once('messageerror', () => terminate());
-    timer = setTimeout(terminate, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
+    timer = setTimeout(() => { terminate(); settleResult(null); }, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
     worker.once('message', (message: unknown) => {
       try { const response = workerResponse(message); reply = response.ok ? hydrate(response.value) : null; }
       catch { reply = null; }
@@ -468,7 +481,7 @@ function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (v
     });
     worker.once('messageerror', () => { reply = null; terminate(); });
     worker.once('error', () => { reply = null; terminate(); });
-    worker.once('exit', () => finish(reply));
+    worker.once('exit', () => { releaseHandle(); settleResult(reply); });
   });
 }
 function runBoundedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value: unknown) => T, equalResult: (left: T, right: T) => boolean, fallback: () => T): Promise<T> {

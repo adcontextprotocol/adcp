@@ -15,13 +15,30 @@ const MAX_DIRECT_ROOT_DEGREE = 8;
 const MAX_DIRECT_ROOT_REFINEMENT_BITS = 24;
 const MAX_DIRECT_ROOT_COEFFICIENT_BITS = 512;
 const MAX_DIRECT_ROOT_TOTAL_BITS = 4_096;
+/** Mutable arrays here never dispatch through caller-mutable prototypes. */
+function ownArray<T>(length: number): T[] { return new Array<T>(length); }
+function ownSet<T>(target: T[], index: number, value: T): void {
+  Object.defineProperty(target, index, { value, enumerable: true, writable: true, configurable: true });
+}
+function ownAppend<T>(target: T[], value: T): void { ownSet(target, target.length, value); }
 /** Positive primitive scaling preserves every Sturm sign while preventing fraction swell. */
 function primitive(value: RationalPolynomial): RationalPolynomial {
   let common = 1n;
-  for (const coefficient of value) common = common / integerGcd(common, coefficient.denominator) * coefficient.denominator;
-  const integers = value.map((coefficient) => coefficient.numerator * (common / coefficient.denominator));
-  const content = integers.reduce((result, coefficient) => integerGcd(result, coefficient), 0n) || 1n;
-  return polynomial(integers.map((coefficient) => rational(coefficient / content)));
+  for (let index = 0; index < value.length; index++) {
+    const coefficient = value[index]!;
+    common = common / integerGcd(common, coefficient.denominator) * coefficient.denominator;
+  }
+  const integers = ownArray<bigint>(value.length);
+  let content = 0n;
+  for (let index = 0; index < value.length; index++) {
+    const integer = value[index]!.numerator * (common / value[index]!.denominator);
+    ownSet(integers, index, integer);
+    content = integerGcd(content, integer);
+  }
+  const divisor = content || 1n;
+  const coefficients = ownArray<Rational>(integers.length);
+  for (let index = 0; index < integers.length; index++) ownSet(coefficients, index, rational(integers[index]! / divisor));
+  return polynomial(coefficients);
 }
 function canonicalAlgebraicPolynomial(value: RationalPolynomial): RationalPolynomial {
   const normalized = canonicalPolynomial(value, 'Algebraic polynomial');
@@ -57,12 +74,31 @@ export function intervalSubtract(a: RationalInterval, b: RationalInterval): Rati
 export function intervalMultiply(a: RationalInterval, b: RationalInterval): RationalInterval {
   const left = canonicalInterval(a, 'Left interval'); const right = canonicalInterval(b, 'Right interval');
   const values = [multiply(left.lower, right.lower), multiply(left.lower, right.upper), multiply(left.upper, right.lower), multiply(left.upper, right.upper)];
-  return interval(values.reduce((x, y) => compare(x, y) < 0 ? x : y), values.reduce((x, y) => compare(x, y) > 0 ? x : y));
+  let minimum = values[0]!; let maximum = values[0]!;
+  for (let index = 1; index < values.length; index++) {
+    const candidate = values[index]!;
+    if (compare(candidate, minimum) < 0) minimum = candidate;
+    if (compare(candidate, maximum) > 0) maximum = candidate;
+  }
+  return interval(minimum, maximum);
 }
 export function intervalDividePositive(a: RationalInterval, b: RationalInterval): RationalInterval {
   const dividend = canonicalInterval(a, 'Dividend interval'); const divisor = canonicalInterval(b, 'Divisor interval');
   if (compare(divisor.lower, ZERO) <= 0) throw new RangeError('Interval divisor must be positive');
-  return interval(divide(dividend.lower, divisor.upper), divide(dividend.upper, divisor.lower));
+  // Division by a positive interval is monotone in neither argument when the
+  // dividend is signed.  Four exact endpoint quotients enclose all accepted
+  // cases: negative, zero-crossing, positive, and singleton dividends.
+  const values = [
+    divide(dividend.lower, divisor.lower), divide(dividend.lower, divisor.upper),
+    divide(dividend.upper, divisor.lower), divide(dividend.upper, divisor.upper),
+  ];
+  let minimum = values[0]!; let maximum = values[0]!;
+  for (let index = 1; index < values.length; index++) {
+    const candidate = values[index]!;
+    if (compare(candidate, minimum) < 0) minimum = candidate;
+    if (compare(candidate, maximum) > 0) maximum = candidate;
+  }
+  return interval(minimum, maximum);
 }
 export function evaluateInterval(value: RationalPolynomial, at: RationalInterval): RationalInterval {
   const polynomialValue = canonicalAlgebraicPolynomial(value); const atValue = canonicalInterval(at, 'Evaluation interval');
@@ -72,21 +108,31 @@ export function evaluateInterval(value: RationalPolynomial, at: RationalInterval
 }
 
 function signsAt(sequence: readonly RationalPolynomial[], at: Rational): number[] {
-  return sequence.map((item) => compare(evaluate(item, at), ZERO)).filter((value) => value !== 0);
+  const signs = ownArray<number>(0);
+  for (let index = 0; index < sequence.length; index++) {
+    const sign = compare(evaluate(sequence[index]!, at), ZERO);
+    if (sign !== 0) ownAppend(signs, sign);
+  }
+  return signs;
 }
 function variations(sequence: readonly RationalPolynomial[], at: Rational): number {
   const signs = signsAt(sequence, at);
-  return signs.reduce((total, item, index) => total + (index > 0 && signs[index - 1] !== item ? 1 : 0), 0);
+  let total = 0;
+  for (let index = 1; index < signs.length; index++) if (signs[index - 1] !== signs[index]) total++;
+  return total;
 }
 /** Exact Sturm sequence; no floating arithmetic is used in root enumeration. */
 function sturmSequenceWithinBudget(value: RationalPolynomial): readonly RationalPolynomial[] {
   const polynomialValue = canonicalAlgebraicPolynomial(value);
   if (isZero(polynomialValue)) throw new RangeError('Sturm sequence requires a nonzero polynomial');
-  const sequence: RationalPolynomial[] = [primitive(polynomialValue), primitive(derivative(polynomialValue))];
+  const sequence = ownArray<RationalPolynomial>(0);
+  ownAppend(sequence, primitive(polynomialValue));
+  ownAppend(sequence, primitive(derivative(polynomialValue)));
   while (!isZero(sequence[sequence.length - 1]!)) {
-    const [, remainder] = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
+    const division = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
+    const remainder = division[1]!;
     if (isZero(remainder)) break;
-    sequence.push(primitive(polynomialNegate(remainder)));
+    ownAppend(sequence, primitive(polynomialNegate(remainder)));
   }
   return Object.freeze(sequence);
 }
@@ -99,7 +145,8 @@ export function sturmSequence(value: RationalPolynomial): readonly RationalPolyn
 function polynomialGcd(left: RationalPolynomial, right: RationalPolynomial): RationalPolynomial {
   let a = primitive(left); let b = primitive(right);
   while (!isZero(b)) {
-    const [, remainder] = divideWithRemainder(a, b);
+    const division = divideWithRemainder(a, b);
+    const remainder = division[1]!;
     a = b; b = isZero(remainder) ? remainder : primitive(remainder);
   }
   return a;
@@ -109,7 +156,8 @@ function squareFree(value: RationalPolynomial): RationalPolynomial {
   const slope = derivative(value);
   if (isZero(slope)) return value;
   const divisor = polynomialGcd(value, slope);
-  const [quotient, remainder] = divideWithRemainder(value, divisor);
+  const division = divideWithRemainder(value, divisor);
+  const quotient = division[0]!; const remainder = division[1]!;
   if (!isZero(remainder)) throw new RangeError('Polynomial square-free division was not exact');
   return primitive(quotient);
 }
@@ -120,8 +168,13 @@ function rootsInOpen(sequence: readonly RationalPolynomial[], polynomial: Ration
 export interface RootIsolation { readonly exact: readonly Rational[]; readonly intervals: readonly RationalInterval[]; readonly unresolved: boolean; }
 /** Isolate every distinct interior root using Sturm counts and dyadic bisection. */
 function withinDirectRootBudget(value: RationalPolynomial, refinementBits: number): boolean {
-  const totalBits = value.reduce((total, coefficient) => total + rationalBitLength(coefficient), 0);
-  return degree(value) <= MAX_DIRECT_ROOT_DEGREE && refinementBits <= MAX_DIRECT_ROOT_REFINEMENT_BITS && totalBits <= MAX_DIRECT_ROOT_TOTAL_BITS && value.every((coefficient) => rationalBitLength(coefficient) <= MAX_DIRECT_ROOT_COEFFICIENT_BITS);
+  let totalBits = 0;
+  for (let index = 0; index < value.length; index++) {
+    const bits = rationalBitLength(value[index]!);
+    totalBits += bits;
+    if (bits > MAX_DIRECT_ROOT_COEFFICIENT_BITS || totalBits > MAX_DIRECT_ROOT_TOTAL_BITS) return false;
+  }
+  return degree(value) <= MAX_DIRECT_ROOT_DEGREE && refinementBits <= MAX_DIRECT_ROOT_REFINEMENT_BITS;
 }
 function isolateRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
   const polynomialValue = canonicalAlgebraicPolynomial(value); const lowerBound = canonicalRational(lower, 'Root lower bound'); const upperBound = canonicalRational(upper, 'Root upper bound');
@@ -138,13 +191,13 @@ function isolateRoots(value: RationalPolynomial, lower: Rational, upper: Rationa
     // A singleton interval is an exact proof object. More than one root at
     // the hard refinement ceiling cannot be ordered safely, so fail closed.
     if (depth >= refinementBits) {
-      if (count === 1) intervals.push(interval(left, right));
+      if (count === 1) ownAppend(intervals, interval(left, right));
       else unresolved = true;
       return;
     }
     const middle = midpoint(left, right);
     if (compare(evaluate(polynomialValue, middle), ZERO) === 0) {
-      exact.push(middle);
+      ownAppend(exact, middle);
       visit(left, middle, depth + 1);
       visit(middle, right, depth + 1);
       return;
@@ -178,13 +231,16 @@ export function maximizePolynomial(
   const roots = isolateInteriorRoots(derivative(polynomialValue), lowerBound, upperBound, maxSplits);
   let minimum = evaluate(polynomialValue, lowerBound);
   let maximum = minimum;
-  for (const point of [upperBound, ...roots.exact]) {
-    const candidate = evaluate(polynomialValue, point);
+  const endpoint = evaluate(polynomialValue, upperBound);
+  if (compare(endpoint, minimum) > 0) minimum = endpoint;
+  if (compare(endpoint, maximum) > 0) maximum = endpoint;
+  for (let index = 0; index < roots.exact.length; index++) {
+    const candidate = evaluate(polynomialValue, roots.exact[index]!);
     if (compare(candidate, minimum) > 0) minimum = candidate;
     if (compare(candidate, maximum) > 0) maximum = candidate;
   }
-  for (const root of roots.intervals) {
-    const candidate = evaluateInterval(polynomialValue, root);
+  for (let index = 0; index < roots.intervals.length; index++) {
+    const candidate = evaluateInterval(polynomialValue, roots.intervals[index]!);
     if (compare(candidate.lower, minimum) > 0) minimum = candidate.lower;
     if (compare(candidate.upper, maximum) > 0) maximum = candidate.upper;
   }

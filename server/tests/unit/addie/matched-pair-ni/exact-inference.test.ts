@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
-import { interval, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { interval, intervalDividePositive, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
@@ -41,6 +41,29 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.error).toBeUndefined();
     expect(result.signal).toBeNull();
     expect(result.status).toBe(0);
+  }
+
+  function expectsAlgebraicPoisonMatrixToTerminate(algebraicUrl: string, rationalUrl: string, loader: readonly string[]): void {
+    const calls = [
+      'sturmSequence([ONE, ONE])',
+      'isolateInteriorRoots([ZERO, ONE], ZERO, ONE, 24)',
+      'maximizePolynomial([negate(rational(1, 4)), ONE, negate(ONE)], ZERO, ONE, 24)',
+    ];
+    const poisons = [
+      "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })",
+      "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })",
+    ];
+    for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let callIndex = 0; callIndex < calls.length; callIndex++) {
+      const source = `import { sturmSequence, isolateInteriorRoots, maximizePolynomial } from ${JSON.stringify(algebraicUrl)};
+        import { ONE, ZERO, negate, rational } from ${JSON.stringify(rationalUrl)};
+        ${poisons[poisonIndex]!}; ${calls[callIndex]!}; process.exit(0);`;
+      const result = spawnSync(process.execPath, [...loader, '--input-type=module', '--eval', source], {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 2_000,
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.signal).toBeNull();
+      expect(result.status).toBe(0);
+    }
   }
 
   function expectsWorkerInternalsToBeUnimportable(): void {
@@ -136,6 +159,10 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       expect(result.error).toBeUndefined();
       expect(result.signal).toBeNull();
       expect(result.status).toBe(0);
+      expectsAlgebraicPoisonMatrixToTerminate(
+        `file://${output}/addie/eval/matched-pair-ni/algebraic.js`,
+        `file://${output}/addie/eval/matched-pair-ni/rational.js`, [],
+      );
     } finally {
       rmSync(output, { recursive: true, force: true });
     }
@@ -290,6 +317,23 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true });
       process.exit(canonicalRational({ numerator: 1n, denominator: 2n }).numerator === 1n ? 0 : 2);`);
   }, 7_000);
+
+  it('keeps all exported algebraic root helpers off poisoned Array prototypes in source and emitted builds', () => {
+    expectsAlgebraicPoisonMatrixToTerminate(
+      new URL('../../../../src/addie/eval/matched-pair-ni/algebraic.ts', import.meta.url).href,
+      new URL('../../../../src/addie/eval/matched-pair-ni/rational.ts', import.meta.url).href,
+      ['--import', 'tsx'],
+    );
+  }, 20_000);
+
+  it('divides signed intervals outward over a strictly positive divisor', () => {
+    expect(intervalDividePositive(interval(rational(-2), rational(-1)), interval(ONE, rational(2)))).toEqual(interval(rational(-2), rational(-1, 2)));
+    expect(intervalDividePositive(interval(rational(-2), rational(1)), interval(ONE, rational(2)))).toEqual(interval(rational(-2), ONE));
+    expect(intervalDividePositive(interval(ONE, rational(2)), interval(ONE, rational(2)))).toEqual(interval(rational(1, 2), rational(2)));
+    expect(intervalDividePositive(interval(rational(-2), rational(-1)), interval(rational(2), rational(2)))).toEqual(interval(rational(-1), rational(-1, 2)));
+    expect(() => intervalDividePositive(interval(ONE, ONE), interval(ZERO, ONE))).toThrow(/positive/);
+    expect(() => intervalDividePositive(interval(ONE, ONE), interval(rational(-1), ONE))).toThrow(/positive/);
+  });
 
   it('returns unresolved before the killable root-isolation process deadline', () => {
     expectsRootIsolationToTerminate();
