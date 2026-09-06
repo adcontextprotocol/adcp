@@ -22,6 +22,7 @@ type StoredAttempt = { id: string; assignmentId: string; ordinal: number; status
 class StrictLedgerClient {
   readonly calls: Array<{ sql: string; params: unknown[] | undefined }> = [];
   readonly attempts = new Map<string, StoredAttempt>();
+  readonly assignmentOutcomes = new Map<string, string>();
   authStatus = 'consumed';
   priorSpend: string | null = null;
   constructor(private readonly entry: FixedTraceComponentSmokePlanEntry = dispatch) {}
@@ -75,7 +76,15 @@ class StrictLedgerClient {
       }
       return { rowCount: 1, rows: [] };
     }
-    if (sql.startsWith('WITH started AS (')) return { rowCount: 1, rows: [] };
+    if (sql.startsWith('WITH started AS (')) {
+      for (const attempt of this.attempts.values()) {
+        if (this.assignmentOutcomes.has(attempt.assignmentId)) continue;
+        this.assignmentOutcomes.set(attempt.assignmentId,
+          attempt.status === 'unknown_exposure' || attempt.responseDisposition === 'tool_continuation_required'
+            ? 'provider_unknown_exposure' : attempt.status === 'succeeded' ? 'provider_completed' : 'provider_failed');
+      }
+      return { rowCount: 1, rows: [] };
+    }
     if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_attempts')) {
       const attempt = this.attempts.get(params![0] as string)!;
       attempt.status = params![2] as string;
@@ -169,6 +178,17 @@ describe('private ledger state machine', () => {
     expect(await subject.recordUnknownExposure(reservation)).toEqual({ status: 'recorded' });
     expect(client.authStatus).toBe('unknown_exposure');
     expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)).toMatchObject({ status: 'unknown_exposure', responseHmac: null, cost: null });
+    expect(client.assignmentOutcomes.get(dispatch.assignmentId)).toBe('provider_unknown_exposure');
+  });
+
+  it('idempotently recovers a committed known provider failure after its unknown-exposure commit response is lost', async () => {
+    const client = new StrictLedgerClient(); const subject = ledger(client);
+    client.authStatus = 'unknown_exposure';
+    client.attempts.set(`attempt_${'4'.repeat(32)}`, { id: `attempt_${'4'.repeat(32)}`, assignmentId: dispatch.assignmentId, ordinal: 1, status: 'provider_failed', responseDisposition: null, cost: 0, observedCost: null, returnedProvider: dispatch.provider, responseHmac: 'c'.repeat(64) });
+    expect(await subject.recordUnknownExposure(reservation)).toEqual({ status: 'recorded' });
+    expect(client.assignmentOutcomes.get(dispatch.assignmentId)).toBe('provider_failed');
+    expect(await subject.recordUnknownExposure(reservation)).toEqual({ status: 'recorded' });
+    expect(client.assignmentOutcomes.get(dispatch.assignmentId)).toBe('provider_failed');
   });
 
   it.each([

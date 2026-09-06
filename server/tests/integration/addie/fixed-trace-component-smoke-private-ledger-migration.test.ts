@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { Client } from 'pg';
+import { Client, Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
-import { fixedTraceComponentSmokePrivateLedgerPlan } from '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.js';
+import { PostgresFixedTraceComponentSmokePrivateLedger, fixedTraceComponentSmokePrivateLedgerPlan } from '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 let client: Client | null = null;
@@ -23,7 +23,10 @@ async function rejects(statement: string, values: unknown[] = [], subject = clie
 }
 
 function reservationIdFor(digest: string) {
-  return `reservation_${createHash('sha256').update(JSON.stringify({ authorizationDigest: digest, domain: 'adcp:addie:fixed-trace-component-smoke:reservation:v1\\0' })).digest('hex').slice(0, 32)}`;
+  return `reservation_${createHash('sha256').update(JSON.stringify({ authorizationDigest: digest, domain: 'adcp:addie:fixed-trace-component-smoke:reservation:v1\0' })).digest('hex').slice(0, 32)}`;
+}
+function reservationFor(digest: string) {
+  return { authorizationDigest: digest, reservationId: reservationIdFor(digest), entryCount: 168 as const, providerDispatchEntryCount: 126 as const, reservationMicrodollars: 2_819_484 as const };
 }
 
 async function seedExactPlan(subject = client!, alterFirstModel = false) {
@@ -106,6 +109,36 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'2'.repeat(32)}`, '2'.repeat(64), generation.provider, generation.model, generation.effort]);
     await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [`attempt_${'4'.repeat(32)}`, authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'2'.repeat(32)}`, '2'.repeat(64)])).resolves.toBeInstanceOf(Error);
+  });
+
+  it('rejects mismatched identity and mismatched actual-cost settlement while each attempt is still open', async () => {
+    const first = dispatchEntry(4);
+    await insertIntent(client!, authorizationDigest, first, 'a');
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'a'.repeat(32)}`, 'a'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [`attempt_${'a'.repeat(32)}`])).rows).toEqual([{ status: 'intent_recorded' }]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'a'.repeat(32)}`, 'a'.repeat(64), first.provider, first.model, first.effort]);
+    const second = dispatchEntry(5);
+    await insertIntent(client!, authorizationDigest, second, 'b');
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 1, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'b'.repeat(32)}`, 'b'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [`attempt_${'b'.repeat(32)}`])).rows).toEqual([{ status: 'intent_recorded' }]);
+  });
+
+  it('idempotently recovers a committed provider failure after unknown exposure has already committed', async () => {
+    const entry = dispatchEntry(6);
+    await insertIntent(client!, authorizationDigest, entry, 'c');
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'c'.repeat(32)}`, 'c'.repeat(64), entry.provider, entry.model, entry.effort]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp() WHERE authorization_digest = $1", [authorizationDigest]);
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      expect(await ledger.recordUnknownExposure(reservationFor(authorizationDigest))).toEqual({ status: 'recorded' });
+      expect(await ledger.recordUnknownExposure(reservationFor(authorizationDigest))).toEqual({ status: 'recorded' });
+    } finally {
+      await pool.end();
+      await client!.query('BEGIN');
+    }
+    expect((await client!.query('SELECT assignment_outcome FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2', [authorizationDigest, entry.assignmentId])).rows).toEqual([{ assignment_outcome: 'provider_failed' }]);
   });
 
   it('settles an admitted maximum-ordinal continuation as a halt with observed cost', async () => {

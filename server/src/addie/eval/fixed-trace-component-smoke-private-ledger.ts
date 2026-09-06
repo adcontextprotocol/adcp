@@ -432,12 +432,18 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
    * usage, identity, response HMAC, or cost.
    */
   private async closeOpenIntentsAsUnknownExposure(client: PoolClient, reservation: FixedTraceComponentSmokeReservation): Promise<boolean> {
-    const changed = await client.query(
+    const authorization = await client.query<{ status: string }>(
+      `SELECT status FROM addie_fixed_trace_component_smoke_authorizations
+        WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE`,
+      [reservation.authorizationDigest, reservation.reservationId],
+    );
+    if (authorization.rowCount !== 1
+      || (authorization.rows[0]!.status !== 'consumed' && authorization.rows[0]!.status !== 'unknown_exposure')) return false;
+    if (authorization.rows[0]!.status === 'consumed') await client.query(
       `UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp()
        WHERE authorization_digest = $1 AND reservation_id = $2 AND status = 'consumed'`,
       [reservation.authorizationDigest, reservation.reservationId],
     );
-    if (changed.rowCount !== 1) return false;
     await client.query(
       `UPDATE addie_fixed_trace_component_smoke_attempts
           SET status = 'unknown_exposure', response_disposition = NULL, response_hmac = NULL,
