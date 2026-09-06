@@ -223,6 +223,10 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2099-10-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
           packages:
             - product_id: "alpha_ctv_guaranteed"
               budget: 50000
@@ -256,6 +260,10 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2099-10-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
           packages:
             - product_id: "beta_social_auction"
               budget: 25000

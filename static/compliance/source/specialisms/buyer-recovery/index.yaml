@@ -141,6 +141,10 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
           packages:
             - product_id: "display_auction"
               budget: 25000
@@ -180,6 +184,10 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
           packages:
             - product_id: "display_auction"
               budget: 25000
@@ -217,6 +225,10 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
           packages:
             - product_id: "display_auction"
               budget: 25000

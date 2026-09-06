@@ -115,13 +115,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          products:
-            - product_id: "ctv_premium_guaranteed"
-              pricing_option_id: "cpm_guaranteed"
-              budget: 50000
-          flight:
-            start: "2099-10-01T00:00:00Z"
-            end: "2099-12-31T23:59:59Z"
+          brief: "Guaranteed CTV campaign for outdoor brand, Q4 2099, $50K budget, premium inventory"
           context:
             correlation_id: "buyer_negotiation--request_proposal"
         validations:
@@ -154,15 +148,14 @@ phases:
           4. Reads the new proposal_id from the response
         sample_request:
           idempotency_key: "$generate:uuid_v4#buyer_negotiation_refine_terms_refine_proposal"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          proposal_id: "$context.proposal_id"
           refinements:
-            - field: "rate"
-              requested_value: 30.00
-              rationale: "Volume commitment justifies rate reduction"
+            - proposal_id: "$context.proposal_id"
+              action: "revise"
+              ask: "Volume commitment justifies rate reduction to $30 CPM"
+              constraints:
+                cpm:
+                  max: 30.00
+                  currency: "USD"
           context:
             correlation_id: "buyer_negotiation--refine_proposal"
         validations:
@@ -197,15 +190,10 @@ phases:
           4. Either accepts the seller's last proposal or declines
         sample_request:
           idempotency_key: "$generate:uuid_v4#buyer_negotiation_handle_rejection_rejected_refine"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          proposal_id: "$context.proposal_id"
           refinements:
-            - field: "cancellation_window"
-              requested_value: 24
-              rationale: "Need shorter cancellation window"
+            - proposal_id: "$context.proposal_id"
+              action: "revise"
+              ask: "Need shorter cancellation window of 24 hours"
           context:
             correlation_id: "buyer_negotiation--rejected_refine"
         validations:
@@ -238,6 +226,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           proposal_id: "$context.proposal_id"
+          proposal_terms_digest: "$context.proposal_terms_digest"
           context:
             correlation_id: "buyer_negotiation--accept"
         validations:

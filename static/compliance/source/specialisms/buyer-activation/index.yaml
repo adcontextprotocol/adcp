@@ -312,7 +312,14 @@ phases:
           media_buy_id: "$context.media_buy_id"
           creatives:
             - creative_id: "creative_display_300x250"
-              package_ids: ["$context.first_package_id"]
+              name: "Display Banner 300x250"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.example.com/banner-300x250.png"
+                  width: 300
+                  height: 250
           context:
             correlation_id: "buyer_activation--sync_creatives"
         validations:
