@@ -3,7 +3,9 @@
  * and an independent literal pin; neither is an execution authority.
  */
 import {
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES,
 } from "./fixed-trace-a-prerequisite-manifest.js";
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION =
@@ -24,6 +26,10 @@ type FixedTraceTerminalStatus =
   | "timeout_after_dispatch"
   | "not_dispatched_budget"
   | "not_admitted_architecture";
+type FixedTraceInvocationStage = "router" | "generation" | "judge" | "simulator";
+type FixedTraceFinishReason = "stop" | "tool_calls" | "length" | "refusal" | "continue";
+type FixedTraceCompleteness = "complete" | "incomplete" | "unknown_exposure";
+type FixedTraceTamperClass = "none" | "omission" | "insertion" | "duplication" | "substitution" | "reordering";
 
 /**
  * Exhaustive future-C record shape. It is a required schema declaration, not
@@ -60,7 +66,7 @@ export interface FixedTraceSealedEvidenceRequirements {
     readonly workerIdentity: string;
   };
   readonly invocation: {
-    readonly stage: "router" | "generation" | "judge" | "simulator";
+    readonly stage: FixedTraceInvocationStage;
     readonly invocation: number;
     readonly attempt: number;
     readonly requestedProvider: string;
@@ -112,7 +118,7 @@ export interface FixedTraceSealedEvidenceRequirements {
     readonly errorCode: string | null;
     readonly terminalStatus: FixedTraceTerminalStatus;
     /** Exact normalized finish reason returned by the provider. */
-    readonly finishReason: "stop" | "tool_calls" | "length" | "refusal" | "continue" | null;
+    readonly finishReason: FixedTraceFinishReason | null;
     readonly outputSha256: FixedTraceSha256 | null;
   };
   readonly usageAndPricing: {
@@ -135,8 +141,8 @@ export interface FixedTraceSealedEvidenceRequirements {
     readonly missingnessSha256: FixedTraceSha256;
     readonly expectedSequenceSha256: FixedTraceSha256;
     readonly actualSequenceSha256: FixedTraceSha256;
-    readonly completeness: "complete" | "incomplete" | "unknown_exposure";
-    readonly tamperClass: "none" | "omission" | "insertion" | "duplication" | "substitution" | "reordering";
+    readonly completeness: FixedTraceCompleteness;
+    readonly tamperClass: FixedTraceTamperClass;
   };
   readonly judgeAndCustody: {
     readonly calibrationDigest: FixedTraceSha256;
@@ -189,6 +195,47 @@ type FixedTraceEvidenceRequirementManifest<Value> =
 export type FixedTraceSealedEvidenceRequirementManifest =
   FixedTraceEvidenceRequirementManifest<FixedTraceSealedEvidenceRequirements>;
 
+type ExactEnumValues<Domain extends string, Values extends readonly Domain[]> =
+  Exclude<Domain, Values[number]> extends never
+    ? Exclude<Values[number], Domain> extends never ? Values : never
+    : never;
+
+/**
+ * Contextual `readonly Domain[]` types permit omitted members. These helpers
+ * retain the tuple literal and reject both missing and extra closed-domain
+ * members before the schema is widened to its recursive manifest type.
+ */
+function fixedTraceEnum<Domain extends string>() {
+  return <const Values extends readonly Domain[]>(
+    values: Values & ExactEnumValues<Domain, Values>,
+  ): { readonly type: "enum"; readonly values: Values } => ({ type: "enum", values });
+}
+
+function fixedTraceNullableEnum<Domain extends string>() {
+  return <const Values extends readonly Domain[]>(
+    values: Values & ExactEnumValues<Domain, Values>,
+  ): { readonly type: "nullable_enum"; readonly values: Values } => ({ type: "nullable_enum", values });
+}
+
+// Compile-time negative probes: deleting a member from any closed domain is
+// an error. They are unreachable and generate no runtime surface.
+if (false) {
+  // @ts-expect-error closed schemaVersion domain cannot omit its only value
+  fixedTraceEnum<"addie-fixed-trace-sealed-evidence-v1">()([]);
+  // @ts-expect-error invocation stages must be exhaustive
+  fixedTraceEnum<FixedTraceInvocationStage>()(["router"]);
+  // @ts-expect-error terminal statuses must be exhaustive
+  fixedTraceEnum<FixedTraceTerminalStatus>()(["complete"]);
+  // @ts-expect-error finish reasons must be exhaustive
+  fixedTraceNullableEnum<FixedTraceFinishReason>()(["stop"]);
+  // @ts-expect-error completeness outcomes must be exhaustive
+  fixedTraceEnum<FixedTraceCompleteness>()(["complete"]);
+  // @ts-expect-error tamper classes must be exhaustive
+  fixedTraceEnum<FixedTraceTamperClass>()(["none"]);
+  // @ts-expect-error replay status must be exhaustive
+  fixedTraceEnum<"consumed">()([]);
+}
+
 function deepFreeze<Value>(value: Value): Value {
   if (value && typeof value === "object") {
     for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
@@ -203,7 +250,7 @@ function deepFreeze<Value>(value: Value): Value {
  */
 export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
   FixedTraceSealedEvidenceRequirementManifest = deepFreeze({
-  schemaVersion: { type: "enum", values: ["addie-fixed-trace-sealed-evidence-v1"] },
+  schemaVersion: fixedTraceEnum<"addie-fixed-trace-sealed-evidence-v1">()(["addie-fixed-trace-sealed-evidence-v1"]),
   plan: {
     protocolFingerprint: { type: "sha256" }, corpusSuiteVersion: { type: "string" }, corpusSuiteSha256: { type: "sha256" },
     partitionManifestSha256: { type: "sha256" }, experimentalDesignFingerprint: { type: "sha256" },
@@ -215,7 +262,7 @@ export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
     order: { type: "number" }, position: { type: "number" }, randomizationSeed: { type: "string" }, scheduleDigest: { type: "sha256" }, workerIdentity: { type: "string" },
   },
   invocation: {
-    stage: { type: "enum", values: ["router", "generation", "judge", "simulator"] }, invocation: { type: "number" }, attempt: { type: "number" }, requestedProvider: { type: "string" }, requestedModel: { type: "string" },
+    stage: fixedTraceEnum<FixedTraceInvocationStage>()(["router", "generation", "judge", "simulator"]), invocation: { type: "number" }, attempt: { type: "number" }, requestedProvider: { type: "string" }, requestedModel: { type: "string" },
     requestedEffort: { type: "string" }, returnedProvider: { type: "nullable_string" }, returnedModel: { type: "nullable_string" }, returnedEffort: { type: "nullable_string" },
     identityPolicy: { type: "string" }, fallbackOfAttempt: { type: "nullable_number" },
   },
@@ -235,8 +282,8 @@ export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
   },
   timingAndOutcome: {
     preparedAt: { type: "utc_timestamp" }, dispatchedAt: { type: "nullable_utc_timestamp" }, completedAt: { type: "nullable_utc_timestamp" }, latencyMs: { type: "nullable_number" }, timeout: { type: "boolean" },
-    errorCode: { type: "nullable_string" }, terminalStatus: { type: "enum", values: ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"] },
-    finishReason: { type: "nullable_enum", values: ["stop", "tool_calls", "length", "refusal", "continue"] }, outputSha256: { type: "nullable_sha256" },
+    errorCode: { type: "nullable_string" }, terminalStatus: fixedTraceEnum<FixedTraceTerminalStatus>()(["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"]),
+    finishReason: fixedTraceNullableEnum<FixedTraceFinishReason>()(["stop", "tool_calls", "length", "refusal", "continue"]), outputSha256: { type: "nullable_sha256" },
   },
   usageAndPricing: {
     usageSha256: { type: "nullable_sha256" }, inputTokens: { type: "nullable_number" }, cachedInputTokens: { type: "nullable_number" }, outputTokens: { type: "nullable_number" },
@@ -246,25 +293,26 @@ export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
   },
   denominatorAndSequence: {
     denominatorId: { type: "string" }, failureEvidenceSha256: { type: "sha256" }, missingnessSha256: { type: "sha256" },
-    expectedSequenceSha256: { type: "sha256" }, actualSequenceSha256: { type: "sha256" }, completeness: { type: "enum", values: ["complete", "incomplete", "unknown_exposure"] }, tamperClass: { type: "enum", values: ["none", "omission", "insertion", "duplication", "substitution", "reordering"] },
+    expectedSequenceSha256: { type: "sha256" }, actualSequenceSha256: { type: "sha256" }, completeness: fixedTraceEnum<FixedTraceCompleteness>()(["complete", "incomplete", "unknown_exposure"]), tamperClass: fixedTraceEnum<FixedTraceTamperClass>()(["none", "omission", "insertion", "duplication", "substitution", "reordering"]),
   },
   judgeAndCustody: {
     calibrationDigest: { type: "sha256" }, blindedPresentationSha256: { type: "sha256" }, adjudicationBinding: { type: "sha256" },
     providerExposureLedgerSha256: { type: "sha256" }, custodyBinding: { type: "sha256" }, signerKeyId: { type: "string" }, signature: { type: "string" },
   },
   replayProtection: {
-    authorityId: { type: "string" }, nonce: { type: "string" }, oneUseConsumptionSha256: { type: "sha256" }, replayStatus: { type: "enum", values: ["consumed"] },
+    authorityId: { type: "string" }, nonce: { type: "string" }, oneUseConsumptionSha256: { type: "sha256" }, replayStatus: fixedTraceEnum<"consumed">()(["consumed"]),
   },
 });
 
 export interface FixedTraceEvidencePrerequisitePin {
   readonly version: string;
-  readonly sourceCommit: string;
+  readonly protocolVersion: string;
   readonly corpusSuiteVersion: string;
   readonly corpusSuiteSha256: string;
   readonly partitionManifestSha256: string;
   readonly experimentalDesignFingerprint: string;
   readonly measurement: { readonly version: string; readonly sha256: string };
+  readonly authorityDigests: { readonly finalPrerequisitesSha256: string };
   readonly randomization: {
     readonly scheduleDigest: null;
     readonly episodeClusterManifestDigest: null;
@@ -292,8 +340,8 @@ export interface FixedTraceEvidencePrerequisitePin {
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN: FixedTraceEvidencePrerequisitePin =
   Object.freeze({
-    version: "addie-fixed-trace-A-prerequisite-manifest-v2",
-    sourceCommit: "5094c5c0242ea10c2fd8452a21c0ea1bf33a68a3",
+    version: "addie-fixed-trace-A-prerequisite-manifest-v3",
+    protocolVersion: "addie-fixed-trace-evaluation-protocol-v3",
     corpusSuiteVersion: "addie-fixed-traces-v32",
     corpusSuiteSha256: "5f7f0a6d653a4757991728a1d9de8aee69b40d580dafb65e98941c1f9e3fea83",
     partitionManifestSha256: "99a0727723fd84bcc4c7f40852a0e2392b578964bb4e7b0954739946451e4b96",
@@ -301,6 +349,9 @@ export const FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN: FixedTraceEvidencePrerequisi
     measurement: Object.freeze({
       version: "addie-fixed-trace-measurement-manifest-v1",
       sha256: "c465bc7b5b69f3bf6e8151a5b4ff57d10d630d3f8ddc64c1cce4d504ad80fb5a",
+    }),
+    authorityDigests: Object.freeze({
+      finalPrerequisitesSha256: "fa4755eb1357c6a52bfe59f71b95700dd33d1cce66cee414847c8d14d29a8623",
     }),
     randomization: Object.freeze({ scheduleDigest: null, episodeClusterManifestDigest: null }),
     pricingWindow: Object.freeze({
@@ -332,11 +383,12 @@ export type FixedTraceEvidencePrerequisiteDiagnostic =
 
 interface ParsedFixedTraceAPrerequisiteManifest {
   readonly version: string;
-  readonly sourceCommit: string;
+  readonly protocolVersion: string;
   readonly corpus: { readonly suiteVersion: string; readonly suiteSha256: string };
   readonly partitionManifestSha256: string;
   readonly experimentalDesignFingerprint: string;
   readonly measurement: { readonly version: string; readonly sha256: string };
+  readonly authorityDigests: { readonly finalPrerequisitesSha256: string };
   readonly finalPrerequisites: {
     readonly randomization: { readonly scheduleDigest: null; readonly episodeClusterManifestDigest: null };
     readonly pricingWindow: { readonly id: null; readonly effectiveFrom: null; readonly effectiveBefore: null; readonly digest: null };
@@ -353,19 +405,30 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
 /** The only B parser is private and accepts only a primitive JSON string. */
 function parseFixedTraceAPrerequisiteManifest(): ParsedFixedTraceAPrerequisiteManifest | null {
   if (typeof FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON !== "string") return null;
+  // This is a canonical serialized authority, not an interchange format:
+  // exact bytes reject duplicate fields, whitespace padding, alternate key
+  // order, and prototype-pollution encodings before JSON.parse can collapse
+  // any of them. Bound the byte length first to cap hostile reload work.
+  if (Buffer.byteLength(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8")
+    > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES
+    || FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON
+      !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON) return null;
   try {
     const parsed: unknown = JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const root = parsed as Record<string, unknown>;
-    if (!exactKeys(root, ["version", "sourceCommit", "corpus", "partitionManifestSha256", "experimentalDesignFingerprint", "measurement", "finalPrerequisites"])) return null;
+    if (!exactKeys(root, ["version", "protocolVersion", "corpus", "partitionManifestSha256", "experimentalDesignFingerprint", "measurement", "authorityDigests", "finalPrerequisites"])) return null;
     const corpus = root.corpus;
     const measurement = root.measurement;
+    const authorityDigests = root.authorityDigests;
     const final = root.finalPrerequisites;
     if (!corpus || typeof corpus !== "object" || Array.isArray(corpus)
       || !measurement || typeof measurement !== "object" || Array.isArray(measurement)
+      || !authorityDigests || typeof authorityDigests !== "object" || Array.isArray(authorityDigests)
       || !final || typeof final !== "object" || Array.isArray(final)
       || !exactKeys(corpus as Record<string, unknown>, ["suiteVersion", "suiteSha256"])
       || !exactKeys(measurement as Record<string, unknown>, ["version", "sha256"])
+      || !exactKeys(authorityDigests as Record<string, unknown>, ["finalPrerequisitesSha256"])
       || !exactKeys(final as Record<string, unknown>, ["randomization", "pricingWindow", "calibration", "custody", "providerExposure"])) return null;
     const f = final as Record<string, unknown>;
     const objects = [f.randomization, f.pricingWindow, f.calibration, f.custody, f.providerExposure];
@@ -386,13 +449,15 @@ function mismatchedFields(manifest: ParsedFixedTraceAPrerequisiteManifest): read
   const final = manifest.finalPrerequisites;
   return Object.freeze([
     ...(manifest.version !== pin.version ? ["version"] : []),
-    ...(manifest.sourceCommit !== pin.sourceCommit ? ["sourceCommit"] : []),
+    ...(manifest.protocolVersion !== pin.protocolVersion ? ["protocolVersion"] : []),
     ...(manifest.corpus.suiteVersion !== pin.corpusSuiteVersion ? ["corpus.suiteVersion"] : []),
     ...(manifest.corpus.suiteSha256 !== pin.corpusSuiteSha256 ? ["corpus.suiteSha256"] : []),
     ...(manifest.partitionManifestSha256 !== pin.partitionManifestSha256 ? ["partitionManifestSha256"] : []),
     ...(manifest.experimentalDesignFingerprint !== pin.experimentalDesignFingerprint ? ["experimentalDesignFingerprint"] : []),
     ...(manifest.measurement.version !== pin.measurement.version ? ["measurement.version"] : []),
     ...(manifest.measurement.sha256 !== pin.measurement.sha256 ? ["measurement.sha256"] : []),
+    ...(manifest.authorityDigests.finalPrerequisitesSha256 !== pin.authorityDigests.finalPrerequisitesSha256
+      ? ["authorityDigests.finalPrerequisitesSha256"] : []),
     ...(final.randomization.scheduleDigest !== pin.randomization.scheduleDigest ? ["finalPrerequisites.randomization.scheduleDigest"] : []),
     ...(final.randomization.episodeClusterManifestDigest !== pin.randomization.episodeClusterManifestDigest ? ["finalPrerequisites.randomization.episodeClusterManifestDigest"] : []),
     ...(final.pricingWindow.id !== pin.pricingWindow.id ? ["finalPrerequisites.pricingWindow.id"] : []),

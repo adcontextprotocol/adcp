@@ -44,13 +44,14 @@ const screeningResult = (cell = FIXED_TRACE_ADMITTED_CELLS[0]!, index = 0) => ({
 describe("fixed-trace staged protocol", () => {
   it.each([
     ["version", (root: Record<string, unknown>) => { root.version = "drift"; }],
-    ["sourceCommit", (root: Record<string, unknown>) => { root.sourceCommit = "0".repeat(40); }],
+    ["protocolVersion", (root: Record<string, unknown>) => { root.protocolVersion = "drift"; }],
     ["corpus.suiteVersion", (root: Record<string, unknown>) => { (root.corpus as Record<string, unknown>).suiteVersion = "drift"; }],
     ["corpus.suiteSha256", (root: Record<string, unknown>) => { (root.corpus as Record<string, unknown>).suiteSha256 = "0".repeat(64); }],
     ["partitionManifestSha256", (root: Record<string, unknown>) => { root.partitionManifestSha256 = "0".repeat(64); }],
     ["experimentalDesignFingerprint", (root: Record<string, unknown>) => { root.experimentalDesignFingerprint = "0".repeat(64); }],
     ["measurement.version", (root: Record<string, unknown>) => { (root.measurement as Record<string, unknown>).version = "drift"; }],
     ["measurement.sha256", (root: Record<string, unknown>) => { (root.measurement as Record<string, unknown>).sha256 = "0".repeat(64); }],
+    ["authorityDigests.finalPrerequisitesSha256", (root: Record<string, unknown>) => { (root.authorityDigests as Record<string, unknown>).finalPrerequisitesSha256 = "0".repeat(64); }],
     ["randomization.scheduleDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).randomization) as Record<string, unknown>).scheduleDigest = "x"; }],
     ["randomization.episodeClusterManifestDigest", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).randomization) as Record<string, unknown>).episodeClusterManifestDigest = "x"; }],
     ["pricingWindow.id", (root: Record<string, unknown>) => { (((root.finalPrerequisites as Record<string, unknown>).pricingWindow) as Record<string, unknown>).id = "x"; }],

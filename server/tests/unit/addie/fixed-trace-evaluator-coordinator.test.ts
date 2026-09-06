@@ -70,12 +70,13 @@ describe("fixed-trace evaluator coordinator refusal boundary", () => {
     const final = manifest.finalPrerequisites as JsonRecord;
     expect(FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN).toMatchObject({
       version: manifest.version,
-      sourceCommit: manifest.sourceCommit,
+      protocolVersion: manifest.protocolVersion,
       corpusSuiteVersion: (manifest.corpus as JsonRecord).suiteVersion,
       corpusSuiteSha256: (manifest.corpus as JsonRecord).suiteSha256,
       partitionManifestSha256: manifest.partitionManifestSha256,
       experimentalDesignFingerprint: manifest.experimentalDesignFingerprint,
       measurement: manifest.measurement,
+      authorityDigests: manifest.authorityDigests,
       randomization: final.randomization,
       pricingWindow: final.pricingWindow,
       calibration: final.calibration,
@@ -125,13 +126,14 @@ describe("fixed-trace evaluator coordinator refusal boundary", () => {
 
   it.each([
     ["version", (root: JsonRecord) => { root.version = "drift"; }],
-    ["sourceCommit", (root: JsonRecord) => { root.sourceCommit = "0".repeat(40); }],
+    ["protocolVersion", (root: JsonRecord) => { root.protocolVersion = "drift"; }],
     ["corpus.suiteVersion", (root: JsonRecord) => { (root.corpus as JsonRecord).suiteVersion = "drift"; }],
     ["corpus.suiteSha256", (root: JsonRecord) => { (root.corpus as JsonRecord).suiteSha256 = "0".repeat(64); }],
     ["partitionManifestSha256", (root: JsonRecord) => { root.partitionManifestSha256 = "0".repeat(64); }],
     ["experimentalDesignFingerprint", (root: JsonRecord) => { root.experimentalDesignFingerprint = "0".repeat(64); }],
     ["measurement.version", (root: JsonRecord) => { (root.measurement as JsonRecord).version = "drift"; }],
     ["measurement.sha256", (root: JsonRecord) => { (root.measurement as JsonRecord).sha256 = "0".repeat(64); }],
+    ["authorityDigests.finalPrerequisitesSha256", (root: JsonRecord) => { (root.authorityDigests as JsonRecord).finalPrerequisitesSha256 = "0".repeat(64); }],
     ["finalPrerequisites.randomization.scheduleDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).randomization as JsonRecord).scheduleDigest = "x"; }],
     ["finalPrerequisites.randomization.episodeClusterManifestDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).randomization as JsonRecord).episodeClusterManifestDigest = "x"; }],
     ["finalPrerequisites.pricingWindow.id", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).pricingWindow as JsonRecord).id = "x"; }],
@@ -148,13 +150,13 @@ describe("fixed-trace evaluator coordinator refusal boundary", () => {
     ["finalPrerequisites.custody.collisionAuditDigest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).custody as JsonRecord).collisionAuditDigest = "x"; }],
     ["finalPrerequisites.providerExposure.status", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).providerExposure as JsonRecord).status = "available"; }],
     ["finalPrerequisites.providerExposure.digest", (root: JsonRecord) => { ((root.finalPrerequisites as JsonRecord).providerExposure as JsonRecord).digest = "x"; }],
-  ])("reports reloaded %s drift distinctly", async (field, mutate) => {
+  ])("rejects reloaded %s before parsing a noncanonical source", async (_field, mutate) => {
     const manifest = parsedManifest();
     mutate(manifest);
     await withManifest(JSON.stringify(manifest), async () => {
       const prerequisite = await import("../../../src/addie/eval/fixed-trace-evidence-prerequisite.js");
       expect(prerequisite.fixedTraceEvidencePrerequisiteDiagnostic()).toMatchObject({
-        status: "pin_drift", mismatchedFields: [field],
+        status: "pin_drift", mismatchedFields: ["manifest_shape"],
       });
     });
   });

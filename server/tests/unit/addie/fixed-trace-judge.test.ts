@@ -132,12 +132,21 @@ replayProtection.replayStatus`.trim().split("\n"));
     expect(isDeeplyFrozen(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS)).toBe(true);
     expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.assignment.runId).toEqual({ type: "string" });
     expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.assignment.repetition).toEqual({ type: "number" });
-    expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.timingAndOutcome.finishReason).toEqual({
-      type: "nullable_enum", values: ["stop", "tool_calls", "length", "refusal", "continue"],
-    });
-    expect(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.timingAndOutcome.terminalStatus).toEqual({
-      type: "enum", values: ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"],
-    });
+    const closedDomains = [
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.schemaVersion, ["addie-fixed-trace-sealed-evidence-v1"]],
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.invocation.stage, ["router", "generation", "judge", "simulator"]],
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.timingAndOutcome.terminalStatus, ["complete", "ignored", "reacted", "refusal", "truncated", "empty", "malformed", "provider_error", "timeout_after_dispatch", "not_dispatched_budget", "not_admitted_architecture"]],
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.timingAndOutcome.finishReason, ["stop", "tool_calls", "length", "refusal", "continue"]],
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.denominatorAndSequence.completeness, ["complete", "incomplete", "unknown_exposure"]],
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.denominatorAndSequence.tamperClass, ["none", "omission", "insertion", "duplication", "substitution", "reordering"]],
+      [FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS.replayProtection.replayStatus, ["consumed"]],
+    ] as const;
+    for (const [descriptor, expectedValues] of closedDomains) {
+      expect(descriptor.values).toEqual(expectedValues);
+      expect(Object.isFrozen(descriptor.values)).toBe(true);
+      expect(Reflect.deleteProperty(descriptor.values, 0)).toBe(false);
+      expect(Reflect.set(descriptor.values, 0, "forged")).toBe(false);
+    }
   });
 
   it("has no positive dispatch/configuration entrypoint to consume hostile values", () => {

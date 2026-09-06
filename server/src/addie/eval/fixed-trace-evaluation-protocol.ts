@@ -32,7 +32,9 @@ import {
   fixedTraceExperimentalDesignFingerprint,
 } from "./fixed-trace-experimental-design.js";
 import {
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
   FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES,
 } from "./fixed-trace-a-prerequisite-manifest.js";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
 import {
@@ -54,6 +56,38 @@ export const FIXED_TRACE_MEASUREMENT_MANIFEST = Object.freeze({
 });
 export const FIXED_TRACE_MEASUREMENT_MANIFEST_SHA256 =
   "c465bc7b5b69f3bf6e8151a5b4ff57d10d630d3f8ddc64c1cce4d504ad80fb5a" as const;
+
+/**
+ * The A-owned source for the post-base final prerequisites. Its digest is a
+ * reproducible content identity, rather than a commit that predates it.
+ */
+export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY = Object.freeze({
+  finalRandomization: Object.freeze({
+    scheduleDigest: null,
+    episodeClusterManifestDigest: null,
+  }),
+  judgeCalibration: Object.freeze({
+    status: "unavailable" as const,
+    allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only" as const,
+    digest: null,
+  }),
+  providerExposure: Object.freeze({ status: "unavailable" as const, digest: null }),
+  prospectivePricingCohort: Object.freeze({
+    id: null,
+    effectiveFrom: null,
+    effectiveBefore: null,
+    digest: null,
+  }),
+  externalPackCustody: Object.freeze({
+    status: "unavailable" as const,
+    custodianIdentity: null,
+    packDigest: null,
+    signature: null,
+    collisionAuditDigest: null,
+  }),
+});
+export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256 =
+  "fa4755eb1357c6a52bfe59f71b95700dd33d1cce66cee414847c8d14d29a8623" as const;
 
 export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
   version: "addie-fixed-trace-confirmatory-power-v2",
@@ -705,22 +739,10 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
         conservativeDiscordanceUpperBound: null,
         digest: null,
       }),
-      judgeCalibration: Object.freeze({
-        status: "unavailable",
-        allowedRelationshipToScoredDevelopment: "separate_or_cross_fitted_only",
-        digest: null,
-      }),
-      finalRandomization: Object.freeze({
-        scheduleDigest: null,
-        episodeClusterManifestDigest: null,
-      }),
-      providerExposure: Object.freeze({ status: "unavailable", digest: null }),
-      prospectivePricingCohort: Object.freeze({
-        id: null,
-        effectiveFrom: null,
-        effectiveBefore: null,
-        digest: null,
-      }),
+      judgeCalibration: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.judgeCalibration,
+      finalRandomization: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.finalRandomization,
+      providerExposure: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.providerExposure,
+      prospectivePricingCohort: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.prospectivePricingCohort,
       lloydMoldovanEM: Object.freeze({
         status: "unavailable", identity: null, version: null,
         implementationDigest: null, nuisanceConventionDigest: null,
@@ -744,10 +766,7 @@ export const FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: FixedTraceEvaluationProto
       missingnessDeviationAdmission: Object.freeze({
         status: "unavailable", specificationDigest: null, result: null, uncertainty: null,
       }),
-      externalPackCustody: Object.freeze({
-        status: "unavailable", custodianIdentity: null, packDigest: null,
-        signature: null, collisionAuditDigest: null,
-      }),
+      externalPackCustody: FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY.externalPackCustody,
     }),
     phases: Object.freeze([
       Object.freeze({
@@ -1040,11 +1059,12 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
 ): void {
   type Manifest = {
     version: string;
-    sourceCommit: string;
+    protocolVersion: string;
     corpus: { suiteVersion: string; suiteSha256: string };
     partitionManifestSha256: string;
     experimentalDesignFingerprint: string;
     measurement: { version: string; sha256: string };
+    authorityDigests: { finalPrerequisitesSha256: string };
     finalPrerequisites: {
       randomization: { scheduleDigest: null; episodeClusterManifestDigest: null };
       pricingWindow: { id: null; effectiveFrom: null; effectiveBefore: null; digest: null };
@@ -1058,22 +1078,28 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
     // The dependency-free source is intentionally a primitive JSON literal.
     // Reject malformed build state at this single A-owned parity boundary;
     // B never accepts an arbitrary object as a manifest.
-    if (typeof FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON !== "string") throw new Error("not a string");
+    if (typeof FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON !== "string"
+      || Buffer.byteLength(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON, "utf8")
+        > FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES
+      || FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON
+        !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON) throw new Error("not canonical");
     const parsed: unknown = JSON.parse(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
     manifest = parsed as Manifest;
     const final = manifest.finalPrerequisites;
     const hasExactKeys = (value: object, keys: readonly string[]) =>
       Object.keys(value).sort().join(",") === [...keys].sort().join(",");
-    if (!manifest.corpus || !manifest.measurement || !final
+    if (!manifest.corpus || !manifest.measurement || !manifest.authorityDigests || !final
       || typeof manifest.corpus !== "object" || typeof manifest.measurement !== "object"
+      || typeof manifest.authorityDigests !== "object"
       || typeof final !== "object"
       || !final.randomization || !final.pricingWindow || !final.calibration || !final.custody || !final.providerExposure) {
       throw new Error("incomplete");
     }
-    if (!hasExactKeys(manifest, ["version", "sourceCommit", "corpus", "partitionManifestSha256", "experimentalDesignFingerprint", "measurement", "finalPrerequisites"])
+    if (!hasExactKeys(manifest, ["version", "protocolVersion", "corpus", "partitionManifestSha256", "experimentalDesignFingerprint", "measurement", "authorityDigests", "finalPrerequisites"])
       || !hasExactKeys(manifest.corpus, ["suiteVersion", "suiteSha256"])
       || !hasExactKeys(manifest.measurement, ["version", "sha256"])
+      || !hasExactKeys(manifest.authorityDigests, ["finalPrerequisitesSha256"])
       || !hasExactKeys(final, ["randomization", "pricingWindow", "calibration", "custody", "providerExposure"])
       || !hasExactKeys(final.randomization, ["scheduleDigest", "episodeClusterManifestDigest"])
       || !hasExactKeys(final.pricingWindow, ["id", "effectiveFrom", "effectiveBefore", "digest"])
@@ -1085,8 +1111,8 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
   }
   const final = protocol.finalProtocol;
   if (
-    manifest.version !== "addie-fixed-trace-A-prerequisite-manifest-v2"
-    || manifest.sourceCommit !== "5094c5c0242ea10c2fd8452a21c0ea1bf33a68a3"
+    manifest.version !== "addie-fixed-trace-A-prerequisite-manifest-v3"
+    || manifest.protocolVersion !== FIXED_TRACE_EVALUATION_PROTOCOL_VERSION
     || manifest.corpus.suiteVersion !== FIXED_TRACE_SUITE_VERSION
     || manifest.corpus.suiteSha256 !== fixedTraceSuiteSha256(FIXED_TRACE_SUITE)
     || manifest.partitionManifestSha256 !== FIXED_TRACE_PARTITION_MANIFEST_SHA256
@@ -1095,6 +1121,10 @@ function assertFixedTraceAPurePrerequisiteManifestParity(
     || manifest.measurement.version !== FIXED_TRACE_MEASUREMENT_MANIFEST.version
     || manifest.measurement.sha256 !== FIXED_TRACE_MEASUREMENT_MANIFEST_SHA256
     || sha256(FIXED_TRACE_MEASUREMENT_MANIFEST) !== FIXED_TRACE_MEASUREMENT_MANIFEST_SHA256
+    || manifest.authorityDigests.finalPrerequisitesSha256
+      !== FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256
+    || sha256(FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY)
+      !== FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256
     || manifest.finalPrerequisites.randomization.scheduleDigest !== final.finalRandomization.scheduleDigest
     || manifest.finalPrerequisites.randomization.episodeClusterManifestDigest
       !== final.finalRandomization.episodeClusterManifestDigest

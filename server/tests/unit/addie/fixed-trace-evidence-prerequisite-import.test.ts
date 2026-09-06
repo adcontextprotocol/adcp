@@ -1,6 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { build, buildSync } from "esbuild";
 import { describe, expect, it } from "vitest";
+import {
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON,
+  FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES,
+} from "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js";
 
 function bundledModule(entryPoint: string): { readonly source: string; readonly inputs: readonly string[] } {
   const result = buildSync({
@@ -22,9 +27,12 @@ const judgeModule = bundledModule("server/src/addie/eval/fixed-trace-judge.ts");
 const coordinatorModule = bundledModule(
   "server/src/addie/eval/fixed-trace-evaluator-coordinator.ts",
 );
+const prerequisiteModule = bundledModule(
+  "server/src/addie/eval/fixed-trace-evidence-prerequisite.ts",
+);
 const probe = `
   const bundles = JSON.parse(Buffer.from(${JSON.stringify(
-    Buffer.from(JSON.stringify([judgeModule.source, coordinatorModule.source])).toString("base64"),
+    Buffer.from(JSON.stringify([judgeModule.source, coordinatorModule.source, prerequisiteModule.source])).toString("base64"),
   )}, "base64").toString());
   let clockReads = 0;
   let randomReads = 0;
@@ -35,12 +43,14 @@ const probe = `
     get: (_target, key) => { environmentKeys.push(String(key)); return undefined; },
     ownKeys: () => { environmentKeys.push("<ownKeys>"); return []; },
   });
-  const [judge, coordinator] = await Promise.all(bundles.map((source) =>
+  const [judge, coordinator, prerequisite] = await Promise.all(bundles.map((source) =>
     import("data:text/javascript;base64," + Buffer.from(source).toString("base64")),
   ));
   judge.fixedTraceJudgeUnavailable();
   judge.fixedTraceJudgeSummaryUnavailable();
   coordinator.fixedTraceEvaluatorCoordinatorUnavailable();
+  prerequisite.fixedTraceEvidencePrerequisiteDiagnostic();
+  prerequisite.assertFixedTraceEvidencePrerequisitePinned();
   process.stdout.write(JSON.stringify({ clockReads, randomReads, environmentKeys }));
 `;
 
@@ -68,7 +78,9 @@ async function hostileManifestProbe(hostileExpression: string): Promise<string> 
       }));
       build.onLoad({ filter: /.*/, namespace: "hostile-manifest" }, () => ({
         contents: `
-          export const reads = { get: 0, ownKeys: 0, getter: 0, primitive: 0, json: 0 };
+          export const reads = { get: 0, ownKeys: 0, prototype: 0, getter: 0, primitive: 0, json: 0 };
+          export const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON = ${JSON.stringify(FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_JSON)};
+          export const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES = ${FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES};
           export const FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON = ${hostileExpression};
         `,
         loader: "js",
@@ -87,7 +99,7 @@ describe("fixed-trace B import boundary", () => {
       "server/src/addie/eval/fixed-trace-evidence-prerequisite.ts",
       "server/src/addie/eval/fixed-trace-judge.ts",
     ];
-    expect([...new Set([...judgeModule.inputs, ...coordinatorModule.inputs])].sort()).toEqual(expected);
+    expect([...new Set([...judgeModule.inputs, ...coordinatorModule.inputs, ...prerequisiteModule.inputs])].sort()).toEqual(expected);
   });
 
   it("traps clock, random, and environment before importing or invoking every bundled public refusal entry", () => {
@@ -103,7 +115,7 @@ describe("fixed-trace B import boundary", () => {
       randomReads: 0,
       // Node's ESM loader performs this capability-reporting lookup; the
       // bundled B closure itself has no environment access.
-      environmentKeys: ["WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES"],
+      environmentKeys: ["WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES", "WATCH_REPORT_DEPENDENCIES"],
     });
   });
 
@@ -111,6 +123,7 @@ describe("fixed-trace B import boundary", () => {
     ["proxy", `new Proxy({}, {
       get() { reads.get += 1; throw new Error("hostile get"); },
       ownKeys() { reads.ownKeys += 1; throw new Error("hostile ownKeys"); },
+      getPrototypeOf() { reads.prototype += 1; throw new Error("hostile prototype"); },
     })`],
     ["accessor", `Object.defineProperty({}, "manifest", {
       get() { reads.getter += 1; throw new Error("hostile getter"); },
@@ -121,6 +134,17 @@ describe("fixed-trace B import boundary", () => {
       [Symbol.toPrimitive]() { reads.primitive += 1; throw new Error("coerced"); },
       toJSON() { reads.json += 1; throw new Error("serialized"); },
     }`],
+    ["duplicate root key", JSON.stringify(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace(
+      '"version":"addie-fixed-trace-A-prerequisite-manifest-v3"',
+      '"version":"forged","version":"addie-fixed-trace-A-prerequisite-manifest-v3"',
+    ))],
+    ["duplicate nested key", JSON.stringify(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON.replace(
+      '"providerExposure":{"status":"unavailable","digest":null}',
+      '"providerExposure":{"status":"forged","status":"unavailable","digest":null}',
+    ))],
+    ["oversized padded source", JSON.stringify(FIXED_TRACE_A_PREREQUISITE_MANIFEST_JSON + " ".repeat(16 * 1024))],
+    ["deep source", JSON.stringify(`${"{".repeat(2_000)}null${"}".repeat(2_000)}`)],
+    ["serialized prototype pollution", JSON.stringify('{"__proto__":{"polluted":true}}')],
   ])("killably refuses an actual hostile %s manifest export without a trap read", async (_kind, hostileExpression) => {
     const hostileProbe = await hostileManifestProbe(hostileExpression);
     const child = spawnSync(process.execPath, [
@@ -138,7 +162,7 @@ describe("fixed-trace B import boundary", () => {
         reason: "manifest_invalid_or_pin_mismatch",
         mismatchedFields: ["manifest_shape"],
       },
-      reads: { get: 0, ownKeys: 0, getter: 0, primitive: 0, json: 0 },
+      reads: { get: 0, ownKeys: 0, prototype: 0, getter: 0, primitive: 0, json: 0 },
     });
   });
 });
