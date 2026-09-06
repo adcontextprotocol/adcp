@@ -86,6 +86,11 @@ export interface FixedTraceComponentSmokeProviderAssignmentTerminal {
   readonly status: 'provider_completed' | 'provider_failed';
   readonly finalInvocationOrdinal: number;
 }
+/** Closes a started assignment whose committed provider exposure is ambiguous. */
+export interface FixedTraceComponentSmokeProviderUnknownExposure {
+  readonly reservation: FixedTraceComponentSmokeReservation;
+  readonly assignmentId: string;
+}
 
 const HEX = /^[a-f0-9]{64}$/;
 const ATTEMPT_ID = /^attempt_[a-f0-9]{32}$/;
@@ -271,7 +276,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
         const unresolved = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND status = \'intent_recorded\' LIMIT 1 FOR UPDATE', [parsed.reservation.authorizationDigest]);
         if (unresolved.rowCount !== 0) {
-          await client.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp() WHERE authorization_digest = $1 AND reservation_id = $2", [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+          await this.closeOpenIntentsAsUnknownExposure(client, parsed.reservation);
           return result('refused', 'unknown_exposure');
         }
         const expected = expectedPlanEntry(parsed.assignmentId);
@@ -284,6 +289,14 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
           [parsed.reservation.authorizationDigest, parsed.assignmentId]);
         if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected)
           || expected.disposition !== 'provider_dispatch' || parsed.invocationOrdinal > expected.maximumProviderInvocations) return result('refused', 'plan_mismatch');
+        if (parsed.invocationOrdinal > 1) {
+          const predecessor = await client.query<{ status: string; response_disposition: string | null }>(
+            'SELECT status, response_disposition FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal = $3 FOR UPDATE',
+            [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.invocationOrdinal - 1],
+          );
+          if (predecessor.rowCount !== 1 || predecessor.rows[0]!.status !== 'succeeded'
+            || predecessor.rows[0]!.response_disposition !== 'tool_continuation_required') return result('refused', 'intent_required');
+        }
         const duplicate = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1 FOR UPDATE', [parsed.attemptId]);
         if (duplicate.rowCount !== 0) return result('refused', 'duplicate_attempt_id');
         const slot = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal = $3 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.invocationOrdinal]);
@@ -319,7 +332,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         const row = attempt.rows[0]!;
         const expected = expectedPlanEntry(row.assignment_id);
         if (!expected || !pgPlanMatches(row as unknown as Record<string, unknown>, expected)) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
-        if (parsed.status === 'succeeded' && (parsed.returnedIdentity?.provider !== row.requested_provider
+        if (parsed.usage && (parsed.returnedIdentity?.provider !== row.requested_provider
           || parsed.returnedIdentity?.model !== row.requested_model
           || parsed.returnedIdentity?.effort !== row.requested_effort)) return this.settlePostIntentFailure(client, parsed, 'identity_mismatch', 'unknown_exposure');
         const ordinal = pgSafeInt(row.invocation_ordinal, 2);
@@ -328,10 +341,15 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         const timeout = pgSafeInt(row.timeout_ms, MAX_LATENCY_MS);
         if (ordinal === null || maxInput === null || maxOutput === null || timeout === null) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
         const reservedForOrdinal = pgSafeInt(row.reserved_microdollars[ordinal - 1], 2_819_484);
+        const maximumInvocations = pgSafeInt(row.maximum_provider_invocations, 2);
         const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === row.pricing_profile_id);
         if (parsed.usage && (!profile || profile.provider !== row.requested_provider || profile.model !== row.requested_model)) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
         let spent: number | null = null;
         try { spent = parsed.usage ? datedPricingCostMicros(profile!, parsed.usage) : null; } catch { return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure'); }
+        if (parsed.status === 'succeeded' && parsed.responseDisposition === 'tool_continuation_required'
+          && (maximumInvocations === null || ordinal === maximumInvocations)) {
+          return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'plan_mismatch', spent);
+        }
         // A complete receipt remains accounting evidence even if it breaches a
         // pinned input/output/timeout limit. Never replace known exposure with
         // NULL merely because this one-shot run must halt.
@@ -402,12 +420,56 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     if (!exactReservation(reservation)) return result('refused', 'plan_mismatch');
     try {
       return await this.transaction(async (client) => {
-        const changed = await client.query(
-          `UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp()
-           WHERE authorization_digest = $1 AND reservation_id = $2 AND status = 'consumed'`, [reservation.authorizationDigest, reservation.reservationId]);
-        return changed.rowCount === 1 ? result('recorded') : result('refused', 'unknown_exposure');
+        const changed = await this.closeOpenIntentsAsUnknownExposure(client, reservation);
+        return changed ? result('recorded') : result('refused', 'unknown_exposure');
       });
     } catch { return result('refused', 'persistence_uncertain'); }
+  }
+
+  /**
+   * Turns every still-open committed intent into categorical ambiguity before
+   * closing its corresponding assignment.  It records no invented receipt,
+   * usage, identity, response HMAC, or cost.
+   */
+  private async closeOpenIntentsAsUnknownExposure(client: PoolClient, reservation: FixedTraceComponentSmokeReservation): Promise<boolean> {
+    const changed = await client.query(
+      `UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp()
+       WHERE authorization_digest = $1 AND reservation_id = $2 AND status = 'consumed'`,
+      [reservation.authorizationDigest, reservation.reservationId],
+    );
+    if (changed.rowCount !== 1) return false;
+    await client.query(
+      `UPDATE addie_fixed_trace_component_smoke_attempts
+          SET status = 'unknown_exposure', response_disposition = NULL, response_hmac = NULL,
+              returned_provider = NULL, returned_model = NULL, returned_effort = NULL,
+              input_tokens = NULL, output_tokens = NULL, cache_read_tokens = NULL, cache_write_tokens = NULL,
+              actual_cost_microdollars = NULL, observed_cost_microdollars = NULL, latency_ms = NULL,
+              terminal_at = clock_timestamp()
+        WHERE authorization_digest = $1 AND status = 'intent_recorded'`,
+      [reservation.authorizationDigest],
+    );
+    await client.query(
+      `WITH started AS (
+         SELECT authorization_digest, assignment_id, max(invocation_ordinal) AS final_ordinal,
+                bool_or(status = 'unknown_exposure') AS ambiguous,
+                bool_or(status <> 'succeeded') AS failed,
+                (array_agg(response_disposition ORDER BY invocation_ordinal DESC))[1] AS last_disposition
+           FROM addie_fixed_trace_component_smoke_attempts
+          WHERE authorization_digest = $1
+          GROUP BY authorization_digest, assignment_id
+       )
+       UPDATE addie_fixed_trace_component_smoke_run_plan AS p
+          SET assignment_outcome = CASE
+                WHEN started.ambiguous OR started.last_disposition <> 'final_response' THEN 'provider_unknown_exposure'
+                WHEN started.failed THEN 'provider_failed'
+                ELSE 'provider_completed' END,
+              assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = started.final_ordinal
+         FROM started
+        WHERE p.authorization_digest = started.authorization_digest AND p.assignment_id = started.assignment_id
+          AND p.assignment_outcome IS NULL`,
+      [reservation.authorizationDigest],
+    );
+    return true;
   }
 
   /** Local and pre-dispatch terminal plan entries accept no HMAC, cost, or invocation claim. */

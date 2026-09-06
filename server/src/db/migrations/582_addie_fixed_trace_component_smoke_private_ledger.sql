@@ -57,16 +57,16 @@ CREATE TABLE addie_fixed_trace_component_smoke_run_plan (
   reserved_microdollars BIGINT[] NOT NULL CHECK (cardinality(reserved_microdollars) = maximum_provider_invocations),
   -- Assignment outcomes close the 168-entry denominator. They are distinct
   -- from provider attempt terminals and contain no provider-call evidence.
-  assignment_outcome VARCHAR(32) CHECK (assignment_outcome IS NULL OR assignment_outcome IN ('provider_completed', 'provider_failed', 'local_terminal', 'pre_dispatch_fault', 'not_executed_after_halt')),
+  assignment_outcome VARCHAR(32) CHECK (assignment_outcome IS NULL OR assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure', 'local_terminal', 'pre_dispatch_fault', 'not_executed_after_halt')),
   assignment_terminal_at TIMESTAMPTZ,
   assignment_final_invocation_ordinal SMALLINT,
   PRIMARY KEY (authorization_digest, assignment_id),
   UNIQUE (authorization_digest, probe_id, cell_id),
   CHECK ((disposition = 'provider_dispatch' AND maximum_provider_invocations > 0) OR (disposition <> 'provider_dispatch' AND maximum_provider_invocations = 0)),
   CHECK (array_position(reserved_microdollars, NULL) IS NULL),
-  CHECK (assignment_outcome IS NULL OR assignment_outcome = disposition OR assignment_outcome IN ('provider_completed', 'provider_failed', 'not_executed_after_halt')),
+  CHECK (assignment_outcome IS NULL OR assignment_outcome = disposition OR assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure', 'not_executed_after_halt')),
   CHECK ((assignment_outcome IS NULL) = (assignment_terminal_at IS NULL)),
-  CHECK ((assignment_outcome IN ('provider_completed', 'provider_failed')) = (assignment_final_invocation_ordinal IS NOT NULL)),
+  CHECK ((assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure')) = (assignment_final_invocation_ordinal IS NOT NULL)),
   CHECK (assignment_final_invocation_ordinal IS NULL OR assignment_final_invocation_ordinal BETWEEN 1 AND maximum_provider_invocations)
 );
 
@@ -75,7 +75,7 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
   authorization_digest CHAR(64) NOT NULL,
   assignment_id CHAR(64) NOT NULL,
   invocation_ordinal SMALLINT NOT NULL CHECK (invocation_ordinal BETWEEN 1 AND 2),
-  status VARCHAR(32) NOT NULL CHECK (status IN ('intent_recorded', 'succeeded', 'provider_failed', 'timeout_after_dispatch', 'malformed_response', 'identity_mismatch', 'missing_usage', 'invalid_limits', 'pricing_unavailable')),
+  status VARCHAR(32) NOT NULL CHECK (status IN ('intent_recorded', 'succeeded', 'provider_failed', 'timeout_after_dispatch', 'malformed_response', 'identity_mismatch', 'missing_usage', 'invalid_limits', 'pricing_unavailable', 'unknown_exposure')),
   response_disposition VARCHAR(32) CHECK (response_disposition IS NULL OR response_disposition IN ('final_response', 'tool_continuation_required')),
   prepared_request_hmac CHAR(64) NOT NULL CHECK (prepared_request_hmac ~ '^[a-f0-9]{64}$'),
   response_hmac CHAR(64) CHECK (response_hmac IS NULL OR response_hmac ~ '^[a-f0-9]{64}$'),
@@ -101,6 +101,7 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
   CHECK ((status = 'succeeded') = (response_disposition IS NOT NULL)),
   CHECK (status NOT IN ('malformed_response', 'missing_usage') OR (input_tokens IS NULL AND output_tokens IS NULL AND actual_cost_microdollars IS NULL)),
   CHECK (status <> 'timeout_after_dispatch' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND actual_cost_microdollars IS NULL)),
+  CHECK (status <> 'unknown_exposure' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
   CHECK (status NOT IN ('succeeded', 'provider_failed', 'malformed_response', 'identity_mismatch', 'missing_usage') OR response_hmac IS NOT NULL)
 );
 
@@ -190,13 +191,13 @@ BEGIN
     RAISE EXCEPTION 'admitted plan fields are immutable';
   END IF;
   IF OLD.assignment_outcome IS NOT NULL OR NEW.assignment_outcome IS NULL OR NEW.assignment_terminal_at IS NULL
-     OR (NEW.assignment_outcome <> OLD.disposition AND NEW.assignment_outcome NOT IN ('provider_completed', 'provider_failed', 'not_executed_after_halt')) THEN
+     OR (NEW.assignment_outcome <> OLD.disposition AND NEW.assignment_outcome NOT IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure', 'not_executed_after_halt')) THEN
     RAISE EXCEPTION 'assignment outcome is monotonic';
   END IF;
-  IF NEW.assignment_outcome IN ('provider_completed', 'provider_failed') AND OLD.disposition <> 'provider_dispatch' THEN
+  IF NEW.assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure') AND OLD.disposition <> 'provider_dispatch' THEN
     RAISE EXCEPTION 'provider assignment outcome requires provider dispatch';
   END IF;
-  IF NEW.assignment_outcome IN ('provider_completed', 'provider_failed') THEN
+  IF NEW.assignment_outcome IN ('provider_completed', 'provider_failed', 'provider_unknown_exposure') THEN
     SELECT status INTO authorization_status FROM addie_fixed_trace_component_smoke_authorizations
      WHERE authorization_digest = NEW.authorization_digest FOR UPDATE;
     SELECT count(*), bool_or(status = 'intent_recorded'), bool_or(status <> 'succeeded')
@@ -205,11 +206,15 @@ BEGIN
      WHERE authorization_digest = NEW.authorization_digest AND assignment_id = NEW.assignment_id
        AND invocation_ordinal <= NEW.assignment_final_invocation_ordinal;
     IF terminal_count <> NEW.assignment_final_invocation_ordinal OR COALESCE(open_attempt, false)
-       OR (NEW.assignment_outcome = 'provider_completed' AND (COALESCE(failed_attempt, false) OR authorization_status <> 'consumed'
+       OR (NEW.assignment_outcome = 'provider_completed' AND (COALESCE(failed_attempt, false) OR authorization_status = 'completed'
            OR NOT EXISTS (SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = NEW.authorization_digest
                             AND assignment_id = NEW.assignment_id AND invocation_ordinal = NEW.assignment_final_invocation_ordinal
                             AND status = 'succeeded' AND response_disposition = 'final_response')))
-       OR (NEW.assignment_outcome = 'provider_failed' AND NOT COALESCE(failed_attempt, false)) THEN
+       OR (NEW.assignment_outcome = 'provider_failed' AND NOT COALESCE(failed_attempt, false))
+       OR (NEW.assignment_outcome = 'provider_unknown_exposure' AND (authorization_status <> 'unknown_exposure'
+           OR NOT EXISTS (SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = NEW.authorization_digest
+                            AND assignment_id = NEW.assignment_id AND invocation_ordinal = NEW.assignment_final_invocation_ordinal
+                            AND status = 'unknown_exposure'))) THEN
       RAISE EXCEPTION 'provider assignment outcome lacks final terminal attempt evidence';
     END IF;
   END IF;
@@ -322,6 +327,9 @@ LANGUAGE plpgsql AS $$
 DECLARE
   max_invocations SMALLINT;
   disposition VARCHAR(24);
+  requested_provider VARCHAR(32);
+  requested_model VARCHAR(128);
+  requested_effort VARCHAR(64);
   reserved BIGINT;
   prior_spend BIGINT;
   reservation_limit BIGINT;
@@ -332,8 +340,9 @@ BEGIN
   IF TG_OP = 'INSERT' AND NEW.status <> 'intent_recorded' THEN
     RAISE EXCEPTION 'a provider attempt must begin as an intent';
   END IF;
-  SELECT p.maximum_provider_invocations, p.disposition, p.reserved_microdollars[NEW.invocation_ordinal], p.assignment_outcome
-    INTO max_invocations, disposition, reserved, assignment_outcome
+  SELECT p.maximum_provider_invocations, p.disposition, p.requested_provider, p.requested_model, p.requested_effort,
+         p.reserved_microdollars[NEW.invocation_ordinal], p.assignment_outcome
+    INTO max_invocations, disposition, requested_provider, requested_model, requested_effort, reserved, assignment_outcome
     FROM addie_fixed_trace_component_smoke_run_plan AS p
    WHERE p.authorization_digest = NEW.authorization_digest AND p.assignment_id = NEW.assignment_id;
   IF disposition IS DISTINCT FROM 'provider_dispatch' OR NEW.invocation_ordinal > max_invocations THEN
@@ -342,16 +351,6 @@ BEGIN
   IF assignment_outcome IS NOT NULL THEN
     RAISE EXCEPTION 'provider assignment is already terminal';
   END IF;
-  IF TG_OP = 'INSERT' AND NEW.invocation_ordinal > 1 AND EXISTS (
-    SELECT 1 FROM addie_fixed_trace_component_smoke_attempts
-     WHERE authorization_digest = NEW.authorization_digest AND assignment_id = NEW.assignment_id
-       AND invocation_ordinal < NEW.invocation_ordinal AND response_disposition = 'final_response'
-  ) THEN
-    RAISE EXCEPTION 'provider assignment was already final';
-  END IF;
-  IF NEW.actual_cost_microdollars IS NOT NULL AND NEW.actual_cost_microdollars > reserved THEN
-    RAISE EXCEPTION 'attempt cost exceeds its ordinal reservation';
-  END IF;
   SELECT status, reservation_microdollars, provider_ceiling_microdollars
     INTO authorization_status, reservation_limit, provider_limit
     FROM addie_fixed_trace_component_smoke_authorizations
@@ -359,8 +358,51 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'attempt authorization is absent';
   END IF;
-  IF authorization_status <> 'consumed' THEN
+  IF TG_OP = 'INSERT' AND authorization_status <> 'consumed' THEN
     RAISE EXCEPTION 'attempt authorization is not dispatchable';
+  END IF;
+  IF TG_OP = 'UPDATE' AND authorization_status <> 'consumed'
+     AND NOT (authorization_status = 'unknown_exposure' AND NEW.status = 'unknown_exposure') THEN
+    RAISE EXCEPTION 'attempt authorization cannot be settled';
+  END IF;
+  IF TG_OP = 'INSERT' AND EXISTS (
+    SELECT 1 FROM addie_fixed_trace_component_smoke_attempts
+     WHERE authorization_digest = NEW.authorization_digest AND status = 'intent_recorded'
+  ) THEN
+    RAISE EXCEPTION 'a prior provider intent remains unresolved';
+  END IF;
+  IF TG_OP = 'INSERT' AND NEW.invocation_ordinal > 1 AND NOT EXISTS (
+    SELECT 1 FROM addie_fixed_trace_component_smoke_attempts
+     WHERE authorization_digest = NEW.authorization_digest AND assignment_id = NEW.assignment_id
+       AND invocation_ordinal = NEW.invocation_ordinal - 1
+       AND status = 'succeeded' AND response_disposition = 'tool_continuation_required'
+  ) THEN
+    RAISE EXCEPTION 'provider invocation ordinal lacks a terminal continuation predecessor';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.status = 'succeeded'
+     AND (NEW.returned_provider IS DISTINCT FROM requested_provider OR NEW.returned_model IS DISTINCT FROM requested_model
+          OR NEW.returned_effort IS DISTINCT FROM requested_effort) THEN
+    RAISE EXCEPTION 'succeeded attempt identity differs from admitted plan';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.actual_cost_microdollars IS NOT NULL
+     AND (NEW.returned_provider IS DISTINCT FROM requested_provider OR NEW.returned_model IS DISTINCT FROM requested_model
+          OR NEW.returned_effort IS DISTINCT FROM requested_effort) THEN
+    RAISE EXCEPTION 'actual cost requires admitted returned identity';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.status = 'succeeded' AND NEW.response_disposition = 'tool_continuation_required'
+     AND NEW.invocation_ordinal = max_invocations THEN
+    -- A continuation beyond the admitted slot cannot be dispatched.  Preserve
+    -- known receipt cost as observation, settle categorically, and halt.
+    NEW.status := 'invalid_limits';
+    NEW.response_disposition := NULL;
+    NEW.observed_cost_microdollars := NEW.actual_cost_microdollars;
+    NEW.actual_cost_microdollars := NULL;
+    UPDATE addie_fixed_trace_component_smoke_authorizations
+       SET status = 'halted'
+     WHERE authorization_digest = NEW.authorization_digest AND status = 'consumed';
+  END IF;
+  IF NEW.actual_cost_microdollars IS NOT NULL AND NEW.actual_cost_microdollars > reserved THEN
+    RAISE EXCEPTION 'attempt cost exceeds its ordinal reservation';
   END IF;
   SELECT COALESCE(sum(actual_cost_microdollars), 0) INTO prior_spend
     FROM addie_fixed_trace_component_smoke_attempts

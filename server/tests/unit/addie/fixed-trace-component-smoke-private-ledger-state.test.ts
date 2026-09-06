@@ -40,6 +40,10 @@ class StrictLedgerClient {
     if (sql.startsWith('SELECT status, reservation_microdollars')) return { rowCount: 1, rows: [{ status: this.authStatus, reservation_microdollars: '2819484', provider_ceiling_microdollars: '5000000' }] };
     if (sql.startsWith('SELECT status FROM addie_fixed_trace_component_smoke_authorizations')) return { rowCount: 1, rows: [{ status: this.authStatus }] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts') && sql.includes("status = 'intent_recorded'")) return { rowCount: [...this.attempts.values()].some((attempt) => attempt.status === 'intent_recorded') ? 1 : 0, rows: [] };
+    if (sql.startsWith('SELECT status, response_disposition FROM addie_fixed_trace_component_smoke_attempts')) {
+      const attempt = [...this.attempts.values()].find((entry) => entry.assignmentId === params![1] && entry.ordinal === params![2]);
+      return attempt ? { rowCount: 1, rows: [{ status: attempt.status, response_disposition: attempt.responseDisposition }] } : { rowCount: 0, rows: [] };
+    }
     if (sql.includes('FROM addie_fixed_trace_component_smoke_run_plan') && sql.includes('FOR UPDATE') && !sql.includes('FROM addie_fixed_trace_component_smoke_attempts a')) return { rowCount: 1, rows: [this.planRow()] };
     if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 1, rows: [] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id')) return { rowCount: this.attempts.has(params![0] as string) ? 1 : 0, rows: [] };
@@ -65,6 +69,13 @@ class StrictLedgerClient {
       const last = [...matches].sort((left, right) => right.ordinal - left.ordinal)[0];
       return { rowCount: 1, rows: [{ count: String(matches.length), open: matches.some((attempt) => attempt.status === 'intent_recorded'), failures: matches.some((attempt) => attempt.status !== 'succeeded'), last_response_disposition: last?.responseDisposition ?? null }] };
     }
+    if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_attempts') && sql.includes("WHERE authorization_digest = $1 AND status = 'intent_recorded'")) {
+      for (const attempt of this.attempts.values()) if (attempt.status === 'intent_recorded') {
+        attempt.status = 'unknown_exposure'; attempt.responseDisposition = null; attempt.cost = null; attempt.observedCost = null; attempt.responseHmac = null; attempt.returnedProvider = null;
+      }
+      return { rowCount: 1, rows: [] };
+    }
+    if (sql.startsWith('WITH started AS (')) return { rowCount: 1, rows: [] };
     if (sql.startsWith('UPDATE addie_fixed_trace_component_smoke_attempts')) {
       const attempt = this.attempts.get(params![0] as string)!;
       attempt.status = params![2] as string;
@@ -124,10 +135,40 @@ describe('private ledger state machine', () => {
     await subject.recordProviderIntent(intent());
     expect(await subject.recordProviderIntent(intent(`attempt_${'2'.repeat(32)}`))).toEqual({ status: 'refused', reason: 'unknown_exposure' });
     expect(client.authStatus).toBe('unknown_exposure');
+    expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)?.status).toBe('unknown_exposure');
     const failed = new StrictLedgerClient(); const failedLedger = ledger(failed);
     await failedLedger.recordProviderIntent(intent());
     expect(await failedLedger.recordTerminal(terminal({ status: 'provider_failed' }))).toEqual({ status: 'recorded' });
     expect(failed.authStatus).toBe('unknown_exposure');
+  });
+
+  it('requires a succeeded continuation predecessor before ordinal two', async () => {
+    const generation = fixedTraceComponentSmokePrivateLedgerPlan()!.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
+    const client = new StrictLedgerClient(generation); const subject = ledger(client);
+    const second = { ...intent(`attempt_${'2'.repeat(32)}`, 2), assignmentId: generation.assignmentId };
+    expect(await subject.recordProviderIntent(second)).toEqual({ status: 'refused', reason: 'intent_required' });
+    client.attempts.set(`attempt_${'1'.repeat(32)}`, { id: `attempt_${'1'.repeat(32)}`, assignmentId: generation.assignmentId, ordinal: 1, status: 'succeeded', responseDisposition: 'final_response', cost: 0, observedCost: null, returnedProvider: generation.provider, responseHmac: 'c'.repeat(64) });
+    expect(await subject.recordProviderIntent(second)).toEqual({ status: 'refused', reason: 'intent_required' });
+    client.attempts.get(`attempt_${'1'.repeat(32)}`)!.responseDisposition = 'tool_continuation_required';
+    expect(await subject.recordProviderIntent(second)).toEqual({ status: 'recorded' });
+  });
+
+  it('fail-stops a continuation at generation ordinal two while retaining observed usage cost', async () => {
+    const generation = fixedTraceComponentSmokePrivateLedgerPlan()!.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
+    const client = new StrictLedgerClient(generation); const subject = ledger(client);
+    client.attempts.set(`attempt_${'1'.repeat(32)}`, { id: `attempt_${'1'.repeat(32)}`, assignmentId: generation.assignmentId, ordinal: 1, status: 'succeeded', responseDisposition: 'tool_continuation_required', cost: 0, observedCost: null, returnedProvider: generation.provider, responseHmac: 'c'.repeat(64) });
+    await subject.recordProviderIntent({ ...intent(`attempt_${'2'.repeat(32)}`, 2), assignmentId: generation.assignmentId });
+    expect(await subject.recordTerminal({ ...terminal({ attemptId: `attempt_${'2'.repeat(32)}`, responseDisposition: 'tool_continuation_required' }), returnedIdentity: { provider: generation.provider, model: generation.model, effort: generation.effort } })).toEqual({ status: 'refused', reason: 'plan_mismatch' });
+    expect(client.authStatus).toBe('halted');
+    expect(client.attempts.get(`attempt_${'2'.repeat(32)}`)).toMatchObject({ status: 'invalid_limits', cost: null, observedCost: expect.any(Number) });
+  });
+
+  it('closes an explicitly ambiguous open intent as an unknown provider assignment outcome', async () => {
+    const client = new StrictLedgerClient(); const subject = ledger(client);
+    await subject.recordProviderIntent(intent());
+    expect(await subject.recordUnknownExposure(reservation)).toEqual({ status: 'recorded' });
+    expect(client.authStatus).toBe('unknown_exposure');
+    expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)).toMatchObject({ status: 'unknown_exposure', responseHmac: null, cost: null });
   });
 
   it.each([
@@ -138,7 +179,9 @@ describe('private ledger state machine', () => {
   ])('preserves status-specific receipt evidence and fail-stops %s', async (status, receipt) => {
     const client = new StrictLedgerClient(); const subject = ledger(client);
     await subject.recordProviderIntent(intent());
-    expect(await subject.recordTerminal(terminal({ status, ...receipt }))).toEqual({ status: 'recorded' });
+    expect(await subject.recordTerminal(terminal({ status, ...receipt }))).toEqual(
+      status === 'identity_mismatch' ? { status: 'refused', reason: 'plan_mismatch' } : { status: 'recorded' },
+    );
     expect(client.authStatus).toBe('unknown_exposure');
     expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)?.responseHmac).toBe(receipt.responseHmac);
   });
