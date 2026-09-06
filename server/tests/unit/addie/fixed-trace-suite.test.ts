@@ -50,6 +50,7 @@ import {
 import {
   fixedTraceArchitectureArm,
   fixedTraceExecutionEnvelopeProvenance,
+  fixedTraceHybridPolicy,
   fixedTraceRequestThreadFactsProvenance,
   fixedTraceToolUniverseProvenance,
 } from '../../../src/addie/eval/fixed-trace-architecture.js';
@@ -1297,6 +1298,14 @@ describe('fixed cross-provider trace suite', () => {
       observed: 32,
       omitted: 0,
       complete: true,
+      expectedEndpointDenominators: {
+        deterministic: 32,
+        answer: 30,
+        routing: 32,
+        toolSelection: 32,
+        mutationSafety: 5,
+        metadata: 32,
+      },
       deterministicPassRate: 1,
       answerPassRate: 1,
       routingPassRate: 1,
@@ -1469,6 +1478,123 @@ describe('fixed cross-provider trace suite', () => {
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
     expect(summary).toMatchObject({ expected: 32, observed: 3, omitted: 29, complete: false });
+  });
+
+  it('uses suite-bound intention-to-treat denominators for every applicable endpoint', () => {
+    const answerTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'knowledge-task-model')!;
+    const mutationTrace = FIXED_TRACE_SUITE.find((trace) => trace.id === 'billing-invoice-preview-only')!;
+    const suite = [answerTrace, mutationTrace];
+    const observedPass = passingObservation(answerTrace);
+    observedPass.metadata.traceSuiteSha256 = fixedTraceSuiteSha256(suite);
+    observedPass.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observedPass.metadata);
+
+    const { summary } = summarizeFixedTraceRun([observedPass], suite);
+    expect(summary).toMatchObject({
+      expected: 2,
+      observed: 1,
+      omitted: 1,
+      complete: false,
+      expectedEndpointDenominators: {
+        deterministic: 2,
+        answer: 2,
+        routing: 2,
+        toolSelection: 2,
+        mutationSafety: 1,
+        metadata: 2,
+      },
+      deterministicPassRate: 0.5,
+      answerPassRate: 0.5,
+      routingPassRate: 0.5,
+      toolSelectionPassRate: 0.5,
+      mutationSafetyPassRate: 0,
+      metadataPassRate: 0.5,
+    });
+  });
+
+  it('keeps endpoint-local passes when only the answer assertion fails', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'billing-invoice-preview-only')!;
+    const observation = passingObservation(trace);
+    observation.output = '';
+    observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([trace]);
+    observation.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observation.metadata);
+
+    const { summary } = summarizeFixedTraceRun([observation], [trace]);
+    expect(summary).toMatchObject({
+      deterministicPassRate: 0,
+      answerPassRate: 0,
+      routingPassRate: 1,
+      toolSelectionPassRate: 1,
+      mutationSafetyPassRate: 1,
+      metadataPassRate: 1,
+    });
+  });
+
+  it('keeps endpoint-local passes but never judges hard or unjudgeable answers', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'billing-invoice-preview-only')!;
+    for (const terminalStatus of ['provider_error', 'empty'] as const) {
+      const observation = passingObservation(trace);
+      observation.terminalStatus = terminalStatus;
+      if (terminalStatus === 'empty') observation.output = '';
+      observation.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([trace]);
+      observation.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observation.metadata);
+      const { summary } = summarizeFixedTraceRun([observation], [trace]);
+      expect(summary.deterministicPassRate).toBe(0);
+      expect(summary.answerPassRate).toBe(0);
+      expect(summary.routingPassRate).toBe(1);
+      expect(summary.toolSelectionPassRate).toBe(1);
+      expect(summary.mutationSafetyPassRate).toBe(1);
+      expect(summary.metadataPassRate).toBe(1);
+    }
+  });
+
+  it('requires and counts provider-unavailable fallback text', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'provider-unavailable')!;
+    const passing = passingObservation(trace);
+    passing.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([trace]);
+    passing.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(passing.metadata);
+    expect(gradeFixedTrace(trace, passing)).toMatchObject({ deterministicPass: true, answerPass: true });
+    expect(summarizeFixedTraceRun([passing], [trace]).summary).toMatchObject({
+      expectedEndpointDenominators: { answer: 1 },
+      answerPassRate: 1,
+    });
+
+    for (const output of ['', 'The protocol is available.'] as const) {
+      const invalid = passingObservation(trace);
+      invalid.output = output;
+      invalid.metadata.traceSuiteSha256 = fixedTraceSuiteSha256([trace]);
+      invalid.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(invalid.metadata);
+      expect(gradeFixedTrace(trace, invalid)).toMatchObject({ deterministicPass: false, answerPass: false });
+      expect(summarizeFixedTraceRun([invalid], [trace]).summary.answerPassRate).toBe(0);
+    }
+  });
+
+  it('leaves hybrid routing ungraded until hybrid routing grading is implemented', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const observation = passingObservation(trace);
+    observation.metadata = metadata({
+      traceSuiteSha256: fixedTraceSuiteSha256([trace]),
+      architectureArm: fixedTraceArchitectureArm('deterministic_policy_llm_fallback_hybrid'),
+      hybridPolicy: fixedTraceHybridPolicy(),
+      toolUniverse: fixedTraceToolUniverseProvenance('deterministic_policy_llm_fallback_hybrid'),
+      executionEnvelope: fixedTraceExecutionEnvelopeProvenance('deterministic_policy_llm_fallback_hybrid'),
+    });
+
+    const { summary } = summarizeFixedTraceRun([observation], [trace]);
+    expect(summary).toMatchObject({
+      expectedEndpointDenominators: { routing: null },
+      routingPassRate: null,
+    });
+  });
+
+  it('counts omitted cases as terminal failures in the intention-to-treat denominator', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const { summary } = summarizeFixedTraceRun([passingObservation(trace)]);
+    expect(summary.terminalFailureRate).toBeCloseTo(31 / 32);
+  });
+
+  it('does not summarize an empty run or suite as a perfect result', () => {
+    expect(() => summarizeFixedTraceRun([])).toThrow('Fixed trace run requires at least one observation');
+    expect(() => summarizeFixedTraceRun([], [])).toThrow('Fixed trace run requires at least one observation');
   });
 
   it('rejects a deserialized truncation observation whose control differs from the versioned trace', () => {

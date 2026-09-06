@@ -318,7 +318,18 @@ describe('fixed-trace diagnostic output reservation', () => {
       hybridPolicy: fixedTraceHybridPolicy(),
       runs: [{
         provider: 'anthropic',
-        summary: { complete: true, comparisonEligible: false },
+        summary: {
+          complete: true,
+          comparisonEligible: false,
+          expectedEndpointDenominators: {
+            deterministic: 1,
+            answer: null,
+            routing: null,
+            toolSelection: 1,
+            mutationSafety: null,
+            metadata: 1,
+          },
+        },
         observations: [{ traceId: selectedTrace.id, terminalStatus: 'ignored' }],
       }],
     });

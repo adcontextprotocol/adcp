@@ -33,6 +33,14 @@ const summary: FixedTraceSummary = {
   observed: 11,
   omitted: 0,
   complete: true,
+  expectedEndpointDenominators: {
+    deterministic: 11,
+    answer: 11,
+    routing: 11,
+    toolSelection: 11,
+    mutationSafety: 11,
+    metadata: 11,
+  },
   deterministicPassRate: 1,
   answerPassRate: 1,
   routingPassRate: 1,
@@ -115,6 +123,16 @@ describe('fixed-trace rollout policy', () => {
     const gate = evaluateFixedTraceRollout(forged, judges, budget);
     expect(gate.pass).toBe(false);
     expect(gate.failedDimensions).toContain('trusted_evaluator_context_unavailable');
+  });
+
+  it('fails candidate eligibility for a forged incomplete summary', () => {
+    const gate = evaluateFixedTraceRollout(
+      { ...summary, observed: 10, omitted: 1, complete: false, comparisonEligible: true },
+      judges,
+      budget,
+    );
+    expect(gate.pass).toBe(false);
+    expect(gate.failedDimensions).toContain('candidate_eligible');
   });
 
   it('reports each violated quality, mutation, latency, and cost dimension', () => {
