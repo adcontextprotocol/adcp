@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
@@ -24,7 +24,7 @@ function payload(overrides: Partial<FixedTraceComponentSmokeSignedGrantPayload> 
   if (!admission.pricing.cohortDigest || admission.pricing.reservationMicrodollars === null) throw new Error('expected pinned pricing');
   return {
     grantVersion: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_VERSION, kid: TEST_KID,
-    issuedAt: '2026-09-06T11:00:00.000Z', expiresAt: '2026-09-06T13:00:00.000Z',
+    issuedAt: '2026-09-06T11:55:00.000Z', expiresAt: '2026-09-06T12:05:00.000Z',
     stageId: 'stage_1_smoke', admissionVersion: admission.version,
     aggregateAdmissionFingerprint: admission.fingerprints.aggregateAdmission,
     cardinality: admission.cardinality, reservationMicrodollars: admission.pricing.reservationMicrodollars,
@@ -37,6 +37,12 @@ function grant(candidate = payload(), signature = sign(null, fixedTraceComponent
   return { algorithm: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM, payload: candidate, signature: signature.toString('base64url') };
 }
 function verify(value: unknown) { return verifyFixedTraceComponentSmokeSignedGrantForTest(value, NOW, { kid: TEST_KID, publicKey: keys.publicKey }); }
+function deterministicReservationId(authorizationDigest: string) {
+  return `reservation_${createHash('sha256').update(JSON.stringify({ authorizationDigest, domain: 'adcp:addie:fixed-trace-component-smoke:reservation:v1\0' }), 'utf8').digest('hex').slice(0, 32)}`;
+}
+function reservation(authorizationDigest = 'a'.repeat(64), reservationId = deterministicReservationId(authorizationDigest)) {
+  return { authorizationDigest, reservationId, entryCount: 168 as const, providerDispatchEntryCount: 126 as const, reservationMicrodollars: 2_819_484 as const };
+}
 
 /** Deterministic in-process SQL fake; it has no socket, network, or provider path. */
 class FakeLedgerClient {
@@ -61,7 +67,13 @@ class FakeLedgerClient {
 
 describe('fixed-trace component smoke private signed authorization', () => {
   it('verifies only an exact Ed25519 test grant; production stays unprovisioned', () => {
-    expect(verify(grant())).toMatchObject({ payload: { kid: TEST_KID, stageId: 'stage_1_smoke' } });
+    const checked = verify(grant());
+    expect(checked).toMatchObject({ valid: true });
+    expect(checked).not.toHaveProperty('signature');
+    const mutableEnvelope = grant();
+    const verifiedBeforeMutation = verify(mutableEnvelope);
+    mutableEnvelope.signature = 'A'.repeat(86);
+    expect(verifiedBeforeMutation).toMatchObject({ valid: true });
     expect(verifyFixedTraceComponentSmokeSignedGrant(grant(), NOW)).toBeNull();
     expect(verify({ ...grant(), algorithm: 'ES256' })).toBeNull();
     expect(verify({ ...grant(), extra: true })).toBeNull();
@@ -78,6 +90,7 @@ describe('fixed-trace component smoke private signed authorization', () => {
     ['pricing drift', { pricingCohortDigest: '0'.repeat(64) }],
     ['future issue', { issuedAt: '2026-09-06T12:00:00.001Z' }],
     ['exact expiry', { expiresAt: '2026-09-06T12:00:00.000Z' }],
+    ['excess lifetime', { expiresAt: '2026-09-06T12:10:00.001Z' }],
   ])('rejects %s before any ledger boundary', (_name, overrides) => {
     expect(verify(grant(payload(overrides)))).toBeNull();
   });
@@ -103,22 +116,28 @@ describe('fixed-trace component smoke private signed authorization', () => {
     expect(migration).toContain('assignments = 168');
   });
 
-  it('uses one checked-out-client transaction to atomically reserve the exact plan and reject a replay', async () => {
-    const approved = verify(grant());
-    if (!approved) throw new Error('expected test grant');
+  it('never turns a caller-selected test trust root into a ledger capability', async () => {
+    const checked = verify(grant());
+    if (!checked) throw new Error('expected test grant verification');
     const client = new FakeLedgerClient();
     const ledger = new PostgresFixedTraceComponentSmokePrivateLedger({ connect: async () => client } as never);
-    const results = await Promise.all([ledger.reserveAndConsume(approved), ledger.reserveAndConsume(approved)]);
-    expect(results.filter((entry) => entry.status === 'reserved')).toHaveLength(1);
-    expect(results).toContainEqual({ status: 'refused', reason: 'grant_already_consumed' });
-    expect(client.calls.filter((entry) => entry.sql.startsWith('INSERT INTO addie_fixed_trace_component_smoke_run_plan'))).toHaveLength(168);
-    expect(client.calls.filter((entry) => entry.sql === 'BEGIN')).toHaveLength(2);
-    expect(client.calls.filter((entry) => entry.sql === 'COMMIT')).toHaveLength(2);
+    await expect(ledger.reserveAndConsume(checked as never)).resolves.toEqual({ status: 'refused', reason: 'admission_drift' });
+    expect(client.calls).toHaveLength(0);
     const source = readFileSync(new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.ts', import.meta.url), 'utf8');
     expect(source).not.toContain('from "../../db/client');
     expect(source).not.toContain('grantId');
     expect(source).not.toContain('apiKey');
     expect(source).not.toContain('prompt:');
     expect(source).not.toContain('output:');
+  });
+
+  it('rejects a wrong or cross-reservation envelope before it can mutate a ledger', async () => {
+    const client = new FakeLedgerClient();
+    const ledger = new PostgresFixedTraceComponentSmokePrivateLedger({ connect: async () => client } as never);
+    const wrong = reservation('a'.repeat(64), 'reservation_'.concat('0'.repeat(32)));
+    const cross = reservation('a'.repeat(64), deterministicReservationId('b'.repeat(64)));
+    await expect(ledger.recordUnknownExposure(wrong)).resolves.toEqual({ status: 'refused', reason: 'plan_mismatch' });
+    await expect(ledger.recordProviderIntent({ reservation: cross, attemptId: `attempt_${'0'.repeat(32)}`, assignmentId: 'c'.repeat(64), invocationOrdinal: 1, preparedRequestHmac: 'd'.repeat(64) })).resolves.toEqual({ status: 'refused', reason: 'plan_mismatch' });
+    expect(client.calls).toHaveLength(0);
   });
 });

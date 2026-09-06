@@ -45,9 +45,14 @@ export interface FixedTraceComponentSmokeSignedGrant {
 export interface FixedTraceComponentSmokeVerifiedGrant {
   readonly signedPayloadDigest: string;
   readonly grantDigest: string;
-  readonly signature: Buffer;
   readonly payload: FixedTraceComponentSmokeSignedGrantPayload;
 }
+export interface FixedTraceComponentSmokeTestGrantVerification {
+  readonly valid: true;
+  readonly signedPayloadDigest: string;
+}
+/** A one-shot smoke grant may not outlive this bounded interval. */
+export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS = 15 * 60 * 1_000;
 
 /**
  * Production is intentionally unprovisioned.  There is no environment lookup,
@@ -57,7 +62,7 @@ export interface FixedTraceComponentSmokeVerifiedGrant {
  */
 const PRODUCTION_SPKI_BY_KID: Readonly<Record<string, string>> | null = null;
 /** Capability marker: only this verifier can create an input accepted by the ledger. */
-const VERIFIED_GRANTS = new WeakSet<object>();
+const VERIFIED_GRANTS = new WeakMap<object, Buffer>();
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -80,6 +85,9 @@ function exactKeys(value: object, keys: readonly string[]): boolean {
 }
 function hexDigest(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+}
+function pricingCohortDigest(value: unknown): value is string {
+  return typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value);
 }
 function kid(value: unknown): value is string {
   return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value);
@@ -123,7 +131,7 @@ function parsePayload(value: unknown, admission: Admission): FixedTraceComponent
       || !exactCardinality(payload.cardinality, admission)
       || payload.reservationMicrodollars !== pricing.reservationMicrodollars
       || payload.providerCeilingMicrodollars !== pricing.providerCeilingUsd * 1_000_000
-      || payload.pricingCohortDigest !== pricing.cohortDigest
+      || !pricingCohortDigest(payload.pricingCohortDigest) || payload.pricingCohortDigest !== pricing.cohortDigest
       || !hexDigest(payload.nonceCommitment)
       || Date.parse(payload.issuedAt as string) >= Date.parse(payload.expiresAt as string)) return null;
     return Object.freeze(payload) as unknown as FixedTraceComponentSmokeSignedGrantPayload;
@@ -142,11 +150,12 @@ function parseGrant(value: unknown, admission: Admission): { payload: FixedTrace
   } catch { return null; }
 }
 
-function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record<string, string>> | null): FixedTraceComponentSmokeVerifiedGrant | null {
+function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record<string, string>> | null, mintLedgerCapability: boolean): FixedTraceComponentSmokeVerifiedGrant | null {
   const admission = fixedTraceComponentSmokeAdmission();
   if (!(now instanceof Date) || !Number.isFinite(now.valueOf()) || registry === null) return null;
   const parsed = parseGrant(value, admission);
-  if (!parsed || Date.parse(parsed.payload.issuedAt) > now.valueOf() || Date.parse(parsed.payload.expiresAt) <= now.valueOf()) return null;
+  if (!parsed || Date.parse(parsed.payload.issuedAt) > now.valueOf() || Date.parse(parsed.payload.expiresAt) <= now.valueOf()
+    || Date.parse(parsed.payload.expiresAt) - Date.parse(parsed.payload.issuedAt) > FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS) return null;
   const spki = registry[parsed.payload.kid];
   if (typeof spki !== 'string') return null;
   try {
@@ -155,20 +164,27 @@ function verifyWithRegistry(value: unknown, now: Date, registry: Readonly<Record
     const signedPayloadDigest = fixedTraceComponentSmokeSignedPayloadDigest(parsed.payload);
     const verified = Object.freeze({ signedPayloadDigest,
       grantDigest: createHash('sha256').update(parsed.signature).update(signedPayloadDigest, 'utf8').digest('hex'),
-      signature: Buffer.from(parsed.signature), payload: parsed.payload });
-    VERIFIED_GRANTS.add(verified);
+      payload: parsed.payload });
+    if (mintLedgerCapability) VERIFIED_GRANTS.set(verified, Buffer.from(parsed.signature));
     return verified;
   } catch { return null; }
 }
 
 /** Production entry point: always fail-closed until its module-owned registry is provisioned. */
 export function verifyFixedTraceComponentSmokeSignedGrant(value: unknown, now: Date): FixedTraceComponentSmokeVerifiedGrant | null {
-  return verifyWithRegistry(value, now, PRODUCTION_SPKI_BY_KID);
+  return verifyWithRegistry(value, now, PRODUCTION_SPKI_BY_KID, true);
 }
 
 /** Internal capability check used by the adjacent private ledger, never a boolean authorization API. */
 export function isFixedTraceComponentSmokeVerifiedGrant(value: unknown): value is FixedTraceComponentSmokeVerifiedGrant {
   return typeof value === 'object' && value !== null && VERIFIED_GRANTS.has(value);
+}
+
+/** Returns a fresh audit copy; mutating it cannot affect verifier-held bytes. */
+export function fixedTraceComponentSmokeVerifiedGrantSignatureForLedger(value: unknown): Buffer | null {
+  if (!isFixedTraceComponentSmokeVerifiedGrant(value)) return null;
+  const signature = VERIFIED_GRANTS.get(value);
+  return signature ? Buffer.from(signature) : null;
 }
 
 /**
@@ -180,8 +196,9 @@ export function verifyFixedTraceComponentSmokeSignedGrantForTest(
   value: unknown,
   now: Date,
   testTrustRoot: Readonly<{ kid: string; publicKey: KeyObject }>,
-): FixedTraceComponentSmokeVerifiedGrant | null {
+): FixedTraceComponentSmokeTestGrantVerification | null {
   if (!kid(testTrustRoot.kid) || testTrustRoot.publicKey.asymmetricKeyType !== 'ed25519') return null;
   const spki = testTrustRoot.publicKey.export({ format: 'der', type: 'spki' }) as Buffer;
-  return verifyWithRegistry(value, now, Object.freeze({ [testTrustRoot.kid]: spki.toString('base64url') }));
+  const verified = verifyWithRegistry(value, now, Object.freeze({ [testTrustRoot.kid]: spki.toString('base64url') }), false);
+  return verified ? Object.freeze({ valid: true as const, signedPayloadDigest: verified.signedPayloadDigest }) : null;
 }

@@ -26,7 +26,7 @@ CREATE TABLE addie_fixed_trace_component_smoke_authorizations (
   maximum_provider_invocations SMALLINT NOT NULL CHECK (maximum_provider_invocations = 192),
   reservation_microdollars BIGINT NOT NULL CHECK (reservation_microdollars = 2819484),
   provider_ceiling_microdollars BIGINT NOT NULL CHECK (provider_ceiling_microdollars = 5000000),
-  pricing_cohort_digest CHAR(64) NOT NULL CHECK (pricing_cohort_digest ~ '^[a-f0-9]{64}$'),
+  pricing_cohort_digest VARCHAR(71) NOT NULL CHECK (pricing_cohort_digest ~ '^sha256:[a-f0-9]{64}$'),
   issued_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   status VARCHAR(32) NOT NULL CHECK (status IN ('consumed', 'halted', 'unknown_exposure')),
@@ -74,7 +74,7 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
   response_hmac CHAR(64) CHECK (response_hmac IS NULL OR response_hmac ~ '^[a-f0-9]{64}$'),
   input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
   output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
-  actual_cost_microdollars BIGINT CHECK (actual_cost_microdollars IS NULL OR actual_cost_microdollars BETWEEN 0 AND 2819484),
+  actual_cost_microdollars BIGINT CHECK (actual_cost_microdollars IS NULL OR actual_cost_microdollars BETWEEN 0 AND 5000000),
   latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms BETWEEN 0 AND 86400000),
   intent_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   terminal_at TIMESTAMPTZ,
@@ -88,6 +88,75 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
 CREATE INDEX addie_fixed_trace_component_smoke_attempts_open_idx
   ON addie_fixed_trace_component_smoke_attempts (authorization_digest, status)
   WHERE status = 'intent_recorded';
+
+-- Check constraints cannot inspect array elements or sibling plan rows. These
+-- deferred constraints make direct SQL writes obey the same fixed plan that
+-- the ledger derives: 168 assignments, 126 dispatch dispositions, 192 slots,
+-- and only positive per-slot reservations totaling 2,819,484 micros.
+CREATE FUNCTION addie_fixed_trace_component_smoke_check_plan() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  plan_count INTEGER;
+  dispatch_count INTEGER;
+  slots INTEGER;
+  reserved BIGINT;
+  invalid_reservation BOOLEAN;
+BEGIN
+  SELECT count(*), count(*) FILTER (WHERE disposition = 'provider_dispatch'),
+         COALESCE(sum(maximum_provider_invocations), 0),
+         COALESCE(sum((SELECT sum(value) FROM unnest(reserved_microdollars) AS value)), 0),
+         COALESCE(bool_or(EXISTS (SELECT 1 FROM unnest(reserved_microdollars) AS value WHERE value <= 0 OR value > 2819484)), false)
+    INTO plan_count, dispatch_count, slots, reserved, invalid_reservation
+    FROM addie_fixed_trace_component_smoke_run_plan
+   WHERE authorization_digest = NEW.authorization_digest;
+  IF plan_count <> 168 OR dispatch_count <> 126 OR slots <> 192 OR reserved <> 2819484 OR invalid_reservation THEN
+    RAISE EXCEPTION 'fixed-trace component smoke plan is not the admitted exact plan';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER addie_fixed_trace_component_smoke_plan_exact
+AFTER INSERT OR UPDATE OR DELETE ON addie_fixed_trace_component_smoke_run_plan
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION addie_fixed_trace_component_smoke_check_plan();
+
+CREATE FUNCTION addie_fixed_trace_component_smoke_check_attempt() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  max_invocations SMALLINT;
+  disposition VARCHAR(24);
+  reserved BIGINT;
+  prior_spend BIGINT;
+  reservation_limit BIGINT;
+  provider_limit BIGINT;
+BEGIN
+  SELECT maximum_provider_invocations, disposition, reserved_microdollars[NEW.invocation_ordinal]
+    INTO max_invocations, disposition, reserved
+    FROM addie_fixed_trace_component_smoke_run_plan
+   WHERE authorization_digest = NEW.authorization_digest AND assignment_id = NEW.assignment_id;
+  IF disposition IS DISTINCT FROM 'provider_dispatch' OR NEW.invocation_ordinal > max_invocations THEN
+    RAISE EXCEPTION 'attempt is not an admitted provider-dispatch ordinal';
+  END IF;
+  IF NEW.actual_cost_microdollars IS NOT NULL AND NEW.actual_cost_microdollars > reserved THEN
+    RAISE EXCEPTION 'attempt cost exceeds its ordinal reservation';
+  END IF;
+  SELECT reservation_microdollars, provider_ceiling_microdollars INTO reservation_limit, provider_limit
+    FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = NEW.authorization_digest;
+  SELECT COALESCE(sum(actual_cost_microdollars), 0) INTO prior_spend
+    FROM addie_fixed_trace_component_smoke_attempts
+   WHERE authorization_digest = NEW.authorization_digest AND attempt_id <> NEW.attempt_id;
+  IF prior_spend + COALESCE(NEW.actual_cost_microdollars, 0) > reservation_limit
+     OR prior_spend + COALESCE(NEW.actual_cost_microdollars, 0) > provider_limit THEN
+    RAISE EXCEPTION 'attempt cost exceeds fixed-trace aggregate limit';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER addie_fixed_trace_component_smoke_attempt_exact
+BEFORE INSERT OR UPDATE OF invocation_ordinal, actual_cost_microdollars ON addie_fixed_trace_component_smoke_attempts
+FOR EACH ROW EXECUTE FUNCTION addie_fixed_trace_component_smoke_check_attempt();
 
 COMMENT ON TABLE addie_fixed_trace_component_smoke_authorizations IS
   'One-use signed private smoke grants, stored only as digests and categorical consumption state; no bearer data or text';

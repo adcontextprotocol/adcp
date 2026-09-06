@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { fixedTraceComponentSmokeAdmission } from './fixed-trace-component-smoke-admission.js';
 import {
+  fixedTraceComponentSmokeVerifiedGrantSignatureForLedger,
   isFixedTraceComponentSmokeVerifiedGrant,
   type FixedTraceComponentSmokeVerifiedGrant,
 } from './fixed-trace-component-smoke-private-authorization.js';
@@ -19,7 +20,7 @@ type Disposition = Admission['privateRuntimePlan'][number]['dispatchDisposition'
 export type FixedTraceComponentSmokeLedgerRefusal =
   | 'grant_not_active' | 'grant_already_consumed' | 'admission_drift'
   | 'unknown_exposure' | 'run_halted' | 'duplicate_attempt_id' | 'intent_required'
-  | 'plan_mismatch' | 'persistence_uncertain';
+  | 'plan_mismatch' | 'cost_exhausted' | 'persistence_uncertain';
 
 export interface FixedTraceComponentSmokeReservation {
   readonly reservationId: string;
@@ -125,11 +126,15 @@ export function fixedTraceComponentSmokePrivateLedgerPlan(): readonly FixedTrace
     .every((entry) => entry.maximumProviderInvocations === 0 && entry.reservedMicrodollars.length === 0);
   return plan.length === 168 && new Set(plan.map((entry) => entry.assignmentId)).size === 168
     && dispatch.length === 126 && dispatch.reduce((sum, entry) => sum + entry.maximumProviderInvocations, 0) === 192
-    && total === 2_819_484 && nonDispatchValid ? Object.freeze(plan) : null;
+    && total === 2_819_484 && plan.every((entry) => entry.reservedMicrodollars.every((micros) => Number.isSafeInteger(micros) && micros > 0 && micros <= 2_819_484))
+    && nonDispatchValid ? Object.freeze(plan) : null;
 }
 
+function reservationIdForAuthorizationDigest(authorizationDigest: string): string {
+  return `reservation_${sha256({ domain: 'adcp:addie:fixed-trace-component-smoke:reservation:v1\0', authorizationDigest }).slice(0, 32)}`;
+}
 function reservationFor(grant: FixedTraceComponentSmokeVerifiedGrant): FixedTraceComponentSmokeReservation {
-  return Object.freeze({ reservationId: `reservation_${sha256({ domain: 'adcp:addie:fixed-trace-component-smoke:reservation:v1\0', authorizationDigest: grant.grantDigest }).slice(0, 32)}`,
+  return Object.freeze({ reservationId: reservationIdForAuthorizationDigest(grant.grantDigest),
     authorizationDigest: grant.grantDigest, entryCount: 168, providerDispatchEntryCount: 126, reservationMicrodollars: 2_819_484 });
 }
 function result(status: 'reserved', reservation: FixedTraceComponentSmokeReservation): Readonly<{ status: 'reserved'; reservation: FixedTraceComponentSmokeReservation }>;
@@ -160,7 +165,8 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
 
   async reserveAndConsume(grant: FixedTraceComponentSmokeVerifiedGrant): Promise<Readonly<{ status: 'reserved'; reservation: FixedTraceComponentSmokeReservation }> | Readonly<{ status: 'refused'; reason: FixedTraceComponentSmokeLedgerRefusal }>> {
     const plan = fixedTraceComponentSmokePrivateLedgerPlan();
-    if (!plan || !isFixedTraceComponentSmokeVerifiedGrant(grant) || !isHash(grant.grantDigest) || !isHash(grant.signedPayloadDigest) || !isHash(grant.payload.nonceCommitment)) return result('refused', 'admission_drift');
+    const signature = fixedTraceComponentSmokeVerifiedGrantSignatureForLedger(grant);
+    if (!plan || !isFixedTraceComponentSmokeVerifiedGrant(grant) || !signature || !isHash(grant.grantDigest) || !isHash(grant.signedPayloadDigest) || !isHash(grant.payload.nonceCommitment)) return result('refused', 'admission_drift');
     const reservation = reservationFor(grant);
     try {
       return await this.transaction(async (client) => {
@@ -176,7 +182,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
            WHERE $24::timestamptz <= clock_timestamp() AND $25::timestamptz > clock_timestamp()
            ON CONFLICT (authorization_digest) DO NOTHING
            RETURNING authorization_digest`,
-          [grant.grantDigest, grant.signedPayloadDigest, grant.signature, grant.payload.kid, grant.payload.nonceCommitment,
+          [grant.grantDigest, grant.signedPayloadDigest, signature, grant.payload.kid, grant.payload.nonceCommitment,
             grant.payload.grantVersion, grant.payload.stageId, grant.payload.admissionVersion, grant.payload.aggregateAdmissionFingerprint,
             grant.payload.cardinality.probes, grant.payload.cardinality.routerCells, grant.payload.cardinality.generationCells,
             grant.payload.cardinality.totalCells, grant.payload.cardinality.repetitions, grant.payload.cardinality.caseCellAssignments,
@@ -215,7 +221,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     if (!parsed) return result('refused', 'plan_mismatch');
     try {
       return await this.transaction(async (client) => {
-        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 FOR UPDATE', [parsed.reservation.authorizationDigest]);
+        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
         if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
@@ -243,13 +249,13 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     if (!parsed) return result('refused', 'plan_mismatch');
     try {
       return await this.transaction(async (client) => {
-        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 FOR UPDATE', [parsed.reservation.authorizationDigest]);
+        const auth = await client.query<{ status: string; reservation_microdollars: number; provider_ceiling_microdollars: number }>('SELECT status, reservation_microdollars, provider_ceiling_microdollars FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
         if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
         if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
-        const attempt = await client.query<{ status: string; requested_provider: string; requested_model: string; requested_effort: string }>(
-          `SELECT a.status, p.requested_provider, p.requested_model, p.requested_effort
+        const attempt = await client.query<{ status: string; invocation_ordinal: number; requested_provider: string; requested_model: string; requested_effort: string; reserved_microdollars: number[] }>(
+          `SELECT a.status, a.invocation_ordinal, p.requested_provider, p.requested_model, p.requested_effort, p.reserved_microdollars
            FROM addie_fixed_trace_component_smoke_attempts a
            JOIN addie_fixed_trace_component_smoke_run_plan p ON p.authorization_digest = a.authorization_digest AND p.assignment_id = a.assignment_id
            WHERE a.attempt_id = $1 AND a.authorization_digest = $2 FOR UPDATE`, [parsed.attemptId, parsed.reservation.authorizationDigest]);
@@ -257,6 +263,16 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (parsed.status === 'succeeded' && (parsed.returnedIdentity?.provider !== attempt.rows[0]!.requested_provider
           || parsed.returnedIdentity?.model !== attempt.rows[0]!.requested_model
           || parsed.returnedIdentity?.effort !== attempt.rows[0]!.requested_effort)) return result('refused', 'plan_mismatch');
+        const reservedForOrdinal = attempt.rows[0]!.reserved_microdollars[attempt.rows[0]!.invocation_ordinal - 1];
+        const spent = parsed.usage?.costMicrodollars ?? 0;
+        const prior = await client.query<{ spent: number }>('SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [parsed.reservation.authorizationDigest]);
+        if (!Number.isSafeInteger(reservedForOrdinal) || spent > reservedForOrdinal
+          || prior.rowCount !== 1 || !Number.isSafeInteger(prior.rows[0]!.spent)
+          || prior.rows[0]!.spent + spent > auth.rows[0]!.reservation_microdollars
+          || prior.rows[0]!.spent + spent > auth.rows[0]!.provider_ceiling_microdollars) {
+          await client.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'halted' WHERE authorization_digest = $1 AND reservation_id = $2", [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+          return result('refused', 'cost_exhausted');
+        }
         await client.query(
           `UPDATE addie_fixed_trace_component_smoke_attempts
            SET status = $3, input_tokens = $4, output_tokens = $5, actual_cost_microdollars = $6, latency_ms = $7, response_hmac = $8, terminal_at = clock_timestamp()
@@ -284,7 +300,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
       return await this.transaction(async (client) => {
         const changed = await client.query(
           `UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp()
-           WHERE authorization_digest = $1 AND status = 'consumed'`, [reservation.authorizationDigest]);
+           WHERE authorization_digest = $1 AND reservation_id = $2 AND status = 'consumed'`, [reservation.authorizationDigest, reservation.reservationId]);
         return changed.rowCount === 1 ? result('recorded') : result('refused', 'unknown_exposure');
       });
     } catch { return result('refused', 'persistence_uncertain'); }
@@ -296,7 +312,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     if (!parsed) return result('refused', 'plan_mismatch');
     try {
       return await this.transaction(async (client) => {
-        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 FOR UPDATE', [parsed.reservation.authorizationDigest]);
+        const auth = await client.query<{ status: string }>('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
         if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
@@ -317,7 +333,8 @@ function exactReservation(value: unknown): value is FixedTraceComponentSmokeRese
     const object = snapshotFixedTraceJson(value, 'private ledger reservation') as Record<string, unknown>;
     return exactKeys(object, ['authorizationDigest', 'entryCount', 'providerDispatchEntryCount', 'reservationId', 'reservationMicrodollars'])
       && typeof object.reservationId === 'string' && /^reservation_[a-f0-9]{32}$/.test(object.reservationId)
-      && isHash(object.authorizationDigest) && object.entryCount === 168 && object.providerDispatchEntryCount === 126 && object.reservationMicrodollars === 2_819_484;
+      && isHash(object.authorizationDigest) && object.reservationId === reservationIdForAuthorizationDigest(object.authorizationDigest)
+      && object.entryCount === 168 && object.providerDispatchEntryCount === 126 && object.reservationMicrodollars === 2_819_484;
   } catch { return false; }
 }
 function parseProviderIntent(value: unknown): FixedTraceComponentSmokeProviderIntent | null {
@@ -341,7 +358,7 @@ function parseTerminal(value: unknown): FixedTraceComponentSmokeTerminal | null 
     if (!object.usage || typeof object.usage !== 'object' || !exactKeys(object.usage, ['costMicrodollars', 'inputTokens', 'latencyMs', 'outputTokens'])) return null;
     const usage = object.usage as Record<string, unknown>;
     if (![usage.inputTokens, usage.outputTokens, usage.costMicrodollars, usage.latencyMs].every((entry) => Number.isSafeInteger(entry) && (entry as number) >= 0)
-      || (usage.latencyMs as number) > MAX_LATENCY_MS || (usage.costMicrodollars as number) > 2_819_484) return null;
+      || (usage.latencyMs as number) > MAX_LATENCY_MS || (usage.costMicrodollars as number) > 5_000_000) return null;
     return Object.freeze(object) as unknown as FixedTraceComponentSmokeTerminal;
   } catch { return null; }
 }
