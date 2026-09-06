@@ -106,13 +106,13 @@ function noTreatmentFields(value: unknown, label: string): void {
 export const FIXED_TRACE_HUMAN_PANEL_CONTRACTS = Object.freeze({
   blindedScoringPacket: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "packetFingerprint", "raterPseudonym", "rubricFingerprint", "items"]), forbidden: Object.freeze(["provider", "model", "architecture", "cell", "config", "latency", "cost", "otherRater", "otherScore"]) }),
   restrictedUnblindingMap: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "mapFingerprint", "cohortFingerprint", "manifestFingerprint", "scheduleFingerprint", "trustRootId", "entries"]), access: "evaluator_custody_only_not_repository_private_storage" }),
-  raterAssignment: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "assignmentFingerprint", "packetFingerprint", "raterPseudonym", "role"]), role: "primary" }),
+  raterAssignment: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "assignmentFingerprint", "packetFingerprint", "raterPseudonym", "opaqueItemId", "role"]), role: "primary_per_blinded_item" }),
   rubricVersion: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "rubricFingerprint", "qualityValues", "safetyValues", "toolCorrectnessValues", "rules"]), endpoint: "two_blinded_human_primary_quality" }),
   independentRaterResponse: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "responseNonce", "opaqueItemId", "packetFingerprint", "assignmentFingerprint", "rubricFingerprint", "raterPseudonym", "outputCondition", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"]), access: "one_rater_only" }),
   adjudicationPacket: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "packetFingerprint", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "prompt", "candidateOutput", "scoringContext", "safetyApplicable", "toolCorrectnessApplicable", "outputCondition"]), forbidden: Object.freeze(["raterPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "provider", "model", "architecture", "cell", "config", "latency", "cost"]) }),
   adjudicationResponse: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "opaqueItemId", "adjudicationRequestFingerprint", "rubricFingerprint", "adjudicatorPseudonym", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"]), source: "locked_disagreement_or_missingness_only" }),
   custodyReceipt: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "receiptFingerprint", "custodianPseudonym", "packFingerprint", "restrictedMapFingerprint", "signature", "externalRecordReference"]), warning: "shape_only_no_local_custody_claim" }),
-  humanCostLedger: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "entries"]), ceilingCents: FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, payment: "not_implemented" }),
+  humanCostLedger: Object.freeze({ fields: Object.freeze(["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "events"]), eventChain: "signed_monotonic_reservation_then_reconciliation", ceilingCents: FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, payment: "not_implemented" }),
 } as const);
 export type FixedTraceHumanPanelContractName = keyof typeof FIXED_TRACE_HUMAN_PANEL_CONTRACTS;
 export const FIXED_TRACE_HUMAN_PANEL_CONTRACT_FINGERPRINTS = Object.freeze(
@@ -233,6 +233,7 @@ export interface FixedTraceRaterAssignment {
   readonly assignmentFingerprint: Sha256;
   readonly packetFingerprint: Sha256;
   readonly raterPseudonym: string;
+  readonly opaqueItemId: string;
   readonly role: "primary";
 }
 
@@ -301,8 +302,8 @@ export function validateFixedTraceHumanPanelCohort(outputs: readonly FixedTraceD
 }
 
 function packetBody(packet: Omit<FixedTraceBlindedScoringPacket, "packetFingerprint">): Record<string, unknown> { return packet; }
-function makeAssignment(packet: FixedTraceBlindedScoringPacket): FixedTraceRaterAssignment {
-  const body = { schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("raterAssignment"), packetFingerprint: packet.packetFingerprint, raterPseudonym: packet.raterPseudonym, role: "primary" as const };
+function makeAssignment(packet: FixedTraceBlindedScoringPacket, opaqueItemId: string): FixedTraceRaterAssignment {
+  const body = { schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("raterAssignment"), packetFingerprint: packet.packetFingerprint, raterPseudonym: packet.raterPseudonym, opaqueItemId, role: "primary" as const };
   return Object.freeze({ ...body, assignmentFingerprint: sha256(body) });
 }
 function privateItemId(nonce: string, rater: string, outputFingerprint: string): string {
@@ -407,7 +408,7 @@ export function buildFixedTraceHumanPanelArtifacts(input: FixedTraceHumanPanelBu
   const mapBody = Object.freeze({ schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("restrictedUnblindingMap"), cohortFingerprint, manifestFingerprint: snapshot.custodiedDiagnosticManifest.manifestFingerprint, scheduleFingerprint: schedule.scheduleFingerprint, trustRootId: schedule.trustRootId, entries: Object.freeze(entries) });
   const restrictedUnblindingMap = Object.freeze({ ...mapBody, mapFingerprint: sha256(mapBody) });
   validateFixedTraceRestrictedUnblindingMap(restrictedUnblindingMap, cohortFingerprint);
-  return Object.freeze({ custodiedDiagnosticManifest: snapshot.custodiedDiagnosticManifest, committedSchedule: schedule, nonceConsumptionReceipt, raterPackets: Object.freeze(packets), raterAssignments: Object.freeze(packets.map(makeAssignment)), restrictedUnblindingMap, cohortFingerprint, readiness: fixedTraceHumanPanelReadiness() });
+  return Object.freeze({ custodiedDiagnosticManifest: snapshot.custodiedDiagnosticManifest, committedSchedule: schedule, nonceConsumptionReceipt, raterPackets: Object.freeze(packets), raterAssignments: Object.freeze(packets.flatMap((packet) => packet.items.map((item) => makeAssignment(packet, item.opaqueItemId)))), restrictedUnblindingMap, cohortFingerprint, readiness: fixedTraceHumanPanelReadiness() });
 }
 
 export function validateFixedTraceHumanPanelRubric(input: FixedTraceHumanPanelRubric): void {
@@ -489,7 +490,7 @@ export function validateFixedTraceIndependentRaterResponse(input: FixedTraceInde
   const value = record(snapshotFixedTraceJson(input, "independent rater response"), "independent rater response");
   exactKeys(value, ["schemaVersion", "contractFingerprint", "responseFingerprint", "responseId", "responseNonce", "opaqueItemId", "packetFingerprint", "assignmentFingerprint", "rubricFingerprint", "raterPseudonym", "outputCondition", "quality", "safety", "toolCorrectness", "evidence", "reason", "independenceAttestation"], "independent rater response");
   assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("independentRaterResponse"), "primary response schema is stale"); const { responseFingerprint, ...body } = value; assert(isSha256(responseFingerprint) && responseFingerprint === sha256(body), "primary response fingerprint mismatch");
-  text(value.responseId, "response ID"); text(value.responseNonce, "response nonce"); assert(value.packetFingerprint === packet.packetFingerprint && value.assignmentFingerprint === assignment.assignmentFingerprint && value.rubricFingerprint === packet.rubricFingerprint && value.raterPseudonym === assignment.raterPseudonym && assignment.packetFingerprint === packet.packetFingerprint, "primary response binding mismatch");
+  text(value.responseId, "response ID"); text(value.responseNonce, "response nonce"); assert(value.packetFingerprint === packet.packetFingerprint && value.assignmentFingerprint === assignment.assignmentFingerprint && value.opaqueItemId === assignment.opaqueItemId && value.rubricFingerprint === packet.rubricFingerprint && value.raterPseudonym === assignment.raterPseudonym && assignment.packetFingerprint === packet.packetFingerprint, "primary response binding mismatch");
   const item = packet.items.find((entry) => entry.opaqueItemId === value.opaqueItemId); assert(item, "primary response item is not assigned to rater"); validateRatingValues(value, true);
   assert(item.safetyApplicable ? value.safety !== "not_applicable" : value.safety === "not_applicable", "safety applicability must match the predeclared case");
   assert(item.toolCorrectnessApplicable ? value.toolCorrectness !== "not_applicable" : value.toolCorrectness === "not_applicable", "tool correctness applicability must match the predeclared case");
@@ -525,8 +526,8 @@ export function validateFixedTraceAdjudicationResponse(input: FixedTraceAdjudica
 
 interface PrimaryCoverage { readonly byOutput: Map<string, [FixedTraceIndependentRaterResponse | null, FixedTraceIndependentRaterResponse | null]>; readonly opaqueByOutput: Map<string, string[]>; }
 function validatePrimaryCoverage(responses: readonly FixedTraceIndependentRaterResponse[], packets: readonly FixedTraceBlindedScoringPacket[], assignments: readonly FixedTraceRaterAssignment[], restrictedMap: FixedTraceRestrictedUnblindingMap, requireComplete: boolean): PrimaryCoverage {
-  assert(packets.length === 2 && assignments.length === 2, "exactly two common primary rater packets and assignments are required");
-  const raterIds = assignments.map((assignment) => assignment.raterPseudonym); assert(raterIds[0] !== raterIds[1], "primary rater identity reuse is forbidden");
+  assert(packets.length === 2 && assignments.length === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS, "exactly two common primary packets and 432 item assignments are required");
+  const raterIds = [...new Set(assignments.map((assignment) => assignment.raterPseudonym))]; assert(raterIds.length === 2, "primary rater identity reuse is forbidden");
   const map = new Map<string, [FixedTraceIndependentRaterResponse | null, FixedTraceIndependentRaterResponse | null]>(); const opaqueByOutput = new Map<string, string[]>();
   const sourceByOpaque = new Map<string, string>();
   for (const entry of restrictedMap.entries) {
@@ -534,15 +535,19 @@ function validatePrimaryCoverage(responses: readonly FixedTraceIndependentRaterR
     if (!map.has(entry.outputFingerprint)) map.set(entry.outputFingerprint, [null, null]);
     opaqueByOutput.set(entry.outputFingerprint, [...(opaqueByOutput.get(entry.outputFingerprint) ?? []), entry.opaqueItemId]);
   }
-  for (let index = 0; index < 2; index += 1) {
-    validateFixedTraceBlindedScoringPacket(packets[index]!); const assignment = assignments[index]!; const packet = packets[index]!;
-    assert(assignment.packetFingerprint === packet.packetFingerprint && assignment.raterPseudonym === packet.raterPseudonym && assignment.role === "primary", "assignment is mismatched or leaks a role");
+  for (const packet of packets) validateFixedTraceBlindedScoringPacket(packet);
+  const seenAssignments = new Set<string>();
+  for (const assignment of assignments) {
+    const packet = packets.find((candidate) => candidate.packetFingerprint === assignment.packetFingerprint);
+    assert(packet, "assignment packet is not one of the two primary packets"); validateFixedTraceRaterAssignment(assignment, packet);
+    assert(!seenAssignments.has(assignment.assignmentFingerprint), "duplicate item assignment fingerprint"); seenAssignments.add(assignment.assignmentFingerprint);
   }
   // The caller binds the rater-private IDs to source identities by a restricted map in the workflow validator.
   const seenResponseIds = new Set<string>(); const seenNonces = new Set<string>(); const seenRaterItems = new Set<string>();
   for (const response of responses) {
-    const raterIndex = assignments.findIndex((assignment) => assignment.raterPseudonym === response.raterPseudonym); assert(raterIndex >= 0, "response rater is not one of the two common raters");
-    validateFixedTraceIndependentRaterResponse(response, assignments[raterIndex]!, packets[raterIndex]!);
+    const assignment = assignments.find((candidate) => candidate.assignmentFingerprint === response.assignmentFingerprint && candidate.raterPseudonym === response.raterPseudonym && candidate.opaqueItemId === response.opaqueItemId); assert(assignment, "response is not bound to an assigned blinded item");
+    const packet = packets.find((candidate) => candidate.packetFingerprint === assignment.packetFingerprint)!;
+    validateFixedTraceIndependentRaterResponse(response, assignment, packet);
     assert(!seenResponseIds.has(response.responseId) && !seenNonces.has(response.responseNonce), "duplicate or replayed primary rating"); seenResponseIds.add(response.responseId); seenNonces.add(response.responseNonce);
     const key = `${response.raterPseudonym}:${response.opaqueItemId}`; assert(!seenRaterItems.has(key), "duplicate rating for rater/item"); seenRaterItems.add(key);
     assert(sourceByOpaque.has(response.opaqueItemId), "response opaque item is absent from restricted unblinding map");
@@ -550,7 +555,7 @@ function validatePrimaryCoverage(responses: readonly FixedTraceIndependentRaterR
   for (const response of responses) {
     const identity = sourceByOpaque.get(response.opaqueItemId)!;
     const pair = map.get(identity) ?? [null, null] as [FixedTraceIndependentRaterResponse | null, FixedTraceIndependentRaterResponse | null];
-    pair[assignments.findIndex((assignment) => assignment.raterPseudonym === response.raterPseudonym)] = response;
+    pair[raterIds.indexOf(response.raterPseudonym)] = response;
     map.set(identity, pair);
   }
   if (requireComplete) assert(responses.length === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS, "all 432 primary ratings are required");
@@ -559,35 +564,84 @@ function validatePrimaryCoverage(responses: readonly FixedTraceIndependentRaterR
 
 export interface FixedTraceCustodyReceipt { readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly receiptFingerprint: Sha256; readonly custodianPseudonym: string; readonly packFingerprint: Sha256; readonly restrictedMapFingerprint: Sha256; readonly signature: string; readonly externalRecordReference: string; }
 export interface FixedTraceCalibrationReceipt { readonly calibrationFingerprint: Sha256; readonly panelFingerprint: Sha256; readonly externalRecordReference: string; readonly signature: string; }
-export interface FixedTraceHumanCostLedgerEntry { readonly entryId: string; readonly kind: "primary" | "adjudication"; readonly assignmentFingerprint: Sha256 | null; readonly responseFingerprint: Sha256 | null; readonly adjudicationResponseFingerprint: Sha256 | null; readonly rateAuthorizationFingerprint: Sha256; readonly quotedCents: number; readonly committedCents: number; readonly actualCents: number | null; }
-export interface FixedTraceHumanCostLedger { readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly ledgerFingerprint: Sha256; readonly ceilingCents: typeof FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS; readonly entries: readonly FixedTraceHumanCostLedgerEntry[]; }
-export interface FixedTraceHumanRateAuthorization {
+export interface FixedTraceHumanCostReservation {
+  readonly phase: "reservation";
   readonly trustRootId: string;
-  readonly kind: "primary" | "adjudication";
+  readonly reservationId: string;
+  /** Primary assignment fingerprint, or locked adjudication-request fingerprint. */
   readonly subjectFingerprint: Sha256;
-  readonly assignmentFingerprint: Sha256 | null;
-  readonly quotedCents: number;
+  readonly authorizedRateCents: number;
   readonly committedCents: number;
-  readonly rateAuthorizationFingerprint: Sha256;
+  readonly eventIndex: number;
+  readonly previousEventDigest: Sha256 | null;
+  readonly timestamp: string;
+  readonly eventFingerprint: Sha256;
   readonly signature: string;
 }
-export function validateFixedTraceHumanCostLedger(input: FixedTraceHumanCostLedger): number {
-  const value = record(snapshotFixedTraceJson(input, "human cost ledger"), "human cost ledger"); exactKeys(value, ["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "entries"], "human cost ledger"); assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("humanCostLedger") && value.ceilingCents === FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "cost ledger schema or ceiling is invalid"); const { ledgerFingerprint, ...body } = value; assert(isSha256(ledgerFingerprint) && ledgerFingerprint === sha256(body), "cost ledger fingerprint mismatch"); assert(Array.isArray(value.entries), "cost ledger entries are invalid");
-  const ids = new Set<string>(); const subjects = new Set<string>(); let total = 0;
-  for (const entry of value.entries) { const item = record(entry, "cost ledger entry"); exactKeys(item, ["entryId", "kind", "assignmentFingerprint", "responseFingerprint", "adjudicationResponseFingerprint", "rateAuthorizationFingerprint", "quotedCents", "committedCents", "actualCents"], "cost ledger entry"); const id = text(item.entryId, "cost ledger entry ID"); assert(!ids.has(id), "duplicate cost ledger entry"); ids.add(id); assert(item.kind === "primary" || item.kind === "adjudication", "cost ledger kind is invalid"); assert(isSha256(item.rateAuthorizationFingerprint), "cost ledger lacks an externally authorized rate fingerprint"); const quote = integer(item.quotedCents, "cost ledger quote"); assert(quote > 0, "zero-dollar or unquoted ledger row cannot close an assignment"); const commitment = integer(item.committedCents, "cost ledger committed reservation"); assert(commitment >= quote && commitment > 0, "a committed reservation is required before a response and cannot understate the immutable quote"); const actual = item.actualCents === null ? 0 : integer(item.actualCents, "cost ledger actual"); assert(item.kind === "primary" ? isSha256(item.assignmentFingerprint) && isSha256(item.responseFingerprint) && item.adjudicationResponseFingerprint === null : item.assignmentFingerprint === null && item.responseFingerprint === null && isSha256(item.adjudicationResponseFingerprint), "cost ledger row has invalid assignment/response lifecycle bindings"); const subject = item.kind === "primary" ? item.responseFingerprint as string : item.adjudicationResponseFingerprint as string; assert(!subjects.has(subject), "cost ledger has duplicate response/adjudication subject"); subjects.add(subject); total += Math.max(quote, commitment, actual); }
-  assert(total <= FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "human cost admission/reservation exceeds $650 ceiling"); return total;
+export interface FixedTraceHumanCostReconciliation {
+  readonly phase: "reconciliation";
+  readonly trustRootId: string;
+  readonly reservationId: string;
+  readonly subjectFingerprint: Sha256;
+  readonly completedResponseFingerprint: Sha256;
+  readonly actualCents: number;
+  readonly eventIndex: number;
+  readonly previousEventDigest: Sha256 | null;
+  readonly timestamp: string;
+  readonly eventFingerprint: Sha256;
+  readonly signature: string;
 }
-export function reserveFixedTraceHumanCost(ledger: FixedTraceHumanCostLedger, entry: FixedTraceHumanCostLedgerEntry): FixedTraceHumanCostLedger {
-  validateFixedTraceHumanCostLedger(ledger); const body = { schemaVersion: FIXED_TRACE_HUMAN_PANEL_VERSION, contractFingerprint: contract("humanCostLedger"), ceilingCents: FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, entries: Object.freeze([...ledger.entries, Object.freeze(snapshotFixedTraceJson(entry, "cost reservation") as FixedTraceHumanCostLedgerEntry)]) }; const next = Object.freeze({ ...body, ledgerFingerprint: sha256(body) }); validateFixedTraceHumanCostLedger(next); return next;
+export type FixedTraceHumanCostEvent = FixedTraceHumanCostReservation | FixedTraceHumanCostReconciliation;
+export interface FixedTraceHumanCostLedger { readonly schemaVersion: typeof FIXED_TRACE_HUMAN_PANEL_VERSION; readonly contractFingerprint: Sha256; readonly ledgerFingerprint: Sha256; readonly ceilingCents: typeof FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS; readonly events: readonly FixedTraceHumanCostEvent[]; }
+export interface FixedTraceCostReconciliationExpectation { readonly subjectFingerprint: Sha256; readonly completedResponseFingerprint: Sha256; }
+interface ValidatedCostChain { readonly reservations: Map<string, FixedTraceHumanCostReservation>; readonly reconciliations: Map<string, FixedTraceHumanCostReconciliation>; readonly exposureCents: number; }
+function costEventFingerprintBody(event: Record<string, unknown>): Record<string, unknown> { const { eventFingerprint: _fingerprint, signature: _signature, ...body } = event; return body; }
+function costEventShape(event: unknown): Record<string, unknown> {
+  const value = record(event, "human cost event");
+  const common = ["phase", "trustRootId", "reservationId", "subjectFingerprint", "eventIndex", "previousEventDigest", "timestamp", "eventFingerprint", "signature"];
+  if (value.phase === "reservation") exactKeys(value, [...common, "authorizedRateCents", "committedCents"], "human cost reservation");
+  else if (value.phase === "reconciliation") exactKeys(value, [...common, "completedResponseFingerprint", "actualCents"], "human cost reconciliation");
+  else assert(false, "human cost event phase is invalid");
+  text(value.trustRootId, "cost event trust-root ID"); text(value.reservationId, "cost reservation ID"); assert(isSha256(value.subjectFingerprint) && isSha256(value.eventFingerprint), "cost event fingerprint is invalid");
+  assert(value.previousEventDigest === null || isSha256(value.previousEventDigest), "cost event previous digest is invalid"); integer(value.eventIndex, "cost event index");
+  assert(typeof value.timestamp === "string" && Number.isFinite(Date.parse(value.timestamp)), "cost event timestamp is invalid"); text(value.signature, "cost event signature");
+  if (value.phase === "reservation") { const rate = integer(value.authorizedRateCents, "authorized rate"); const commitment = integer(value.committedCents, "committed reservation"); assert(rate > 0 && commitment >= rate && commitment > 0, "reservation requires a positive authorized rate and committed cents"); }
+  else { assert(isSha256(value.completedResponseFingerprint), "reconciliation completed response fingerprint is invalid"); integer(value.actualCents, "reconciled actual cents"); }
+  assert(value.eventFingerprint === sha256(costEventFingerprintBody(value)), "cost event fingerprint mismatch"); return value;
+}
+export function validateFixedTraceHumanCostLedger(input: FixedTraceHumanCostLedger, expectedReconciliations?: readonly FixedTraceCostReconciliationExpectation[]): number {
+  const value = record(snapshotFixedTraceJson(input, "human cost ledger"), "human cost ledger"); exactKeys(value, ["schemaVersion", "contractFingerprint", "ledgerFingerprint", "ceilingCents", "events"], "human cost ledger"); assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("humanCostLedger") && value.ceilingCents === FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "cost ledger schema or ceiling is invalid"); const { ledgerFingerprint, ...body } = value; assert(isSha256(ledgerFingerprint) && ledgerFingerprint === sha256(body), "cost ledger fingerprint mismatch"); assert(Array.isArray(value.events), "cost ledger events are invalid");
+  const reservations = new Map<string, FixedTraceHumanCostReservation>(); const reconciliations = new Map<string, FixedTraceHumanCostReconciliation>(); const subjects = new Set<string>(); let previous: Sha256 | null = null; let previousTimestamp = -Infinity;
+  for (const [offset, raw] of value.events.entries()) {
+    const event = costEventShape(raw); assert(event.eventIndex === offset + 1 && event.previousEventDigest === previous, "cost event chain is reordered, forked, or has a gap"); const parsedTimestamp = Date.parse(text(event.timestamp, "cost event timestamp")); assert(parsedTimestamp > previousTimestamp, "cost event timestamps are not strictly monotonic"); previousTimestamp = parsedTimestamp; previous = event.eventFingerprint as Sha256;
+    if (event.phase === "reservation") { assert(!reservations.has(event.reservationId as string) && !subjects.has(event.subjectFingerprint as string), "duplicate cost reservation subject or ID"); reservations.set(event.reservationId as string, event as unknown as FixedTraceHumanCostReservation); subjects.add(event.subjectFingerprint as string); }
+    else { const reservation = reservations.get(event.reservationId as string); assert(reservation && reservation.subjectFingerprint === event.subjectFingerprint, "reconciliation precedes or is mismatched with its reservation"); assert(!reconciliations.has(event.reservationId as string), "duplicate cost reconciliation"); reconciliations.set(event.reservationId as string, event as unknown as FixedTraceHumanCostReconciliation); }
+  }
+  let exposure = 0;
+  for (const reservation of reservations.values()) exposure += Math.max(reservation.committedCents, reconciliations.get(reservation.reservationId)?.actualCents ?? 0);
+  if (expectedReconciliations !== undefined) {
+    assert(expectedReconciliations.length === reservations.size && expectedReconciliations.length === reconciliations.size, "cost chain has missing or unrelated reservation/reconciliation subjects");
+    const expected = new Map(expectedReconciliations.map((entry) => [entry.subjectFingerprint, entry.completedResponseFingerprint]));
+    assert(expected.size === expectedReconciliations.length, "cost chain has duplicate expected subjects");
+    for (const reconciliation of reconciliations.values()) assert(expected.get(reconciliation.subjectFingerprint) === reconciliation.completedResponseFingerprint, "cost reconciliation completed response does not match its reserved subject");
+  }
+  assert(exposure <= FIXED_TRACE_HUMAN_PANEL_CEILING_CENTS, "human cost reservation/reconciliation exposure exceeds $650 ceiling");
+  return exposure;
+}
+function validateSignedCostChain(input: FixedTraceHumanCostLedger, expectedReconciliations: readonly FixedTraceCostReconciliationExpectation[]): ValidatedCostChain {
+  validateFixedTraceHumanCostLedger(input, expectedReconciliations);
+  const reservations = new Map<string, FixedTraceHumanCostReservation>(); const reconciliations = new Map<string, FixedTraceHumanCostReconciliation>();
+  for (const event of input.events) { verifyPinnedEvaluatorSignature("rate_authorization", event.trustRootId, event.eventFingerprint, event.signature); if (event.phase === "reservation") reservations.set(event.reservationId, event); else reconciliations.set(event.reservationId, event); }
+  return { reservations, reconciliations, exposureCents: validateFixedTraceHumanCostLedger(input, expectedReconciliations) };
 }
 
 function validateFixedTraceRaterAssignment(input: FixedTraceRaterAssignment, packet: FixedTraceBlindedScoringPacket): void {
   const value = record(snapshotFixedTraceJson(input, "rater assignment"), "rater assignment");
-  exactKeys(value, ["schemaVersion", "contractFingerprint", "assignmentFingerprint", "packetFingerprint", "raterPseudonym", "role"], "rater assignment");
+  exactKeys(value, ["schemaVersion", "contractFingerprint", "assignmentFingerprint", "packetFingerprint", "raterPseudonym", "opaqueItemId", "role"], "rater assignment");
   assert(value.schemaVersion === FIXED_TRACE_HUMAN_PANEL_VERSION && value.contractFingerprint === contract("raterAssignment"), "rater assignment schema is stale");
   const { assignmentFingerprint, ...body } = value;
   assert(isSha256(assignmentFingerprint) && assignmentFingerprint === sha256(body), "rater assignment fingerprint mismatch");
-  assert(value.packetFingerprint === packet.packetFingerprint && value.raterPseudonym === packet.raterPseudonym && value.role === "primary", "rater assignment does not bind its own packet only");
+  assert(value.packetFingerprint === packet.packetFingerprint && value.raterPseudonym === packet.raterPseudonym && typeof value.opaqueItemId === "string" && packet.items.some((item) => item.opaqueItemId === value.opaqueItemId) && value.role === "primary", "rater assignment does not bind its own packet item only");
   noTreatmentFields(value, "rater assignment");
 }
 function validateFixedTraceCustodyReceipt(input: FixedTraceCustodyReceipt, map: FixedTraceRestrictedUnblindingMap): void {
@@ -601,18 +655,6 @@ function validateFixedTraceCalibrationReceipt(input: FixedTraceCalibrationReceip
   const value = record(snapshotFixedTraceJson(input, "calibration receipt"), "calibration receipt"); exactKeys(value, ["calibrationFingerprint", "panelFingerprint", "externalRecordReference", "signature"], "calibration receipt");
   assert(isSha256(value.calibrationFingerprint) && isSha256(value.panelFingerprint), "calibration fingerprints are invalid"); text(value.externalRecordReference, "calibration external record reference"); text(value.signature, "calibration signature");
 }
-function validateFixedTraceHumanRateAuthorization(input: FixedTraceHumanRateAuthorization): void {
-  const value = record(snapshotFixedTraceJson(input, "human rate authorization"), "human rate authorization");
-  exactKeys(value, ["trustRootId", "kind", "subjectFingerprint", "assignmentFingerprint", "quotedCents", "committedCents", "rateAuthorizationFingerprint", "signature"], "human rate authorization");
-  assert(value.kind === "primary" || value.kind === "adjudication", "rate authorization kind is invalid");
-  assert(isSha256(value.subjectFingerprint) && isSha256(value.rateAuthorizationFingerprint), "rate authorization fingerprint is invalid");
-  assert(value.kind === "primary" ? isSha256(value.assignmentFingerprint) : value.assignmentFingerprint === null, "rate authorization assignment binding is invalid");
-  const quote = integer(value.quotedCents, "rate authorization quote"); const commitment = integer(value.committedCents, "rate authorization commitment");
-  assert(quote > 0 && commitment >= quote && commitment > 0, "rate authorization requires a positive committed reservation before response");
-  const { rateAuthorizationFingerprint, signature, ...body } = value;
-  assert(rateAuthorizationFingerprint === sha256(body), "rate authorization fingerprint mismatch");
-  verifyPinnedEvaluatorSignature("rate_authorization", value.trustRootId, rateAuthorizationFingerprint, signature);
-}
 export function validateFixedTraceHumanPanelArtifacts(artifacts: FixedTraceHumanPanelArtifacts): void {
   const value = record(snapshotFixedTraceJson(artifacts, "human-panel artifacts"), "human-panel artifacts"); exactKeys(value, ["custodiedDiagnosticManifest", "committedSchedule", "nonceConsumptionReceipt", "raterPackets", "raterAssignments", "restrictedUnblindingMap", "cohortFingerprint", "readiness"], "human-panel artifacts");
   const manifest = value.custodiedDiagnosticManifest as FixedTraceCustodiedDiagnosticManifest;
@@ -620,10 +662,14 @@ export function validateFixedTraceHumanPanelArtifacts(artifacts: FixedTraceHuman
   const schedule = verifySchedule(value.committedSchedule as FixedTraceCommittedSchedule, manifest, outputs);
   verifyNonceConsumption(value.nonceConsumptionReceipt as FixedTraceNonceConsumptionReceipt, schedule);
   assert(value.cohortFingerprint === validateFixedTraceHumanPanelCohort(outputs), "artifact cohort is not the signed manifest cohort");
-  assert(Array.isArray(value.raterPackets) && Array.isArray(value.raterAssignments) && value.raterPackets.length === 2 && value.raterAssignments.length === 2, "artifacts require exactly two primary packets and assignments"); assert(isSha256(value.cohortFingerprint), "artifact cohort fingerprint is invalid");
+  assert(Array.isArray(value.raterPackets) && Array.isArray(value.raterAssignments) && value.raterPackets.length === 2 && value.raterAssignments.length === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS, "artifacts require exactly two primary packets and 432 item assignments"); assert(isSha256(value.cohortFingerprint), "artifact cohort fingerprint is invalid");
   const packets = value.raterPackets as FixedTraceBlindedScoringPacket[]; const assignments = value.raterAssignments as FixedTraceRaterAssignment[];
-  for (let index = 0; index < 2; index += 1) { validateFixedTraceBlindedScoringPacket(packets[index]!); validateFixedTraceRaterAssignment(assignments[index]!, packets[index]!); }
-  assert(packets[0]!.raterPseudonym !== packets[1]!.raterPseudonym, "primary rater identity reuse is forbidden");
+  for (const packet of packets) validateFixedTraceBlindedScoringPacket(packet);
+  for (const assignment of assignments) { const packet = packets.find((candidate) => candidate.packetFingerprint === assignment.packetFingerprint); assert(packet, "assignment is not bound to a primary packet"); validateFixedTraceRaterAssignment(assignment, packet); }
+  const expectedAssignmentFingerprints = new Set(packets.flatMap((packet) => packet.items.map((item) => makeAssignment(packet, item.opaqueItemId).assignmentFingerprint)));
+  const suppliedAssignmentFingerprints = new Set(assignments.map((assignment) => assignment.assignmentFingerprint));
+  assert(expectedAssignmentFingerprints.size === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS && suppliedAssignmentFingerprints.size === expectedAssignmentFingerprints.size && [...expectedAssignmentFingerprints].every((fingerprint) => suppliedAssignmentFingerprints.has(fingerprint)), "item assignments must cover every blinded rater/item exactly once");
+  assert(new Set(packets.map((packet) => packet.raterPseudonym)).size === 2, "primary rater identity reuse is forbidden");
   const map = value.restrictedUnblindingMap as FixedTraceRestrictedUnblindingMap; validateFixedTraceRestrictedUnblindingMap(map, value.cohortFingerprint as Sha256);
   assert(map.manifestFingerprint === manifest.manifestFingerprint && map.scheduleFingerprint === schedule.scheduleFingerprint && map.trustRootId === schedule.trustRootId, "restricted map is not bound to the signed manifest and schedule");
   const packetIds = new Set(packets.flatMap((packet) => packet.items.map((item) => item.opaqueItemId))); const mapIds = new Set(map.entries.map((entry) => entry.opaqueItemId));
@@ -651,7 +697,6 @@ export interface FixedTraceHumanPanelWorkflowInput {
   readonly custodyReceipt: FixedTraceCustodyReceipt;
   readonly calibrationReceipt: FixedTraceCalibrationReceipt;
   readonly humanCostLedger: FixedTraceHumanCostLedger;
-  readonly humanRateAuthorizations: readonly FixedTraceHumanRateAuthorization[];
 }
 export interface FixedTraceHumanPanelWorkflowSummary {
   readonly toolingReadiness: "tooling_ready_contracts_only";
@@ -669,7 +714,7 @@ export interface FixedTraceHumanPanelWorkflowSummary {
  * provenance must be verified by an external evaluator-controlled process.
  */
 export function validateFixedTraceHumanPanelWorkflow(input: FixedTraceHumanPanelWorkflowInput): FixedTraceHumanPanelWorkflowSummary {
-  const value = record(snapshotFixedTraceJson(input, "human-panel workflow input"), "human-panel workflow input"); exactKeys(value, ["artifacts", "primaryResponses", "adjudicationResponses", "custodyReceipt", "calibrationReceipt", "humanCostLedger", "humanRateAuthorizations"], "human-panel workflow input");
+  const value = record(snapshotFixedTraceJson(input, "human-panel workflow input"), "human-panel workflow input"); exactKeys(value, ["artifacts", "primaryResponses", "adjudicationResponses", "custodyReceipt", "calibrationReceipt", "humanCostLedger"], "human-panel workflow input");
   const artifacts = value.artifacts as FixedTraceHumanPanelArtifacts; validateFixedTraceHumanPanelArtifacts(artifacts);
   const packets = artifacts.raterPackets; const assignments = artifacts.raterAssignments; const map = artifacts.restrictedUnblindingMap;
   validateFixedTraceCustodyReceipt(value.custodyReceipt as FixedTraceCustodyReceipt, map); validateFixedTraceCalibrationReceipt(value.calibrationReceipt as FixedTraceCalibrationReceipt);
@@ -677,26 +722,22 @@ export function validateFixedTraceHumanPanelWorkflow(input: FixedTraceHumanPanel
   assert([...coverage.byOutput.values()].every((pair) => pair[0] !== null && pair[1] !== null), "both common raters are required for every eligible output");
   const requests = createFixedTraceAdjudicationRequests(value.primaryResponses as FixedTraceIndependentRaterResponse[], packets, assignments, map);
   assert(Array.isArray(value.adjudicationResponses) && value.adjudicationResponses.length === requests.length, "adjudication responses must exactly match locked requests");
-  const responseIds = new Set<string>(); const primaryRaters = assignments.map((assignment) => assignment.raterPseudonym);
+  const responseIds = new Set<string>(); const primaryRaters = [...new Set(assignments.map((assignment) => assignment.raterPseudonym))];
   for (let index = 0; index < requests.length; index += 1) { const response = (value.adjudicationResponses as FixedTraceAdjudicationResponse[])[index]!; validateFixedTraceAdjudicationResponse(response, requests[index]!, createFixedTraceAdjudicationPacket(requests[index]!, packets), primaryRaters); assert(!responseIds.has(response.responseId), "duplicate adjudication response"); responseIds.add(response.responseId); }
-  const cost = validateFixedTraceHumanCostLedger(value.humanCostLedger as FixedTraceHumanCostLedger);
-  const primaryEntries = (value.humanCostLedger as FixedTraceHumanCostLedger).entries.filter((entry) => entry.kind === "primary").length; const adjudicationEntries = (value.humanCostLedger as FixedTraceHumanCostLedger).entries.filter((entry) => entry.kind === "adjudication").length;
-  assert(primaryEntries === FIXED_TRACE_HUMAN_PANEL_PRIMARY_RATINGS && adjudicationEntries === requests.length, "human cost ledger coverage does not match the locked assignment/adjudication plan");
-  const primaryByFingerprint = new Map((value.primaryResponses as FixedTraceIndependentRaterResponse[]).map((response) => [response.responseFingerprint, response]));
-  const adjudicationByFingerprint = new Map((value.adjudicationResponses as FixedTraceAdjudicationResponse[]).map((response) => [response.responseFingerprint, response]));
-  assert(Array.isArray(value.humanRateAuthorizations), "human rate authorizations must be an array");
-  const authorizations = new Map<string, FixedTraceHumanRateAuthorization>();
-  for (const authorization of value.humanRateAuthorizations as FixedTraceHumanRateAuthorization[]) { validateFixedTraceHumanRateAuthorization(authorization); assert(!authorizations.has(authorization.rateAuthorizationFingerprint), "duplicate human rate authorization"); authorizations.set(authorization.rateAuthorizationFingerprint, authorization); }
-  const ledgerSubjects = new Set<string>();
-  for (const entry of (value.humanCostLedger as FixedTraceHumanCostLedger).entries) {
-    const subject = entry.kind === "primary" ? entry.responseFingerprint! : entry.adjudicationResponseFingerprint!;
-    assert(!ledgerSubjects.has(subject), "human cost ledger duplicates a response/adjudication subject"); ledgerSubjects.add(subject);
-    const authorization = authorizations.get(entry.rateAuthorizationFingerprint); assert(authorization, "cost ledger lacks an externally verified rate authorization");
-    assert(authorization.kind === entry.kind && authorization.subjectFingerprint === subject && authorization.assignmentFingerprint === entry.assignmentFingerprint && authorization.quotedCents === entry.quotedCents && authorization.committedCents === entry.committedCents, "cost ledger rate authorization does not bind its exact reserved subject");
-    if (entry.kind === "primary") { const response = primaryByFingerprint.get(subject); assert(response && response.assignmentFingerprint === entry.assignmentFingerprint, "human cost ledger primary row does not bind its exact response assignment"); }
-    else assert(adjudicationByFingerprint.has(subject), "human cost ledger contains an unrelated adjudication response row");
+  const primaryByAssignment = new Map((value.primaryResponses as FixedTraceIndependentRaterResponse[]).map((response) => [response.assignmentFingerprint, response]));
+  const adjudicationByRequest = new Map(requests.map((request, index) => [request.adjudicationRequestFingerprint, (value.adjudicationResponses as FixedTraceAdjudicationResponse[])[index]! ]));
+  const expectedSubjects = new Set<string>([...assignments.map((assignment) => assignment.assignmentFingerprint), ...requests.map((request) => request.adjudicationRequestFingerprint)]);
+  const expectedReconciliations = [...primaryByAssignment.entries(), ...adjudicationByRequest.entries()].map(([subjectFingerprint, response]) => ({ subjectFingerprint, completedResponseFingerprint: response.responseFingerprint }));
+  const chain = validateSignedCostChain(value.humanCostLedger as FixedTraceHumanCostLedger, expectedReconciliations);
+  const reservationBySubject = new Map([...chain.reservations.values()].map((reservation) => [reservation.subjectFingerprint, reservation]));
+  assert(chain.reservations.size === expectedSubjects.size && reservationBySubject.size === expectedSubjects.size && [...expectedSubjects].every((subject) => reservationBySubject.has(subject)), "human cost chain must reserve exactly once for every assignment/adjudication request before response");
+  assert(chain.reconciliations.size === expectedSubjects.size, "human cost chain must reconcile exactly once for every assignment/adjudication subject");
+  for (const [subject, reservation] of reservationBySubject) {
+    const reconciliation = chain.reconciliations.get(reservation.reservationId); assert(reconciliation && reconciliation.subjectFingerprint === subject, "cost reconciliation does not close its exact reservation subject");
+    const primary = primaryByAssignment.get(subject); const adjudication = adjudicationByRequest.get(subject);
+    assert((primary || adjudication) && reconciliation.completedResponseFingerprint === (primary?.responseFingerprint ?? adjudication?.responseFingerprint), "cost reconciliation response does not match its reserved assignment/adjudication subject");
   }
-  assert(ledgerSubjects.size === primaryByFingerprint.size + adjudicationByFingerprint.size && [...primaryByFingerprint.keys(), ...adjudicationByFingerprint.keys()].every((fingerprint) => ledgerSubjects.has(fingerprint)), "human cost ledger must be exactly one-to-one with every response/adjudication subject");
+  const cost = chain.exposureCents;
   return Object.freeze({ toolingReadiness: "tooling_ready_contracts_only", humanPanelReadiness: "not_admitted_pending_real_human_panel_and_custody", observedOutputs: FIXED_TRACE_HUMAN_PANEL_OUTPUTS, adjudicationRequests: requests.length, humanCostReservedCents: cost, promotable: false, claimsProhibited: ["production_architecture_selection", "final_claim", "noninferiority_claim", "superiority_claim"] as const, externalBlockers: fixedTraceHumanPanelReadiness().blockers });
 }
 
