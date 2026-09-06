@@ -25,7 +25,7 @@ export const MATCHED_PAIR_NI_MAX_SIZE_N = 8;
  */
 export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_SIZE = 16;
 export const MATCHED_PAIR_NI_MAX_MARGIN_BITS_FOR_INFERENCE = 16;
-/** Aggregate deterministic budget, checked before and during exhaustive work. */
+/** Aggregate deterministic E-step comparison-work budget, checked before and during exhaustive work. */
 export const MATCHED_PAIR_NI_MAX_WORK_UNITS = 1_500_000;
 
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
@@ -440,18 +440,14 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
   }
   const budget = workBudgetFor(normalized.state.n, normalized.margin, normalized.alpha, true);
   if (!budget || normalized.state.n > MATCHED_PAIR_NI_MAX_SIZE_N) {
-    let upper = constant(ZERO);
-    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, normalized.margin));
-    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: constant(ONE), indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   let eStep: ReturnType<typeof buildEStep>;
   try {
     eStep = buildEStep(states, normalized.margin, budget);
   } catch (error) {
     if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
-    let upper = constant(ZERO);
-    for (const state of states) upper = polynomialAdd(upper, reducedStateProbabilityPolynomial(state, normalized.margin));
-    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: constant(ONE), indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   let lower = constant(ZERO); let upper = constant(ZERO);
   const indeterminateStates: ReducedMatchedPairState[] = [];
@@ -480,9 +476,7 @@ export function nullBoundarySizeEnvelope(n: number, margin: Rational, alpha: Rat
     }
   } catch (error) {
     if (!(error instanceof RangeError) || !/ceiling/.test(error.message)) throw error;
-    let fallbackUpper = constant(ZERO);
-    for (const state of states) fallbackUpper = polynomialAdd(fallbackUpper, reducedStateProbabilityPolynomial(state, normalized.margin));
-    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: fallbackUpper, indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
+    return Object.freeze({ status: 'indeterminate', lower: constant(ZERO), upper: constant(ONE), indeterminateStates: states, engineIndeterminacy: Object.freeze([]), alphaOverlapStates: Object.freeze([]), reason: 'size_complexity_ceiling' });
   }
   return Object.freeze({
     status: indeterminateStates.length === 0 ? 'certified' : 'indeterminate', lower, upper,
