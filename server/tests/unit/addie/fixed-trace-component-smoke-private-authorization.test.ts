@@ -60,7 +60,7 @@ class FakeLedgerClient {
       const status = this.authorizations.get(params?.[0] as string);
       return status ? { rowCount: 1, rows: [{ status, expires_at: '2026-09-06T13:00:00.000Z' }] } : { rowCount: 0, rows: [] };
     }
-    return { rowCount: 1, rows: [] };
+    throw new Error(`unrecognised fake SQL: ${sql.slice(0, 80)}`);
   }
   release() {}
 }
