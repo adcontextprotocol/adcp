@@ -55,3 +55,114 @@ export const FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST:
     providerExposure: Object.freeze({ status: "unavailable", digest: null }),
     custody: Object.freeze({ status: "unavailable", digest: null }),
   });
+
+class FixedTraceAPurePrerequisiteManifestValidationError extends Error {
+  readonly status = "pin_drift" as const;
+  readonly code = "fixed_trace_A_prerequisite_manifest_invalid" as const;
+
+  constructor() {
+    super("fixed_trace_A_prerequisite_manifest_invalid");
+    this.name = "FixedTraceAPurePrerequisiteManifestValidationError";
+    Object.freeze(this);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).sort().join(",") === [...keys].sort().join(",");
+}
+
+function unavailableDescriptor(value: unknown, pricing = false): boolean {
+  if (!isRecord(value)) return false;
+  const keys = pricing
+    ? ["status", "digest", "cohortId", "effectiveFrom", "effectiveBefore"]
+    : ["status", "digest"];
+  return exactKeys(value, keys) && value.status === "unavailable" && value.digest === null
+    && (!pricing || (value.cohortId === null && value.effectiveFrom === null && value.effectiveBefore === null));
+}
+
+/**
+ * Validate and detach a pure A manifest. This is a data-boundary helper, not
+ * an admission or execution API; B uses it to contain malformed hot-reloads.
+ */
+export function validateFixedTraceAPurePrerequisiteManifest(
+  candidate: unknown,
+): FixedTraceAPurePrerequisiteManifest {
+  try {
+    const manifest = candidate;
+    if (!isRecord(manifest) || !exactKeys(manifest, [
+      "version", "sourceCommit", "protocolFingerprint", "corpus",
+      "partitionManifestSha256", "experimentalDesignFingerprint",
+      "measurementManifestSha256", "schedule", "pricingWindow", "calibration",
+      "providerExposure", "custody",
+    ]) || !isRecord(manifest.corpus)
+      || !exactKeys(manifest.corpus, ["suiteVersion", "suiteSha256"])
+      || typeof manifest.version !== "string" || typeof manifest.sourceCommit !== "string"
+      || typeof manifest.protocolFingerprint !== "string"
+      || typeof manifest.corpus.suiteVersion !== "string" || typeof manifest.corpus.suiteSha256 !== "string"
+      || typeof manifest.partitionManifestSha256 !== "string"
+      || typeof manifest.experimentalDesignFingerprint !== "string"
+      || typeof manifest.measurementManifestSha256 !== "string"
+      || !unavailableDescriptor(manifest.schedule)
+      || !unavailableDescriptor(manifest.pricingWindow, true)
+      || !unavailableDescriptor(manifest.calibration)
+      || !unavailableDescriptor(manifest.providerExposure)
+      || !unavailableDescriptor(manifest.custody)
+    ) throw new FixedTraceAPurePrerequisiteManifestValidationError();
+    return snapshotFixedTraceAPurePrerequisiteManifest(
+      manifest as unknown as FixedTraceAPurePrerequisiteManifest,
+    );
+  } catch (error) {
+    if (error instanceof FixedTraceAPurePrerequisiteManifestValidationError) throw error;
+    throw new FixedTraceAPurePrerequisiteManifestValidationError();
+  }
+}
+
+function snapshotFixedTraceAPurePrerequisiteManifest(
+  manifest: FixedTraceAPurePrerequisiteManifest,
+): FixedTraceAPurePrerequisiteManifest {
+  return Object.freeze({
+    version: manifest.version,
+    sourceCommit: manifest.sourceCommit,
+    protocolFingerprint: manifest.protocolFingerprint,
+    corpus: Object.freeze({
+      suiteVersion: manifest.corpus.suiteVersion,
+      suiteSha256: manifest.corpus.suiteSha256,
+    }),
+    partitionManifestSha256: manifest.partitionManifestSha256,
+    experimentalDesignFingerprint: manifest.experimentalDesignFingerprint,
+    measurementManifestSha256: manifest.measurementManifestSha256,
+    schedule: Object.freeze({
+      status: manifest.schedule.status,
+      digest: manifest.schedule.digest,
+    }),
+    pricingWindow: Object.freeze({
+      status: manifest.pricingWindow.status,
+      digest: manifest.pricingWindow.digest,
+      cohortId: manifest.pricingWindow.cohortId,
+      effectiveFrom: manifest.pricingWindow.effectiveFrom,
+      effectiveBefore: manifest.pricingWindow.effectiveBefore,
+    }),
+    calibration: Object.freeze({
+      status: manifest.calibration.status,
+      digest: manifest.calibration.digest,
+    }),
+    providerExposure: Object.freeze({
+      status: manifest.providerExposure.status,
+      digest: manifest.providerExposure.digest,
+    }),
+    custody: Object.freeze({
+      status: manifest.custody.status,
+      digest: manifest.custody.digest,
+    }),
+  });
+}
+
+export function fixedTraceAPurePrerequisiteManifest(): FixedTraceAPurePrerequisiteManifest {
+  return validateFixedTraceAPurePrerequisiteManifest(
+    FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
+  );
+}

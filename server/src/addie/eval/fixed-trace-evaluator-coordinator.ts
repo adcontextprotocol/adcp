@@ -10,7 +10,7 @@ import {
   FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
   FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
   assertFixedTraceEvidencePrerequisitePinned,
-  type FixedTraceSealedEvidenceRequirements,
+  type FixedTraceSealedEvidenceRequirementManifest,
 } from "./fixed-trace-evidence-prerequisite.js";
 
 export const FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION =
@@ -20,9 +20,7 @@ export interface FixedTraceCoordinatorUnavailable {
   readonly status: "unavailable";
   readonly admission: typeof FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION;
   /** C must supply this whole sealed contract; B exports no positive ledger. */
-  readonly requiredSealedEvidence: Readonly<{
-    [Key in keyof FixedTraceSealedEvidenceRequirements]: true;
-  }>;
+  readonly requiredSealedEvidence: FixedTraceSealedEvidenceRequirementManifest;
 }
 
 const UNAVAILABLE_COORDINATOR: FixedTraceCoordinatorUnavailable = Object.freeze({

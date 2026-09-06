@@ -3,7 +3,8 @@
  * and an independent literal pin; neither is an execution authority.
  */
 import {
-  FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
+  fixedTraceAPurePrerequisiteManifest,
+  validateFixedTraceAPurePrerequisiteManifest,
   type FixedTraceAPurePrerequisiteManifest,
 } from "./fixed-trace-a-prerequisite-manifest.js";
 
@@ -141,25 +142,81 @@ export interface FixedTraceSealedEvidenceRequirements {
   };
 }
 
-/** A mapped object makes additions to the schema fail at this one shared list. */
-export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS: Readonly<{
-  [Key in keyof FixedTraceSealedEvidenceRequirements]: true;
-}> = Object.freeze({
+type FixedTraceEvidenceRequirementManifest<Value> =
+  [Value] extends [object]
+    ? { readonly [Key in keyof Value]: FixedTraceEvidenceRequirementManifest<Value[Key]> }
+    : true;
+
+export type FixedTraceSealedEvidenceRequirementManifest =
+  FixedTraceEvidenceRequirementManifest<FixedTraceSealedEvidenceRequirements>;
+
+function deepFreeze<Value>(value: Value): Value {
+  if (value && typeof value === "object") {
+    for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/** Recursively mapped: a required nested schema leaf cannot be omitted here. */
+export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS:
+  FixedTraceSealedEvidenceRequirementManifest = deepFreeze({
   schemaVersion: true,
-  plan: true,
-  assignment: true,
-  invocation: true,
-  requestIntegrity: true,
-  toolAndSimulatorEvidence: true,
-  configuration: true,
-  timingAndOutcome: true,
-  usageAndPricing: true,
-  denominatorAndSequence: true,
-  judgeAndCustody: true,
-  replayProtection: true,
+  plan: {
+    protocolFingerprint: true, corpusSuiteVersion: true, corpusSuiteSha256: true,
+    partitionManifestSha256: true, experimentalDesignFingerprint: true,
+    measurementManifestSha256: true, packManifestSha256: true, packCustodySignature: true,
+  },
+  assignment: {
+    runId: true, phaseId: true, armId: true, architectureId: true, caseId: true,
+    episodeId: true, clusterId: true, stratumId: true, repetition: true, blockId: true,
+    order: true, position: true, randomizationSeed: true, scheduleDigest: true, workerIdentity: true,
+  },
+  invocation: {
+    stage: true, invocation: true, attempt: true, requestedProvider: true, requestedModel: true,
+    requestedEffort: true, returnedProvider: true, returnedModel: true, returnedEffort: true,
+    identityPolicy: true, fallbackOfAttempt: true,
+  },
+  requestIntegrity: {
+    systemSha256: true, promptSha256: true, messagesSha256: true, toolSchemaSha256: true,
+    providerRequestSha256: true, presentedToolNamesSha256: true, presentedToolOrderSha256: true,
+    requestFactsSha256: true, sourceThreadBindingSha256: true,
+  },
+  toolAndSimulatorEvidence: {
+    toolCallSha256: true, toolInputSha256: true, toolResultSha256: true,
+    simulatorReceiptSha256: true, simulatorFaultProvenanceSha256: true, simulatorControlsSha256: true,
+  },
+  configuration: {
+    architectureSha256: true, admissionSha256: true, configSha256: true, promptConfigSha256: true,
+    softwareSha256: true, adapterSha256: true, limitsSha256: true, retryPolicySha256: true,
+    cachePolicySha256: true, samplingPolicySha256: true,
+  },
+  timingAndOutcome: {
+    preparedAt: true, dispatchedAt: true, completedAt: true, latencyMs: true, timeout: true,
+    errorCode: true, terminalStatus: true, outputSha256: true,
+  },
+  usageAndPricing: {
+    usageSha256: true, inputTokens: true, cachedInputTokens: true, outputTokens: true,
+    pricingCohortId: true, pricingCohortSha256: true, pricingEffectiveFrom: true,
+    pricingEffectiveBefore: true, computedCostUsd: true, reservationId: true,
+    reservationCeilingUsd: true, settlementSha256: true,
+  },
+  denominatorAndSequence: {
+    denominatorId: true, failureEvidenceSha256: true, missingnessSha256: true,
+    expectedSequenceSha256: true, actualSequenceSha256: true, completeness: true, tamperClass: true,
+  },
+  judgeAndCustody: {
+    calibrationDigest: true, blindedPresentationSha256: true, adjudicationBinding: true,
+    providerExposureLedgerSha256: true, custodyBinding: true, signerKeyId: true, signature: true,
+  },
+  replayProtection: {
+    authorityId: true, nonce: true, oneUseConsumptionSha256: true, replayStatus: true,
+  },
 });
 
 export interface FixedTraceEvidencePrerequisitePin {
+  readonly version: string;
+  readonly sourceCommit: string;
   readonly protocolFingerprint: string;
   readonly corpusSuiteVersion: string;
   readonly corpusSuiteSha256: string;
@@ -181,6 +238,8 @@ export interface FixedTraceEvidencePrerequisitePin {
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN: FixedTraceEvidencePrerequisitePin =
   Object.freeze({
+    version: "addie-fixed-trace-A-prerequisite-manifest-v1",
+    sourceCommit: "5094c5c0242ea10c2fd8452a21c0ea1bf33a68a3",
     protocolFingerprint: "b9ef28a8451ca606bbc77e48ff709405e90290c55833bb76e8047a7633e6c7dd",
     corpusSuiteVersion: "addie-fixed-traces-v32",
     corpusSuiteSha256: "5f7f0a6d653a4757991728a1d9de8aee69b40d580dafb65e98941c1f9e3fea83",
@@ -206,6 +265,7 @@ export type FixedTraceEvidencePrerequisiteDiagnostic =
   | Readonly<{
     status: "pin_drift";
     code: "fixed_trace_A_prerequisite_pin_drift";
+    reason: "manifest_invalid_or_pin_mismatch";
     mismatchedFields: readonly string[];
   }>;
 
@@ -214,6 +274,8 @@ function mismatchedFields(
 ): readonly string[] {
   const pin = FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN;
   return Object.freeze([
+    ...(manifest.version !== pin.version ? ["version"] : []),
+    ...(manifest.sourceCommit !== pin.sourceCommit ? ["sourceCommit"] : []),
     ...(manifest.protocolFingerprint !== pin.protocolFingerprint ? ["protocolFingerprint"] : []),
     ...(manifest.corpus.suiteVersion !== pin.corpusSuiteVersion ? ["corpus.suiteVersion"] : []),
     ...(manifest.corpus.suiteSha256 !== pin.corpusSuiteSha256 ? ["corpus.suiteSha256"] : []),
@@ -235,12 +297,27 @@ function mismatchedFields(
 
 /** No caller input: the B boundary always compares its literal pin to A's pure manifest. */
 export function fixedTraceEvidencePrerequisiteDiagnostic(): FixedTraceEvidencePrerequisiteDiagnostic {
-  const fields = mismatchedFields(FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST);
-  if (fields.length > 0) return Object.freeze({
-    status: "pin_drift",
-    code: "fixed_trace_A_prerequisite_pin_drift",
-    mismatchedFields: fields,
-  });
+  try {
+    const manifest = validateFixedTraceAPurePrerequisiteManifest(
+      fixedTraceAPurePrerequisiteManifest(),
+    );
+    // A normally returns a validated snapshot. Keep this B boundary robust
+    // under a malformed/reloaded dependency before any nested dereference.
+    const fields = mismatchedFields(manifest);
+    if (fields.length > 0) return Object.freeze({
+      status: "pin_drift",
+      code: "fixed_trace_A_prerequisite_pin_drift",
+      reason: "manifest_invalid_or_pin_mismatch",
+      mismatchedFields: fields,
+    });
+  } catch {
+    return Object.freeze({
+      status: "pin_drift",
+      code: "fixed_trace_A_prerequisite_pin_drift",
+      reason: "manifest_invalid_or_pin_mismatch",
+      mismatchedFields: Object.freeze(["manifest_shape"]),
+    });
+  }
   return Object.freeze({
     status: "ordinary_unavailable",
     code: FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
@@ -248,15 +325,22 @@ export function fixedTraceEvidencePrerequisiteDiagnostic(): FixedTraceEvidencePr
   });
 }
 
-export class FixedTraceEvidencePrerequisitePinDriftError extends Error {
-  readonly status = "pin_drift" as const;
-  readonly code = "fixed_trace_A_prerequisite_pin_drift" as const;
+class FixedTraceEvidencePrerequisitePinDriftError extends Error {
+  readonly status: "pin_drift";
+  readonly code: "fixed_trace_A_prerequisite_pin_drift";
   readonly diagnostic: Extract<FixedTraceEvidencePrerequisiteDiagnostic, { status: "pin_drift" }>;
 
   constructor(diagnostic: Extract<FixedTraceEvidencePrerequisiteDiagnostic, { status: "pin_drift" }>) {
-    super(diagnostic.code);
+    const snapshot = Object.freeze({
+      ...diagnostic,
+      mismatchedFields: Object.freeze([...diagnostic.mismatchedFields]),
+    });
+    super(snapshot.code);
     this.name = "FixedTraceEvidencePrerequisitePinDriftError";
-    this.diagnostic = diagnostic;
+    this.status = "pin_drift";
+    this.code = "fixed_trace_A_prerequisite_pin_drift";
+    this.diagnostic = snapshot;
+    Object.freeze(this);
   }
 }
 

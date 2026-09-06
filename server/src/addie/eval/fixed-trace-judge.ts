@@ -9,7 +9,7 @@ import {
   FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
   FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
   assertFixedTraceEvidencePrerequisitePinned,
-  type FixedTraceSealedEvidenceRequirements,
+  type FixedTraceSealedEvidenceRequirementManifest,
 } from "./fixed-trace-evidence-prerequisite.js";
 
 export const FIXED_TRACE_JUDGE_PROMPT_VERSION = "addie-fixed-trace-blinded-judge-v2";
@@ -21,9 +21,7 @@ export interface FixedTraceJudgeUnavailable {
   readonly status: "unavailable";
   readonly admission: typeof FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION;
   /** Positive judging in C must bind every one of these fields. */
-  readonly requiredSealedEvidence: Readonly<{
-    [Key in keyof FixedTraceSealedEvidenceRequirements]: true;
-  }>;
+  readonly requiredSealedEvidence: FixedTraceSealedEvidenceRequirementManifest;
 }
 
 /**

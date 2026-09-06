@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   FIXED_TRACE_ADMITTED_CELLS,
   FIXED_TRACE_ARCHITECTURE_CELL_TRUTH,
@@ -42,6 +42,32 @@ const screeningResult = (cell = FIXED_TRACE_ADMITTED_CELLS[0]!, index = 0) => ({
 });
 
 describe("fixed-trace staged protocol", () => {
+  it("has A itself reject a mismatched dependency-free prerequisite manifest", async () => {
+    vi.resetModules();
+    vi.doMock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js", async () => {
+      const actual = await vi.importActual<typeof import("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js")>(
+        "../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js",
+      );
+      return {
+        ...actual,
+        FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST: Object.freeze({
+          ...actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
+          sourceCommit: "mismatched-A-source",
+        }),
+        fixedTraceAPurePrerequisiteManifest: () => Object.freeze({
+          ...actual.FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
+          sourceCommit: "mismatched-A-source",
+        }) as never,
+      };
+    });
+    try {
+      await expect(import("../../../src/addie/eval/fixed-trace-evaluation-protocol.js"))
+        .rejects.toThrow("fixed-trace A pure prerequisite manifest parity mismatch");
+    } finally {
+      vi.doUnmock("../../../src/addie/eval/fixed-trace-a-prerequisite-manifest.js");
+      vi.resetModules();
+    }
+  });
   it("derives the complete 46 development / 36 tuning partitions from corpus authority", () => {
     assertFixedTracePartitionManifest();
     expect(FIXED_TRACE_PARTITION_MANIFEST.development).toHaveLength(46);

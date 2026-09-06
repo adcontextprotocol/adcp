@@ -23,14 +23,38 @@ import {
 } from "./fixed-trace-architecture.js";
 import {
   FIXED_TRACE_PARTITION_MANIFEST,
+  FIXED_TRACE_PARTITION_MANIFEST_SHA256,
   assertFixedTracePartitionManifest,
 } from "./fixed-trace-partition.js";
-import { assertFixedTraceExperimentalDesign } from "./fixed-trace-experimental-design.js";
+import {
+  FIXED_TRACE_EXPERIMENTAL_DESIGN,
+  assertFixedTraceExperimentalDesign,
+  fixedTraceExperimentalDesignFingerprint,
+} from "./fixed-trace-experimental-design.js";
+import {
+  fixedTraceAPurePrerequisiteManifest,
+} from "./fixed-trace-a-prerequisite-manifest.js";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
-import { FIXED_TRACE_CORPUS } from "./fixed-trace-suite.js";
+import {
+  FIXED_TRACE_CORPUS,
+  FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST,
+  FIXED_TRACE_SUITE,
+  FIXED_TRACE_SUITE_VERSION,
+  fixedTraceSuiteSha256,
+} from "./fixed-trace-suite.js";
 
 export const FIXED_TRACE_EVALUATION_PROTOCOL_VERSION =
   "addie-fixed-trace-evaluation-protocol-v3" as const;
+
+/** These A-owned declarations are mirrored by the dependency-free manifest. */
+export const FIXED_TRACE_A_PREREQUISITE_MANIFEST_VERSION =
+  "addie-fixed-trace-A-prerequisite-manifest-v1" as const;
+export const FIXED_TRACE_A_PREREQUISITE_SOURCE_COMMIT =
+  "5094c5c0242ea10c2fd8452a21c0ea1bf33a68a3" as const;
+export const FIXED_TRACE_A_PROVIDER_EXPOSURE_PREREQUISITE = Object.freeze({
+  status: "unavailable" as const,
+  digest: null,
+});
 
 export const FIXED_TRACE_CONFIRMATORY_POWER_GATE = Object.freeze({
   version: "addie-fixed-trace-confirmatory-power-v2",
@@ -1001,6 +1025,45 @@ function sha256(value: unknown): string {
     .update(JSON.stringify(value), "utf8")
     .digest("hex");
 }
+
+/**
+ * A owns the parity check for the dependency-free manifest consumed by B.
+ * This deliberately derives executable fingerprints here, while the manifest
+ * itself remains import-safe data for refusal-only consumers.
+ */
+function assertFixedTraceAPurePrerequisiteManifestParity(
+  protocol: FixedTraceEvaluationProtocol,
+): void {
+  const manifest = fixedTraceAPurePrerequisiteManifest();
+  const final = protocol.finalProtocol;
+  const measurementManifestSha256 = createHash("sha256")
+    .update(JSON.stringify(FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST), "utf8")
+    .digest("hex");
+  if (
+    manifest.version !== FIXED_TRACE_A_PREREQUISITE_MANIFEST_VERSION
+    || manifest.sourceCommit !== FIXED_TRACE_A_PREREQUISITE_SOURCE_COMMIT
+    || manifest.protocolFingerprint !== sha256(protocol)
+    || manifest.corpus.suiteVersion !== FIXED_TRACE_SUITE_VERSION
+    || manifest.corpus.suiteSha256 !== fixedTraceSuiteSha256(FIXED_TRACE_SUITE)
+    || manifest.partitionManifestSha256 !== FIXED_TRACE_PARTITION_MANIFEST_SHA256
+    || manifest.experimentalDesignFingerprint
+      !== fixedTraceExperimentalDesignFingerprint(FIXED_TRACE_EXPERIMENTAL_DESIGN)
+    || manifest.measurementManifestSha256 !== measurementManifestSha256
+    || manifest.schedule.status !== "unavailable"
+    || manifest.schedule.digest !== final.finalRandomization.scheduleDigest
+    || manifest.pricingWindow.status !== "unavailable"
+    || manifest.pricingWindow.cohortId !== final.prospectivePricingCohort.id
+    || manifest.pricingWindow.effectiveFrom !== final.prospectivePricingCohort.effectiveFrom
+    || manifest.pricingWindow.effectiveBefore !== final.prospectivePricingCohort.effectiveBefore
+    || manifest.pricingWindow.digest !== final.prospectivePricingCohort.digest
+    || manifest.calibration.status !== final.judgeCalibration.status
+    || manifest.calibration.digest !== final.judgeCalibration.digest
+    || manifest.providerExposure.status !== FIXED_TRACE_A_PROVIDER_EXPOSURE_PREREQUISITE.status
+    || manifest.providerExposure.digest !== FIXED_TRACE_A_PROVIDER_EXPOSURE_PREREQUISITE.digest
+    || manifest.custody.status !== final.externalPackCustody.status
+    || manifest.custody.digest !== final.externalPackCustody.packDigest
+  ) throw new Error("fixed-trace A pure prerequisite manifest parity mismatch");
+}
 export function fixedTraceEvaluationProtocolFingerprint(
   protocol: FixedTraceEvaluationProtocol,
 ): string {
@@ -1400,3 +1463,10 @@ export function assertPromotionGradeDualJudgeFeasibility(
     semanticJudgeCandidateProviders(arm),
   );
 }
+
+// Keep the dependency-free B manifest owned by and parity-checked from A's
+// executable declaration. This runs once after the canonical protocol exists;
+// generic hostile protocol validation remains field-specific above.
+assertFixedTraceAPurePrerequisiteManifestParity(
+  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+);

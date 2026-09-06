@@ -16,11 +16,115 @@ describe("fixed-trace judge refusal boundary", () => {
       admission: FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION,
       requiredSealedEvidence: FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
     });
-    expect(Object.keys(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS)).toEqual([
-      "schemaVersion", "plan", "assignment", "invocation", "requestIntegrity",
-      "toolAndSimulatorEvidence", "configuration", "timingAndOutcome",
-      "usageAndPricing", "denominatorAndSequence", "judgeAndCustody", "replayProtection",
-    ]);
+    const leaves = (value: unknown, prefix = ""): string[] => {
+      if (value === true) return [prefix];
+      return Object.entries(value as Record<string, unknown>)
+        .flatMap(([key, nested]) => leaves(nested, prefix ? `${prefix}.${key}` : key));
+    };
+    const isDeeplyFrozen = (value: unknown): boolean => value === true || (
+      typeof value === "object" && value !== null && Object.isFrozen(value)
+      && Object.values(value).every(isDeeplyFrozen)
+    );
+    expect(leaves(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS)).toEqual(`
+schemaVersion
+plan.protocolFingerprint
+plan.corpusSuiteVersion
+plan.corpusSuiteSha256
+plan.partitionManifestSha256
+plan.experimentalDesignFingerprint
+plan.measurementManifestSha256
+plan.packManifestSha256
+plan.packCustodySignature
+assignment.runId
+assignment.phaseId
+assignment.armId
+assignment.architectureId
+assignment.caseId
+assignment.episodeId
+assignment.clusterId
+assignment.stratumId
+assignment.repetition
+assignment.blockId
+assignment.order
+assignment.position
+assignment.randomizationSeed
+assignment.scheduleDigest
+assignment.workerIdentity
+invocation.stage
+invocation.invocation
+invocation.attempt
+invocation.requestedProvider
+invocation.requestedModel
+invocation.requestedEffort
+invocation.returnedProvider
+invocation.returnedModel
+invocation.returnedEffort
+invocation.identityPolicy
+invocation.fallbackOfAttempt
+requestIntegrity.systemSha256
+requestIntegrity.promptSha256
+requestIntegrity.messagesSha256
+requestIntegrity.toolSchemaSha256
+requestIntegrity.providerRequestSha256
+requestIntegrity.presentedToolNamesSha256
+requestIntegrity.presentedToolOrderSha256
+requestIntegrity.requestFactsSha256
+requestIntegrity.sourceThreadBindingSha256
+toolAndSimulatorEvidence.toolCallSha256
+toolAndSimulatorEvidence.toolInputSha256
+toolAndSimulatorEvidence.toolResultSha256
+toolAndSimulatorEvidence.simulatorReceiptSha256
+toolAndSimulatorEvidence.simulatorFaultProvenanceSha256
+toolAndSimulatorEvidence.simulatorControlsSha256
+configuration.architectureSha256
+configuration.admissionSha256
+configuration.configSha256
+configuration.promptConfigSha256
+configuration.softwareSha256
+configuration.adapterSha256
+configuration.limitsSha256
+configuration.retryPolicySha256
+configuration.cachePolicySha256
+configuration.samplingPolicySha256
+timingAndOutcome.preparedAt
+timingAndOutcome.dispatchedAt
+timingAndOutcome.completedAt
+timingAndOutcome.latencyMs
+timingAndOutcome.timeout
+timingAndOutcome.errorCode
+timingAndOutcome.terminalStatus
+timingAndOutcome.outputSha256
+usageAndPricing.usageSha256
+usageAndPricing.inputTokens
+usageAndPricing.cachedInputTokens
+usageAndPricing.outputTokens
+usageAndPricing.pricingCohortId
+usageAndPricing.pricingCohortSha256
+usageAndPricing.pricingEffectiveFrom
+usageAndPricing.pricingEffectiveBefore
+usageAndPricing.computedCostUsd
+usageAndPricing.reservationId
+usageAndPricing.reservationCeilingUsd
+usageAndPricing.settlementSha256
+denominatorAndSequence.denominatorId
+denominatorAndSequence.failureEvidenceSha256
+denominatorAndSequence.missingnessSha256
+denominatorAndSequence.expectedSequenceSha256
+denominatorAndSequence.actualSequenceSha256
+denominatorAndSequence.completeness
+denominatorAndSequence.tamperClass
+judgeAndCustody.calibrationDigest
+judgeAndCustody.blindedPresentationSha256
+judgeAndCustody.adjudicationBinding
+judgeAndCustody.providerExposureLedgerSha256
+judgeAndCustody.custodyBinding
+judgeAndCustody.signerKeyId
+judgeAndCustody.signature
+replayProtection.authorityId
+replayProtection.nonce
+replayProtection.oneUseConsumptionSha256
+replayProtection.replayStatus`.trim().split("\n"));
+    expect(isDeeplyFrozen(FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS)).toBe(true);
   });
 
   it("has no positive dispatch/configuration entrypoint to consume hostile values", () => {
