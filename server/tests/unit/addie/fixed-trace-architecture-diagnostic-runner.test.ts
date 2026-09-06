@@ -11,7 +11,11 @@ import {
   runFixedTraceArchitectureDiagnosticSuite,
   type FixedTraceRunnerConfig,
 } from '../../../src/addie/eval/fixed-trace-runner.js';
-import { fixedTraceSuiteSha256 } from '../../../src/addie/eval/fixed-trace-suite.js';
+import {
+  fixedTraceArchitectureConfigSha256FromMetadata,
+  fixedTraceSuiteSha256,
+  summarizeFixedTraceRun,
+} from '../../../src/addie/eval/fixed-trace-suite.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -231,5 +235,34 @@ describe('fixed-trace architecture synthetic runner', () => {
       expect(router.requests).toHaveLength(0);
       expect(generation.requests).toHaveLength(0);
     }
+  });
+
+  it.each([
+    ['cluster', 'clusterId', 'forged-cluster'],
+    ['stratum', 'stratum', 'routed_tool_or_safety'],
+    ['local/near pair', 'localNearPairId', 'forged-pair'],
+    ['pack digest', 'packDigest', '0'.repeat(64)],
+    ['pilot digest', 'pilotDigest', '0'.repeat(64)],
+  ] as const)('rejects post-execution forged pilot %s provenance', async (_name, field, value) => {
+    const router = new SyntheticProvider('router');
+    const generation = new SyntheticProvider('generation');
+    const controls = fixedTraceArchitectureDiagnosticPilotStageControls();
+    const observations = await runFixedTraceArchitectureDiagnosticPilot({
+      ...config('direct_generation', router, generation),
+      runId: `architecture-pilot-forged-${field}`,
+      traceSuite: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_SUITE,
+      traceSuiteSha256: fixedTraceSuiteSha256(FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_SUITE),
+      architectureDiagnosticMode: 'synthetic_pilot_v1',
+      router: { ...controls.router, provider: router },
+      generation: { ...controls.generation, provider: generation },
+    });
+    const forged = structuredClone(observations);
+    const provenance = forged[0]!.metadata.architectureDiagnostic!;
+    (provenance as Record<string, string | null>)[field] = value;
+    // Recompute the public cohort hash to prove the artifact validator, rather
+    // than object immutability or a stale hash, rejects this altered payload.
+    forged[0]!.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(forged[0]!.metadata);
+    expect(() => summarizeFixedTraceRun(forged, FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_SUITE))
+      .toThrow('diagnostic observation provenance does not match its canonical mapping');
   });
 });

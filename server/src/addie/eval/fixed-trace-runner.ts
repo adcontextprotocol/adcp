@@ -52,6 +52,7 @@ import {
   assertFixedTraceArchitectureDiagnosticPilotSuite,
   assertFixedTraceArchitectureDiagnosticSuite,
   fixedTraceArchitectureDiagnosticCaseProvenance,
+  fixedTraceArchitectureDiagnosticMappingBinding,
   fixedTraceArchitectureDiagnosticPilotStageControls,
   fixedTraceArchitectureDiagnosticStageControls,
   type FixedTraceArchitectureDiagnosticStageControl,
@@ -865,6 +866,9 @@ export function fixedTraceArchitectureConfigSha256(
     generationControl: cohortStageControl(config.generation),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
+    architectureDiagnostic: config.architectureDiagnosticMode === undefined
+      ? null
+      : fixedTraceArchitectureDiagnosticMappingBinding(config.architectureDiagnosticMode),
   });
 }
 

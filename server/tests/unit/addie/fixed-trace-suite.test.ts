@@ -126,6 +126,8 @@ function metadata(overrides: Partial<FixedTraceRunMetadata> = {}): FixedTraceRun
     toolDefinitionProvenance: 'fixture_local' as const,
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: HASH,
+    architectureDiagnosticMode: null,
+    architectureDiagnostic: null,
     providerDegradationInjectionEnabled: true,
     repetition: 1,
     architectureArm: fixedTraceArchitectureArm(),
@@ -1843,6 +1845,16 @@ describe('fixed cross-provider trace suite', () => {
     const observation = passingObservation(FIXED_TRACE_SUITE[0]);
     expect(() => summarizeFixedTraceRun([observation, observation])).toThrow('Duplicate fixed trace observation');
     expect(() => summarizeFixedTraceRun([{ ...observation, traceId: 'unknown' }])).toThrow('Unknown fixed trace observation');
+  });
+
+  it('requires null diagnostic provenance outside an exact diagnostic mode', () => {
+    const observation = passingObservation(FIXED_TRACE_SUITE[0]);
+    observation.metadata.architectureDiagnostic = {
+      packDigest: HASH, pilotDigest: null, clusterId: 'forged', stratum: 'forged', localNearPairId: null,
+    };
+    observation.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observation.metadata);
+    expect(() => summarizeFixedTraceRun([observation]))
+      .toThrow('Non-diagnostic fixed trace observation must have null diagnostic provenance');
   });
 
   it('rejects observations combined from different provider runs', () => {

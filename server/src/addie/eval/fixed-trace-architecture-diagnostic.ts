@@ -187,6 +187,18 @@ export const FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_DIGEST = sha256({
   })),
 });
 
+/** The cohort-level mapping identity used in the architecture fingerprint. */
+export function fixedTraceArchitectureDiagnosticMappingBinding(
+  mode: 'synthetic_pack_v1' | 'synthetic_pilot_v1',
+): Readonly<{ packDigest: string; pilotDigest: string | null }> {
+  return freeze({
+    packDigest: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
+    pilotDigest: mode === 'synthetic_pilot_v1'
+      ? FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_DIGEST
+      : null,
+  });
+}
+
 export type FixedTraceArchitectureDiagnosticRouter = 'haiku' | 'luna';
 
 export interface FixedTraceArchitectureDiagnosticPlan {
