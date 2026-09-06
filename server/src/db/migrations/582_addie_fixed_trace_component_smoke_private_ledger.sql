@@ -351,15 +351,15 @@ BEGIN
   END IF;
   CASE p_profile_id
     WHEN 'anthropic-standard-2026-09:claude-haiku-4-5' THEN
-      numerator := 100 * p_input + 500 * p_output + 10 * p_cache_read + 125 * p_cache_write; denominator := 100;
+      numerator := 100::NUMERIC * p_input::NUMERIC + 500::NUMERIC * p_output::NUMERIC + 10::NUMERIC * p_cache_read::NUMERIC + 125::NUMERIC * p_cache_write::NUMERIC; denominator := 100;
     WHEN 'anthropic-standard-2026-09:claude-sonnet-5' THEN
-      numerator := 20 * p_input + 100 * p_output + 2 * p_cache_read + 25 * p_cache_write; denominator := 10;
+      numerator := 20::NUMERIC * p_input::NUMERIC + 100::NUMERIC * p_output::NUMERIC + 2::NUMERIC * p_cache_read::NUMERIC + 25::NUMERIC * p_cache_write::NUMERIC; denominator := 10;
     WHEN 'openai-gpt-5.6-luna-standard-2026-09-05' THEN
       IF p_cache_read + p_cache_write > p_input THEN RAISE EXCEPTION 'subset cache usage exceeds input'; END IF;
-      numerator := 20 * (p_input - p_cache_read - p_cache_write) + 120 * p_output + 2 * p_cache_read + 25 * p_cache_write; denominator := 100;
+      numerator := 20::NUMERIC * (p_input::NUMERIC - p_cache_read::NUMERIC - p_cache_write::NUMERIC) + 120::NUMERIC * p_output::NUMERIC + 2::NUMERIC * p_cache_read::NUMERIC + 25::NUMERIC * p_cache_write::NUMERIC; denominator := 100;
     WHEN 'google-gemini-3.7-flash-through-2026-12-31' THEN
       IF p_cache_write <> 0 OR p_cache_read > p_input THEN RAISE EXCEPTION 'Google cache usage is not admitted'; END IF;
-      numerator := 750 * (p_input - p_cache_read) + 3750 * p_output + 75 * p_cache_read; denominator := 1000;
+      numerator := 750::NUMERIC * (p_input::NUMERIC - p_cache_read::NUMERIC) + 3750::NUMERIC * p_output::NUMERIC + 75::NUMERIC * p_cache_read::NUMERIC; denominator := 1000;
     ELSE RAISE EXCEPTION 'pricing profile is not admitted';
   END CASE;
   RETURN ceil(numerator / denominator)::BIGINT;

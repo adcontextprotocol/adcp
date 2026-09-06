@@ -39,6 +39,8 @@ class StrictLedgerClient {
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rowCount: 0, rows: [] };
+    if (sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts')
+      || sql.startsWith('SELECT p.assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 0, rows: [] };
     if (sql.startsWith('SELECT status, reservation_microdollars')) return { rowCount: 1, rows: [{ status: this.authStatus, reservation_microdollars: '2819484', provider_ceiling_microdollars: '5000000' }] };
     if (sql.startsWith('SELECT status FROM addie_fixed_trace_component_smoke_authorizations')) return { rowCount: 1, rows: [{ status: this.authStatus }] };
     if (sql.startsWith('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts') && sql.includes("status = 'intent_recorded'")) return { rowCount: [...this.attempts.values()].some((attempt) => attempt.status === 'intent_recorded') ? 1 : 0, rows: [] };
@@ -62,11 +64,11 @@ class StrictLedgerClient {
       const attempt = this.attempts.get(params![0] as string);
       return attempt ? { rowCount: 1, rows: [{ assignment_id: attempt.assignmentId, status: attempt.status, invocation_ordinal: String(attempt.ordinal), ...this.planRow() }] } : { rowCount: 0, rows: [] };
     }
-    if (sql.startsWith('WITH locked_attempts AS')) {
+    if (sql.startsWith('WITH locked_attempts AS') && sql.includes('actual_cost_microdollars')) {
       const spent = this.priorSpend ?? String([...this.attempts.values()].reduce((sum, attempt) => sum + (attempt.cost ?? 0), 0));
       return { rowCount: 1, rows: [{ spent }] };
     }
-    if (sql.startsWith('SELECT count(*)::bigint AS count')) {
+    if ((sql.startsWith('WITH locked_attempts AS') && sql.includes('last_response_disposition')) || sql.startsWith('SELECT count(*)::bigint AS count')) {
       const matches = [...this.attempts.values()].filter((attempt) => attempt.assignmentId === params![1] && attempt.ordinal <= params![2] as number);
       const last = [...matches].sort((left, right) => right.ordinal - left.ordinal)[0];
       return { rowCount: 1, rows: [{ count: String(matches.length), open: matches.some((attempt) => attempt.status === 'intent_recorded'), failures: matches.some((attempt) => attempt.status !== 'succeeded'), last_response_disposition: last?.responseDisposition ?? null }] };

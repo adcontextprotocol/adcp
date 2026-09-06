@@ -28,6 +28,7 @@ function reservationIdFor(digest: string) {
 function reservationFor(digest: string) {
   return { authorizationDigest: digest, reservationId: reservationIdFor(digest), entryCount: 168 as const, providerDispatchEntryCount: 126 as const, reservationMicrodollars: 2_819_484 as const };
 }
+function uniqueAttemptId() { return `attempt_${createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32)}`; }
 
 async function seedExactPlan(subject = client!, alterFirstModel = false) {
   const digest = createHash('sha256').update(randomUUID()).digest('hex');
@@ -155,18 +156,69 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
 
   it('application terminalization uses the locked aggregate CTE on PostgreSQL', async () => {
     const entry = dispatchEntry(11);
-    const attemptId = `attempt_${'c'.repeat(31)}d`;
+    const attemptId = uniqueAttemptId();
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
       expect(await ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId, assignmentId: entry.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) })).toEqual({ status: 'recorded' });
       expect(await ledger.recordTerminal({ reservation: reservationFor(authorizationDigest), attemptId, status: 'succeeded', responseDisposition: 'final_response', responseHmac: 'd'.repeat(64), returnedIdentity: { provider: entry.provider, model: entry.model, effort: entry.effort }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 } })).toEqual({ status: 'recorded' });
+      expect(await ledger.recordProviderAssignmentTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'provider_completed', finalInvocationOrdinal: 1 })).toEqual({ status: 'recorded' });
       expect((await client!.query('SELECT status, actual_cost_microdollars FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [attemptId])).rows).toEqual([{ status: 'succeeded', actual_cost_microdollars: '0' }]);
+      expect((await client!.query('SELECT assignment_outcome FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2', [authorizationDigest, entry.assignmentId])).rows).toEqual([{ assignment_outcome: 'provider_completed' }]);
     } finally {
       await pool.end();
       await client!.query('BEGIN');
     }
+  });
+
+  it('uses target-plan then authorization order against a direct outcome writer', async () => {
+    const entry = dispatchEntry(15);
+    const attemptId = uniqueAttemptId();
+    await insertIntent(client!, authorizationDigest, entry, attemptId.slice('attempt_'.length));
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, 'a'.repeat(64), entry.provider, entry.model, entry.effort]);
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      await client!.query('BEGIN');
+      await client!.query('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2 FOR UPDATE', [authorizationDigest, entry.assignmentId]);
+      let settled = false;
+      const application = ledger.recordProviderAssignmentTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'provider_completed', finalInvocationOrdinal: 1 }).then((outcome) => { settled = true; return outcome; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(settled).toBe(false);
+      await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, entry.assignmentId]);
+      await client!.query('COMMIT');
+      expect(await application).toEqual({ status: 'refused', reason: 'plan_mismatch' });
+    } finally { await pool.end(); await client!.query('BEGIN'); }
+  });
+
+  it('application terminalizes a known provider failure after its fail-stop transition', async () => {
+    const entry = dispatchEntry(14);
+    const attemptId = uniqueAttemptId();
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      expect(await ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId, assignmentId: entry.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'b'.repeat(64) })).toEqual({ status: 'recorded' });
+      expect(await ledger.recordTerminal({ reservation: reservationFor(authorizationDigest), attemptId, status: 'provider_failed', responseDisposition: null, responseHmac: 'c'.repeat(64), returnedIdentity: { provider: entry.provider, model: entry.model, effort: entry.effort }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 } })).toEqual({ status: 'recorded' });
+      expect(await ledger.recordProviderAssignmentTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'provider_failed', finalInvocationOrdinal: 1 })).toEqual({ status: 'recorded' });
+      expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure' }]);
+    } finally { await pool.end(); await client!.query('BEGIN'); }
+  });
+
+  it('settles parser-maximum Google usage as priceable invalid_limits instead of leaving an open intent', async () => {
+    const entry = plan.find((candidate) => candidate.disposition === 'provider_dispatch' && candidate.pricingProfileId === 'google-gemini-3.7-flash-through-2026-12-31')!;
+    const attemptId = uniqueAttemptId();
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      expect(await ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId, assignmentId: entry.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'a'.repeat(64) })).toEqual({ status: 'recorded' });
+      expect(await ledger.recordTerminal({ reservation: reservationFor(authorizationDigest), attemptId, status: 'succeeded', responseDisposition: 'final_response', responseHmac: 'b'.repeat(64), returnedIdentity: { provider: entry.provider, model: entry.model, effort: entry.effort }, usage: { inputTokens: 0, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 } })).toEqual({ status: 'refused', reason: 'plan_mismatch' });
+      expect((await client!.query('SELECT status, observed_cost_microdollars FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [attemptId])).rows).toEqual([{ status: 'invalid_limits', observed_cost_microdollars: '3750000' }]);
+      expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'halted' }]);
+    } finally { await pool.end(); await client!.query('BEGIN'); }
   });
 
   it.each([
