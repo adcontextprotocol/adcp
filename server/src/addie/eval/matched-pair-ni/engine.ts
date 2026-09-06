@@ -40,6 +40,13 @@ const MATCHED_PAIR_NI_MAX_CONCURRENT_WORKERS = 2;
 /** This is V8 old-space only, not a total RSS/cgroup assertion. */
 const MATCHED_PAIR_NI_WORKER_MAX_OLD_SPACE_MB = 64;
 
+/** Never invoke a caller-mutable Array prototype in a worker realm. */
+function ownArray<T>(length = 0): T[] { return new Array<T>(length); }
+function ownSet<T>(target: T[], index: number, value: T): void {
+  Object.defineProperty(target, index, { value, enumerable: true, writable: true, configurable: true });
+}
+function ownAppend<T>(target: T[], value: T): void { ownSet(target, target.length, value); }
+
 export interface MatchedPairCounts { readonly n11: number; readonly n10: number; readonly n01: number; readonly n00: number; }
 export interface ReducedMatchedPairState { readonly n: number; readonly x: number; readonly t: number; }
 export interface MatchedPairNiInput { readonly counts: MatchedPairCounts; readonly margin: Rational; readonly alpha: Rational; }
@@ -97,7 +104,8 @@ export function matchedPairNiSupport(
 class WorkBudget {
   private used = 0;
   private readonly deadline = Date.now() + MATCHED_PAIR_NI_MAX_WORK_MILLISECONDS;
-  constructor(private readonly limit: number) {}
+  private readonly limit: number;
+  constructor(limit: number) { this.limit = limit; }
   charge(units = 1): void {
     this.used += units;
     if (this.used > this.limit || Date.now() > this.deadline) throw new RangeError('Exact E+M aggregate work ceiling exceeded');
@@ -124,20 +132,35 @@ class EngineRootBudget {
 function enginePrimitive(value: RationalPolynomial, budget: EngineRootBudget): RationalPolynomial {
   const normalized = canonicalPolynomial(value, 'Engine root polynomial');
   let common = 1n;
-  for (const coefficient of normalized) { budget.charge(); common = common / engineIntegerGcd(common, coefficient.denominator) * coefficient.denominator; }
-  const integers = normalized.map((coefficient) => coefficient.numerator * (common / coefficient.denominator));
-  const content = integers.reduce((result, coefficient) => engineIntegerGcd(result, coefficient), 0n) || 1n;
-  return polynomial(integers.map((coefficient) => rational(coefficient / content)));
+  for (let index = 0; index < normalized.length; index++) {
+    const coefficient = normalized[index]!;
+    budget.charge(); common = common / engineIntegerGcd(common, coefficient.denominator) * coefficient.denominator;
+  }
+  const integers = ownArray<bigint>(normalized.length);
+  let content = 0n;
+  for (let index = 0; index < normalized.length; index++) {
+    const coefficient = normalized[index]!;
+    const integer = coefficient.numerator * (common / coefficient.denominator);
+    ownSet(integers, index, integer);
+    content = engineIntegerGcd(content, integer);
+  }
+  const divisor = content || 1n;
+  const coefficients = ownArray<Rational>(integers.length);
+  for (let index = 0; index < integers.length; index++) ownSet(coefficients, index, rational(integers[index]! / divisor));
+  return polynomial(coefficients);
 }
 function engineSturm(value: RationalPolynomial, budget: EngineRootBudget): readonly RationalPolynomial[] {
   const polynomialValue = enginePrimitive(value, budget);
   if (isZero(polynomialValue)) throw new RangeError('Sturm sequence requires a nonzero polynomial');
-  const sequence: RationalPolynomial[] = [polynomialValue, enginePrimitive(derivative(polynomialValue), budget)];
+  const sequence = ownArray<RationalPolynomial>(0);
+  ownAppend(sequence, polynomialValue);
+  ownAppend(sequence, enginePrimitive(derivative(polynomialValue), budget));
   while (!isZero(sequence[sequence.length - 1]!)) {
     budget.charge();
-    const [, remainder] = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
+    const division = divideWithRemainder(sequence[sequence.length - 2]!, sequence[sequence.length - 1]!);
+    const remainder = division[1]!;
     if (isZero(remainder)) break;
-    sequence.push(enginePrimitive(polynomialNegate(remainder), budget));
+    ownAppend(sequence, enginePrimitive(polynomialNegate(remainder), budget));
   }
   return Object.freeze(sequence);
 }
@@ -145,7 +168,8 @@ function enginePolynomialGcd(left: RationalPolynomial, right: RationalPolynomial
   let a = enginePrimitive(left, budget); let b = enginePrimitive(right, budget);
   while (!isZero(b)) {
     budget.charge();
-    const [, remainder] = divideWithRemainder(a, b);
+    const division = divideWithRemainder(a, b);
+    const remainder = division[1]!;
     a = b; b = isZero(remainder) ? remainder : enginePrimitive(remainder, budget);
   }
   return a;
@@ -154,13 +178,21 @@ function engineSquareFree(value: RationalPolynomial, budget: EngineRootBudget): 
   const slope = derivative(value);
   if (isZero(slope)) return value;
   const divisor = enginePolynomialGcd(value, slope, budget);
-  const [quotient, remainder] = divideWithRemainder(value, divisor);
+  const division = divideWithRemainder(value, divisor);
+  const quotient = division[0]!; const remainder = division[1]!;
   if (!isZero(remainder)) throw new RangeError('Polynomial square-free division was not exact');
   return enginePrimitive(quotient, budget);
 }
 function engineVariations(sequence: readonly RationalPolynomial[], at: Rational, budget: EngineRootBudget): number {
-  const signs = sequence.map((item) => { budget.charge(); return compare(evaluate(item, at), ZERO); }).filter((item) => item !== 0);
-  return signs.reduce((total, item, index) => total + (index > 0 && signs[index - 1] !== item ? 1 : 0), 0);
+  const signs = ownArray<-1 | 1>(0);
+  for (let index = 0; index < sequence.length; index++) {
+    budget.charge();
+    const sign = compare(evaluate(sequence[index]!, at), ZERO);
+    if (sign !== 0) ownAppend(signs, sign);
+  }
+  let changes = 0;
+  for (let index = 1; index < signs.length; index++) if (signs[index - 1] !== signs[index]) changes++;
+  return changes;
 }
 function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, upper: Rational, refinementBits: number): RootIsolation {
   const polynomialValue = canonicalPolynomial(value, 'Engine root polynomial');
@@ -168,7 +200,8 @@ function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, 
   if (compare(lowerBound, upperBound) > 0) throw new RangeError('Root lower bound must not exceed upper bound');
   if (!Number.isSafeInteger(refinementBits) || refinementBits < 1 || refinementBits > MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS) throw new RangeError(`Root refinement bits must be an integer in [1, ${MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS}]`);
   if (degree(polynomialValue) <= 0) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: false });
-  if (degree(polynomialValue) > MAX_ENGINE_ROOT_DEGREE || polynomialValue.some((coefficient) => rationalBitLength(coefficient) > MAX_ENGINE_ROOT_COEFFICIENT_BITS)) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: true });
+  if (degree(polynomialValue) > MAX_ENGINE_ROOT_DEGREE) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: true });
+  for (let index = 0; index < polynomialValue.length; index++) if (rationalBitLength(polynomialValue[index]!) > MAX_ENGINE_ROOT_COEFFICIENT_BITS) return Object.freeze({ exact: Object.freeze([]), intervals: Object.freeze([]), unresolved: true });
   const budget = new EngineRootBudget();
   let distinct: RationalPolynomial; let sequence: readonly RationalPolynomial[];
   try { distinct = engineSquareFree(polynomialValue, budget); sequence = engineSturm(distinct, budget); }
@@ -180,9 +213,9 @@ function isolateEngineInteriorRoots(value: RationalPolynomial, lower: Rational, 
     try { budget.charge(); count = rootsInOpen(left, right); }
     catch (error) { if (error instanceof RangeError && /operation ceiling/.test(error.message)) { unresolved = true; return; } throw error; }
     if (count <= 0) return;
-    if (depth >= refinementBits) { if (count === 1) intervals.push(interval(left, right)); else unresolved = true; return; }
+    if (depth >= refinementBits) { if (count === 1) ownAppend(intervals, interval(left, right)); else unresolved = true; return; }
     const middle = divide(add(left, right), TWO);
-    if (compare(evaluate(polynomialValue, middle), ZERO) === 0) { exact.push(middle); visit(left, middle, depth + 1); visit(middle, right, depth + 1); return; }
+    if (compare(evaluate(polynomialValue, middle), ZERO) === 0) { ownAppend(exact, middle); visit(left, middle, depth + 1); visit(middle, right, depth + 1); return; }
     visit(left, middle, depth + 1); visit(middle, right, depth + 1);
   };
   visit(lowerBound, upperBound, 0);
@@ -237,11 +270,14 @@ function inertRecordWithOptional(value: unknown, name: string, required: readonl
     if (types.isProxy(value) || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) throw new TypeError();
     descriptors = Object.getOwnPropertyDescriptors(value);
   } catch { throw new RangeError(`${name} must not be a Proxy or dynamic object`); }
-  const allowed = new Set<string>();
-  for (let index = 0; index < required.length; index++) allowed.add(required[index]!);
-  for (let index = 0; index < optional.length; index++) allowed.add(optional[index]!);
   const keys = Reflect.ownKeys(descriptors);
-  for (let index = 0; index < keys.length; index++) if (typeof keys[index] !== 'string' || !allowed.has(keys[index] as string)) throw new RangeError(`${name} has unexpected fields`);
+  for (let index = 0; index < keys.length; index++) {
+    if (typeof keys[index] !== 'string') throw new RangeError(`${name} has unexpected fields`);
+    let allowed = false;
+    for (let requiredIndex = 0; requiredIndex < required.length; requiredIndex++) if (keys[index] === required[requiredIndex]) { allowed = true; break; }
+    if (!allowed) for (let optionalIndex = 0; optionalIndex < optional.length; optionalIndex++) if (keys[index] === optional[optionalIndex]) { allowed = true; break; }
+    if (!allowed) throw new RangeError(`${name} has unexpected fields`);
+  }
   for (let index = 0; index < required.length; index++) if (!Object.hasOwn(descriptors, required[index]!)) throw new RangeError(`${name} has unexpected fields`);
   const copy = Object.create(null) as Record<string, unknown>;
   const fieldCount = required.length + optional.length;
@@ -336,9 +372,18 @@ function hydrateCertificate(value: unknown, pValue: Readonly<{ lower: Rational; 
   if (ceiling.maxN !== MATCHED_PAIR_NI_MAX_N || ceiling.maxPolynomialDegree !== MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE || ceiling.maxRootBisections !== MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS) throw new RangeError('Worker safe ceiling is invalid');
   return Object.freeze({ method: copy.method, nullBoundary: copy.nullBoundary, maximization: copy.maximization, evaluatedEndpoints: true, stationaryPointCount: copy.stationaryPointCount as number, pValue, request: Object.freeze({ n: observed.n, x: observed.x, t: observed.t, margin: input.margin, alpha: input.alpha }), safeCeiling: Object.freeze({ maxN: MATCHED_PAIR_NI_MAX_N, maxPolynomialDegree: MATCHED_PAIR_NI_MAX_POLYNOMIAL_DEGREE, maxRootBisections: MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS }), exactness: copy.exactness });
 }
+function isEngineIndeterminacyReason(value: unknown): value is IndeterminateCertificate['reason'] {
+  return value === 'ambiguous_score_ordering' || value === 'ambiguous_e_ordering' || value === 'root_isolation_ceiling' || value === 'complexity_ceiling';
+}
+function isAlphaDecision(value: unknown): value is MatchedPairNiResult['diagnostic']['alphaDecision'] {
+  return value === 'reject_certified' || value === 'nonreject_certified' || value === 'indeterminate_alpha_overlap';
+}
+function isSizeEnvelopeReason(value: unknown): value is NullBoundarySizeEnvelope['reason'] {
+  return isEngineIndeterminacyReason(value) || value === 'overlapping_p_value' || value === 'size_complexity_ceiling';
+}
 function hydrateIndeterminate(value: unknown): IndeterminateCertificate {
   const copy = inertRecord(value, 'Worker indeterminate certificate', ['method', 'reason', 'reject']);
-  if (copy.method !== 'lloyd_moldovan_2008_restricted_score_e_plus_m' || copy.reject !== false || !['ambiguous_score_ordering', 'ambiguous_e_ordering', 'root_isolation_ceiling', 'complexity_ceiling'].includes(copy.reason as string)) throw new RangeError('Worker indeterminate certificate is invalid');
+  if (copy.method !== 'lloyd_moldovan_2008_restricted_score_e_plus_m' || copy.reject !== false || !isEngineIndeterminacyReason(copy.reason)) throw new RangeError('Worker indeterminate certificate is invalid');
   return Object.freeze({ method: copy.method, reason: copy.reason as IndeterminateCertificate['reason'], reject: false });
 }
 /** Rebuild a worker result from canonical values; structured clone drops freezes. */
@@ -346,7 +391,7 @@ function hydrateMatchedPairNiResult(value: unknown, input: MatchedPairNiInput): 
   const result = inertRecord(value, 'Worker diagnostic result', ['mode', 'admission', 'diagnostic']);
   if (result.mode !== 'restricted_score_e_plus_m' && result.mode !== 'conditional_mcnemar_zero_margin') throw new RangeError('Worker diagnostic mode is invalid');
   const diagnostic = inertRecordWithOptional(result.diagnostic, 'Worker diagnostic', ['statisticalRejectNull', 'alphaDecision', 'pValue'], ['certificate', 'indeterminate']);
-  if (typeof diagnostic.statisticalRejectNull !== 'boolean' || !['reject_certified', 'nonreject_certified', 'indeterminate_alpha_overlap'].includes(diagnostic.alphaDecision as string) || (diagnostic.certificate !== undefined && diagnostic.indeterminate !== undefined)) throw new RangeError('Worker diagnostic is invalid');
+  if (typeof diagnostic.statisticalRejectNull !== 'boolean' || !isAlphaDecision(diagnostic.alphaDecision) || (diagnostic.certificate !== undefined && diagnostic.indeterminate !== undefined)) throw new RangeError('Worker diagnostic is invalid');
   const pValue = hydratePValue(diagnostic.pValue, 'Worker diagnostic p-value');
   if (compare(pValue.lower, ZERO) < 0 || compare(pValue.upper, ONE) > 0) throw new RangeError('Worker diagnostic p-value is outside [0, 1]');
   const certificate = diagnostic.certificate === undefined ? undefined : hydrateCertificate(diagnostic.certificate, pValue, input);
@@ -358,7 +403,13 @@ function hydrateMatchedPairNiResult(value: unknown, input: MatchedPairNiInput): 
     const expected = conditionalMcNemarPValue(reduceMatchedPairCounts(input.counts));
     if (!equal(pValue.lower, expected) || !equal(pValue.upper, expected)) throw new RangeError('Worker conditional result is not bound to the captured counts');
   }
-  return Object.freeze({ mode: result.mode, admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: Object.freeze({ statisticalRejectNull: diagnostic.statisticalRejectNull, alphaDecision: diagnostic.alphaDecision as MatchedPairNiResult['diagnostic']['alphaDecision'], pValue, ...(certificate ? { certificate } : {}), ...(indeterminate ? { indeterminate } : {}) }) });
+  const alphaDecision = diagnostic.alphaDecision as MatchedPairNiResult['diagnostic']['alphaDecision'];
+  const safeDiagnostic = certificate
+    ? Object.freeze({ statisticalRejectNull: diagnostic.statisticalRejectNull, alphaDecision, pValue, certificate })
+    : indeterminate
+      ? Object.freeze({ statisticalRejectNull: diagnostic.statisticalRejectNull, alphaDecision, pValue, indeterminate })
+      : Object.freeze({ statisticalRejectNull: diagnostic.statisticalRejectNull, alphaDecision, pValue });
+  return Object.freeze({ mode: result.mode, admission: MATCHED_PAIR_NI_ADMISSION, diagnostic: safeDiagnostic });
 }
 function hydrateStates(value: unknown, name: string, n: number): readonly ReducedMatchedPairState[] {
   const raw = inertList(value, name);
@@ -366,12 +417,14 @@ function hydrateStates(value: unknown, name: string, n: number): readonly Reduce
   for (let index = 0; index < raw.length; index++) {
     const state = validateState(canonicalState(raw[index] as ReducedMatchedPairState));
     if (state.n !== n) throw new RangeError(`${name} has a state from another task`);
-    states.push(state);
+    ownAppend(states, state);
   }
   return Object.freeze(states);
 }
 function polynomialEqual(left: RationalPolynomial, right: RationalPolynomial): boolean {
-  return left.length === right.length && left.every((coefficient, index) => equal(coefficient, right[index]!));
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) if (!equal(left[index]!, right[index]!)) return false;
+  return true;
 }
 function certificateEqual(left: ExactInferenceCertificate | undefined, right: ExactInferenceCertificate | undefined): boolean {
   return left === undefined || right === undefined ? left === right
@@ -380,10 +433,23 @@ function certificateEqual(left: ExactInferenceCertificate | undefined, right: Ex
 function matchedResultEqual(left: MatchedPairNiResult, right: MatchedPairNiResult): boolean {
   return left.mode === right.mode && left.diagnostic.statisticalRejectNull === right.diagnostic.statisticalRejectNull && left.diagnostic.alphaDecision === right.diagnostic.alphaDecision && equal(left.diagnostic.pValue.lower, right.diagnostic.pValue.lower) && equal(left.diagnostic.pValue.upper, right.diagnostic.pValue.upper) && certificateEqual(left.diagnostic.certificate, right.diagnostic.certificate) && left.diagnostic.indeterminate?.reason === right.diagnostic.indeterminate?.reason;
 }
-function stateKeySet(states: readonly ReducedMatchedPairState[]): Set<string> { return new Set(states.map((state) => stateKey(state))); }
-function sameStates(left: readonly ReducedMatchedPairState[], right: readonly ReducedMatchedPairState[]): boolean { return left.length === right.length && left.every((state, index) => stateEquals(state, right[index]!)); }
+function stateKeyIn(states: readonly ReducedMatchedPairState[], key: string): boolean {
+  for (let index = 0; index < states.length; index++) if (stateKey(states[index]!) === key) return true;
+  return false;
+}
+function hasDuplicateStateKey(states: readonly ReducedMatchedPairState[]): boolean {
+  for (let left = 0; left < states.length; left++) for (let right = left + 1; right < states.length; right++) if (stateKey(states[left]!) === stateKey(states[right]!)) return true;
+  return false;
+}
+function sameStates(left: readonly ReducedMatchedPairState[], right: readonly ReducedMatchedPairState[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) if (!stateEquals(left[index]!, right[index]!)) return false;
+  return true;
+}
 function sizeEnvelopeEqual(left: NullBoundarySizeEnvelope, right: NullBoundarySizeEnvelope): boolean {
-  return left.status === right.status && left.reason === right.reason && left.request.n === right.request.n && equal(left.request.margin, right.request.margin) && equal(left.request.alpha, right.request.alpha) && polynomialEqual(left.lower, right.lower) && polynomialEqual(left.upper, right.upper) && sameStates(left.indeterminateStates, right.indeterminateStates) && sameStates(left.alphaOverlapStates, right.alphaOverlapStates) && left.engineIndeterminacy.length === right.engineIndeterminacy.length && left.engineIndeterminacy.every((entry, index) => entry.reason === right.engineIndeterminacy[index]?.reason && stateEquals(entry.state, right.engineIndeterminacy[index]!.state));
+  if (left.status !== right.status || left.reason !== right.reason || left.request.n !== right.request.n || !equal(left.request.margin, right.request.margin) || !equal(left.request.alpha, right.request.alpha) || !polynomialEqual(left.lower, right.lower) || !polynomialEqual(left.upper, right.upper) || !sameStates(left.indeterminateStates, right.indeterminateStates) || !sameStates(left.alphaOverlapStates, right.alphaOverlapStates) || left.engineIndeterminacy.length !== right.engineIndeterminacy.length) return false;
+  for (let index = 0; index < left.engineIndeterminacy.length; index++) if (left.engineIndeterminacy[index]!.reason !== right.engineIndeterminacy[index]!.reason || !stateEquals(left.engineIndeterminacy[index]!.state, right.engineIndeterminacy[index]!.state)) return false;
+  return true;
 }
 function hydrateSizeEnvelope(value: unknown, n: number, margin: Rational, alpha: Rational): NullBoundarySizeEnvelope {
   const copy = inertRecord(value, 'Worker size envelope', ['status', 'lower', 'upper', 'indeterminateStates', 'engineIndeterminacy', 'alphaOverlapStates', 'reason', 'request']);
@@ -399,22 +465,36 @@ function hydrateSizeEnvelope(value: unknown, n: number, margin: Rational, alpha:
   for (let index = 0; index < rawEngineIndeterminacy.length; index++) {
     const entry = rawEngineIndeterminacy[index];
     const item = inertRecord(entry, 'Worker engine indeterminacy entry', ['state', 'reason']);
-    if (!['ambiguous_score_ordering', 'ambiguous_e_ordering', 'root_isolation_ceiling', 'complexity_ceiling'].includes(item.reason as string)) throw new RangeError('Worker engine indeterminacy reason is invalid');
+    if (!isEngineIndeterminacyReason(item.reason)) throw new RangeError('Worker engine indeterminacy reason is invalid');
     const state = validateState(canonicalState(item.state as ReducedMatchedPairState));
     if (state.n !== n) throw new RangeError('Worker engine indeterminacy has a state from another task');
-    engineEntries.push(Object.freeze({ state, reason: item.reason as IndeterminateCertificate['reason'] }));
+    ownAppend(engineEntries, Object.freeze({ state, reason: item.reason as IndeterminateCertificate['reason'] }));
   }
   const engineIndeterminacy = Object.freeze(engineEntries);
-  if (copy.reason !== null && !['ambiguous_score_ordering', 'ambiguous_e_ordering', 'root_isolation_ceiling', 'complexity_ceiling', 'overlapping_p_value', 'size_complexity_ceiling'].includes(copy.reason as string)) throw new RangeError('Worker size envelope reason is invalid');
-  const allStates = stateKeySet(enumerateReducedStates(n));
-  const indeterminateKeys = stateKeySet(indeterminateStates); const overlapKeys = stateKeySet(alphaOverlapStates); const engineKeys = stateKeySet(engineIndeterminacy.map((entry) => entry.state));
-  if (indeterminateKeys.size !== indeterminateStates.length || overlapKeys.size !== alphaOverlapStates.length || engineKeys.size !== engineIndeterminacy.length || [...indeterminateKeys, ...overlapKeys, ...engineKeys].some((key) => !allStates.has(key)) || [...overlapKeys].some((key) => engineKeys.has(key)) || [...indeterminateKeys].some((key) => !overlapKeys.has(key) && !engineKeys.has(key)) || [...overlapKeys, ...engineKeys].some((key) => !indeterminateKeys.has(key))) throw new RangeError('Worker size envelope state lists are inconsistent');
+  if (copy.reason !== null && !isSizeEnvelopeReason(copy.reason)) throw new RangeError('Worker size envelope reason is invalid');
+  const allStates = enumerateReducedStates(n);
+  const engineStates = ownArray<ReducedMatchedPairState>(engineIndeterminacy.length);
+  for (let index = 0; index < engineIndeterminacy.length; index++) ownSet(engineStates, index, engineIndeterminacy[index]!.state);
+  if (hasDuplicateStateKey(indeterminateStates) || hasDuplicateStateKey(alphaOverlapStates) || hasDuplicateStateKey(engineStates)) throw new RangeError('Worker size envelope state lists are inconsistent');
+  for (let index = 0; index < indeterminateStates.length; index++) {
+    const key = stateKey(indeterminateStates[index]!);
+    if (!stateKeyIn(allStates, key) || (!stateKeyIn(alphaOverlapStates, key) && !stateKeyIn(engineStates, key))) throw new RangeError('Worker size envelope state lists are inconsistent');
+  }
+  for (let index = 0; index < alphaOverlapStates.length; index++) {
+    const key = stateKey(alphaOverlapStates[index]!);
+    if (!stateKeyIn(allStates, key) || stateKeyIn(engineStates, key) || !stateKeyIn(indeterminateStates, key)) throw new RangeError('Worker size envelope state lists are inconsistent');
+  }
+  for (let index = 0; index < engineStates.length; index++) {
+    const key = stateKey(engineStates[index]!);
+    if (!stateKeyIn(allStates, key) || !stateKeyIn(indeterminateStates, key)) throw new RangeError('Worker size envelope state lists are inconsistent');
+  }
   const expectedReason = engineIndeterminacy[0]?.reason ?? (alphaOverlapStates.length > 0 ? 'overlapping_p_value' : null);
   if ((copy.status === 'certified' && (indeterminateStates.length !== 0 || copy.reason !== null || !polynomialEqual(lower, upper))) || (copy.status === 'indeterminate' && (indeterminateStates.length === 0 || copy.reason !== expectedReason))) throw new RangeError('Worker size envelope status is inconsistent');
   // Cheap, independently checkable probability sanity prevents a forged
   // constant such as [2] from becoming a "certified" envelope before the
   // second complete worker recomputation is compared.
-  for (const point of [margin, ONE]) {
+  for (let pointIndex = 0; pointIndex < 2; pointIndex++) {
+    const point = pointIndex === 0 ? margin : ONE;
     const low = evaluate(lower, point); const high = evaluate(upper, point);
     if (compare(low, ZERO) < 0 || compare(high, ONE) > 0 || compare(low, high) > 0) throw new RangeError('Worker size envelope is not a probability envelope');
   }
@@ -467,8 +547,7 @@ function launchVerifiedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (v
       void worker!.terminate().catch(() => settleResult(null));
     };
     channel.port1.once('message', (message: unknown) => {
-      if (message === 'exact_matched_pair_ni_ready') channel.port1.postMessage('exact_matched_pair_ni_authorized');
-      else terminate();
+      if (message !== 'exact_matched_pair_ni_ready') terminate();
     });
     channel.port1.once('messageerror', () => terminate());
     timer = setTimeout(() => { terminate(); settleResult(null); }, MATCHED_PAIR_NI_WORKER_TIMEOUT_MILLISECONDS);
@@ -489,14 +568,17 @@ function runBoundedWorker<T>(task: WorkerTask, payload: unknown, hydrate: (value
   // same captured request agree exactly. There is deliberately no queue.
   if (activeWorkers + 2 > MATCHED_PAIR_NI_MAX_CONCURRENT_WORKERS) return Promise.resolve(fallback());
   activeWorkers += 2;
-  return Promise.all([launchVerifiedWorker(task, payload, hydrate), launchVerifiedWorker(task, payload, hydrate)])
-    .then(([left, right]) => left !== null && right !== null && equalResult(left, right) ? left : fallback())
+  const left = launchVerifiedWorker(task, payload, hydrate);
+  const right = launchVerifiedWorker(task, payload, hydrate);
+  return left.then((leftValue) => right.then((rightValue) => leftValue !== null && rightValue !== null && equalResult(leftValue, rightValue) ? leftValue : fallback()))
     .catch(() => fallback());
 }
 export function enumerateReducedStates(n: number): readonly ReducedMatchedPairState[] {
   finiteCount(n, 'n');
   if (n === 0 || n > MATCHED_PAIR_NI_MAX_N) throw new RangeError(`Reduced-state enumeration requires n in [1, ${MATCHED_PAIR_NI_MAX_N}]`);
-  return Object.freeze(Array.from({ length: n + 1 }, (_, t) => Array.from({ length: t + 1 }, (_, x) => canonicalState({ n, x, t }))).flat());
+  const states = ownArray<ReducedMatchedPairState>(0);
+  for (let t = 0; t <= n; t++) for (let x = 0; x <= t; x++) ownAppend(states, canonicalState({ n, x, t }));
+  return Object.freeze(states);
 }
 function stateEquals(a: ReducedMatchedPairState, b: ReducedMatchedPairState): boolean { return a.n === b.n && a.x === b.x && a.t === b.t; }
 function thetaHat(state: ReducedMatchedPairState): Rational { return divide(rational(2 * state.x - state.t), rational(state.n)); }
@@ -572,7 +654,8 @@ function scoreSquaredPolynomial(state: ReducedMatchedPairState, margin: Rational
 function polynomialGcd(left: RationalPolynomial, right: RationalPolynomial): RationalPolynomial {
   let a = left; let b = right;
   while (!isZero(b)) {
-    const [, remainder] = divideWithRemainder(a, b);
+    const division = divideWithRemainder(a, b);
+    const remainder = division[1]!;
     a = b; b = remainder;
   }
   return a;
@@ -611,18 +694,24 @@ function reducedStateProbabilityInterval(state: ReducedMatchedPairState, margin:
   ));
 }
 function probabilityRegionInterval(states: readonly ReducedMatchedPairState[], margin: Rational, phi: RationalInterval): RationalInterval {
-  return states.reduce((result, state) => intervalAdd(result, reducedStateProbabilityInterval(state, margin, phi)), interval(ZERO, ZERO));
+  let result = interval(ZERO, ZERO);
+  for (let index = 0; index < states.length; index++) result = intervalAdd(result, reducedStateProbabilityInterval(states[index]!, margin, phi));
+  return result;
 }
 /** Engine-private factored maximum; its region derives only from E+M states. */
 function maximizeProbabilityRegion(region: RationalPolynomial, states: readonly ReducedMatchedPairState[], margin: Rational) {
   const roots = isolateEngineInteriorRoots(derivative(region), margin, ONE, MATCHED_PAIR_NI_MAX_ROOT_BISECTIONS);
   let lower = evaluate(region, margin); let upper = lower;
-  for (const point of [ONE, ...roots.exact]) {
-    const value = evaluate(region, point);
+  const endpoint = evaluate(region, ONE);
+  if (compare(endpoint, lower) > 0) lower = endpoint;
+  if (compare(endpoint, upper) > 0) upper = endpoint;
+  for (let index = 0; index < roots.exact.length; index++) {
+    const value = evaluate(region, roots.exact[index]!);
     if (compare(value, lower) > 0) lower = value;
     if (compare(value, upper) > 0) upper = value;
   }
-  for (const root of roots.intervals) {
+  for (let index = 0; index < roots.intervals.length; index++) {
+    const root = roots.intervals[index]!;
     const factored = probabilityRegionInterval(states, margin, root);
     // A private factorization is accepted only if its outer bounds are also
     // compatible with the independently expanded rational polynomial bound.
@@ -669,12 +758,22 @@ function buildEStep(states: readonly ReducedMatchedPairState[], margin: Rational
     if (ePolynomials.has(key)) return ePolynomials.get(key)!;
     // Form all upper score tails once. This is the same E step as a nested
     // enumeration but avoids rebuilding O(states^2) polynomials.
-    const ordered = [...states];
-    ordered.sort((a, b) => {
-      const value = order(a, b);
-      if (value === null) { orderingAmbiguous = true; return 0; }
-      return value;
-    });
+    const ordered = ownArray<ReducedMatchedPairState>(states.length);
+    for (let index = 0; index < states.length; index++) ownSet(ordered, index, states[index]!);
+    // Stable insertion sort avoids caller-mutable Array.prototype.sort.
+    for (let index = 1; index < ordered.length; index++) {
+      const current = ordered[index]!;
+      let cursor = index - 1;
+      while (cursor >= 0) {
+        const comparison = order(ordered[cursor]!, current);
+        if (comparison === null) { orderingAmbiguous = true; break; }
+        if (comparison <= 0) break;
+        ownSet(ordered, cursor + 1, ordered[cursor]!);
+        cursor--;
+      }
+      ownSet(ordered, cursor + 1, current);
+      if (orderingAmbiguous) break;
+    }
     if (orderingAmbiguous) return null;
     let tail = constant(ZERO);
     for (let end = ordered.length - 1; end >= 0;) {
@@ -755,13 +854,14 @@ function restrictedScoreEMReduced(
   if (!observedE || eStep.hasAmbiguousOrdering()) return indeterminate('ambiguous_score_ordering');
   let region = constant(ZERO);
   const regionStates: ReducedMatchedPairState[] = [];
-  for (const state of states) {
+  for (let stateIndex = 0; stateIndex < states.length; stateIndex++) {
+    const state = states[stateIndex]!;
     budget.charge();
     const current = eStep.eValue(state);
     if (!current) return indeterminate('ambiguous_score_ordering');
     if (stateEquals(state, observed) || compare(current.upper, observedE.lower) <= 0) {
       region = polynomialAdd(region, reducedStateProbabilityPolynomial(state, margin));
-      regionStates.push(state);
+      ownAppend(regionStates, state);
     }
     else if (compare(current.lower, observedE.upper) <= 0) return indeterminate('ambiguous_e_ordering');
   }
@@ -842,15 +942,16 @@ function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rati
   const engineIndeterminacy: { state: ReducedMatchedPairState; reason: IndeterminateCertificate['reason'] }[] = [];
   const alphaOverlapStates: ReducedMatchedPairState[] = [];
   try {
-    for (const state of states) {
+    for (let stateIndex = 0; stateIndex < states.length; stateIndex++) {
+      const state = states[stateIndex]!;
       budget.charge();
       const counts = { n11: normalized.state.n - state.t, n10: state.x, n01: state.t - state.x, n00: 0 };
       const outcome = restrictedScoreEMReduced(reduceMatchedPairCounts(counts), normalized.margin, normalized.alpha, states, eStep, budget);
       const probability = reducedStateProbabilityPolynomial(state, normalized.margin);
       if (outcome.diagnostic.indeterminate) {
         upper = polynomialAdd(upper, probability);
-        indeterminateStates.push(state);
-        engineIndeterminacy.push(Object.freeze({ state, reason: outcome.diagnostic.indeterminate.reason }));
+        ownAppend(indeterminateStates, state);
+        ownAppend(engineIndeterminacy, Object.freeze({ state, reason: outcome.diagnostic.indeterminate.reason }));
       } else if (outcome.diagnostic.statisticalRejectNull) {
         lower = polynomialAdd(lower, probability);
         upper = polynomialAdd(upper, probability);
@@ -858,8 +959,8 @@ function nullBoundarySizeEnvelopeWorker(n: number, margin: Rational, alpha: Rati
         // The actual p-value could be <= alpha inside its certified enclosure.
         // Include it only in the upper size region and advertise the uncertainty.
         upper = polynomialAdd(upper, probability);
-        indeterminateStates.push(state);
-        alphaOverlapStates.push(state);
+        ownAppend(indeterminateStates, state);
+        ownAppend(alphaOverlapStates, state);
       }
     }
   } catch (error) {
@@ -887,6 +988,8 @@ interface EngineWorkerRequest {
   readonly task: WorkerTask;
   readonly payload: MatchedPairNiInput | Readonly<{ n: number; margin: Rational; alpha: Rational }>;
   readonly authorizationPort: MessagePort;
+  /** Test-only phase telemetry; never a capability or a policy input. */
+  readonly trace?: true;
 }
 function isEngineWorkerRequest(value: unknown): value is EngineWorkerRequest {
   return Boolean(value && typeof value === 'object' && (value as { exactMatchedPairNiWorker?: unknown }).exactMatchedPairNiWorker === true && (value as { authorizationPort?: unknown }).authorizationPort instanceof MessagePort);
@@ -894,12 +997,16 @@ function isEngineWorkerRequest(value: unknown): value is EngineWorkerRequest {
 if (!isMainThread && isEngineWorkerRequest(workerData)) {
   const request = workerData;
   request.authorizationPort.postMessage('exact_matched_pair_ni_ready');
-  request.authorizationPort.once('message', (authorization: unknown) => {
-    request.authorizationPort.close();
-    // This handshake coordinates the managed launcher; it is not a security
-    // capability. Intrinsic validation in each core must make recreated
-    // activation conservative before costly Sturm work.
-    if (authorization !== 'exact_matched_pair_ni_authorized') { parentPort?.postMessage({ ok: false }); return; }
+  // Do not wait on a JavaScript EventEmitter/MessagePort callback here. An
+  // arbitrary worker realm can poison Array.prototype before import, and
+  // Node listener delivery is outside this module's control. Running the
+  // intrinsically bounded core directly makes recreated activation harmless;
+  // the parent launcher still enforces the worker wall/resource boundary.
+  // Deferral lets a source-test entry install poison after ESM linking but
+  // before the imported module's computation closure runs. It is a native
+  // microtask boundary, not a caller-provided port/event callback.
+  queueMicrotask(() => {
+    if (request.trace === true) request.authorizationPort.postMessage('core_start');
     try {
       const value = request.task === 'restricted_score'
         ? restrictedScoreEMWorker(request.payload as MatchedPairNiInput)
@@ -908,9 +1015,10 @@ if (!isMainThread && isEngineWorkerRequest(workerData)) {
           (request.payload as { margin: Rational }).margin,
           (request.payload as { alpha: Rational }).alpha,
         );
-      parentPort?.postMessage({ ok: true, value });
+      if (request.trace === true) request.authorizationPort.postMessage('core_complete');
+      request.authorizationPort.close(); parentPort?.postMessage({ ok: true, value });
     } catch {
-      parentPort?.postMessage({ ok: false });
+      request.authorizationPort.close(); parentPort?.postMessage({ ok: false });
     }
   });
 }

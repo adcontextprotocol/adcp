@@ -118,7 +118,12 @@ export function decimal(value: string): Rational {
   if (value.length > MAX_EXTERNAL_DECIMAL_CHARACTERS) throw new RangeError(`Decimal literal exceeds ${MAX_EXTERNAL_DECIMAL_CHARACTERS}-character diagnostic ceiling`);
   if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) throw new RangeError('Margin and alpha must be finite decimal literals');
   const negative = value.startsWith('-');
-  const [wholeRaw, fraction = ''] = (negative ? value.slice(1) : value).split('.');
+  // Do not destructure `split` output: this module is in the worker's
+  // post-dispatch closure and a poisoned Array iterator must not run.
+  const unsigned = negative ? value.slice(1) : value;
+  const point = unsigned.indexOf('.');
+  const wholeRaw = point < 0 ? unsigned : unsigned.slice(0, point);
+  const fraction = point < 0 ? '' : unsigned.slice(point + 1);
   const scale = 10n ** BigInt(fraction.length);
   const numerator = BigInt(`${wholeRaw}${fraction}`);
   return rational(negative ? -numerator : numerator, scale);

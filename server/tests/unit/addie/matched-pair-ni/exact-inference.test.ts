@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
 import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
@@ -62,7 +63,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       });
       expect(result.error).toBeUndefined();
       expect(result.signal).toBeNull();
-      expect(result.status).toBe(0);
+      expect(result.status, result.stderr).toBe(0);
     }
   }
 
@@ -131,6 +132,51 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(result.status).toBe(0);
   }
 
+  /**
+   * The emitted worker is poisoned before module evaluation. TypeScript source
+   * needs its external tsx resolver to load before poisoning (the resolver is
+   * not part of this module's closure); its event trace proves engine import
+   * completed, then poison was installed before authorization invokes E+M.
+   */
+  function expectsPoisonedRecreatedWorkerMatrix(engineUrl: string, workerLoader: readonly string[], sourceResolution = false): void {
+    const tasks = [
+      { task: 'restricted_score', payload: `{ counts: { n11: 1, n10: 3, n01: 0, n00: 0 }, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
+      { task: 'null_size', payload: `{ n: 4, margin: { numerator: 7n, denominator: 100n }, alpha: { numerator: 1n, denominator: 20n } }` },
+    ];
+    const poisons = [
+      "Object.defineProperty(Array.prototype, 'map', { value() { for (;;) {} }, configurable: true })",
+      "Object.defineProperty(Array.prototype, Symbol.iterator, { value() { for (;;) {} }, configurable: true })",
+    ];
+    for (let poisonIndex = 0; poisonIndex < poisons.length; poisonIndex++) for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
+      const task = tasks[taskIndex]!;
+      const directory = mkdtempSync(join(tmpdir(), 'matched-ni-poisoned-worker-'));
+      const preload = join(directory, sourceResolution ? 'entry.mjs' : 'poison.mjs');
+      if (sourceResolution) {
+        writeFileSync(preload, `import ${JSON.stringify(engineUrl)}; import { workerData } from 'node:worker_threads'; workerData.authorizationPort.postMessage('import_complete'); ${poisons[poisonIndex]!}; workerData.authorizationPort.postMessage('poison_ack');`);
+      } else {
+        writeFileSync(preload, `import { workerData } from 'node:worker_threads'; ${poisons[poisonIndex]!}; workerData.authorizationPort.postMessage('poison_ack');`);
+      }
+      const source = `import { MessageChannel, Worker } from 'node:worker_threads';
+        const channel = new MessageChannel();
+        const worker = new Worker(new URL(${JSON.stringify(sourceResolution ? pathToFileURL(preload).href : engineUrl)}), { workerData: { exactMatchedPairNiWorker: true, task: ${JSON.stringify(task.task)}, authorizationPort: channel.port2, payload: ${task.payload}, trace: true }, transferList: [channel.port2], execArgv: ${sourceResolution ? JSON.stringify(workerLoader) : `[...${JSON.stringify(workerLoader)}, '--import', ${JSON.stringify(pathToFileURL(preload).href)}]`} });
+        const events = [];
+        const result = await new Promise((resolve, reject) => { let ready = false; let poisonAck = false; let imported = !${sourceResolution}; const timer = setTimeout(() => reject(new Error(\`timeout after \${events.join(',')}\`)), 2_000); channel.port1.on('message', (message) => { events.push(String(message)); ready ||= message === 'exact_matched_pair_ni_ready'; poisonAck ||= message === 'poison_ack'; imported ||= message === 'import_complete'; if (ready && poisonAck && imported) { events.push('authorized'); channel.port1.postMessage('exact_matched_pair_ni_authorized'); } }); worker.once('message', (message) => { clearTimeout(timer); resolve(message); }); worker.once('error', reject); worker.once('exit', (code) => reject(new Error(\`worker exited \${code}; events=\${events.join(',')}\`))); });
+        await worker.terminate();
+        const poisonAt = events.indexOf('poison_ack'); const startAt = events.indexOf('core_start'); const resultAt = events.indexOf('core_complete');
+        process.exit(result?.ok === true && poisonAt >= 0 && startAt > poisonAt && resultAt > startAt && (!${sourceResolution} || events.indexOf('import_complete') >= 0) ? 0 : 2);`;
+      try {
+        const result = spawnSync(process.execPath, [...workerLoader, '--input-type=module', '--eval', source], {
+          cwd: process.cwd(), encoding: 'utf8', timeout: 3_000,
+        });
+        expect(result.error).toBeUndefined();
+        expect(result.signal).toBeNull();
+        expect(result.status, result.stderr).toBe(0);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+  }
+
   function expectsBuiltPathToRetainRootAndWorkerBounds(): void {
     const output = mkdtempSync(join(tmpdir(), 'matched-ni-built-'));
     try {
@@ -163,6 +209,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
         `file://${output}/addie/eval/matched-pair-ni/algebraic.js`,
         `file://${output}/addie/eval/matched-pair-ni/rational.js`, [],
       );
+      expectsPoisonedRecreatedWorkerMatrix(`file://${output}/addie/eval/matched-pair-ni/engine.js`, []);
     } finally {
       rmSync(output, { recursive: true, force: true });
     }
@@ -325,6 +372,14 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       ['--import', 'tsx'],
     );
   }, 20_000);
+
+  it('keeps caller-created poisoned worker realms bounded in source and emitted builds', () => {
+    expectsPoisonedRecreatedWorkerMatrix(
+      new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href,
+      ['--import', 'tsx'],
+      true,
+    );
+  }, 30_000);
 
   it('divides signed intervals outward over a strictly positive divisor', () => {
     expect(intervalDividePositive(interval(rational(-2), rational(-1)), interval(ONE, rational(2)))).toEqual(interval(rational(-2), rational(-1, 2)));
