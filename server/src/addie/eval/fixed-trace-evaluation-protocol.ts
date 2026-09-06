@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  resolveModelCostPricing,
-} from "../model-cost-pricing.js";
+import { datedPricingProfilesForFixedTrace } from "./dated-pricing-cohort.js";
 import { ANTHROPIC_PROVIDER_CAPABILITIES } from "../model-providers/anthropic-provider.js";
 import {
   GOOGLE_GENERATE_CONTENT_CAPABILITIES,
@@ -91,7 +89,7 @@ export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256 =
 /** Independently pinned by A's consumer boundary, not imported as policy. */
 const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN = 16 * 1024;
 const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN =
-  "b9eb7e38b822d8982b2d4c9ac3f1f1ef1992d41da0726c4497732bdd50c656dc" as const;
+  "7817771c13fe522046f89330a7962e16ecda7ac6f8c1d86a0d8ee60d47620a45" as const;
 
 type FixedTraceAPrerequisiteManifestParityDiagnostic = Readonly<{
   status: "parity_failure";
@@ -204,22 +202,21 @@ function canonicalPricingDescriptor(
   provider: ModelProviderId,
   model: string,
 ): FixedTraceProtocolPricingProfile {
-  const pricing = resolveModelCostPricing(provider, model);
+  const pricing = datedPricingProfilesForFixedTrace().find(
+    (profile) => profile.provider === provider && profile.model === model,
+  );
   if (!pricing) return Object.freeze({
     provider, model, profileId: null, version: null, effectiveFrom: null,
     effectiveBefore: null, status: "unavailable_missing_canonical_price",
   });
-  // The current live registry records only an end date (or no date), not the
-  // complete dated cohort interval required for a prospective evaluation.
-  // Therefore no numeric cost or reservation can be inferred from it here.
   return Object.freeze({
     provider,
     model,
-    profileId: pricing.version,
-    version: pricing.version,
-    effectiveFrom: null,
-    effectiveBefore: pricing.validBefore?.toISOString() ?? null,
-    status: "unavailable_missing_effective_interval",
+    profileId: pricing.profileId,
+    version: pricing.profileId,
+    effectiveFrom: pricing.effectiveFrom,
+    effectiveBefore: pricing.effectiveBefore,
+    status: "available",
   });
 }
 
@@ -346,7 +343,7 @@ export const FIXED_TRACE_UNSUPPORTED_OPENAI_CANDIDATES = Object.freeze([
  * architecture comparison, no execution authorization.
  */
 export const FIXED_TRACE_COMPONENT_SMOKE_PLAN = Object.freeze({
-  status: "not_admitted_pending_credential_free_admission",
+  status: "credential_free_admission_pending_explicit_paid_authorization",
   cases: 8,
   repetitions: 1,
   routerCells: 10,
@@ -357,7 +354,7 @@ export const FIXED_TRACE_COMPONENT_SMOKE_PLAN = Object.freeze({
   llmJudging: "none",
   architectureClaim: "none",
   providerCeilingUsd: 5,
-  authorization: "none",
+  authorization: "explicit_one_use_external_required",
 });
 
 /** Planning-only cardinalities; this does not schedule confirmation. */

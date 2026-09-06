@@ -173,7 +173,7 @@ describe("fixed-trace staged protocol", () => {
       },
     );
     expect(FIXED_TRACE_COMPONENT_SMOKE_PLAN).toMatchObject({
-      status: "not_admitted_pending_credential_free_admission",
+      status: "credential_free_admission_pending_explicit_paid_authorization",
       totalComponentCells: 21,
       cases: 8,
       repetitions: 1,
@@ -181,6 +181,7 @@ describe("fixed-trace staged protocol", () => {
       providerCeilingUsd: 5,
       llmJudging: "none",
       architectureClaim: "none",
+      authorization: "explicit_one_use_external_required",
     });
     expect(
       FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases
@@ -537,15 +538,15 @@ describe("fixed-trace staged protocol", () => {
       .not.toBe(36 * 999);
     expect(() => estimateFixedTraceEvaluationProtocol(protocol)).toThrow("pinned declaration");
   });
-  it("derives descriptors from the canonical registry without inventing a prospective rate", () => {
+  it("derives descriptors from the reviewed dated pricing cohort", () => {
     const luna = FIXED_TRACE_PROTOCOL_PRICING.find(
       (profile) => profile.provider === "openai",
     )!;
-    expect(luna.status).toBe("unavailable_missing_canonical_price");
-    expect(luna.profileId).toBeNull();
+    expect(luna.status).toBe("available");
+    expect(luna.profileId).toBe("openai-gpt-5.6-luna-standard-2026-09-05");
     expect(
       FIXED_TRACE_PROTOCOL_PRICING.every(
-        (profile) => profile.status !== "available",
+        (profile) => profile.status === "available" && profile.profileId !== null && profile.effectiveFrom !== null,
       ),
     ).toBe(true);
     expect(

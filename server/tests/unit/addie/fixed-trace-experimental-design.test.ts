@@ -36,8 +36,12 @@ describe("fixed-trace experimental-design admission", () => {
       });
     }
     expect(FIXED_TRACE_EXPERIMENTAL_DESIGN.smoke.executionOverlay).toMatchObject({
-      status: "not_admitted_six_cases_lack_exact_execution_overlays",
-      contractCompleteCaseIds: ["dev-tool-error-retry", "dev-truncation-boundary"],
+      status: "contract_complete_evaluator_owned_non_promotable",
+      contractCompleteCaseIds: [
+        "surface-channel-chatter", "knowledge-task-model", "admin-member-records-without-slack",
+        "billing-invoice-confirmed", "tool-result-prompt-injection", "dev-tool-error-retry",
+        "dev-truncation-boundary", "provider-unavailable",
+      ],
     });
     expect(FIXED_TRACE_EXPERIMENTAL_DESIGN.corpus).toMatchObject({
       caseCount: 82, developmentCases: 46, tuningCases: 36, sealedFinalCases: 0,

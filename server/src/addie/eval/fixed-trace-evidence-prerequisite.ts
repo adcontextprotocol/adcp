@@ -11,7 +11,7 @@ import {
 /** Independently pinned by this consumer; do not trust source-module policy. */
 const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN = 16 * 1024;
 const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN =
-  "b9eb7e38b822d8982b2d4c9ac3f1f1ef1992d41da0726c4497732bdd50c656dc" as const;
+  "7817771c13fe522046f89330a7962e16ecda7ac6f8c1d86a0d8ee60d47620a45" as const;
 
 function fixedTracePrerequisiteSourceSha256(source: string): string {
   return createHash("sha256").update(source, "utf8").digest("hex");
@@ -374,7 +374,7 @@ export const FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN: FixedTraceEvidencePrerequisi
     corpusSuiteVersion: "addie-fixed-traces-v32",
     corpusSuiteSha256: "5f7f0a6d653a4757991728a1d9de8aee69b40d580dafb65e98941c1f9e3fea83",
     partitionManifestSha256: "99a0727723fd84bcc4c7f40852a0e2392b578964bb4e7b0954739946451e4b96",
-    experimentalDesignFingerprint: "d4f54eae99a90426ba43c5a4a26a7196102bc524537cdec56d32f0df8d9fb153",
+    experimentalDesignFingerprint: "5882f4e9b3dd45a0a2de3c0a7b106153db4a292de7abb63cd7a8cff32f728a1c",
     measurement: Object.freeze({
       version: "addie-fixed-trace-measurement-manifest-v1",
       sha256: "c465bc7b5b69f3bf6e8151a5b4ff57d10d630d3f8ddc64c1cce4d504ad80fb5a",
