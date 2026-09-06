@@ -126,12 +126,17 @@ export interface RouterEvalBudgetSnapshot {
   readonly exposureUnknown: boolean;
 }
 
+declare const routerEvalReservationToken: unique symbol;
+
+/** Opaque frozen capability token; no accounting state is caller-visible. */
 interface RouterEvalReservation {
-  readonly usd: number;
-  active: boolean;
+  readonly [routerEvalReservationToken]: never;
 }
 
-interface RouterEvalReservationPricingBinding {
+interface RouterEvalReservationState {
+  readonly usd: number;
+  active: boolean;
+  dispatched: boolean;
   /** The exact module-issued profile object selected before dispatch. */
   readonly pricing: DatedPricingProfile;
   /** Snapshot of its issued digest, candidate, provider, and model. */
@@ -151,9 +156,10 @@ export class RouterEvalBudget {
   private budgetRejectedCalls = 0;
   private admissionClosed = false;
   private exposureUnknown = false;
-  // Keep provenance outside the caller-held mutable reservation handle. This
-  // also makes a reservation issued by one ledger unusable by another.
-  private readonly reservationPricingBindings = new WeakMap<RouterEvalReservation, RouterEvalReservationPricingBinding>();
+  // Every mutable reservation value is private. The returned frozen token is
+  // only a WeakMap identity capability, so it cannot alter its own refund or
+  // active state and cannot be replayed through another ledger.
+  private readonly reservationStates = new WeakMap<RouterEvalReservation, RouterEvalReservationState>();
 
   constructor(readonly softMaxUsd: number) {
     if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
@@ -185,8 +191,10 @@ export class RouterEvalBudget {
       throw new RouterEvalBudgetAdmissionError('soft_limit_exceeded');
     }
     this.reservedUsd += usd;
-    const reservation = { usd, active: true };
-    this.reservationPricingBindings.set(reservation, { pricing, pricingIdentity });
+    const reservation = Object.freeze({}) as RouterEvalReservation;
+    this.reservationStates.set(reservation, {
+      usd, active: true, dispatched: false, pricing, pricingIdentity,
+    });
     return reservation;
   }
 
@@ -202,13 +210,17 @@ export class RouterEvalBudget {
   }
 
   markDispatched(reservation: RouterEvalReservation): void {
-    this.requireActive(reservation);
+    const state = this.requireActive(reservation);
+    if (state.dispatched) throw new Error('Router eval budget reservation was already dispatched');
+    state.dispatched = true;
     this.dispatchedCalls++;
   }
 
   complete(reservation: RouterEvalReservation, usage: ModelUsage, pricing: DatedPricingProfile): number {
+    const state = this.requireActive(reservation);
+    if (!state.dispatched) throw new Error('Router eval budget reservation was not dispatched');
     const pricingIdentity = assertImmutableDatedPricingProfile(pricing);
-    this.assertReservationPricing(reservation, pricing, pricingIdentity);
+    this.assertReservationPricing(state, pricing, pricingIdentity);
     const actualCostUsd = datedPricingCostUsd(pricing, usage);
     this.release(reservation);
     this.accountedSpendUsd += actualCostUsd;
@@ -217,10 +229,14 @@ export class RouterEvalBudget {
   }
 
   cancel(reservation: RouterEvalReservation): void {
+    const state = this.requireActive(reservation);
+    if (state.dispatched) throw new Error('Router eval budget dispatched reservation cannot be cancelled');
     this.release(reservation);
   }
 
   markExposureUnknown(reservation: RouterEvalReservation): void {
+    const state = this.requireActive(reservation);
+    if (!state.dispatched) throw new Error('Router eval budget reservation was not dispatched');
     this.release(reservation);
     this.exposureUnknown = true;
   }
@@ -241,32 +257,36 @@ export class RouterEvalBudget {
     });
   }
 
-  private requireActive(reservation: RouterEvalReservation): void {
-    if (!reservation.active || !this.reservationPricingBindings.has(reservation)) {
+  private requireActive(reservation: RouterEvalReservation): RouterEvalReservationState {
+    const state = this.reservationStates.get(reservation);
+    if (!state || !state.active) {
       throw new Error('Router eval budget reservation is inactive');
     }
+    return state;
   }
 
   private release(reservation: RouterEvalReservation): void {
-    this.requireActive(reservation);
-    reservation.active = false;
-    this.reservedUsd = Math.max(0, this.reservedUsd - reservation.usd);
+    const state = this.requireActive(reservation);
+    const nextReservedUsd = this.reservedUsd - state.usd;
+    if (nextReservedUsd < -Number.EPSILON) {
+      throw new Error('Router eval budget reservation ledger is inconsistent');
+    }
+    state.active = false;
+    this.reservedUsd = nextReservedUsd <= Number.EPSILON ? 0 : nextReservedUsd;
   }
 
   private assertReservationPricing(
-    reservation: RouterEvalReservation,
+    state: RouterEvalReservationState,
     pricing: DatedPricingProfile,
     pricingIdentity: DatedPricingProfileIdentity,
   ): void {
-    const binding = this.reservationPricingBindings.get(reservation);
     if (
-      !binding
-      || binding.pricing !== pricing
-      || binding.pricingIdentity.digest !== pricingIdentity.digest
-      || binding.pricingIdentity.candidateId !== pricingIdentity.candidateId
-      || binding.pricingIdentity.profileId !== pricingIdentity.profileId
-      || binding.pricingIdentity.provider !== pricingIdentity.provider
-      || binding.pricingIdentity.model !== pricingIdentity.model
+      state.pricing !== pricing
+      || state.pricingIdentity.digest !== pricingIdentity.digest
+      || state.pricingIdentity.candidateId !== pricingIdentity.candidateId
+      || state.pricingIdentity.profileId !== pricingIdentity.profileId
+      || state.pricingIdentity.provider !== pricingIdentity.provider
+      || state.pricingIdentity.model !== pricingIdentity.model
     ) throw new Error('Router eval budget reservation pricing profile does not match settlement profile');
   }
 }

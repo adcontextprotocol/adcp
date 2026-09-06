@@ -173,10 +173,11 @@ describe('router evaluation dated-pricing ledger', () => {
     const budget = new RouterEvalBudget(1);
     const reservation = budget.reserve(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
     budget.markDispatched(reservation);
+    const reservedBeforeRejectedSettlement = budget.snapshot().reservedUsd;
 
     expect(() => budget.complete(reservation, { inputTokens: 10, outputTokens: 2 }, ANTHROPIC_PRICING))
       .toThrow('reservation pricing profile does not match settlement profile');
-    expect(budget.snapshot()).toMatchObject({ accountedSpendUsd: 0, reservedUsd: reservation.usd, completedCalls: 0 });
+    expect(budget.snapshot()).toMatchObject({ accountedSpendUsd: 0, reservedUsd: reservedBeforeRejectedSettlement, completedCalls: 0 });
     budget.markExposureUnknown(reservation);
 
     const frozenSubstitute = Object.freeze({
@@ -187,6 +188,45 @@ describe('router evaluation dated-pricing ledger', () => {
       .toThrow('immutable dated cohort profile');
     expect(() => { (OPENAI_PRICING as { model: string }).model = 'forged'; }).toThrow();
     expect(OPENAI_PRICING.model).toBe('gpt-5.6-luna');
+  });
+
+  it('uses opaque frozen handles so caller mutations cannot refund another active reservation', () => {
+    const budget = new RouterEvalBudget(1);
+    const first = budget.reserve(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
+    const firstReservedUsd = budget.snapshot().reservedUsd;
+    const second = budget.reserve(PREPARED_ROUTER_CALL, 300, OPENAI_PRICING);
+    const totalReservedUsd = budget.snapshot().reservedUsd;
+    const secondReservedUsd = totalReservedUsd - firstReservedUsd;
+    const callerView = first as unknown as object;
+
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(first, 'usd')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(first, 'active')).toBe(false);
+    expect(Reflect.set(callerView, 'usd', 0)).toBe(false);
+    expect(Reflect.set(callerView, 'active', false)).toBe(false);
+    expect(Reflect.deleteProperty(callerView, 'usd')).toBe(true);
+    expect(Reflect.deleteProperty(callerView, 'active')).toBe(true);
+    expect(budget.snapshot().reservedUsd).toBe(totalReservedUsd);
+
+    const clone = Object.freeze(structuredClone(first)) as typeof first;
+    const proxy = new Proxy(first, {}) as typeof first;
+    const lookalike = Object.freeze({}) as typeof first;
+    const otherBudget = new RouterEvalBudget(1);
+    for (const invalid of [clone, proxy, lookalike]) {
+      expect(() => budget.cancel(invalid)).toThrow('reservation is inactive');
+    }
+    expect(() => otherBudget.cancel(second)).toThrow('reservation is inactive');
+    expect(otherBudget.snapshot()).toMatchObject({ reservedUsd: 0, accountedSpendUsd: 0 });
+
+    budget.cancel(first);
+    expect(budget.snapshot()).toMatchObject({ reservedUsd: secondReservedUsd, accountedSpendUsd: 0 });
+    expect(() => budget.cancel(first)).toThrow('reservation is inactive');
+    budget.markDispatched(second);
+    const actual = budget.complete(second, { inputTokens: 100, outputTokens: 20, cacheWriteTokens: 40 }, OPENAI_PRICING);
+    expect(actual).toBe(0.000046);
+    expect(budget.snapshot()).toMatchObject({ reservedUsd: 0, accountedSpendUsd: actual, dispatchedCalls: 1, completedCalls: 1 });
+    expect(() => budget.complete(second, { inputTokens: 0, outputTokens: 0 }, OPENAI_PRICING))
+      .toThrow('reservation is inactive');
   });
 });
 
