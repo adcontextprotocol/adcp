@@ -19,6 +19,11 @@ import {
 const NOW = new Date('2026-09-06T12:00:00.000Z');
 const keys = generateKeyPairSync('ed25519');
 const TEST_KID = 'component-smoke-test-ed25519-2026';
+const trustRoot = Object.freeze({
+  kid: TEST_KID,
+  spki: (keys.publicKey.export({ format: 'der', type: 'spki' }) as Buffer).toString('base64url'),
+});
+const trustRootPin = createHash('sha256').update(JSON.stringify(trustRoot), 'utf8').digest('hex');
 
 function payload(overrides: Partial<FixedTraceComponentSmokeSignedGrantPayload> = {}): FixedTraceComponentSmokeSignedGrantPayload {
   const admission = fixedTraceComponentSmokeAdmission();
@@ -51,12 +56,14 @@ class FakeLedgerClient {
   private readonly authorizations = new Map<string, string>();
   async query(sql: string, params?: unknown[]) {
     this.calls.push({ sql, params });
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rowCount: 0, rows: [] };
     if (sql.startsWith('INSERT INTO addie_fixed_trace_component_smoke_authorizations')) {
       const digest = params?.[0] as string;
       if (this.authorizations.has(digest)) return { rowCount: 0, rows: [] };
       this.authorizations.set(digest, 'consumed');
       return { rowCount: 1, rows: [{ authorization_digest: digest }] };
     }
+    if (sql.startsWith('INSERT INTO addie_fixed_trace_component_smoke_run_plan')) return { rowCount: 1, rows: [] };
     if (sql.startsWith('SELECT status, expires_at')) {
       const status = this.authorizations.get(params?.[0] as string);
       return status ? { rowCount: 1, rows: [{ status, expires_at: '2026-09-06T13:00:00.000Z' }] } : { rowCount: 0, rows: [] };
@@ -81,6 +88,15 @@ describe('fixed-trace component smoke private signed authorization', () => {
     expect(verify({ ...grant(), payload: { ...payload(), extra: true } })).toBeNull();
     expect(verify(grant(payload({ kid: 'unknown-key' })))).toBeNull();
     expect(verify(grant(payload(), Buffer.alloc(64)))).toBeNull();
+  });
+
+  it('has no ambient root, issuer, private-key, or network construction dependency', () => {
+    const source = readFileSync(new URL('../../../src/addie/eval/fixed-trace-component-smoke-private-authorization.ts', import.meta.url), 'utf8');
+    expect(source).not.toContain('process.env');
+    expect(source).not.toContain('readFile');
+    expect(source).not.toContain('fetch(');
+    expect(source).not.toContain('createPrivateKey');
+    expect(source).not.toContain('generateKeyPair');
   });
 
   it.each([
@@ -137,11 +153,45 @@ describe('fixed-trace component smoke private signed authorization', () => {
     expect(source).not.toContain('output:');
   });
 
-  it('keeps arbitrary injected roots and structural lookalikes fail-closed until a reviewed pin exists', () => {
-    const spki = (keys.publicKey.export({ format: 'der', type: 'spki' }) as Buffer).toString('base64url');
-    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ kid: TEST_KID, spki })).toBeNull();
-    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ kid: TEST_KID, spki, extra: true })).toBeNull();
-    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ verify: () => grant() })).toBeNull();
+  it('requires independently supplied exact root and pin before minting a ledger capability', async () => {
+    const verifier = createFixedTraceComponentSmokeOneShotGrantVerifier(
+      Object.freeze({ spki: trustRoot.spki, kid: trustRoot.kid }),
+      trustRootPin,
+    );
+    expect(verifier).not.toBeNull();
+    const signed = grant();
+    const checked = verifier?.verify(signed, NOW);
+    const replayed = verifier?.verify(signed, NOW);
+    expect(checked).not.toBeNull();
+    expect(replayed).not.toBeNull();
+    const client = new FakeLedgerClient();
+    const subject = new PostgresFixedTraceComponentSmokePrivateLedger({ connect: async () => client } as never);
+    await expect(subject.reserveAndConsume(checked!)).resolves.toMatchObject({ status: 'reserved' });
+    expect(client.calls.filter(({ sql }) => sql.startsWith('INSERT INTO addie_fixed_trace_component_smoke_run_plan'))).toHaveLength(168);
+    await expect(subject.reserveAndConsume(replayed!)).resolves.toEqual({ status: 'refused', reason: 'grant_already_consumed' });
+  });
+
+  it('rejects missing, malformed, mismatched, and structural-lookalike root or pin inputs before verification', () => {
+    const other = generateKeyPairSync('ed25519');
+    const otherRoot = { kid: TEST_KID, spki: (other.publicKey.export({ format: 'der', type: 'spki' }) as Buffer).toString('base64url') };
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier(undefined, trustRootPin)).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier(trustRoot, undefined)).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier(trustRoot, trustRootPin.toUpperCase())).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier(otherRoot, trustRootPin)).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ kid: TEST_KID, spki: 'not-a-der' }, trustRootPin)).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ ...trustRoot, extra: true }, trustRootPin)).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier({ verify: () => grant() }, trustRootPin)).toBeNull();
+    expect(createFixedTraceComponentSmokeOneShotGrantVerifier(trustRoot, { digest: trustRootPin })).toBeNull();
+  });
+
+  it.each([
+    ['wrong kid', grant(payload({ kid: 'wrong-kid' }))],
+    ['wrong signature', grant(payload(), Buffer.alloc(64))],
+    ['missing signature', { algorithm: FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_ALGORITHM, payload: payload() }],
+    ['expired grant', grant(payload({ expiresAt: '2026-09-06T12:00:00.000Z' }))],
+  ])('rejects %s before it can mint a capability', (_name, candidate) => {
+    const verifier = createFixedTraceComponentSmokeOneShotGrantVerifier(trustRoot, trustRootPin);
+    expect(verifier?.verify(candidate, NOW)).toBeNull();
   });
 
   it('rejects a wrong or cross-reservation envelope before it can mutate a ledger', async () => {

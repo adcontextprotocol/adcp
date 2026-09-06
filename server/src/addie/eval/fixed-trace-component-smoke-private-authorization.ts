@@ -51,11 +51,7 @@ export interface FixedTraceComponentSmokeTestGrantVerification {
   readonly valid: true;
   readonly signedPayloadDigest: string;
 }
-/**
- * An explicitly supplied SPKI is useful only when it matches the separately
- * provisioned module pin. The pin is deliberately null in this tranche, so
- * this shape is not an authority-minting caller-selected-root escape hatch.
- */
+/** Exact public root supplied only by the isolated one-shot composition root. */
 export interface FixedTraceComponentSmokeOneShotTrustRoot {
   readonly kid: string;
   readonly spki: string;
@@ -73,8 +69,6 @@ export const FIXED_TRACE_COMPONENT_SMOKE_SIGNED_GRANT_MAX_TTL_MS = 15 * 60 * 1_0
  * null registry in a dedicated change before it can verify anything.
  */
 const PRODUCTION_SPKI_BY_KID: Readonly<Record<string, string>> | null = null;
-/** Separate deployment authority must pin this SHA-256 before a root can be used. */
-const PRODUCTION_ONE_SHOT_TRUST_ROOT_PIN: string | null = null;
 /** Capability marker: only this verifier can create an input accepted by the ledger. */
 const VERIFIED_GRANTS = new WeakMap<object, Buffer>();
 
@@ -194,16 +188,24 @@ function exactOneShotTrustRoot(value: unknown): FixedTraceComponentSmokeOneShotT
 }
 
 /**
- * A later isolated composition root may inject one exact separately provisioned
- * root. Until that root's immutable module pin is reviewed and provisioned,
- * this always returns null: arbitrary callers cannot mint ledger authority.
+ * Constructs the private one-shot verifier only when an operator supplies both
+ * an exact Ed25519 root and the independently governed SHA-256 pin of that
+ * root's canonical JSON. The isolated composition root/operator is the
+ * authority: no route, job, ambient configuration, or untrusted caller may
+ * control both values. Neither value is read from process state here.
+ *
+ * Source independence is an operational boundary, not a cryptographic
+ * property of two public inputs. Therefore this function must remain private
+ * to that isolated composition root; it is not a general caller-selected-root
+ * verification API.
  */
 export function createFixedTraceComponentSmokeOneShotGrantVerifier(
   trustRoot: unknown,
+  expectedTrustRootPin: unknown,
 ): FixedTraceComponentSmokeOneShotGrantVerifier | null {
   const root = exactOneShotTrustRoot(trustRoot);
-  if (!root || PRODUCTION_ONE_SHOT_TRUST_ROOT_PIN === null
-    || createHash('sha256').update(canonicalJson(root), 'utf8').digest('hex') !== PRODUCTION_ONE_SHOT_TRUST_ROOT_PIN) return null;
+  if (!root || !hexDigest(expectedTrustRootPin)
+    || createHash('sha256').update(canonicalJson(root), 'utf8').digest('hex') !== expectedTrustRootPin) return null;
   const registry = Object.freeze({ [root.kid]: root.spki });
   return Object.freeze({ verify: (value: unknown, now: Date) => verifyWithRegistry(value, now, registry, true) });
 }
