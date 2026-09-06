@@ -148,6 +148,48 @@ describe('fixed-trace component-smoke credential-free admission', () => {
   });
 
   it.each([
+    ['status', (plan: any) => { plan.status = 'admitted'; }],
+    ['authorization', (plan: any) => { plan.authorization = 'ambient_authorization'; }],
+  ])('does not admit a drifted component-smoke plan %s', async (_name, mutatePlan) => {
+    const admission = await admissionWithMutatedArtifacts({ mutatePlan });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it('does not admit a drifted stage-control version', async () => {
+    const admission = await admissionWithMutatedArtifacts({
+      stageControlVersion: 'forged-stage-control-version',
+    });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it.each([
+    ['provider ceiling', (policy: any) => { policy.providerCeilingUsd = 6; }],
+    ['reservation policy', (policy: any) => { policy.budgetReservation.policy = 'caller_owned'; }],
+    ['reservation replay policy', (policy: any) => { policy.budgetReservation.replay = 'replay_allowed'; }],
+    ['reservation concurrency policy', (policy: any) => { policy.budgetReservation.concurrency = 'concurrent_dispatch_allowed'; }],
+    ['reservation unknown-exposure policy', (policy: any) => { policy.budgetReservation.unknownExposure = 'unknown_exposure_ignored'; }],
+    ['dispatch default-off policy', (policy: any) => { policy.dispatch.defaultOff = false; }],
+    ['dispatch capability policy', (policy: any) => { policy.dispatch.currentModuleCanDispatch = true; }],
+    ['ambient-authority policy', (policy: any) => { policy.dispatch.ambientEnvironmentAuthority = true; }],
+    ['external-authorization policy', (policy: any) => { policy.dispatch.requiredAuthorization = 'none'; }],
+    ['permitted-evidence policy', (policy: any) => { policy.evidence.permittedClaims = 'quality'; }],
+    ['non-promotion policy', (policy: any) => { policy.evidence.permanentlyNonPromotable = false; }],
+    ['prohibited-evidence policy', (policy: any) => { policy.evidence.prohibitedClaims[0] = 'removed'; }],
+    ['denominator unit', (policy: any) => { policy.denominator.unit = 'successful_invocation'; }],
+    ['prepared denominator', (policy: any) => { policy.denominator.prepared = 'excluded'; }],
+    ['dispatched denominator', (policy: any) => { policy.denominator.dispatched = 'excluded'; }],
+    ['failed denominator', (policy: any) => { policy.denominator.failed = 'excluded'; }],
+    ['unknown-exposure denominator', (policy: any) => { policy.denominator.unknownExposure = 'excluded'; }],
+    ['omission denominator', (policy: any) => { policy.denominator.omissions = 'excluded'; }],
+  ])('does not admit a drifted %s readiness/security policy', async (_name, mutatePolicy) => {
+    const admission = await admissionWithMutatedArtifacts({ mutatePolicy });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it.each([
     ['effort', (cell: any) => { cell.effort = 'high'; }],
     ['adapter capability source', (cell: any) => { cell.adapterCapabilitySource = 'forged-adapter-capability'; }],
   ])('does not admit same-cardinality cell %s drift', async (_name, mutateCell) => {
@@ -199,21 +241,54 @@ describe('fixed-trace component-smoke credential-free admission', () => {
 async function admissionWithMutatedStageOne(
   mutate: (protocol: any, cells: any[]) => void,
 ) {
+  return admissionWithMutatedArtifacts({ mutateProtocol: mutate });
+}
+
+async function admissionWithMutatedArtifacts({
+  mutateProtocol,
+  mutatePlan,
+  stageControlVersion,
+  mutatePolicy,
+}: {
+  mutateProtocol?: (protocol: any, cells: any[]) => void;
+  mutatePlan?: (plan: any) => void;
+  stageControlVersion?: string;
+  mutatePolicy?: (policy: any) => void;
+}) {
   vi.resetModules();
-  vi.doMock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js', async () => {
+  if (mutateProtocol || mutatePlan) vi.doMock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js', async () => {
     const actual = await vi.importActual<typeof import('../../../src/addie/eval/fixed-trace-evaluation-protocol.js')>(
       '../../../src/addie/eval/fixed-trace-evaluation-protocol.js',
     );
     const protocol = structuredClone(actual.FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
     const cells = structuredClone(actual.FIXED_TRACE_ADMITTED_CELLS);
-    mutate(protocol, cells);
+    const componentSmokePlan = structuredClone(actual.FIXED_TRACE_COMPONENT_SMOKE_PLAN);
+    mutateProtocol?.(protocol, cells);
+    mutatePlan?.(componentSmokePlan);
     return {
       ...actual,
       FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: protocol,
       FIXED_TRACE_ADMITTED_CELLS: cells,
-      assertFixedTraceEvaluationProtocol: () => undefined,
-      fixedTraceEvaluationProtocolFingerprint: () => 'mutated-protocol-fingerprint',
+      FIXED_TRACE_COMPONENT_SMOKE_PLAN: componentSmokePlan,
+      ...(mutateProtocol ? {
+        assertFixedTraceEvaluationProtocol: () => undefined,
+        fixedTraceEvaluationProtocolFingerprint: () => 'mutated-protocol-fingerprint',
+      } : {}),
     };
+  });
+  if (stageControlVersion) vi.doMock('../../../src/addie/eval/fixed-trace-suite.js', async () => {
+    const actual = await vi.importActual<typeof import('../../../src/addie/eval/fixed-trace-suite.js')>(
+      '../../../src/addie/eval/fixed-trace-suite.js',
+    );
+    return { ...actual, FIXED_TRACE_STAGE_CONTROL_VERSION: stageControlVersion };
+  });
+  if (mutatePolicy) vi.doMock('../../../src/addie/eval/fixed-trace-component-smoke-admission-policy.js', async () => {
+    const actual = await vi.importActual<typeof import('../../../src/addie/eval/fixed-trace-component-smoke-admission-policy.js')>(
+      '../../../src/addie/eval/fixed-trace-component-smoke-admission-policy.js',
+    );
+    const policy = structuredClone(actual.FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY);
+    mutatePolicy(policy);
+    return { ...actual, FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY: policy };
   });
   try {
     const { fixedTraceComponentSmokeAdmission: readAdmission } = await import(
@@ -222,6 +297,8 @@ async function admissionWithMutatedStageOne(
     return readAdmission();
   } finally {
     vi.doUnmock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js');
+    vi.doUnmock('../../../src/addie/eval/fixed-trace-suite.js');
+    vi.doUnmock('../../../src/addie/eval/fixed-trace-component-smoke-admission-policy.js');
     vi.resetModules();
   }
 }

@@ -37,6 +37,7 @@ import {
   FIXED_TRACE_STAGE_CONTROL_VERSION,
   fixedTraceCorpusSha256,
 } from './fixed-trace-suite.js';
+import { FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY } from './fixed-trace-component-smoke-admission-policy.js';
 
 /**
  * Stage 1 is admitted against this pinned instant, never an ambient clock.
@@ -46,6 +47,19 @@ import {
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF = '2026-09-06T00:00:00.000Z' as const;
 export const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION =
   'addie-fixed-trace-component-smoke-admission-v1' as const;
+
+/** One detached, evaluator-owned source for every emitted readiness policy value. */
+const FIXED_TRACE_COMPONENT_SMOKE_READINESS = Object.freeze({
+  componentSmokePlan: snapshotFixedTraceJson(
+    FIXED_TRACE_COMPONENT_SMOKE_PLAN,
+    'component smoke readiness plan',
+  ) as typeof FIXED_TRACE_COMPONENT_SMOKE_PLAN,
+  stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+  policy: snapshotFixedTraceJson(
+    FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY,
+    'component smoke readiness policy',
+  ) as typeof FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY,
+});
 
 export type FixedTraceComponentSmokeAdmissionReason =
   | 'component_probe_contract_invalid'
@@ -164,7 +178,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
 
 /** Independently reviewed integrity pin; it is never an authorization artifact. */
 const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
-  '45ba7553892a26f1850ec5c5aa066119478a898210dec8a226b943be3d14a42f' as const;
+  '674ff20f26cb76c457008ce09b72983d020da1e553568cbe5320cc685eaf8825' as const;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -289,10 +303,11 @@ function reasonsForPinnedArtifacts(
     || !validStageOnePlan(plan)) {
     reasons.push('component_cell_set_mismatch');
   }
-  if (FIXED_TRACE_COMPONENT_SMOKE_PLAN.cases !== 8 || FIXED_TRACE_COMPONENT_SMOKE_PLAN.repetitions !== 1
-    || FIXED_TRACE_COMPONENT_SMOKE_PLAN.routerCells !== 10 || FIXED_TRACE_COMPONENT_SMOKE_PLAN.generationCells !== 11
-    || FIXED_TRACE_COMPONENT_SMOKE_PLAN.totalComponentCells !== 21 || FIXED_TRACE_COMPONENT_SMOKE_PLAN.providerCeilingUsd !== 5
-    || FIXED_TRACE_COMPONENT_SMOKE_PLAN.llmJudging !== 'none' || FIXED_TRACE_COMPONENT_SMOKE_PLAN.architectureClaim !== 'none') {
+  const componentPlan = FIXED_TRACE_COMPONENT_SMOKE_READINESS.componentSmokePlan;
+  if (componentPlan.cases !== 8 || componentPlan.repetitions !== 1
+    || componentPlan.routerCells !== 10 || componentPlan.generationCells !== 11
+    || componentPlan.totalComponentCells !== 21 || componentPlan.providerCeilingUsd !== FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd
+    || componentPlan.llmJudging !== 'none' || componentPlan.architectureClaim !== 'none') {
     reasons.push('component_plan_mismatch');
   }
   return reasons;
@@ -316,7 +331,7 @@ function pricingForPinnedArtifacts(plan: FixedTraceComponentSmokeStagePlan | nul
       }
     }
     const reservation = maximumReservationUsd(resolved.cohort, plan);
-    if (!Number.isFinite(reservation) || reservation > 5) {
+    if (!Number.isFinite(reservation) || reservation > FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd) {
       return { reasons: Object.freeze(['component_budget_ceiling_exceeded']), cohort: resolved.cohort, reservation };
     }
     return { reasons: Object.freeze([]), cohort: resolved.cohort, reservation };
@@ -351,11 +366,9 @@ function aggregateAdmissionFingerprint(
     partition: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
     protocol: fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL),
     design: fixedTraceExperimentalDesignFingerprint(FIXED_TRACE_EXPERIMENTAL_DESIGN),
+    screeningConfiguration: FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT,
     pricingCohort: cohort,
-    claims: {
-      permitted: 'mechanical_feasibility_only',
-      prohibited: ['architecture', 'quality', 'safety_rate', 'noninferiority', 'superiority', 'final', 'tuning', 'corpus_count', 'production'],
-    },
+    readiness: FIXED_TRACE_COMPONENT_SMOKE_READINESS,
   });
 }
 
@@ -406,13 +419,15 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
     pricing: Object.freeze({
       cohortDigest: cohort?.digest ?? null, checkedAt: cohort?.checkedAt ?? null,
       profiles: Object.freeze((cohort?.profiles ?? []).map((profile) => Object.freeze({ candidateId: profile.candidateId, profileId: profile.profileId, effectiveFrom: profile.effectiveFrom, effectiveBefore: profile.effectiveBefore }))),
-      maximumReservationUsd: pricing.reservation, providerCeilingUsd: 5,
+      maximumReservationUsd: pricing.reservation,
+      providerCeilingUsd: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd,
     }),
     fingerprints: Object.freeze({
       protocol: fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL),
       corpus: fixedTraceCorpusSha256(FIXED_TRACE_CORPUS), partition: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
       experimentalDesign: fixedTraceExperimentalDesignFingerprint(FIXED_TRACE_EXPERIMENTAL_DESIGN),
-      screeningConfiguration: FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT, stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
+      screeningConfiguration: FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT,
+      stageControlVersion: FIXED_TRACE_COMPONENT_SMOKE_READINESS.stageControlVersion,
       requestAssemblyPolicyVersion: ADDIE_REQUEST_TOOL_REPLAY_ASSEMBLY_POLICY_VERSION,
       requestAssemblyPolicySha256: sha256(ADDIE_REQUEST_TOOL_REPLAY_ASSEMBLY_POLICY_VERSION),
       toolNamesSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256,
@@ -421,10 +436,10 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
       probeSetSha256: sha256(probes),
       aggregateAdmission: aggregate,
     }),
-    budgetReservation: Object.freeze({ policy: 'evaluator_owned_per_authorization_private_ledger_required', replay: 'one_use_external_authorization_required_no_caller_ledger_or_reservation', concurrency: 'exclusive_reservation_required_before_any_provider_dispatch', unknownExposure: 'preserved_in_spend_and_denominator_then_admission_closed' }),
-    dispatch: Object.freeze({ defaultOff: true, currentModuleCanDispatch: false, ambientEnvironmentAuthority: false, requiredAuthorization: 'explicit_one_use_external_paid_authorization' }),
-    evidence: Object.freeze({ permittedClaims: 'mechanical_feasibility_only', permanentlyNonPromotable: true, prohibitedClaims: Object.freeze(['architecture', 'quality', 'safety_rate', 'noninferiority', 'superiority', 'final', 'tuning', 'corpus_count', 'production']) }),
-    denominator: Object.freeze({ unit: 'case_cell_assignment_and_each_provider_invocation', prepared: 'included', dispatched: 'included', failed: 'included', unknownExposure: 'included_and_spend_reserved', omissions: 'failure' }),
+    budgetReservation: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.budgetReservation,
+    dispatch: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.dispatch,
+    evidence: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.evidence,
+    denominator: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.denominator,
   });
 }
 
