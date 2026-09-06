@@ -4,10 +4,20 @@
 -- satisfy a deferred plan-group check after this migration.
 
 ALTER TABLE addie_fixed_trace_component_smoke_authorizations
-  DROP CONSTRAINT IF EXISTS addie_fixed_trace_component_smoke_authorizations_aggregate_admission_fingerprint_check;
+  DROP CONSTRAINT IF EXISTS addie_fixed_trace_component__aggregate_admission_fingerpr_check;
+
+-- The initial column CHECK in migration 582 was unnamed, so PostgreSQL gave
+-- it the truncated generated name above.  The first revision of this
+-- unshipped migration instead used this explicit (also truncated) name;
+-- remove it too so rerunning the forward reissue has one authority only.
+ALTER TABLE addie_fixed_trace_component_smoke_authorizations
+  DROP CONSTRAINT IF EXISTS addie_fixed_trace_component_smoke_authorizations_aggregate_admi;
 
 ALTER TABLE addie_fixed_trace_component_smoke_authorizations
-  ADD CONSTRAINT addie_fixed_trace_component_smoke_authorizations_aggregate_admission_fingerprint_check
+  DROP CONSTRAINT IF EXISTS addie_fixed_trace_smoke_admission_fingerprint_check;
+
+ALTER TABLE addie_fixed_trace_component_smoke_authorizations
+  ADD CONSTRAINT addie_fixed_trace_smoke_admission_fingerprint_check
   CHECK (aggregate_admission_fingerprint IN (
     '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d',
     '817ab57d30cc89dab4a81016f5c826857b8dc2a83e2f73aa0b7eb9c82f0b5d71'

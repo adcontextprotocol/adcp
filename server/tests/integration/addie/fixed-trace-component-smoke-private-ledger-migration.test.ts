@@ -133,6 +133,17 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   it('applies the reissued guard to a clean schema and accepts the current exact plan', async () => {
     await withLedgerMigrationSchema(async (isolated) => {
       await isolated.query(REISSUED_GUARD_MIGRATION);
+      const admissionConstraint = await isolated.query<{ conname: string; definition: string }>(
+        `SELECT conname, pg_get_constraintdef(oid) AS definition
+           FROM pg_constraint
+          WHERE conrelid = 'addie_fixed_trace_component_smoke_authorizations'::regclass
+            AND contype = 'c'
+            AND pg_get_constraintdef(oid) LIKE '%aggregate_admission_fingerprint%'`,
+      );
+      expect(admissionConstraint.rows).toEqual([
+        expect.objectContaining({ conname: 'addie_fixed_trace_smoke_admission_fingerprint_check' }),
+      ]);
+      expect(admissionConstraint.rows[0]?.definition).toContain(admission.fingerprints.aggregateAdmission);
       await isolated.query('BEGIN');
       const currentAuthorization = await seedExactPlan(isolated);
       await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
