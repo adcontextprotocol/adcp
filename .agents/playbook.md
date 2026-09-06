@@ -791,22 +791,26 @@ Apply this pattern when restructuring protocol sections.
 
 Before creating or updating a PR, always:
 
-1. **Clear all actionable review feedback.** Completion is forbidden until
-   every review thread is GitHub-resolved after its fix or specific,
-   evidence-backed disposition has been recorded; enumeration and recording
-   state alone are insufficient. Before declaring a PR done, ready, mergeable,
-   or complete—or enabling or expecting its merge—enumerate every review thread
-   (including inline bot and human threads), top-level PR conversation comment,
-   submitted review body, and inline review comment. Give every actionable item
-   a specific, evidence-backed fix or disposition. Record the feedback URL or
-   ID and evidence for each item: a commit and file/line or focused check for a
-   fix; or the concrete repository, policy, or reproduction evidence that makes
-   it already fixed or inapplicable. For each thread, individually record
-   whether it was fixed, verified already fixed, or documented inapplicable
-   before resolving it. Only review threads can be GitHub-resolved; top-level
-   feedback still requires a disposition. Passing CI, approval, dismissal, bot
-   authorship, or outdated status never justifies blanket or automatic
-   resolution.
+1. **Clear all PR feedback.** Before declaring a PR done, ready, mergeable, or
+   complete—or enabling or expecting its merge—enumerate and classify every
+   GraphQL review thread (including inline bot and human threads), REST
+   issue/conversation comment, REST standalone/inline review comment, and REST
+   submitted review body as actionable or non-actionable. Every actionable item
+   **MUST** be fixed and revalidated. Only a non-actionable item may receive a
+   specific, evidence-backed disposition. For every non-actionable item across
+   all four surfaces, record its URL or ID and that specific, evidence-backed
+   disposition. Record every actionable item's URL or ID plus the commit and
+   file/line or focused revalidation that proves its fix.
+
+   Completion is forbidden until every review thread is GitHub-resolved only
+   after its actionable fix and revalidation, or its non-actionable
+   disposition, has been recorded; enumeration and recording state alone are
+   insufficient.
+   For each thread, individually record whether it was fixed and revalidated or
+   documented non-actionable before resolving it. Only review threads can be
+   GitHub-resolved; non-thread feedback still requires classification and the
+   corresponding record above. Passing CI, approval, dismissal, bot authorship,
+   or outdated status never justifies blanket or automatic resolution.
 2. **Satisfy every applicable independent approval gate.** Completion is
    forbidden until every required approval applies to the PR's current immutable
    head. The PR author cannot satisfy any required independent, human, or
@@ -911,11 +915,13 @@ Before creating or updating a PR, always:
    }'
    ```
 
-   Include resolved and outdated threads in the review; an outdated thread still
-   requires verification and an individual disposition before resolution.
-4. **Inventory feedback outside resolvable threads.** Inspect the top-level PR
-   conversation, submitted review bodies, and inline review comments for
-   actionable feedback, which is not all represented as resolvable threads:
+   Include resolved and outdated threads in the review; classify each one under
+   step 1 before resolving it.
+4. **Inventory feedback outside resolvable threads.** Inspect and classify the
+   top-level PR conversation, submitted review bodies, and inline review
+   comments. Record the URL or ID and specific evidence-backed disposition for
+   every non-actionable item; these surfaces are not all represented as
+   resolvable threads:
 
    ```bash
    gh api --paginate "repos/adcontextprotocol/adcp/issues/$PR_NUMBER/comments?per_page=100"
@@ -924,9 +930,10 @@ Before creating or updating a PR, always:
    ```
 
 5. **Check CodeQL feedback in the inline inventory** — look for CodeQL findings
-   in the paginated inline review comments above. These are common CI blockers
-   and must receive a substantive fix or specific justified disposition before
-   merge.
+   in the paginated inline review comments above. Classify every finding. Every
+   actionable CodeQL finding **MUST** be fixed and revalidated; only a
+   non-actionable finding may receive a specific, evidence-backed disposition
+   with its URL or ID before merge.
 6. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
 7. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
 8. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
