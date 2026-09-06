@@ -791,10 +791,32 @@ Apply this pattern when restructuring protocol sections.
 
 Before creating or updating a PR, always:
 
-1. **Enumerate and clear every review thread.** Before declaring a PR done, ready, mergeable, or complete—or enabling or expecting its merge—enumerate every review thread, including inline threads from every bot and human reviewer. Fix or otherwise substantively address every actionable comment, then resolve every thread. Passing CI and receiving an approval are insufficient while any thread remains unresolved. Verify outdated threads before resolving them; never blanket-resolve feedback that has not been addressed.
-2. **Use GitHub GraphQL as the authoritative thread inventory.** Replace `PR_NUMBER` and run:
+1. **Clear all actionable review feedback.** Before declaring a PR done, ready,
+   mergeable, or complete—or enabling or expecting its merge—enumerate every
+   review thread (including inline bot and human threads), top-level PR
+   conversation comment, submitted review body, and inline review comment. Give
+   every actionable item a specific, evidence-backed fix or disposition. Record
+   the feedback URL or ID and evidence for each item: a commit and file/line or
+   focused check for a fix; or the concrete repository, policy, or reproduction
+   evidence that makes it already fixed or inapplicable. For each thread,
+   individually record whether it was fixed, verified already fixed, or
+   documented inapplicable before resolving it. Only review threads can be
+   GitHub-resolved; top-level feedback still requires a disposition.
+   Passing CI, approval, dismissal, bot authorship, or outdated status never
+   justifies blanket or automatic resolution.
+2. **Initialize and validate `PR_NUMBER`, then use GitHub GraphQL as the
+   authoritative thread inventory.** Set it to the PR number, require a
+   positive integer, and verify it names the intended pull request before
+   querying feedback:
 
    ```bash
+   PR_NUMBER=7310
+   case "$PR_NUMBER" in
+     ''|*[!0-9]*|0) echo 'PR_NUMBER must be a positive integer' >&2; exit 1 ;;
+   esac
+   test "$(gh pr view "$PR_NUMBER" --repo adcontextprotocol/adcp --json number --jq .number)" = "$PR_NUMBER" \
+     || { echo "PR #$PR_NUMBER was not found" >&2; exit 1; }
+
    gh api graphql \
      -F owner=adcontextprotocol \
      -F repo=adcp \
@@ -811,11 +833,17 @@ Before creating or updating a PR, always:
              path
              line
              comments(first: 100) {
+               totalCount
                nodes {
+                 id
+                 createdAt
+                 updatedAt
+                 replyTo { id }
                  author { login }
                  body
                  url
                }
+               pageInfo { hasNextPage endCursor }
              }
            }
            pageInfo { hasNextPage endCursor }
@@ -825,24 +853,60 @@ Before creating or updating a PR, always:
    }'
    ```
 
-   Inspect each page. If `pageInfo.hasNextPage` is `true`, repeat the query with
-   `-f cursor='<endCursor>'` from that page, continuing until it is `false`.
-   Include resolved and outdated threads in the review; an outdated thread still
-   requires verification and explicit resolution when its feedback is addressed.
-3. **Inspect feedback outside resolvable threads.** Also inspect the top-level
-   PR conversation and submitted review bodies for actionable feedback, which
-   are not all represented as resolvable threads:
+   Inspect each page. If `reviewThreads.pageInfo.hasNextPage` is `true`, repeat
+   the query with `-f cursor='<endCursor>'` from that page, continuing until it
+   is `false`. For every thread whose `comments.pageInfo.hasNextPage` is `true`
+   (or whose `comments.totalCount` exceeds the returned nodes), fetch every
+   remaining comment with this query. Start with that thread's initial
+   `comments.pageInfo.endCursor`, then repeat with each response's
+   `comments.pageInfo.endCursor` until `hasNextPage` is `false`:
 
    ```bash
-   gh api "repos/adcontextprotocol/adcp/issues/$PR_NUMBER/comments"
-   gh api "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/reviews"
+   gh api graphql \
+     -F threadId='<thread-id>' \
+     -f commentCursor='<comments.pageInfo.endCursor>' \
+     -f query='
+   query($threadId: ID!, $commentCursor: String) {
+     node(id: $threadId) {
+       ... on PullRequestReviewThread {
+         comments(first: 100, after: $commentCursor) {
+           totalCount
+           nodes {
+             id
+             createdAt
+             updatedAt
+             replyTo { id }
+             author { login }
+             body
+             url
+           }
+           pageInfo { hasNextPage endCursor }
+         }
+       }
+     }
+   }'
    ```
 
-4. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and look for CodeQL findings. These are the most common CI blockers and must be resolved before merge.
+   Include resolved and outdated threads in the review; an outdated thread still
+   requires verification and an individual disposition before resolution.
+3. **Inventory feedback outside resolvable threads.** Inspect the top-level PR
+   conversation, submitted review bodies, and inline review comments for
+   actionable feedback, which is not all represented as resolvable threads:
+
+   ```bash
+   gh api --paginate "repos/adcontextprotocol/adcp/issues/$PR_NUMBER/comments?per_page=100"
+   gh api --paginate "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/reviews?per_page=100"
+   gh api --paginate "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/comments?per_page=100"
+   ```
+
+4. **Check CodeQL feedback in the inline inventory** — look for CodeQL findings
+   in the paginated inline review comments above. These are common CI blockers
+   and must receive a substantive fix or specific justified disposition before
+   merge.
 5. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
 6. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
 7. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
-8. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
+8. **Run `gh pr checks "$PR_NUMBER"`** to verify all CI passes before requesting review.
 
 ## Triage Routine — Manual Nudge
 
