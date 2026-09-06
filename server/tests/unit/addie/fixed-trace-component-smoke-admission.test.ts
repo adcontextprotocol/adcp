@@ -34,6 +34,14 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.cells.filter((cell) => cell.role === 'router')).toHaveLength(10);
     expect(admission.cells.filter((cell) => cell.role === 'generation')).toHaveLength(11);
     expect(new Set(admission.cells.map((cell) => cell.id)).size).toBe(21);
+    expect(admission.stageControls).toMatchObject({
+      phaseId: 'stage_1_smoke', caseSet: 'development', cases: 8, repetitions: 1, selectionUse: 'adaptive_screening',
+    });
+    expect(admission.stageControls.controls).toHaveLength(21);
+    expect(admission.stageControls.controls.reduce(
+      (total, control) => total + admission.stageControls.cases * admission.stageControls.repetitions * control.maxInvocationsPerCase,
+      0,
+    )).toBe(admission.cardinality.maximumProviderInvocations);
     expect(admission.pricing.profiles).toHaveLength(4);
     expect(admission.pricing.profiles.every((profile) => profile.effectiveFrom <= admission.asOf
       && (profile.effectiveBefore === null || admission.asOf < profile.effectiveBefore))).toBe(true);
@@ -92,12 +100,77 @@ describe('fixed-trace component-smoke credential-free admission', () => {
         '../../../src/addie/eval/fixed-trace-component-smoke-admission.js'
       );
       expect(readAdmission()).toMatchObject({
-        status: 'not_admitted', missingReasons: ['component_pricing_unavailable'],
+        status: 'not_admitted',
       });
+      expect(readAdmission().missingReasons).toContain('component_pricing_unavailable');
     } finally {
       vi.doUnmock('../../../src/addie/eval/dated-pricing-cohort.js');
       vi.resetModules();
     }
+  });
+
+  it.each([
+    ['arm identity', (arm: any) => { arm.id = 'smoke-forged'; }],
+    ['architecture treatment', (arm: any) => { arm.architecture = 'hybrid'; }],
+    ['admission treatment', (arm: any) => { arm.admission = 'admitted_diagnostic'; }],
+    ['selected tool subset', (arm: any) => { arm.selectedToolSubset = 'forged_subset'; }],
+    ['conditional-call control', (arm: any) => { arm.conditionalCalls = { localTerminalCases: 'exact_harmless_only', fallbackRouterCallsPerNonlocalCase: 1, worstCaseRouterCalls: 1 }; }],
+    ['role', (_arm: any, stage: any) => { stage.role = 'generation'; }],
+    ['cell identity', (_arm: any, stage: any) => { stage.cellId = 'router:forged:model:provider_default'; }],
+    ['maximum invocation ceiling', (_arm: any, stage: any) => { stage.maxInvocationsPerCase += 1; }],
+    ['maximum input-token ceiling', (_arm: any, stage: any) => { stage.maxInputTokensPerInvocation += 1; }],
+    ['maximum output-token ceiling', (_arm: any, stage: any) => { stage.maxOutputTokensPerInvocation += 1; }],
+    ['timeout control', (_arm: any, stage: any) => { stage.timeoutMs += 1; }],
+    ['retry control', (_arm: any, stage: any) => { stage.retries = 1; }],
+    ['cache control', (_arm: any, stage: any) => { stage.cacheMode = 'enabled'; }],
+    ['sampling control', (_arm: any, stage: any) => { stage.sampling = 'temperature_1'; }],
+    ['invocation lifecycle', (_arm: any, stage: any) => { stage.invocationLifecycle = 'forged_lifecycle'; }],
+  ])('does not admit a drifted stage-1 %s control', async (_name, mutateStage) => {
+    const admission = await admissionWithMutatedStageOne((protocol) => {
+      const arm = protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke').arms[0];
+      mutateStage(arm, arm.stages[0]);
+    });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it.each([
+    ['case set', (phase: any) => { phase.caseSet = 'tuning'; }],
+    ['case count', (phase: any) => { phase.uniqueCases = 9; }],
+    ['repetition count', (phase: any) => { phase.repetitions = 2; }],
+    ['selection use', (phase: any) => { phase.selectionUse = 'final_confirmation'; }],
+  ])('does not admit a drifted stage-1 %s plan control', async (_name, mutatePhase) => {
+    const admission = await admissionWithMutatedStageOne((protocol) => {
+      mutatePhase(protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke'));
+    });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it.each([
+    ['effort', (cell: any) => { cell.effort = 'high'; }],
+    ['adapter capability source', (cell: any) => { cell.adapterCapabilitySource = 'forged-adapter-capability'; }],
+  ])('does not admit same-cardinality cell %s drift', async (_name, mutateCell) => {
+    const admission = await admissionWithMutatedStageOne((_protocol, cells) => {
+      mutateCell(cells[0]);
+    });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it.each([
+    ['input', 'maxInputTokensPerInvocation'],
+    ['output', 'maxOutputTokensPerInvocation'],
+    ['invocation', 'maxInvocationsPerCase'],
+  ] as const)('derives the reservation from increased %s ceilings before refusing the drift', async (_name, field) => {
+    const baseline = fixedTraceComponentSmokeAdmission();
+    const admission = await admissionWithMutatedStageOne((protocol) => {
+      const stage = protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke').arms[0].stages[0];
+      stage[field] += 1;
+    });
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.pricing.maximumReservationUsd).toBeGreaterThan(baseline.pricing.maximumReservationUsd!);
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
   });
 
   it('does not grant authority, mint a pass, or use ambient environment, time, or randomness', () => {
@@ -122,3 +195,33 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     ]));
   });
 });
+
+async function admissionWithMutatedStageOne(
+  mutate: (protocol: any, cells: any[]) => void,
+) {
+  vi.resetModules();
+  vi.doMock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js', async () => {
+    const actual = await vi.importActual<typeof import('../../../src/addie/eval/fixed-trace-evaluation-protocol.js')>(
+      '../../../src/addie/eval/fixed-trace-evaluation-protocol.js',
+    );
+    const protocol = structuredClone(actual.FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
+    const cells = structuredClone(actual.FIXED_TRACE_ADMITTED_CELLS);
+    mutate(protocol, cells);
+    return {
+      ...actual,
+      FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL: protocol,
+      FIXED_TRACE_ADMITTED_CELLS: cells,
+      assertFixedTraceEvaluationProtocol: () => undefined,
+      fixedTraceEvaluationProtocolFingerprint: () => 'mutated-protocol-fingerprint',
+    };
+  });
+  try {
+    const { fixedTraceComponentSmokeAdmission: readAdmission } = await import(
+      '../../../src/addie/eval/fixed-trace-component-smoke-admission.js'
+    );
+    return readAdmission();
+  } finally {
+    vi.doUnmock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js');
+    vi.resetModules();
+  }
+}

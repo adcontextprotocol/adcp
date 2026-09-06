@@ -55,7 +55,39 @@ export type FixedTraceComponentSmokeAdmissionReason =
   | 'component_pricing_unavailable'
   | 'component_pricing_cell_mismatch'
   | 'component_budget_ceiling_exceeded'
+  | 'component_admission_fingerprint_mismatch'
   | 'component_protocol_or_design_invalid';
+
+interface FixedTraceComponentSmokeStageControl {
+  readonly armId: string;
+  readonly architecture: string;
+  readonly admission: string;
+  readonly selectedToolSubset: string;
+  readonly conditionalCalls: Readonly<{
+    readonly localTerminalCases: string;
+    readonly fallbackRouterCallsPerNonlocalCase: number;
+    readonly worstCaseRouterCalls: number;
+  }> | null;
+  readonly role: 'router' | 'generation';
+  readonly cellId: string;
+  readonly maxInvocationsPerCase: number;
+  readonly maxInputTokensPerInvocation: number;
+  readonly maxOutputTokensPerInvocation: number;
+  readonly timeoutMs: number;
+  readonly retries: number;
+  readonly cacheMode: string;
+  readonly sampling: string;
+  readonly invocationLifecycle: string;
+}
+
+interface FixedTraceComponentSmokeStagePlan {
+  readonly phaseId: 'stage_1_smoke';
+  readonly caseSet: string;
+  readonly cases: number;
+  readonly repetitions: number;
+  readonly selectionUse: string;
+  readonly controls: readonly FixedTraceComponentSmokeStageControl[];
+}
 
 export interface FixedTraceComponentSmokeAdmissionManifest {
   readonly version: typeof FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION;
@@ -63,15 +95,23 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
   readonly status: 'ready_for_explicit_paid_authorization' | 'not_admitted';
   readonly missingReasons: readonly FixedTraceComponentSmokeAdmissionReason[];
   readonly probes: readonly { readonly id: string; readonly semanticSha256: string; readonly parentId: string; readonly parentSemanticSha256: string }[];
-  readonly cells: readonly { readonly id: string; readonly role: 'router' | 'generation'; readonly provider: string; readonly model: string; readonly effort: string; readonly pricingProfileId: string }[];
+  readonly cells: readonly { readonly id: string; readonly role: 'router' | 'generation'; readonly provider: string; readonly model: string; readonly effort: string; readonly pricingProfileId: string; readonly adapterCapabilitySource: string }[];
+  readonly stageControls: Readonly<{
+    phaseId: 'stage_1_smoke';
+    caseSet: string;
+    cases: number;
+    repetitions: number;
+    selectionUse: string;
+    controls: readonly FixedTraceComponentSmokeStageControl[];
+  }>;
   readonly cardinality: Readonly<{
     probes: 8;
     routerCells: 10;
     generationCells: 11;
     totalCells: 21;
     repetitions: 1;
-    caseCellAssignments: 168;
-    maximumProviderInvocations: 256;
+    caseCellAssignments: number;
+    maximumProviderInvocations: number;
   }>;
   readonly pricing: Readonly<{
     cohortDigest: string | null;
@@ -93,6 +133,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
     toolSchemaSha256: string;
     toolDefinitionHandlerSha256: string;
     probeSetSha256: string;
+    aggregateAdmission: string;
   }>;
   readonly budgetReservation: Readonly<{
     policy: 'evaluator_owned_per_authorization_private_ledger_required';
@@ -121,6 +162,10 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
   }>;
 }
 
+/** Independently reviewed integrity pin; it is never an authorization artifact. */
+const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
+  '45ba7553892a26f1850ec5c5aa066119478a898210dec8a226b943be3d14a42f' as const;
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number') {
@@ -147,19 +192,79 @@ function candidateIdFor(profile: Pick<DatedPricingProfile, 'provider' | 'model'>
   return null;
 }
 
-function maximumReservationUsd(cohort: DatedPricingCohort): number {
-  return FIXED_TRACE_ADMITTED_CELLS.reduce((total, cell) => {
+function stageOnePlan(): FixedTraceComponentSmokeStagePlan | null {
+  const snapshot = snapshotFixedTraceJson(
+    FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
+    'component smoke stage-one protocol',
+  ) as typeof FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL;
+  const phase = snapshot.phases.find((candidate) => candidate.id === 'stage_1_smoke');
+  if (!phase || phase.uniqueCases === null || phase.id !== 'stage_1_smoke') return null;
+  const controls = phase.arms.map((arm) => {
+    if (arm.stages.length !== 1) return null;
+    const stage = arm.stages[0]!;
+    if ((stage.role !== 'router' && stage.role !== 'generation') || stage.cellId === null) return null;
+    return Object.freeze({
+      armId: arm.id, architecture: arm.architecture, admission: arm.admission,
+      selectedToolSubset: arm.selectedToolSubset, role: stage.role, cellId: stage.cellId,
+      conditionalCalls: arm.conditionalCalls ?? null,
+      maxInvocationsPerCase: stage.maxInvocationsPerCase,
+      maxInputTokensPerInvocation: stage.maxInputTokensPerInvocation,
+      maxOutputTokensPerInvocation: stage.maxOutputTokensPerInvocation,
+      timeoutMs: stage.timeoutMs, retries: stage.retries, cacheMode: stage.cacheMode,
+      sampling: stage.sampling, invocationLifecycle: stage.invocationLifecycle,
+    });
+  });
+  if (controls.some((control) => control === null)) return null;
+  return Object.freeze({
+    phaseId: phase.id, caseSet: phase.caseSet, cases: phase.uniqueCases, repetitions: phase.repetitions,
+    selectionUse: phase.selectionUse,
+    controls: Object.freeze(controls as FixedTraceComponentSmokeStageControl[]),
+  });
+}
+
+function validStageOnePlan(plan: FixedTraceComponentSmokeStagePlan | null): plan is FixedTraceComponentSmokeStagePlan {
+  if (!plan || plan.caseSet !== 'development' || plan.cases !== 8 || plan.repetitions !== 1 || plan.selectionUse !== 'adaptive_screening'
+    || plan.controls.length !== 21) return false;
+  const cells = new Map(FIXED_TRACE_ADMITTED_CELLS.map((cell) => [cell.id, cell]));
+  return plan.controls.every((control, index) => {
+    const cell = cells.get(control.cellId);
+    return cell !== undefined && control.cellId === FIXED_TRACE_ADMITTED_CELLS[index]?.id
+      && control.role === cell.role && control.armId === `smoke-${cell.id}`
+      && control.architecture === 'none' && control.admission === 'not_admitted_dispatch_authority'
+      && control.selectedToolSubset === 'architecture_derived_presented_subset'
+      && control.conditionalCalls === null
+      && Number.isSafeInteger(control.maxInvocationsPerCase) && control.maxInvocationsPerCase > 0
+      && Number.isSafeInteger(control.maxInputTokensPerInvocation) && control.maxInputTokensPerInvocation > 0
+      && Number.isSafeInteger(control.maxOutputTokensPerInvocation) && control.maxOutputTokensPerInvocation > 0
+      && Number.isSafeInteger(control.timeoutMs) && control.timeoutMs > 0
+      && control.retries === 0 && control.cacheMode === 'disabled'
+      && control.sampling === 'provider_no_sampling_control'
+      && typeof control.invocationLifecycle === 'string' && control.invocationLifecycle.length > 0;
+  });
+}
+
+function maximumReservationUsd(
+  cohort: DatedPricingCohort,
+  plan: FixedTraceComponentSmokeStagePlan,
+): number {
+  return plan.controls.reduce((total, control) => {
+    const cell = FIXED_TRACE_ADMITTED_CELLS.find((candidate) => candidate.id === control.cellId);
+    if (!cell) throw new Error('unknown component cell');
     const candidateId = candidateIdFor(cell);
     if (!candidateId) throw new Error('unknown component pricing candidate');
     const profile = pricingProfileForCandidate(cohort, candidateId);
-    const invocations = cell.role === 'router' ? 8 : 16;
-    const input = cell.role === 'router' ? 4_096 : 16_384;
-    const output = cell.role === 'router' ? 300 : 900;
-    return total + invocations * datedPricingReservationCostUsd(profile, input, output);
+    const invocations = plan.cases * plan.repetitions * control.maxInvocationsPerCase;
+    return total + invocations * datedPricingReservationCostUsd(
+      profile,
+      control.maxInputTokensPerInvocation,
+      control.maxOutputTokensPerInvocation,
+    );
   }, 0);
 }
 
-function reasonsForPinnedArtifacts(): FixedTraceComponentSmokeAdmissionReason[] {
+function reasonsForPinnedArtifacts(
+  plan: FixedTraceComponentSmokeStagePlan | null,
+): FixedTraceComponentSmokeAdmissionReason[] {
   const reasons: FixedTraceComponentSmokeAdmissionReason[] = [];
   try {
     assertFixedTraceComponentSmokeContracts();
@@ -180,10 +285,8 @@ function reasonsForPinnedArtifacts(): FixedTraceComponentSmokeAdmissionReason[] 
   }
   const router = FIXED_TRACE_ADMITTED_CELLS.filter((cell) => cell.role === 'router');
   const generation = FIXED_TRACE_ADMITTED_CELLS.filter((cell) => cell.role === 'generation');
-  const stageOne = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.phases.find((phase) => phase.id === 'stage_1_smoke');
   if (router.length !== 10 || generation.length !== 11 || new Set(FIXED_TRACE_ADMITTED_CELLS.map((cell) => cell.id)).size !== 21
-    || !stageOne || stageOne.repetitions !== 1 || stageOne.uniqueCases !== 8 || stageOne.arms.length !== 21
-    || stageOne.arms.some((arm, index) => arm.stages.length !== 1 || arm.stages[0]?.cellId !== FIXED_TRACE_ADMITTED_CELLS[index]?.id)) {
+    || !validStageOnePlan(plan)) {
     reasons.push('component_cell_set_mismatch');
   }
   if (FIXED_TRACE_COMPONENT_SMOKE_PLAN.cases !== 8 || FIXED_TRACE_COMPONENT_SMOKE_PLAN.repetitions !== 1
@@ -195,11 +298,12 @@ function reasonsForPinnedArtifacts(): FixedTraceComponentSmokeAdmissionReason[] 
   return reasons;
 }
 
-function pricingForPinnedArtifacts(): {
+function pricingForPinnedArtifacts(plan: FixedTraceComponentSmokeStagePlan | null): {
   readonly reasons: readonly FixedTraceComponentSmokeAdmissionReason[];
   readonly cohort: DatedPricingCohort | null;
   readonly reservation: number | null;
 } {
+  if (!validStageOnePlan(plan)) return { reasons: Object.freeze(['component_cell_set_mismatch']), cohort: null, reservation: null };
   const resolved = resolveCurrentEvaluationPricingCohort(new Date(FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF));
   if (resolved.status !== 'available') return { reasons: Object.freeze(['component_pricing_unavailable']), cohort: null, reservation: null };
   try {
@@ -211,7 +315,7 @@ function pricingForPinnedArtifacts(): {
         throw new Error('cell/profile mismatch');
       }
     }
-    const reservation = maximumReservationUsd(resolved.cohort);
+    const reservation = maximumReservationUsd(resolved.cohort, plan);
     if (!Number.isFinite(reservation) || reservation > 5) {
       return { reasons: Object.freeze(['component_budget_ceiling_exceeded']), cohort: resolved.cohort, reservation };
     }
@@ -221,9 +325,44 @@ function pricingForPinnedArtifacts(): {
   }
 }
 
+function aggregateAdmissionFingerprint(
+  probes: FixedTraceComponentSmokeAdmissionManifest['probes'],
+  cells: FixedTraceComponentSmokeAdmissionManifest['cells'],
+  plan: FixedTraceComponentSmokeStagePlan | null,
+  cohort: DatedPricingCohort | null,
+): string {
+  return sha256({
+    domain: 'adcp:addie:fixed-trace-component-smoke-admission:v1\0',
+    version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
+    asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
+    probes,
+    cells,
+    stageOne: plan,
+    request: {
+      policyVersion: ADDIE_REQUEST_TOOL_REPLAY_ASSEMBLY_POLICY_VERSION,
+      policySha256: sha256(ADDIE_REQUEST_TOOL_REPLAY_ASSEMBLY_POLICY_VERSION),
+    },
+    tools: {
+      names: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256,
+      schema: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256,
+      definitionHandler: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
+    },
+    corpus: fixedTraceCorpusSha256(FIXED_TRACE_CORPUS),
+    partition: FIXED_TRACE_PARTITION_MANIFEST_SHA256,
+    protocol: fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL),
+    design: fixedTraceExperimentalDesignFingerprint(FIXED_TRACE_EXPERIMENTAL_DESIGN),
+    pricingCohort: cohort,
+    claims: {
+      permitted: 'mechanical_feasibility_only',
+      prohibited: ['architecture', 'quality', 'safety_rate', 'noninferiority', 'superiority', 'final', 'tuning', 'corpus_count', 'production'],
+    },
+  });
+}
+
 function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
-  const pricing = pricingForPinnedArtifacts();
-  const reasons = [...reasonsForPinnedArtifacts(), ...pricing.reasons];
+  const plan = stageOnePlan();
+  const pricing = pricingForPinnedArtifacts(plan);
+  const reasons = [...reasonsForPinnedArtifacts(plan), ...pricing.reasons];
   const probes = FIXED_TRACE_COMPONENT_SMOKE_PROBES.map((probe) => Object.freeze({
     id: probe.id, semanticSha256: probe.semanticSha256,
     parentId: probe.parent.id, parentSemanticSha256: probe.parent.semanticSha256,
@@ -231,15 +370,39 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
   const cells = FIXED_TRACE_ADMITTED_CELLS.map((cell) => Object.freeze({
     id: cell.id, role: cell.role, provider: cell.provider, model: cell.model,
     effort: cell.effort, pricingProfileId: cell.pricingProfileId ?? '',
+    adapterCapabilitySource: cell.adapterCapabilitySource,
   }));
   const cohort = pricing.cohort;
+  const aggregate = aggregateAdmissionFingerprint(probes, cells, plan, cohort);
+  if (aggregate !== FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN) {
+    reasons.push('component_admission_fingerprint_mismatch');
+  }
+  const cardinality = plan && validStageOnePlan(plan)
+    ? Object.freeze({
+      probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
+      totalCells: 21 as const, repetitions: 1 as const,
+      caseCellAssignments: plan.cases * plan.repetitions * plan.controls.length,
+      maximumProviderInvocations: plan.controls.reduce(
+        (total, control) => total + plan.cases * plan.repetitions * control.maxInvocationsPerCase,
+        0,
+      ),
+    })
+    : Object.freeze({ probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const, totalCells: 21 as const, repetitions: 1 as const, caseCellAssignments: 0, maximumProviderInvocations: 0 });
   return Object.freeze({
     version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
     asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
     status: reasons.length === 0 ? 'ready_for_explicit_paid_authorization' : 'not_admitted',
     missingReasons: Object.freeze([...new Set(reasons)].sort()),
     probes: Object.freeze(probes), cells: Object.freeze(cells),
-    cardinality: Object.freeze({ probes: 8, routerCells: 10, generationCells: 11, totalCells: 21, repetitions: 1, caseCellAssignments: 168, maximumProviderInvocations: 256 }),
+    stageControls: Object.freeze(plan ?? {
+      phaseId: 'stage_1_smoke' as const,
+      caseSet: 'invalid',
+      cases: 0,
+      repetitions: 0,
+      selectionUse: 'invalid',
+      controls: [] as readonly FixedTraceComponentSmokeStageControl[],
+    }),
+    cardinality,
     pricing: Object.freeze({
       cohortDigest: cohort?.digest ?? null, checkedAt: cohort?.checkedAt ?? null,
       profiles: Object.freeze((cohort?.profiles ?? []).map((profile) => Object.freeze({ candidateId: profile.candidateId, profileId: profile.profileId, effectiveFrom: profile.effectiveFrom, effectiveBefore: profile.effectiveBefore }))),
@@ -256,6 +419,7 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
       toolSchemaSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256,
       toolDefinitionHandlerSha256: FIXED_TRACE_DIRECT_TOOL_UNIVERSE.definitionHandlerSha256,
       probeSetSha256: sha256(probes),
+      aggregateAdmission: aggregate,
     }),
     budgetReservation: Object.freeze({ policy: 'evaluator_owned_per_authorization_private_ledger_required', replay: 'one_use_external_authorization_required_no_caller_ledger_or_reservation', concurrency: 'exclusive_reservation_required_before_any_provider_dispatch', unknownExposure: 'preserved_in_spend_and_denominator_then_admission_closed' }),
     dispatch: Object.freeze({ defaultOff: true, currentModuleCanDispatch: false, ambientEnvironmentAuthority: false, requiredAuthorization: 'explicit_one_use_external_paid_authorization' }),
