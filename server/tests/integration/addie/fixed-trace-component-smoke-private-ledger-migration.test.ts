@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Client, Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { fixedTraceComponentSmokeAdmission } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
@@ -9,6 +10,9 @@ let client: Client | null = null;
 let authorizationDigest = '';
 const plan = fixedTraceComponentSmokePrivateLedgerPlan()!;
 const admission = fixedTraceComponentSmokeAdmission();
+const LEGACY_ADMISSION_FINGERPRINT = '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d';
+const BASE_LEDGER_MIGRATION = readFileSync(new URL('../../../src/db/migrations/582_addie_fixed_trace_component_smoke_private_ledger.sql', import.meta.url), 'utf8');
+const REISSUED_GUARD_MIGRATION = readFileSync(new URL('../../../src/db/migrations/583_reissue_addie_fixed_trace_component_smoke_plan_guard.sql', import.meta.url), 'utf8');
 
 async function rejects(statement: string, values: unknown[] = [], subject = client!) {
   await subject.query('SAVEPOINT private_ledger_expected_failure');
@@ -35,7 +39,10 @@ function deferred() {
   return { promise, resolve: () => resolve?.() };
 }
 
-async function seedExactPlan(subject = client!, alterFirstModel = false) {
+async function insertAuthorization(
+  subject = client!,
+  aggregateAdmissionFingerprint = admission.fingerprints.aggregateAdmission,
+) {
   const digest = createHash('sha256').update(randomUUID()).digest('hex');
   await subject.query(
     `INSERT INTO addie_fixed_trace_component_smoke_authorizations
@@ -43,11 +50,36 @@ async function seedExactPlan(subject = client!, alterFirstModel = false) {
       probes,router_cells,generation_cells,total_cells,repetitions,assignments,provider_dispatch_assignments,local_terminal_assignments,pre_dispatch_fault_assignments,
       maximum_planned_invocation_slots,maximum_provider_invocations,reservation_microdollars,provider_ceiling_microdollars,pricing_cohort_digest,issued_at,expires_at,status,consumed_at,reservation_id)
      VALUES ($1,$2,$3,'postgres-ledger-test',$4,'addie-fixed-trace-component-smoke-signed-grant-v1','stage_1_smoke','addie-fixed-trace-component-smoke-admission-v2',
-       '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d',8,10,11,21,1,168,126,21,21,256,192,2819484,5000000,$5,
+       $7,8,10,11,21,1,168,126,21,21,256,192,2819484,5000000,$5,
        clock_timestamp() - interval '1 minute',clock_timestamp() + interval '1 minute','consumed',clock_timestamp(),$6)`,
-    [digest, createHash('sha256').update(`${digest}:payload`).digest('hex'), createHash('sha256').update(`${digest}:signature`).digest('hex'), createHash('sha256').update(`${digest}:nonce`).digest('hex'), admission.pricing.cohortDigest, reservationIdFor(digest)],
+    [digest, createHash('sha256').update(`${digest}:payload`).digest('hex'), createHash('sha256').update(`${digest}:signature`).digest('hex'), createHash('sha256').update(`${digest}:nonce`).digest('hex'), admission.pricing.cohortDigest, reservationIdFor(digest), aggregateAdmissionFingerprint],
   );
-  for (const [index, entry] of plan.entries()) {
+  return digest;
+}
+
+function planForAdmissionFingerprint(aggregateAdmissionFingerprint: string) {
+  if (aggregateAdmissionFingerprint === admission.fingerprints.aggregateAdmission) return plan;
+  if (aggregateAdmissionFingerprint !== LEGACY_ADMISSION_FINGERPRINT) {
+    throw new Error('test only supports the current or migration-582 admission fingerprint');
+  }
+  return plan.map((entry) => ({
+    ...entry,
+    assignmentId: createHash('sha256').update(JSON.stringify({
+      cellId: entry.cellId,
+      domain: 'adcp:addie:fixed-trace-component-smoke:plan-entry:v1\0',
+      fingerprint: aggregateAdmissionFingerprint,
+      probeId: entry.probeId,
+    })).digest('hex'),
+  }));
+}
+
+async function seedExactPlan(
+  subject = client!,
+  alterFirstModel = false,
+  aggregateAdmissionFingerprint = admission.fingerprints.aggregateAdmission,
+) {
+  const digest = await insertAuthorization(subject, aggregateAdmissionFingerprint);
+  for (const [index, entry] of planForAdmissionFingerprint(aggregateAdmissionFingerprint).entries()) {
     await subject.query(
       `INSERT INTO addie_fixed_trace_component_smoke_run_plan
        (authorization_digest,assignment_id,probe_id,cell_id,disposition,maximum_provider_invocations,requested_provider,requested_model,requested_effort,pricing_profile_id,max_input_tokens,max_output_tokens,timeout_ms,retries,reserved_microdollars)
@@ -60,7 +92,27 @@ async function seedExactPlan(subject = client!, alterFirstModel = false) {
   return digest;
 }
 
+async function withLedgerMigrationSchema(work: (subject: Client) => Promise<void>) {
+  const schema = `fixed_trace_smoke_guard_${process.pid}_${randomUUID().replaceAll('-', '')}`;
+  const isolated = new Client({ connectionString: databaseUrl });
+  await isolated.connect();
+  try {
+    await isolated.query(`CREATE SCHEMA ${schema}`);
+    await isolated.query(`SET search_path TO ${schema}, public`);
+    await isolated.query(BASE_LEDGER_MIGRATION);
+    await work(isolated);
+  } finally {
+    await isolated.query('RESET search_path').catch(() => undefined);
+    await isolated.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => undefined);
+    await isolated.end();
+  }
+}
+
 function dispatchEntry(offset = 0) { return plan.filter((entry) => entry.disposition === 'provider_dispatch')[offset]!; }
+function dispatchEntryFor(aggregateAdmissionFingerprint: string) {
+  return planForAdmissionFingerprint(aggregateAdmissionFingerprint)
+    .find((entry) => entry.disposition === 'provider_dispatch')!;
+}
 async function insertIntent(subject: Client, digest: string, entry = dispatchEntry(), suffix = 'e', ordinal = 1) {
   const token = suffix.length === 1 ? suffix.repeat(32) : suffix;
   return subject.query(
@@ -77,6 +129,62 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   beforeEach(async () => { await client!.query('BEGIN'); authorizationDigest = await seedExactPlan(); });
   afterEach(async () => { await client!.query('ROLLBACK'); });
   afterAll(async () => { await client?.end().catch(() => undefined); });
+
+  it('applies the reissued guard to a clean schema and accepts the current exact plan', async () => {
+    await withLedgerMigrationSchema(async (isolated) => {
+      await isolated.query(REISSUED_GUARD_MIGRATION);
+      const admissionConstraint = await isolated.query<{ conname: string; definition: string }>(
+        `SELECT conname, pg_get_constraintdef(oid) AS definition
+           FROM pg_constraint
+          WHERE conrelid = 'addie_fixed_trace_component_smoke_authorizations'::regclass
+            AND contype = 'c'
+            AND pg_get_constraintdef(oid) LIKE '%aggregate_admission_fingerprint%'`,
+      );
+      expect(admissionConstraint.rows).toEqual([
+        expect.objectContaining({ conname: 'addie_fixed_trace_smoke_admission_fingerprint_check' }),
+      ]);
+      expect(admissionConstraint.rows[0]?.definition).toContain(admission.fingerprints.aggregateAdmission);
+      await isolated.query('BEGIN');
+      const currentAuthorization = await seedExactPlan(isolated);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await expect(insertIntent(isolated, currentAuthorization)).resolves.toBeDefined();
+      const guard = await isolated.query<{ definition: string }>(
+        "SELECT pg_get_functiondef('addie_fixed_trace_component_smoke_check_plan_group(character)'::regprocedure) AS definition",
+      );
+      expect(guard.rows[0]?.definition).toContain('c9b2b82185f4723cb8059e0c2064d946d825939ef84b813d3df8f3ef11656530');
+      expect(guard.rows[0]?.definition).toContain(admission.fingerprints.aggregateAdmission);
+    });
+  });
+
+  it('upgrades a migration-582 schema without discarding legacy authority and fails it closed', async () => {
+    await withLedgerMigrationSchema(async (isolated) => {
+      // Commit the full exact migration-582 plan before the reissue. Its
+      // deferred plan trigger will not fire again after the upgrade.
+      await isolated.query('BEGIN');
+      const legacyAuthorization = await seedExactPlan(isolated, false, LEGACY_ADMISSION_FINGERPRINT);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await isolated.query(REISSUED_GUARD_MIGRATION);
+      expect((await isolated.query(
+        'SELECT aggregate_admission_fingerprint FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1',
+        [legacyAuthorization],
+      )).rows).toEqual([{ aggregate_admission_fingerprint: LEGACY_ADMISSION_FINGERPRINT }]);
+      expect((await isolated.query(
+        'SELECT count(*)::int AS count FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1',
+        [legacyAuthorization],
+      )).rows).toEqual([{ count: 168 }]);
+      await expect(isolated.query(
+        'SELECT addie_fixed_trace_component_smoke_check_plan_group($1)', [legacyAuthorization],
+      )).rejects.toThrow('fixed-trace component smoke plan is not the admitted exact plan');
+      await isolated.query('BEGIN');
+      const currentAuthorization = await seedExactPlan(isolated);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await expect(insertIntent(isolated, legacyAuthorization, dispatchEntryFor(LEGACY_ADMISSION_FINGERPRINT), 'l')).rejects.toThrow('fixed-trace component smoke plan is not the admitted exact plan');
+      await expect(insertIntent(isolated, currentAuthorization, undefined, 'c')).resolves.toBeDefined();
+    });
+  });
 
   it('uses the migrated 71-character pricing digest contract and bounded database TTL', async () => {
     const result = await client!.query<{ character_maximum_length: number | null }>("SELECT character_maximum_length FROM information_schema.columns WHERE table_name = 'addie_fixed_trace_component_smoke_authorizations' AND column_name = 'pricing_cohort_digest'");

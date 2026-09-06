@@ -89,7 +89,7 @@ export const FIXED_TRACE_FINAL_PREREQUISITE_AUTHORITY_SHA256 =
 /** Independently pinned by A's consumer boundary, not imported as policy. */
 const FIXED_TRACE_A_PREREQUISITE_MANIFEST_MAX_BYTES_PIN = 16 * 1024;
 const FIXED_TRACE_A_PREREQUISITE_MANIFEST_CANONICAL_SHA256_PIN =
-  "7817771c13fe522046f89330a7962e16ecda7ac6f8c1d86a0d8ee60d47620a45" as const;
+  "b9d4210347e9b8e8948971c92025ec932c2a5585485addd36cb2bd13562f2cef" as const;
 
 type FixedTraceAPrerequisiteManifestParityDiagnostic = Readonly<{
   status: "parity_failure";

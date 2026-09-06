@@ -10,6 +10,7 @@ import {
   fixedTraceEstimatedCostUsd,
   type FixedTraceBudgetPricing,
 } from './fixed-trace-budget.js';
+import { fixedTraceArchitectureDiagnosticCaseProvenance } from './fixed-trace-architecture-diagnostic.js';
 import type {
   JsonObject,
   ModelFinishReason,
@@ -349,6 +350,16 @@ export interface FixedTraceRunMetadata {
   stageControlVersion: typeof FIXED_TRACE_STAGE_CONTROL_VERSION;
   /** Hash of the immutable architecture/configuration cohort contract. */
   architectureConfigSha256: string;
+  /** Set only by an exact synthetic architecture diagnostic declaration. */
+  architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | null;
+  /** Evaluator-only pack/pilot and cluster binding for architecture diagnostics. */
+  architectureDiagnostic: {
+    packDigest: string;
+    pilotDigest: string | null;
+    clusterId: string;
+    stratum: string;
+    localNearPairId: string | null;
+  } | null;
   /** Candidate policy, not an outcome of the degradation trace. */
   providerDegradationInjectionEnabled: boolean;
   repetition: number;
@@ -379,6 +390,8 @@ export interface FixedTraceObservation {
   /** Stage that made the terminal decision or surfaced the terminal failure. */
   terminalStage: 'admission' | 'surface' | 'router' | 'generation';
   terminalStatus: FixedTraceTerminalStatus;
+  /** Per-case routing disposition; architecture-level provenance is in metadata. */
+  routeDisposition?: 'direct_surface_policy' | 'incumbent_llm_router' | 'reviewed_local_terminal' | 'fixture_oracle' | 'not_admitted';
   /** Closed reason for a fixed-trace tool-loop boundary rejection, otherwise null. */
   boundaryReason: FixedTraceBoundaryReason | null;
   /** Reason provider prose was replaced locally after a completed generation, otherwise null. */
@@ -2462,13 +2475,7 @@ export function fixedTraceHybridEvaluatorSuiteSha256(): string {
   return fixedTraceSuiteSha256(FIXED_TRACE_HYBRID_EVALUATOR_SUITE);
 }
 
-/**
- * Deterministic internal-consistency payload for a candidate cohort. It
- * deliberately excludes returned provider identity, usage, latency, and
- * trace-local effective limits, which are per-call outcomes. It is not an
- * authenticity proof for serialized artifacts.
- */
-export function fixedTraceArchitectureConfigPayload(metadata: Pick<
+type FixedTraceArchitectureConfigFingerprintMetadata = Pick<
   FixedTraceRunMetadata,
   | 'traceSuiteSha256'
   | 'stageControlVersion'
@@ -2483,7 +2490,21 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
   | 'routerControl'
   | 'generationControl'
   | 'providerDegradationInjectionEnabled'
->): Record<string, unknown> {
+  | 'architectureDiagnosticMode'
+> & {
+  /** Cohort-level digest binding; trace-local mapping fields are not hashed here. */
+  architectureDiagnostic: Pick<NonNullable<FixedTraceRunMetadata['architectureDiagnostic']>, 'packDigest' | 'pilotDigest'> | null;
+};
+
+/**
+ * Deterministic internal-consistency payload for a candidate cohort. It
+ * deliberately excludes returned provider identity, usage, latency, and
+ * trace-local effective limits, which are per-call outcomes. It is not an
+ * authenticity proof for serialized artifacts.
+ */
+export function fixedTraceArchitectureConfigPayload(
+  metadata: FixedTraceArchitectureConfigFingerprintMetadata,
+): Record<string, unknown> {
   const cohortToolUniverse = {
     source: metadata.toolUniverse.source,
     intentNarrowing: metadata.toolUniverse.intentNarrowing,
@@ -2508,14 +2529,26 @@ export function fixedTraceArchitectureConfigPayload(metadata: Pick<
     toolUniverse: cohortToolUniverse,
     executionEnvelope: metadata.executionEnvelope,
     requestThreadFacts: metadata.requestThreadFacts,
-    // Direct and fixture-oracle arms never route. The hybrid retains the
-    // incumbent router as its fallback, so its router controls remain part of
-    // the candidate fingerprint.
+    // Direct and fixture-oracle arms ordinarily never route. A declared
+    // synthetic architecture diagnostic is an exception for provenance: its
+    // supplied (but never dispatched) router controls are independently
+    // reviewed and must remain in the candidate fingerprint.
     routerControl: ['direct_generation', 'oracle_route_diagnostic'].includes(metadata.architectureArm.id)
+      && metadata.architectureDiagnosticMode == null
       ? { status: 'not_run' }
       : metadata.routerControl,
     generationControl: metadata.generationControl,
     providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
+    architectureDiagnosticMode: metadata.architectureDiagnosticMode ?? null,
+    // A diagnostic mapping digest is a cohort-level identity. Trace-level
+    // cluster/stratum bindings are checked separately against the canonical
+    // trace+mode mapping when serialized observations are graded.
+    architectureDiagnosticBinding: metadata.architectureDiagnosticMode == null
+      ? null
+      : {
+          packDigest: metadata.architectureDiagnostic?.packDigest ?? null,
+          pilotDigest: metadata.architectureDiagnostic?.pilotDigest ?? null,
+        },
   };
 }
 
@@ -3210,6 +3243,36 @@ export interface FixedTraceSummary {
 }
 
 /**
+ * Serialized diagnostic observations are untrusted input. Re-derive all
+ * trace-local diagnostic provenance from the canonical mode and trace ID so a
+ * caller cannot relabel a cluster or substitute a pack/pilot digest.
+ */
+function assertFixedTraceDiagnosticObservationProvenance(
+  observation: FixedTraceObservation,
+): void {
+  const mode = observation.metadata.architectureDiagnosticMode ?? null;
+  const actual = observation.metadata.architectureDiagnostic;
+  if (mode === null) {
+    if (actual !== null) {
+      throw new Error('Non-diagnostic fixed trace observation must have null diagnostic provenance');
+    }
+    return;
+  }
+  if (mode !== 'synthetic_pack_v1' && mode !== 'synthetic_pilot_v1') {
+    throw new Error('Fixed trace diagnostic observation mode is invalid');
+  }
+  let expected: NonNullable<FixedTraceRunMetadata['architectureDiagnostic']>;
+  try {
+    expected = fixedTraceArchitectureDiagnosticCaseProvenance(mode, observation.traceId);
+  } catch {
+    throw new Error('Fixed trace diagnostic observation is not in the canonical mode mapping');
+  }
+  if (!actual || canonicalJson(actual) !== canonicalJson(expected)) {
+    throw new Error('Fixed trace diagnostic observation provenance does not match its canonical mapping');
+  }
+}
+
+/**
  * Every observation in a candidate run must share this immutable contract.
  * Per-trace controls are deliberately excluded: they are already bound to the
  * versioned trace ID and verified when each observation is graded.
@@ -3221,6 +3284,7 @@ export function assertFixedTraceRunContract(
   if (!runContract) throw new Error('Fixed trace run requires at least one observation');
   for (const observation of observations) {
     const candidate = observation.metadata;
+    assertFixedTraceDiagnosticObservationProvenance(observation);
     let recomputedArchitectureConfigSha256: string;
     try {
       recomputedArchitectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(candidate);
@@ -3244,6 +3308,7 @@ export function assertFixedTraceRunContract(
       || candidate.toolDefinitionProvenance !== runContract.toolDefinitionProvenance
       || candidate.stageControlVersion !== runContract.stageControlVersion
       || candidate.architectureConfigSha256 !== runContract.architectureConfigSha256
+      || (candidate.architectureDiagnosticMode ?? null) !== (runContract.architectureDiagnosticMode ?? null)
       || candidate.providerDegradationInjectionEnabled !== runContract.providerDegradationInjectionEnabled
       || candidate.repetition !== runContract.repetition
       || candidate.architectureArm.id !== runContract.architectureArm.id
@@ -3291,6 +3356,7 @@ export function summarizeFixedTraceRun(
     if (!sameCaseControl(trace.caseControl ?? null, observation.metadata.caseControl)) {
       throw new Error(`Fixed trace case control mismatch: ${trace.id}`);
     }
+    assertFixedTraceDiagnosticObservationProvenance(observation);
     grades.push(gradeFixedTrace(trace, observation));
   }
   const runContract = assertFixedTraceRunContract(observations);

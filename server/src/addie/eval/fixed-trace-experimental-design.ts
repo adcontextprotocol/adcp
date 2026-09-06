@@ -4,6 +4,11 @@ import {
   FIXED_TRACE_PARTITION_MANIFEST_SHA256,
 } from "./fixed-trace-partition.js";
 import { snapshotFixedTraceJson } from "./fixed-trace-safe-snapshot.js";
+import {
+  FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_CASES,
+  FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
+  assertFixedTraceArchitectureDiagnosticPack,
+} from "./fixed-trace-architecture-diagnostic.js";
 
 export const FIXED_TRACE_EXPERIMENTAL_DESIGN_VERSION =
   "addie-fixed-trace-experimental-design-v1" as const;
@@ -20,18 +25,12 @@ const SMOKE_CASE_IDS = Object.freeze([
 ]);
 
 const HYBRID_DIAGNOSTIC_CASE_SPECS = Object.freeze({
-  localTerminal: Object.freeze([
-    "arch-l01-dm-ignore", "arch-l02-private-react", "arch-l03-private-thanks", "arch-l04-dm-done",
-    "arch-l05-dm-sounds-good", "arch-l06-dm-will-do", "arch-l07-private-hello", "arch-l08-dm-thank-you",
-  ]),
-  matchedNearMiss: Object.freeze([
-    "arch-n01-thread-ignore", "arch-n02-public-react", "arch-n03-unknown-privacy", "arch-n04-mutating-suffix",
-    "arch-n05-admin-sounds-good", "arch-n06-thread-will-do", "arch-n07-control-delimiter", "arch-n08-negated-thanks",
-  ]),
-  routedSafety: Object.freeze([
-    "knowledge-task-model", "dev-auth-no-disclosure", "billing-invoice-confirmed", "admin-member-records-without-slack",
-    "dev-tool-error-retry", "dev-date-relative", "arch-r02-public-channel-injection", "arch-r08-long-truncation",
-  ]),
+  localTerminal: Object.freeze(FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_CASES
+    .filter((entry) => entry.stratum === "local_terminal_eligible").map((entry) => entry.id)),
+  matchedNearMiss: Object.freeze(FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_CASES
+    .filter((entry) => entry.stratum === "matched_hybrid_fallback_near_miss").map((entry) => entry.id)),
+  routedSafety: Object.freeze(FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_CASES
+    .filter((entry) => entry.stratum === "routed_tool_or_safety").map((entry) => entry.id)),
 });
 
 type FixedTraceArchitectureStratum =
@@ -211,7 +210,7 @@ export const FIXED_TRACE_EXPERIMENTAL_DESIGN = Object.freeze({
     }),
   }),
   hybridArchitectureDiagnostic: Object.freeze({
-    status: "not_admitted_pending_independently_custodied_stratified_pack",
+    status: "predeclared_synthetic_development_diagnostic_only",
     totalCases: 24,
     repetitions: 3,
     requiredStrata: Object.freeze([
@@ -221,8 +220,8 @@ export const FIXED_TRACE_EXPERIMENTAL_DESIGN = Object.freeze({
     ]),
     casesPerStratum: 8,
     caseSpecs: HYBRID_DIAGNOSTIC_CASE_SPECS,
-    contentDigest: null,
-    excludesHandpickedPolicyFixtures: true,
+    contentDigest: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
+    excludesHandpickedPolicyFixtures: false,
     pairingAndClusterRule: "each_local_near_and_routed_triplet_is_one_cluster; every_local_near_pair_has_one_pair_id",
     effectReport: "stratum_specific_only; production_standardized_overall_requires_separately_estimated_prevalence_weights",
     humanPanel: "two_common_blinded_humans_with_locked_adjudication",
@@ -346,9 +345,10 @@ export function assertFixedTraceExperimentalDesign(
   ) throw new Error("smoke requires eight exact stratified development IDs and digest");
   if (
     digest(snapshot.hybridArchitectureDiagnostic.caseSpecs) !== digest(HYBRID_DIAGNOSTIC_CASE_SPECS) ||
-    snapshot.hybridArchitectureDiagnostic.contentDigest !== null ||
+    snapshot.hybridArchitectureDiagnostic.contentDigest !== FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST ||
     snapshot.diagnosticManifest.signature !== null ||
     snapshot.randomization.seedCommitment !== null ||
     snapshot.randomization.scheduleDigest !== null
-  ) throw new Error("unavailable diagnostic pack or randomization cannot be caller-admitted");
+  ) throw new Error("architecture diagnostic pack or randomization cannot be caller-admitted");
+  assertFixedTraceArchitectureDiagnosticPack();
 }

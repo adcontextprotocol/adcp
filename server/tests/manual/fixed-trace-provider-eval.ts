@@ -16,6 +16,12 @@ const {
   assertFixedTraceEvaluationProtocol,
   estimateFixedTraceEvaluationProtocol,
 } = await import("../../src/addie/eval/fixed-trace-evaluation-protocol.js");
+const {
+  FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
+  FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_DIGEST,
+  fixedTraceArchitectureDiagnosticPlan,
+  fixedTraceArchitectureDiagnosticPilotPlan,
+} = await import("../../src/addie/eval/fixed-trace-architecture-diagnostic.js");
 assertFixedTraceEvaluationProtocol(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
 const estimate = estimateFixedTraceEvaluationProtocol(
   FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
@@ -28,5 +34,16 @@ console.log(
     providerCalls: 0,
     externalFinalN: estimate.externalFinalN,
     totalCeilingUsd: estimate.totalCeilingUsd,
+    architectureDiagnostic: {
+      packDigest: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
+      pilot: {
+        digest: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_DIGEST,
+        plan: fixedTraceArchitectureDiagnosticPilotPlan(),
+      },
+      // Both are fixed reviewed configurations; this does not accept runtime
+      // model/configuration input and does not construct a provider.
+      haikuRouter: fixedTraceArchitectureDiagnosticPlan("haiku"),
+      lunaRouter: fixedTraceArchitectureDiagnosticPlan("luna"),
+    },
   }),
 );
