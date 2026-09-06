@@ -64,11 +64,12 @@ class StrictLedgerClient {
       const attempt = this.attempts.get(params![0] as string);
       return attempt ? { rowCount: 1, rows: [{ assignment_id: attempt.assignmentId, status: attempt.status, invocation_ordinal: String(attempt.ordinal), ...this.planRow() }] } : { rowCount: 0, rows: [] };
     }
-    if (sql.startsWith('WITH locked_attempts AS') && sql.includes('actual_cost_microdollars')) {
+    if (sql.startsWith('WITH locked_attempts AS') && sql.includes('actual_cost_microdollars')
+      || sql.startsWith('SELECT COALESCE(SUM(actual_cost_microdollars)')) {
       const spent = this.priorSpend ?? String([...this.attempts.values()].reduce((sum, attempt) => sum + (attempt.cost ?? 0), 0));
       return { rowCount: 1, rows: [{ spent }] };
     }
-    if ((sql.startsWith('WITH locked_attempts AS') && sql.includes('last_response_disposition')) || sql.startsWith('SELECT count(*)::bigint AS count')) {
+    if (sql.startsWith('WITH assignment_attempts AS') || sql.startsWith('SELECT count(*)::bigint AS count')) {
       const matches = [...this.attempts.values()].filter((attempt) => attempt.assignmentId === params![1] && attempt.ordinal <= params![2] as number);
       const last = [...matches].sort((left, right) => right.ordinal - left.ordinal)[0];
       return { rowCount: 1, rows: [{ count: String(matches.length), open: matches.some((attempt) => attempt.status === 'intent_recorded'), failures: matches.some((attempt) => attempt.status !== 'succeeded'), last_response_disposition: last?.responseDisposition ?? null }] };

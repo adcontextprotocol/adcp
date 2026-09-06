@@ -193,6 +193,47 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     } finally { await pool.end(); await client!.query('BEGIN'); }
   });
 
+  it('serializes application terminalization with standalone recovery after a prior terminal', async () => {
+    const prior = dispatchEntry(16);
+    const open = dispatchEntry(17);
+    const priorId = uniqueAttemptId();
+    const openId = uniqueAttemptId();
+    await insertIntent(client!, authorizationDigest, prior, priorId.slice('attempt_'.length));
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [priorId, 'a'.repeat(64), prior.provider, prior.model, prior.effort]);
+    await insertIntent(client!, authorizationDigest, open, openId.slice('attempt_'.length));
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl, max: 2 });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      const [terminal, recovery] = await Promise.all([
+        ledger.recordTerminal({ reservation: reservationFor(authorizationDigest), attemptId: openId, status: 'succeeded', responseDisposition: 'final_response', responseHmac: 'b'.repeat(64), returnedIdentity: { provider: open.provider, model: open.model, effort: open.effort }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 } }),
+        ledger.recordUnknownExposure(reservationFor(authorizationDigest)),
+      ]);
+      expect(terminal.status === 'recorded' || (terminal.status === 'refused' && (terminal.reason === 'intent_required' || terminal.reason === 'unknown_exposure'))).toBe(true);
+      expect(recovery).toEqual({ status: 'recorded' });
+      expect((await client!.query("SELECT a.status, count(*) FILTER (WHERE t.status = 'intent_recorded')::int AS open FROM addie_fixed_trace_component_smoke_authorizations a JOIN addie_fixed_trace_component_smoke_attempts t USING (authorization_digest) WHERE a.authorization_digest = $1 GROUP BY a.status", [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure', open: 0 }]);
+    } finally { await pool.end(); await client!.query('BEGIN'); }
+  });
+
+  it('runs provider-intent recovery independently of a concurrent standalone recovery', async () => {
+    const open = dispatchEntry(18);
+    const target = dispatchEntry(19);
+    const openId = uniqueAttemptId();
+    await insertIntent(client!, authorizationDigest, open, openId.slice('attempt_'.length));
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl, max: 2 });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      const [intent, recovery] = await Promise.all([
+        ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) }),
+        ledger.recordUnknownExposure(reservationFor(authorizationDigest)),
+      ]);
+      expect(intent).toEqual({ status: 'refused', reason: 'unknown_exposure' });
+      expect(recovery).toEqual({ status: 'recorded' });
+      expect((await client!.query("SELECT a.status, count(*) FILTER (WHERE t.status = 'intent_recorded')::int AS open FROM addie_fixed_trace_component_smoke_authorizations a JOIN addie_fixed_trace_component_smoke_attempts t USING (authorization_digest) WHERE a.authorization_digest = $1 GROUP BY a.status", [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure', open: 0 }]);
+    } finally { await pool.end(); await client!.query('BEGIN'); }
+  });
+
   it('application terminalizes a known provider failure after its fail-stop transition', async () => {
     const entry = dispatchEntry(14);
     const attemptId = uniqueAttemptId();

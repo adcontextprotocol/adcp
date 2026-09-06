@@ -268,7 +268,12 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     const parsed = parseProviderIntent(input);
     if (!parsed) return result('refused', 'plan_mismatch');
     try {
-      return await this.transaction(async (client) => {
+      let recoverUnresolvedIntent = false;
+      const outcome = await this.transaction(async (client) => {
+        // Recovery is intentionally decided before this mutation locks its
+        // target plan row. It runs in a separate standalone transaction below.
+        const unresolvedBeforeTarget = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND status = \'intent_recorded\' LIMIT 1', [parsed.reservation.authorizationDigest]);
+        if (unresolvedBeforeTarget.rowCount !== 0) { recoverUnresolvedIntent = true; return result('recorded'); }
         const plan = await client.query<Record<string, unknown>>(
           `SELECT probe_id, cell_id, disposition, maximum_provider_invocations, requested_provider, requested_model,
                   requested_effort, pricing_profile_id, max_input_tokens, max_output_tokens, timeout_ms, retries,
@@ -301,6 +306,10 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
         if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
         if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
+        // Recheck under the authorization lock. Do not invoke broad recovery
+        // here: this transaction already owns a target plan row.
+        const unresolvedAfterAuthorization = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND status = \'intent_recorded\' LIMIT 1', [parsed.reservation.authorizationDigest]);
+        if (unresolvedAfterAuthorization.rowCount !== 0) { recoverUnresolvedIntent = true; return result('recorded'); }
         await client.query(
           `INSERT INTO addie_fixed_trace_component_smoke_attempts
            (attempt_id, authorization_digest, assignment_id, invocation_ordinal, status, prepared_request_hmac)
@@ -309,6 +318,9 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         );
         return result('recorded');
       });
+      if (!recoverUnresolvedIntent) return outcome;
+      await this.recordUnknownExposure(parsed.reservation);
+      return result('refused', 'unknown_exposure');
     } catch { return result('refused', 'persistence_uncertain'); }
   }
 
@@ -354,18 +366,13 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         );
         if (parsed.usage && (parsed.usage.inputTokens > maxInput || additiveCacheOverLimit
           || parsed.usage.outputTokens > maxOutput || parsed.usage.latencyMs > timeout)) return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'plan_mismatch', spent);
-        // PostgreSQL forbids FOR UPDATE directly on an aggregate. Lock the
-        // contributing rows first; the authorization row above serializes all
-        // settlements, and this preserves a real checked-out-client boundary.
+        // The target attempt is locked before the authorization above. Every
+        // direct terminal trigger follows that order, so the authorization
+        // serializes settlements; never broad-lock peer attempts afterwards.
         const prior = await client.query<{ spent: unknown }>(
-          `WITH locked_attempts AS (
-             SELECT actual_cost_microdollars
-               FROM addie_fixed_trace_component_smoke_attempts
-              WHERE authorization_digest = $1
-              FOR UPDATE
-           )
-           SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent
-             FROM locked_attempts`,
+          `SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent
+             FROM addie_fixed_trace_component_smoke_attempts
+            WHERE authorization_digest = $1`,
           [parsed.reservation.authorizationDigest],
         );
         const auth = await client.query<{ status: string; reservation_microdollars: unknown; provider_ceiling_microdollars: unknown }>('SELECT status, reservation_microdollars, provider_ceiling_microdollars FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
@@ -603,16 +610,15 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (!expected || plan.rowCount !== 1 || !pgPlanMatches(plan.rows[0]!, expected) || expected.disposition !== 'provider_dispatch'
           || parsed.finalInvocationOrdinal > expected.maximumProviderInvocations) return result('refused', 'plan_mismatch');
         const evidence = await client.query<{ count: unknown; open: unknown; failures: unknown; last_response_disposition: unknown }>(
-          `WITH locked_attempts AS (
+          `WITH assignment_attempts AS (
              SELECT status, response_disposition, invocation_ordinal
                FROM addie_fixed_trace_component_smoke_attempts
               WHERE authorization_digest = $1 AND assignment_id = $2 AND invocation_ordinal <= $3
-              FOR UPDATE
            )
            SELECT count(*)::bigint AS count, bool_or(status = 'intent_recorded') AS open,
                   bool_or(status <> 'succeeded') AS failures,
                   (array_agg(response_disposition ORDER BY invocation_ordinal DESC))[1] AS last_response_disposition
-             FROM locked_attempts`,
+             FROM assignment_attempts`,
           [parsed.reservation.authorizationDigest, parsed.assignmentId, parsed.finalInvocationOrdinal],
         );
         const row = evidence.rows[0];
