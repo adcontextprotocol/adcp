@@ -89,6 +89,11 @@ export const ADCP_PROTOCOLS: readonly AdcpProtocol[] = [
 export type AdcpSpecialism =
   | 'audience-sync'
   | 'brand-rights'
+  | 'buyer-activation'
+  | 'buyer-discovery'
+  | 'buyer-monitoring'
+  | 'buyer-negotiation'
+  | 'buyer-recovery'
   | 'collection-lists'
   | 'content-standards'
   | 'creative-ad-server'
@@ -107,6 +112,7 @@ export type AdcpSpecialism =
   | 'sales-proposal-mode'
   | 'sales-social'
   | 'signal-marketplace'
+  | 'orchestrator-multi-agent'
   | 'signal-owned'
   | 'signed-requests'
   | 'sponsored-intelligence';
@@ -114,6 +120,11 @@ export type AdcpSpecialism =
 export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'audience-sync',
   'brand-rights',
+  'buyer-activation',
+  'buyer-discovery',
+  'buyer-monitoring',
+  'buyer-negotiation',
+  'buyer-recovery',
   'collection-lists',
   'content-standards',
   'creative-ad-server',
@@ -132,6 +143,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'sales-proposal-mode',
   'sales-social',
   'signal-marketplace',
+  'orchestrator-multi-agent',
   'signal-owned',
   'signed-requests',
   'sponsored-intelligence',

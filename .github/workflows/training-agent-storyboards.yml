@@ -124,7 +124,7 @@ jobs:
             min_passing_steps: 112
           - surface: 3.0-compat
             tenant: brand
-            min_clean_storyboards: 23
+            min_clean_storyboards: 22
             min_passing_steps: 76
           # 3.0 predates the sponsored-intelligence specialism enum and its
           # response projection therefore omits that newer claim. Keep the

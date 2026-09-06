@@ -87,6 +87,12 @@ Specialisms are grouped below by parent protocol.
 | `sales-social` | stable | Social media advertising platform with self-service flows |
 | `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
 | `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences), [`list_accounts`](/docs/accounts/tasks/list_accounts)) |
+| `buyer-discovery` | preview | Buyer agent that discovers seller inventory, interprets product capabilities, and assembles a candidate shortlist from a brief |
+| `buyer-activation` | preview | Buyer agent that creates media buys with correct idempotency keys, handles transient failures with retry, and coordinates creative assignment |
+| `buyer-negotiation` | preview | Buyer agent that requests proposals, refines terms, handles TERMS_REJECTED, and accepts or declines offers |
+| `buyer-monitoring` | preview | Buyer agent that monitors delivery via webhooks and polling, detects pacing variance, and flags under-delivery |
+| `buyer-recovery` | preview | Buyer agent that handles seller offline, auth expiry, idempotency collisions, and rate limiting with graceful degradation |
+| `orchestrator-multi-agent` | preview | Orchestrator agent that coordinates across multiple sellers, handles partial failures, and reconciles cross-agent budget and state |
 
 <Note>
 **Coming in 3.1.** `sales-streaming-tv` (CTV / streaming), `sales-exchange` (programmatic SSP / exchange), and `sales-retail-media` (retail media network) are scheduled for 3.1. Sellers in those categories should claim `sales-guaranteed` or `sales-non-guaranteed` at 3.0 GA.

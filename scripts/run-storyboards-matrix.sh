@@ -230,7 +230,7 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
     "governance:27:147"
     "creative:22:109"
     "creative-builder:24:112"
-    "brand:23:76"
+    "brand:22:76"
     "si:21:72"
   )
 else

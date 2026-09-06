@@ -35,6 +35,8 @@ const STORYBOARD_SLUG = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ERROR_CODE = /^[A-Z][A-Z0-9_]*$/;
 const RECOVERY_VALUES = new Set(['correctable', 'transient', 'terminal']);
 const UNIVERSAL_SUPPORT_ARTIFACTS = new Set([
+  'buyer-fixture-publisher',
+  'buyer-orchestrator-track',
   'fictional-entities',
   'governance',
   'runner-output-contract',

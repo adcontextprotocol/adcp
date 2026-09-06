@@ -4520,6 +4520,11 @@ components:
             enum:
               - audience-sync
               - brand-rights
+              - buyer-activation
+              - buyer-discovery
+              - buyer-monitoring
+              - buyer-negotiation
+              - buyer-recovery
               - collection-lists
               - content-standards
               - creative-ad-server
@@ -4538,6 +4543,7 @@ components:
               - sales-proposal-mode
               - sales-social
               - signal-marketplace
+              - orchestrator-multi-agent
               - signal-owned
               - signed-requests
               - sponsored-intelligence
