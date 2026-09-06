@@ -322,6 +322,43 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     } finally { await blocker.query('ROLLBACK').catch(() => undefined); await blocker.end(); await pool.end(); await client!.query('BEGIN'); }
   });
 
+  it('gates a direct intent behind complete-plan recovery before its attempt snapshot', async () => {
+    // Three transactions: holder locks the last plan row; recovery consequently
+    // owns every earlier immutable plan row; a direct SQL INSERT on one of
+    // those rows must wait and then reject after recovery marks the run unknown.
+    const ordered = [...plan].sort((left, right) => left.assignmentId.localeCompare(right.assignmentId));
+    const held = ordered.at(-1)!;
+    const inserted = ordered.find((entry) => entry.disposition === 'provider_dispatch' && entry.assignmentId < held.assignmentId)!;
+    await client!.query('COMMIT');
+    const holder = new Client({ connectionString: databaseUrl });
+    const direct = new Client({ connectionString: databaseUrl });
+    const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+    await holder.connect(); await direct.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2 FOR UPDATE', [authorizationDigest, held.assignmentId]);
+      const recovery = new PostgresFixedTraceComponentSmokePrivateLedger(pool).recordUnknownExposure(reservationFor(authorizationDigest));
+      let recoverySettled = false;
+      void recovery.then(() => { recoverySettled = true; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(recoverySettled).toBe(false);
+      let directSettled = false;
+      const directInsert = insertIntent(direct, authorizationDigest, inserted, uniqueAttemptId().slice('attempt_'.length))
+        .then(() => undefined, (error: unknown) => error)
+        .then((outcome) => { directSettled = true; return outcome; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(directSettled).toBe(false);
+      await holder.query('COMMIT');
+      expect(await recovery).toEqual({ status: 'recorded' });
+      expect(await directInsert).toBeInstanceOf(Error);
+      expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure' }]);
+      expect((await client!.query('SELECT count(*)::int AS count FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ count: 0 }]);
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined);
+      await holder.end(); await direct.end(); await pool.end(); await client!.query('BEGIN');
+    }
+  });
+
   it('application terminalizes a known provider failure after its fail-stop transition', async () => {
     const entry = dispatchEntry(14);
     const attemptId = uniqueAttemptId();

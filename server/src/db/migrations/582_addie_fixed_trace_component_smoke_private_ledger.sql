@@ -403,13 +403,30 @@ BEGIN
   IF TG_OP = 'INSERT' AND NEW.status <> 'intent_recorded' THEN
     RAISE EXCEPTION 'a provider attempt must begin as an intent';
   END IF;
-  SELECT p.maximum_provider_invocations, p.disposition, p.requested_provider, p.requested_model, p.requested_effort, p.pricing_profile_id,
-         p.max_input_tokens, p.max_output_tokens, p.timeout_ms,
-         p.reserved_microdollars[NEW.invocation_ordinal], p.assignment_outcome
-    INTO max_invocations, disposition, requested_provider, requested_model, requested_effort, pricing_profile,
-         max_input, max_output, timeout_limit, reserved, assignment_outcome
-    FROM addie_fixed_trace_component_smoke_run_plan AS p
-   WHERE p.authorization_digest = NEW.authorization_digest AND p.assignment_id = NEW.assignment_id;
+  -- INSERT is the recovery insertion gate: it locks its one immutable plan
+  -- row before authorization. Standalone recovery locks the complete plan
+  -- set in the same assignment order before snapshotting attempts, so an
+  -- uncommitted/new intent cannot become a post-snapshot phantom. UPDATE is
+  -- intentionally attempt -> authorization only; do not add a plan lock and
+  -- recreate that inverse edge.
+  IF TG_OP = 'INSERT' THEN
+    SELECT p.maximum_provider_invocations, p.disposition, p.requested_provider, p.requested_model, p.requested_effort, p.pricing_profile_id,
+           p.max_input_tokens, p.max_output_tokens, p.timeout_ms,
+           p.reserved_microdollars[NEW.invocation_ordinal], p.assignment_outcome
+      INTO max_invocations, disposition, requested_provider, requested_model, requested_effort, pricing_profile,
+           max_input, max_output, timeout_limit, reserved, assignment_outcome
+      FROM addie_fixed_trace_component_smoke_run_plan AS p
+     WHERE p.authorization_digest = NEW.authorization_digest AND p.assignment_id = NEW.assignment_id
+       FOR UPDATE;
+  ELSE
+    SELECT p.maximum_provider_invocations, p.disposition, p.requested_provider, p.requested_model, p.requested_effort, p.pricing_profile_id,
+           p.max_input_tokens, p.max_output_tokens, p.timeout_ms,
+           p.reserved_microdollars[NEW.invocation_ordinal], p.assignment_outcome
+      INTO max_invocations, disposition, requested_provider, requested_model, requested_effort, pricing_profile,
+           max_input, max_output, timeout_limit, reserved, assignment_outcome
+      FROM addie_fixed_trace_component_smoke_run_plan AS p
+     WHERE p.authorization_digest = NEW.authorization_digest AND p.assignment_id = NEW.assignment_id;
+  END IF;
   IF disposition IS DISTINCT FROM 'provider_dispatch' OR NEW.invocation_ordinal > max_invocations THEN
     RAISE EXCEPTION 'attempt is not an admitted provider-dispatch ordinal';
   END IF;

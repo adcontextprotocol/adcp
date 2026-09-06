@@ -227,6 +227,18 @@ describe('private ledger state machine', () => {
     expect(client.assignmentOutcomes.get(dispatch.assignmentId)).toBe('provider_unknown_exposure');
   });
 
+  it('uses complete-plan, then attempts, then authorization recovery locking', async () => {
+    const client = new StrictLedgerClient(); const subject = ledger(client);
+    await subject.recordProviderIntent(intent());
+    expect(await subject.recordUnknownExposure(reservation)).toEqual({ status: 'recorded' });
+    const planSet = client.calls.findIndex(({ sql }) => sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan'));
+    const attempts = client.calls.findIndex(({ sql }, index) => index > planSet && sql.startsWith('SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts'));
+    const authorization = client.calls.findIndex(({ sql }, index) => index > attempts && sql.startsWith('SELECT status FROM addie_fixed_trace_component_smoke_authorizations'));
+    expect(planSet).toBeGreaterThanOrEqual(0);
+    expect(attempts).toBeGreaterThan(planSet);
+    expect(authorization).toBeGreaterThan(attempts);
+  });
+
   it('idempotently recovers a committed known provider failure after its unknown-exposure commit response is lost', async () => {
     const client = new StrictLedgerClient(); const subject = ledger(client);
     client.authStatus = 'unknown_exposure';

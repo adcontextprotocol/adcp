@@ -459,20 +459,22 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
   * usage, identity, response HMAC, or cost.
   */
   private async closeOpenIntentsAsUnknownExposure(client: PoolClient, reservation: FixedTraceComponentSmokeReservation): Promise<boolean> {
-    // Direct attempt/plan mutations acquire their target row before the
-    // authorization in row triggers. Acquire all recovery targets first too;
-    // subsequent updates reuse these locks and cannot form auth->target cycles.
+    // Recovery has no single target. It first locks the complete immutable
+    // plan in assignment order, which is the insertion gate for both the
+    // application and the INSERT trigger. Only then can it snapshot every
+    // attempt safely: an intent that began earlier either committed before
+    // this point or holds a plan row we wait for; no later intent can appear.
+    // Terminal UPDATE deliberately remains attempt -> authorization and never
+    // acquires a plan row, so it cannot invert this recovery order.
     await client.query(
-      `SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts
-        WHERE authorization_digest = $1 FOR UPDATE`,
+      `SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan
+        WHERE authorization_digest = $1 ORDER BY assignment_id FOR UPDATE`,
       [reservation.authorizationDigest],
     );
     await client.query(
-      `SELECT p.assignment_id FROM addie_fixed_trace_component_smoke_run_plan AS p
-        WHERE p.authorization_digest = $1 AND p.assignment_outcome IS NULL
-          AND EXISTS (SELECT 1 FROM addie_fixed_trace_component_smoke_attempts a
-                       WHERE a.authorization_digest = p.authorization_digest AND a.assignment_id = p.assignment_id)
-        FOR UPDATE OF p`,
+      `SELECT attempt_id FROM addie_fixed_trace_component_smoke_attempts
+        WHERE authorization_digest = $1
+        ORDER BY assignment_id, invocation_ordinal, attempt_id FOR UPDATE`,
       [reservation.authorizationDigest],
     );
     const authorization = await client.query<{ status: string }>(
