@@ -178,7 +178,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
 
 /** Independently reviewed integrity pin; it is never an authorization artifact. */
 const FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN =
-  '674ff20f26cb76c457008ce09b72983d020da1e553568cbe5320cc685eaf8825' as const;
+  'db39f66ccce734727ded358a6269c7fe99e40a0c3d5b9afcf2e3ff96d21a407d' as const;
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
@@ -340,11 +340,51 @@ function pricingForPinnedArtifacts(plan: FixedTraceComponentSmokeStagePlan | nul
   }
 }
 
+function cardinalityForPinnedPlan(
+  plan: FixedTraceComponentSmokeStagePlan | null,
+): FixedTraceComponentSmokeAdmissionManifest['cardinality'] {
+  if (!plan || !validStageOnePlan(plan)) return Object.freeze({
+    probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
+    totalCells: 21 as const, repetitions: 1 as const,
+    caseCellAssignments: 0,
+    maximumProviderInvocations: 0,
+  });
+  return Object.freeze({
+    probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
+    totalCells: 21 as const, repetitions: 1 as const,
+    caseCellAssignments: plan.cases * plan.repetitions * plan.controls.length,
+    maximumProviderInvocations: plan.controls.reduce(
+      (total, control) => total + plan.cases * plan.repetitions * control.maxInvocationsPerCase,
+      0,
+    ),
+  });
+}
+
+function pricingManifestForPinnedArtifacts(
+  pricing: ReturnType<typeof pricingForPinnedArtifacts>,
+): FixedTraceComponentSmokeAdmissionManifest['pricing'] {
+  const cohort = pricing.cohort;
+  return Object.freeze({
+    cohortDigest: cohort?.digest ?? null,
+    checkedAt: cohort?.checkedAt ?? null,
+    profiles: Object.freeze((cohort?.profiles ?? []).map((profile) => Object.freeze({
+      candidateId: profile.candidateId,
+      profileId: profile.profileId,
+      effectiveFrom: profile.effectiveFrom,
+      effectiveBefore: profile.effectiveBefore,
+    }))),
+    maximumReservationUsd: pricing.reservation,
+    providerCeilingUsd: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd,
+  });
+}
+
 function aggregateAdmissionFingerprint(
   probes: FixedTraceComponentSmokeAdmissionManifest['probes'],
   cells: FixedTraceComponentSmokeAdmissionManifest['cells'],
   plan: FixedTraceComponentSmokeStagePlan | null,
   cohort: DatedPricingCohort | null,
+  cardinality: FixedTraceComponentSmokeAdmissionManifest['cardinality'],
+  pricing: FixedTraceComponentSmokeAdmissionManifest['pricing'],
 ): string {
   return sha256({
     domain: 'adcp:addie:fixed-trace-component-smoke-admission:v1\0',
@@ -369,6 +409,7 @@ function aggregateAdmissionFingerprint(
     screeningConfiguration: FIXED_TRACE_SCREENING_CONFIG_FINGERPRINT,
     pricingCohort: cohort,
     readiness: FIXED_TRACE_COMPONENT_SMOKE_READINESS,
+    derived: { cardinality, pricing },
   });
 }
 
@@ -386,21 +427,14 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
     adapterCapabilitySource: cell.adapterCapabilitySource,
   }));
   const cohort = pricing.cohort;
-  const aggregate = aggregateAdmissionFingerprint(probes, cells, plan, cohort);
+  const cardinality = cardinalityForPinnedPlan(plan);
+  const pricingManifest = pricingManifestForPinnedArtifacts(pricing);
+  const aggregate = aggregateAdmissionFingerprint(
+    probes, cells, plan, cohort, cardinality, pricingManifest,
+  );
   if (aggregate !== FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_FINGERPRINT_PIN) {
     reasons.push('component_admission_fingerprint_mismatch');
   }
-  const cardinality = plan && validStageOnePlan(plan)
-    ? Object.freeze({
-      probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
-      totalCells: 21 as const, repetitions: 1 as const,
-      caseCellAssignments: plan.cases * plan.repetitions * plan.controls.length,
-      maximumProviderInvocations: plan.controls.reduce(
-        (total, control) => total + plan.cases * plan.repetitions * control.maxInvocationsPerCase,
-        0,
-      ),
-    })
-    : Object.freeze({ probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const, totalCells: 21 as const, repetitions: 1 as const, caseCellAssignments: 0, maximumProviderInvocations: 0 });
   return Object.freeze({
     version: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_VERSION,
     asOf: FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_AS_OF,
@@ -416,12 +450,7 @@ function pinnedManifest(): FixedTraceComponentSmokeAdmissionManifest {
       controls: [] as readonly FixedTraceComponentSmokeStageControl[],
     }),
     cardinality,
-    pricing: Object.freeze({
-      cohortDigest: cohort?.digest ?? null, checkedAt: cohort?.checkedAt ?? null,
-      profiles: Object.freeze((cohort?.profiles ?? []).map((profile) => Object.freeze({ candidateId: profile.candidateId, profileId: profile.profileId, effectiveFrom: profile.effectiveFrom, effectiveBefore: profile.effectiveBefore }))),
-      maximumReservationUsd: pricing.reservation,
-      providerCeilingUsd: FIXED_TRACE_COMPONENT_SMOKE_READINESS.policy.providerCeilingUsd,
-    }),
+    pricing: pricingManifest,
     fingerprints: Object.freeze({
       protocol: fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL),
       corpus: fixedTraceCorpusSha256(FIXED_TRACE_CORPUS), partition: FIXED_TRACE_PARTITION_MANIFEST_SHA256,

@@ -215,6 +215,27 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
   });
 
+  it('does not admit a derived cardinality increase', async () => {
+    const baseline = fixedTraceComponentSmokeAdmission();
+    const admission = await admissionWithMutatedStageOne((protocol) => {
+      protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke').arms[0].stages[0].maxInvocationsPerCase += 1;
+    });
+    expect(admission.cardinality.maximumProviderInvocations).toBe(
+      baseline.cardinality.maximumProviderInvocations + baseline.stageControls.cases,
+    );
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
+  it('does not admit an under-reservation accounting drift with unchanged inputs', async () => {
+    const baseline = fixedTraceComponentSmokeAdmission();
+    const admission = await admissionWithMutatedArtifacts({ reservationCost: () => 0 });
+    expect(admission.pricing.maximumReservationUsd).toBe(0);
+    expect(admission.pricing.maximumReservationUsd).toBeLessThan(baseline.pricing.maximumReservationUsd!);
+    expect(admission).toMatchObject({ status: 'not_admitted' });
+    expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');
+  });
+
   it('does not grant authority, mint a pass, or use ambient environment, time, or randomness', () => {
     const source = readFileSync(new URL('../../../src/addie/eval/fixed-trace-component-smoke-admission.ts', import.meta.url), 'utf8');
     expect(source).not.toContain('process.env');
@@ -249,11 +270,13 @@ async function admissionWithMutatedArtifacts({
   mutatePlan,
   stageControlVersion,
   mutatePolicy,
+  reservationCost,
 }: {
   mutateProtocol?: (protocol: any, cells: any[]) => void;
   mutatePlan?: (plan: any) => void;
   stageControlVersion?: string;
   mutatePolicy?: (policy: any) => void;
+  reservationCost?: () => number;
 }) {
   vi.resetModules();
   if (mutateProtocol || mutatePlan) vi.doMock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js', async () => {
@@ -290,6 +313,12 @@ async function admissionWithMutatedArtifacts({
     mutatePolicy(policy);
     return { ...actual, FIXED_TRACE_COMPONENT_SMOKE_ADMISSION_POLICY: policy };
   });
+  if (reservationCost) vi.doMock('../../../src/addie/eval/dated-pricing-cohort.js', async () => {
+    const actual = await vi.importActual<typeof import('../../../src/addie/eval/dated-pricing-cohort.js')>(
+      '../../../src/addie/eval/dated-pricing-cohort.js',
+    );
+    return { ...actual, datedPricingReservationCostUsd: reservationCost };
+  });
   try {
     const { fixedTraceComponentSmokeAdmission: readAdmission } = await import(
       '../../../src/addie/eval/fixed-trace-component-smoke-admission.js'
@@ -299,6 +328,7 @@ async function admissionWithMutatedArtifacts({
     vi.doUnmock('../../../src/addie/eval/fixed-trace-evaluation-protocol.js');
     vi.doUnmock('../../../src/addie/eval/fixed-trace-suite.js');
     vi.doUnmock('../../../src/addie/eval/fixed-trace-component-smoke-admission-policy.js');
+    vi.doUnmock('../../../src/addie/eval/dated-pricing-cohort.js');
     vi.resetModules();
   }
 }
