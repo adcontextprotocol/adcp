@@ -1,4 +1,16 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const requiredTypecheck = "tsc --project server/tsconfig.json --noEmit && npm run typecheck:fixed-trace-rollout-tests";
+
+// This compiler pass protects a test-only contract, so it must be reached by
+// the normal required typecheck path. Keep this exact assertion beside the
+// gate: removing or reordering the wiring makes even a direct invocation fail.
+if (packageJson?.scripts?.typecheck !== requiredTypecheck) {
+  process.stderr.write("fixed-trace rollout test-aware typecheck is not wired into the required typecheck script\n");
+  process.exit(1);
+}
 
 const result = spawnSync(
   process.platform === "win32" ? "npx.cmd" : "npx",
