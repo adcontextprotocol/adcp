@@ -126,8 +126,8 @@ describe('fixed-trace component-smoke private execution control', () => {
     ledger.seedIssuedGrant(value);
     const reserved = await ledger.reserveAndConsume({ grant: value, admission: fixedTraceComponentSmokeAdmission() });
     if (reserved.status !== 'reserved') throw new Error('expected reservation');
-    expect(reserved.reservation).toMatchObject({ maximumProviderInvocations: 192, maximumReservationUsd: 2.819472 });
-    expect(reserved.reservation.maximumReservationUsd).toBe(2.819472);
+    expect(reserved.reservation).toMatchObject({ maximumProviderInvocations: 192, maximumReservationUsd: 2.819484 });
+    expect(reserved.reservation.maximumReservationUsd).toBe(2.819484);
     expect(reserved.reservation).not.toHaveProperty('grantId');
     for (let index = 0; index < 192; index += 1) {
       await expect(ledger.recordAttemptIntent({ reservation: reserved.reservation, attemptCorrelationId: attemptId(index), probeId: 'probe', cellId: 'cell', invocationOrdinal: 1 })).resolves.toEqual({ status: 'recorded' });

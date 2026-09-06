@@ -5,9 +5,13 @@ import {
   fixedTraceComponentSmokeAdmission,
   isFixedTraceComponentSmokeAdmissionManifest,
 } from '../../../src/addie/eval/fixed-trace-component-smoke-admission.js';
+import {
+  datedPricingReservationCostUsd,
+  resolveCurrentEvaluationPricingCohort,
+} from '../../../src/addie/eval/dated-pricing-cohort.js';
 
 describe('fixed-trace component-smoke credential-free admission', () => {
-  it('pins eight probes, 21 cells, truthful non-dispatch paths, and the reduced provider reservation', () => {
+  it('pins eight probes, 21 cells, truthful non-dispatch paths, and the independently conservative provider reservation', () => {
     const admission = fixedTraceComponentSmokeAdmission();
     expect(admission).toBe(fixedTraceComponentSmokeAdmission());
     expect(Object.isFrozen(admission)).toBe(true);
@@ -21,7 +25,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
         localTerminalCaseCellAssignments: 21, preDispatchFaultCaseCellAssignments: 21,
         maximumPlannedInvocationSlots: 256, maximumProviderInvocations: 192,
       },
-      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 2.819472, reservationMicrodollars: 2819472 },
+      pricing: { providerCeilingUsd: 5, maximumReservationUsd: 2.819484, reservationMicrodollars: 2819484 },
       dispatch: {
         defaultOff: true, currentModuleCanDispatch: false,
         ambientEnvironmentAuthority: false,
@@ -56,7 +60,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     ]);
     expect(admission.privateRuntimePlan).toHaveLength(168);
     expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.maximumProviderInvocations, 0)).toBe(192);
-    expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.perAttemptReservationMicrodollars.reduce((sum, amount) => sum + amount, 0), 0)).toBe(2819472);
+    expect(admission.privateRuntimePlan.reduce((total, entry) => total + entry.perAttemptReservationMicrodollars.reduce((sum, amount) => sum + amount, 0), 0)).toBe(2819484);
     expect(admission.privateRuntimePlan.filter((entry) => entry.dispatchDisposition !== 'provider_dispatch').every((entry) => entry.maximumProviderInvocations === 0 && entry.perAttemptReservationMicrodollars.length === 0)).toBe(true);
     expect(admission.privateRuntimePlan.every((entry) => entry.preparedRequestHmac === 'required_before_intent'
       && entry.sdkAutomaticRetries === 0
@@ -67,6 +71,29 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.pricing.profiles.every((profile) => profile.effectiveFrom <= admission.asOf
       && (profile.effectiveBefore === null || admission.asOf < profile.effectiveBefore))).toBe(true);
     expect(Object.values(admission.fingerprints).every((value) => typeof value === 'string' && value.length > 0)).toBe(true);
+  });
+
+  it('reserves each provider attempt independently at or above its exact dated maximum', () => {
+    const admission = fixedTraceComponentSmokeAdmission();
+    const resolved = resolveCurrentEvaluationPricingCohort(new Date(admission.asOf));
+    expect(resolved.status).toBe('available');
+    if (resolved.status !== 'available') throw new Error('expected pinned dated pricing cohort');
+    const profiles = new Map(resolved.cohort.profiles.map((profile) => [profile.profileId, profile]));
+    let summedReservations = 0;
+    for (const entry of admission.privateRuntimePlan) {
+      const profile = profiles.get(entry.pricingProfileId);
+      expect(profile).toBeDefined();
+      const exactMicrodollars = entry.dispatchDisposition === 'provider_dispatch'
+        ? datedPricingReservationCostUsd(profile!, entry.maxInputTokensPerInvocation, entry.maxOutputTokensPerInvocation) * 1_000_000
+        : 0;
+      expect(entry.perAttemptReservationMicrodollars).toHaveLength(entry.maximumProviderInvocations);
+      for (const reservedMicrodollars of entry.perAttemptReservationMicrodollars) {
+        expect(reservedMicrodollars).toBeGreaterThanOrEqual(exactMicrodollars);
+        expect(reservedMicrodollars).toBe(Math.ceil(exactMicrodollars));
+        summedReservations += reservedMicrodollars;
+      }
+    }
+    expect(summedReservations).toBe(admission.pricing.reservationMicrodollars);
   });
 
   it.each([
