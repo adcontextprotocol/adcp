@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { fixedTraceComponentSmokeAdmission } from './fixed-trace-component-smoke-admission.js';
+import { datedPricingCostMicros, datedPricingProfilesForFixedTrace } from './dated-pricing-cohort.js';
 import {
-  fixedTraceComponentSmokeVerifiedGrantSignatureForLedger,
+  fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger,
   isFixedTraceComponentSmokeVerifiedGrant,
   type FixedTraceComponentSmokeVerifiedGrant,
 } from './fixed-trace-component-smoke-private-authorization.js';
@@ -57,7 +58,7 @@ export interface FixedTraceComponentSmokeTerminal {
   readonly reservation: FixedTraceComponentSmokeReservation;
   readonly attemptId: string;
   readonly status: 'succeeded' | 'provider_failed' | 'timeout_after_dispatch' | 'malformed_response' | 'identity_mismatch' | 'missing_usage';
-  readonly usage: Readonly<{ inputTokens: number; outputTokens: number; costMicrodollars: number; latencyMs: number }> | null;
+  readonly usage: Readonly<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; latencyMs: number }> | null;
   readonly returnedIdentity: Readonly<{ provider: string; model: string; effort: string }> | null;
   readonly responseHmac: string | null;
 }
@@ -90,6 +91,12 @@ function exactKeys(value: object, keys: readonly string[]): boolean {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 function isHash(value: unknown): value is string { return typeof value === 'string' && HEX.test(value); }
+function pgSafeInt(value: unknown, maximum: number): number | null {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0 && value <= maximum ? value : null;
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed <= maximum ? parsed : null;
+}
 function safeString(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= max && /^[a-z0-9._:-]+$/i.test(value);
 }
@@ -165,14 +172,14 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
 
   async reserveAndConsume(grant: FixedTraceComponentSmokeVerifiedGrant): Promise<Readonly<{ status: 'reserved'; reservation: FixedTraceComponentSmokeReservation }> | Readonly<{ status: 'refused'; reason: FixedTraceComponentSmokeLedgerRefusal }>> {
     const plan = fixedTraceComponentSmokePrivateLedgerPlan();
-    const signature = fixedTraceComponentSmokeVerifiedGrantSignatureForLedger(grant);
-    if (!plan || !isFixedTraceComponentSmokeVerifiedGrant(grant) || !signature || !isHash(grant.grantDigest) || !isHash(grant.signedPayloadDigest) || !isHash(grant.payload.nonceCommitment)) return result('refused', 'admission_drift');
+    const signatureDigest = fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger(grant);
+    if (!plan || !isFixedTraceComponentSmokeVerifiedGrant(grant) || !signatureDigest || !isHash(grant.grantDigest) || !isHash(grant.signedPayloadDigest) || !isHash(grant.payload.nonceCommitment)) return result('refused', 'admission_drift');
     const reservation = reservationFor(grant);
     try {
       return await this.transaction(async (client) => {
         const inserted = await client.query<{ authorization_digest: string }>(
           `INSERT INTO addie_fixed_trace_component_smoke_authorizations (
-             authorization_digest, signed_payload_digest, signature, kid, nonce_commitment, grant_version,
+             authorization_digest, signed_payload_digest, signature_digest, kid, nonce_commitment, grant_version,
              stage_id, admission_version, aggregate_admission_fingerprint, probes, router_cells, generation_cells, total_cells, repetitions, assignments,
              provider_dispatch_assignments, local_terminal_assignments, pre_dispatch_fault_assignments,
              maximum_planned_invocation_slots, maximum_provider_invocations, reservation_microdollars, provider_ceiling_microdollars,
@@ -182,7 +189,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
            WHERE $24::timestamptz <= clock_timestamp() AND $25::timestamptz > clock_timestamp()
            ON CONFLICT (authorization_digest) DO NOTHING
            RETURNING authorization_digest`,
-          [grant.grantDigest, grant.signedPayloadDigest, signature, grant.payload.kid, grant.payload.nonceCommitment,
+          [grant.grantDigest, grant.signedPayloadDigest, signatureDigest, grant.payload.kid, grant.payload.nonceCommitment,
             grant.payload.grantVersion, grant.payload.stageId, grant.payload.admissionVersion, grant.payload.aggregateAdmissionFingerprint,
             grant.payload.cardinality.probes, grant.payload.cardinality.routerCells, grant.payload.cardinality.generationCells,
             grant.payload.cardinality.totalCells, grant.payload.cardinality.repetitions, grant.payload.cardinality.caseCellAssignments,
@@ -226,6 +233,11 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
         if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
         if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
+        const unresolved = await client.query('SELECT 1 FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1 AND status = \'intent_recorded\' LIMIT 1 FOR UPDATE', [parsed.reservation.authorizationDigest]);
+        if (unresolved.rowCount !== 0) {
+          await client.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp() WHERE authorization_digest = $1 AND reservation_id = $2", [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+          return result('refused', 'unknown_exposure');
+        }
         const plan = await client.query<{ disposition: string; maximum_provider_invocations: number }>(
           'SELECT disposition, maximum_provider_invocations FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.assignmentId]);
         if (plan.rowCount !== 1 || plan.rows[0]!.disposition !== 'provider_dispatch' || parsed.invocationOrdinal > plan.rows[0]!.maximum_provider_invocations) return result('refused', 'plan_mismatch');
@@ -249,13 +261,13 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     if (!parsed) return result('refused', 'plan_mismatch');
     try {
       return await this.transaction(async (client) => {
-        const auth = await client.query<{ status: string; reservation_microdollars: number; provider_ceiling_microdollars: number }>('SELECT status, reservation_microdollars, provider_ceiling_microdollars FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
+        const auth = await client.query<{ status: string; reservation_microdollars: unknown; provider_ceiling_microdollars: unknown }>('SELECT status, reservation_microdollars, provider_ceiling_microdollars FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1 AND reservation_id = $2 FOR UPDATE', [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
         if (auth.rowCount !== 1) return result('refused', 'grant_already_consumed');
         if (auth.rows[0]!.status === 'unknown_exposure') return result('refused', 'unknown_exposure');
         if (auth.rows[0]!.status === 'halted') return result('refused', 'run_halted');
         if (auth.rows[0]!.status !== 'consumed') return result('refused', 'admission_drift');
-        const attempt = await client.query<{ status: string; invocation_ordinal: number; requested_provider: string; requested_model: string; requested_effort: string; reserved_microdollars: number[] }>(
-          `SELECT a.status, a.invocation_ordinal, p.requested_provider, p.requested_model, p.requested_effort, p.reserved_microdollars
+        const attempt = await client.query<{ status: string; invocation_ordinal: unknown; requested_provider: string; requested_model: string; requested_effort: string; pricing_profile_id: string; max_input_tokens: unknown; max_output_tokens: unknown; timeout_ms: unknown; reserved_microdollars: unknown[] }>(
+          `SELECT a.status, a.invocation_ordinal, p.requested_provider, p.requested_model, p.requested_effort, p.pricing_profile_id, p.max_input_tokens, p.max_output_tokens, p.timeout_ms, p.reserved_microdollars
            FROM addie_fixed_trace_component_smoke_attempts a
            JOIN addie_fixed_trace_component_smoke_run_plan p ON p.authorization_digest = a.authorization_digest AND p.assignment_id = a.assignment_id
            WHERE a.attempt_id = $1 AND a.authorization_digest = $2 FOR UPDATE`, [parsed.attemptId, parsed.reservation.authorizationDigest]);
@@ -263,29 +275,39 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (parsed.status === 'succeeded' && (parsed.returnedIdentity?.provider !== attempt.rows[0]!.requested_provider
           || parsed.returnedIdentity?.model !== attempt.rows[0]!.requested_model
           || parsed.returnedIdentity?.effort !== attempt.rows[0]!.requested_effort)) return result('refused', 'plan_mismatch');
-        const reservedForOrdinal = attempt.rows[0]!.reserved_microdollars[attempt.rows[0]!.invocation_ordinal - 1];
-        const spent = parsed.usage?.costMicrodollars ?? 0;
-        const prior = await client.query<{ spent: number }>('SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [parsed.reservation.authorizationDigest]);
-        if (!Number.isSafeInteger(reservedForOrdinal) || spent > reservedForOrdinal
-          || prior.rowCount !== 1 || !Number.isSafeInteger(prior.rows[0]!.spent)
-          || prior.rows[0]!.spent + spent > auth.rows[0]!.reservation_microdollars
-          || prior.rows[0]!.spent + spent > auth.rows[0]!.provider_ceiling_microdollars) {
+        const ordinal = pgSafeInt(attempt.rows[0]!.invocation_ordinal, 2);
+        const maxInput = pgSafeInt(attempt.rows[0]!.max_input_tokens, 1_000_000);
+        const maxOutput = pgSafeInt(attempt.rows[0]!.max_output_tokens, 1_000_000);
+        const timeout = pgSafeInt(attempt.rows[0]!.timeout_ms, MAX_LATENCY_MS);
+        if (ordinal === null || maxInput === null || maxOutput === null || timeout === null) return result('refused', 'persistence_uncertain');
+        if (parsed.usage && (parsed.usage.inputTokens > maxInput || parsed.usage.outputTokens > maxOutput || parsed.usage.latencyMs > timeout)) return result('refused', 'cost_exhausted');
+        const reservedForOrdinal = pgSafeInt(attempt.rows[0]!.reserved_microdollars[ordinal - 1], 2_819_484);
+        const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === attempt.rows[0]!.pricing_profile_id);
+        let spent = 0;
+        try { spent = parsed.usage && profile ? datedPricingCostMicros(profile, parsed.usage) : 0; } catch { return result('refused', 'plan_mismatch'); }
+        const prior = await client.query<{ spent: unknown }>('SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [parsed.reservation.authorizationDigest]);
+        const priorSpent = prior.rowCount === 1 ? pgSafeInt(prior.rows[0]!.spent, 5_000_000) : null;
+        const reservationLimit = pgSafeInt(auth.rows[0]!.reservation_microdollars, 2_819_484);
+        const providerLimit = pgSafeInt(auth.rows[0]!.provider_ceiling_microdollars, 5_000_000);
+        if (reservedForOrdinal === null || spent > reservedForOrdinal || priorSpent === null || reservationLimit === null || providerLimit === null
+          || priorSpent + spent > reservationLimit || priorSpent + spent > providerLimit) {
           await client.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'halted' WHERE authorization_digest = $1 AND reservation_id = $2", [parsed.reservation.authorizationDigest, parsed.reservation.reservationId]);
           return result('refused', 'cost_exhausted');
         }
         await client.query(
           `UPDATE addie_fixed_trace_component_smoke_attempts
-           SET status = $3, input_tokens = $4, output_tokens = $5, actual_cost_microdollars = $6, latency_ms = $7, response_hmac = $8, terminal_at = clock_timestamp()
+           SET status = $3, input_tokens = $4, output_tokens = $5, cache_read_tokens = $6, cache_write_tokens = $7, actual_cost_microdollars = $8, latency_ms = $9, response_hmac = $10, terminal_at = clock_timestamp()
            WHERE attempt_id = $1 AND authorization_digest = $2`,
           [parsed.attemptId, parsed.reservation.authorizationDigest, parsed.status, parsed.usage?.inputTokens ?? null,
-            parsed.usage?.outputTokens ?? null, parsed.usage?.costMicrodollars ?? null, parsed.usage?.latencyMs ?? null, parsed.responseHmac],
+            parsed.usage?.outputTokens ?? null, parsed.usage?.cacheReadTokens ?? null, parsed.usage?.cacheWriteTokens ?? null,
+            parsed.usage ? spent : null, parsed.usage?.latencyMs ?? null, parsed.responseHmac],
         );
         if (parsed.status !== 'succeeded') {
           await client.query(
             `UPDATE addie_fixed_trace_component_smoke_authorizations
              SET status = $2, unknown_exposure_at = CASE WHEN $2 = 'unknown_exposure' THEN clock_timestamp() ELSE NULL END
-             WHERE authorization_digest = $1`,
-            [parsed.reservation.authorizationDigest, parsed.status === 'timeout_after_dispatch' ? 'unknown_exposure' : 'halted'],
+             WHERE authorization_digest = $1 AND reservation_id = $3`,
+            [parsed.reservation.authorizationDigest, ['timeout_after_dispatch', 'malformed_response', 'identity_mismatch', 'missing_usage'].includes(parsed.status) ? 'unknown_exposure' : 'halted', parsed.reservation.reservationId],
           );
         }
         return result('recorded');
@@ -355,10 +377,10 @@ function parseTerminal(value: unknown): FixedTraceComponentSmokeTerminal | null 
     if (object.status === 'succeeded' && (object.usage === null || !isHash(object.responseHmac) || !exactIdentity(object.returnedIdentity))) return null;
     if (object.status !== 'succeeded' && (object.responseHmac !== null || object.returnedIdentity !== null)) return null;
     if (object.usage === null) return Object.freeze(object) as unknown as FixedTraceComponentSmokeTerminal;
-    if (!object.usage || typeof object.usage !== 'object' || !exactKeys(object.usage, ['costMicrodollars', 'inputTokens', 'latencyMs', 'outputTokens'])) return null;
+    if (!object.usage || typeof object.usage !== 'object' || !exactKeys(object.usage, ['cacheReadTokens', 'cacheWriteTokens', 'inputTokens', 'latencyMs', 'outputTokens'])) return null;
     const usage = object.usage as Record<string, unknown>;
-    if (![usage.inputTokens, usage.outputTokens, usage.costMicrodollars, usage.latencyMs].every((entry) => Number.isSafeInteger(entry) && (entry as number) >= 0)
-      || (usage.latencyMs as number) > MAX_LATENCY_MS || (usage.costMicrodollars as number) > 5_000_000) return null;
+    if (![usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens, usage.latencyMs].every((entry) => Number.isSafeInteger(entry) && (entry as number) >= 0)
+      || (usage.latencyMs as number) > MAX_LATENCY_MS) return null;
     return Object.freeze(object) as unknown as FixedTraceComponentSmokeTerminal;
   } catch { return null; }
 }

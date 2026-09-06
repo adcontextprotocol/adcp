@@ -6,7 +6,7 @@
 CREATE TABLE addie_fixed_trace_component_smoke_authorizations (
   authorization_digest CHAR(64) PRIMARY KEY CHECK (authorization_digest ~ '^[a-f0-9]{64}$'),
   signed_payload_digest CHAR(64) NOT NULL UNIQUE CHECK (signed_payload_digest ~ '^[a-f0-9]{64}$'),
-  signature BYTEA NOT NULL CHECK (octet_length(signature) = 64),
+  signature_digest CHAR(64) NOT NULL CHECK (signature_digest ~ '^[a-f0-9]{64}$'),
   kid VARCHAR(64) NOT NULL CHECK (kid ~ '^[a-z0-9][a-z0-9._-]{0,63}$'),
   nonce_commitment CHAR(64) NOT NULL UNIQUE CHECK (nonce_commitment ~ '^[a-f0-9]{64}$'),
   grant_version VARCHAR(96) NOT NULL CHECK (grant_version = 'addie-fixed-trace-component-smoke-signed-grant-v1'),
@@ -74,6 +74,8 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
   response_hmac CHAR(64) CHECK (response_hmac IS NULL OR response_hmac ~ '^[a-f0-9]{64}$'),
   input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
   output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+  cache_read_tokens INTEGER CHECK (cache_read_tokens IS NULL OR cache_read_tokens >= 0),
+  cache_write_tokens INTEGER CHECK (cache_write_tokens IS NULL OR cache_write_tokens >= 0),
   actual_cost_microdollars BIGINT CHECK (actual_cost_microdollars IS NULL OR actual_cost_microdollars BETWEEN 0 AND 5000000),
   latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms BETWEEN 0 AND 86400000),
   intent_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),

@@ -180,11 +180,11 @@ export function isFixedTraceComponentSmokeVerifiedGrant(value: unknown): value i
   return typeof value === 'object' && value !== null && VERIFIED_GRANTS.has(value);
 }
 
-/** Returns a fresh audit copy; mutating it cannot affect verifier-held bytes. */
-export function fixedTraceComponentSmokeVerifiedGrantSignatureForLedger(value: unknown): Buffer | null {
+/** Returns only an irreversible digest; raw signatures never cross into the ledger. */
+export function fixedTraceComponentSmokeVerifiedGrantSignatureDigestForLedger(value: unknown): string | null {
   if (!isFixedTraceComponentSmokeVerifiedGrant(value)) return null;
   const signature = VERIFIED_GRANTS.get(value);
-  return signature ? Buffer.from(signature) : null;
+  return signature ? createHash('sha256').update(signature).digest('hex') : null;
 }
 
 /**
