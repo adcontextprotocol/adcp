@@ -245,7 +245,8 @@ describe('fixed-trace component-smoke credential-free admission', () => {
       protocol.phases.find((phase: any) => phase.id === 'stage_1_smoke').arms[0].stages[0].maxInvocationsPerCase += 1;
     });
     expect(admission.cardinality.maximumProviderInvocations).toBe(
-      baseline.cardinality.maximumProviderInvocations + 6,
+      baseline.cardinality.maximumProviderInvocations
+        + baseline.probes.filter((probe) => probe.dispatchDisposition === 'provider_dispatch').length,
     );
     expect(admission).toMatchObject({ status: 'not_admitted' });
     expect(admission.missingReasons).toContain('component_admission_fingerprint_mismatch');

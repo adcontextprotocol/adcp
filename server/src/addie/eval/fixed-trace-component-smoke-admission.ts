@@ -72,6 +72,9 @@ export type FixedTraceComponentSmokeAdmissionReason =
   | 'component_admission_fingerprint_mismatch'
   | 'component_protocol_or_design_invalid';
 
+type FixedTraceComponentSmokeDispatchDisposition =
+  | 'provider_dispatch' | 'local_terminal' | 'pre_dispatch_fault';
+
 interface FixedTraceComponentSmokeStageControl {
   readonly armId: string;
   readonly architecture: string;
@@ -114,7 +117,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
     readonly parentId: string;
     readonly parentSemanticSha256: string;
     /** Terminal-path disposition, pinned before any private runtime exists. */
-    readonly dispatchDisposition: 'provider_dispatch' | 'local_terminal' | 'pre_dispatch_fault';
+    readonly dispatchDisposition: FixedTraceComponentSmokeDispatchDisposition;
   }[];
   readonly cells: readonly { readonly id: string; readonly role: 'router' | 'generation'; readonly provider: string; readonly model: string; readonly effort: string; readonly pricingProfileId: string; readonly adapterCapabilitySource: string }[];
   readonly stageControls: Readonly<{
@@ -154,7 +157,7 @@ export interface FixedTraceComponentSmokeAdmissionManifest {
   readonly privateRuntimePlan: ReadonlyArray<Readonly<{
     readonly probeId: string;
     readonly cellId: string;
-    readonly dispatchDisposition: 'provider_dispatch' | 'local_terminal' | 'pre_dispatch_fault';
+    readonly dispatchDisposition: FixedTraceComponentSmokeDispatchDisposition;
     readonly maximumProviderInvocations: number;
     readonly pricingProfileId: string;
     readonly preparedRequestHmac: 'required_before_intent';
@@ -287,11 +290,24 @@ function validStageOnePlan(plan: FixedTraceComponentSmokeStagePlan | null): plan
   });
 }
 
-function dispatchDispositionForProbe(probe: typeof FIXED_TRACE_COMPONENT_SMOKE_PROBES[number]): 'provider_dispatch' | 'local_terminal' | 'pre_dispatch_fault' | null {
+function dispatchDispositionForProbe(probe: typeof FIXED_TRACE_COMPONENT_SMOKE_PROBES[number]): FixedTraceComponentSmokeDispatchDisposition | null {
   if (probe.terminalInvariant.path === 'model_loop') return 'provider_dispatch';
   if (probe.terminalInvariant.path === 'local_terminal') return 'local_terminal';
   if (probe.terminalInvariant.path === 'pre_dispatch_fault') return 'pre_dispatch_fault';
   return null;
+}
+
+/** Derived from the same terminal-path dispositions placed in the pinned manifest. */
+function pinnedDispatchDispositionCounts(): Readonly<Record<FixedTraceComponentSmokeDispatchDisposition, number>> | null {
+  const counts: Record<FixedTraceComponentSmokeDispatchDisposition, number> = {
+    provider_dispatch: 0, local_terminal: 0, pre_dispatch_fault: 0,
+  };
+  for (const probe of FIXED_TRACE_COMPONENT_SMOKE_PROBES) {
+    const disposition = dispatchDispositionForProbe(probe);
+    if (!disposition) return null;
+    counts[disposition] += 1;
+  }
+  return Object.freeze(counts);
 }
 
 function privateRuntimePlan(
@@ -409,7 +425,8 @@ function pricingForPinnedArtifacts(plan: FixedTraceComponentSmokeStagePlan | nul
 function cardinalityForPinnedPlan(
   plan: FixedTraceComponentSmokeStagePlan | null,
 ): FixedTraceComponentSmokeAdmissionManifest['cardinality'] {
-  if (!plan || !validStageOnePlan(plan)) return Object.freeze({
+  const dispositionCounts = pinnedDispatchDispositionCounts();
+  if (!plan || !validStageOnePlan(plan) || !dispositionCounts) return Object.freeze({
     probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
     totalCells: 21 as const, repetitions: 1 as const,
     caseCellAssignments: 0, providerDispatchCaseCellAssignments: 0,
@@ -421,14 +438,14 @@ function cardinalityForPinnedPlan(
     probes: 8 as const, routerCells: 10 as const, generationCells: 11 as const,
     totalCells: 21 as const, repetitions: 1 as const,
     caseCellAssignments: plan.cases * plan.repetitions * plan.controls.length,
-    providerDispatchCaseCellAssignments: 6 * plan.controls.length,
-    localTerminalCaseCellAssignments: plan.controls.length,
-    preDispatchFaultCaseCellAssignments: plan.controls.length,
+    providerDispatchCaseCellAssignments: dispositionCounts.provider_dispatch * plan.controls.length,
+    localTerminalCaseCellAssignments: dispositionCounts.local_terminal * plan.controls.length,
+    preDispatchFaultCaseCellAssignments: dispositionCounts.pre_dispatch_fault * plan.controls.length,
     maximumPlannedInvocationSlots: plan.controls.reduce(
       (total, control) => total + plan.cases * plan.repetitions * control.maxInvocationsPerCase, 0,
     ),
     maximumProviderInvocations: plan.controls.reduce(
-      (total, control) => total + 6 * plan.repetitions * control.maxInvocationsPerCase, 0,
+      (total, control) => total + dispositionCounts.provider_dispatch * plan.repetitions * control.maxInvocationsPerCase, 0,
     ),
   });
 }
