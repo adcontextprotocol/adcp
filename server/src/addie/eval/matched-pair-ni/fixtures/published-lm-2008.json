@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "lloyd-moldovan-2008-n25-x2-t2-margin-0.10",
+  "counts": { "n": 25, "x": 2, "t": 2 },
+  "margin": "0.10",
+  "reported_p_value": "0.0085",
+  "provenance": {
+    "kind": "published_claim_pending_independent_reference_match",
+    "citation": "Lloyd CJ, Moldovan MV. A more powerful exact test of noninferiority from binary matched-pairs data. Statistics in Medicine. 2008;27(18):3540-3549. doi:10.1002/sim.3229",
+    "locator": "published worked-result fixture; page/table locator requires independent review",
+    "retrieved_at": "2026-09-05"
+  }
+}
