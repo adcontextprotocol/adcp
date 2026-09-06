@@ -7,7 +7,8 @@
  */
 import {
   FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
-  assertFixedTraceEvidencePrerequisiteUnavailable,
+  FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
+  assertFixedTraceEvidencePrerequisitePinned,
   type FixedTraceSealedEvidenceRequirements,
 } from "./fixed-trace-evidence-prerequisite.js";
 
@@ -20,7 +21,9 @@ export interface FixedTraceJudgeUnavailable {
   readonly status: "unavailable";
   readonly admission: typeof FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION;
   /** Positive judging in C must bind every one of these fields. */
-  readonly requiredSealedEvidence: readonly (keyof FixedTraceSealedEvidenceRequirements)[];
+  readonly requiredSealedEvidence: Readonly<{
+    [Key in keyof FixedTraceSealedEvidenceRequirements]: true;
+  }>;
 }
 
 /**
@@ -42,20 +45,10 @@ export interface FixedTraceJudgeSummary extends FixedTraceJudgeUnavailable {
   readonly comparisonEligible: false;
 }
 
-const REQUIRED_SEALED_EVIDENCE = Object.freeze([
-  "protocolFingerprint", "corpusSuiteVersion", "corpusSuiteSha256",
-  "partitionManifestSha256", "experimentalDesignFingerprint",
-  "measurementManifestSha256", "phase", "arm", "caseId", "repetition",
-  "episodeId", "blockId", "order", "position", "randomizationSeed",
-  "scheduleDigest", "workerIdentity", "adjudicationBinding", "custodyBinding",
-  "missingnessBinding", "pricingCohortDigest", "pricingEffectiveFrom",
-  "pricingEffectiveBefore", "calibrationDigest", "providerExposureLedgerDigest",
-] as const satisfies readonly (keyof FixedTraceSealedEvidenceRequirements)[]);
-
 const UNAVAILABLE_JUDGE = Object.freeze({
   status: "unavailable" as const,
   admission: FIXED_TRACE_JUDGE_CALIBRATION_ADMISSION,
-  requiredSealedEvidence: REQUIRED_SEALED_EVIDENCE,
+  requiredSealedEvidence: FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
 });
 
 /**
@@ -64,11 +57,7 @@ const UNAVAILABLE_JUDGE = Object.freeze({
  * proxy, adapter, provider, model, pricing object, or clock is inspected.
  */
 export function fixedTraceJudgeUnavailable(): FixedTraceJudgeUnavailable {
-  try {
-    assertFixedTraceEvidencePrerequisiteUnavailable();
-  } catch {
-    return UNAVAILABLE_JUDGE;
-  }
+  assertFixedTraceEvidencePrerequisitePinned();
   return UNAVAILABLE_JUDGE;
 }
 

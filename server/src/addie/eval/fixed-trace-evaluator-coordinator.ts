@@ -8,7 +8,8 @@
  */
 import {
   FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
-  assertFixedTraceEvidencePrerequisiteUnavailable,
+  FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
+  assertFixedTraceEvidencePrerequisitePinned,
   type FixedTraceSealedEvidenceRequirements,
 } from "./fixed-trace-evidence-prerequisite.js";
 
@@ -19,23 +20,15 @@ export interface FixedTraceCoordinatorUnavailable {
   readonly status: "unavailable";
   readonly admission: typeof FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION;
   /** C must supply this whole sealed contract; B exports no positive ledger. */
-  readonly requiredSealedEvidence: readonly (keyof FixedTraceSealedEvidenceRequirements)[];
+  readonly requiredSealedEvidence: Readonly<{
+    [Key in keyof FixedTraceSealedEvidenceRequirements]: true;
+  }>;
 }
-
-const REQUIRED_SEALED_EVIDENCE = Object.freeze([
-  "protocolFingerprint", "corpusSuiteVersion", "corpusSuiteSha256",
-  "partitionManifestSha256", "experimentalDesignFingerprint",
-  "measurementManifestSha256", "phase", "arm", "caseId", "repetition",
-  "episodeId", "blockId", "order", "position", "randomizationSeed",
-  "scheduleDigest", "workerIdentity", "adjudicationBinding", "custodyBinding",
-  "missingnessBinding", "pricingCohortDigest", "pricingEffectiveFrom",
-  "pricingEffectiveBefore", "calibrationDigest", "providerExposureLedgerDigest",
-] as const satisfies readonly (keyof FixedTraceSealedEvidenceRequirements)[]);
 
 const UNAVAILABLE_COORDINATOR: FixedTraceCoordinatorUnavailable = Object.freeze({
   status: "unavailable",
   admission: FIXED_TRACE_EVALUATOR_COORDINATOR_ADMISSION,
-  requiredSealedEvidence: REQUIRED_SEALED_EVIDENCE,
+  requiredSealedEvidence: FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS,
 });
 
 /**
@@ -43,10 +36,6 @@ const UNAVAILABLE_COORDINATOR: FixedTraceCoordinatorUnavailable = Object.freeze(
  * signer, validator, issuance method, replay store, or ledger shape.
  */
 export function fixedTraceEvaluatorCoordinatorUnavailable(): FixedTraceCoordinatorUnavailable {
-  try {
-    assertFixedTraceEvidencePrerequisiteUnavailable();
-  } catch {
-    return UNAVAILABLE_COORDINATOR;
-  }
+  assertFixedTraceEvidencePrerequisitePinned();
   return UNAVAILABLE_COORDINATOR;
 }

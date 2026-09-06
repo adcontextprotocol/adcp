@@ -1,62 +1,163 @@
 /**
- * B's fixed, reviewable view of A.  These values are literals on purpose:
- * replacing A, the corpus, partition, or experimental design requires an
- * explicit B pin update and review.  This is a refusal prerequisite only;
- * it is not an authority to issue a contract or dispatch a provider.
+ * B's refusal-only prerequisite. It reads only the dependency-free A manifest
+ * and an independent literal pin; neither is an execution authority.
  */
-import { createHash } from "node:crypto";
 import {
-  FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL,
-  assertFixedTraceEvaluationProtocol,
-  fixedTraceEvaluationProtocolFingerprint,
-} from "./fixed-trace-evaluation-protocol.js";
-import {
-  FIXED_TRACE_EXPERIMENTAL_DESIGN,
-  assertFixedTraceExperimentalDesign,
-  fixedTraceExperimentalDesignFingerprint,
-} from "./fixed-trace-experimental-design.js";
-import {
-  FIXED_TRACE_PARTITION_MANIFEST_SHA256,
-  assertFixedTracePartitionManifest,
-} from "./fixed-trace-partition.js";
-import {
-  FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST,
-  FIXED_TRACE_SUITE,
-  FIXED_TRACE_SUITE_VERSION,
-  fixedTraceSuiteSha256,
-} from "./fixed-trace-suite.js";
+  FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST,
+  type FixedTraceAPurePrerequisiteManifest,
+} from "./fixed-trace-a-prerequisite-manifest.js";
 
 export const FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION =
   "not_admitted_missing_validated_A_schedule_pricing_custody_calibration_and_C_sealed_authority" as const;
 
-/** Complete C-owned fields required before any positive evidence exists. */
+type FixedTraceSha256 = string;
+type FixedTraceUtcTimestamp = string;
+
+/**
+ * Exhaustive future-C record shape. It is a required schema declaration, not
+ * a B-issued contract or an admission to dispatch. C must validate, snapshot,
+ * and authenticate every nested value behind its sealed one-use authority.
+ */
 export interface FixedTraceSealedEvidenceRequirements {
-  readonly protocolFingerprint: string;
-  readonly corpusSuiteVersion: string;
-  readonly corpusSuiteSha256: string;
-  readonly partitionManifestSha256: string;
-  readonly experimentalDesignFingerprint: string;
-  readonly measurementManifestSha256: string;
-  readonly phase: string;
-  readonly arm: string;
-  readonly caseId: string;
-  readonly repetition: number;
-  readonly episodeId: string;
-  readonly blockId: string;
-  readonly order: number;
-  readonly position: number;
-  readonly randomizationSeed: string;
-  readonly scheduleDigest: string;
-  readonly workerIdentity: string;
-  readonly adjudicationBinding: string;
-  readonly custodyBinding: string;
-  readonly missingnessBinding: string;
-  readonly pricingCohortDigest: string;
-  readonly pricingEffectiveFrom: string;
-  readonly pricingEffectiveBefore: string | null;
-  readonly calibrationDigest: string;
-  readonly providerExposureLedgerDigest: string;
+  readonly schemaVersion: "addie-fixed-trace-sealed-evidence-v1";
+  readonly plan: {
+    readonly protocolFingerprint: FixedTraceSha256;
+    readonly corpusSuiteVersion: string;
+    readonly corpusSuiteSha256: FixedTraceSha256;
+    readonly partitionManifestSha256: FixedTraceSha256;
+    readonly experimentalDesignFingerprint: FixedTraceSha256;
+    readonly measurementManifestSha256: FixedTraceSha256;
+    readonly packManifestSha256: FixedTraceSha256;
+    readonly packCustodySignature: string;
+  };
+  readonly assignment: {
+    readonly runId: string;
+    readonly phaseId: string;
+    readonly armId: string;
+    readonly architectureId: string;
+    readonly caseId: string;
+    readonly episodeId: string;
+    readonly clusterId: string;
+    readonly stratumId: string;
+    readonly repetition: number;
+    readonly blockId: string;
+    readonly order: number;
+    readonly position: number;
+    readonly randomizationSeed: string;
+    readonly scheduleDigest: FixedTraceSha256;
+    readonly workerIdentity: string;
+  };
+  readonly invocation: {
+    readonly stage: "router" | "generation" | "judge" | "simulator";
+    readonly invocation: number;
+    readonly attempt: number;
+    readonly requestedProvider: string;
+    readonly requestedModel: string;
+    readonly requestedEffort: string;
+    readonly returnedProvider: string | null;
+    readonly returnedModel: string | null;
+    readonly returnedEffort: string | null;
+    readonly identityPolicy: string;
+    readonly fallbackOfAttempt: number | null;
+  };
+  readonly requestIntegrity: {
+    readonly systemSha256: FixedTraceSha256;
+    readonly promptSha256: FixedTraceSha256;
+    readonly messagesSha256: FixedTraceSha256;
+    readonly toolSchemaSha256: FixedTraceSha256;
+    readonly providerRequestSha256: FixedTraceSha256;
+    readonly presentedToolNamesSha256: FixedTraceSha256;
+    readonly presentedToolOrderSha256: FixedTraceSha256;
+    readonly requestFactsSha256: FixedTraceSha256;
+    readonly sourceThreadBindingSha256: FixedTraceSha256;
+  };
+  readonly toolAndSimulatorEvidence: {
+    readonly toolCallSha256: FixedTraceSha256 | null;
+    readonly toolInputSha256: FixedTraceSha256 | null;
+    readonly toolResultSha256: FixedTraceSha256 | null;
+    readonly simulatorReceiptSha256: FixedTraceSha256 | null;
+    readonly simulatorFaultProvenanceSha256: FixedTraceSha256 | null;
+    readonly simulatorControlsSha256: FixedTraceSha256;
+  };
+  readonly configuration: {
+    readonly architectureSha256: FixedTraceSha256;
+    readonly admissionSha256: FixedTraceSha256;
+    readonly configSha256: FixedTraceSha256;
+    readonly promptConfigSha256: FixedTraceSha256;
+    readonly softwareSha256: FixedTraceSha256;
+    readonly adapterSha256: FixedTraceSha256;
+    readonly limitsSha256: FixedTraceSha256;
+    readonly retryPolicySha256: FixedTraceSha256;
+    readonly cachePolicySha256: FixedTraceSha256;
+    readonly samplingPolicySha256: FixedTraceSha256;
+  };
+  readonly timingAndOutcome: {
+    readonly preparedAt: FixedTraceUtcTimestamp;
+    readonly dispatchedAt: FixedTraceUtcTimestamp | null;
+    readonly completedAt: FixedTraceUtcTimestamp | null;
+    readonly latencyMs: number | null;
+    readonly timeout: boolean;
+    readonly errorCode: string | null;
+    readonly terminalStatus: string;
+    readonly outputSha256: FixedTraceSha256 | null;
+  };
+  readonly usageAndPricing: {
+    readonly usageSha256: FixedTraceSha256 | null;
+    readonly inputTokens: number | null;
+    readonly cachedInputTokens: number | null;
+    readonly outputTokens: number | null;
+    readonly pricingCohortId: string;
+    readonly pricingCohortSha256: FixedTraceSha256;
+    readonly pricingEffectiveFrom: FixedTraceUtcTimestamp;
+    readonly pricingEffectiveBefore: FixedTraceUtcTimestamp | null;
+    readonly computedCostUsd: number | null;
+    readonly reservationId: string;
+    readonly reservationCeilingUsd: number;
+    readonly settlementSha256: FixedTraceSha256 | null;
+  };
+  readonly denominatorAndSequence: {
+    readonly denominatorId: string;
+    readonly failureEvidenceSha256: FixedTraceSha256;
+    readonly missingnessSha256: FixedTraceSha256;
+    readonly expectedSequenceSha256: FixedTraceSha256;
+    readonly actualSequenceSha256: FixedTraceSha256;
+    readonly completeness: "complete" | "incomplete" | "unknown_exposure";
+    readonly tamperClass: "none" | "omission" | "insertion" | "duplication" | "substitution" | "reordering";
+  };
+  readonly judgeAndCustody: {
+    readonly calibrationDigest: FixedTraceSha256;
+    readonly blindedPresentationSha256: FixedTraceSha256;
+    readonly adjudicationBinding: FixedTraceSha256;
+    readonly providerExposureLedgerSha256: FixedTraceSha256;
+    readonly custodyBinding: FixedTraceSha256;
+    readonly signerKeyId: string;
+    readonly signature: string;
+  };
+  readonly replayProtection: {
+    readonly authorityId: string;
+    readonly nonce: string;
+    readonly oneUseConsumptionSha256: FixedTraceSha256;
+    readonly replayStatus: "consumed";
+  };
 }
+
+/** A mapped object makes additions to the schema fail at this one shared list. */
+export const FIXED_TRACE_SEALED_EVIDENCE_REQUIREMENTS: Readonly<{
+  [Key in keyof FixedTraceSealedEvidenceRequirements]: true;
+}> = Object.freeze({
+  schemaVersion: true,
+  plan: true,
+  assignment: true,
+  invocation: true,
+  requestIntegrity: true,
+  toolAndSimulatorEvidence: true,
+  configuration: true,
+  timingAndOutcome: true,
+  usageAndPricing: true,
+  denominatorAndSequence: true,
+  judgeAndCustody: true,
+  replayProtection: true,
+});
 
 export interface FixedTraceEvidencePrerequisitePin {
   readonly protocolFingerprint: string;
@@ -96,48 +197,77 @@ export const FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN: FixedTraceEvidencePrerequisi
     custody: Object.freeze({ status: "unavailable", digest: null }),
   });
 
-function measurementManifestSha256(): string {
-  return createHash("sha256")
-    .update(JSON.stringify(FIXED_TRACE_FICTIONAL_IDENTITY_MANIFEST), "utf8")
-    .digest("hex");
-}
+export type FixedTraceEvidencePrerequisiteDiagnostic =
+  | Readonly<{
+    status: "ordinary_unavailable";
+    code: typeof FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION;
+    reason: "A_manifest_is_pinned_but_required_artifacts_are_unavailable";
+  }>
+  | Readonly<{
+    status: "pin_drift";
+    code: "fixed_trace_A_prerequisite_pin_drift";
+    mismatchedFields: readonly string[];
+  }>;
 
-/**
- * Verify A and every prerequisite field against the literal pin.  The final
- * unconditional throw is intentional: B cannot turn this check into a
- * caller-controlled positive admission.
- */
-export function assertFixedTraceEvidencePrerequisiteUnavailable(): never {
-  assertFixedTraceEvaluationProtocol(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL);
-  assertFixedTracePartitionManifest();
-  assertFixedTraceExperimentalDesign();
-  const final = FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL.finalProtocol;
+function mismatchedFields(
+  manifest: FixedTraceAPurePrerequisiteManifest,
+): readonly string[] {
   const pin = FIXED_TRACE_EVIDENCE_PREREQUISITE_PIN;
-  const drifted =
-    fixedTraceEvaluationProtocolFingerprint(FIXED_TRACE_PROPOSED_EVALUATION_PROTOCOL) !== pin.protocolFingerprint
-    || FIXED_TRACE_SUITE_VERSION !== pin.corpusSuiteVersion
-    || fixedTraceSuiteSha256(FIXED_TRACE_SUITE) !== pin.corpusSuiteSha256
-    || FIXED_TRACE_PARTITION_MANIFEST_SHA256 !== pin.partitionManifestSha256
-    || fixedTraceExperimentalDesignFingerprint(FIXED_TRACE_EXPERIMENTAL_DESIGN)
-      !== pin.experimentalDesignFingerprint
-    || measurementManifestSha256() !== pin.measurementManifestSha256
-    || final.status !== "unavailable"
-    || final.finalRandomization.scheduleDigest !== pin.schedule.digest
-    || final.prospectivePricingCohort.id !== pin.pricingWindow.cohortId
-    || final.prospectivePricingCohort.effectiveFrom !== pin.pricingWindow.effectiveFrom
-    || final.prospectivePricingCohort.effectiveBefore !== pin.pricingWindow.effectiveBefore
-    || final.prospectivePricingCohort.digest !== pin.pricingWindow.digest
-    || final.judgeCalibration.status !== pin.calibration.status
-    || final.judgeCalibration.digest !== pin.calibration.digest
-    || final.externalPackCustody.status !== pin.custody.status
-    || final.externalPackCustody.packDigest !== pin.custody.digest;
-  if (drifted) throw new FixedTraceEvidencePrerequisiteUnavailableError();
-  throw new FixedTraceEvidencePrerequisiteUnavailableError();
+  return Object.freeze([
+    ...(manifest.protocolFingerprint !== pin.protocolFingerprint ? ["protocolFingerprint"] : []),
+    ...(manifest.corpus.suiteVersion !== pin.corpusSuiteVersion ? ["corpus.suiteVersion"] : []),
+    ...(manifest.corpus.suiteSha256 !== pin.corpusSuiteSha256 ? ["corpus.suiteSha256"] : []),
+    ...(manifest.partitionManifestSha256 !== pin.partitionManifestSha256 ? ["partitionManifestSha256"] : []),
+    ...(manifest.experimentalDesignFingerprint !== pin.experimentalDesignFingerprint ? ["experimentalDesignFingerprint"] : []),
+    ...(manifest.measurementManifestSha256 !== pin.measurementManifestSha256 ? ["measurementManifestSha256"] : []),
+    ...(manifest.schedule.status !== pin.schedule.status || manifest.schedule.digest !== pin.schedule.digest ? ["schedule"] : []),
+    ...(manifest.pricingWindow.status !== pin.pricingWindow.status
+      || manifest.pricingWindow.cohortId !== pin.pricingWindow.cohortId
+      || manifest.pricingWindow.effectiveFrom !== pin.pricingWindow.effectiveFrom
+      || manifest.pricingWindow.effectiveBefore !== pin.pricingWindow.effectiveBefore
+      || manifest.pricingWindow.digest !== pin.pricingWindow.digest ? ["pricingWindow"] : []),
+    ...(manifest.calibration.status !== pin.calibration.status || manifest.calibration.digest !== pin.calibration.digest ? ["calibration"] : []),
+    ...(manifest.providerExposure.status !== pin.providerExposure.status
+      || manifest.providerExposure.digest !== pin.providerExposure.digest ? ["providerExposure"] : []),
+    ...(manifest.custody.status !== pin.custody.status || manifest.custody.digest !== pin.custody.digest ? ["custody"] : []),
+  ]);
 }
 
-export class FixedTraceEvidencePrerequisiteUnavailableError extends Error {
-  constructor() {
-    super(FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION);
-    this.name = "FixedTraceEvidencePrerequisiteUnavailableError";
+/** No caller input: the B boundary always compares its literal pin to A's pure manifest. */
+export function fixedTraceEvidencePrerequisiteDiagnostic(): FixedTraceEvidencePrerequisiteDiagnostic {
+  const fields = mismatchedFields(FIXED_TRACE_A_PURE_PREREQUISITE_MANIFEST);
+  if (fields.length > 0) return Object.freeze({
+    status: "pin_drift",
+    code: "fixed_trace_A_prerequisite_pin_drift",
+    mismatchedFields: fields,
+  });
+  return Object.freeze({
+    status: "ordinary_unavailable",
+    code: FIXED_TRACE_EVIDENCE_PREREQUISITE_ADMISSION,
+    reason: "A_manifest_is_pinned_but_required_artifacts_are_unavailable",
+  });
+}
+
+export class FixedTraceEvidencePrerequisitePinDriftError extends Error {
+  readonly status = "pin_drift" as const;
+  readonly code = "fixed_trace_A_prerequisite_pin_drift" as const;
+  readonly diagnostic: Extract<FixedTraceEvidencePrerequisiteDiagnostic, { status: "pin_drift" }>;
+
+  constructor(diagnostic: Extract<FixedTraceEvidencePrerequisiteDiagnostic, { status: "pin_drift" }>) {
+    super(diagnostic.code);
+    this.name = "FixedTraceEvidencePrerequisitePinDriftError";
+    this.diagnostic = diagnostic;
   }
+}
+
+/** Propagate pin drift; ordinary unavailable remains a safe non-dispatch result. */
+export function assertFixedTraceEvidencePrerequisitePinned(): Extract<
+  FixedTraceEvidencePrerequisiteDiagnostic,
+  { status: "ordinary_unavailable" }
+> {
+  const diagnostic = fixedTraceEvidencePrerequisiteDiagnostic();
+  if (diagnostic.status === "pin_drift") {
+    throw new FixedTraceEvidencePrerequisitePinDriftError(diagnostic);
+  }
+  return diagnostic;
 }
