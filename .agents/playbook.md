@@ -791,11 +791,58 @@ Apply this pattern when restructuring protocol sections.
 
 Before creating or updating a PR, always:
 
-1. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and look for CodeQL findings. These are the most common CI blockers and must be resolved before merge.
-2. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
-3. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
-4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
-5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
+1. **Enumerate and clear every review thread.** Before declaring a PR done, ready, mergeable, or complete—or enabling or expecting its merge—enumerate every review thread, including inline threads from every bot and human reviewer. Fix or otherwise substantively address every actionable comment, then resolve every thread. Passing CI and receiving an approval are insufficient while any thread remains unresolved. Verify outdated threads before resolving them; never blanket-resolve feedback that has not been addressed.
+2. **Use GitHub GraphQL as the authoritative thread inventory.** Replace `PR_NUMBER` and run:
+
+   ```bash
+   gh api graphql \
+     -F owner=adcontextprotocol \
+     -F repo=adcp \
+     -F number="$PR_NUMBER" \
+     -f query='
+   query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+     repository(owner: $owner, name: $repo) {
+       pullRequest(number: $number) {
+         reviewThreads(first: 100, after: $cursor) {
+           nodes {
+             id
+             isResolved
+             isOutdated
+             path
+             line
+             comments(first: 100) {
+               nodes {
+                 author { login }
+                 body
+                 url
+               }
+             }
+           }
+           pageInfo { hasNextPage endCursor }
+         }
+       }
+     }
+   }'
+   ```
+
+   Inspect each page. If `pageInfo.hasNextPage` is `true`, repeat the query with
+   `-f cursor='<endCursor>'` from that page, continuing until it is `false`.
+   Include resolved and outdated threads in the review; an outdated thread still
+   requires verification and explicit resolution when its feedback is addressed.
+3. **Inspect feedback outside resolvable threads.** Also inspect the top-level
+   PR conversation and submitted review bodies for actionable feedback, which
+   are not all represented as resolvable threads:
+
+   ```bash
+   gh api "repos/adcontextprotocol/adcp/issues/$PR_NUMBER/comments"
+   gh api "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/reviews"
+   ```
+
+4. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and look for CodeQL findings. These are the most common CI blockers and must be resolved before merge.
+5. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
+6. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
+7. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
+8. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
 
 ## Triage Routine — Manual Nudge
 
