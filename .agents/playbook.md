@@ -807,7 +807,14 @@ Before creating or updating a PR, always:
    feedback still requires a disposition. Passing CI, approval, dismissal, bot
    authorship, or outdated status never justifies blanket or automatic
    resolution.
-2. **Require caller-supplied `PR_NUMBER` and `EXPECTED_PR_HEAD`, then use
+2. **Satisfy every applicable independent approval gate.** Completion is
+   forbidden until every required approval applies to the PR's current immutable
+   head. The PR author cannot satisfy any required independent, human, or
+   CODEOWNER approval themselves. For a gated path—including `.agents/**`—the
+   designated human/CODEOWNER must approve that current head. Bot, automated,
+   and AI/Sol reviews can provide findings but never replace a required
+   human/CODEOWNER approval.
+3. **Require caller-supplied `PR_NUMBER` and `EXPECTED_PR_HEAD`, then use
    GitHub GraphQL as the authoritative thread inventory.** Do not default
    either value. Require a positive PR number and verify that it identifies the
    intended pull request's exact head OID before querying feedback:
@@ -906,7 +913,7 @@ Before creating or updating a PR, always:
 
    Include resolved and outdated threads in the review; an outdated thread still
    requires verification and an individual disposition before resolution.
-3. **Inventory feedback outside resolvable threads.** Inspect the top-level PR
+4. **Inventory feedback outside resolvable threads.** Inspect the top-level PR
    conversation, submitted review bodies, and inline review comments for
    actionable feedback, which is not all represented as resolvable threads:
 
@@ -916,14 +923,14 @@ Before creating or updating a PR, always:
    gh api --paginate "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/comments?per_page=100"
    ```
 
-4. **Check CodeQL feedback in the inline inventory** — look for CodeQL findings
+5. **Check CodeQL feedback in the inline inventory** — look for CodeQL findings
    in the paginated inline review comments above. These are common CI blockers
    and must receive a substantive fix or specific justified disposition before
    merge.
-5. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
-6. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
-7. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
-8. **Run `gh pr checks "$PR_NUMBER"`** to verify all CI passes before requesting review.
+6. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
+7. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
+8. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
+9. **Run `gh pr checks "$PR_NUMBER"`** to verify all CI passes before requesting review.
 
 ## Triage Routine — Manual Nudge
 
