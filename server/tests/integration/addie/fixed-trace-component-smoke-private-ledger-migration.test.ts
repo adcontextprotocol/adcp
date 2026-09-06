@@ -133,11 +133,75 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [attemptId])).rows).toEqual([{ status: 'intent_recorded' }]);
   });
 
+  it('derives exact profile pricing and integer rounding at the database boundary', async () => {
+    const vectors = [
+      ['anthropic-standard-2026-09:claude-haiku-4-5', 1, 0, 1, 1, 3],
+      ['anthropic-standard-2026-09:claude-sonnet-5', 1, 0, 1, 1, 5],
+      ['openai-gpt-5.6-luna-standard-2026-09-05', 2, 0, 1, 1, 1],
+      ['google-gemini-3.7-flash-through-2026-12-31', 1, 0, 1, 0, 1],
+    ] as const;
+    for (const [index, [profileId, input, output, cacheRead, cacheWrite, expectedCost]] of vectors.entries()) {
+      const entry = plan.find((candidate) => candidate.disposition === 'provider_dispatch' && candidate.pricingProfileId === profileId)!;
+      const suffix = (index + 1).toString(16);
+      const attemptId = `attempt_${suffix.repeat(32)}`;
+      await insertIntent(client!, authorizationDigest, entry, suffix);
+      await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = $6, output_tokens = $7, cache_read_tokens = $8, cache_write_tokens = $9, actual_cost_microdollars = $10, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, suffix.repeat(64), entry.provider, entry.model, entry.effort, input, output, cacheRead, cacheWrite, expectedCost + 1])).resolves.toBeInstanceOf(Error);
+      await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = $6, output_tokens = $7, cache_read_tokens = $8, cache_write_tokens = $9, actual_cost_microdollars = $10, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, suffix.repeat(64), entry.provider, entry.model, entry.effort, input, output, cacheRead, cacheWrite, expectedCost]);
+    }
+    const entry = dispatchEntry(10);
+    await insertIntent(client!, authorizationDigest, entry, 'f');
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'invalid_limits', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, observed_cost_microdollars = NULL, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'f'.repeat(32)}`, 'f'.repeat(64), entry.provider, entry.model, entry.effort])).resolves.toBeInstanceOf(Error);
+  });
+
+  it('application terminalization uses the locked aggregate CTE on PostgreSQL', async () => {
+    const entry = dispatchEntry(11);
+    const attemptId = `attempt_${'c'.repeat(31)}d`;
+    await client!.query('COMMIT');
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
+      expect(await ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId, assignmentId: entry.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) })).toEqual({ status: 'recorded' });
+      expect(await ledger.recordTerminal({ reservation: reservationFor(authorizationDigest), attemptId, status: 'succeeded', responseDisposition: 'final_response', responseHmac: 'd'.repeat(64), returnedIdentity: { provider: entry.provider, model: entry.model, effort: entry.effort }, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, latencyMs: 0 } })).toEqual({ status: 'recorded' });
+      expect((await client!.query('SELECT status, actual_cost_microdollars FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [attemptId])).rows).toEqual([{ status: 'succeeded', actual_cost_microdollars: '0' }]);
+    } finally {
+      await pool.end();
+      await client!.query('BEGIN');
+    }
+  });
+
+  it.each([
+    ['provider_failed', 'unknown_exposure', "status = 'provider_failed', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0"],
+    ['malformed_response', 'unknown_exposure', "status = 'malformed_response', response_hmac = $2"],
+    ['identity_mismatch', 'unknown_exposure', "status = 'identity_mismatch', response_hmac = $2, returned_provider = 'other', returned_model = 'other', returned_effort = 'other', input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, latency_ms = 0"],
+    ['missing_usage', 'unknown_exposure', "status = 'missing_usage', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5"],
+    ['timeout_after_dispatch', 'unknown_exposure', "status = 'timeout_after_dispatch'"],
+    ['invalid_limits', 'halted', "status = 'invalid_limits', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, observed_cost_microdollars = 0, latency_ms = 0"],
+    ['pricing_unavailable', 'unknown_exposure', "status = 'pricing_unavailable'"],
+    ['unknown_exposure', 'unknown_exposure', "status = 'unknown_exposure'"],
+  ] as const)('makes direct-SQL %s terminal nondispatchable', async (status, expectedAuthorizationStatus, assignment) => {
+    const digest = await seedExactPlan(client!);
+    const entry = dispatchEntry(12);
+    const suffix = `${({ provider_failed: '1', malformed_response: '2', identity_mismatch: '3', missing_usage: '4', timeout_after_dispatch: '5', invalid_limits: '6', pricing_unavailable: '7', unknown_exposure: '8' } as Record<string, string>)[status]}`;
+    const attemptId = `attempt_${suffix.repeat(32)}`;
+    await insertIntent(client!, digest, entry, suffix);
+    const values: unknown[] = [attemptId];
+    if (assignment.includes('$2')) values.push('e'.repeat(64));
+    if (assignment.includes('$3')) values.push(entry.provider);
+    if (assignment.includes('$4')) values.push(entry.model);
+    if (assignment.includes('$5')) values.push(entry.effort);
+    await client!.query(`UPDATE addie_fixed_trace_component_smoke_attempts SET ${assignment}, terminal_at = clock_timestamp() WHERE attempt_id = $1`, values);
+    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [digest])).rows).toEqual([{ status: expectedAuthorizationStatus }]);
+    await expect(rejects("INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)", [`attempt_${'f'.repeat(32)}`, digest, dispatchEntry(13).assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    if (status === 'provider_failed') {
+      await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_failed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [digest, entry.assignmentId]);
+      expect((await client!.query('SELECT assignment_outcome FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2', [digest, entry.assignmentId])).rows).toEqual([{ assignment_outcome: 'provider_failed' }]);
+    }
+  });
+
   it('idempotently recovers a committed provider failure after unknown exposure has already committed', async () => {
     const entry = dispatchEntry(6);
     await insertIntent(client!, authorizationDigest, entry, 'c');
     await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'c'.repeat(32)}`, 'c'.repeat(64), entry.provider, entry.model, entry.effort]);
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp() WHERE authorization_digest = $1", [authorizationDigest]);
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl });
     try {

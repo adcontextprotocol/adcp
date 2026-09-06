@@ -5,6 +5,7 @@ import {
   fixedTraceComponentSmokePrivateLedgerPlan,
   type FixedTraceComponentSmokePlanEntry,
 } from '../../../src/addie/eval/fixed-trace-component-smoke-private-ledger.js';
+import { datedPricingCostMicros, datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 
 const digest = 'a'.repeat(64);
 const reservation = Object.freeze({
@@ -61,7 +62,7 @@ class StrictLedgerClient {
       const attempt = this.attempts.get(params![0] as string);
       return attempt ? { rowCount: 1, rows: [{ assignment_id: attempt.assignmentId, status: attempt.status, invocation_ordinal: String(attempt.ordinal), ...this.planRow() }] } : { rowCount: 0, rows: [] };
     }
-    if (sql.startsWith('SELECT COALESCE(SUM(actual_cost_microdollars)')) {
+    if (sql.startsWith('WITH locked_attempts AS')) {
       const spent = this.priorSpend ?? String([...this.attempts.values()].reduce((sum, attempt) => sum + (attempt.cost ?? 0), 0));
       return { rowCount: 1, rows: [{ spent }] };
     }
@@ -129,7 +130,6 @@ describe('private ledger state machine', () => {
     ['input', { inputTokens: dispatch.maxInputTokens + 1 }],
     ['output', { outputTokens: dispatch.maxOutputTokens + 1 }],
     ['timeout', { latencyMs: dispatch.timeoutMs + 1 }],
-    ['cache input', { inputTokens: dispatch.maxInputTokens, cacheReadTokens: 1 }],
   ])('settles %s overruns rather than leaving an open intent', async (_name, usage) => {
     const client = new StrictLedgerClient(); const subject = ledger(client);
     await subject.recordProviderIntent(intent());
@@ -137,6 +137,25 @@ describe('private ledger state machine', () => {
     expect(client.authStatus).toBe('halted');
     expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)?.status).toBe('invalid_limits');
     expect(client.attempts.get(`attempt_${'1'.repeat(32)}`)?.observedCost).toEqual(expect.any(Number));
+  });
+
+  it('permits additive cache at the independent max-input boundary', async () => {
+    const client = new StrictLedgerClient(); const subject = ledger(client);
+    expect(await subject.recordProviderIntent(intent())).toEqual({ status: 'recorded' });
+    expect(await subject.recordTerminal(terminal({
+      usage: { inputTokens: dispatch.maxInputTokens, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 1, latencyMs: 0 },
+    }))).toEqual({ status: 'recorded' });
+    expect(client.authStatus).toBe('consumed');
+  });
+
+  it.each([
+    ['anthropic-standard-2026-09:claude-haiku-4-5', { inputTokens: 1, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 1 }, 3],
+    ['anthropic-standard-2026-09:claude-sonnet-5', { inputTokens: 1, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 1 }, 5],
+    ['openai-gpt-5.6-luna-standard-2026-09-05', { inputTokens: 2, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 1 }, 1],
+    ['google-gemini-3.7-flash-through-2026-12-31', { inputTokens: 1, outputTokens: 0, cacheReadTokens: 1, cacheWriteTokens: 0 }, 1],
+  ])('uses exact rounded microdollar pricing for %s', (profileId, usage, expectedMicros) => {
+    const profile = datedPricingProfilesForFixedTrace().find((candidate) => candidate.profileId === profileId)!;
+    expect(datedPricingCostMicros(profile, usage)).toBe(expectedMicros);
   });
 
   it('poisons an authorization with an unresolved intent and maps response failures to unknown exposure', async () => {

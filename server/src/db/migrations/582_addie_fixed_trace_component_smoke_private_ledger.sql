@@ -107,7 +107,7 @@ CREATE TABLE addie_fixed_trace_component_smoke_attempts (
   CHECK (status <> 'malformed_response' OR returned_provider IS NULL),
   CHECK (status <> 'missing_usage' OR returned_provider IS NOT NULL),
   CHECK (status <> 'identity_mismatch' OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND cache_read_tokens IS NOT NULL AND cache_write_tokens IS NOT NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL AND returned_provider IS NOT NULL)),
-  CHECK (status <> 'invalid_limits' OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND cache_read_tokens IS NOT NULL AND cache_write_tokens IS NOT NULL AND actual_cost_microdollars IS NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL AND returned_provider IS NOT NULL)),
+  CHECK (status <> 'invalid_limits' OR (input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND cache_read_tokens IS NOT NULL AND cache_write_tokens IS NOT NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NOT NULL AND latency_ms IS NOT NULL AND response_hmac IS NOT NULL AND returned_provider IS NOT NULL)),
   CHECK (status <> 'timeout_after_dispatch' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
   CHECK (status <> 'unknown_exposure' OR (response_hmac IS NULL AND returned_provider IS NULL AND input_tokens IS NULL AND output_tokens IS NULL AND cache_read_tokens IS NULL AND cache_write_tokens IS NULL AND actual_cost_microdollars IS NULL AND observed_cost_microdollars IS NULL AND latency_ms IS NULL)),
   CHECK (status NOT IN ('succeeded', 'provider_failed', 'malformed_response', 'identity_mismatch', 'missing_usage') OR response_hmac IS NOT NULL)
@@ -333,6 +333,53 @@ AFTER INSERT OR UPDATE OR DELETE ON addie_fixed_trace_component_smoke_run_plan
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION addie_fixed_trace_component_smoke_check_plan();
 
+-- The dated cohort has exactly four admitted profiles.  Keep the decimal
+-- arithmetic in integer microdollar numerators so PostgreSQL independently
+-- verifies the same one-time round-up as datedPricingCostMicros().  Cache
+-- categories are additive for Anthropic and mutually-exclusive subsets of
+-- input for OpenAI/Google; Google's cache writes are deliberately impossible.
+CREATE FUNCTION addie_fixed_trace_component_smoke_expected_cost(
+  p_profile_id TEXT, p_input INTEGER, p_output INTEGER, p_cache_read INTEGER, p_cache_write INTEGER
+) RETURNS BIGINT
+LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+DECLARE
+  numerator NUMERIC;
+  denominator NUMERIC;
+BEGIN
+  IF p_input < 0 OR p_output < 0 OR p_cache_read < 0 OR p_cache_write < 0 THEN
+    RAISE EXCEPTION 'pricing usage cannot be negative';
+  END IF;
+  CASE p_profile_id
+    WHEN 'anthropic-standard-2026-09:claude-haiku-4-5' THEN
+      numerator := 100 * p_input + 500 * p_output + 10 * p_cache_read + 125 * p_cache_write; denominator := 100;
+    WHEN 'anthropic-standard-2026-09:claude-sonnet-5' THEN
+      numerator := 20 * p_input + 100 * p_output + 2 * p_cache_read + 25 * p_cache_write; denominator := 10;
+    WHEN 'openai-gpt-5.6-luna-standard-2026-09-05' THEN
+      IF p_cache_read + p_cache_write > p_input THEN RAISE EXCEPTION 'subset cache usage exceeds input'; END IF;
+      numerator := 20 * (p_input - p_cache_read - p_cache_write) + 120 * p_output + 2 * p_cache_read + 25 * p_cache_write; denominator := 100;
+    WHEN 'google-gemini-3.7-flash-through-2026-12-31' THEN
+      IF p_cache_write <> 0 OR p_cache_read > p_input THEN RAISE EXCEPTION 'Google cache usage is not admitted'; END IF;
+      numerator := 750 * (p_input - p_cache_read) + 3750 * p_output + 75 * p_cache_read; denominator := 1000;
+    ELSE RAISE EXCEPTION 'pricing profile is not admitted';
+  END CASE;
+  RETURN ceil(numerator / denominator)::BIGINT;
+END;
+$$;
+
+CREATE FUNCTION addie_fixed_trace_component_smoke_usage_within_limits(
+  p_profile_id TEXT, p_input INTEGER, p_output INTEGER, p_cache_read INTEGER, p_cache_write INTEGER,
+  p_latency INTEGER, p_max_input INTEGER, p_max_output INTEGER, p_timeout INTEGER
+) RETURNS BOOLEAN
+LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+BEGIN
+  IF p_input > p_max_input OR p_output > p_max_output OR p_latency > p_timeout THEN RETURN false; END IF;
+  IF p_profile_id IN ('anthropic-standard-2026-09:claude-haiku-4-5', 'anthropic-standard-2026-09:claude-sonnet-5') THEN
+    RETURN p_cache_read <= p_max_input AND p_cache_write <= p_max_input;
+  END IF;
+  RETURN true;
+END;
+$$;
+
 CREATE FUNCTION addie_fixed_trace_component_smoke_check_attempt() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -341,7 +388,12 @@ DECLARE
   requested_provider VARCHAR(32);
   requested_model VARCHAR(128);
   requested_effort VARCHAR(64);
+  pricing_profile VARCHAR(128);
+  max_input INTEGER;
+  max_output INTEGER;
+  timeout_limit INTEGER;
   reserved BIGINT;
+  expected_cost BIGINT;
   prior_spend BIGINT;
   reservation_limit BIGINT;
   provider_limit BIGINT;
@@ -351,9 +403,11 @@ BEGIN
   IF TG_OP = 'INSERT' AND NEW.status <> 'intent_recorded' THEN
     RAISE EXCEPTION 'a provider attempt must begin as an intent';
   END IF;
-  SELECT p.maximum_provider_invocations, p.disposition, p.requested_provider, p.requested_model, p.requested_effort,
+  SELECT p.maximum_provider_invocations, p.disposition, p.requested_provider, p.requested_model, p.requested_effort, p.pricing_profile_id,
+         p.max_input_tokens, p.max_output_tokens, p.timeout_ms,
          p.reserved_microdollars[NEW.invocation_ordinal], p.assignment_outcome
-    INTO max_invocations, disposition, requested_provider, requested_model, requested_effort, reserved, assignment_outcome
+    INTO max_invocations, disposition, requested_provider, requested_model, requested_effort, pricing_profile,
+         max_input, max_output, timeout_limit, reserved, assignment_outcome
     FROM addie_fixed_trace_component_smoke_run_plan AS p
    WHERE p.authorization_digest = NEW.authorization_digest AND p.assignment_id = NEW.assignment_id;
   IF disposition IS DISTINCT FROM 'provider_dispatch' OR NEW.invocation_ordinal > max_invocations THEN
@@ -405,6 +459,21 @@ BEGIN
           OR NEW.returned_effort IS DISTINCT FROM requested_effort) THEN
     RAISE EXCEPTION 'actual cost requires admitted returned identity';
   END IF;
+  IF TG_OP = 'UPDATE' AND NEW.status = 'invalid_limits'
+     AND (NEW.returned_provider IS DISTINCT FROM requested_provider OR NEW.returned_model IS DISTINCT FROM requested_model
+          OR NEW.returned_effort IS DISTINCT FROM requested_effort) THEN
+    RAISE EXCEPTION 'observed limit cost requires admitted returned identity';
+  END IF;
+  IF TG_OP = 'UPDATE' AND (NEW.actual_cost_microdollars IS NOT NULL OR NEW.observed_cost_microdollars IS NOT NULL) THEN
+    expected_cost := addie_fixed_trace_component_smoke_expected_cost(pricing_profile, NEW.input_tokens, NEW.output_tokens,
+      NEW.cache_read_tokens, NEW.cache_write_tokens);
+    IF NEW.actual_cost_microdollars IS NOT NULL AND NEW.actual_cost_microdollars <> expected_cost THEN
+      RAISE EXCEPTION 'attempt actual cost does not match admitted pricing';
+    END IF;
+    IF NEW.observed_cost_microdollars IS NOT NULL AND NEW.observed_cost_microdollars <> expected_cost THEN
+      RAISE EXCEPTION 'attempt observed cost does not match admitted pricing';
+    END IF;
+  END IF;
   IF TG_OP = 'UPDATE' AND NEW.status = 'succeeded' AND NEW.response_disposition = 'tool_continuation_required'
      AND NEW.invocation_ordinal = max_invocations THEN
     -- A continuation beyond the admitted slot cannot be dispatched.  Preserve
@@ -417,15 +486,36 @@ BEGIN
        SET status = 'halted'
      WHERE authorization_digest = NEW.authorization_digest AND status = 'consumed';
   END IF;
-  IF NEW.actual_cost_microdollars IS NOT NULL AND NEW.actual_cost_microdollars > reserved THEN
-    RAISE EXCEPTION 'attempt cost exceeds its ordinal reservation';
+  IF TG_OP = 'UPDATE' AND NEW.status IN ('succeeded', 'provider_failed')
+     AND NOT addie_fixed_trace_component_smoke_usage_within_limits(pricing_profile, NEW.input_tokens, NEW.output_tokens,
+       NEW.cache_read_tokens, NEW.cache_write_tokens, NEW.latency_ms, max_input, max_output, timeout_limit) THEN
+    NEW.status := 'invalid_limits';
+    NEW.response_disposition := NULL;
+    NEW.observed_cost_microdollars := NEW.actual_cost_microdollars;
+    NEW.actual_cost_microdollars := NULL;
+    UPDATE addie_fixed_trace_component_smoke_authorizations
+       SET status = 'halted'
+     WHERE authorization_digest = NEW.authorization_digest AND status = 'consumed';
   END IF;
   SELECT COALESCE(sum(actual_cost_microdollars), 0) INTO prior_spend
     FROM addie_fixed_trace_component_smoke_attempts
    WHERE authorization_digest = NEW.authorization_digest AND attempt_id <> NEW.attempt_id;
-  IF prior_spend + COALESCE(NEW.actual_cost_microdollars, 0) > reservation_limit
-     OR prior_spend + COALESCE(NEW.actual_cost_microdollars, 0) > provider_limit THEN
-    RAISE EXCEPTION 'attempt cost exceeds fixed-trace aggregate limit';
+  IF NEW.actual_cost_microdollars IS NOT NULL AND (NEW.actual_cost_microdollars > reserved
+     OR prior_spend + NEW.actual_cost_microdollars > reservation_limit
+     OR prior_spend + NEW.actual_cost_microdollars > provider_limit) THEN
+    NEW.status := 'invalid_limits';
+    NEW.response_disposition := NULL;
+    NEW.observed_cost_microdollars := NEW.actual_cost_microdollars;
+    NEW.actual_cost_microdollars := NULL;
+    UPDATE addie_fixed_trace_component_smoke_authorizations
+       SET status = 'halted'
+     WHERE authorization_digest = NEW.authorization_digest AND status = 'consumed';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.status NOT IN ('intent_recorded', 'succeeded') THEN
+    UPDATE addie_fixed_trace_component_smoke_authorizations
+       SET status = CASE WHEN NEW.status = 'invalid_limits' THEN 'halted' ELSE 'unknown_exposure' END,
+           unknown_exposure_at = CASE WHEN NEW.status = 'invalid_limits' THEN NULL ELSE clock_timestamp() END
+     WHERE authorization_digest = NEW.authorization_digest AND status = 'consumed';
   END IF;
   RETURN NEW;
 END;

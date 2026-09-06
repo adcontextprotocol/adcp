@@ -353,9 +353,26 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         // A complete receipt remains accounting evidence even if it breaches a
         // pinned input/output/timeout limit. Never replace known exposure with
         // NULL merely because this one-shot run must halt.
-        if (parsed.usage && (parsed.usage.inputTokens + parsed.usage.cacheReadTokens + parsed.usage.cacheWriteTokens > maxInput
+        const additiveCacheOverLimit = parsed.usage !== null && profile !== undefined && (
+          (profile.cacheReadAccounting === 'additive' && parsed.usage.cacheReadTokens > maxInput)
+          || (profile.cacheWriteAccounting === 'additive' && parsed.usage.cacheWriteTokens > maxInput)
+        );
+        if (parsed.usage && (parsed.usage.inputTokens > maxInput || additiveCacheOverLimit
           || parsed.usage.outputTokens > maxOutput || parsed.usage.latencyMs > timeout)) return this.settlePostIntentFailure(client, parsed, 'invalid_limits', 'halted', 'plan_mismatch', spent);
-        const prior = await client.query<{ spent: unknown }>('SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent FROM addie_fixed_trace_component_smoke_attempts WHERE authorization_digest = $1', [parsed.reservation.authorizationDigest]);
+        // PostgreSQL forbids FOR UPDATE directly on an aggregate. Lock the
+        // contributing rows first; the authorization row above serializes all
+        // settlements, and this preserves a real checked-out-client boundary.
+        const prior = await client.query<{ spent: unknown }>(
+          `WITH locked_attempts AS (
+             SELECT actual_cost_microdollars
+               FROM addie_fixed_trace_component_smoke_attempts
+              WHERE authorization_digest = $1
+              FOR UPDATE
+           )
+           SELECT COALESCE(SUM(actual_cost_microdollars), 0)::bigint AS spent
+             FROM locked_attempts`,
+          [parsed.reservation.authorizationDigest],
+        );
         const priorSpent = prior.rowCount === 1 ? pgSafeInt(prior.rows[0]!.spent, 5_000_000) : null;
         const reservationLimit = pgSafeInt(auth.rows[0]!.reservation_microdollars, 2_819_484);
         const providerLimit = pgSafeInt(auth.rows[0]!.provider_ceiling_microdollars, 5_000_000);
@@ -377,7 +394,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
           await client.query(
             `UPDATE addie_fixed_trace_component_smoke_authorizations
              SET status = $2, unknown_exposure_at = CASE WHEN $2 = 'unknown_exposure' THEN clock_timestamp() ELSE NULL END
-             WHERE authorization_digest = $1 AND reservation_id = $3`,
+             WHERE authorization_digest = $1 AND reservation_id = $3 AND status = 'consumed'`,
             [parsed.reservation.authorizationDigest, 'unknown_exposure', parsed.reservation.reservationId],
           );
         }
@@ -409,7 +426,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
     await client.query(
       `UPDATE addie_fixed_trace_component_smoke_authorizations
           SET status = $2, unknown_exposure_at = CASE WHEN $2 = 'unknown_exposure' THEN clock_timestamp() ELSE NULL END
-        WHERE authorization_digest = $1 AND reservation_id = $3`,
+        WHERE authorization_digest = $1 AND reservation_id = $3 AND status = 'consumed'`,
       [parsed.reservation.authorizationDigest, authorizationStatus, parsed.reservation.reservationId],
     );
     return result('refused', refusal);
