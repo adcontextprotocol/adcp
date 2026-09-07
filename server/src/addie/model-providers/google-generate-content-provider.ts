@@ -268,8 +268,7 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
     assertSafeCount(response.usageMetadata.thoughtsTokenCount, 'thought usage');
   }
   if ((response.candidates?.length ?? 0) === 0 && response.promptFeedback?.blockReason) {
-    const outputTokens = response.usageMetadata.candidatesTokenCount ?? 0;
-    assertSafeCount(outputTokens, 'output usage');
+    assertSafeCount(response.usageMetadata.candidatesTokenCount, 'output usage');
     if (!Object.values(BlockedReason).includes(response.promptFeedback.blockReason)) {
       throw new Error('Malformed Google prompt block reason');
     }
@@ -282,19 +281,22 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
       providerFinishReason: `PROMPT_${response.promptFeedback.blockReason}`,
       usage: {
         inputTokens: response.usageMetadata.promptTokenCount,
-        outputTokens: outputTokens + (response.usageMetadata.thoughtsTokenCount ?? 0),
+        outputTokens: response.usageMetadata.candidatesTokenCount + (response.usageMetadata.thoughtsTokenCount ?? 0),
       },
     } satisfies ModelResponse);
     validateNormalizedModelResponse(refused);
     return refused;
   }
-  assertSafeCount(response.usageMetadata.candidatesTokenCount, 'output usage');
   if (!Array.isArray(response.candidates) || response.candidates.length !== 1) {
     throw new Error('Google response requires exactly one candidate');
   }
   const candidate = response.candidates[0];
   if (typeof candidate.finishReason !== 'string') throw new Error('Malformed Google finish reason');
   const finishReason = normalizeFinishReason(candidate.finishReason);
+  const hasOmittedCandidateOutputUsage = response.usageMetadata.candidatesTokenCount === undefined;
+  if (!hasOmittedCandidateOutputUsage) {
+    assertSafeCount(response.usageMetadata.candidatesTokenCount, 'output usage');
+  }
   const parts = candidate.content?.parts;
   if (candidate.content === undefined) {
     // Gemini can omit content after a bounded reasoning turn consumes its
@@ -306,6 +308,13 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if ((parts?.length ?? 0) > MAX_GOOGLE_RESPONSE_PARTS) {
     throw new Error('Google response content part limit exceeded');
   }
+  // Gemini can omit the visible-candidate count only when a bounded reasoning
+  // turn consumes its output allowance before emitting a candidate payload.
+  // Its validated thoughts count remains part of the actual billed output usage.
+  if (hasOmittedCandidateOutputUsage && (finishReason !== 'length' || (parts?.length ?? 0) !== 0)) {
+    throw new Error('Malformed Google output usage');
+  }
+  const outputTokens = response.usageMetadata.candidatesTokenCount ?? 0;
   const content: ModelMessageContent[] = [];
   for (const part of parts ?? []) {
     const keys = Object.keys(part).filter((key) => part[key as keyof typeof part] !== undefined);
@@ -381,7 +390,7 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
     providerFinishReason: candidate.finishReason,
     usage: {
       inputTokens: response.usageMetadata.promptTokenCount,
-      outputTokens: response.usageMetadata.candidatesTokenCount + (response.usageMetadata.thoughtsTokenCount ?? 0),
+      outputTokens: outputTokens + (response.usageMetadata.thoughtsTokenCount ?? 0),
       ...(response.usageMetadata.cachedContentTokenCount !== undefined && {
         cacheReadTokens: response.usageMetadata.cachedContentTokenCount,
       }),
