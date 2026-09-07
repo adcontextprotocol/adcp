@@ -1401,6 +1401,25 @@ function fixedTraceFailureMessageSha256(error: unknown): string {
     .digest('hex');
 }
 
+/**
+ * Preserve only a conventional, valid HTTP status from a caught provider
+ * exception. Provider error objects are untrusted, including accessors, so a
+ * hostile property read is treated as absent evidence.
+ */
+function fixedTraceFailureHttpStatus(error: Error): number | undefined {
+  for (const key of ['status', 'statusCode'] as const) {
+    try {
+      const value = (error as Error & Record<string, unknown>)[key];
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599) {
+        return value;
+      }
+    } catch {
+      // A provider-defined getter must not change the terminal failure path.
+    }
+  }
+  return undefined;
+}
+
 function fixedTraceFailureDiagnostic(
   error: unknown,
   timedOut: boolean,
@@ -1428,17 +1447,20 @@ function fixedTraceFailureDiagnostic(
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  return Object.freeze(error instanceof Error
-    ? {
-        kind: 'provider_transport_error',
-        reason: 'provider_exception',
-        messageSha256: fixedTraceFailureMessageSha256(error),
-      }
-    : {
-        kind: 'provider_non_error_throw',
-        reason: 'non_error_throw',
-        messageSha256: fixedTraceFailureMessageSha256(error),
-      });
+  if (error instanceof Error) {
+    const httpStatus = fixedTraceFailureHttpStatus(error);
+    return Object.freeze({
+      kind: 'provider_transport_error',
+      reason: 'provider_exception',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+      ...(httpStatus === undefined ? {} : { httpStatus }),
+    });
+  }
+  return Object.freeze({
+    kind: 'provider_non_error_throw',
+    reason: 'non_error_throw',
+    messageSha256: fixedTraceFailureMessageSha256(error),
+  });
 }
 
 /**

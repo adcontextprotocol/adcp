@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ApiError } from '@google/genai';
 import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -1249,6 +1250,88 @@ describe('fixed trace artifact runner', () => {
     expect(delegate.respondCalls).toHaveLength(1);
     expect(budget.snapshot()).toMatchObject({ dispatchedCalls: 1, exposureUnknown: true });
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ terminalFailure: true, deterministicPass: false });
+  });
+
+  it('retains only a valid HTTP status from caught provider exceptions', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = Object.assign(new ApiError({
+      message: 'provider response body: synthetic-secret-token',
+      status: 429,
+    }), {
+      statusCode: 503,
+      body: 'provider response body: synthetic-secret-token',
+      headers: { authorization: 'synthetic-secret-token' },
+      name: 'provider-error-with-details',
+      stack: 'provider stack: synthetic-secret-token',
+    });
+    const generation = new ScriptedProvider([providerError]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        httpStatus: 429,
+      },
+    });
+    expect(serialized).not.toContain('synthetic-secret-token');
+    expect(serialized).not.toContain('provider response body');
+    expect(serialized).not.toContain('provider-error-with-details');
+    expect(serialized).not.toContain('provider stack');
+  });
+
+  it.each([
+    ['statusCode alias', 'statusCode', 503, 503],
+    ['string', 'status', '503', undefined],
+    ['fractional', 'status', 503.5, undefined],
+    ['below HTTP range', 'status', 99, undefined],
+    ['above HTTP range', 'status', 600, undefined],
+  ] as const)('handles %s provider status values safely', async (_description, key, value, expectedStatus) => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = Object.defineProperty(new Error('provider failure'), key, {
+      value,
+      enumerable: true,
+    });
+    const generation = new ScriptedProvider([providerError]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: { kind: 'provider_transport_error', reason: 'provider_exception' },
+    });
+    if (expectedStatus === undefined) {
+      expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    } else {
+      expect(observation.failureDiagnostic).toMatchObject({ httpStatus: expectedStatus });
+    }
+  });
+
+  it('fails safe when provider status getters throw', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = Object.defineProperties(new Error('provider failure'), {
+      status: { get: () => { throw new Error('provider status getter'); }, enumerable: true },
+      statusCode: { get: () => { throw new Error('provider status code getter'); }, enumerable: true },
+    });
+    const generation = new ScriptedProvider([providerError]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: { kind: 'provider_transport_error', reason: 'provider_exception' },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(generation.respondCalls).toHaveLength(1);
   });
 
   it('classifies malformed normalized router events without dispatching generation', async () => {
