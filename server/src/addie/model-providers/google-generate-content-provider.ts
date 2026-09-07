@@ -272,8 +272,12 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if (typeof candidate.finishReason !== 'string') throw new Error('Malformed Google finish reason');
   const finishReason = normalizeFinishReason(candidate.finishReason);
   const parts = candidate.content?.parts;
-  if (!Array.isArray(parts)) {
-    if (finishReason !== 'refusal') throw new Error('Malformed Google response content');
+  if (candidate.content === undefined) {
+    // Gemini can omit content after a bounded reasoning turn consumes its
+    // output allowance. No other terminal state may omit its content object.
+    if (finishReason !== 'length') throw new Error('Malformed Google response content');
+  } else if (!Array.isArray(parts)) {
+    throw new Error('Malformed Google response content');
   }
   if ((parts?.length ?? 0) > MAX_GOOGLE_RESPONSE_PARTS) {
     throw new Error('Google response content part limit exceeded');
