@@ -111,6 +111,22 @@ class ScriptedProvider implements ModelProvider {
   }
 }
 
+class ThrowingProvider extends ScriptedProvider {
+  constructor(private readonly thrown: unknown) {
+    super([]);
+  }
+
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    throw this.thrown;
+  }
+}
+
 class InvalidNormalizedEventProvider extends ScriptedProvider {
   override async *respond(
     request: ModelRequest,
@@ -1332,6 +1348,59 @@ describe('fixed trace artifact runner', () => {
     });
     expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
     expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('fails closed for a hostile Error proxy without reading diagnostics', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const secret = 'synthetic-hostile-error-secret';
+    const hostileError = new Proxy(Object.assign(new Error(secret), { status: 503 }), {
+      getPrototypeOf: () => { throw new Error('hostile prototype access'); },
+      get: () => { throw new Error('hostile diagnostic access'); },
+    });
+    const generation = new ThrowingProvider(hostileError);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_non_error_throw',
+        reason: 'non_error_throw',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(serialized).not.toContain(secret);
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('fails closed for a revoked Error proxy', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const secret = 'synthetic-revoked-error-secret';
+    const { proxy, revoke } = Proxy.revocable(Object.assign(new Error(secret), { status: 429 }), {});
+    revoke();
+    const router = new ThrowingProvider(proxy);
+    const generation = new ScriptedProvider([]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_non_error_throw',
+        reason: 'non_error_throw',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(serialized).not.toContain(secret);
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(0);
   });
 
   it('classifies malformed normalized router events without dispatching generation', async () => {

@@ -1368,6 +1368,67 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
 
 const FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES = 512;
 
+/**
+ * Caught values are provider-controlled. In particular, a revoked proxy can
+ * throw while `instanceof` asks it for its prototype, so every catch-path
+ * classification must be fail-closed.
+ */
+function isFixedTraceBudgetAdmissionError(error: unknown): error is FixedTraceBudgetAdmissionError {
+  try {
+    return error instanceof FixedTraceBudgetAdmissionError;
+  } catch {
+    return false;
+  }
+}
+
+function isFixedTraceToolLoopBoundaryError(error: unknown): error is FixedTraceToolLoopBoundaryError {
+  try {
+    return error instanceof FixedTraceToolLoopBoundaryError;
+  } catch {
+    return false;
+  }
+}
+
+function isFixedTraceExecutionIdentityError(error: unknown): error is FixedTraceExecutionIdentityError {
+  try {
+    return error instanceof FixedTraceExecutionIdentityError;
+  } catch {
+    return false;
+  }
+}
+
+function isFixedTracePreparationError(error: unknown): error is FixedTracePreparationError {
+  try {
+    return error instanceof FixedTracePreparationError;
+  } catch {
+    return false;
+  }
+}
+
+function isInvalidModelEventStreamError(error: unknown): error is InvalidModelEventStreamError {
+  try {
+    return error instanceof InvalidModelEventStreamError;
+  } catch {
+    return false;
+  }
+}
+
+function isUnexpectedModelIdentityError(error: unknown): error is UnexpectedModelIdentityError {
+  try {
+    return error instanceof UnexpectedModelIdentityError;
+  } catch {
+    return false;
+  }
+}
+
+function isError(error: unknown): error is Error {
+  try {
+    return error instanceof Error;
+  } catch {
+    return false;
+  }
+}
+
 function boundedUtf8Prefix(value: string, maxBytes: number): string {
   let byteLength = 0;
   let end = 0;
@@ -1392,7 +1453,7 @@ function boundedUtf8Prefix(value: string, maxBytes: number): string {
 function fixedTraceFailureMessageSha256(error: unknown): string {
   let message = '';
   try {
-    if (error instanceof Error && typeof error.message === 'string') message = error.message;
+    if (isError(error) && typeof error.message === 'string') message = error.message;
   } catch {
     // An exotic thrown value must not prevent fail-closed failure recording.
   }
@@ -1425,7 +1486,7 @@ function fixedTraceFailureDiagnostic(
   timedOut: boolean,
   dispatched: boolean,
 ): FixedTraceFailureDiagnostic | null {
-  if (error instanceof FixedTraceBudgetAdmissionError || error instanceof FixedTraceToolLoopBoundaryError) return null;
+  if (isFixedTraceBudgetAdmissionError(error) || isFixedTraceToolLoopBoundaryError(error)) return null;
   if (timedOut && dispatched) {
     return Object.freeze({
       kind: 'provider_timeout',
@@ -1433,21 +1494,21 @@ function fixedTraceFailureDiagnostic(
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  if (error instanceof InvalidModelEventStreamError) {
+  if (isInvalidModelEventStreamError(error)) {
     return Object.freeze({
       kind: 'normalization_error',
       reason: 'invalid_normalized_model_event',
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  if (error instanceof UnexpectedModelIdentityError) {
+  if (isUnexpectedModelIdentityError(error)) {
     return Object.freeze({
       kind: 'provider_identity_error',
       reason: 'unexpected_model_identity',
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  if (error instanceof Error) {
+  if (isError(error)) {
     const httpStatus = fixedTraceFailureHttpStatus(error);
     return Object.freeze({
       kind: 'provider_transport_error',
@@ -1575,10 +1636,10 @@ async function executeRouter(
       return { request, response, plan: null, output, status: 'malformed', metadata, failureDiagnostic: null };
     }
   } catch (error) {
-    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
-    if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
+    if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
+    if (isFixedTraceBudgetAdmissionError(error)) invocations.push(error.prepared);
     const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
-    const status = error instanceof FixedTraceBudgetAdmissionError
+    const status = isFixedTraceBudgetAdmissionError(error)
       ? 'not_dispatched_budget'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
@@ -1890,14 +1951,14 @@ export async function runFixedTraceCase(
       rejectedToolCalls: [],
     };
   } catch (error) {
-    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
-    if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
-    const checkpoint = error instanceof FixedTraceToolLoopBoundaryError
+    if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
+    if (isFixedTraceBudgetAdmissionError(error)) invocations.push(error.prepared);
+    const checkpoint = isFixedTraceToolLoopBoundaryError(error)
       ? error.checkpoint
       : undefined;
-    const terminalStatus = error instanceof FixedTraceBudgetAdmissionError
+    const terminalStatus = isFixedTraceBudgetAdmissionError(error)
       ? 'not_dispatched_budget'
-      : error instanceof FixedTraceToolLoopBoundaryError
+      : isFixedTraceToolLoopBoundaryError(error)
       ? 'malformed'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
@@ -1928,7 +1989,7 @@ export async function runFixedTraceCase(
       terminalStage: 'generation',
       terminalStatus: finalTerminalStatus,
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
-      boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
+      boundaryReason: isFixedTraceToolLoopBoundaryError(error) ? error.reason : null,
       localReplacementReason: null,
       failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
       finishReason: null,
