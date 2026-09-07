@@ -12,6 +12,7 @@ import {
   GOOGLE_ROUTER_MODEL,
   isGoogleRouterModelRevision,
 } from '../model-providers/google-generate-content-provider.js';
+import { resolveKnownClaudePricingModel } from '../claude-pricing.js';
 import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
 import {
   datedPricingCostUsd,
@@ -195,6 +196,9 @@ export function fixedTraceResponseUsesPricingPolicy(
   const approved = approvedResponsePricing(policy);
   if (response.provider !== policy.expectedProvider) return false;
   if (response.model === policy.expectedModel) return true;
+  if (response.provider === 'anthropic') {
+    return resolveKnownClaudePricingModel(response.model) === policy.expectedModel;
+  }
   return policy.modelResolutionPolicy === 'google_router_dated_revision_v1'
     && approved.profileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
     && isGoogleRouterModelRevision(response.model);
