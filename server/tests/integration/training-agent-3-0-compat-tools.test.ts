@@ -18,10 +18,11 @@ vi.mock('../../src/logger.js', () => ({
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { createTrainingAgentServer } = await import('../../src/training-agent/task-handlers.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
+const { TRAINING_AGENT_CURRENT_ADCP_VERSION } = await import('../../src/training-agent/types.js');
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
-const CURRENT_ADCP_VERSION = '3.2-rc.1';
+const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const semver = require('semver');
 const test = require('node:test');
 
 const CURRENT_SDK_CHECKPOINT_FILES = [
@@ -44,16 +45,41 @@ function canonicalAdcpVersion(version) {
   return `${match[1]}.${match[2]}.${match[3] ?? '0'}${match[4]}`;
 }
 
+function sdkCheckpointVersions(source, expectedVersion) {
+  const exactVersion = semver.parse(expectedVersion);
+  assert.equal(exactVersion?.version, expectedVersion, 'current SDK checkpoint must remain an exact package version');
+  const versionCore = `${exactVersion.major}.${exactVersion.minor}.${exactVersion.patch}`;
+  const escapedVersionCore = versionCore.replaceAll('.', '\\.');
+  const prereleaseChannel = exactVersion.prerelease.length > 0
+    ? String(exactVersion.prerelease[0])
+    : undefined;
+  const semverBuild = String.raw`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
+  const tokenStart = String.raw`(?<![0-9A-Za-z.+-])`;
+  const tokenEnd = String.raw`(?![0-9A-Za-z.+-])`;
+  const currentSdkVersionPattern = prereleaseChannel
+    ? new RegExp(`${tokenStart}${escapedVersionCore}-${prereleaseChannel}(?:\\.[0-9A-Za-z-]+)*${semverBuild}${tokenEnd}`, 'g')
+    : new RegExp(`${tokenStart}${escapedVersionCore}${semverBuild}${tokenEnd}`, 'g');
+  return [...new Set(source.match(currentSdkVersionPattern) ?? [])];
+}
+
+test('SDK checkpoint matching compares complete SemVer tokens', () => {
+  assert.deepEqual(
+    sdkCheckpointVersions('114.0.0-rc.33 14.0.0-rc.33+build.1 14.0.0-rc.33', '14.0.0-rc.33'),
+    ['14.0.0-rc.33+build.1', '14.0.0-rc.33'],
+  );
+  assert.deepEqual(
+    sdkCheckpointVersions('114.0.0 14.0.0-rc.33 14.0.0+build.1 14.0.0', '14.0.0'),
+    ['14.0.0+build.1', '14.0.0'],
+  );
+});
+
 test('current exact SDK checkpoint references match package.json', () => {
   const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'));
   const expectedVersion = packageJson.dependencies['@adcp/sdk'];
-  assert.match(expectedVersion, /-rc\.\d+$/, 'current SDK checkpoint must remain an exact release-candidate pin');
-  const versionCore = expectedVersion.split('-')[0].replaceAll('.', '\\.');
-  const currentSdkVersionPattern = new RegExp(`${versionCore}-rc\\.\\d+`, 'g');
 
   for (const relativePath of CURRENT_SDK_CHECKPOINT_FILES) {
     const source = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
-    const versions = [...new Set(source.match(currentSdkVersionPattern) ?? [])];
+    const versions = sdkCheckpointVersions(source, expectedVersion);
     assert.deepEqual(versions, [expectedVersion], `${relativePath} must use the package.json SDK checkpoint`);
   }
 });

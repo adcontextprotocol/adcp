@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 // certification-tools.ts imports the certification-db module; stub it so this
 // pure-function test never touches a real database.
@@ -30,6 +31,13 @@ import {
   SAGE_VOICE_EXEMPLARS,
   selectModuleMethodology,
 } from '../../src/addie/mcp/certification-tools.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
+
+const SDK_PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+    dependencies: Record<string, string>;
+  }
+).dependencies['@adcp/sdk'];
 
 // Distinctive markers from each methodology block.
 const TEACHING_MARKER = 'Teaching approach';
@@ -80,10 +88,11 @@ describe('selectModuleMethodology', () => {
     for (const phase of ['build', 'validate']) {
       const instructions = await getInstructions({ module_id: 'C4', phase });
 
-      expect(instructions).toContain('@adcp/sdk@14.0.0-rc.33');
-      expect(instructions).toContain('rc.1');
-      expect(instructions).not.toContain('beta.5');
-      expect(instructions).not.toContain('@adcp/sdk@14.0.0-beta.7');
+      expect(instructions).toContain(`@adcp/sdk@${SDK_PACKAGE_VERSION}`);
+      expect(instructions).toContain(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+      const documentedSdkPins = [...instructions.matchAll(/@adcp\/sdk@([^\s`'"<>]+)/g)]
+        .map((match) => match[1]);
+      expect(new Set(documentedSdkPins)).toEqual(new Set([SDK_PACKAGE_VERSION]));
     }
   });
 
