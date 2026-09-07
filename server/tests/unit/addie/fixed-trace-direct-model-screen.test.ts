@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE,
   FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256,
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE,
   FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE,
   FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS,
   runFixedTraceDirectModelScreen,
   type FixedTraceDirectModelScreenGenerationCellId,
+  type FixedTraceGoogleThreeTurnGenerationCellId,
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from '../../../src/addie/eval/fixed-trace-runner.js';
@@ -59,6 +61,7 @@ class ScreenProvider implements ModelProvider {
   constructor(
     readonly id: ModelProviderId,
     private readonly returnedModel?: string | readonly string[],
+    private readonly toolCallsBeforeStop = 1,
   ) {}
 
   async *respond(request: ModelRequest, options: ModelRespondOptions = {}): AsyncIterable<NormalizedModelEvent> {
@@ -69,17 +72,23 @@ class ScreenProvider implements ModelProvider {
     if (typeof traceId !== 'string') throw new Error('screen request is missing its trace identity');
     const attempt = (this.requestsByTrace.get(traceId) ?? 0) + 1;
     this.requestsByTrace.set(traceId, attempt);
+    const toolCalls = [
+      { name: 'search_docs', input: { query: 'official overview' } },
+      { name: 'get_doc', input: { doc_id: 'synthetic-overview' } },
+      { name: 'search_repos', input: { query: 'fixed trace evaluation' } },
+    ] as const;
+    const toolCall = toolCalls[attempt - 1];
     const response: ModelResponse = {
       provider: this.id,
       model: Array.isArray(this.returnedModel)
         ? this.returnedModel[attempt - 1] ?? request.model
         : this.returnedModel ?? request.model,
       id: `screen-${this.requests.length}`,
-      content: attempt === 1
-        ? [{ type: 'tool_call', id: `screen-search-${traceId}`, name: 'search_docs', input: { query: 'official overview' } }]
+      content: attempt <= this.toolCallsBeforeStop
+        ? [{ type: 'tool_call', id: `screen-tool-${attempt}-${traceId}`, name: toolCall!.name, input: toolCall!.input }]
         : [{ type: 'text', text: 'Synthetic direct model screen response about typed tasks.' }],
-      finishReason: attempt === 1 ? 'tool_calls' : 'stop',
-      providerFinishReason: attempt === 1 ? 'tool_calls' : 'stop',
+      finishReason: attempt <= this.toolCallsBeforeStop ? 'tool_calls' : 'stop',
+      providerFinishReason: attempt <= this.toolCallsBeforeStop ? 'tool_calls' : 'stop',
       usage: { inputTokens: 10, outputTokens: 5 },
     };
     yield { type: 'response_start', provider: response.provider, model: response.model, id: response.id };
@@ -128,6 +137,16 @@ function config(
   };
 }
 
+function googleThreeTurnConfig(
+  cellId: FixedTraceGoogleThreeTurnGenerationCellId,
+  provider = new ScreenProvider('google'),
+): FixedTraceRunnerConfig {
+  const value = config(cellId, provider);
+  value.generation.maxIterations = 3;
+  value.directModelScreen = { mode: FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE, generationCellId: cellId };
+  return value;
+}
+
 describe('fixed-trace direct model screen', () => {
   it('pins only the reviewed two-probe admission pack', () => {
     expect(FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS).toEqual([
@@ -152,6 +171,57 @@ describe('fixed-trace direct model screen', () => {
     expect(observations.every((observation) => observation.metadata.routerControl.status === 'not_run')).toBe(true);
     expect(observations.every((observation) => observation.metadata.directModelScreenMode === FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE)).toBe(true);
     expect(summarizeFixedTraceRun(observations, FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE).summary.observed).toBe(2);
+  });
+
+  it.each(CELLS.slice(2))('admits the separately versioned three-turn Google mode for %s', async (cellId) => {
+    const provider = new ScreenProvider('google');
+    const observations = await runFixedTraceDirectModelScreen(googleThreeTurnConfig(cellId, provider));
+    expect(observations).toHaveLength(2);
+    expect(observations.every((observation) => observation.metadata.directModelScreenMode === FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE)).toBe(true);
+    for (const observation of observations) {
+      expect(gradeFixedTrace(FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE.find((trace) => trace.id === observation.traceId)!, observation).failures)
+        .not.toContain('direct_model_screen_generation_control_invalid');
+    }
+  });
+
+  it.each([
+    ['the old iteration limit', (observation: Awaited<ReturnType<typeof runFixedTraceDirectModelScreen>>[number]) => {
+      observation.metadata.generationControl.maxIterations = 2;
+    }],
+    ['more than one repetition', (observation: Awaited<ReturnType<typeof runFixedTraceDirectModelScreen>>[number]) => {
+      observation.metadata.repetition = 2;
+    }],
+  ] as const)('fails closed when serialized three-turn metadata is forged to %s', async (_name, mutate) => {
+    const [observation] = await runFixedTraceDirectModelScreen(googleThreeTurnConfig(CELLS[2]));
+    const forged = structuredClone(observation);
+    mutate(forged);
+    forged.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(forged.metadata);
+
+    expect(gradeFixedTrace(FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE[0]!, forged).failures)
+      .toContain('direct_model_screen_generation_control_invalid');
+  });
+
+  it('keeps the three-turn iteration limit distinct from an ordinary terminal stop', async () => {
+    const exhausted = await runFixedTraceDirectModelScreen(googleThreeTurnConfig(
+      CELLS[2],
+      new ScreenProvider('google', undefined, 3),
+    ));
+    expect(exhausted.map((observation) => ({
+      status: observation.terminalStatus,
+      boundary: observation.boundaryReason,
+    }))).toEqual([
+      { status: 'malformed', boundary: 'iteration_limit_exceeded' },
+      { status: 'malformed', boundary: 'iteration_limit_exceeded' },
+    ]);
+
+    const stopped = await runFixedTraceDirectModelScreen(googleThreeTurnConfig(CELLS[2]));
+    expect(stopped.map((observation) => ({
+      status: observation.terminalStatus,
+      boundary: observation.boundaryReason,
+    }))).toEqual([
+      { status: 'complete', boundary: null },
+      { status: 'complete', boundary: null },
+    ]);
   });
 
   it('delivers the canonical source-pinned fixture results through the reviewed common tool surface', async () => {
@@ -302,5 +372,33 @@ describe('fixed-trace direct model screen', () => {
     await expect(runFixedTraceDirectModelScreen(hostile)).rejects.toThrow(error);
     expect(provider.prepare).not.toHaveBeenCalled();
     expect(provider.requests).toHaveLength(0);
+  });
+
+  it.each([
+    ['two turns', (value: FixedTraceRunnerConfig) => { value.generation.maxIterations = 2; }],
+    ['four turns', (value: FixedTraceRunnerConfig) => { value.generation.maxIterations = 4; }],
+    ['repetition drift', (value: FixedTraceRunnerConfig) => { value.repetition = 2; }],
+    ['Anthropic cell', (value: FixedTraceRunnerConfig) => { value.directModelScreen = { mode: FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE, generationCellId: CELLS[0] }; }],
+    ['router-role cell', (value: FixedTraceRunnerConfig) => { value.directModelScreen = { mode: FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE, generationCellId: 'router:google:gemini-3.7-flash:provider_default' as FixedTraceGoogleThreeTurnGenerationCellId }; }],
+    ['provider mismatch', (value: FixedTraceRunnerConfig) => { value.generation = { ...value.generation, provider: new ScreenProvider('anthropic') }; }],
+    ['model mismatch', (value: FixedTraceRunnerConfig) => { value.generation = { ...value.generation, model: 'claude-haiku-4-5' }; }],
+    ['router supplied', (value: FixedTraceRunnerConfig) => { value.router = stage(CELLS[2], new ScreenProvider('google')); }],
+    ['probe suite drift', (value: FixedTraceRunnerConfig) => { value.traceSuite = value.traceSuite.slice(0, 1); value.traceSuiteSha256 = fixedTraceSuiteSha256(value.traceSuite); }],
+    ['token cap drift', (value: FixedTraceRunnerConfig) => { value.generation.maxOutputTokens = 901; }],
+    ['retry drift', (value: FixedTraceRunnerConfig) => { value.generation.transportRetries = 1; }],
+  ] as const)('rejects %s under the Google-only three-turn mode before preparation', async (_name, mutate) => {
+    const provider = new ScreenProvider('google');
+    const hostile = googleThreeTurnConfig(CELLS[2], provider);
+    mutate(hostile);
+    await expect(runFixedTraceDirectModelScreen(hostile)).rejects.toThrow();
+    expect(provider.prepare).not.toHaveBeenCalled();
+  });
+
+  it('rejects three turns under the immutable v1 mode before preparation', async () => {
+    const provider = new ScreenProvider('google');
+    const hostile = config(CELLS[2], provider);
+    hostile.generation.maxIterations = 3;
+    await expect(runFixedTraceDirectModelScreen(hostile)).rejects.toThrow('generation stage differs from its admitted cell');
+    expect(provider.prepare).not.toHaveBeenCalled();
   });
 });
