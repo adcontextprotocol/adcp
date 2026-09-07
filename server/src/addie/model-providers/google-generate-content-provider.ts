@@ -400,6 +400,17 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     });
   }
 
+  /** Preserve opaque Google continuation parts when an evaluator snapshots a response. */
+  snapshotResponse(response: ModelResponse): ModelResponse {
+    const snapshot = structuredClone(response);
+    for (const [index, content] of response.content.entries()) {
+      const continuation = googleContinuationParts.get(content);
+      const clonedContent = snapshot.content[index];
+      if (continuation && clonedContent) rememberGoogleContinuation(clonedContent, continuation);
+    }
+    return deepFreeze(snapshot);
+  }
+
   async *respond(
     request: ModelRequest,
     options: ModelRespondOptions = {},

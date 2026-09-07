@@ -285,6 +285,13 @@ export interface ModelProvider {
   readonly capabilities: ModelProviderCapabilities;
   prepare(request: ModelRequest): PreparedModelInvocation;
   respond(request: ModelRequest, options?: ModelRespondOptions): AsyncIterable<NormalizedModelEvent>;
+  /**
+   * Optionally make an immutable response snapshot while retaining adapter-only
+   * continuation bindings. The returned value must be structurally identical
+   * to `response`; this is for opaque state such as a provider thought token,
+   * never a second normalization path.
+   */
+  snapshotResponse?(response: ModelResponse): ModelResponse;
   deriveProviderToolReceipt?(
     call: ModelProviderToolCallContent,
     result: ModelProviderToolResultContent,

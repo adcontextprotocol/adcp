@@ -52,7 +52,7 @@ async function run(
   judgeResponsePatch: Partial<ModelResponse> = {},
   judgeOverrides: Partial<Record<ModelProviderId, FakeProvider>> = {},
 ) {
-  const cell = fixedTraceDirectFullSuiteCell(cellId); const budget = new FixedTraceBudget(300);
+  const cell = fixedTraceDirectFullSuiteCell(cellId); const budget = new FixedTraceBudget(fixedTraceDirectFullSuiteCostCeiling(cellId).requiredSoftMaxUsd);
   const rawCandidate = new FakeProvider(cell.provider, fail);
   const candidate = budgeted(rawCandidate, cell.model, budget);
   const rawJudges = {
@@ -109,12 +109,12 @@ describe('fixed-trace direct full-suite comparison', () => {
 
   it('publishes deterministic per-cell whole-run ceilings with all 384 candidate and 64 judge calls', () => {
     expect(FIXED_TRACE_DIRECT_FULL_SUITE_CELLS.map((cellId) => [cellId, fixedTraceDirectFullSuiteCostCeiling(cellId).requiredSoftMaxUsd])).toEqual([
-      ['generation:anthropic:claude-sonnet-5:provider_default', 242.15941759999998],
-      ['generation:anthropic:claude-haiku-4-5:provider_default', 122.1520448],
-      ['generation:google:gemini-3.7-flash:provider_default', 44.5568512],
-      ['generation:google:gemini-3.7-flash:low', 44.5568512],
-      ['generation:google:gemini-3.7-flash:medium', 44.5568512],
-      ['generation:google:gemini-3.7-flash:high', 44.5568512],
+      ['generation:anthropic:claude-sonnet-5:provider_default', 478.71816320000005],
+      ['generation:anthropic:claude-haiku-4-5:provider_default', 240.43141760000003],
+      ['generation:google:gemini-3.7-flash:provider_default', 82.30558719999999],
+      ['generation:google:gemini-3.7-flash:low', 82.30558719999999],
+      ['generation:google:gemini-3.7-flash:medium', 82.30558719999999],
+      ['generation:google:gemini-3.7-flash:high', 82.30558719999999],
     ]);
     const ceiling = fixedTraceDirectFullSuiteCostCeiling('generation:anthropic:claude-sonnet-5:provider_default');
     expect(ceiling).toMatchObject({ candidateMaxDispatches: 384, judgeMaxDispatches: 64, requiredSoftMaxUsd: ceiling.totalUsd });

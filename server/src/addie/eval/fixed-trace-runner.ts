@@ -130,7 +130,7 @@ export const FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE = 'direct_mo
  */
 export const FIXED_TRACE_DIRECT_FULL_SUITE_COMPARISON_MODE = 'direct_full_suite_model_comparison_v1' as const;
 /** Bounds every direct-full-suite prepared request before provider dispatch. */
-export const FIXED_TRACE_DIRECT_FULL_SUITE_MAX_PREPARED_REQUEST_BYTES = 131_072;
+export const FIXED_TRACE_DIRECT_FULL_SUITE_MAX_PREPARED_REQUEST_BYTES = 262_144;
 export type FixedTraceDirectModelScreenGenerationCellId =
   | 'generation:anthropic:claude-sonnet-5:provider_default'
   | 'generation:anthropic:claude-haiku-4-5:provider_default'
