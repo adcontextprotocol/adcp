@@ -461,6 +461,12 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     } catch (error) {
       // Do not expose provider error fields here. The runner receives a
       // constant-message adapter error plus the only safe receipt field.
+      // A post-dispatch abort is terminal. Do not inspect a provider-owned
+      // rejection in that case: even descriptor inspection can invoke a
+      // hostile proxy trap before the runner can record its timeout.
+      if (options.signal?.aborted) {
+        throw createModelProviderAdapterError('provider_transport');
+      }
       throw createModelProviderAdapterError(
         'provider_transport',
         googleTransportHttpStatus(error),

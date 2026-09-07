@@ -153,25 +153,6 @@ class AdapterTimeoutProvider extends ScriptedProvider {
   }
 }
 
-class HostileTimeoutProvider extends ScriptedProvider {
-  constructor(private readonly thrown: unknown) {
-    super([]);
-  }
-
-  override async *respond(
-    request: ModelRequest,
-    options: ModelRespondOptions = {},
-  ): AsyncIterable<NormalizedModelEvent> {
-    const prepared = this.prepare(request);
-    await options.beforeDispatch?.(prepared);
-    this.respondCalls.push(structuredClone(request));
-    await new Promise<void>((resolve) => {
-      options.signal?.addEventListener('abort', resolve, { once: true });
-    });
-    throw this.thrown;
-  }
-}
-
 class InvalidNormalizedEventProvider extends ScriptedProvider {
   override async *respond(
     request: ModelRequest,
@@ -1546,7 +1527,7 @@ describe('fixed trace artifact runner', () => {
     expect(generation.respondCalls).toHaveLength(1);
   });
 
-  it('does not inspect a hostile provider rejection after dispatch timeout', async () => {
+  it('does not inspect a hostile Google transport rejection after dispatch timeout', async () => {
     const selectedTrace = trace('bounded-truncation');
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const secret = 'synthetic-timeout-proxy-secret';
@@ -1556,10 +1537,22 @@ describe('fixed trace artifact runner', () => {
       getPrototypeOf: () => { proxyTrap(); throw new Error('hostile prototype access'); },
       getOwnPropertyDescriptor: () => { proxyTrap(); throw new Error('hostile descriptor access'); },
     });
-    const generation = new HostileTimeoutProvider(providerError);
+    const generateContent = vi.fn((_request, options?: { signal?: AbortSignal }) => (
+      new Promise<never>((_resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => reject(providerError), { once: true });
+      })
+    ));
+    const generation = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent },
+    } satisfies GoogleGenerateContentTransport);
 
     const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
-      generation: { ...stage(generation, 3), timeoutMs: 1 },
+      generation: {
+        ...stage(generation, 3),
+        model: GOOGLE_ROUTER_MODEL,
+        reasoningEffort: 'provider_default',
+        timeoutMs: 1,
+      },
     }));
 
     expect(observation).toMatchObject({
@@ -1568,11 +1561,13 @@ describe('fixed trace artifact runner', () => {
       failureDiagnostic: {
         kind: 'provider_timeout',
         reason: 'timeout_after_dispatch',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
       },
     });
     expect(proxyTrap).not.toHaveBeenCalled();
     expect(JSON.stringify(observation)).not.toContain(secret);
-    expect(generation.respondCalls).toHaveLength(1);
+    expect(generateContent).toHaveBeenCalledOnce();
+    expect(generateContent.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
   });
 
   it.each([
