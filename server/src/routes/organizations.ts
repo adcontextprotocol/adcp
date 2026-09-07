@@ -843,21 +843,48 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      // Verify user is admin/owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
-      if (!membership) {
-        return res.status(403).json({
-          error: 'Access denied',
-          message: 'You are not a member of this organization',
-        });
-      }
+      const canaryDecision = await evaluateOrganizationAuthorizationCanary({
+        boundary: ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_DOMAIN_USERS_READ,
+        principal: user,
+        organizationId: orgId,
+        getWorkos: getAuthorizationEnforcementWorkos,
+        minimumRole: 'admin',
+      });
 
-      const userRole = membership.role;
-      if (userRole !== 'admin' && userRole !== 'owner') {
-        return res.status(403).json({
-          error: 'Insufficient permissions',
-          message: 'Only admins and owners can view domain users',
-        });
+      if (canaryDecision.enforced) {
+        recordOrganizationAuthorizationCanaryDecision(
+          ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_DOMAIN_USERS_READ,
+          canaryDecision,
+        );
+        if (canaryDecision.status === 'unavailable') {
+          return res.status(503).json({
+            error: 'Authorization temporarily unavailable',
+            message: 'Organization access could not be verified. Please retry.',
+          });
+        }
+        if (canaryDecision.status === 'forbidden') {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+      } else {
+        // Kill-switch/default path: preserve the shipped resolver and responses exactly.
+        const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+        if (!membership) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = membership.role;
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can view domain users',
+          });
+        }
       }
 
       // Get verified domains for this org
