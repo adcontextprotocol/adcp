@@ -6,6 +6,7 @@ import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
   FIXED_TRACE_STAGE_CONTROL_VERSION,
+  fixedTraceArchitectureConfigPayload,
   fixedTraceArchitectureConfigSha256FromMetadata,
   assertFixedTraceRunContract,
   FIXED_TRACE_CORPUS,
@@ -83,6 +84,38 @@ function stage(
     pricingSource: 'synthetic test rate',
     pricingProfileId: 'synthetic-requested-model-v1',
     latencyMs: 5,
+    ...overrides,
+  };
+}
+
+function notRunStage(
+  overrides: Partial<FixedTraceModelStageMetadata> = {},
+): FixedTraceModelStageMetadata {
+  return {
+    source: 'not_run',
+    dispatched: false,
+    dispatchedCalls: 0,
+    requestedProvider: null,
+    requestedModel: null,
+    returnedProvider: null,
+    returnedModel: null,
+    providerExposures: [],
+    modelResolution: null,
+    promptSha256: null,
+    providerRequestSha256: null,
+    reasoningEffort: null,
+    effectiveMaxOutputTokens: null,
+    timeoutMs: null,
+    maxIterations: null,
+    transportRetries: null,
+    samplingMode: null,
+    temperature: null,
+    usageKnown: false,
+    usage: null,
+    estimatedCostUsd: 0,
+    pricingSource: null,
+    pricingProfileId: null,
+    latencyMs: 0,
     ...overrides,
   };
 }
@@ -1672,6 +1705,49 @@ describe('fixed cross-provider trace suite', () => {
     const notRun = passingObservation(ignoredTrace);
     notRun.metadata.generation.effectiveMaxOutputTokens = 1;
     expect(gradeFixedTrace(ignoredTrace, notRun).failures).toContain('generation_not_run_state_invalid');
+  });
+
+  it.each([
+    ['dispatch', (value: FixedTraceModelStageMetadata) => { value.dispatched = true; }],
+    ['requested identity', (value: FixedTraceModelStageMetadata) => { value.requestedProvider = 'anthropic'; value.requestedModel = 'forged-model'; }],
+    ['usage and cost', (value: FixedTraceModelStageMetadata) => {
+      value.usageKnown = true;
+      value.usage = { inputTokens: 1, outputTokens: 1 };
+      value.estimatedCostUsd = 1;
+      value.pricingSource = 'forged';
+    }],
+  ] as const)('rejects contradictory serialized not-run router %s metadata', (_name, mutate) => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.category === 'knowledge')!;
+    const observation = passingObservation(trace);
+    observation.metadata.routerControl = { status: 'not_run' };
+    observation.metadata.router = notRunStage();
+    mutate(observation.metadata.router);
+
+    expect(gradeFixedTrace(trace, observation).failures).toContain('router_not_run_control_invalid');
+  });
+
+  it('rejects serialized not-run router controls with ignored configuration fields', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.category === 'knowledge')!;
+    const observation = passingObservation(trace);
+    observation.metadata.routerControl = {
+      status: 'not_run',
+      timeoutMs: 30_000,
+    } as unknown as FixedTraceCohortStageControl;
+    observation.metadata.router = notRunStage();
+    // Fingerprinting intentionally normalizes a not-run router. The artifact
+    // validator must still reject the untrusted surplus field before grading.
+    observation.metadata.architectureConfigSha256 = fixedTraceArchitectureConfigSha256FromMetadata(observation.metadata);
+
+    expect(gradeFixedTrace(trace, observation).failures).toContain('router_not_run_control_invalid');
+  });
+
+  it('preserves the prior fingerprint semantics when no direct-model-screen mode is present', () => {
+    const legacy = metadata();
+    const explicitNull = { ...legacy, directModelScreenMode: null };
+
+    expect(fixedTraceArchitectureConfigPayload(legacy)).not.toHaveProperty('directModelScreenMode');
+    expect(fixedTraceArchitectureConfigSha256FromMetadata(legacy))
+      .toBe(fixedTraceArchitectureConfigSha256FromMetadata(explicitNull));
   });
 
   it('enforces the fingerprinted returned-model resolution profile', () => {

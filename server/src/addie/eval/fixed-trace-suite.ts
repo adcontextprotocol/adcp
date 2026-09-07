@@ -8,6 +8,8 @@ import {
 } from './fixed-trace-architecture.js';
 import {
   fixedTraceEstimatedCostUsd,
+  fixedTraceModelResolutionPolicy,
+  fixedTraceResponsePricingPolicy,
   type FixedTraceBudgetPricing,
 } from './fixed-trace-budget.js';
 import { fixedTraceArchitectureDiagnosticCaseProvenance } from './fixed-trace-architecture-diagnostic.js';
@@ -299,6 +301,11 @@ export interface FixedTraceCohortStageControl {
   pricing: FixedTracePricing;
 }
 
+/** A direct-only evaluator assignment has no router request or configuration. */
+export interface FixedTraceNotRunCohortStageControl {
+  readonly status: 'not_run';
+}
+
 export interface FixedTraceModelStageMetadata {
   source: 'provider' | 'local' | 'not_run';
   dispatched: boolean;
@@ -352,6 +359,8 @@ export interface FixedTraceRunMetadata {
   architectureConfigSha256: string;
   /** Set only by an exact synthetic architecture diagnostic declaration. */
   architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | 'synthetic_sonnet_full_pack_v1' | null;
+  /** Set only by the exact source-pinned direct model-screen declaration. */
+  directModelScreenMode?: 'direct_model_screen_admission_v1' | null;
   /** Evaluator-only pack/pilot and cluster binding for architecture diagnostics. */
   architectureDiagnostic: {
     packDigest: string;
@@ -378,7 +387,7 @@ export interface FixedTraceRunMetadata {
   /** Trace-local fault-injection controls, never part of the candidate cohort hash. */
   caseControl: FixedTraceCaseControl | null;
   /** Cohort controls are recorded even for direct or not-run stage outcomes. */
-  routerControl: FixedTraceCohortStageControl;
+  routerControl: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl;
   generationControl: FixedTraceCohortStageControl;
   router: FixedTraceModelStageMetadata;
   generation: FixedTraceModelStageMetadata;
@@ -1721,6 +1730,21 @@ export const FIXED_TRACE_CORPUS: ReadonlyArray<FixedTraceCorpusCase> = deepFreez
  */
 export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = LEGACY_FIXED_TRACE_SUITE;
 
+/** The separately reviewed paid-admission pair; this is not the eight-probe smoke plan. */
+export const FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS = Object.freeze([
+  'knowledge-task-model',
+  'tool-result-prompt-injection',
+] as const);
+export const FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE: readonly FixedTraceCase[] = Object.freeze(
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS.map((id) => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === id);
+    if (!trace) throw new Error(`Fixed trace direct-model screen admission trace is missing: ${id}`);
+    return trace;
+  }),
+);
+export const FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256 =
+  '8ed4acc0b2fb2dc8e370d124348166d46448fa5588a0dbc09900efc98a44d95b' as const;
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number') {
@@ -2423,6 +2447,11 @@ export function fixedTraceSuiteSha256(
   return createHash('sha256').update(canonicalJson({ version: FIXED_TRACE_SUITE_VERSION, suite }), 'utf8').digest('hex');
 }
 
+if (fixedTraceSuiteSha256(FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE)
+  !== FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256) {
+  throw new Error('Fixed trace direct-model screen admission-suite source pin drifted');
+}
+
 /**
  * Deliberately separate from the legacy 32-case canonical corpus. This small,
  * evaluator-owned synthetic suite exercises only the reviewed local terminal
@@ -2491,6 +2520,7 @@ type FixedTraceArchitectureConfigFingerprintMetadata = Pick<
   | 'generationControl'
   | 'providerDegradationInjectionEnabled'
   | 'architectureDiagnosticMode'
+  | 'directModelScreenMode'
 > & {
   /** Cohort-level digest binding; trace-local mapping fields are not hashed here. */
   architectureDiagnostic: Pick<NonNullable<FixedTraceRunMetadata['architectureDiagnostic']>, 'packDigest' | 'pilotDigest'> | null;
@@ -2540,6 +2570,11 @@ export function fixedTraceArchitectureConfigPayload(
     generationControl: metadata.generationControl,
     providerDegradationInjectionEnabled: metadata.providerDegradationInjectionEnabled,
     architectureDiagnosticMode: metadata.architectureDiagnosticMode ?? null,
+    // Omit the new evaluator-only field for legacy artifacts so their
+    // architecture fingerprint payload remains byte-for-byte compatible.
+    ...((metadata.directModelScreenMode ?? null) === null
+      ? {}
+      : { directModelScreenMode: metadata.directModelScreenMode }),
     // A diagnostic mapping digest is a cohort-level identity. Trace-level
     // cluster/stratum bindings are checked separately against the canonical
     // trace+mode mapping when serialized observations are graded.
@@ -2570,10 +2605,18 @@ function isSha256(value: string): boolean {
 
 function cohortControlFailures(
   stageName: 'router' | 'generation',
-  control: FixedTraceCohortStageControl,
+  control: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl,
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
+  if ('status' in control) {
+    if (
+      control.status !== 'not_run'
+      || Object.keys(control).length !== 1
+      || !Object.prototype.hasOwnProperty.call(control, 'status')
+    ) fail('not_run_control_invalid');
+    return failures;
+  }
   if (!control.requestedModel.trim()) fail('configured_model_missing');
   if (!Number.isSafeInteger(control.configuredMaxOutputTokens) || control.configuredMaxOutputTokens < 1) fail('configured_max_output_tokens_invalid');
   if (!Number.isSafeInteger(control.timeoutMs) || control.timeoutMs < 1) fail('configured_timeout_invalid');
@@ -2611,6 +2654,118 @@ function cohortControlFailures(
   return failures;
 }
 
+const directModelScreenGenerationCells = new Set([
+  'anthropic:claude-sonnet-5:provider_default',
+  'anthropic:claude-haiku-4-5:provider_default',
+  'google:gemini-3.7-flash:provider_default',
+  'google:gemini-3.7-flash:low',
+  'google:gemini-3.7-flash:medium',
+  'google:gemini-3.7-flash:high',
+]);
+
+/** Rebind untrusted direct-screen metadata to the sole evaluator-owned pack. */
+function directModelScreenMetadataFailures(
+  trace: FixedTraceCase,
+  metadata: FixedTraceRunMetadata,
+  tools: ReadonlyArray<FixedTraceToolObservation>,
+): string[] {
+  const failures: string[] = [];
+  const canonicalTrace = FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE.find(
+    (candidate) => candidate.id === trace.id,
+  );
+  if (
+    metadata.traceSuiteSha256 !== FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256
+    || !canonicalTrace
+    || canonicalJson(trace) !== canonicalJson(canonicalTrace)
+  ) failures.push('direct_model_screen_admission_suite_invalid');
+
+  const control = metadata.generationControl;
+  const tuple = `${control.requestedProvider}:${control.requestedModel}:${control.reasoningEffort}`;
+  if (
+    !directModelScreenGenerationCells.has(tuple)
+    || control.configuredMaxOutputTokens !== 900
+    || control.timeoutMs !== 120_000
+    || control.maxIterations !== 2
+    || control.transportRetries !== 0
+    || control.samplingMode !== 'provider_no_sampling_control'
+    || control.temperature !== null
+    || control.modelResolutionPolicy !== fixedTraceModelResolutionPolicy(
+      control.requestedProvider,
+      control.requestedModel,
+    )
+  ) {
+    failures.push('direct_model_screen_generation_control_invalid');
+  } else {
+    try {
+      const pricing = fixedTraceResponsePricingPolicy(
+        control.requestedProvider,
+        control.requestedModel,
+        control.pricing,
+      );
+      if (pricing.pricingProfileId !== control.pricing.profileId) {
+        failures.push('direct_model_screen_generation_control_invalid');
+      }
+    } catch {
+      failures.push('direct_model_screen_generation_control_invalid');
+    }
+  }
+  // Unlike the general Google router policy, this screen deliberately has no
+  // returned-model alias allowance. Execution records aliases as exposure
+  // failures, so serialized grading must not let a terminal-status rewrite
+  // turn that same evidence into a completed candidate.
+  if (
+    metadata.generation.modelResolution !== 'exact'
+    || metadata.generation.requestedProvider !== control.requestedProvider
+    || metadata.generation.requestedModel !== control.requestedModel
+    || metadata.generation.returnedProvider !== control.requestedProvider
+    || metadata.generation.returnedModel !== control.requestedModel
+  ) failures.push('direct_model_screen_returned_identity_invalid');
+  const exposures = metadata.generation.providerExposures;
+  const dispatchedCalls = metadata.generation.dispatchedCalls;
+  // The source-pinned screen has a two-turn path only when its canonical
+  // fixture transcript proves that the first turn executed a tool. Otherwise
+  // the sole possible completed path is the initial generation turn.
+  const hasCanonicalToolTurn = tools.some((tool) => {
+    const fixture = trace.toolFixtures.find((candidate) => candidate.name === tool.name);
+    return fixture !== undefined
+      && tool.policyDisposition === 'allowed'
+      && tool.resultStatus === fixture.resultStatus
+      && tool.effect === fixture.effect
+      && tool.transcriptSha256 === fixedTraceToolTranscriptSha256(tool, fixture.result);
+  });
+  const expectedExposureCount = hasCanonicalToolTurn ? 2 : 1;
+  if (
+    typeof dispatchedCalls !== 'number'
+    || !Number.isSafeInteger(dispatchedCalls)
+    || dispatchedCalls !== expectedExposureCount
+    || !Array.isArray(exposures)
+    || exposures.length !== expectedExposureCount
+    || exposures.some((exposure, index) => (
+      exposure.attempt !== index + 1
+      || exposure.preparedProvider !== control.requestedProvider
+      || exposure.preparedModel !== control.requestedModel
+      || exposure.returnedProvider !== control.requestedProvider
+      || exposure.returnedModel !== control.requestedModel
+    ))
+  ) failures.push('direct_model_screen_returned_identity_invalid');
+  const router = metadata.router;
+  const directModelScreenNotRunRouterKeys = [
+    'source', 'dispatched', 'dispatchedCalls', 'requestedProvider', 'requestedModel',
+    'returnedProvider', 'returnedModel', 'providerExposures', 'modelResolution',
+    'promptSha256', 'providerRequestSha256', 'reasoningEffort', 'effectiveMaxOutputTokens',
+    'timeoutMs', 'maxIterations', 'transportRetries', 'samplingMode', 'temperature',
+    'usageKnown', 'usage', 'estimatedCostUsd', 'pricingSource', 'pricingProfileId', 'latencyMs',
+  ];
+  const routerKeys = Object.keys(router);
+  if (
+    routerKeys.length !== directModelScreenNotRunRouterKeys.length
+    || directModelScreenNotRunRouterKeys.some((key) => !Object.prototype.hasOwnProperty.call(router, key))
+    || !Array.isArray(router.providerExposures)
+    || router.providerExposures.length !== 0
+  ) failures.push('direct_model_screen_router_not_run_invalid');
+  return failures;
+}
+
 function costMatches(expected: number, recorded: number): boolean {
   // Artifacts are JSON numbers; one picodollar permits benign IEEE-754 round
   // trips while rejecting a changed usage/rate/cost tuple deterministically.
@@ -2620,11 +2775,41 @@ function costMatches(expected: number, recorded: number): boolean {
 function stageMetadataFailures(
   stageName: 'router' | 'generation',
   stage: FixedTraceModelStageMetadata,
-  control: FixedTraceCohortStageControl,
+  control: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl,
   expectedEffectiveMaxOutputTokens: number | null,
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
+  if ('status' in control) {
+    if (
+      control.status !== 'not_run'
+      || stage.source !== 'not_run'
+      || stage.dispatched
+      || stage.dispatchedCalls !== 0
+      || stage.requestedProvider !== null
+      || stage.requestedModel !== null
+      || stage.returnedProvider !== null
+      || stage.returnedModel !== null
+      || stage.modelResolution !== null
+      || stage.promptSha256 !== null
+      || stage.providerRequestSha256 !== null
+      || stage.reasoningEffort !== null
+      || stage.effectiveMaxOutputTokens !== null
+      || stage.timeoutMs !== null
+      || stage.maxIterations !== null
+      || stage.transportRetries !== null
+      || stage.samplingMode !== null
+      || stage.temperature !== null
+      || stage.usageKnown
+      || stage.usage !== null
+      || stage.estimatedCostUsd !== 0
+      || stage.pricingSource !== null
+      || stage.pricingProfileId !== null
+      || stage.latencyMs !== 0
+      || (stage.providerExposures?.length ?? 0) !== 0
+    ) fail('not_run_control_invalid');
+    return failures;
+  }
   if (stage.promptSha256 !== null && !isSha256(stage.promptSha256)) fail('prompt_hash_invalid');
   if ((stage.requestedProvider === null) !== (stage.requestedModel === null)) fail('requested_identity_incomplete');
   if (stage.requestedModel !== null && !stage.requestedModel.trim()) fail('requested_model_missing');
@@ -2761,7 +2946,11 @@ function sameCaseControl(
   );
 }
 
-function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata): string[] {
+function metadataFailures(
+  trace: FixedTraceCase,
+  metadata: FixedTraceRunMetadata,
+  tools: ReadonlyArray<FixedTraceToolObservation>,
+): string[] {
   const failures: string[] = [];
   if (metadata.traceSuiteVersion !== FIXED_TRACE_SUITE_VERSION) failures.push('trace_suite_version_mismatch');
   // Per-case grading cannot know which evaluator-owned split was selected.
@@ -2784,6 +2973,10 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('tool_definition_provenance_invalid');
   }
   if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');
+  const directModelScreenMode = metadata.directModelScreenMode ?? null;
+  if (directModelScreenMode !== null && directModelScreenMode !== 'direct_model_screen_admission_v1') {
+    failures.push('direct_model_screen_mode_invalid');
+  }
   failures.push(...cohortControlFailures('router', metadata.routerControl));
   failures.push(...cohortControlFailures('generation', metadata.generationControl));
   try {
@@ -2827,6 +3020,18 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     }
   } else if (metadata.directArmAdmission !== null) {
     failures.push('direct_arm_admission_unexpected');
+  }
+  if (directModelScreenMode !== null) {
+    if (arm?.id !== 'direct_generation'
+      || (metadata.architectureDiagnosticMode ?? null) !== null
+      || metadata.architectureDiagnostic !== null
+      || !('status' in metadata.routerControl)
+      || metadata.routerControl.status !== 'not_run') {
+      failures.push('direct_model_screen_contract_invalid');
+    }
+    failures.push(...directModelScreenMetadataFailures(trace, metadata, tools));
+  } else if ('status' in metadata.routerControl) {
+    failures.push('router_control_missing');
   }
   const toolUniverse = metadata.toolUniverse;
   if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe', 'fixture_oracle'].includes(toolUniverse.source)) {
@@ -2922,7 +3127,7 @@ function metadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata
     failures.push('execution_envelope_provenance_invalid');
   }
   failures.push(...stageMetadataFailures(
-    'router', metadata.router, metadata.routerControl, metadata.router.source === 'not_run'
+    'router', metadata.router, metadata.routerControl, metadata.router.source === 'not_run' || 'status' in metadata.routerControl
       ? null
       : metadata.routerControl.configuredMaxOutputTokens,
   ));
@@ -3025,7 +3230,7 @@ export function gradeFixedTrace(
 ): FixedTraceGrade {
   const failures: string[] = [];
   if (observation.traceId !== trace.id) failures.push('trace_id_mismatch');
-  const provenanceFailures = metadataFailures(trace, observation.metadata);
+  const provenanceFailures = metadataFailures(trace, observation.metadata, observation.tools);
   failures.push(...provenanceFailures);
   if (
     observation.localReplacementReason !== null
@@ -3313,6 +3518,7 @@ export function assertFixedTraceRunContract(
       || candidate.stageControlVersion !== runContract.stageControlVersion
       || candidate.architectureConfigSha256 !== runContract.architectureConfigSha256
       || (candidate.architectureDiagnosticMode ?? null) !== (runContract.architectureDiagnosticMode ?? null)
+      || (candidate.directModelScreenMode ?? null) !== (runContract.directModelScreenMode ?? null)
       || candidate.providerDegradationInjectionEnabled !== runContract.providerDegradationInjectionEnabled
       || candidate.repetition !== runContract.repetition
       || candidate.architectureArm.id !== runContract.architectureArm.id

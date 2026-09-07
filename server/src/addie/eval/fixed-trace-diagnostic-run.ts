@@ -12,6 +12,7 @@ import {
   summarizeFixedTraceRun,
   type FixedTraceCohortStageControl,
   type FixedTraceModelStageMetadata,
+  type FixedTraceNotRunCohortStageControl,
   type FixedTracePricing,
   type FixedTraceRunMetadata,
 } from './fixed-trace-suite.js';
@@ -346,8 +347,9 @@ function samePricing(left: FixedTracePricing, right: FixedTracePricing): boolean
 
 function requestedStageMatchesControl(
   requested: RequestedStageConfig,
-  control: FixedTraceCohortStageControl,
+  control: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl,
 ): boolean {
+  if ('status' in control) return false;
   return requested.provider === control.requestedProvider
     && requested.model === control.requestedModel
     && requested.reasoningEffort === control.reasoningEffort
@@ -357,7 +359,14 @@ function requestedStageMatchesControl(
     && samePricing(requested.pricing, control.pricing);
 }
 
-function assertStageCost(stage: FixedTraceModelStageMetadata, control: FixedTraceCohortStageControl): void {
+function assertStageCost(
+  stage: FixedTraceModelStageMetadata,
+  control: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl,
+): void {
+  if ('status' in control) {
+    if (stage.source !== 'not_run') throw new Error('Fixed trace diagnostic artifact ran a not-run stage');
+    return;
+  }
   if (!stage.dispatched || !stage.usageKnown || stage.usage === null) return;
   // An unapproved returned model is deliberately recorded with unknown cost;
   // it is a coherent diagnostic failure, not a contradictory artifact.
