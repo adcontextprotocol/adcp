@@ -503,6 +503,7 @@ export class FixedTraceBudget {
 export class BudgetedFixedTraceProvider implements ModelProvider {
   readonly id: ModelProvider['id'];
   readonly capabilities: ModelProvider['capabilities'];
+  readonly snapshotResponse?: ModelProvider['snapshotResponse'];
   readonly deriveProviderToolReceipt?: ModelProvider['deriveProviderToolReceipt'];
 
   readonly #delegate: BudgetedDelegateIdentity;
@@ -537,6 +538,9 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     this.#responsePricingPolicy = responsePricingPolicy;
     this.id = delegateIdentity.id;
     this.capabilities = delegateIdentity.capabilities;
+    if (delegateIdentity.snapshotResponse) {
+      this.snapshotResponse = delegateIdentity.snapshotResponse;
+    }
     if (delegateIdentity.deriveProviderToolReceipt) {
       this.deriveProviderToolReceipt = delegateIdentity.deriveProviderToolReceipt;
     }

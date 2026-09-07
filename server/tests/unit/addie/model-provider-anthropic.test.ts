@@ -761,6 +761,28 @@ describe('AnthropicModelProvider response normalization', () => {
     expect(JSON.stringify(normalized)).not.toContain('private query');
   });
 
+  it('preserves private continuation bindings in an immutable evaluator snapshot', () => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    const rawBlocks = [
+      { type: 'thinking', thinking: 'private reasoning', signature: 'signature' },
+      { type: 'tool_use', id: 'tool_1', name: 'search_docs', input: { query: 'x' } },
+    ];
+    const normalized = normalizeAnthropicResponse(response({
+      stop_reason: 'tool_use', content: rawBlocks,
+    }));
+
+    const snapshot = provider.snapshotResponse!(normalized);
+    expect(snapshot).toEqual(normalized);
+    expect(snapshot).not.toBe(normalized);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(JSON.stringify(snapshot)).not.toContain('private reasoning');
+    expect(provider.prepare(request({
+      messages: [{ role: 'assistant', content: snapshot.content }],
+    })).providerRequest.messages).toEqual([
+      { role: 'assistant', content: rawBlocks },
+    ]);
+  });
+
   it('freezes public provider receipts and derives details only under explicit disclosure', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
     const normalized = normalizeAnthropicResponse(response({

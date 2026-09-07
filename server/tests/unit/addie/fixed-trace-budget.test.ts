@@ -364,6 +364,22 @@ describe('fixed trace provider budget', () => {
     });
   });
 
+  it('forwards an adapter continuation snapshot hook through the budget boundary', () => {
+    const snapshotResponse = vi.fn((response: ModelResponse) => structuredClone(response));
+    const delegate: ModelProvider = {
+      id: 'openai', capabilities: CAPABILITIES,
+      prepare(request): PreparedModelInvocation {
+        return { provider: 'openai', model: request.model, capabilities: CAPABILITIES, providerRequest: { model: request.model } };
+      },
+      async *respond(): AsyncIterable<NormalizedModelEvent> { throw new Error('not used'); },
+      snapshotResponse,
+    };
+    const provider = new BudgetedFixedTraceProvider(delegate, new FixedTraceBudget(1), PRICING, RESPONSE_PRICING_POLICY);
+
+    expect(provider.snapshotResponse!(RESPONSE)).toEqual(RESPONSE);
+    expect(snapshotResponse).toHaveBeenCalledWith(RESPONSE);
+  });
+
   it('halts later calls after a dispatched response has unknown usage', async () => {
     const delegate = new BudgetScriptedProvider([new Error('transport failed'), RESPONSE]);
     const budget = new FixedTraceBudget(1);
