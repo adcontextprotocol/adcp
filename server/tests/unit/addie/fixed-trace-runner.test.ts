@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ApiError } from '@google/genai';
 import Ajv from 'ajv';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -14,8 +15,10 @@ import { runFixedTraceDiagnosticCandidate } from '../../../src/addie/eval/fixed-
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  FixedTraceBudgetAdmissionError,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
+import { FixedTraceToolLoopBoundaryError } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_HYBRID_EVALUATOR_SUITE,
@@ -107,6 +110,22 @@ class ScriptedProvider implements ModelProvider {
       else if (item.type === 'provider_tool_result') yield { type: 'provider_tool_result', index, result: item };
     }
     yield { type: 'response_complete', response: next };
+  }
+}
+
+class ThrowingProvider extends ScriptedProvider {
+  constructor(private readonly thrown: unknown) {
+    super([]);
+  }
+
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    throw this.thrown;
   }
 }
 
@@ -1157,6 +1176,77 @@ describe('fixed trace artifact runner', () => {
     expect(gradeFixedTrace(trace('knowledge-task-model'), observation).metadataPass).toBe(true);
   });
 
+  it('fails closed when a budget-admission error proxy hides its prepared receipt', async () => {
+    const prepared: PreparedModelInvocation = {
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      capabilities: CAPABILITIES,
+      providerRequest: {},
+    };
+    const hostile = new Proxy(
+      new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared),
+      { get: () => { throw new Error('hostile budget-admission field access'); } },
+    );
+    expect(hostile).toBeInstanceOf(FixedTraceBudgetAdmissionError);
+
+    const observation = await runFixedTraceCase(
+      trace('knowledge-task-model'),
+      config(new ThrowingProvider(hostile), new ScriptedProvider([])),
+    );
+
+    expect(observation).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(gradeFixedTrace(trace('knowledge-task-model'), observation)).toMatchObject({
+      terminalFailure: true,
+      deterministicPass: false,
+    });
+  });
+
+  it('fails closed when a tool-loop boundary error proxy hides its checkpoint receipt', async () => {
+    const hostile = new Proxy(
+      new FixedTraceToolLoopBoundaryError('iteration_limit_exceeded', {
+        usage: { inputTokens: 0, outputTokens: 0 },
+        tools: [],
+        rejectedToolCalls: [],
+        providerExposures: [],
+      }),
+      { get: () => { throw new Error('hostile tool-loop-boundary field access'); } },
+    );
+    expect(hostile).toBeInstanceOf(FixedTraceToolLoopBoundaryError);
+
+    const observation = await runFixedTraceCase(
+      trace('knowledge-task-model'),
+      config(
+        new ScriptedProvider([routeResponse('respond', ['knowledge'])]),
+        new ThrowingProvider(hostile),
+      ),
+    );
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      boundaryReason: null,
+      tools: [],
+      rejectedToolCalls: [],
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(gradeFixedTrace(trace('knowledge-task-model'), observation)).toMatchObject({
+      terminalFailure: true,
+      deterministicPass: false,
+    });
+  });
+
   it('attributes malformed router output to the router and preserves its cost', async () => {
     const router = new ScriptedProvider([response([{ type: 'text', text: 'not-json' }])]);
     const generation = new ScriptedProvider([]);
@@ -1249,6 +1339,141 @@ describe('fixed trace artifact runner', () => {
     expect(delegate.respondCalls).toHaveLength(1);
     expect(budget.snapshot()).toMatchObject({ dispatchedCalls: 1, exposureUnknown: true });
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ terminalFailure: true, deterministicPass: false });
+  });
+
+  it('retains only a valid HTTP status from caught provider exceptions', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = Object.assign(new ApiError({
+      message: 'provider response body: synthetic-secret-token',
+      status: 429,
+    }), {
+      statusCode: 503,
+      body: 'provider response body: synthetic-secret-token',
+      headers: { authorization: 'synthetic-secret-token' },
+      name: 'provider-error-with-details',
+      stack: 'provider stack: synthetic-secret-token',
+    });
+    const generation = new ScriptedProvider([providerError]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        httpStatus: 429,
+      },
+    });
+    expect(serialized).not.toContain('synthetic-secret-token');
+    expect(serialized).not.toContain('provider response body');
+    expect(serialized).not.toContain('provider-error-with-details');
+    expect(serialized).not.toContain('provider stack');
+  });
+
+  it.each([
+    ['statusCode alias', 'statusCode', 503, 503],
+    ['string', 'status', '503', undefined],
+    ['fractional', 'status', 503.5, undefined],
+    ['below HTTP range', 'status', 99, undefined],
+    ['above HTTP range', 'status', 600, undefined],
+  ] as const)('handles %s provider status values safely', async (_description, key, value, expectedStatus) => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = Object.defineProperty(new Error('provider failure'), key, {
+      value,
+      enumerable: true,
+    });
+    const generation = new ScriptedProvider([providerError]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: { kind: 'provider_transport_error', reason: 'provider_exception' },
+    });
+    if (expectedStatus === undefined) {
+      expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    } else {
+      expect(observation.failureDiagnostic).toMatchObject({ httpStatus: expectedStatus });
+    }
+  });
+
+  it('fails safe when provider status getters throw', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = Object.defineProperties(new Error('provider failure'), {
+      status: { get: () => { throw new Error('provider status getter'); }, enumerable: true },
+      statusCode: { get: () => { throw new Error('provider status code getter'); }, enumerable: true },
+    });
+    const generation = new ScriptedProvider([providerError]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: { kind: 'provider_transport_error', reason: 'provider_exception' },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('fails closed for a hostile Error proxy without reading diagnostics', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const secret = 'synthetic-hostile-error-secret';
+    const hostileError = new Proxy(Object.assign(new Error(secret), { status: 503 }), {
+      getPrototypeOf: () => { throw new Error('hostile prototype access'); },
+      get: () => { throw new Error('hostile diagnostic access'); },
+    });
+    const generation = new ThrowingProvider(hostileError);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_non_error_throw',
+        reason: 'non_error_throw',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(serialized).not.toContain(secret);
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('fails closed for a revoked Error proxy', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const secret = 'synthetic-revoked-error-secret';
+    const { proxy, revoke } = Proxy.revocable(Object.assign(new Error(secret), { status: 429 }), {});
+    revoke();
+    const router = new ThrowingProvider(proxy);
+    const generation = new ScriptedProvider([]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_non_error_throw',
+        reason: 'non_error_throw',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(serialized).not.toContain(secret);
+    expect(router.respondCalls).toHaveLength(1);
+    expect(generation.respondCalls).toHaveLength(0);
   });
 
   it('classifies malformed normalized router events without dispatching generation', async () => {

@@ -126,6 +126,8 @@ export interface FixedTraceFailureDiagnostic {
     | 'non_error_throw';
   /** SHA-256 of no more than 512 UTF-8 bytes; the message itself is omitted. */
   readonly messageSha256: string;
+  /** Validated HTTP status from a caught provider exception, when safely available. */
+  readonly httpStatus?: number;
 }
 
 /**

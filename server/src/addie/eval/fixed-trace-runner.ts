@@ -37,6 +37,8 @@ import {
   validateFixedTraceToolLoopEnvironment,
   validateFixedTraceToolLoopFixtures,
   type FixedTraceEvaluatorToolEnvironment,
+  type FixedTraceToolLoopCheckpoint,
+  type FixedTraceToolLoopReason,
 } from './fixed-trace-tool-loop.js';
 import {
   FixedTraceBudgetAdmissionError,
@@ -45,6 +47,7 @@ import {
   fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
   fixedTraceResponsePricingPolicy,
   fixedTraceResponseUsesPricingPolicy,
+  type FixedTraceBudgetRejectionReason,
 } from './fixed-trace-budget.js';
 import {
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
@@ -1368,6 +1371,215 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
 
 const FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES = 512;
 
+/**
+ * Caught values are provider-controlled. In particular, a revoked proxy can
+ * throw while `instanceof` asks it for its prototype, so every catch-path
+ * classification must be fail-closed.
+ */
+function isFixedTraceBudgetAdmissionError(error: unknown): error is FixedTraceBudgetAdmissionError {
+  try {
+    return error instanceof FixedTraceBudgetAdmissionError;
+  } catch {
+    return false;
+  }
+}
+
+function isFixedTraceToolLoopBoundaryError(error: unknown): error is FixedTraceToolLoopBoundaryError {
+  try {
+    return error instanceof FixedTraceToolLoopBoundaryError;
+  } catch {
+    return false;
+  }
+}
+
+type FixedTraceBudgetAdmission = Readonly<{
+  prepared: PreparedModelInvocation;
+}>;
+
+type FixedTraceToolLoopBoundary = Readonly<{
+  reason: FixedTraceToolLoopReason;
+  checkpoint: FixedTraceToolLoopCheckpoint | undefined;
+}>;
+
+const FIXED_TRACE_PROVIDER_IDS = new Set<ModelProvider['id']>(['anthropic', 'openai', 'google']);
+const FIXED_TRACE_REASONING_EFFORTS = new Set<ModelReasoningEffort>([
+  'provider_default', 'none', 'low', 'medium', 'high',
+]);
+const FIXED_TRACE_BUDGET_REJECTION_REASONS = new Set<FixedTraceBudgetRejectionReason>([
+  'budget_exposure_unknown', 'soft_limit_exceeded',
+]);
+const FIXED_TRACE_TOOL_LOOP_REASONS = new Set<FixedTraceToolLoopReason>([
+  'duplicate_tool_definition', 'duplicate_tool_call', 'fixture_definition_mismatch',
+  'iteration_limit_exceeded', 'preexisting_tool_state', 'provider_tool_not_allowed',
+  'provider_continuation_not_allowed', 'tool_call_limit_exceeded', 'tool_input_invalid',
+  'tool_schema_invalid', 'unknown_tool_call',
+]);
+const FIXED_TRACE_TOOL_RESULT_STATUSES = new Set([
+  'ok', 'empty', 'access_denied', 'invalid_input', 'recoverable_error', 'error',
+]);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isSafeTokenCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isModelUsage(value: unknown): value is ModelUsage {
+  if (!isPlainRecord(value) || !isSafeTokenCount(value.inputTokens) || !isSafeTokenCount(value.outputTokens)) {
+    return false;
+  }
+  return (value.cacheReadTokens === undefined || isSafeTokenCount(value.cacheReadTokens))
+    && (value.cacheWriteTokens === undefined || isSafeTokenCount(value.cacheWriteTokens));
+}
+
+function isPreparedModelInvocation(value: unknown): value is PreparedModelInvocation {
+  if (!isPlainRecord(value)
+    || !FIXED_TRACE_PROVIDER_IDS.has(value.provider as ModelProvider['id'])
+    || typeof value.model !== 'string'
+    || !value.model.trim()
+    || !isPlainRecord(value.capabilities)
+    || !isPlainRecord(value.providerRequest)) return false;
+  const capabilities = value.capabilities;
+  if (
+    typeof capabilities.streaming !== 'boolean'
+    || typeof capabilities.structuredOutput !== 'boolean'
+    || typeof capabilities.reasoning !== 'boolean'
+    || !Array.isArray(capabilities.reasoningEfforts)
+    || capabilities.reasoningEfforts.some((effort) => !FIXED_TRACE_REASONING_EFFORTS.has(effort as ModelReasoningEffort))
+    || typeof capabilities.customTools !== 'boolean'
+    || typeof capabilities.providerWebSearch !== 'boolean'
+    || typeof capabilities.imageInput !== 'boolean'
+    || typeof capabilities.documentInput !== 'boolean'
+  ) return false;
+  if (value.requestMetadata !== undefined) {
+    if (!isPlainRecord(value.requestMetadata) || Object.values(value.requestMetadata).some((entry) => (
+      typeof entry !== 'string' && typeof entry !== 'number' && typeof entry !== 'boolean'
+    ))) return false;
+  }
+  return true;
+}
+
+function isFixedTraceToolExecution(value: unknown): boolean {
+  if (!isPlainRecord(value)
+    || !Number.isSafeInteger(value.sequence) || (value.sequence as number) < 1
+    || typeof value.callId !== 'string' || !value.callId.trim()
+    || typeof value.transcriptSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.transcriptSha256)
+    || typeof value.name !== 'string' || !value.name.trim()
+    || typeof value.description !== 'string'
+    || !isPlainRecord(value.input)
+    || (value.effect !== 'read' && value.effect !== 'preview' && value.effect !== 'mutation')
+    || (value.policyDisposition !== 'allowed' && value.policyDisposition !== 'blocked')
+    || !FIXED_TRACE_TOOL_RESULT_STATUSES.has(value.resultStatus as string)
+    || typeof value.simulated !== 'boolean'
+  ) return false;
+  return true;
+}
+
+function isFixedTraceRejectedToolCall(value: unknown): boolean {
+  return isPlainRecord(value)
+    && typeof value.name === 'string'
+    && value.name.trim().length > 0
+    && FIXED_TRACE_TOOL_LOOP_REASONS.has(value.reason as FixedTraceToolLoopReason);
+}
+
+function isFixedTraceProviderExposure(value: unknown): boolean {
+  return isPlainRecord(value)
+    && Number.isSafeInteger(value.attempt)
+    && (value.attempt as number) >= 1
+    && FIXED_TRACE_PROVIDER_IDS.has(value.preparedProvider as ModelProvider['id'])
+    && typeof value.preparedModel === 'string'
+    && value.preparedModel.trim().length > 0
+    && FIXED_TRACE_PROVIDER_IDS.has(value.returnedProvider as ModelProvider['id'])
+    && typeof value.returnedModel === 'string'
+    && value.returnedModel.trim().length > 0;
+}
+
+function isFixedTraceToolLoopCheckpoint(value: unknown): value is FixedTraceToolLoopCheckpoint {
+  return isPlainRecord(value)
+    && isModelUsage(value.usage)
+    && Array.isArray(value.tools)
+    && value.tools.every(isFixedTraceToolExecution)
+    && Array.isArray(value.rejectedToolCalls)
+    && value.rejectedToolCalls.every(isFixedTraceRejectedToolCall)
+    && Array.isArray(value.providerExposures)
+    && value.providerExposures.every(isFixedTraceProviderExposure);
+}
+
+/**
+ * An internal error can be wrapped in a provider-controlled proxy. Take an
+ * owned snapshot while reading its fields so later observation construction
+ * never dereferences the caught value. Any inaccessible or malformed field
+ * deliberately loses its internal-error privilege.
+ */
+function snapshotFixedTraceBudgetAdmission(error: unknown): FixedTraceBudgetAdmission | null {
+  if (!isFixedTraceBudgetAdmissionError(error)) return null;
+  try {
+    const reason = error.reason;
+    const prepared = structuredClone(error.prepared);
+    if (!FIXED_TRACE_BUDGET_REJECTION_REASONS.has(reason) || !isPreparedModelInvocation(prepared)) return null;
+    return Object.freeze({ prepared });
+  } catch {
+    return null;
+  }
+}
+
+function snapshotFixedTraceToolLoopBoundary(error: unknown): FixedTraceToolLoopBoundary | null {
+  if (!isFixedTraceToolLoopBoundaryError(error)) return null;
+  try {
+    const reason = error.reason;
+    const checkpoint = error.checkpoint === undefined ? undefined : structuredClone(error.checkpoint);
+    if (!FIXED_TRACE_TOOL_LOOP_REASONS.has(reason)
+      || (checkpoint !== undefined && !isFixedTraceToolLoopCheckpoint(checkpoint))) return null;
+    return Object.freeze({ reason, checkpoint });
+  } catch {
+    return null;
+  }
+}
+
+function isFixedTraceExecutionIdentityError(error: unknown): error is FixedTraceExecutionIdentityError {
+  try {
+    return error instanceof FixedTraceExecutionIdentityError;
+  } catch {
+    return false;
+  }
+}
+
+function isFixedTracePreparationError(error: unknown): error is FixedTracePreparationError {
+  try {
+    return error instanceof FixedTracePreparationError;
+  } catch {
+    return false;
+  }
+}
+
+function isInvalidModelEventStreamError(error: unknown): error is InvalidModelEventStreamError {
+  try {
+    return error instanceof InvalidModelEventStreamError;
+  } catch {
+    return false;
+  }
+}
+
+function isUnexpectedModelIdentityError(error: unknown): error is UnexpectedModelIdentityError {
+  try {
+    return error instanceof UnexpectedModelIdentityError;
+  } catch {
+    return false;
+  }
+}
+
+function isError(error: unknown): error is Error {
+  try {
+    return error instanceof Error;
+  } catch {
+    return false;
+  }
+}
+
 function boundedUtf8Prefix(value: string, maxBytes: number): string {
   let byteLength = 0;
   let end = 0;
@@ -1392,7 +1604,7 @@ function boundedUtf8Prefix(value: string, maxBytes: number): string {
 function fixedTraceFailureMessageSha256(error: unknown): string {
   let message = '';
   try {
-    if (error instanceof Error && typeof error.message === 'string') message = error.message;
+    if (isError(error) && typeof error.message === 'string') message = error.message;
   } catch {
     // An exotic thrown value must not prevent fail-closed failure recording.
   }
@@ -1401,12 +1613,32 @@ function fixedTraceFailureMessageSha256(error: unknown): string {
     .digest('hex');
 }
 
+/**
+ * Preserve only a conventional, valid HTTP status from a caught provider
+ * exception. Provider error objects are untrusted, including accessors, so a
+ * hostile property read is treated as absent evidence.
+ */
+function fixedTraceFailureHttpStatus(error: Error): number | undefined {
+  for (const key of ['status', 'statusCode'] as const) {
+    try {
+      const value = (error as Error & Record<string, unknown>)[key];
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599) {
+        return value;
+      }
+    } catch {
+      // A provider-defined getter must not change the terminal failure path.
+    }
+  }
+  return undefined;
+}
+
 function fixedTraceFailureDiagnostic(
   error: unknown,
   timedOut: boolean,
   dispatched: boolean,
+  recognizedInternalError = false,
 ): FixedTraceFailureDiagnostic | null {
-  if (error instanceof FixedTraceBudgetAdmissionError || error instanceof FixedTraceToolLoopBoundaryError) return null;
+  if (recognizedInternalError) return null;
   if (timedOut && dispatched) {
     return Object.freeze({
       kind: 'provider_timeout',
@@ -1414,31 +1646,34 @@ function fixedTraceFailureDiagnostic(
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  if (error instanceof InvalidModelEventStreamError) {
+  if (isInvalidModelEventStreamError(error)) {
     return Object.freeze({
       kind: 'normalization_error',
       reason: 'invalid_normalized_model_event',
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  if (error instanceof UnexpectedModelIdentityError) {
+  if (isUnexpectedModelIdentityError(error)) {
     return Object.freeze({
       kind: 'provider_identity_error',
       reason: 'unexpected_model_identity',
       messageSha256: fixedTraceFailureMessageSha256(error),
     });
   }
-  return Object.freeze(error instanceof Error
-    ? {
-        kind: 'provider_transport_error',
-        reason: 'provider_exception',
-        messageSha256: fixedTraceFailureMessageSha256(error),
-      }
-    : {
-        kind: 'provider_non_error_throw',
-        reason: 'non_error_throw',
-        messageSha256: fixedTraceFailureMessageSha256(error),
-      });
+  if (isError(error)) {
+    const httpStatus = fixedTraceFailureHttpStatus(error);
+    return Object.freeze({
+      kind: 'provider_transport_error',
+      reason: 'provider_exception',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+      ...(httpStatus === undefined ? {} : { httpStatus }),
+    });
+  }
+  return Object.freeze({
+    kind: 'provider_non_error_throw',
+    reason: 'non_error_throw',
+    messageSha256: fixedTraceFailureMessageSha256(error),
+  });
 }
 
 /**
@@ -1553,10 +1788,12 @@ async function executeRouter(
       return { request, response, plan: null, output, status: 'malformed', metadata, failureDiagnostic: null };
     }
   } catch (error) {
-    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
-    if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
+    if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
+    const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
+    const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);
+    if (budgetAdmission) invocations.push(budgetAdmission.prepared);
     const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
-    const status = error instanceof FixedTraceBudgetAdmissionError
+    const status = budgetAdmission
       ? 'not_dispatched_budget'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
@@ -1571,7 +1808,7 @@ async function executeRouter(
       output: fallbackOutput(terminalStatus),
       status: terminalStatus,
       metadata: localStageMetadata(request, config, state),
-      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
+      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched, Boolean(budgetAdmission || toolLoopBoundary)),
     };
   } finally {
     clearTimeout(timeout);
@@ -1868,14 +2105,14 @@ export async function runFixedTraceCase(
       rejectedToolCalls: [],
     };
   } catch (error) {
-    if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
-    if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
-    const checkpoint = error instanceof FixedTraceToolLoopBoundaryError
-      ? error.checkpoint
-      : undefined;
-    const terminalStatus = error instanceof FixedTraceBudgetAdmissionError
+    if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
+    const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
+    const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);
+    if (budgetAdmission) invocations.push(budgetAdmission.prepared);
+    const checkpoint = toolLoopBoundary?.checkpoint;
+    const terminalStatus = budgetAdmission
       ? 'not_dispatched_budget'
-      : error instanceof FixedTraceToolLoopBoundaryError
+      : toolLoopBoundary
       ? 'malformed'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
@@ -1906,9 +2143,9 @@ export async function runFixedTraceCase(
       terminalStage: 'generation',
       terminalStatus: finalTerminalStatus,
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
-      boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
+      boundaryReason: toolLoopBoundary?.reason ?? null,
       localReplacementReason: null,
-      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
+      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched, Boolean(budgetAdmission || toolLoopBoundary)),
       finishReason: null,
       output: fallbackOutput(finalTerminalStatus),
       flagged: true,
