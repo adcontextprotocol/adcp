@@ -99,7 +99,15 @@ async function providerFor(id: 'anthropic' | 'google' | 'openai') {
 function budgetedProvider(provider: Awaited<ReturnType<typeof providerFor>>, model: string) {
   const pricing = pricingModule.datedPricingProfilesForFixedTrace().find((candidate) => candidate.provider === provider.id && candidate.model === model);
   if (!pricing) throw new Error('Current reviewed pricing is unavailable for selected provider identity');
-  return new budgetModule.BudgetedFixedTraceProvider(provider, budget, pricing, budgetModule.fixedTraceResponsePricingPolicy(provider.id, model, pricing));
+  // The real provider entry point is part of the explicit paid direct
+  // full-suite boundary, so it must use the same narrow dated-receipt policy
+  // as the evaluator. The generic policy intentionally remains exact.
+  return new budgetModule.BudgetedFixedTraceProvider(
+    provider,
+    budget,
+    pricing,
+    budgetModule.fixedTraceDirectFullSuiteResponsePricingPolicy(provider.id, model, pricing),
+  );
 }
 const rawCandidate = await providerFor(cell.provider);
 const rawJudges = Object.fromEntries(await Promise.all(cell.judgeProviders.map(async (id) => [id, await providerFor(id)]))) as Record<'anthropic' | 'google' | 'openai', Awaited<ReturnType<typeof providerFor>>>;
