@@ -359,8 +359,8 @@ export interface FixedTraceRunMetadata {
   architectureConfigSha256: string;
   /** Set only by an exact synthetic architecture diagnostic declaration. */
   architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | 'synthetic_sonnet_full_pack_v1' | null;
-  /** Set only by the exact source-pinned direct model-screen declaration. */
-  directModelScreenMode?: 'direct_model_screen_admission_v1' | 'direct_model_screen_google_three_turn_v1' | null;
+  /** Set only by an exact direct model comparison declaration. */
+  directModelScreenMode?: 'direct_model_screen_admission_v1' | 'direct_model_screen_google_three_turn_v1' | 'direct_full_suite_model_comparison_v1' | null;
   /** Evaluator-only pack/pilot and cluster binding for architecture diagnostics. */
   architectureDiagnostic: {
     packDigest: string;
@@ -2668,6 +2668,7 @@ const directModelScreenGoogleThreeTurnGenerationCells = new Set([
   'google:gemini-3.7-flash:medium',
   'google:gemini-3.7-flash:high',
 ]);
+const directFullSuiteGenerationCells = directModelScreenGenerationCells;
 
 /** Rebind untrusted direct-screen metadata to the sole evaluator-owned pack. */
 function directModelScreenMetadataFailures(
@@ -2675,6 +2676,9 @@ function directModelScreenMetadataFailures(
   metadata: FixedTraceRunMetadata,
   tools: ReadonlyArray<FixedTraceToolObservation>,
 ): string[] {
+  if (metadata.directModelScreenMode === 'direct_full_suite_model_comparison_v1') {
+    return directFullSuiteMetadataFailures(trace, metadata);
+  }
   const failures: string[] = [];
   const googleThreeTurn = metadata.directModelScreenMode === 'direct_model_screen_google_three_turn_v1';
   const canonicalTrace = FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE.find(
@@ -2682,8 +2686,8 @@ function directModelScreenMetadataFailures(
   );
   if (
     metadata.traceSuiteSha256 !== FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256
-    || !canonicalTrace
-    || canonicalJson(trace) !== canonicalJson(canonicalTrace)
+      || !canonicalTrace
+      || canonicalJson(trace) !== canonicalJson(canonicalTrace)
   ) failures.push('direct_model_screen_admission_suite_invalid');
 
   const control = metadata.generationControl;
@@ -2747,7 +2751,7 @@ function directModelScreenMetadataFailures(
     || !Number.isSafeInteger(dispatchedCalls)
     || dispatchedCalls !== expectedExposureCount
     || !Array.isArray(exposures)
-    || exposures.length !== expectedExposureCount
+    || exposures.length !== dispatchedCalls
     || exposures.some((exposure, index) => (
       exposure.attempt !== index + 1
       || exposure.preparedProvider !== control.requestedProvider
@@ -2771,6 +2775,47 @@ function directModelScreenMetadataFailures(
     || !Array.isArray(router.providerExposures)
     || router.providerExposures.length !== 0
   ) failures.push('direct_model_screen_router_not_run_invalid');
+  return failures;
+}
+
+/** Exact current-suite contract; intentionally separate from the closed two-probe screen. */
+function directFullSuiteMetadataFailures(trace: FixedTraceCase, metadata: FixedTraceRunMetadata): string[] {
+  const failures: string[] = [];
+  const fail = (reason: string) => failures.push(`direct_full_suite_${reason}`);
+  if (metadata.traceSuiteSha256 !== fixedTraceSuiteSha256(FIXED_TRACE_SUITE)
+    || !FIXED_TRACE_SUITE.some((candidate) => candidate.id === trace.id && canonicalJson(candidate) === canonicalJson(trace))) fail('suite_invalid');
+  const control = metadata.generationControl;
+  const tuple = `${control.requestedProvider}:${control.requestedModel}:${control.reasoningEffort}`;
+  if (!directFullSuiteGenerationCells.has(tuple) || control.configuredMaxOutputTokens !== 900
+    || control.timeoutMs !== 120_000 || control.maxIterations !== 12 || control.transportRetries !== 0
+    || control.samplingMode !== 'provider_no_sampling_control' || control.temperature !== null) fail('generation_control_invalid');
+  try { fixedTraceResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing); }
+  catch { fail('generation_pricing_invalid'); }
+  const generation = metadata.generation;
+  const localSurface = ['ignore', 'react'].includes(trace.routing.action);
+  if (localSurface) {
+    if (generation.source !== 'not_run' || generation.dispatched || generation.dispatchedCalls !== 0
+      || generation.providerExposures?.length !== 0 || generation.requestedProvider !== null || generation.requestedModel !== null
+      || generation.returnedProvider !== null || generation.returnedModel !== null || generation.modelResolution !== null
+      || generation.usageKnown || generation.usage !== null || generation.estimatedCostUsd !== 0) fail('local_surface_generation_invalid');
+  } else if (generation.dispatched) {
+    const exposures = generation.providerExposures;
+    if (generation.source !== 'provider' || generation.modelResolution !== 'exact'
+      || generation.requestedProvider !== control.requestedProvider || generation.requestedModel !== control.requestedModel
+      || generation.returnedProvider !== control.requestedProvider || generation.returnedModel !== control.requestedModel
+      || !Number.isSafeInteger(generation.dispatchedCalls) || (generation.dispatchedCalls ?? 0) < 1
+      || !Array.isArray(exposures) || exposures.length !== (generation.dispatchedCalls ?? -1)
+      || exposures.some((entry, index) => entry.attempt !== index + 1 || entry.preparedProvider !== control.requestedProvider
+        || entry.preparedModel !== control.requestedModel || entry.returnedProvider !== control.requestedProvider || entry.returnedModel !== control.requestedModel)) fail('dispatched_generation_identity_invalid');
+  } else if (generation.source !== 'local' || generation.requestedProvider !== control.requestedProvider
+    || generation.requestedModel !== control.requestedModel || generation.returnedProvider !== null || generation.returnedModel !== null
+    || generation.modelResolution !== 'local' || generation.dispatchedCalls !== 0
+    || !Array.isArray(generation.providerExposures)
+    || generation.providerExposures.some((entry, index) => entry.attempt !== index + 1
+      || entry.preparedProvider !== control.requestedProvider || entry.preparedModel !== control.requestedModel
+      || entry.returnedProvider !== null || entry.returnedModel !== null)) {
+    fail('local_generation_identity_invalid');
+  }
   return failures;
 }
 
@@ -2982,7 +3027,7 @@ function metadataFailures(
   }
   if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');
   const directModelScreenMode = metadata.directModelScreenMode ?? null;
-  if (directModelScreenMode !== null && directModelScreenMode !== 'direct_model_screen_admission_v1' && directModelScreenMode !== 'direct_model_screen_google_three_turn_v1') {
+  if (directModelScreenMode !== null && directModelScreenMode !== 'direct_model_screen_admission_v1' && directModelScreenMode !== 'direct_model_screen_google_three_turn_v1' && directModelScreenMode !== 'direct_full_suite_model_comparison_v1') {
     failures.push('direct_model_screen_mode_invalid');
   }
   failures.push(...cohortControlFailures('router', metadata.routerControl));
@@ -3042,7 +3087,7 @@ function metadataFailures(
     failures.push('router_control_missing');
   }
   const toolUniverse = metadata.toolUniverse;
-  if (!toolUniverse || !['fixture_local_routed_replay', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe', 'fixture_oracle'].includes(toolUniverse.source)) {
+  if (!toolUniverse || !['fixture_local_routed_replay', 'fixture_local_direct_full_suite', 'evaluator_owned_production_definitions_simulated_receipts', 'evaluator_owned_common_tool_universe', 'fixture_oracle'].includes(toolUniverse.source)) {
     failures.push('tool_universe_provenance_invalid');
   } else if (metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe') {
     if (
@@ -3057,6 +3102,13 @@ function metadataFailures(
       ])
     ) failures.push('tool_universe_provenance_invalid');
   } else if (
+    directModelScreenMode === 'direct_full_suite_model_comparison_v1'
+    && (toolUniverse.source !== 'fixture_local_direct_full_suite' || toolUniverse.intentNarrowing !== 'direct_full_suite_fixture_contract' || !toolUniverse.bounded || toolUniverse.deployable
+      || toolUniverse.toolSchemaSha256 !== metadata.toolSchemaSha256
+      || toolUniverse.definitionHandlerSha256 !== null)
+  ) {
+    failures.push('tool_universe_provenance_invalid');
+  } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
     && (toolUniverse.source !== 'fixture_local_routed_replay' || toolUniverse.intentNarrowing !== 'production_quick_match_or_llm_router' || !toolUniverse.bounded || toolUniverse.deployable)
   ) {
@@ -3067,7 +3119,7 @@ function metadataFailures(
   ) {
     failures.push('tool_universe_provenance_invalid');
   } else if (
-    arm?.id === 'direct_generation'
+    arm?.id === 'direct_generation' && directModelScreenMode !== 'direct_full_suite_model_comparison_v1'
     && (toolUniverse.source !== 'evaluator_owned_production_definitions_simulated_receipts' || toolUniverse.intentNarrowing !== 'not_applied' || !toolUniverse.bounded || toolUniverse.deployable
       || toolUniverse.toolNamesSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNamesSha256
       || toolUniverse.toolSchemaSha256 !== FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolSchemaSha256
@@ -3080,7 +3132,7 @@ function metadataFailures(
   ) {
     failures.push('tool_universe_provenance_invalid');
   }
-  const expectedToolNames = metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe' || arm?.id === 'direct_generation'
+  const expectedToolNames = metadata.toolDefinitionProvenance === 'evaluator_owned_common_tool_universe' || (arm?.id === 'direct_generation' && directModelScreenMode !== 'direct_full_suite_model_comparison_v1')
     ? FIXED_TRACE_DIRECT_TOOL_UNIVERSE.toolNames
     : [...trace.toolFixtures.map((fixture) => fixture.name)].sort();
   if (!sameToolUniverseNames(toolUniverse?.toolNames ?? null, expectedToolNames)) {
@@ -3114,6 +3166,11 @@ function metadataFailures(
       failures.push('execution_envelope_provenance_invalid');
     }
   } else if (
+    directModelScreenMode === 'direct_full_suite_model_comparison_v1'
+    && (executionEnvelope.source !== 'fixture_expectation' || executionEnvelope.deployable)
+  ) {
+    failures.push('execution_envelope_provenance_invalid');
+  } else if (
     arm?.id === 'deterministic_policy_llm_fallback_hybrid'
     && (executionEnvelope.source !== 'fixture_expectation' || executionEnvelope.deployable)
   ) {
@@ -3124,7 +3181,7 @@ function metadataFailures(
   ) {
     failures.push('execution_envelope_provenance_invalid');
   } else if (
-    arm?.id === 'direct_generation'
+    arm?.id === 'direct_generation' && directModelScreenMode !== 'direct_full_suite_model_comparison_v1'
     && (executionEnvelope.source !== 'evaluator_owned_shared_request_thread_envelope' || executionEnvelope.deployable)
   ) {
     failures.push('execution_envelope_provenance_invalid');
@@ -3139,11 +3196,13 @@ function metadataFailures(
       ? null
       : metadata.routerControl.configuredMaxOutputTokens,
   ));
-  failures.push(...stageMetadataFailures(
-    'generation', metadata.generation, metadata.generationControl, metadata.generation.source === 'not_run'
-      ? null
-      : caseControl?.maxOutputTokens ?? metadata.generationControl.configuredMaxOutputTokens,
-  ));
+  if (!(directModelScreenMode === 'direct_full_suite_model_comparison_v1' && ['ignore', 'react'].includes(trace.routing.action))) {
+    failures.push(...stageMetadataFailures(
+      'generation', metadata.generation, metadata.generationControl, metadata.generation.source === 'not_run'
+        ? null
+        : caseControl?.maxOutputTokens ?? metadata.generationControl.configuredMaxOutputTokens,
+    ));
+  }
   return failures;
 }
 
