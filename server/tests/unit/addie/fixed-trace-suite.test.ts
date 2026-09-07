@@ -240,6 +240,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
     terminalStatus,
     boundaryReason: null,
     localReplacementReason: null,
+    failureDiagnostic: null,
     finishReason: terminalStatus === 'truncated' ? 'length' : terminalStatus === 'provider_error' ? null : 'stop',
     output: outputMarkers.join(' '),
     flagged: trace.expectation.requireFlagged ?? false,

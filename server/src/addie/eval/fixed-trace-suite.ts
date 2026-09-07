@@ -107,6 +107,28 @@ export type FixedTraceBoundaryReason =
 export type FixedTraceLocalReplacementReason = 'failed_lookup_evidence';
 
 /**
+ * A bounded, non-secret classification of a caught evaluator provider failure.
+ * `messageSha256` fingerprints at most the evaluator-owned byte bound of the
+ * thrown message; raw provider text, requests, and artifacts are never kept.
+ */
+export interface FixedTraceFailureDiagnostic {
+  readonly kind:
+    | 'provider_transport_error'
+    | 'provider_timeout'
+    | 'normalization_error'
+    | 'provider_identity_error'
+    | 'provider_non_error_throw';
+  readonly reason:
+    | 'provider_exception'
+    | 'timeout_after_dispatch'
+    | 'invalid_normalized_model_event'
+    | 'unexpected_model_identity'
+    | 'non_error_throw';
+  /** SHA-256 of no more than 512 UTF-8 bytes; the message itself is omitted. */
+  readonly messageSha256: string;
+}
+
+/**
  * A deterministic, versioned trace-suite execution control. It is hashed with
  * the suite and is never caller-supplied by the runner.
  */
@@ -408,6 +430,8 @@ export interface FixedTraceObservation {
   boundaryReason: FixedTraceBoundaryReason | null;
   /** Reason provider prose was replaced locally after a completed generation, otherwise null. */
   localReplacementReason: FixedTraceLocalReplacementReason | null;
+  /** Present only for a caught provider/normalization failure; never raw provider detail. */
+  failureDiagnostic: FixedTraceFailureDiagnostic | null;
   finishReason: ModelFinishReason | null;
   output: string;
   flagged: boolean;

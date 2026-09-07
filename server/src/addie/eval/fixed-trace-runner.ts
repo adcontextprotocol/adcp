@@ -18,7 +18,7 @@ import {
 } from '../router.js';
 import type { AddieTool } from '../types.js';
 import { buildModelToolDefinitions } from '../tool-wire-shape.js';
-import { collectModelResponse } from '../model-providers/events.js';
+import { InvalidModelEventStreamError, collectModelResponse } from '../model-providers/events.js';
 import type {
   ModelFinishReason,
   ModelMessage,
@@ -29,6 +29,7 @@ import type {
   ModelUsage,
   PreparedModelInvocation,
 } from '../model-providers/model-provider.js';
+import { UnexpectedModelIdentityError } from '../model-providers/model-provider.js';
 import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
@@ -85,6 +86,7 @@ import {
   fixedTraceSuiteSha256,
   type FixedTraceCase,
   type FixedTraceCohortStageControl,
+  type FixedTraceFailureDiagnostic,
   type FixedTraceModelResolutionPolicy,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
@@ -1364,6 +1366,81 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
   return '';
 }
 
+const FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES = 512;
+
+function boundedUtf8Prefix(value: string, maxBytes: number): string {
+  let byteLength = 0;
+  let end = 0;
+  // Iterate only until the byte budget is exhausted, preserving complete
+  // Unicode code points so the later UTF-8 encoding is always well-formed.
+  for (const codePoint of value) {
+    const value = codePoint.codePointAt(0)!;
+    const codePointBytes = value <= 0x7f ? 1 : value <= 0x7ff ? 2 : value <= 0xffff ? 3 : 4;
+    if (byteLength + codePointBytes > maxBytes) break;
+    byteLength += codePointBytes;
+    end += codePoint.length;
+  }
+  return value.slice(0, end);
+}
+
+/**
+ * Error messages may contain provider-generated text, request fragments, or
+ * credentials. Preserve only a fixed-width fingerprint of a bounded prefix
+ * so immutable evaluator evidence can correlate a failure without retaining
+ * provider contents.
+ */
+function fixedTraceFailureMessageSha256(error: unknown): string {
+  let message = '';
+  try {
+    if (error instanceof Error && typeof error.message === 'string') message = error.message;
+  } catch {
+    // An exotic thrown value must not prevent fail-closed failure recording.
+  }
+  return createHash('sha256')
+    .update(boundedUtf8Prefix(message, FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES), 'utf8')
+    .digest('hex');
+}
+
+function fixedTraceFailureDiagnostic(
+  error: unknown,
+  timedOut: boolean,
+  dispatched: boolean,
+): FixedTraceFailureDiagnostic | null {
+  if (error instanceof FixedTraceBudgetAdmissionError || error instanceof FixedTraceToolLoopBoundaryError) return null;
+  if (timedOut && dispatched) {
+    return Object.freeze({
+      kind: 'provider_timeout',
+      reason: 'timeout_after_dispatch',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+    });
+  }
+  if (error instanceof InvalidModelEventStreamError) {
+    return Object.freeze({
+      kind: 'normalization_error',
+      reason: 'invalid_normalized_model_event',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+    });
+  }
+  if (error instanceof UnexpectedModelIdentityError) {
+    return Object.freeze({
+      kind: 'provider_identity_error',
+      reason: 'unexpected_model_identity',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+    });
+  }
+  return Object.freeze(error instanceof Error
+    ? {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        messageSha256: fixedTraceFailureMessageSha256(error),
+      }
+    : {
+        kind: 'provider_non_error_throw',
+        reason: 'non_error_throw',
+        messageSha256: fixedTraceFailureMessageSha256(error),
+      });
+}
+
 /**
  * The older two-probe direct-screen diagnostic deliberately remains literal.
  * The full-suite comparison instead validates returned identities with the
@@ -1417,6 +1494,7 @@ async function executeRouter(
   output: string;
   status: FixedTraceTerminalStatus | null;
   metadata: FixedTraceModelStageMetadata;
+  failureDiagnostic: FixedTraceFailureDiagnostic | null;
 }> {
   const request: ModelRequest = {
     ...buildRouterModelRequest({
@@ -1460,7 +1538,7 @@ async function executeRouter(
     const status = hasCompleteReturnedProviderIdentities(state, response)
       ? terminalStatusForFinishReason(response.finishReason, output)
       : 'unknown_exposure';
-    if (status !== 'complete') return { request, response, plan: null, output, status, metadata };
+    if (status !== 'complete') return { request, response, plan: null, output, status, metadata, failureDiagnostic: null };
     try {
       return {
         request,
@@ -1469,9 +1547,10 @@ async function executeRouter(
         output,
         status: null,
         metadata,
+        failureDiagnostic: null,
       };
     } catch {
-      return { request, response, plan: null, output, status: 'malformed', metadata };
+      return { request, response, plan: null, output, status: 'malformed', metadata, failureDiagnostic: null };
     }
   } catch (error) {
     if (error instanceof FixedTraceExecutionIdentityError || error instanceof FixedTracePreparationError) throw error;
@@ -1492,6 +1571,7 @@ async function executeRouter(
       output: fallbackOutput(terminalStatus),
       status: terminalStatus,
       metadata: localStageMetadata(request, config, state),
+      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
     };
   } finally {
     clearTimeout(timeout);
@@ -1554,6 +1634,7 @@ export async function runFixedTraceCase(
       routeDisposition: 'not_admitted',
       boundaryReason: null,
       localReplacementReason: null,
+      failureDiagnostic: null,
       finishReason: null,
       output: fallbackOutput('not_admitted_architecture'),
       flagged: true,
@@ -1588,6 +1669,7 @@ export async function runFixedTraceCase(
         output: '',
         status: null,
         metadata: notRunStageMetadata(executionTrace),
+        failureDiagnostic: null,
       }
     : architectureArm.id === 'oracle_route_diagnostic'
     ? {
@@ -1597,6 +1679,7 @@ export async function runFixedTraceCase(
         output: '',
         status: null,
         metadata: notRunStageMetadata(executionTrace),
+        failureDiagnostic: null,
       }
     : hybridDecision?.mode === 'local_terminal'
       ? {
@@ -1606,6 +1689,7 @@ export async function runFixedTraceCase(
           output: '',
           status: null,
           metadata: notRunStageMetadata(executionTrace),
+          failureDiagnostic: null,
         }
     : await executeRouter(
       executionTrace,
@@ -1623,6 +1707,7 @@ export async function runFixedTraceCase(
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: null,
+      failureDiagnostic: routed.failureDiagnostic,
       finishReason: routed.response?.finishReason ?? null,
       output: routed.output,
       flagged: true,
@@ -1645,6 +1730,7 @@ export async function runFixedTraceCase(
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: null,
+      failureDiagnostic: null,
       finishReason: null,
       output: '',
       flagged: false,
@@ -1691,6 +1777,7 @@ export async function runFixedTraceCase(
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: null,
+      failureDiagnostic: null,
       finishReason: null,
       output: fallbackOutput('provider_error'),
       flagged: true,
@@ -1772,6 +1859,7 @@ export async function runFixedTraceCase(
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: null,
       localReplacementReason: result.localReplacementReason ? 'failed_lookup_evidence' : null,
+      failureDiagnostic: null,
       finishReason: result.response.finishReason,
       output: result.text,
       flagged: result.localReplacementReason !== null || terminalStatus !== 'complete',
@@ -1820,6 +1908,7 @@ export async function runFixedTraceCase(
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
       boundaryReason: error instanceof FixedTraceToolLoopBoundaryError ? error.reason : null,
       localReplacementReason: null,
+      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
       finishReason: null,
       output: fallbackOutput(finalTerminalStatus),
       flagged: true,
