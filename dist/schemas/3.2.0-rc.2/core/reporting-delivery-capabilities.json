@@ -1,0 +1,269 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-delivery-capabilities.json",
+  "title": "Reporting Delivery Capabilities",
+  "x-status": "experimental",
+  "description": "Reliable Reporting status and durable delivery support, advertised in three tiers over one data model. Core (supported: true) is the required tier: obligations, revisions, post-official adjustments, fixed RFC 8785/JCS revision-binding digests, the five health states, and get_reporting_status over transports sellers already have — polling get_media_buy_delivery and the existing reporting_webhook, with no destination or materialization machinery and no Managed external-materialization canonicalization contract. managed_delivery adds file/dataset-share/warehouse delivery and materializations. Reconciled Billing adds canonical digests and consumer receipts for immutable billing-purpose reporting evidence/control totals only; it does not create, approve, modify, or settle invoices, calculate taxes/FX, authorize accounting entries, transfer funds, or determine legal payment obligations. Each offerings entry is an atomic supported combination; buyers MUST NOT construct an unsupported cross-product. Presence requires media_buy.reporting_delivery in experimental_features; RFC 9421 webhook signing is required only when readiness_notification, status_notification, or ledger_notification is declared. Polling get_media_buy_delivery remains the compatibility baseline when this block is absent.",
+  "type": "object",
+  "properties": {
+    "supported": {
+      "type": "boolean",
+      "const": true
+    },
+    "reliable_reporting_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Explicit adoption declaration for the proper-name AdCP 3.2 Reliable Reporting contract. Presence, together with supported: true and the media_buy.reporting_delivery experimental feature gate, is the affirmative machine-readable answer. Absence denotes the earlier experimental managed-reporting shape."
+    },
+    "managed_delivery": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tier flag: this seller supports managed file, dataset-share, or warehouse delivery. Offerings whose method names a delivery pattern require this tier. When false or absent, every offering is API-delivered and Core-only."
+    },
+    "reconciled_billing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tier flag: this seller supports canonical-digest verification and authenticated consumer receipts for both report materializations and post-official adjustments through receipt_task. Offerings with reconciliation_mode consumer_receipt and billing-grade canonicalization require this tier."
+    },
+    "configuration_task": {
+      "type": "string",
+      "const": "sync_accounts"
+    },
+    "status_task": {
+      "type": "string",
+      "const": "get_reporting_status"
+    },
+    "revision_content_task": {
+      "type": "string",
+      "const": "get_media_buy_delivery",
+      "description": "Reliable Reporting exact-content read: callers select reporting_revision_id and receive immutable revision metadata plus authoritative canonical reporting_rows."
+    },
+    "receipt_task": {
+      "type": "string",
+      "const": "sync_reporting_receipts",
+      "description": "Required when reconciled_billing is true: the task consumers call to submit and read back authenticated revision and adjustment receipts."
+    },
+    "readiness_notification": {
+      "type": "string",
+      "const": "reporting.delivery_ready",
+      "description": "Optional managed-delivery-only positive-readiness doorbell. It names a materialization at a destination, so Core sellers MUST omit it."
+    },
+    "status_notification": {
+      "type": "string",
+      "const": "reporting.status_changed",
+      "description": "Optional tier-independent invalidation doorbell for health transitions in either direction, including clock-driven waiting-to-delayed and delayed-to-action_required. Valid for Core: it names no destination. Polling status_task remains the authoritative recovery path whether or not this is offered."
+    },
+    "ledger_notification": {
+      "type": "string",
+      "const": "reporting.ledger_changed",
+      "description": "Optional tier-independent invalidation for every newly committed revision or post-official adjustment, even when health does not change. Receivers repair through get_reporting_status changes_after; polling remains authoritative."
+    },
+    "offerings": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-delivery-offering.json"
+      },
+      "minItems": 1,
+      "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique."
+    },
+    "automated_recovery_window_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum late interval during which a due obligation may remain delayed while automated recovery continues before action_required."
+    },
+    "status_retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable."
+    },
+    "reliability_statistics": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-reliability-statistics.json"
+      },
+      "description": "Optional evidence-scoped observed performance for advertised offerings. offering_id values MUST be unique and name offerings in this capability block.",
+      "uniqueItems": true
+    },
+    "resource_retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum period after publication for which at least one verified exact materialization remains readable to every still-authorized intended consumer."
+    },
+    "supports_webhook_activity": {
+      "type": "boolean",
+      "default": false
+    },
+    "authorization_revocation_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum delay after caller/account authorization ends before seller-controlled transport access, provider grants, and write credentials are revoked. It cannot revoke a buyer's access to data already written into a buyer-owned destination."
+    }
+  },
+  "required": [
+    "supported",
+    "configuration_task",
+    "status_task",
+    "offerings",
+    "automated_recovery_window_seconds",
+    "status_retention_days"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "reliable_reporting_version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "reliable_reporting_version"
+        ]
+      },
+      "then": {
+        "required": [
+          "revision_content_task"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "managed_delivery": {
+            "const": true
+          }
+        },
+        "required": [
+          "managed_delivery"
+        ]
+      },
+      "then": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "required": [
+                "method"
+              ]
+            }
+          }
+        },
+        "required": [
+          "resource_retention_days",
+          "authorization_revocation_seconds"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciled_billing": {
+            "const": true
+          }
+        },
+        "required": [
+          "reconciled_billing"
+        ]
+      },
+      "then": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "properties": {
+                "reconciliation_mode": {
+                  "const": "consumer_receipt"
+                }
+              },
+              "required": [
+                "reconciliation_mode"
+              ]
+            }
+          }
+        },
+        "required": [
+          "receipt_task"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "required": [
+                "method"
+              ]
+            }
+          }
+        },
+        "required": [
+          "offerings"
+        ]
+      },
+      "then": {
+        "properties": {
+          "managed_delivery": {
+            "const": true
+          }
+        },
+        "required": [
+          "managed_delivery"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "properties": {
+                "reconciliation_mode": {
+                  "const": "consumer_receipt"
+                }
+              },
+              "required": [
+                "reconciliation_mode"
+              ]
+            }
+          }
+        },
+        "required": [
+          "offerings"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reconciled_billing": {
+            "const": true
+          }
+        },
+        "required": [
+          "reconciled_billing"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "readiness_notification"
+        ]
+      },
+      "then": {
+        "properties": {
+          "managed_delivery": {
+            "const": true
+          }
+        },
+        "required": [
+          "managed_delivery"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "unique_offerings": "offering_id values MUST be unique. Each installed configuration MUST exactly match one offering's feed, report_definition_id, reporting profile, schedule, requested finality, reconciliation mode, pattern, transport, orchestration, destination mode, and every applicable provider, access_mode, format, producer_identity, and reader-compatibility constraint.",
+    "tier_boundaries": "Core is the only required tier and MUST be implementable with no destination, materialization, manifest, receipt code, or Managed external-materialization canonicalization code or contract; every Core revision nevertheless requires fixed RFC 8785/JCS revision-binding canonicalization. An offering without method is delivered through existing get_media_buy_delivery and reporting_webhook transports. An offering whose method names file_transfer, dataset_share, or warehouse_materialization is valid only when managed_delivery is true. An offering with reconciliation_mode consumer_receipt must declare a managed method and reconciled_billing. Reconciled Billing receipt acceptance means only matching digest/version/row-count/control-total evidence, never invoice/price/fee approval, dispute waiver, posting authorization, or payment due; rejection means evidence discrepancy only. readiness_notification requires managed_delivery; status_notification and ledger_notification are optional Core-compatible invalidations. A polling-only seller passes Core conformance.",
+    "product_applicability": "This seller-wide catalog declares possible atomic combinations, not universal applicability to every product. Product.reporting_capabilities.reporting_delivery_offering_ids declares product/package eligibility; sync_accounts validation applies account-specific constraints, including exact upstream calendar compatibility; reporting obligations freeze effective media-buy coverage.",
+    "reliability_statistics": "Each reliability_statistics offering_id MUST name exactly one offerings entry and occur at most once. Counts and percentiles follow reporting-reliability-statistics.json; a long declared delivery_sla never substitutes for disclosure of observed publication delay and adjustment behavior.",
+    "reliable_reporting_discovery": "Reliable Reporting 1.0 is supported if and only if reliable_reporting_version is 1.0, supported is true, and the enclosing capability document contains media_buy.reporting_delivery in experimental_features. Such sellers use reporting-definition contract 1.1 and implement checkpoint/adjustment fields even though those fields remain schema-optional for compatibility with the preceding experimental managed-reporting shape. managed_delivery and reconciled_billing then identify optional tiers; offering and product applicability still determine whether a concrete feed is available."
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-ledger-changed-webhook.json",
+  "title": "Reporting Ledger Changed Webhook",
+  "x-status": "experimental",
+  "description": "Optional account-anchored invalidation fired for every newly committed reporting revision or post-official adjustment, whether or not health changes. Valid in every reporting tier. Receivers repair from their own durable changes_after checkpoint through get_reporting_status; this event is never the source of truth.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Random per distinct fire and stable across transport retries, scoped to the authenticated sender."
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Stable per committed ledger record; re-emissions reuse it."
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "reporting.ledger_changed"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "account"
+    },
+    "change_kind": {
+      "type": "string",
+      "enum": [
+        "revision_published",
+        "adjustment_published"
+      ]
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "supersedes_reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "finality": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/reporting-finality.json"
+    },
+    "reporting_adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_adjustment"
+    },
+    "adjusts_reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "change_kind"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "change_kind": {
+            "const": "revision_published"
+          }
+        },
+        "required": [
+          "change_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "reporting_revision_id",
+          "finality"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "reporting_adjustment_id"
+              ]
+            },
+            {
+              "required": [
+                "adjusts_reporting_revision_id"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "reporting_adjustment_id",
+          "adjusts_reporting_revision_id"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "reporting_revision_id"
+              ]
+            },
+            {
+              "required": [
+                "supersedes_reporting_revision_id"
+              ]
+            },
+            {
+              "required": [
+                "finality"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "logical_record": "One destination-independent revision or adjustment produces one logical account event even when it fans out through multiple obligations or delivery configurations. Receivers use changes_after to resolve the affected obligations and deduplicate by the immutable record identity."
+  },
+  "additionalProperties": false
+}

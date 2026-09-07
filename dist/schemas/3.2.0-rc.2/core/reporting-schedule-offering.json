@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-schedule-offering.json",
+  "title": "Reporting Schedule Offering",
+  "x-status": "experimental",
+  "description": "Schedule constraint advertised by a seller. Unlike an installed reporting-schedule, an offering may resolve an account-specific upstream source timezone or let a billing-cycle configuration select its own anchor and IANA timezone.",
+  "type": "object",
+  "properties": {
+    "period_duration": {
+      "type": "string",
+      "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+    },
+    "alignment": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-schedule.json#/definitions/ReportingScheduleAlignment"
+    },
+    "period_anchor_policy": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "configurable"
+      ],
+      "description": "For billing_cycle only. fixed requires the advertised anchor and timezone; configurable lets each authorized account configuration select them."
+    },
+    "period_timezone_policy": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "account_resolved"
+      ],
+      "description": "For source_timezone only. fixed advertises one exact upstream IANA timezone; account_resolved requires the seller to resolve and echo the account's upstream reporting timezone during configuration."
+    },
+    "period_anchor": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "period_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "delivery_sla": {
+      "type": "string",
+      "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+    }
+  },
+  "required": [
+    "period_duration",
+    "alignment",
+    "delivery_sla"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "alignment": {
+            "const": "billing_cycle"
+          }
+        },
+        "required": [
+          "alignment"
+        ]
+      },
+      "then": {
+        "required": [
+          "period_anchor_policy"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "period_anchor_policy": {
+                  "const": "fixed"
+                }
+              },
+              "required": [
+                "period_anchor_policy"
+              ]
+            },
+            "then": {
+              "required": [
+                "period_anchor",
+                "period_timezone"
+              ]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "period_anchor"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_timezone"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "alignment": {
+              "const": "source_timezone"
+            }
+          },
+          "required": [
+            "alignment"
+          ]
+        },
+        "then": {
+          "required": [
+            "period_timezone_policy"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "period_anchor_policy"
+                ]
+              },
+              {
+                "required": [
+                  "period_anchor"
+                ]
+              }
+            ]
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "period_timezone_policy": {
+                    "const": "fixed"
+                  }
+                },
+                "required": [
+                  "period_timezone_policy"
+                ]
+              },
+              "then": {
+                "required": [
+                  "period_timezone"
+                ]
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "period_timezone"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "else": {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "period_anchor_policy"
+                ]
+              },
+              {
+                "required": [
+                  "period_timezone_policy"
+                ]
+              },
+              {
+                "required": [
+                  "period_anchor"
+                ]
+              },
+              {
+                "required": [
+                  "period_timezone"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "installed_schedule_match": "period_duration, alignment, and delivery_sla MUST equal the installed configuration. For fixed billing_cycle offerings, period_anchor and period_timezone MUST also equal it. For configurable billing_cycle offerings, the installed configuration supplies both values. A fixed source_timezone offering supplies period_timezone; an account_resolved source_timezone offering requires the seller to resolve and echo period_timezone before the configuration becomes ready. utc and account_timezone use the normative origins in reporting-schedule.json, so even multi-unit durations have one independently derivable phase.",
+    "iana_timezone": "Every advertised fixed period_timezone MUST be a recognized IANA Time Zone Database zone name or link, including UTC. Unknown identifiers and numeric UTC offsets are invalid.",
+    "source_compatibility": "The resolved schedule MUST be compatible with the pinned report definition calendar. A seller MUST NOT advertise or accept a schedule merely because it can query the source eventually; it must be able to produce the exact promised periods natively or through lossless finer-grained re-bucketing."
+  },
+  "additionalProperties": false
+}

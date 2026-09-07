@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/collection-selector.json",
+  "title": "Collection Selector",
+  "description": "References collections declared in an adagents.json. Buyers resolve full collection objects by fetching the adagents.json at the given domain and matching collection_ids against its collections array. When collection_ids is omitted, the selector references every collection declared in that adagents.json — the bulk-grant form for authorization scoping (e.g., a host authorizing a channel owner's sales agent for all of the owner's collections without tracking owner-assigned IDs).",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring these collections is hosted (e.g., 'mrbeast.com'). The collections array in that file contains the authoritative collection definitions.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "collection_ids": {
+      "type": "array",
+      "description": "Collection IDs from the adagents.json collections array. Each ID must match a collection_id declared in that file. Omit to reference all collections declared in that file.",
+      "items": {
+        "type": "string",
+        "x-entity": "collection"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "publisher_domain"
+  ],
+  "additionalProperties": true
+}

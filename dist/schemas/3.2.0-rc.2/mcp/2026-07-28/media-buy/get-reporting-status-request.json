@@ -1,0 +1,1889 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/mcp/2026-07-28/media-buy/get-reporting-status-request.json",
+  "title": "Get Reporting Status Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.",
+  "description": "Authoritative caller/account-isolated reporting reliability read. The authenticated caller identity comes only from transport authentication, never request fields. summary answers the operational question for independently selected delivery configurations/feeds; periods returns a cursor-paginated obligation ledger; revision resolves one exact retained revision and its materializations/resources. Unknown, unauthorized, cross-caller, and cross-account identifiers MUST be indistinguishable. Sellers implementing this task MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "type": "object",
+  "x-mutates-state": false,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json",
+      "description": "Account whose caller-owned reporting status is queried."
+    },
+    "view": {
+      "$ref": "#/$defs/ReportingStatusView"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Omit for every accessible media buy in the account."
+    },
+    "delivery_config_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+        "x-entity": "reporting_delivery_config"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Use to reconcile billing, analytics, and pacing independently. Omit for every active caller-owned configuration."
+    },
+    "feed_purposes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingFeedPurpose"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Optional summary/periods feed filter. The response echoes exact resolved configuration generations so this never creates an opaque aggregate."
+    },
+    "period": {
+      "type": "object",
+      "description": "Half-open summary/periods horizon. Omit for the seller's documented operational default horizon; the response always echoes the evaluated scope.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1reporting-health.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Periods-view result filter only; it never changes summary health."
+    },
+    "finality": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1reporting-finality.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Exact retained revision to resolve in revision view."
+    },
+    "changes_after": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Periods-view incremental-repair checkpoint previously returned as changes_checkpoint after fully consuming a response. Returns newly committed obligations, revisions, adjustments, materializations, revision receipts, and adjustment receipts plus the current projection of each affected obligation. Omit for a full ledger read."
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json",
+      "description": "Periods or revision-view pagination. Cursors are bound to the authenticated caller, account, filters, and ledger snapshot."
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "view"
+  ],
+  "$defs": {
+    "ReportingStatusView": {
+      "title": "Reporting Status View",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "summary",
+        "periods",
+        "revision"
+      ],
+      "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit."
+    },
+    "external:core/version-envelope.json": {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "title": "Canonical Account Reference",
+      "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json",
+              "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_nova_nl"
+        },
+        {
+          "brand": {
+            "domain": "nova-athletics.example",
+            "countries": [
+              "NL"
+            ]
+          },
+          "operator": "nova-athletics.example",
+          "operator_unit": {
+            "id": "234284238",
+            "name": "Nova EMEA"
+          },
+          "currency": "EUR",
+          "timezone": "Europe/Amsterdam"
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "title": "Brand Key",
+      "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json",
+          "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:core/operator-unit.json": {
+      "title": "Operator Unit",
+      "description": "Operator-owned buying context used to distinguish business units, agency seats, or platform accounts beneath one operator domain. The id is stable identity in the operator's namespace; name is mutable display metadata and never participates in account identity.",
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+          "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "234284238",
+          "name": "Nova EMEA"
+        },
+        {
+          "id": "benelux-seat",
+          "name": "Nova Benelux"
+        }
+      ]
+    },
+    "external:core/reporting-coverage.json": {
+      "title": "Reporting Coverage",
+      "x-status": "experimental",
+      "description": "Exact reporting-support denominator for one offering at one evaluation boundary. Coverage is independent of freshness, finality, and delivery health. It prevents a covered subset from being represented as a complete media-buy or campaign total.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "full",
+            "partial",
+            "none",
+            "unknown"
+          ]
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true,
+          "description": "Exact media-buy denominator, including unsupported and unknown buys. An empty array is an explicitly evaluated zero-buy scope."
+        },
+        "fully_covered_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "partially_covered_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "unsupported_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "unknown_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true,
+          "description": "Exact package denominator for the evaluated media buys."
+        },
+        "covered_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "unsupported_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "unknown_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "description": "Stable reasons that some requested scope is not covered by the exact selected offering. These are capability facts, not delivery failures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "offering_unsupported",
+                  "account_entitlement_unavailable",
+                  "credential_scope_insufficient",
+                  "provider_limitation",
+                  "capability_unknown"
+                ]
+              },
+              "media_buy_id": {
+                "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+              },
+              "package_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "reason",
+              "media_buy_id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evaluated_at",
+        "media_buy_ids",
+        "fully_covered_media_buy_ids",
+        "partially_covered_media_buy_ids",
+        "unsupported_media_buy_ids",
+        "unknown_media_buy_ids",
+        "package_ids",
+        "covered_package_ids",
+        "unsupported_package_ids",
+        "unknown_package_ids",
+        "limitations"
+      ],
+      "x-adcp-validation": {
+        "partition": "The four media-buy classification arrays MUST be pairwise disjoint and their union MUST equal media_buy_ids. The three package classification arrays MUST be pairwise disjoint and their union MUST equal package_ids. Every limitation media_buy_id and package_id MUST belong to those denominators.",
+        "status": "full requires every media buy to be fully covered and every package covered; the explicit empty denominator is full. partial requires at least one covered package, fully covered media buy, or partially covered media buy and at least one partial, unsupported, or unknown item. A partially covered media buy counts as a covered item when excluding none and unknown. none requires a nonempty denominator, no covered item, at least one unsupported item, and no unknown item. unknown requires a nonempty denominator, no covered item, and at least one unknown item.",
+        "aggregation": "Metrics computed only over covered_package_ids MUST be labeled partial whenever status is not full and MUST NOT be represented as complete media-buy or campaign totals. Implementations MUST NOT weaken the selected report definition to create an undeclared lowest-common-denominator profile."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingMediaBuyId": {
+          "title": "Reporting Media Buy ID",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "ReportingPackageId": {
+          "title": "Reporting Package ID",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "package"
+        }
+      }
+    },
+    "external:core/reporting-delivery-offering.json": {
+      "title": "Reporting Delivery Offering",
+      "x-status": "experimental",
+      "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering. A Core API-delivered offering requires no Managed external-materialization canonicalization code or contract, but every resulting revision still carries the fixed RFC 8785/JCS revision-binding canonicalization and digest.",
+      "type": "object",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+          "x-entity": "reporting_offering"
+        },
+        "feed_purpose": {
+          "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingFeedPurpose"
+        },
+        "report_definition_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_definition",
+          "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value."
+        },
+        "report_definition_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+          "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin."
+        },
+        "report_definition_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$",
+          "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest."
+        },
+        "reporting_profile": {
+          "type": "object",
+          "description": "Machine-readable semantic and validation contract for delivered rows. The canonicalization_* fields describe the external-materialization canonical-digest contract and are required only for offerings under the reconciled_billing tier; Core and managed-delivery offerings omit those fields but every Core revision still carries the fixed RFC 8785/JCS revision-binding digest.",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "schema_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+              "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority."
+            },
+            "schema_sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$",
+              "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest."
+            },
+            "schema_dialect": {
+              "type": "string",
+              "const": "https://json-schema.org/draft/2020-12/schema",
+              "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value."
+            },
+            "schema_ref_policy": {
+              "type": "string",
+              "const": "local_fragment_only",
+              "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden."
+            },
+            "grain": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Stable description of what one logical row represents."
+            },
+            "primary_keys": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-canonicalization-contract.json/$defs/ReportingPrimaryKey"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "canonicalization_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest."
+            },
+            "canonicalization_contract_version": {
+              "type": "string",
+              "const": "1.0"
+            },
+            "canonicalization_media_type": {
+              "type": "string",
+              "const": "application/vnd.adcp.reporting-canonicalization+json"
+            },
+            "canonicalization_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+              "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use."
+            },
+            "canonicalization_sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$",
+              "description": "Digest of the exact canonicalization contract identified by canonicalization_id."
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "schema_uri",
+            "schema_sha256",
+            "schema_dialect",
+            "schema_ref_policy",
+            "grain",
+            "primary_keys"
+          ],
+          "additionalProperties": false
+        },
+        "schedule": {
+          "$ref": "#/$defs/external:core~1reporting-schedule-offering.json",
+          "description": "Period and availability SLA this offering can honor. For example, PT1H with snapshot finality explicitly advertises hourly provisional snapshots; a separate P1D official offering advertises daily finalized reporting."
+        },
+        "supported_finality": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1reporting-finality.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Finality classes available under this exact report definition, schedule, and delivery method. snapshot is an explicit provisional capability, not inferred from poll frequency. Use separate atomic offerings when snapshot and official schedules or methods differ."
+        },
+        "reconciliation_mode": {
+          "$ref": "#/$defs/external:core~1reporting-reconciliation-mode.json",
+          "description": "Receipt contract included in this atomic offering. Billing offerings MUST require consumer_receipt."
+        },
+        "method": {
+          "type": "object",
+          "description": "Managed delivery method for this offering. Omit for a Core (API-delivered) offering: rows flow through existing get_media_buy_delivery and reporting_webhook transports and no destination is involved. Present only when the seller advertises managed_delivery.",
+          "properties": {
+            "pattern": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingDeliveryPattern"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination_modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "provision",
+                  "existing"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv",
+                "parquet",
+                "avro",
+                "orc"
+              ]
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "producer_identity": {
+              "type": "object",
+              "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
+              "properties": {
+                "provider": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                    }
+                  },
+                  "required": [
+                    "domain"
+                  ],
+                  "additionalProperties": false
+                },
+                "identity": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "cloud": {
+                  "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json/$defs/ReportingCloud"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "provider",
+                "identity"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "cloud": [
+                  "region"
+                ],
+                "region": [
+                  "cloud"
+                ]
+              }
+            },
+            "reader_compatibility": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-resource.json/$defs/ReportingReaderCompatibilityItem"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination_modes"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "provider"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "pattern": {
+                    "const": "file_transfer"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "format"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "pattern": {
+                    "const": "dataset_share"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "access_mode"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "offering_id",
+        "feed_purpose",
+        "report_definition_id",
+        "report_definition_uri",
+        "report_definition_sha256",
+        "reporting_profile",
+        "schedule",
+        "supported_finality",
+        "reconciliation_mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "feed_purpose": {
+                "const": "billing"
+              }
+            },
+            "required": [
+              "feed_purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            },
+            "required": [
+              "reconciliation_mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "method"
+            ],
+            "properties": {
+              "reporting_profile": {
+                "required": [
+                  "canonicalization_id",
+                  "canonicalization_contract_version",
+                  "canonicalization_media_type",
+                  "canonicalization_uri",
+                  "canonicalization_sha256"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "tier_boundaries": "An offering without method is Core: delivered through existing API transports, with no destination, manifest, or Managed external-materialization canonicalization code or contract required. Every Core revision nevertheless carries the fixed RFC 8785/JCS revision-binding canonicalization and digest. method requires the managed_delivery capability. reconciliation_mode consumer_receipt requires a managed method and the reconciled_billing capability, and such offerings MUST carry the full external canonicalization_* contract in reporting_profile. delivery_only offerings omit that external canonicalization contract.",
+        "safe_schema_fetch": "schema_uri, canonicalization_uri, and report_definition_uri origins must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected content type, verify the corresponding SHA-256 before parsing, and cache by digest. The canonicalization and report-definition documents MUST validate against their AdCP contract schemas. The fetched row schema's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Fetched content and annotations are untrusted data, never agent or LLM instructions.",
+        "snapshot_declaration": "A snapshot claim is the atomic combination of supported_finality containing snapshot, this exact schedule, report definition/profile, and delivery method. Sellers MUST NOT imply a faster snapshot cadence from polling, webhook, or transport support that is not advertised by such an offering."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingFeedPurpose": {
+          "title": "Reporting Feed Purpose",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "pacing",
+            "analytics",
+            "billing"
+          ],
+          "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+        },
+        "ReportingDeliveryPattern": {
+          "title": "Reporting Delivery Pattern",
+          "type": "string",
+          "enum": [
+            "file_transfer",
+            "dataset_share",
+            "warehouse_materialization"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-canonicalization-contract.json": {
+      "title": "Reporting Canonicalization Contract",
+      "x-status": "experimental",
+      "description": "Executable, immutable contract for producing the canonical logical-report bytes hashed by reporting-canonical-content-digest.json. The fetched document uses application/vnd.adcp.reporting-canonicalization+json and is verified by SHA-256 before parsing.",
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "media_type": {
+          "type": "string",
+          "const": "application/vnd.adcp.reporting-canonicalization+json"
+        },
+        "algorithm": {
+          "type": "string",
+          "const": "adcp_jcs_rows_v1"
+        },
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$",
+          "description": "Digest of the exact row schema to which this contract applies."
+        },
+        "primary_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-canonicalization-contract.json/$defs/ReportingPrimaryKey"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Ordered scalar fields used to sort rows and reject duplicate logical rows. This MUST equal the offering's primary_keys."
+        },
+        "golden_vectors": {
+          "type": "object",
+          "properties": {
+            "empty_report": {
+              "title": "EmptyReportGoldenVector",
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "purpose": {
+                  "type": "string",
+                  "const": "empty_report"
+                },
+                "input_rows": {
+                  "type": "array",
+                  "maxItems": 0
+                },
+                "canonical_utf8_base64": {
+                  "type": "string",
+                  "const": "W10=",
+                  "description": "Base64 of the exact UTF-8 bytes for []."
+                },
+                "sha256": {
+                  "type": "string",
+                  "const": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+                }
+              },
+              "required": [
+                "name",
+                "purpose",
+                "input_rows",
+                "canonical_utf8_base64",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "ordering_encoding": {
+              "title": "OrderingEncodingGoldenVector",
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "purpose": {
+                  "type": "string",
+                  "const": "ordering_encoding"
+                },
+                "input_rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "minItems": 2
+                },
+                "canonical_utf8_base64": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Base64 of the exact expected canonical UTF-8 bytes."
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[A-Fa-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "name",
+                "purpose",
+                "input_rows",
+                "canonical_utf8_base64",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "additional": {
+              "type": "array",
+              "items": {
+                "title": "AdditionalGoldenVector",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "const": "additional"
+                  },
+                  "input_rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "canonical_utf8_base64": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Base64 of the exact expected canonical UTF-8 bytes."
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[A-Fa-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "name",
+                  "purpose",
+                  "input_rows",
+                  "canonical_utf8_base64",
+                  "sha256"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "empty_report",
+            "ordering_encoding"
+          ],
+          "additionalProperties": false,
+          "description": "Named cross-language conformance cases: exactly one empty_report vector, exactly one ordering_encoding vector, and an optional list of additional vectors."
+        }
+      },
+      "required": [
+        "contract_version",
+        "media_type",
+        "algorithm",
+        "schema_sha256",
+        "primary_keys",
+        "golden_vectors"
+      ],
+      "x-adcp-validation": {
+        "algorithm": "adcp_jcs_rows_v1 rejects duplicate JSON object keys, non-finite numbers, lone Unicode surrogates, missing/non-scalar primary keys, and duplicate primary-key tuples. Validate every row against the pinned row schema; do not normalize Unicode. RFC 8785-encode each primary-key value array and sort rows by unsigned lexicographic comparison of those UTF-8 bytes. RFC 8785-encode each complete row, then emit the UTF-8 bytes for '[' + the encoded rows joined by ',' + ']'. SHA-256 is computed over exactly those bytes.",
+        "binding": "schema_sha256 and primary_keys MUST exactly equal the selected offering. Golden-vector names MUST be unique across empty_report, ordering_encoding, and additional. empty_report is the exact [] case. ordering_encoding is non-trivial: its input row order differs from canonical primary-key order and its object member order differs from JCS order. SDKs MUST strictly base64-decode canonical_utf8_base64, reproduce every golden vector's exact bytes and sha256, and reject any mismatch before using the contract."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingPrimaryKey": {
+          "title": "Reporting Primary Key",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "external:core/reporting-schedule-offering.json": {
+      "title": "Reporting Schedule Offering",
+      "x-status": "experimental",
+      "description": "Schedule constraint advertised by a seller. Unlike an installed reporting-schedule, an offering may resolve an account-specific upstream source timezone or let a billing-cycle configuration select its own anchor and IANA timezone.",
+      "type": "object",
+      "properties": {
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        },
+        "alignment": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json/$defs/ReportingScheduleAlignment"
+        },
+        "period_anchor_policy": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "configurable"
+          ],
+          "description": "For billing_cycle only. fixed requires the advertised anchor and timezone; configurable lets each authorized account configuration select them."
+        },
+        "period_timezone_policy": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "account_resolved"
+          ],
+          "description": "For source_timezone only. fixed advertises one exact upstream IANA timezone; account_resolved requires the seller to resolve and echo the account's upstream reporting timezone during configuration."
+        },
+        "period_anchor": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "delivery_sla": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        }
+      },
+      "required": [
+        "period_duration",
+        "alignment",
+        "delivery_sla"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alignment": {
+                "const": "billing_cycle"
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          },
+          "then": {
+            "required": [
+              "period_anchor_policy"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "period_anchor_policy": {
+                      "const": "fixed"
+                    }
+                  },
+                  "required": [
+                    "period_anchor_policy"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "period_anchor",
+                    "period_timezone"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "period_anchor"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "period_timezone"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "alignment": {
+                  "const": "source_timezone"
+                }
+              },
+              "required": [
+                "alignment"
+              ]
+            },
+            "then": {
+              "required": [
+                "period_timezone_policy"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "period_anchor_policy"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_anchor"
+                    ]
+                  }
+                ]
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "period_timezone_policy": {
+                        "const": "fixed"
+                      }
+                    },
+                    "required": [
+                      "period_timezone_policy"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "period_timezone"
+                    ]
+                  },
+                  "else": {
+                    "not": {
+                      "required": [
+                        "period_timezone"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "period_anchor_policy"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_timezone_policy"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_anchor"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_timezone"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "installed_schedule_match": "period_duration, alignment, and delivery_sla MUST equal the installed configuration. For fixed billing_cycle offerings, period_anchor and period_timezone MUST also equal it. For configurable billing_cycle offerings, the installed configuration supplies both values. A fixed source_timezone offering supplies period_timezone; an account_resolved source_timezone offering requires the seller to resolve and echo period_timezone before the configuration becomes ready. utc and account_timezone use the normative origins in reporting-schedule.json, so even multi-unit durations have one independently derivable phase.",
+        "iana_timezone": "Every advertised fixed period_timezone MUST be a recognized IANA Time Zone Database zone name or link, including UTC. Unknown identifiers and numeric UTC offsets are invalid.",
+        "source_compatibility": "The resolved schedule MUST be compatible with the pinned report definition calendar. A seller MUST NOT advertise or accept a schedule merely because it can query the source eventually; it must be able to produce the exact promised periods natively or through lossless finer-grained re-bucketing."
+      },
+      "additionalProperties": false
+    },
+    "external:core/reporting-schedule.json": {
+      "title": "Reporting Schedule",
+      "x-status": "experimental",
+      "description": "The period and deadline contract from which reporting obligations are created. Every elapsed period produces an obligation even when it has zero rows or production fails, so a consumer can distinguish empty from missing.",
+      "type": "object",
+      "properties": {
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+          "description": "Strictly positive ISO 8601 duration of each reporting period, such as PT15M, P1D, or P1M."
+        },
+        "alignment": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json/$defs/ReportingScheduleAlignment"
+        },
+        "period_anchor": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Required for billing_cycle alignment. This immutable instant anchors the recurring half-open billing periods so producer and consumer derive the same month, quarter, or other contractual cycle."
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Required IANA timezone for source_timezone and billing_cycle calendar arithmetic. A numeric UTC offset is not sufficient because it does not define DST transitions."
+        },
+        "delivery_sla": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+          "description": "Non-negative maximum time after period end before the required revision is due. PT0S means due at period close; expected_at equals the resolved period end plus this duration."
+        }
+      },
+      "required": [
+        "period_duration",
+        "alignment",
+        "delivery_sla"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alignment": {
+                "const": "billing_cycle"
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          },
+          "then": {
+            "required": [
+              "period_anchor",
+              "period_timezone"
+            ]
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "alignment": {
+                  "const": "source_timezone"
+                }
+              },
+              "required": [
+                "alignment"
+              ]
+            },
+            "then": {
+              "required": [
+                "period_timezone"
+              ],
+              "not": {
+                "required": [
+                  "period_anchor"
+                ]
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "period_anchor"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_timezone"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "period_generation": "Producer and consumer MUST derive the same ordered half-open intervals from period_duration, alignment, period_anchor, and period_timezone when applicable. utc alignment uses 1970-01-01T00:00:00Z as interval zero. account_timezone uses local midnight on that date in the account's resolved IANA timezone. source_timezone uses local midnight on that date in the explicit period_timezone. billing_cycle uses its explicit period_anchor expressed in period_timezone. Every boundary is calculated directly from that origin and the interval ordinal by multiplying each ISO 8601 duration component by the ordinal and applying years, months, days, hours, minutes, then seconds. Calendar durations use local civil-time arithmetic in the selected IANA timezone, including DST transitions; they are not converted to fixed seconds. Month/year addition preserves the origin's local day and time, clamping to the target month's final valid day when necessary. A nonexistent local boundary advances by the timezone gap; an ambiguous local boundary uses the earlier offset. Thus a clamped February boundary does not shift a March 31 anchor.",
+        "iana_timezone": "Every period_timezone and echoed period.source_timezone value MUST be a recognized IANA Time Zone Database zone name or link, including UTC. Reject unknown identifiers before accepting a configuration; do not silently substitute the host timezone or a numeric offset.",
+        "source_compatibility": "Before accepting a configuration, the seller MUST prove that its upstream source can produce every configured half-open period exactly, either natively or by lossless re-bucketing from finer-grained source data. source_timezone MUST equal the upstream reporting calendar used by the pinned report definition. A structural incompatibility MUST fail configuration validation and MUST NOT be represented as indefinitely waiting reporting. If incompatibility is discovered after acceptance, the configuration becomes action_required with the seller responsible."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingScheduleAlignment": {
+          "title": "Reporting Schedule Alignment",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "utc",
+            "account_timezone",
+            "source_timezone",
+            "billing_cycle"
+          ],
+          "description": "Calendar used to establish exact period boundaries. source_timezone is an explicit upstream reporting clock, such as an ad server network timezone, that may differ from the AdCP account timezone. The obligation echoes resolved timestamps and source timezone."
+        }
+      }
+    },
+    "external:enums/reporting-finality.json": {
+      "title": "Reporting Finality",
+      "description": "Finality of a reporting revision. Snapshot revisions are provisional and may be superseded. An official revision is the immutable, invoice-addressable close for its reporting slice and MUST NOT be superseded; later source corrections are explicit reporting adjustments rather than silent replacement revisions.",
+      "type": "string",
+      "enum": [
+        "snapshot",
+        "official"
+      ],
+      "enumDescriptions": {
+        "snapshot": "Provisional seller/source reporting evidence; not sufficient by itself for billing.",
+        "official": "Immutable seller-authoritative close for the represented period. Buyers may key invoices and settlement records to its reporting_revision_id. Later corrections are explicit adjustments, never superseding revisions."
+      }
+    },
+    "external:core/reporting-reconciliation-mode.json": {
+      "title": "Reporting Reconciliation Mode",
+      "x-status": "experimental",
+      "description": "Whether producer delivery evidence is sufficient or an authenticated consumer receipt is required.",
+      "type": "string",
+      "enum": [
+        "delivery_only",
+        "consumer_receipt"
+      ]
+    },
+    "external:core/reporting-delivery-method.json": {
+      "title": "Reporting Delivery Method",
+      "x-status": "experimental",
+      "description": "Provider-neutral durable reporting delivery method. The caller may request protocol-managed provisioning or reuse an existing seller-issued binding. Transport names are open so new platforms do not require an AdCP enum change. Credentials, bearer profiles, and private keys MUST NOT appear. Sellers implementing this schema MUST advertise media_buy.reporting_delivery in experimental_features.",
+      "type": "object",
+      "oneOf": [
+        {
+          "title": "File transfer",
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "file_transfer",
+              "description": "Immutable file/object publication with a manifest-last commit boundary."
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$",
+              "description": "Storage transport such as s3, gcs, azure_blob, or sftp."
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-write-destination.json"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv",
+                "parquet",
+                "avro",
+                "orc"
+              ],
+              "description": "Physical file format."
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination",
+            "format"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Dataset share",
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "dataset_share",
+              "description": "Producer-hosted relation or share read through the intended recipient's access path."
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$",
+              "description": "Sharing transport such as delta_sharing, snowflake_secure_sharing, or bigquery_authorized_view."
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Warehouse materialization",
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "warehouse_materialization",
+              "description": "Exact-revision publication into a warehouse relation or partition."
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$",
+              "description": "Warehouse or transfer transport such as bigquery, snowflake, databricks_sql, or gam_bigquery_transfer."
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-write-destination.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "ReportingOrchestration": {
+          "title": "Reporting Orchestration",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "producer_managed",
+            "consumer_managed"
+          ],
+          "description": "Party responsible for starting, configuring, and monitoring the delivery operation. Independent of destination ownership and the service that moves the data."
+        }
+      }
+    },
+    "external:core/reporting-write-destination.json": {
+      "title": "Reporting Write Destination",
+      "x-status": "experimental",
+      "description": "Storage or warehouse destination for durable reporting. The caller either references an existing seller-issued immutable destination generation or asks the seller to validate and bind a provider-native location. A destination_ref is owned by the stable authenticated principal's relationship with this seller and may be reused across accounts; each account delivery configuration separately authorizes its feed and scope. Changing proof-bound coordinates or the accepted delivery contract produces a new destination_ref. Access grants name advertised producer identities; credentials never transit AdCP.",
+      "type": "object",
+      "oneOf": [
+        {
+          "title": "Existing binding",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "existing"
+            },
+            "destination_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "x-entity": "reporting_destination",
+              "description": "Seller-issued immutable destination-generation reference returned by sync_agent_configuration, an earlier sync, or bilateral setup."
+            }
+          },
+          "required": [
+            "mode",
+            "destination_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Provision binding",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "provision"
+            },
+            "provider": {
+              "type": "object",
+              "description": "Platform hosting the destination.",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "description": "Provider-native bucket, prefix, project/dataset, catalog/schema, or equivalent locator. It MUST NOT contain an embedded credential or signed URL."
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$",
+              "description": "Optional provider access family used for capability matching."
+            }
+          },
+          "required": [
+            "mode",
+            "provider",
+            "location"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+        "destination_proof": "Before ready, prove destination control and caller authority for every selected account, feed, and media-buy scope. A proof-bound coordinate or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Revoke grants when the configuration, caller authorization, or account becomes inactive."
+      }
+    },
+    "external:core/reporting-dataset-share-destination.json": {
+      "title": "Reporting Dataset Share Destination",
+      "x-status": "experimental",
+      "description": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued immutable recipient/destination generation or asks the seller to provision one for the named recipient. A destination_ref is owned by the stable authenticated principal's relationship with this seller and may be reused across accounts; each account delivery configuration separately authorizes disclosure of its feed and scope. Changing proof-bound recipient coordinates or the accepted delivery contract produces a new destination_ref. No bearer profile, token, private key, password, or other credential may appear here.",
+      "type": "object",
+      "oneOf": [
+        {
+          "title": "Existing binding",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "existing"
+            },
+            "destination_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "x-entity": "reporting_destination",
+              "description": "Seller-issued immutable recipient/destination-generation reference returned by sync_agent_configuration, an earlier sync, or bilateral setup."
+            }
+          },
+          "required": [
+            "mode",
+            "destination_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Provision recipient",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "provision"
+            },
+            "provider": {
+              "type": "object",
+              "description": "Data-sharing platform, such as databricks.com or snowflake.com.",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$",
+              "description": "Provider access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing."
+            },
+            "recipient": {
+              "type": "object",
+              "description": "Intended buyer principal. The identity is interpreted by the provider and access mode; for example, a Databricks sharing identifier, Snowflake organization/account pair, or Open Sharing recipient email. It is an identifier, never a credential.",
+              "properties": {
+                "identity": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "cloud": {
+                  "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json/$defs/ReportingCloud"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "identity"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "cloud": [
+                  "region"
+                ],
+                "region": [
+                  "cloud"
+                ]
+              }
+            }
+          },
+          "required": [
+            "mode",
+            "provider",
+            "access_mode",
+            "recipient"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+        "recipient_proof": "Before ready, prove recipient control and caller authority to disclose every selected account, feed, and media-buy scope. A proof-bound recipient or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Voluntary configuration deactivation stops new publication but may preserve still-authorized historical access through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and revokes the grant within authorization_revocation_seconds."
+      },
+      "$defs": {
+        "ReportingCloud": {
+          "title": "Reporting Cloud",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "aws",
+            "azure",
+            "gcp"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-resource.json": {
+      "title": "Reporting Resource",
+      "x-status": "experimental",
+      "description": "Secret-free authenticated descriptor for an exact reporting materialization. The descriptor MUST select immutable bytes or a provider-native immutable snapshot/version so an exact older revision never resolves to mutable latest state. Callers resolve access through the previously validated caller/account-bound destination/share binding, never from credentials embedded here. No field, including future extensions, may contain credentials, signed URLs, bearer material, or private keys.",
+      "type": "object",
+      "properties": {
+        "resource_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_resource",
+          "description": "Seller-issued opaque reference to this exact authenticated resource descriptor."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "manifest",
+            "dataset",
+            "warehouse_relation"
+          ],
+          "description": "Shape through which the durable revision is consumed."
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "Non-secret provider-native object, relation, or share identifier. MUST NOT contain an activation URL, signed URL, bearer token, password, private key, or embedded credential."
+        },
+        "native_version_ref": {
+          "$ref": "#/$defs/external:core~1reporting-native-version-ref.json"
+        },
+        "manifest_version": {
+          "type": "string",
+          "const": "1.0",
+          "description": "Version of reporting-file-manifest.json used by a manifest resource."
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$",
+          "description": "SHA-256 over the exact manifest bytes. Consumers verify this before parsing the manifest."
+        },
+        "immutability": {
+          "type": "string",
+          "enum": [
+            "immutable_location",
+            "native_version"
+          ],
+          "description": "How this descriptor selects the exact immutable materialization."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Mandatory finite lower-bound endpoint through which this exact resource remains resolvable; it cannot be earlier than the advertised retention contract."
+        },
+        "reader_compatibility": {
+          "type": "array",
+          "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-resource.json/$defs/ReportingReaderCompatibilityItem"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "resource_ref",
+        "kind",
+        "location",
+        "immutability",
+        "expires_at"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "manifest"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "manifest_version",
+              "manifest_sha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "immutability": {
+                "const": "native_version"
+              }
+            },
+            "required": [
+              "immutability"
+            ]
+          },
+          "then": {
+            "required": [
+              "native_version_ref"
+            ]
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "retention": "expires_at MUST be no earlier than the owning obligation.resource_retained_until and publication plus advertised resource_retention_days. A completed obligation cannot rely on deterministic rematerialization in place of a readable exact resource."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingReaderCompatibilityItem": {
+          "title": "Reporting Reader Compatibility Item",
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "external:core/reporting-native-version-ref.json": {
+      "title": "Reporting Native Version Reference",
+      "x-status": "experimental",
+      "description": "Credential-free, decoded provider-native immutable version reference, such as an S3 VersionId, GCS generation, table version, transaction, snapshot, manifest generation, job, or run. This is not URI-encoded or concatenated into an object_ref; URI-encode it only when constructing a provider request. The 1024-character limit accommodates a provider value of up to 1024 UTF-8 bytes because every Unicode character occupies at least one UTF-8 byte; JSON Schema maxLength counts characters rather than bytes.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "external:enums/reporting-health.json": {
+      "title": "Reporting Health",
+      "description": "Operational health for an explicitly echoed reporting scope. Aggregate precedence is action_required, delayed, then healthy. waiting applies only when no active obligation is due. action_required also applies immediately when a readable consumer-receipt revision or adjustment lacks an accepted current receipt; Reliable Reporting defines no separate receipt SLA. complete applies only when the queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization.",
+      "type": "string",
+      "enum": [
+        "healthy",
+        "waiting",
+        "delayed",
+        "action_required",
+        "complete"
+      ],
+      "enumDescriptions": {
+        "healthy": "Due obligations in the queried active scope are current and automated delivery is working.",
+        "waiting": "No obligation in the queried active scope is due yet.",
+        "delayed": "At least one obligation is late, but remains within the seller's declared automated recovery path.",
+        "action_required": "A delivery, SLA, retry, or immediate readable-evidence receipt-reconciliation boundary was crossed and at least one structured human action is supplied.",
+        "complete": "The queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization."
+      }
+    },
+    "external:core/pagination-request.json": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

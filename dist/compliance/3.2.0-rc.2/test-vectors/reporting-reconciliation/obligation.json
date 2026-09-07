@@ -1,0 +1,50 @@
+{
+  "reporting_obligation_id": "obligation-billing",
+  "delivery_config_id": "billing-files",
+  "delivery_config_version": 1,
+  "report_definition_id": "billing-v1",
+  "feed_purpose": "billing",
+  "reporting_profile": "billing-v1",
+  "account_id": "account-1",
+  "media_buy_ids": ["buy-1", "buy-2"],
+  "scope_resolved_at": "2026-08-27T00:00:00Z",
+  "coverage": {
+    "status": "full",
+    "evaluated_at": "2026-08-27T00:00:00Z",
+    "media_buy_ids": ["buy-1", "buy-2"],
+    "fully_covered_media_buy_ids": ["buy-1", "buy-2"],
+    "partially_covered_media_buy_ids": [],
+    "unsupported_media_buy_ids": [],
+    "unknown_media_buy_ids": [],
+    "package_ids": [],
+    "covered_package_ids": [],
+    "unsupported_package_ids": [],
+    "unknown_package_ids": [],
+    "limitations": []
+  },
+  "period": { "start": "2026-08-26T00:00:00Z", "end": "2026-08-27T00:00:00Z", "source_timezone": "UTC" },
+  "expected_at": "2026-08-27T04:00:00Z",
+  "schedule": { "period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT4H" },
+  "destination_ref": "fixture-destination",
+  "required_finality": "official",
+  "reconciliation_mode": "consumer_receipt",
+  "reconciliation_status": "pending",
+  "health": "action_required",
+  "production_status": "published",
+  "revision_count": 1,
+  "adjustment_count": 0,
+  "materialization_count": 1,
+  "successful_materialization_count": 1,
+  "receipt_count": 0,
+  "accepted_receipt_count": 0,
+  "issues": [
+    {
+      "issue_id": "reporting-issue.receipt-required-fixture",
+      "code": "RECEIPT_REQUIRED",
+      "severity": "action_required",
+      "responsible_party": "buyer",
+      "recommended_action": "contact_buyer"
+    }
+  ],
+  "resource_retained_until": "2026-09-27T04:00:02Z"
+}
