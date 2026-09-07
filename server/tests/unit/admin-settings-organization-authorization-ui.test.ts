@@ -27,6 +27,7 @@ function loadControls(currentSettings: Record<string, unknown>) {
     <input type="checkbox" id="organizationAuthorizationPendingJoinRequestsRead">
     <input type="checkbox" id="organizationAuthorizationReferralCodesRead">
     <input type="checkbox" id="organizationAuthorizationCertificationStalledCountRead">
+    <input type="checkbox" id="organizationAuthorizationDomainUsersRead">
     <button id="saveOrganizationAuthorizationBtn" disabled>Save</button>
   `);
   const fetchMock = vi.fn();
@@ -83,6 +84,20 @@ describe("admin organization authorization runtime control", () => {
     dom.window.close();
   });
 
+  it("contains the domain-users checkbox in the real admin settings page", () => {
+    const dom = new JSDOM(source);
+    const checkbox = dom.window.document.querySelector<HTMLInputElement>(
+      "#organizationAuthorizationDomainUsersRead",
+    );
+
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.type).toBe("checkbox");
+    expect(checkbox?.closest("label")?.textContent).toContain(
+      "organization_domain_users_read",
+    );
+    dom.window.close();
+  });
+
   it("renders configured boundaries and disables only unavailable additions", () => {
     const controls = loadControls({
       organization_authorization_enforcement: {
@@ -127,6 +142,9 @@ describe("admin organization authorization runtime control", () => {
     ) as HTMLInputElement).disabled).toBe(true);
     expect((document.getElementById(
       "organizationAuthorizationCertificationStalledCountRead",
+    ) as HTMLInputElement).disabled).toBe(true);
+    expect((document.getElementById(
+      "organizationAuthorizationDomainUsersRead",
     ) as HTMLInputElement).disabled).toBe(true);
     expect(document.getElementById("currentOrganizationAuthorizationStatus")?.textContent)
       .toContain("roles read");
@@ -353,7 +371,38 @@ describe("admin organization authorization runtime control", () => {
     controls.dom.window.close();
   });
 
-  it("keeps the configured certification-stalled-count checkbox editable for candidate-only rollback", async () => {
+  it("saves a domain-users-only staged selection independently", async () => {
+    const controls = loadControls({
+      organization_authorization_enforcement: { enabled: false, boundaries: [] },
+      organization_authorization_environment_ceiling: {
+        boundaries: ["organization_domain_users_read"],
+      },
+    });
+    controls.updateOrganizationAuthorizationDisplay();
+    const document = controls.dom.window.document;
+    const checkbox = document.getElementById(
+      "organizationAuthorizationDomainUsersRead",
+    ) as HTMLInputElement;
+    expect(checkbox.disabled).toBe(false);
+    (document.getElementById("organizationAuthorizationEnabled") as HTMLSelectElement).value = "true";
+    checkbox.checked = true;
+    controls.fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      organization_authorization_enforcement: {
+        enabled: true,
+        boundaries: ["organization_domain_users_read"],
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    await controls.saveOrganizationAuthorizationEnforcement();
+    const [, init] = controls.fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      enabled: true,
+      boundaries: ["organization_domain_users_read"],
+    });
+    controls.dom.window.close();
+  });
+
+  it("keeps the configured domain-users checkbox editable for candidate-only rollback", async () => {
     const controls = loadControls({
       organization_authorization_enforcement: {
         enabled: true,
@@ -364,6 +413,7 @@ describe("admin organization authorization runtime control", () => {
           "organization_pending_join_requests_read",
           "organization_referral_codes_read",
           "organization_certification_stalled_count_read",
+          "organization_domain_users_read",
         ],
       },
       organization_authorization_environment_ceiling: {
@@ -373,13 +423,14 @@ describe("admin organization authorization runtime control", () => {
           "organization_pending_join_request_count_read",
           "organization_pending_join_requests_read",
           "organization_referral_codes_read",
+          "organization_certification_stalled_count_read",
         ],
       },
     });
     controls.updateOrganizationAuthorizationDisplay();
     const document = controls.dom.window.document;
     const candidate = document.getElementById(
-      "organizationAuthorizationCertificationStalledCountRead",
+      "organizationAuthorizationDomainUsersRead",
     ) as HTMLInputElement;
     expect(candidate.checked).toBe(true);
     expect(candidate.disabled).toBe(false);
@@ -393,6 +444,7 @@ describe("admin organization authorization runtime control", () => {
           "organization_pending_join_request_count_read",
           "organization_pending_join_requests_read",
           "organization_referral_codes_read",
+          "organization_certification_stalled_count_read",
         ],
       },
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -407,6 +459,7 @@ describe("admin organization authorization runtime control", () => {
         "organization_pending_join_request_count_read",
         "organization_pending_join_requests_read",
         "organization_referral_codes_read",
+        "organization_certification_stalled_count_read",
       ],
     });
     controls.dom.window.close();
