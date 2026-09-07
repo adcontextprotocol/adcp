@@ -16,7 +16,7 @@ change 3.2 surfaces before GA.
 
 The 3.2 prerelease cycle started with a protocol-first beta checkpoint.
 RC.1 is the current signed protocol checkpoint. TypeScript SDK
-`14.0.0-rc.32`, Python SDK `8.0.0b14`, and Go SDK `adcp/v3@v3.2.1` embed it
+`14.0.0-rc.33`, Python SDK `8.0.0b14`, and Go SDK `adcp/v3@v3.2.1` embed it
 exactly:
 
 <Info>
@@ -42,7 +42,7 @@ package tag or from an SDK generated against an earlier checkpoint.
 | `3.2.0-beta.11` | Previous protocol checkpoint | Pinned adopters comparing beta.11 and RC.0 behavior |
 | `3.2.0-rc.0` | Previous protocol checkpoint | SDK-backed integration testing with an exact RC.0 package pairing |
 | `3.2.0-rc.1` | Current protocol checkpoint for Reliable Reporting 1.0 and reporting-semantics hardening | Raw-wire, signed-artifact, code-generation, and SDK-backed integration testing |
-| Current SDK wave | `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed `3.2.0-rc.1` | Exact RC.1 SDK-backed testing; higher-level Python and Go coverage remains role-dependent |
+| Current SDK wave | `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed `3.2.0-rc.1` | Exact RC.1 SDK-backed testing; higher-level Python and Go coverage remains role-dependent |
 
 Earlier betas and RC.0 remain useful as pinned implementation checkpoints.
 TypeScript SDK beta.31 and Python SDK beta.13 are historical RC.0 pairings;
@@ -73,7 +73,7 @@ The TypeScript SDK has exact RC.1 support. The npm `latest` tag remains on SDK
 13, so opt into the release-candidate channel explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.32
+npm install @adcp/sdk@14.0.0-rc.33
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy

@@ -3,6 +3,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const CURRENT_SDK_CHECKPOINT_FILES = [
+  'docs/building/by-layer/L4/choose-your-sdk.mdx',
+  'docs/learning/supplements/buyer-briefs-and-get-products.mdx',
+  'docs/learning/tracks/buyer.mdx',
+  'docs/media-buy/product-discovery/proposal-negotiation.mdx',
+  'docs/reference/3-2-beta.mdx',
+  'docs/reference/migration/3-1-to-3-2.mdx',
+  'docs/reference/release-notes.mdx',
+  'docs/reference/versions.mdx',
+  'docs/reference/whats-new-in-3-2.mdx',
+  'server/src/addie/mcp/certification-tools.ts',
+];
+
 async function loadInstalledSingleAgentClients() {
   return [
     require('@adcp/sdk').SingleAgentClient,
@@ -30,6 +43,20 @@ function canonicalAdcpVersion(version) {
   assert.ok(match, `invalid AdCP release version: ${version}`);
   return `${match[1]}.${match[2]}.${match[3] ?? '0'}${match[4]}`;
 }
+
+test('current exact SDK checkpoint references match package.json', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'));
+  const expectedVersion = packageJson.dependencies['@adcp/sdk'];
+  assert.match(expectedVersion, /-rc\.\d+$/, 'current SDK checkpoint must remain an exact release-candidate pin');
+  const versionCore = expectedVersion.split('-')[0].replaceAll('.', '\\.');
+  const currentSdkVersionPattern = new RegExp(`${versionCore}-rc\\.\\d+`, 'g');
+
+  for (const relativePath of CURRENT_SDK_CHECKPOINT_FILES) {
+    const source = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
+    const versions = [...new Set(source.match(currentSdkVersionPattern) ?? [])];
+    assert.deepEqual(versions, [expectedVersion], `${relativePath} must use the package.json SDK checkpoint`);
+  }
+});
 
 test('training-agent current AdCP version exactly matches the installed SDK schema release', async () => {
   const currentVersion = trainingAgentAdcpVersion('TRAINING_AGENT_CURRENT_ADCP_VERSION');

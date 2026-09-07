@@ -542,7 +542,7 @@ The deterministic training profiles expose the exact `3.2-rc.1` proposal-negotia
 | Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
 | Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
 
-Pin the release candidate exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into prerelease behavior. SDK `14.0.0-rc.32` accepts `wireAdcpVersion: "3.2-rc.1"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
+Pin the release candidate exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into prerelease behavior. SDK `14.0.0-rc.33` accepts `wireAdcpVersion: "3.2-rc.1"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
 
 ### Try the lifecycle with Addie or Sage
 
