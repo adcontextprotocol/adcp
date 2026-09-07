@@ -41,6 +41,7 @@ import { SYNC_REPORTING_RECEIPTS_SCHEMA } from '../../src/training-agent/tenants
 import { handleGetMediaBuyDelivery } from '../../src/training-agent/task-handlers.js';
 import { legacyGetReportingStatusHandler } from '../../src/training-agent/v6-sales-platform.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 import { canonicalize } from '@adcp/sdk';
 import { createHash } from 'node:crypto';
 
@@ -160,7 +161,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     const published = publishZeroRowReportingCoreLifecycleProbe(principal, accountId);
     const response = await handleGetMediaBuyDelivery({
       account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id,
-    }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: '3.2-rc.1' });
+    }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
     expect(response).toMatchObject({
       reporting_period: { start: '2026-08-01T00:00:00.000Z', end: '2026-08-01T01:00:00.000Z' },
       media_buy_deliveries: [],
@@ -205,7 +206,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     expect(rc0).not.toHaveProperty('adjustment_receipts');
     await expect(handler({ account, view: 'periods', changes_after: 'reporting_change_1_deadbeefdeadbeef', adcp_version: '3.2-rc.0' } as never, context as never))
       .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    const rc1 = await handler({ account, view: 'periods', adcp_version: '3.2-rc.1' } as never, context as never) as Record<string, unknown>;
+    const rc1 = await handler({ account, view: 'periods', adcp_version: TRAINING_AGENT_CURRENT_ADCP_VERSION } as never, context as never) as Record<string, unknown>;
     expect(rc1).toHaveProperty('changes_checkpoint');
     expect(rc1).toHaveProperty('adjustments');
   });
@@ -219,19 +220,19 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     await withDurableReportingLedger(principal, accountId, true, () => undefined, naturalAccount);
     clearReportingAccountBindingCacheForTesting();
     const read = await handleGetMediaBuyDelivery({ account: naturalAccount, reporting_revision_id: published.reporting_revision_id }, {
-      mode: 'training', principal, servedAdcpVersion: '3.2-rc.1',
+      mode: 'training', principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
     });
     expect(read).toMatchObject({ reporting_revision: { reporting_revision_id: published.reporting_revision_id } });
     const omittedAccount = await handleGetMediaBuyDelivery({ reporting_revision_id: published.reporting_revision_id }, {
-      mode: 'training', principal, servedAdcpVersion: '3.2-rc.1', resolvedAccountId: 'synthetic_wrong_context',
+      mode: 'training', principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION, resolvedAccountId: 'synthetic_wrong_context',
     });
     expect(omittedAccount).toMatchObject({ reporting_revision: { reporting_revision_id: published.reporting_revision_id } });
     const opaque = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id }, {
-      mode: 'training', principal, servedAdcpVersion: '3.2-rc.1', resolvedAccountId: 'synthetic_wrong_context',
+      mode: 'training', principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION, resolvedAccountId: 'synthetic_wrong_context',
     });
     expect(opaque).toMatchObject({ reporting_revision: { reporting_revision_id: published.reporting_revision_id } });
     const unauthorized = await handleGetMediaBuyDelivery({ account: naturalAccount, reporting_revision_id: published.reporting_revision_id }, {
-      mode: 'training', principal: 'other-consumer', servedAdcpVersion: '3.2-rc.1',
+      mode: 'training', principal: 'other-consumer', servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
     });
     expect(unauthorized).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
   });
@@ -252,7 +253,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
       { period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 1 },
       { period_start: '2026-08-01T01:00:00.000Z', period_end: '2026-08-01T02:00:00.000Z', impressions: 2 },
     ]);
-    const context = { mode: 'training' as const, principal, servedAdcpVersion: '3.2-rc.1' as const };
+    const context = { mode: 'training' as const, principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION };
     const expectedProbeIds = accounts.map(candidate => candidate.accountId).sort();
     const expectProbeSet = (alsoPersistedOwner: boolean) => {
       const trace = reportingRevisionReadTraceForTesting();
@@ -320,9 +321,9 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     ];
     const published = publishReportingCoreLifecycleProbeRows(principal, accountId, rows);
     const status = getReportingStatusForAccount({ view: 'revision', reporting_revision_id: published.reporting_revision_id } as TrainingGetReportingStatusRequest, principal, accountId);
-    const read = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { max_results: 1 } }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: '3.2-rc.1' });
+    const read = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { max_results: 1 } }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
     expect(read).toMatchObject({ reporting_rows: [{ impressions: 7 }], reporting_revision: { revision_content_sha256: published.revision_content_sha256 }, reporting_revision_binding: { content_sha256: published.revision_content_sha256 }, pagination: { total_count: 2, has_more: true } });
-    const next = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { max_results: 1, cursor: (read.pagination as { cursor: string }).cursor } }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: '3.2-rc.1' });
+    const next = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { max_results: 1, cursor: (read.pagination as { cursor: string }).cursor } }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
     expect(next).toMatchObject({ reporting_rows: [{ impressions: 3 }], reporting_revision: read.reporting_revision, reporting_revision_binding: read.reporting_revision_binding, pagination: { total_count: 2, has_more: false } });
     expect((status.revision as Record<string, unknown>).revision_content_sha256).toBe(published.revision_content_sha256);
     expect((read.reporting_revision_binding as Record<string, unknown>).content_sha256).toBe(createHash('sha256').update(canonicalize({
@@ -330,12 +331,12 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
       control_totals: [{ name: 'impressions', value: '10', value_type: 'integer', unit: 'impressions' }],
       reporting_rows: rows,
     })).digest('hex'));
-    const mixed = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, include_package_daily_breakdown: false }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: '3.2-rc.1' });
+    const mixed = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, include_package_daily_breakdown: false }, { mode: 'training', principal, resolvedAccountId: accountId, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
     expect(mixed).toMatchObject({ errors: [{ code: 'VALIDATION_ERROR' }] });
     const cursor = (read.pagination as { cursor: string }).cursor;
-    const tampered = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor: `${cursor}x` } }, { mode: 'training', principal, servedAdcpVersion: '3.2-rc.1' });
+    const tampered = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor: `${cursor}x` } }, { mode: 'training', principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
     expect(tampered).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
-    const wrongPrincipal = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor } }, { mode: 'training', principal: 'other-principal', servedAdcpVersion: '3.2-rc.1' });
+    const wrongPrincipal = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor } }, { mode: 'training', principal: 'other-principal', servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
     expect(wrongPrincipal).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
     expect(validateSourceSchema('media-buy/get-media-buy-delivery-request.json', { pagination: { max_results: 1 } }).valid).toBe(false);
   });
@@ -350,7 +351,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
       { period_start: '2026-08-01T01:00:00.000Z', period_end: '2026-08-01T02:00:00.000Z', impressions: 2 },
     ]);
     await withDurableReportingLedger(principal, accountId, true, () => undefined, naturalAccount);
-    const context = { mode: 'training' as const, principal, servedAdcpVersion: '3.2-rc.1' as const };
+    const context = { mode: 'training' as const, principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION };
     const first = await handleGetMediaBuyDelivery({
       account: naturalAccount, reporting_revision_id: published.reporting_revision_id, pagination: { max_results: 1 },
     }, context);

@@ -24,10 +24,13 @@ import {
   stopSessionCleanup,
 } from '../../src/training-agent/state.js';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
-import type { MediaBuyState } from '../../src/training-agent/types.js';
+import {
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  type MediaBuyState,
+} from '../../src/training-agent/types.js';
 
 const PUBLIC_TEST_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
-const ADCP_VERSION = '3.2-rc.1';
+const ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 
 async function boot(): Promise<{ url: string; close(): Promise<void> }> {
   const app = express();

@@ -8,6 +8,28 @@ const YAML = require("yaml");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function currentCheckpoint() {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
+  );
+  const trainingAgentTypes = fs.readFileSync(
+    path.join(__dirname, "..", "server", "src", "training-agent", "types.ts"),
+    "utf8"
+  );
+  const wireVersion = trainingAgentTypes.match(
+    /TRAINING_AGENT_CURRENT_ADCP_VERSION\s*=\s*'([^']+)'/
+  );
+  assert.ok(wireVersion, "training-agent current AdCP version must be explicit");
+  return {
+    sdkVersion: packageJson.dependencies["@adcp/sdk"],
+    wireVersion: wireVersion[1],
+  };
+}
+
 async function loadSchema(uri) {
   if (!uri.startsWith("/schemas/"))
     throw new Error(`Unexpected schema URI: ${uri}`);
@@ -1395,7 +1417,13 @@ test("buyer teaching surfaces explain structured-first targeting", () => {
   }
   assert.match(skill, /fewer tokens/);
   assert.match(addieKnowledge, /No targeting-resolution echo confirms only/);
-  assert.match(certificationTools, /current .*3\.2-rc\.1.* wire pin with @adcp\/sdk@14\.0\.0-rc\.33/);
+  const { sdkVersion, wireVersion } = currentCheckpoint();
+  assert.match(
+    certificationTools,
+    new RegExp(
+      `current .*${escapeRegExp(wireVersion)}.* wire pin with @adcp/sdk@${escapeRegExp(sdkVersion)}`
+    )
+  );
   assert.match(certificationTools, /3\.2 targeting-aware objectives live/);
   assert.doesNotMatch(certificationTools, /issues\/6199/);
   assert.match(
