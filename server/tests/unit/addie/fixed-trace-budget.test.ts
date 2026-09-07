@@ -3,6 +3,7 @@ import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
   FixedTraceBudgetAdmissionError,
+  fixedTraceDirectFullSuiteResponsePricingPolicy,
   fixedTraceEstimatedCostUsd,
   fixedTraceApprovedPricingProfiles,
   fixedTraceResponseUsesPricingPolicy,
@@ -153,11 +154,16 @@ describe('fixed trace provider budget', () => {
     const haikuPolicy = fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', HAIKU_4_5_PRICING);
     expect(haikuPolicy)
       .toMatchObject({ pricingProfileId: HAIKU_4_5_PRICING.profileId });
-    expect(fixedTraceResponseUsesPricingPolicy(haikuPolicy, {
+    const datedHaikuResponse = {
       ...RESPONSE,
       provider: 'anthropic',
       model: 'claude-haiku-4-5-20251001',
-    })).toBe(true);
+    } as const;
+    expect(fixedTraceResponseUsesPricingPolicy(haikuPolicy, datedHaikuResponse)).toBe(false);
+    expect(fixedTraceResponseUsesPricingPolicy(
+      fixedTraceDirectFullSuiteResponsePricingPolicy('anthropic', 'claude-haiku-4-5', HAIKU_4_5_PRICING),
+      datedHaikuResponse,
+    )).toBe(true);
     expect(fixedTraceEstimatedCostUsd({
       inputTokens: 100, outputTokens: 20, cacheReadTokens: 1_000, cacheWriteTokens: 200,
     }, HAIKU_4_5_PRICING)).toBe(0.00055);

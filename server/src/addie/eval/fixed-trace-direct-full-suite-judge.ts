@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { collectModelResponse, InvalidModelEventStreamError } from '../model-providers/events.js';
 import type { ModelFinishReason, ModelOutputSchema, ModelProvider, ModelProviderId, ModelReasoningEffort, ModelRequest, ModelResponse, ModelUsage } from '../model-providers/model-provider.js';
 import { datedPricingProfileIdentity, datedPricingProfilesForFixedTrace } from './dated-pricing-cohort.js';
-import { fixedTraceEstimatedCostUsd, fixedTraceResponsePricingPolicy } from './fixed-trace-budget.js';
+import { fixedTraceDirectFullSuiteResponsePricingPolicy, fixedTraceEstimatedCostUsd } from './fixed-trace-budget.js';
 import { assertFixedTraceBlindedModelJudgePacket } from './fixed-trace-model-judge-control-plane.js';
 import { FIXED_TRACE_JUDGE_PROMPT_VERSION } from './fixed-trace-judge.js';
 import type { FixedTraceCompletedJudgeSummary } from './fixed-trace-judge.js';
@@ -122,7 +122,7 @@ export function fixedTraceDirectFullSuiteJudgePlan(provider: ModelProviderId): F
   const model = judgeModel(provider);
   const pricing = datedPricingProfilesForFixedTrace().find((entry) => entry.provider === provider && entry.model === model);
   if (!pricing) throw new Error('Fixed trace direct full-suite judge pricing is unavailable');
-  const policy = fixedTraceResponsePricingPolicy(provider, model, pricing);
+  const policy = fixedTraceDirectFullSuiteResponsePricingPolicy(provider, model, pricing);
   const base = {
     provider, model, reasoningEffort: 'provider_default' as const,
     maxOutputTokens: 300 as const, timeoutMs: 30_000 as const, maxIterations: 1 as const,

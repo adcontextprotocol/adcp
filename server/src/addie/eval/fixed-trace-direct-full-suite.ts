@@ -7,7 +7,7 @@ import {
   FixedTraceBudget,
   type FixedTraceBudgetDiagnosticLease,
   claimFixedTraceBudgetDiagnosticLease,
-  fixedTraceResponsePricingPolicy,
+  fixedTraceDirectFullSuiteResponsePricingPolicy,
   isTrustedBudgetedFixedTraceProvider,
 } from './fixed-trace-budget.js';
 import { FIXED_TRACE_DIRECT_FULL_SUITE_MAX_JUDGE_PREPARED_REQUEST_BYTES, fixedTraceDirectFullSuiteJudgePlan, judgeFixedTraceDirectFullSuiteObservation, summarizeFixedTraceDirectFullSuiteJudgments, type FixedTraceDirectFullSuiteJudgment } from './fixed-trace-direct-full-suite-judge.js';
@@ -87,7 +87,7 @@ export function fixedTraceDirectFullSuiteStage(
     candidate.provider === cell.provider && candidate.model === cell.model
   ));
   if (!pricing || provider.id !== cell.provider) throw new Error('Fixed trace direct full-suite provider or pricing identity drift');
-  fixedTraceResponsePricingPolicy(cell.provider, cell.model, pricing);
+  fixedTraceDirectFullSuiteResponsePricingPolicy(cell.provider, cell.model, pricing);
   return Object.freeze({
     provider, model: cell.model, reasoningEffort: cell.effort, maxOutputTokens: 900,
     timeoutMs: 120_000, maxIterations: 12, transportRetries: 0,
@@ -155,7 +155,7 @@ function reservationComponent(input: Readonly<{
   maxOutputTokens: number;
   profile: DatedPricingProfile;
 }>): FixedTraceDirectFullSuiteCostComponent {
-  const policy = fixedTraceResponsePricingPolicy(input.provider, input.model, input.profile);
+  const policy = fixedTraceDirectFullSuiteResponsePricingPolicy(input.provider, input.model, input.profile);
   const tokens = input.inputByteUpperBound;
   const selectedSubset = [
     { category: 'input' as const, rate: input.profile.inputUsdPerMillionTokens },
@@ -192,7 +192,7 @@ export function fixedTraceDirectFullSuiteCostCeiling(cellId: FixedTraceDirectFul
   const profile = (provider: ModelProviderId, model: string) => {
     const result = datedPricingProfilesForFixedTrace().find((entry) => entry.provider === provider && entry.model === model);
     if (!result) throw new Error('Fixed trace direct full-suite ceiling pricing is unavailable');
-    fixedTraceResponsePricingPolicy(provider, model, result);
+    fixedTraceDirectFullSuiteResponsePricingPolicy(provider, model, result);
     return result;
   };
   const candidate = profile(cell.provider, cell.model);
@@ -397,7 +397,7 @@ export function admitFixedTraceDirectFullSuiteComparison(input: Readonly<{
     || input.candidate.generation.maxOutputTokens !== 900
     || input.candidate.generation.maxIterations !== MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS
   ) throw new Error('Fixed trace direct full-suite candidate controls drift from the admitted cell');
-  const candidatePricingPolicy = fixedTraceResponsePricingPolicy(
+  const candidatePricingPolicy = fixedTraceDirectFullSuiteResponsePricingPolicy(
     input.candidate.generation.provider.id,
     input.candidate.generation.model,
     input.candidate.generation.pricing,
@@ -415,7 +415,7 @@ export function admitFixedTraceDirectFullSuiteComparison(input: Readonly<{
     if (!provider || provider.id !== judgeProvider) throw new Error('Fixed trace direct full-suite judge provider identity drift');
     const pricing = datedPricingProfilesForFixedTrace().find((entry) => entry.provider === judgeProvider && entry.model === judgePlan.model);
     if (!pricing) throw new Error('Fixed trace direct full-suite judge pricing is unavailable');
-    const policy = fixedTraceResponsePricingPolicy(judgeProvider, judgePlan.model, pricing);
+    const policy = fixedTraceDirectFullSuiteResponsePricingPolicy(judgeProvider, judgePlan.model, pricing);
     if (!isTrustedBudgetedFixedTraceProvider(provider, input.budget, pricing, policy)) {
       throw new Error('Fixed trace direct full-suite judge requires an authenticated shared budget wrapper');
     }

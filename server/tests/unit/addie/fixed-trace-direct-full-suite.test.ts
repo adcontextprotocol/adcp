@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelProvider, ModelProviderCapabilities, ModelProviderId, ModelRequest, ModelRespondOptions, ModelResponse, NormalizedModelEvent, PreparedModelInvocation } from '../../../src/addie/model-providers/model-provider.js';
-import { BudgetedFixedTraceProvider, FixedTraceBudget, fixedTraceEstimatedCostUsd, fixedTraceResponsePricingPolicy } from '../../../src/addie/eval/fixed-trace-budget.js';
+import { BudgetedFixedTraceProvider, FixedTraceBudget, fixedTraceDirectFullSuiteResponsePricingPolicy, fixedTraceEstimatedCostUsd, fixedTraceResponseUsesPricingPolicy } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 import { FIXED_TRACE_DIRECT_FULL_SUITE_CELLS, admitFixedTraceDirectFullSuiteComparison, assertFixedTraceDirectFullSuiteCostCeiling, consumeFixedTraceDirectFullSuiteSelector, fixedTraceDirectFullSuiteAnthropicApiKey, fixedTraceDirectFullSuiteCell, fixedTraceDirectFullSuiteConfig, fixedTraceDirectFullSuiteCostCeiling, fixedTraceDirectFullSuitePlan, reserveFixedTraceDirectFullSuiteOutput, runFixedTraceDirectFullSuiteComparisonArtifact } from '../../../src/addie/eval/fixed-trace-direct-full-suite.js';
 import { FIXED_TRACE_SUITE, FIXED_TRACE_SUITE_VERSION, fixedTraceSuiteSha256 } from '../../../src/addie/eval/fixed-trace-suite.js';
@@ -43,7 +43,7 @@ class FakeProvider implements ModelProvider {
 
 function budgeted(provider: ModelProvider, model: string, budget: FixedTraceBudget): BudgetedFixedTraceProvider {
   const pricing = datedPricingProfilesForFixedTrace().find((entry) => entry.provider === provider.id && entry.model === model)!;
-  return new BudgetedFixedTraceProvider(provider, budget, pricing, fixedTraceResponsePricingPolicy(provider.id, model, pricing));
+  return new BudgetedFixedTraceProvider(provider, budget, pricing, fixedTraceDirectFullSuiteResponsePricingPolicy(provider.id, model, pricing));
 }
 
 async function run(
@@ -51,9 +51,10 @@ async function run(
   fail = false,
   judgeResponsePatch: Partial<ModelResponse> = {},
   judgeOverrides: Partial<Record<ModelProviderId, FakeProvider>> = {},
+  candidateResponsePatch: Partial<ModelResponse> = {},
 ) {
   const cell = fixedTraceDirectFullSuiteCell(cellId); const budget = new FixedTraceBudget(fixedTraceDirectFullSuiteCostCeiling(cellId).requiredSoftMaxUsd);
-  const rawCandidate = new FakeProvider(cell.provider, fail);
+  const rawCandidate = new FakeProvider(cell.provider, fail, candidateResponsePatch);
   const candidate = budgeted(rawCandidate, cell.model, budget);
   const rawJudges = {
     anthropic: judgeOverrides.anthropic ?? new FakeProvider('anthropic', false, judgeResponsePatch),
@@ -159,6 +160,41 @@ describe('fixed-trace direct full-suite comparison', () => {
     const plan = fixedTraceDirectFullSuitePlan({ cellId: 'generation:google:gemini-3.7-flash:high', sourceFiles: ['fixture.ts'], sourceBundleSha256: HASH, promptConfigVersion: HASH, softMaxUsd: 300 });
     expect(Object.isFrozen(plan)).toBe(true);
     expect(plan.judges).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'anthropic', reasoningEffort: 'provider_default', pricingProfileSha256: expect.stringMatching(/^sha256:/) })]));
+  }, 30_000);
+
+  it('admits a dated Claude candidate identity only when it is approved by the recorded pricing policy', async () => {
+    const datedModel = 'claude-haiku-4-5-20251001';
+    const { budget, result } = await run(
+      'generation:anthropic:claude-haiku-4-5:provider_default',
+      false,
+      {},
+      {},
+      { model: datedModel },
+    );
+    const providerObservations = result.observations.filter((observation) => observation.metadata.generation.source === 'provider');
+    expect(providerObservations).toHaveLength(30);
+    const control = providerObservations[0]!.metadata.generationControl;
+    expect(fixedTraceResponseUsesPricingPolicy(fixedTraceDirectFullSuiteResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing), { provider: 'anthropic', model: datedModel })).toBe(true);
+    expect(providerObservations.every((observation) => observation.metadata.generation.returnedModel === datedModel)).toBe(true);
+    expect(providerObservations.every((observation) => observation.metadata.generation.modelResolution === 'provider_canonicalized')).toBe(true);
+    expect(providerObservations.map((observation) => observation.terminalStatus)).not.toContain('unknown_exposure');
+    expect(result.grades.filter((grade) => providerObservations.some((observation) => observation.traceId === grade.traceId))
+      .every((grade) => !grade.failures.includes('generation_model_resolution_policy_mismatch'))).toBe(true);
+    expect(budget.snapshot()).toMatchObject({ exposureUnknown: false });
+  }, 30_000);
+
+  it('continues to fail closed for an unreviewed Claude candidate identity', async () => {
+    const { result } = await run(
+      'generation:anthropic:claude-haiku-4-5:provider_default',
+      false,
+      {},
+      {},
+      { model: 'claude-unreviewed-20990101' },
+    );
+    const providerObservations = result.observations.filter((observation) => observation.metadata.generation.source === 'provider');
+    expect(providerObservations).toHaveLength(1);
+    expect(providerObservations[0]?.terminalStatus).toBe('unknown_exposure');
+    expect(result.observations).toHaveLength(32);
   }, 30_000);
 
   it('records the exact dispatch-boundary judge invocation rather than an earlier preparation', async () => {
