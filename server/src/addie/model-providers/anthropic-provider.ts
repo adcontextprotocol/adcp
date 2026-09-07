@@ -627,6 +627,19 @@ export class AnthropicModelProvider implements ModelProvider {
     return deriveAnthropicProviderToolReceipt(call, result, disclosure);
   }
 
+  /** Preserve opaque Anthropic continuation blocks across evaluator snapshots. */
+  snapshotResponse(response: ModelResponse): ModelResponse {
+    const snapshot = structuredClone(response);
+    for (const [index, content] of response.content.entries()) {
+      const continuation = anthropicContinuationPayloads.get(content);
+      const clonedContent = snapshot.content[index];
+      if (continuation && clonedContent) {
+        rememberAnthropicContinuation(clonedContent, continuation);
+      }
+    }
+    return deepFreeze(snapshot);
+  }
+
   async *respond(
     request: ModelRequest,
     options?: ModelRespondOptions,
