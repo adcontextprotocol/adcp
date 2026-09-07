@@ -140,6 +140,13 @@ export const FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE = 'direct_mo
 export const FIXED_TRACE_DIRECT_FULL_SUITE_COMPARISON_MODE = 'direct_full_suite_model_comparison_v1' as const;
 /** Bounds every direct-full-suite prepared request before provider dispatch. */
 export const FIXED_TRACE_DIRECT_FULL_SUITE_MAX_PREPARED_REQUEST_BYTES = 262_144;
+/**
+ * The paid architecture diagnostic uses the same conservative request ceiling
+ * as the separately reviewed direct full-suite evaluator. This is a dispatch
+ * guard as well as a reservation input: a later continuation cannot silently
+ * exceed the whole-cell escrow that was admitted before evidence paths open.
+ */
+export const FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_MAX_PREPARED_REQUEST_BYTES = 262_144;
 export type FixedTraceDirectModelScreenGenerationCellId =
   | 'generation:anthropic:claude-sonnet-5:provider_default'
   | 'generation:anthropic:claude-haiku-4-5:provider_default'
@@ -1746,6 +1753,7 @@ async function executeRouter(
   trace: FixedTraceCase,
   config: FixedTraceProviderStageConfig,
   assertBeforeDispatch: () => void,
+  architectureDiagnosticMode: FixedTraceArchitectureDiagnosticMode | undefined,
 ): Promise<{
   request: ModelRequest;
   response: ModelResponse | null;
@@ -1786,6 +1794,11 @@ async function executeRouter(
       signal: controller.signal,
       beforeDispatch: (prepared) => {
         assertBeforeDispatch();
+        if (
+          architectureDiagnosticMode === 'synthetic_sonnet_full_pack_v1'
+          && Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8')
+            > FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_MAX_PREPARED_REQUEST_BYTES
+        ) throw new FixedTracePreparationError('router', new Error('Fixed trace architecture diagnostic prepared request exceeds its reviewed byte ceiling'));
         dispatched = true;
         dispatchedCalls++;
         invocations.push(prepared);
@@ -1971,6 +1984,7 @@ export async function runFixedTraceCase(
       executionTrace,
       executionConfig.router ?? (() => { throw new Error('Fixed trace runner router is missing'); })(),
       assertBeforeDispatch,
+      executionConfig.architectureDiagnosticMode,
     );
   const generationNotRun = notRunStageMetadata(executionTrace);
   if (!routed.plan || routed.status) {
@@ -2097,6 +2111,11 @@ export async function runFixedTraceCase(
             && Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8')
               > FIXED_TRACE_DIRECT_FULL_SUITE_MAX_PREPARED_REQUEST_BYTES
           ) throw new FixedTracePreparationError('generation', new Error('Fixed trace direct full-suite prepared request exceeds its reviewed byte ceiling'));
+          if (
+            executionConfig.architectureDiagnosticMode === 'synthetic_sonnet_full_pack_v1'
+            && Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8')
+              > FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_MAX_PREPARED_REQUEST_BYTES
+          ) throw new FixedTracePreparationError('generation', new Error('Fixed trace architecture diagnostic prepared request exceeds its reviewed byte ceiling'));
           dispatched = true;
           dispatchedCalls++;
           invocations.push(prepared);
