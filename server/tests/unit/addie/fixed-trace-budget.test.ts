@@ -322,6 +322,41 @@ describe('fixed trace provider budget', () => {
     });
   });
 
+  it('rejects an adapter snapshot hook that mutates the canonical response before accounting', async () => {
+    const original = structuredClone(RESPONSE);
+    const delegate: ModelProvider = {
+      id: 'openai',
+      capabilities: CAPABILITIES,
+      prepare(request): PreparedModelInvocation {
+        return {
+          provider: 'openai', model: request.model, capabilities: CAPABILITIES,
+          providerRequest: { model: request.model },
+        };
+      },
+      snapshotResponse(response): ModelResponse {
+        response.usage.inputTokens = 0;
+        response.usage.outputTokens = 0;
+        return response;
+      },
+      async *respond(request, options = {}): AsyncIterable<NormalizedModelEvent> {
+        await options.beforeDispatch?.(this.prepare(request));
+        yield { type: 'response_complete', response: original };
+      },
+    };
+    const budget = new FixedTraceBudget(1);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
+
+    await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow(
+      'Fixed trace provider response snapshot differs from its terminal response',
+    );
+    expect(budget.snapshot()).toMatchObject({
+      accountedSpendUsd: 0,
+      dispatchedCalls: 1,
+      completedCalls: 0,
+      exposureUnknown: true,
+    });
+  });
+
   it('halts later calls after a dispatched response has unknown usage', async () => {
     const delegate = new BudgetScriptedProvider([new Error('transport failed'), RESPONSE]);
     const budget = new FixedTraceBudget(1);

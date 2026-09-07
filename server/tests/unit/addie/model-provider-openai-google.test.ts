@@ -26,6 +26,8 @@ import {
 import { createOfficialDocsReadOnlyToolBoundary } from '../../../src/addie/jobs/official-docs-read-only-tools.js';
 import { executeFixedTraceToolLoop } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import { FIXED_TRACE_SUITE } from '../../../src/addie/eval/fixed-trace-suite.js';
+import { BudgetedFixedTraceProvider, FixedTraceBudget, fixedTraceResponsePricingPolicy } from '../../../src/addie/eval/fixed-trace-budget.js';
+import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 
 const { googleGenAIConstructor } = vi.hoisted(() => ({
   googleGenAIConstructor: vi.fn(function FakeGoogleGenAI() {
@@ -602,7 +604,16 @@ describe('GoogleGenerateContentProvider', () => {
         }],
         usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5 },
       }));
-    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+    const rawProvider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+    const pricing = datedPricingProfilesForFixedTrace().find((profile) => (
+      profile.provider === 'google' && profile.model === GOOGLE_ROUTER_MODEL
+    ))!;
+    const provider = new BudgetedFixedTraceProvider(
+      rawProvider,
+      new FixedTraceBudget(1),
+      pricing,
+      fixedTraceResponsePricingPolicy('google', GOOGLE_ROUTER_MODEL, pricing),
+    );
     const handler = vi.fn().mockResolvedValue('Found the versioning guide.');
     const handlerFactory = vi.fn().mockReturnValue(new Map([
       ['search_docs', handler],

@@ -7,6 +7,7 @@ import type {
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../model-providers/model-provider.js';
+import { isDeepStrictEqual } from 'node:util';
 import {
   GOOGLE_ROUTER_MODEL,
   isGoogleRouterModelRevision,
@@ -226,6 +227,7 @@ interface BudgetedDelegateIdentity {
   readonly capabilities: ModelProvider['capabilities'];
   readonly prepare: ModelProvider['prepare'];
   readonly respond: ModelProvider['respond'];
+  readonly snapshotResponse?: ModelProvider['snapshotResponse'];
   readonly deriveProviderToolReceipt?: ModelProvider['deriveProviderToolReceipt'];
 }
 
@@ -254,6 +256,7 @@ function snapshotDelegateIdentity(delegate: ModelProvider): BudgetedDelegateIden
   const capabilities = deepFreeze(structuredClone(delegate.capabilities)) as ModelProvider['capabilities'];
   const prepare = delegate.prepare;
   const respond = delegate.respond;
+  const snapshotResponse = delegate.snapshotResponse;
   const deriveProviderToolReceipt = delegate.deriveProviderToolReceipt;
   if (typeof id !== 'string' || !id.trim() || typeof prepare !== 'function' || typeof respond !== 'function') {
     throw new Error('Fixed trace budget delegate identity is invalid');
@@ -264,6 +267,7 @@ function snapshotDelegateIdentity(delegate: ModelProvider): BudgetedDelegateIden
     capabilities,
     prepare: prepare.bind(delegate),
     respond: respond.bind(delegate),
+    snapshotResponse: snapshotResponse?.bind(delegate),
     deriveProviderToolReceipt: deriveProviderToolReceipt?.bind(delegate),
   });
 }
@@ -582,10 +586,21 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
             throw new Error('Fixed trace provider completed without dispatch admission');
           }
           // The delegate still owns `event.response` and may mutate it when
-          // the iterator resumes after this yield. One evaluator-owned frozen
-          // snapshot is therefore the sole terminal response used for
-          // approval, settlement, and the outward event.
-          const response = deepFreeze(structuredClone(event.response));
+          // the iterator resumes after this yield. An adapter may preserve
+          // opaque same-provider continuation state while snapshotting, but
+          // it may not alter the canonical response it supplied.
+          // Capture the canonical value before invoking an adapter hook. The
+          // hook is permitted to transfer opaque continuation state into its
+          // own clone, never to mutate the delegate-owned response or change
+          // the usage that is settled below.
+          const canonicalResponse = structuredClone(event.response);
+          const snapshot = this.#delegate.snapshotResponse
+            ? this.#delegate.snapshotResponse(event.response)
+            : structuredClone(event.response);
+          if (!isDeepStrictEqual(snapshot, canonicalResponse)) {
+            throw new Error('Fixed trace provider response snapshot differs from its terminal response');
+          }
+          const response = deepFreeze(snapshot);
           if (fixedTraceResponseUsesPricingPolicy(this.#responsePricingPolicy, response)) {
             try {
               this.#budget.complete(reservation, response.usage, this.#pricing);
