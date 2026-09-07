@@ -153,6 +153,25 @@ class AdapterTimeoutProvider extends ScriptedProvider {
   }
 }
 
+class HostileTimeoutProvider extends ScriptedProvider {
+  constructor(private readonly thrown: unknown) {
+    super([]);
+  }
+
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    await new Promise<void>((resolve) => {
+      options.signal?.addEventListener('abort', resolve, { once: true });
+    });
+    throw this.thrown;
+  }
+}
+
 class InvalidNormalizedEventProvider extends ScriptedProvider {
   override async *respond(
     request: ModelRequest,
@@ -1524,6 +1543,35 @@ describe('fixed trace artifact runner', () => {
     });
     expect(observation.failureDiagnostic).not.toHaveProperty('origin');
     expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('does not inspect a hostile provider rejection after dispatch timeout', async () => {
+    const selectedTrace = trace('bounded-truncation');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const secret = 'synthetic-timeout-proxy-secret';
+    const proxyTrap = vi.fn();
+    const providerError = new Proxy(Object.assign(new Error(secret), { status: 504 }), {
+      get: () => { proxyTrap(); throw new Error('hostile property access'); },
+      getPrototypeOf: () => { proxyTrap(); throw new Error('hostile prototype access'); },
+      getOwnPropertyDescriptor: () => { proxyTrap(); throw new Error('hostile descriptor access'); },
+    });
+    const generation = new HostileTimeoutProvider(providerError);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: { ...stage(generation, 3), timeoutMs: 1 },
+    }));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_timeout',
+        reason: 'timeout_after_dispatch',
+      },
+    });
+    expect(proxyTrap).not.toHaveBeenCalled();
+    expect(JSON.stringify(observation)).not.toContain(secret);
     expect(generation.respondCalls).toHaveLength(1);
   });
 
