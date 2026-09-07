@@ -37,6 +37,8 @@ import {
   validateFixedTraceToolLoopEnvironment,
   validateFixedTraceToolLoopFixtures,
   type FixedTraceEvaluatorToolEnvironment,
+  type FixedTraceToolLoopCheckpoint,
+  type FixedTraceToolLoopReason,
 } from './fixed-trace-tool-loop.js';
 import {
   FixedTraceBudgetAdmissionError,
@@ -45,6 +47,7 @@ import {
   fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
   fixedTraceResponsePricingPolicy,
   fixedTraceResponseUsesPricingPolicy,
+  type FixedTraceBudgetRejectionReason,
 } from './fixed-trace-budget.js';
 import {
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
@@ -1389,6 +1392,154 @@ function isFixedTraceToolLoopBoundaryError(error: unknown): error is FixedTraceT
   }
 }
 
+type FixedTraceBudgetAdmission = Readonly<{
+  prepared: PreparedModelInvocation;
+}>;
+
+type FixedTraceToolLoopBoundary = Readonly<{
+  reason: FixedTraceToolLoopReason;
+  checkpoint: FixedTraceToolLoopCheckpoint | undefined;
+}>;
+
+const FIXED_TRACE_PROVIDER_IDS = new Set<ModelProvider['id']>(['anthropic', 'openai', 'google']);
+const FIXED_TRACE_REASONING_EFFORTS = new Set<ModelReasoningEffort>([
+  'provider_default', 'none', 'low', 'medium', 'high',
+]);
+const FIXED_TRACE_BUDGET_REJECTION_REASONS = new Set<FixedTraceBudgetRejectionReason>([
+  'budget_exposure_unknown', 'soft_limit_exceeded',
+]);
+const FIXED_TRACE_TOOL_LOOP_REASONS = new Set<FixedTraceToolLoopReason>([
+  'duplicate_tool_definition', 'duplicate_tool_call', 'fixture_definition_mismatch',
+  'iteration_limit_exceeded', 'preexisting_tool_state', 'provider_tool_not_allowed',
+  'provider_continuation_not_allowed', 'tool_call_limit_exceeded', 'tool_input_invalid',
+  'tool_schema_invalid', 'unknown_tool_call',
+]);
+const FIXED_TRACE_TOOL_RESULT_STATUSES = new Set([
+  'ok', 'empty', 'access_denied', 'invalid_input', 'recoverable_error', 'error',
+]);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isSafeTokenCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isModelUsage(value: unknown): value is ModelUsage {
+  if (!isPlainRecord(value) || !isSafeTokenCount(value.inputTokens) || !isSafeTokenCount(value.outputTokens)) {
+    return false;
+  }
+  return (value.cacheReadTokens === undefined || isSafeTokenCount(value.cacheReadTokens))
+    && (value.cacheWriteTokens === undefined || isSafeTokenCount(value.cacheWriteTokens));
+}
+
+function isPreparedModelInvocation(value: unknown): value is PreparedModelInvocation {
+  if (!isPlainRecord(value)
+    || !FIXED_TRACE_PROVIDER_IDS.has(value.provider as ModelProvider['id'])
+    || typeof value.model !== 'string'
+    || !value.model.trim()
+    || !isPlainRecord(value.capabilities)
+    || !isPlainRecord(value.providerRequest)) return false;
+  const capabilities = value.capabilities;
+  if (
+    typeof capabilities.streaming !== 'boolean'
+    || typeof capabilities.structuredOutput !== 'boolean'
+    || typeof capabilities.reasoning !== 'boolean'
+    || !Array.isArray(capabilities.reasoningEfforts)
+    || capabilities.reasoningEfforts.some((effort) => !FIXED_TRACE_REASONING_EFFORTS.has(effort as ModelReasoningEffort))
+    || typeof capabilities.customTools !== 'boolean'
+    || typeof capabilities.providerWebSearch !== 'boolean'
+    || typeof capabilities.imageInput !== 'boolean'
+    || typeof capabilities.documentInput !== 'boolean'
+  ) return false;
+  if (value.requestMetadata !== undefined) {
+    if (!isPlainRecord(value.requestMetadata) || Object.values(value.requestMetadata).some((entry) => (
+      typeof entry !== 'string' && typeof entry !== 'number' && typeof entry !== 'boolean'
+    ))) return false;
+  }
+  return true;
+}
+
+function isFixedTraceToolExecution(value: unknown): boolean {
+  if (!isPlainRecord(value)
+    || !Number.isSafeInteger(value.sequence) || (value.sequence as number) < 1
+    || typeof value.callId !== 'string' || !value.callId.trim()
+    || typeof value.transcriptSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.transcriptSha256)
+    || typeof value.name !== 'string' || !value.name.trim()
+    || typeof value.description !== 'string'
+    || !isPlainRecord(value.input)
+    || (value.effect !== 'read' && value.effect !== 'preview' && value.effect !== 'mutation')
+    || (value.policyDisposition !== 'allowed' && value.policyDisposition !== 'blocked')
+    || !FIXED_TRACE_TOOL_RESULT_STATUSES.has(value.resultStatus as string)
+    || typeof value.simulated !== 'boolean'
+  ) return false;
+  return true;
+}
+
+function isFixedTraceRejectedToolCall(value: unknown): boolean {
+  return isPlainRecord(value)
+    && typeof value.name === 'string'
+    && value.name.trim().length > 0
+    && FIXED_TRACE_TOOL_LOOP_REASONS.has(value.reason as FixedTraceToolLoopReason);
+}
+
+function isFixedTraceProviderExposure(value: unknown): boolean {
+  return isPlainRecord(value)
+    && Number.isSafeInteger(value.attempt)
+    && (value.attempt as number) >= 1
+    && FIXED_TRACE_PROVIDER_IDS.has(value.preparedProvider as ModelProvider['id'])
+    && typeof value.preparedModel === 'string'
+    && value.preparedModel.trim().length > 0
+    && FIXED_TRACE_PROVIDER_IDS.has(value.returnedProvider as ModelProvider['id'])
+    && typeof value.returnedModel === 'string'
+    && value.returnedModel.trim().length > 0;
+}
+
+function isFixedTraceToolLoopCheckpoint(value: unknown): value is FixedTraceToolLoopCheckpoint {
+  return isPlainRecord(value)
+    && isModelUsage(value.usage)
+    && Array.isArray(value.tools)
+    && value.tools.every(isFixedTraceToolExecution)
+    && Array.isArray(value.rejectedToolCalls)
+    && value.rejectedToolCalls.every(isFixedTraceRejectedToolCall)
+    && Array.isArray(value.providerExposures)
+    && value.providerExposures.every(isFixedTraceProviderExposure);
+}
+
+/**
+ * An internal error can be wrapped in a provider-controlled proxy. Take an
+ * owned snapshot while reading its fields so later observation construction
+ * never dereferences the caught value. Any inaccessible or malformed field
+ * deliberately loses its internal-error privilege.
+ */
+function snapshotFixedTraceBudgetAdmission(error: unknown): FixedTraceBudgetAdmission | null {
+  if (!isFixedTraceBudgetAdmissionError(error)) return null;
+  try {
+    const reason = error.reason;
+    const prepared = structuredClone(error.prepared);
+    if (!FIXED_TRACE_BUDGET_REJECTION_REASONS.has(reason) || !isPreparedModelInvocation(prepared)) return null;
+    return Object.freeze({ prepared });
+  } catch {
+    return null;
+  }
+}
+
+function snapshotFixedTraceToolLoopBoundary(error: unknown): FixedTraceToolLoopBoundary | null {
+  if (!isFixedTraceToolLoopBoundaryError(error)) return null;
+  try {
+    const reason = error.reason;
+    const checkpoint = error.checkpoint === undefined ? undefined : structuredClone(error.checkpoint);
+    if (!FIXED_TRACE_TOOL_LOOP_REASONS.has(reason)
+      || (checkpoint !== undefined && !isFixedTraceToolLoopCheckpoint(checkpoint))) return null;
+    return Object.freeze({ reason, checkpoint });
+  } catch {
+    return null;
+  }
+}
+
 function isFixedTraceExecutionIdentityError(error: unknown): error is FixedTraceExecutionIdentityError {
   try {
     return error instanceof FixedTraceExecutionIdentityError;
@@ -1485,8 +1636,9 @@ function fixedTraceFailureDiagnostic(
   error: unknown,
   timedOut: boolean,
   dispatched: boolean,
+  recognizedInternalError = false,
 ): FixedTraceFailureDiagnostic | null {
-  if (isFixedTraceBudgetAdmissionError(error) || isFixedTraceToolLoopBoundaryError(error)) return null;
+  if (recognizedInternalError) return null;
   if (timedOut && dispatched) {
     return Object.freeze({
       kind: 'provider_timeout',
@@ -1637,9 +1789,11 @@ async function executeRouter(
     }
   } catch (error) {
     if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
-    if (isFixedTraceBudgetAdmissionError(error)) invocations.push(error.prepared);
+    const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
+    const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);
+    if (budgetAdmission) invocations.push(budgetAdmission.prepared);
     const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
-    const status = isFixedTraceBudgetAdmissionError(error)
+    const status = budgetAdmission
       ? 'not_dispatched_budget'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
@@ -1654,7 +1808,7 @@ async function executeRouter(
       output: fallbackOutput(terminalStatus),
       status: terminalStatus,
       metadata: localStageMetadata(request, config, state),
-      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
+      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched, Boolean(budgetAdmission || toolLoopBoundary)),
     };
   } finally {
     clearTimeout(timeout);
@@ -1952,13 +2106,13 @@ export async function runFixedTraceCase(
     };
   } catch (error) {
     if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
-    if (isFixedTraceBudgetAdmissionError(error)) invocations.push(error.prepared);
-    const checkpoint = isFixedTraceToolLoopBoundaryError(error)
-      ? error.checkpoint
-      : undefined;
-    const terminalStatus = isFixedTraceBudgetAdmissionError(error)
+    const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
+    const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);
+    if (budgetAdmission) invocations.push(budgetAdmission.prepared);
+    const checkpoint = toolLoopBoundary?.checkpoint;
+    const terminalStatus = budgetAdmission
       ? 'not_dispatched_budget'
-      : isFixedTraceToolLoopBoundaryError(error)
+      : toolLoopBoundary
       ? 'malformed'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
@@ -1989,9 +2143,9 @@ export async function runFixedTraceCase(
       terminalStage: 'generation',
       terminalStatus: finalTerminalStatus,
       routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
-      boundaryReason: isFixedTraceToolLoopBoundaryError(error) ? error.reason : null,
+      boundaryReason: toolLoopBoundary?.reason ?? null,
       localReplacementReason: null,
-      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched),
+      failureDiagnostic: fixedTraceFailureDiagnostic(error, timedOut, dispatched, Boolean(budgetAdmission || toolLoopBoundary)),
       finishReason: null,
       output: fallbackOutput(finalTerminalStatus),
       flagged: true,

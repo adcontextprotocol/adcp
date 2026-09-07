@@ -15,8 +15,10 @@ import { runFixedTraceDiagnosticCandidate } from '../../../src/addie/eval/fixed-
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  FixedTraceBudgetAdmissionError,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
+import { FixedTraceToolLoopBoundaryError } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_HYBRID_EVALUATOR_SUITE,
@@ -1172,6 +1174,77 @@ describe('fixed trace artifact runner', () => {
     });
     expect(delegate.respondCalls).toHaveLength(0);
     expect(gradeFixedTrace(trace('knowledge-task-model'), observation).metadataPass).toBe(true);
+  });
+
+  it('fails closed when a budget-admission error proxy hides its prepared receipt', async () => {
+    const prepared: PreparedModelInvocation = {
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      capabilities: CAPABILITIES,
+      providerRequest: {},
+    };
+    const hostile = new Proxy(
+      new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared),
+      { get: () => { throw new Error('hostile budget-admission field access'); } },
+    );
+    expect(hostile).toBeInstanceOf(FixedTraceBudgetAdmissionError);
+
+    const observation = await runFixedTraceCase(
+      trace('knowledge-task-model'),
+      config(new ThrowingProvider(hostile), new ScriptedProvider([])),
+    );
+
+    expect(observation).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(gradeFixedTrace(trace('knowledge-task-model'), observation)).toMatchObject({
+      terminalFailure: true,
+      deterministicPass: false,
+    });
+  });
+
+  it('fails closed when a tool-loop boundary error proxy hides its checkpoint receipt', async () => {
+    const hostile = new Proxy(
+      new FixedTraceToolLoopBoundaryError('iteration_limit_exceeded', {
+        usage: { inputTokens: 0, outputTokens: 0 },
+        tools: [],
+        rejectedToolCalls: [],
+        providerExposures: [],
+      }),
+      { get: () => { throw new Error('hostile tool-loop-boundary field access'); } },
+    );
+    expect(hostile).toBeInstanceOf(FixedTraceToolLoopBoundaryError);
+
+    const observation = await runFixedTraceCase(
+      trace('knowledge-task-model'),
+      config(
+        new ScriptedProvider([routeResponse('respond', ['knowledge'])]),
+        new ThrowingProvider(hostile),
+      ),
+    );
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      boundaryReason: null,
+      tools: [],
+      rejectedToolCalls: [],
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(gradeFixedTrace(trace('knowledge-task-model'), observation)).toMatchObject({
+      terminalFailure: true,
+      deterministicPass: false,
+    });
   });
 
   it('attributes malformed router output to the router and preserves its cost', async () => {
