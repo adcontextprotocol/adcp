@@ -548,6 +548,13 @@ describe('GoogleGenerateContentProvider', () => {
     expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: { id: 'x', name: 'search_docs', args: [] } }] } }] }))).toThrow('Malformed Google function call');
     expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [{ functionCall: { id: 'x', name: 'search_docs', args: {} }, thoughtSignature: 'sig' }] } }] }))).toThrow('incompatible finish reason');
     expect(normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [] } }],
+      usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 32, totalTokenCount: 36 },
+    }))).toMatchObject({ finishReason: 'length', content: [], usage: { inputTokens: 4, outputTokens: 32 } });
+    expect(() => normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [] } }],
+    }))).toThrow('Empty Google response output');
+    expect(normalizeGoogleResponse(googleResponse({
       candidates: [],
       promptFeedback: { blockReason: 'SAFETY' },
       usageMetadata: { promptTokenCount: 4, totalTokenCount: 4 },
