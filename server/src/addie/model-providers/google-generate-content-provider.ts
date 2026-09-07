@@ -18,7 +18,10 @@ import type {
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from './model-provider.js';
-import { UnexpectedModelIdentityError } from './model-provider.js';
+import {
+  markModelProviderAdapterFailure,
+  UnexpectedModelIdentityError,
+} from './model-provider.js';
 import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
@@ -66,6 +69,22 @@ function assertSafeCount(value: unknown, label: string): asserts value is number
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new Error(`Malformed Google ${label}`);
   }
+}
+
+/** Read only a conventional HTTP receipt from an untrusted SDK exception. */
+function googleTransportHttpStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  for (const key of ['status', 'statusCode'] as const) {
+    try {
+      const value = (error as Record<string, unknown>)[key];
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599) {
+        return value;
+      }
+    } catch {
+      // An SDK or proxy getter is not receipt evidence.
+    }
+  }
+  return undefined;
 }
 
 function textOnly(content: ModelMessageContent[], label: string): string {
@@ -428,11 +447,25 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     const prepared = this.prepare(request);
     if (options.signal?.aborted) throw options.signal.reason;
     await options.beforeDispatch?.(prepared);
-    const response = await this.transport.models.generateContent(
-      prepared.providerRequest as unknown as GenerateContentParameters,
-      { signal: options.signal },
-    );
-    const normalized = normalizeGoogleResponse(response);
+    let response: GenerateContentResponse;
+    try {
+      response = await this.transport.models.generateContent(
+        prepared.providerRequest as unknown as GenerateContentParameters,
+        { signal: options.signal },
+      );
+    } catch (error) {
+      // Do not expose provider error fields here. The runner receives only an
+      // adapter-owned boundary marker and its own bounded fingerprint.
+      markModelProviderAdapterFailure(error, 'provider_transport', googleTransportHttpStatus(error));
+      throw error;
+    }
+    let normalized: ModelResponse;
+    try {
+      normalized = normalizeGoogleResponse(response);
+    } catch (error) {
+      markModelProviderAdapterFailure(error, 'adapter_response_normalization');
+      throw error;
+    }
     if (!isGoogleRouterModelRevision(normalized.model)) {
       throw new UnexpectedModelIdentityError('google', request.model, normalized.model);
     }

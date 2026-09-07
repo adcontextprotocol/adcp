@@ -15,6 +15,7 @@ import {
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import {
+  modelProviderAdapterFailure,
   UnexpectedModelIdentityError,
   UnsupportedModelCapabilityError,
   type ModelRequest,
@@ -535,6 +536,79 @@ describe('GoogleGenerateContentProvider', () => {
     expect(beforeDispatch).toHaveBeenCalledTimes(1);
     expect(normalized.finishReason).toBe('stop');
     expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 8 });
+  });
+
+  it('preserves the 32-token ceiling and classifies a high-thinking transport rejection once', async () => {
+    const secret = 'synthetic-provider-body-secret';
+    const generateContent = vi.fn(async (providerRequest: {
+      config?: { maxOutputTokens?: number; thinkingConfig?: { thinkingLevel?: unknown } };
+    }) => {
+      if (
+        providerRequest.config?.maxOutputTokens === 32
+        && providerRequest.config.thinkingConfig?.thinkingLevel === 'HIGH'
+      ) throw Object.assign(new Error(secret), { status: 400 });
+      return googleResponse({
+        candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [] } }],
+        usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 32, totalTokenCount: 36 },
+      });
+    });
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+
+    for (const effort of ['low', 'medium'] as const) {
+      await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL, {
+        maxOutputTokens: 32,
+        reasoning: { effort },
+      })))).resolves.toMatchObject({ finishReason: 'length', usage: { outputTokens: 32 } });
+    }
+
+    let thrown: unknown;
+    try {
+      await collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL, {
+        maxOutputTokens: 32,
+        reasoning: { effort: 'high' },
+      })));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(modelProviderAdapterFailure(thrown)).toEqual({ kind: 'provider_transport', httpStatus: 400 });
+    expect(thrown).toMatchObject({ message: secret });
+    expect(generateContent).toHaveBeenCalledTimes(3);
+    expect(generateContent.mock.calls.map(([entry]) => entry.config?.maxOutputTokens)).toEqual([32, 32, 32]);
+  });
+
+  it('does not inspect a hostile transport error while classifying its boundary', async () => {
+    const secret = 'synthetic-hostile-provider-secret';
+    const hostile = new Proxy(Object.assign(new Error(secret), { status: 400 }), {
+      get: () => { throw new Error('hostile provider error property'); },
+    });
+    const generateContent = vi.fn().mockRejectedValue(hostile);
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+
+    let thrown: unknown;
+    try {
+      await collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL)));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(modelProviderAdapterFailure(thrown)).toEqual({ kind: 'provider_transport' });
+    expect(generateContent).toHaveBeenCalledOnce();
+  });
+
+  it('marks malformed Gemini responses as adapter normalization failures', async () => {
+    const provider = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent: vi.fn().mockResolvedValue(googleResponse({ candidates: [] })) },
+    });
+
+    let thrown: unknown;
+    try {
+      await collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL)));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(modelProviderAdapterFailure(thrown)).toEqual({ kind: 'adapter_response_normalization' });
   });
 
   it('fails closed on unsupported capabilities and malformed responses', () => {

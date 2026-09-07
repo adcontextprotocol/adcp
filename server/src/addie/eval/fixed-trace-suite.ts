@@ -116,16 +116,20 @@ export interface FixedTraceFailureDiagnostic {
     | 'provider_transport_error'
     | 'provider_timeout'
     | 'normalization_error'
+    | 'adapter_response_error'
     | 'provider_identity_error'
     | 'provider_non_error_throw';
   readonly reason:
     | 'provider_exception'
     | 'timeout_after_dispatch'
     | 'invalid_normalized_model_event'
+    | 'adapter_response_normalization'
     | 'unexpected_model_identity'
     | 'non_error_throw';
   /** SHA-256 of no more than 512 UTF-8 bytes; the message itself is omitted. */
   readonly messageSha256: string;
+  /** Adapter-controlled failure boundary, when the adapter established one. */
+  readonly origin?: 'provider_transport' | 'adapter_response_normalization';
   /** Validated HTTP status from a caught provider exception, when safely available. */
   readonly httpStatus?: number;
 }

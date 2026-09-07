@@ -29,7 +29,10 @@ import type {
   ModelUsage,
   PreparedModelInvocation,
 } from '../model-providers/model-provider.js';
-import { UnexpectedModelIdentityError } from '../model-providers/model-provider.js';
+import {
+  modelProviderAdapterFailure,
+  UnexpectedModelIdentityError,
+} from '../model-providers/model-provider.js';
 import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
@@ -1639,6 +1642,7 @@ function fixedTraceFailureDiagnostic(
   recognizedInternalError = false,
 ): FixedTraceFailureDiagnostic | null {
   if (recognizedInternalError) return null;
+  const adapterFailure = modelProviderAdapterFailure(error);
   if (timedOut && dispatched) {
     return Object.freeze({
       kind: 'provider_timeout',
@@ -1651,6 +1655,23 @@ function fixedTraceFailureDiagnostic(
       kind: 'normalization_error',
       reason: 'invalid_normalized_model_event',
       messageSha256: fixedTraceFailureMessageSha256(error),
+    });
+  }
+  if (adapterFailure?.kind === 'adapter_response_normalization') {
+    return Object.freeze({
+      kind: 'adapter_response_error',
+      reason: 'adapter_response_normalization',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+      origin: adapterFailure.kind,
+    });
+  }
+  if (adapterFailure?.kind === 'provider_transport') {
+    return Object.freeze({
+      kind: 'provider_transport_error',
+      reason: 'provider_exception',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+      origin: adapterFailure.kind,
+      ...(adapterFailure.httpStatus === undefined ? {} : { httpStatus: adapterFailure.httpStatus }),
     });
   }
   if (isUnexpectedModelIdentityError(error)) {

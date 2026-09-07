@@ -7,6 +7,55 @@
  */
 
 export type ModelProviderId = 'anthropic' | 'openai' | 'google';
+export type ModelProviderAdapterFailureKind =
+  | 'provider_transport'
+  | 'adapter_response_normalization';
+
+export interface ModelProviderAdapterFailure {
+  readonly kind: ModelProviderAdapterFailureKind;
+  readonly httpStatus?: number;
+}
+
+// Keep the raw caught value out of the public error shape. Evaluators can
+// classify the adapter-owned boundary through this private identity binding
+// without serializing a provider body, message, or credential.
+const adapterFailures = new WeakMap<object, ModelProviderAdapterFailure>();
+
+export function markModelProviderAdapterFailure(
+  error: unknown,
+  kind: ModelProviderAdapterFailureKind,
+  httpStatus?: number,
+): void {
+  if (typeof error !== 'object' || error === null) return;
+  try {
+    const validHttpStatus = typeof httpStatus === 'number'
+      && Number.isInteger(httpStatus)
+      && httpStatus >= 100
+      && httpStatus <= 599
+      ? httpStatus
+      : undefined;
+    adapterFailures.set(error, Object.freeze({
+      kind,
+      ...(validHttpStatus === undefined ? {} : { httpStatus: validHttpStatus }),
+    }));
+  } catch {
+    // A revoked proxy cannot carry an adapter marker. It remains an unknown,
+    // fail-closed provider throw at the evaluator boundary.
+  }
+}
+
+/**
+ * Returns only an adapter-controlled category. It intentionally never reads
+ * properties from a provider-thrown value, which may be a hostile proxy.
+ */
+export function modelProviderAdapterFailure(error: unknown): ModelProviderAdapterFailure | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  try {
+    return adapterFailures.get(error);
+  } catch {
+    return undefined;
+  }
+}
 export type ModelFallbackReason =
   | 'primary_unavailable'
   | 'primary_rate_limited'

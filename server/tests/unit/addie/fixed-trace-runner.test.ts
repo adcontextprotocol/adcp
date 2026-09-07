@@ -56,7 +56,10 @@ import type {
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../../../src/addie/model-providers/model-provider.js';
-import { UnsupportedModelCapabilityError } from '../../../src/addie/model-providers/model-provider.js';
+import {
+  markModelProviderAdapterFailure,
+  UnsupportedModelCapabilityError,
+} from '../../../src/addie/model-providers/model-provider.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 const HASH = createHash('sha256').update('fixed-trace-runner-test').digest('hex');
@@ -1372,6 +1375,78 @@ describe('fixed trace artifact runner', () => {
     expect(serialized).not.toContain('provider response body');
     expect(serialized).not.toContain('provider-error-with-details');
     expect(serialized).not.toContain('provider stack');
+  });
+
+  it('records adapter-established transport provenance without retaining provider details', async () => {
+    const selectedTrace = trace('bounded-truncation');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const providerError = new Error('synthetic provider body must not be retained');
+    markModelProviderAdapterFailure(providerError, 'provider_transport', 400);
+    const generation = new ThrowingProvider(providerError);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        origin: 'provider_transport',
+        httpStatus: 400,
+      },
+    });
+    expect(JSON.stringify(observation)).not.toContain('synthetic provider body');
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('records adapter response normalization as a distinct safe failure category', async () => {
+    const selectedTrace = trace('bounded-truncation');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const adapterError = new Error('synthetic malformed provider payload');
+    markModelProviderAdapterFailure(adapterError, 'adapter_response_normalization');
+    const generation = new ThrowingProvider(adapterError);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'adapter_response_error',
+        reason: 'adapter_response_normalization',
+        origin: 'adapter_response_normalization',
+      },
+    });
+    expect(JSON.stringify(observation)).not.toContain('synthetic malformed provider payload');
+    expect(generation.respondCalls).toHaveLength(1);
+  });
+
+  it('retains an adapter marker from a hostile provider proxy without reading its details', async () => {
+    const selectedTrace = trace('bounded-truncation');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const secret = 'synthetic-hostile-marked-provider-secret';
+    const hostile = new Proxy(Object.assign(new Error(secret), { status: 400 }), {
+      get: () => { throw new Error('hostile marked provider property'); },
+      getPrototypeOf: () => { throw new Error('hostile marked provider prototype'); },
+    });
+    markModelProviderAdapterFailure(hostile, 'provider_transport');
+    const generation = new ThrowingProvider(hostile);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        origin: 'provider_transport',
+        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+      },
+    });
+    expect(JSON.stringify(observation)).not.toContain(secret);
+    expect(generation.respondCalls).toHaveLength(1);
   });
 
   it.each([
