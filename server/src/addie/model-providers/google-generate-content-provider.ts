@@ -325,7 +325,12 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if (candidate.content !== undefined && candidate.content.role !== 'model') {
     throw new Error('Malformed Google response role');
   }
-  if (finishReason !== 'refusal' && content.length < 1) throw new Error('Empty Google response output');
+  // A bounded reasoning turn can consume its complete output allowance before
+  // emitting visible text. It is still a settled MAX_TOKENS receipt, not an
+  // unknown provider exposure; retain its normalized usage and let the
+  // evaluator record the explicit truncated outcome. Empty STOP responses
+  // remain invalid.
+  if (finishReason !== 'refusal' && finishReason !== 'length' && content.length < 1) throw new Error('Empty Google response output');
 
   const hasToolCalls = content.some((item) => item.type === 'tool_call');
   if (hasToolCalls) {
