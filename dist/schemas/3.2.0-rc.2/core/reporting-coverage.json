@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/core/reporting-coverage.json",
+  "title": "Reporting Coverage",
+  "x-status": "experimental",
+  "description": "Exact reporting-support denominator for one offering at one evaluation boundary. Coverage is independent of freshness, finality, and delivery health. It prevents a covered subset from being represented as a complete media-buy or campaign total.",
+  "type": "object",
+  "definitions": {
+    "ReportingMediaBuyId": {
+      "title": "Reporting Media Buy ID",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "ReportingPackageId": {
+      "title": "Reporting Package ID",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    }
+  },
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "full",
+        "partial",
+        "none",
+        "unknown"
+      ]
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingMediaBuyId"
+      },
+      "uniqueItems": true,
+      "description": "Exact media-buy denominator, including unsupported and unknown buys. An empty array is an explicitly evaluated zero-buy scope."
+    },
+    "fully_covered_media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingMediaBuyId"
+      },
+      "uniqueItems": true
+    },
+    "partially_covered_media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingMediaBuyId"
+      },
+      "uniqueItems": true
+    },
+    "unsupported_media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingMediaBuyId"
+      },
+      "uniqueItems": true
+    },
+    "unknown_media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingMediaBuyId"
+      },
+      "uniqueItems": true
+    },
+    "package_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingPackageId"
+      },
+      "uniqueItems": true,
+      "description": "Exact package denominator for the evaluated media buys."
+    },
+    "covered_package_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingPackageId"
+      },
+      "uniqueItems": true
+    },
+    "unsupported_package_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingPackageId"
+      },
+      "uniqueItems": true
+    },
+    "unknown_package_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingPackageId"
+      },
+      "uniqueItems": true
+    },
+    "limitations": {
+      "type": "array",
+      "description": "Stable reasons that some requested scope is not covered by the exact selected offering. These are capability facts, not delivery failures.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "offering_unsupported",
+              "account_entitlement_unavailable",
+              "credential_scope_insufficient",
+              "provider_limitation",
+              "capability_unknown"
+            ]
+          },
+          "media_buy_id": {
+            "$ref": "#/definitions/ReportingMediaBuyId"
+          },
+          "package_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/ReportingPackageId"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "reason",
+          "media_buy_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "status",
+    "evaluated_at",
+    "media_buy_ids",
+    "fully_covered_media_buy_ids",
+    "partially_covered_media_buy_ids",
+    "unsupported_media_buy_ids",
+    "unknown_media_buy_ids",
+    "package_ids",
+    "covered_package_ids",
+    "unsupported_package_ids",
+    "unknown_package_ids",
+    "limitations"
+  ],
+  "x-adcp-validation": {
+    "partition": "The four media-buy classification arrays MUST be pairwise disjoint and their union MUST equal media_buy_ids. The three package classification arrays MUST be pairwise disjoint and their union MUST equal package_ids. Every limitation media_buy_id and package_id MUST belong to those denominators.",
+    "status": "full requires every media buy to be fully covered and every package covered; the explicit empty denominator is full. partial requires at least one covered package, fully covered media buy, or partially covered media buy and at least one partial, unsupported, or unknown item. A partially covered media buy counts as a covered item when excluding none and unknown. none requires a nonempty denominator, no covered item, at least one unsupported item, and no unknown item. unknown requires a nonempty denominator, no covered item, and at least one unknown item.",
+    "aggregation": "Metrics computed only over covered_package_ids MUST be labeled partial whenever status is not full and MUST NOT be represented as complete media-buy or campaign totals. Implementations MUST NOT weaken the selected report definition to create an undeclared lowest-common-denominator profile."
+  },
+  "additionalProperties": false
+}

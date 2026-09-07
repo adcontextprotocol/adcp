@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.2.0-rc.2
+
+### Minor Changes
+
+- 609a3b0: Add buyer and orchestrator agent storyboards: 6 specialisms (buyer-discovery, buyer-activation, buyer-negotiation, buyer-monitoring, buyer-recovery, orchestrator-multi-agent), fixture publisher contract and reference implementation, buyer-orchestrator compliance track with three certification levels, and 10 buyer-specific check kinds.
+- ea5c643: Restore the normative constraints `canonical-forecast-point` dropped from its source twin: the `maximum: 1` bounds on `viewable_rate` and `metrics.coverage_rate` ranges, and the `anyOf` requiring `standard` whenever any viewability value is present. A shared forecast-rate range keeps generated SDK types unambiguous, while a parity contract test compares the twins' resolved viewability schemas and exceptional metric constraints so canonical-pair drift fails CI instead of shipping silently.
+- b8ab4fe: Add cursor pagination for truncated `get_media_buy_delivery` breakdowns on the bounded-enum dimensions: `device_type`, `device_platform`, `audience`, and `placement`. Previously `by_<dim>_truncated: true` was a retrieval dead end — there was no protocol-defined way to fetch the dropped rows. Requests can now set `reporting_dimensions.<dim>.cursor` (reusing the response's new `by_<dim>_pagination` field, itself the existing `pagination-response.json` shape already used by `get_products`) to page through the rest of a truncated breakdown. `geo` is deliberately excluded — at `postal_area` granularity it can reach tens of thousands of rows, closer to a bulk-export shape than per-package cursor pagination, and is deferred to the bulk-export/security work tracked in #5669/#5666. Closes #5671.
+
+### Patch Changes
+
+- 4eed58a: Align the AdCP 3.2 release story, SDK compatibility guidance, and Reliable Reporting reference docs with the published RC.1 checkpoint.
+- e36e319: Update the 3.2 SDK guidance after the Go RC.1 regeneration merged and its package release entered review.
+- 830e306: Serve AdCP 3.2 RC.1 from the public training surface, including Reliable Reporting tools and revision digests, and align the release notes, migration guidance, training, and TypeScript, Python, and Go SDK instructions with the published RC.1 packages.
+
 ## 3.2.0-rc.1
 
 ### Minor Changes
