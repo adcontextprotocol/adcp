@@ -11,7 +11,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed RC.1 exactly; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed RC.1 exactly; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 ### Prerelease checkpoints
 
@@ -55,7 +55,7 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
 | An SDK maintainer | Generate from the current signed RC.1 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
-| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
+| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
 
 ### Required 3.2 migrations
 

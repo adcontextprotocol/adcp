@@ -9,7 +9,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 release c
 
 <Warning>
 **3.2 is in release candidate.** RC.1 is the current signed protocol
-checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, and
+checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, and
 Go `adcp/v3@v3.2.1` embed it exactly; Python and Go higher-level coverage
 remains role-dependent. Keep production traffic pinned to `"3.1"`
 while validating an exact 3.2 checkpoint in staging.
@@ -53,7 +53,7 @@ surfaces by hand.
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.32`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain the exact package and wire versions. |
+| 8 | Compliance operators | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain the exact package and wire versions. |
 | 9 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
 
 ## Required to claim 3.2 behavior
