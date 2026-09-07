@@ -202,6 +202,14 @@ export function fixedTraceResponseUsesPricingPolicy(
 interface Reservation {
   readonly usd: number;
   active: boolean;
+  /** Set only when an exclusive diagnostic pre-reserved the whole run. */
+  readonly wholeRun: WholeRunReservation | null;
+}
+
+interface WholeRunReservation {
+  readonly usd: number;
+  remainingUsd: number;
+  active: boolean;
 }
 
 interface BudgetedProviderBinding {
@@ -343,6 +351,7 @@ export class FixedTraceBudget {
   private budgetRejectedCalls = 0;
   private admissionClosed = false;
   private exposureUnknown = false;
+  private wholeRunReservation: WholeRunReservation | null = null;
 
   constructor(readonly softMaxUsd: number) {
     if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
@@ -378,13 +387,26 @@ export class FixedTraceBudget {
     // cache write whose replacement rate exceeds ordinary input).
     const inputTokens = requestBytes(prepared);
     const usd = datedPricingReservationCostUsd(pricing, inputTokens, maxOutputTokens);
+    const wholeRun = this.wholeRunReservation;
+    if (wholeRun !== null) {
+      if (!wholeRun.active || usd - wholeRun.remainingUsd > Number.EPSILON * Math.max(1, wholeRun.usd)) {
+        this.admissionClosed = true;
+        this.budgetRejectedCalls++;
+        throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
+      }
+      // The complete diagnostic was admitted before its selector/output were
+      // consumed. Individual calls consume that escrow rather than reserving
+      // it again, so a fully admitted run cannot self-reject mid-cell.
+      wholeRun.remainingUsd = Math.max(0, wholeRun.remainingUsd - usd);
+      return { usd, active: true, wholeRun };
+    }
     if (this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
       this.admissionClosed = true;
       this.budgetRejectedCalls++;
       throw new FixedTraceBudgetAdmissionError('soft_limit_exceeded', prepared);
     }
     this.reservedUsd += usd;
-    return { usd, active: true };
+    return { usd, active: true, wholeRun: null };
   }
 
   markDispatched(reservation: Reservation): void {
@@ -398,17 +420,23 @@ export class FixedTraceBudget {
     pricing: FixedTraceBudgetPricing,
   ): void {
     const actualUsd = fixedTraceEstimatedCostUsd(usage, pricing);
-    this.release(reservation);
+    this.settle(reservation);
     this.accountedSpendUsd += actualUsd;
     this.completedCalls++;
   }
 
   cancel(reservation: Reservation): void {
-    this.release(reservation);
+    this.requireActive(reservation);
+    reservation.active = false;
+    if (reservation.wholeRun !== null) {
+      reservation.wholeRun.remainingUsd += reservation.usd;
+    } else {
+      this.reservedUsd = Math.max(0, this.reservedUsd - reservation.usd);
+    }
   }
 
   markExposureUnknown(reservation: Reservation): void {
-    this.release(reservation);
+    this.settle(reservation);
     this.exposureUnknown = true;
   }
 
@@ -429,11 +457,34 @@ export class FixedTraceBudget {
     });
   }
 
+  /** Reserve the exact reviewed ceiling for one exclusive diagnostic run. */
+  claimWholeRunReservation(usd: number): WholeRunReservation {
+    if (!Number.isFinite(usd) || usd <= 0) {
+      throw new RangeError('Fixed trace whole-run reservation must be positive');
+    }
+    if (this.wholeRunReservation !== null || this.accountedSpendUsd + this.reservedUsd + usd > this.softMaxUsd) {
+      throw new RangeError('Fixed trace soft budget is below the required whole-run reservation');
+    }
+    const reservation: WholeRunReservation = { usd, remainingUsd: usd, active: true };
+    this.wholeRunReservation = reservation;
+    this.reservedUsd += usd;
+    return reservation;
+  }
+
+  releaseWholeRunReservation(reservation: WholeRunReservation): void {
+    if (this.wholeRunReservation !== reservation || !reservation.active) {
+      throw new Error('Fixed trace whole-run reservation is inactive');
+    }
+    reservation.active = false;
+    this.reservedUsd = Math.max(0, this.reservedUsd - reservation.remainingUsd);
+    reservation.remainingUsd = 0;
+  }
+
   private requireActive(reservation: Reservation): void {
     if (!reservation.active) throw new Error('Fixed trace budget reservation is inactive');
   }
 
-  private release(reservation: Reservation): void {
+  private settle(reservation: Reservation): void {
     this.requireActive(reservation);
     reservation.active = false;
     this.reservedUsd = Math.max(0, this.reservedUsd - reservation.usd);
@@ -536,7 +587,14 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
           // approval, settlement, and the outward event.
           const response = deepFreeze(structuredClone(event.response));
           if (fixedTraceResponseUsesPricingPolicy(this.#responsePricingPolicy, response)) {
-            this.#budget.complete(reservation, response.usage, this.#pricing);
+            try {
+              this.#budget.complete(reservation, response.usage, this.#pricing);
+            } catch {
+              // Preserve the frozen returned provider/model for downstream
+              // evidence while closing admission: a malformed or absent usage
+              // block means this dispatch cannot be settled at any rate.
+              this.#budget.markExposureUnknown(reservation);
+            }
           } else {
             // Do not settle an unapproved returned identity at the requested
             // model's rate. The response remains visible to the runner, which
@@ -629,6 +687,8 @@ export function isTrustedBudgetedFixedTraceProvider(
 
 export interface FixedTraceBudgetDiagnosticLease {
   providerFor(provider: ModelProvider): BudgetedFixedTraceProvider;
+  /** Return unspent whole-run escrow after every admitted call has settled. */
+  releaseWholeRunReservation(): void;
 }
 
 /**
@@ -641,6 +701,7 @@ export function claimFixedTraceBudgetDiagnosticLease(
   budget: FixedTraceBudget,
   providers: readonly ModelProvider[],
   verifyClones?: (lease: FixedTraceBudgetDiagnosticLease) => void,
+  wholeRunReservationUsd?: number,
 ): FixedTraceBudgetDiagnosticLease {
   const snapshot = budget.snapshot();
   if (
@@ -672,11 +733,18 @@ export function claimFixedTraceBudgetDiagnosticLease(
       lease,
     ));
   }
+  let wholeRunReservation: WholeRunReservation | null = null;
   const diagnosticLease = Object.freeze({
     providerFor(provider: ModelProvider): BudgetedFixedTraceProvider {
       const clone = clones.get(provider);
       if (!clone) throw new Error('Fixed trace diagnostic provider is missing from its exclusive lease');
       return clone;
+    },
+    releaseWholeRunReservation(): void {
+      if (wholeRunReservation !== null) {
+        budget.releaseWholeRunReservation(wholeRunReservation);
+        wholeRunReservation = null;
+      }
     },
   });
   for (const [source, clone] of clones) {
@@ -698,6 +766,9 @@ export function claimFixedTraceBudgetDiagnosticLease(
   // callback has no asynchronous boundary and runs before the lease becomes
   // visible to the shared ledger.
   verifyClones?.(diagnosticLease);
+  if (wholeRunReservationUsd !== undefined) {
+    wholeRunReservation = budget.claimWholeRunReservation(wholeRunReservationUsd);
+  }
   // Cloning has no asynchronous boundary. Complete it before publishing the
   // lease so a malformed wrapper cannot leave an otherwise pristine ledger
   // permanently claimed.

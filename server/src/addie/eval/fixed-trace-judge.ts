@@ -29,7 +29,7 @@ export interface FixedTraceJudgeUnavailable {
  * unavailable judge system, never observed or eligible judgment evidence.
  * C owns the future sealed positive result contract.
  */
-export interface FixedTraceJudgeSummary extends FixedTraceJudgeUnavailable {
+export interface FixedTraceJudgeSummaryUnavailable extends FixedTraceJudgeUnavailable {
   readonly expectedCases: 0;
   readonly expectedJudgments: 0;
   readonly observedJudgments: 0;
@@ -42,6 +42,25 @@ export interface FixedTraceJudgeSummary extends FixedTraceJudgeUnavailable {
   readonly totalEstimatedCostUsd: null;
   readonly comparisonEligible: false;
 }
+
+/** Serialized result for the separately named, non-promoting direct full-suite mode. */
+export interface FixedTraceCompletedJudgeSummary {
+  readonly status: 'completed_diagnostic';
+  readonly expectedCases: number;
+  readonly expectedJudgments: number;
+  readonly observedJudgments: number;
+  readonly judgedJudgments: number;
+  readonly expectedRecordCountObserved: boolean;
+  readonly judgmentCoverageRate: number | null;
+  readonly consensusPassRate: number | null;
+  readonly disagreementRate: number | null;
+  readonly latencyP95Ms: number | null;
+  readonly totalEstimatedCostUsd: number | null;
+  /** This execution is still diagnostic evidence, never promotion evidence. */
+  readonly comparisonEligible: false;
+}
+
+export type FixedTraceJudgeSummary = FixedTraceJudgeSummaryUnavailable | FixedTraceCompletedJudgeSummary;
 
 const UNAVAILABLE_JUDGE = Object.freeze({
   status: "unavailable" as const,
@@ -59,7 +78,7 @@ export function fixedTraceJudgeUnavailable(): FixedTraceJudgeUnavailable {
   return UNAVAILABLE_JUDGE;
 }
 
-export function fixedTraceJudgeSummaryUnavailable(): FixedTraceJudgeSummary {
+export function fixedTraceJudgeSummaryUnavailable(): FixedTraceJudgeSummaryUnavailable {
   const unavailable = fixedTraceJudgeUnavailable();
   return Object.freeze({
     ...unavailable,

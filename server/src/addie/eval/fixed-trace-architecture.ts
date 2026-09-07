@@ -463,10 +463,11 @@ export function assertFixedTraceCommonToolUniverseAdmission(
 export interface FixedTraceToolUniverseProvenance {
   source:
     | 'fixture_local_routed_replay'
+    | 'fixture_local_direct_full_suite'
     | 'evaluator_owned_production_definitions_simulated_receipts'
     | 'evaluator_owned_common_tool_universe'
     | 'fixture_oracle';
-  intentNarrowing: 'llm_router' | 'production_quick_match_or_llm_router' | 'not_applied' | 'fixture_oracle';
+  intentNarrowing: 'llm_router' | 'production_quick_match_or_llm_router' | 'direct_full_suite_fixture_contract' | 'not_applied' | 'fixture_oracle';
   bounded: boolean;
   deployable: boolean;
   toolNames: readonly string[] | null;

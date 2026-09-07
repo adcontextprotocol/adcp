@@ -349,7 +349,7 @@ describe('fixed trace provider budget', () => {
     const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow(
-      'Fixed trace budget usage is invalid',
+      'Invalid normalized usage field: inputTokens',
     );
     expect(budget.snapshot()).toMatchObject({
       reservedUsd: 0,
