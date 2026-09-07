@@ -55,6 +55,7 @@ import {
   fixedTraceArchitectureDiagnosticMappingBinding,
   fixedTraceArchitectureDiagnosticPilotStageControls,
   fixedTraceArchitectureDiagnosticStageControls,
+  type FixedTraceArchitectureDiagnosticMode,
   type FixedTraceArchitectureDiagnosticStageControl,
 } from './fixed-trace-architecture-diagnostic.js';
 import {
@@ -124,7 +125,7 @@ export interface FixedTraceRunnerConfig {
    * capability: it accepts only the declared synthetic architecture pack and
    * the inert common receipt environment.
    */
-  architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1';
+  architectureDiagnosticMode?: FixedTraceArchitectureDiagnosticMode;
   /** One-based repetition identifier; runs are never silently pooled. */
   repetition?: number;
   router: FixedTraceProviderStageConfig;
@@ -143,7 +144,7 @@ interface FixedTraceExecutionIdentity {
   traceSuiteSha256: string;
   toolSchemaSha256: string;
   architectureConfigSha256: string;
-  architectureDiagnosticMode: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | null;
+  architectureDiagnosticMode: FixedTraceArchitectureDiagnosticMode | null;
   runProvenanceSha256: string;
 }
 
@@ -344,6 +345,7 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
     config.architectureDiagnosticMode !== undefined
     && config.architectureDiagnosticMode !== 'synthetic_pack_v1'
     && config.architectureDiagnosticMode !== 'synthetic_pilot_v1'
+    && config.architectureDiagnosticMode !== 'synthetic_sonnet_full_pack_v1'
   ) {
     throw new Error('Fixed trace architecture diagnostic mode is invalid');
   }
@@ -361,6 +363,12 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
       if (!stageMatches(config.generation, haiku.generation)
         || (!stageMatches(config.router, haiku.router) && !stageMatches(config.router, luna.router))) {
         throw new Error('Fixed trace architecture diagnostic pack differs from builder-owned exact stage controls');
+      }
+    } else if (config.architectureDiagnosticMode === 'synthetic_sonnet_full_pack_v1') {
+      assertFixedTraceArchitectureDiagnosticSuite(config.traceSuite);
+      const pilot = fixedTraceArchitectureDiagnosticPilotStageControls();
+      if (!stageMatches(config.router, pilot.router) || !stageMatches(config.generation, pilot.generation)) {
+        throw new Error('Fixed trace Sonnet full-pack diagnostic differs from reviewed candidate controls');
       }
     } else {
       assertFixedTraceArchitectureDiagnosticPilotSuite(config.traceSuite);
@@ -1505,6 +1513,24 @@ export async function runFixedTraceArchitectureDiagnosticSuite(
   const observations = await runFixedTraceSuite(config);
   if (observations.length !== 24) {
     throw new Error('Fixed trace architecture diagnostic runner did not preserve the complete denominator');
+  }
+  return observations;
+}
+
+/**
+ * Exact 24-case execution identity for the reviewed Sonnet 5 generation and
+ * Haiku 4.5 router cell. This reuses the pilot's controls without broadening
+ * either the legacy pack or the three-case pilot declaration.
+ */
+export async function runFixedTraceArchitectureDiagnosticSonnetFullPack(
+  config: FixedTraceRunnerConfig,
+): Promise<FixedTraceObservation[]> {
+  if (config.architectureDiagnosticMode !== 'synthetic_sonnet_full_pack_v1') {
+    throw new Error('Fixed trace Sonnet full-pack diagnostic requires synthetic_sonnet_full_pack_v1 mode');
+  }
+  const observations = await runFixedTraceSuite(config);
+  if (observations.length !== 24) {
+    throw new Error('Fixed trace Sonnet full-pack diagnostic did not preserve the complete denominator');
   }
   return observations;
 }

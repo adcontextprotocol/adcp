@@ -18,6 +18,16 @@ export const FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_VERSION =
 export const FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_VERSION =
   'addie-fixed-trace-architecture-diagnostic-pilot-v1' as const;
 
+/**
+ * Evaluator-only identities. Each declaration fixes both suite membership and
+ * the reviewed candidate-control cell; modes are never caller-selectable
+ * aliases for arbitrary pack/control combinations.
+ */
+export type FixedTraceArchitectureDiagnosticMode =
+  | 'synthetic_pack_v1'
+  | 'synthetic_pilot_v1'
+  | 'synthetic_sonnet_full_pack_v1';
+
 export type FixedTraceArchitectureDiagnosticStratum =
   | 'local_terminal_eligible'
   | 'matched_hybrid_fallback_near_miss'
@@ -189,7 +199,7 @@ export const FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PILOT_DIGEST = sha256({
 
 /** The cohort-level mapping identity used in the architecture fingerprint. */
 export function fixedTraceArchitectureDiagnosticMappingBinding(
-  mode: 'synthetic_pack_v1' | 'synthetic_pilot_v1',
+  mode: FixedTraceArchitectureDiagnosticMode,
 ): Readonly<{ packDigest: string; pilotDigest: string | null }> {
   return freeze({
     packDigest: FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
@@ -403,7 +413,7 @@ export function assertFixedTraceArchitectureDiagnosticPilotSuite(suite: unknown)
 
 /** Evaluator-side observation binding; never part of candidate-visible tools or prompts. */
 export function fixedTraceArchitectureDiagnosticCaseProvenance(
-  mode: 'synthetic_pack_v1' | 'synthetic_pilot_v1',
+  mode: FixedTraceArchitectureDiagnosticMode,
   traceId: string,
 ): Readonly<{
   packDigest: string;

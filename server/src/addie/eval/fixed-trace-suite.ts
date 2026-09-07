@@ -351,7 +351,7 @@ export interface FixedTraceRunMetadata {
   /** Hash of the immutable architecture/configuration cohort contract. */
   architectureConfigSha256: string;
   /** Set only by an exact synthetic architecture diagnostic declaration. */
-  architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | null;
+  architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | 'synthetic_sonnet_full_pack_v1' | null;
   /** Evaluator-only pack/pilot and cluster binding for architecture diagnostics. */
   architectureDiagnostic: {
     packDigest: string;
@@ -3258,7 +3258,11 @@ function assertFixedTraceDiagnosticObservationProvenance(
     }
     return;
   }
-  if (mode !== 'synthetic_pack_v1' && mode !== 'synthetic_pilot_v1') {
+  if (
+    mode !== 'synthetic_pack_v1'
+    && mode !== 'synthetic_pilot_v1'
+    && mode !== 'synthetic_sonnet_full_pack_v1'
+  ) {
     throw new Error('Fixed trace diagnostic observation mode is invalid');
   }
   let expected: NonNullable<FixedTraceRunMetadata['architectureDiagnostic']>;
