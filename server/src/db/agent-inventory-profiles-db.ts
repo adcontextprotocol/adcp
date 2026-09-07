@@ -86,6 +86,44 @@ const ARRAY_FILTER_COLUMNS = [
 
 type ArrayFilterColumn = typeof ARRAY_FILTER_COLUMNS[number];
 
+// ─── Profile diffing (registry-sync agent.profile_updated producer) ──────────
+
+// Same set as ARRAY_FILTER_COLUMNS, reused directly: these are exactly the
+// array-typed fields a crawl can change on an existing profile.
+const PROFILE_ARRAY_FIELDS = ARRAY_FILTER_COLUMNS;
+
+/** Order-independent (set-based) comparison string for an array field. */
+function stableArrayValue(value: string[] | undefined): string {
+  return JSON.stringify([...(value ?? [])].sort());
+}
+
+/**
+ * Top-level AgentInventoryProfile fields changed between a previously-
+ * persisted profile and a freshly built one. Mirrors adagentsChangedFields'
+ * set-based approach (publisher-db.ts) rather than reference/order-sensitive
+ * equality, since array fields here are built from Sets whose insertion
+ * order isn't semantically meaningful (see buildInventoryProfiles).
+ *
+ * Returns [] when `previous` is absent (no prior persisted row) — an agent
+ * gaining its first profile isn't a "change" this helper reports; that case
+ * is covered by the agent.discovered event path instead.
+ */
+export function agentProfileChangedFields(
+  previous: AgentInventoryProfile | undefined,
+  next: ProfileUpsertInput,
+): string[] {
+  if (!previous) return [];
+  const changed: string[] = [];
+  for (const field of PROFILE_ARRAY_FIELDS) {
+    if (stableArrayValue(previous[field]) !== stableArrayValue(next[field])) changed.push(field);
+  }
+  if ((previous.property_count ?? 0) !== (next.property_count ?? 0)) changed.push('property_count');
+  if ((previous.publisher_count ?? 0) !== (next.publisher_count ?? 0)) changed.push('publisher_count');
+  if ((previous.has_tmp ?? false) !== (next.has_tmp ?? false)) changed.push('has_tmp');
+  if ((previous.category_taxonomy ?? null) !== (next.category_taxonomy ?? null)) changed.push('category_taxonomy');
+  return changed;
+}
+
 // ─── Database ────────────────────────────────────────────────────────────────
 
 export class AgentInventoryProfilesDatabase {
@@ -231,6 +269,24 @@ export class AgentInventoryProfilesDatabase {
       [agentUrl]
     );
     return result.rows[0] ?? null;
+  }
+
+  /**
+   * Bulk-read persisted profiles for a set of agents in a single round trip,
+   * in the same single-query spirit as
+   * FederatedIndexService.getAllAgentDomainPairs() (used by
+   * CrawlerService.snapshotAgentState() to avoid O(N) per-agent queries).
+   * Callers that need a pre-crawl "previous profile" snapshot for diffing
+   * (see agentProfileChangedFields) MUST call this before upsertProfiles()
+   * overwrites the rows.
+   */
+  async getProfilesByUrls(agentUrls: string[]): Promise<AgentInventoryProfile[]> {
+    if (agentUrls.length === 0) return [];
+    const result = await query<AgentInventoryProfile>(
+      'SELECT * FROM agent_inventory_profiles WHERE agent_url = ANY($1)',
+      [agentUrls]
+    );
+    return result.rows;
   }
 
   /**
