@@ -118,6 +118,11 @@ export interface FixedTraceProviderStageConfig {
  * independently pinned below.
  */
 export const FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE = 'direct_model_screen_admission_v1' as const;
+/**
+ * A separately governed experiment for the four admitted Gemini cells.  It
+ * deliberately does not widen the original two-turn admission contract.
+ */
+export const FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE = 'direct_model_screen_google_three_turn_v1' as const;
 export type FixedTraceDirectModelScreenGenerationCellId =
   | 'generation:anthropic:claude-sonnet-5:provider_default'
   | 'generation:anthropic:claude-haiku-4-5:provider_default'
@@ -125,10 +130,18 @@ export type FixedTraceDirectModelScreenGenerationCellId =
   | 'generation:google:gemini-3.7-flash:low'
   | 'generation:google:gemini-3.7-flash:medium'
   | 'generation:google:gemini-3.7-flash:high';
-export interface FixedTraceDirectModelScreenConfig {
+export type FixedTraceGoogleThreeTurnGenerationCellId =
+  | 'generation:google:gemini-3.7-flash:provider_default'
+  | 'generation:google:gemini-3.7-flash:low'
+  | 'generation:google:gemini-3.7-flash:medium'
+  | 'generation:google:gemini-3.7-flash:high';
+export type FixedTraceDirectModelScreenConfig = {
   readonly mode: typeof FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE;
   readonly generationCellId: FixedTraceDirectModelScreenGenerationCellId;
-}
+} | {
+  readonly mode: typeof FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE;
+  readonly generationCellId: FixedTraceGoogleThreeTurnGenerationCellId;
+};
 
 export interface FixedTraceRunnerConfig {
   runId: string;
@@ -190,12 +203,18 @@ const directModelScreenGenerationCellIds = new Set<FixedTraceDirectModelScreenGe
   'generation:google:gemini-3.7-flash:medium',
   'generation:google:gemini-3.7-flash:high',
 ]);
+const directModelScreenGoogleThreeTurnGenerationCellIds = new Set<FixedTraceGoogleThreeTurnGenerationCellId>([
+  'generation:google:gemini-3.7-flash:provider_default',
+  'generation:google:gemini-3.7-flash:low',
+  'generation:google:gemini-3.7-flash:medium',
+  'generation:google:gemini-3.7-flash:high',
+]);
 
 function isDirectModelScreen(config: FixedTraceRunnerConfig): config is FixedTraceRunnerConfig & {
   directModelScreen: FixedTraceDirectModelScreenConfig;
   router: null;
 } {
-  return config.directModelScreen?.mode === FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE;
+  return config.directModelScreen !== undefined;
 }
 
 const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
@@ -497,7 +516,7 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
       || !Object.prototype.hasOwnProperty.call(screen, 'generationCellId')) {
       throw new Error('Fixed trace direct-model screen config must contain only mode and generationCellId');
     }
-    if (screen.mode !== FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE) {
+    if (screen.mode !== FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE && screen.mode !== FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE) {
       throw new Error('Fixed trace direct-model screen mode is invalid');
     }
     if (architectureArm.id !== 'direct_generation') {
@@ -509,7 +528,10 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
     if (config.toolDefinitionProvenance !== 'evaluator_owned_common_tool_universe') {
       throw new Error('Fixed trace direct-model screen requires the evaluator-owned common tool universe');
     }
-    if (!directModelScreenGenerationCellIds.has(screen.generationCellId)) {
+    const googleThreeTurn = screen.mode === FIXED_TRACE_DIRECT_MODEL_SCREEN_GOOGLE_THREE_TURN_MODE;
+    if (!(googleThreeTurn
+      ? directModelScreenGoogleThreeTurnGenerationCellIds.has(screen.generationCellId as FixedTraceGoogleThreeTurnGenerationCellId)
+      : directModelScreenGenerationCellIds.has(screen.generationCellId))) {
       throw new Error('Fixed trace direct-model screen generation cell is unsupported');
     }
     const cell = FIXED_TRACE_ADMITTED_CELLS.find((candidate) => candidate.id === screen.generationCellId);
@@ -520,7 +542,8 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
       || cell.pricingProfileId !== config.generation.pricing.profileId
       || config.generation.maxOutputTokens !== 900
       || config.generation.timeoutMs !== 120_000
-      || config.generation.maxIterations !== 2
+      || config.generation.maxIterations !== (googleThreeTurn ? 3 : 2)
+      || (googleThreeTurn && (config.repetition ?? 1) !== 1)
       || config.generation.transportRetries !== 0
       || config.generation.samplingMode !== 'provider_no_sampling_control'
       || config.generation.temperature !== null) {

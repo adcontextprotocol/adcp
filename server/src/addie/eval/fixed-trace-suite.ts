@@ -360,7 +360,7 @@ export interface FixedTraceRunMetadata {
   /** Set only by an exact synthetic architecture diagnostic declaration. */
   architectureDiagnosticMode?: 'synthetic_pack_v1' | 'synthetic_pilot_v1' | 'synthetic_sonnet_full_pack_v1' | null;
   /** Set only by the exact source-pinned direct model-screen declaration. */
-  directModelScreenMode?: 'direct_model_screen_admission_v1' | null;
+  directModelScreenMode?: 'direct_model_screen_admission_v1' | 'direct_model_screen_google_three_turn_v1' | null;
   /** Evaluator-only pack/pilot and cluster binding for architecture diagnostics. */
   architectureDiagnostic: {
     packDigest: string;
@@ -2662,6 +2662,12 @@ const directModelScreenGenerationCells = new Set([
   'google:gemini-3.7-flash:medium',
   'google:gemini-3.7-flash:high',
 ]);
+const directModelScreenGoogleThreeTurnGenerationCells = new Set([
+  'google:gemini-3.7-flash:provider_default',
+  'google:gemini-3.7-flash:low',
+  'google:gemini-3.7-flash:medium',
+  'google:gemini-3.7-flash:high',
+]);
 
 /** Rebind untrusted direct-screen metadata to the sole evaluator-owned pack. */
 function directModelScreenMetadataFailures(
@@ -2670,6 +2676,7 @@ function directModelScreenMetadataFailures(
   tools: ReadonlyArray<FixedTraceToolObservation>,
 ): string[] {
   const failures: string[] = [];
+  const googleThreeTurn = metadata.directModelScreenMode === 'direct_model_screen_google_three_turn_v1';
   const canonicalTrace = FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE.find(
     (candidate) => candidate.id === trace.id,
   );
@@ -2682,10 +2689,11 @@ function directModelScreenMetadataFailures(
   const control = metadata.generationControl;
   const tuple = `${control.requestedProvider}:${control.requestedModel}:${control.reasoningEffort}`;
   if (
-    !directModelScreenGenerationCells.has(tuple)
+    !(googleThreeTurn ? directModelScreenGoogleThreeTurnGenerationCells : directModelScreenGenerationCells).has(tuple)
     || control.configuredMaxOutputTokens !== 900
     || control.timeoutMs !== 120_000
-    || control.maxIterations !== 2
+    || control.maxIterations !== (googleThreeTurn ? 3 : 2)
+    || (googleThreeTurn && metadata.repetition !== 1)
     || control.transportRetries !== 0
     || control.samplingMode !== 'provider_no_sampling_control'
     || control.temperature !== null
@@ -2974,7 +2982,7 @@ function metadataFailures(
   }
   if (typeof metadata.providerDegradationInjectionEnabled !== 'boolean') failures.push('provider_degradation_policy_invalid');
   const directModelScreenMode = metadata.directModelScreenMode ?? null;
-  if (directModelScreenMode !== null && directModelScreenMode !== 'direct_model_screen_admission_v1') {
+  if (directModelScreenMode !== null && directModelScreenMode !== 'direct_model_screen_admission_v1' && directModelScreenMode !== 'direct_model_screen_google_three_turn_v1') {
     failures.push('direct_model_screen_mode_invalid');
   }
   failures.push(...cohortControlFailures('router', metadata.routerControl));
