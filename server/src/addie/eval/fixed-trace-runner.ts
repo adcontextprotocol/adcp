@@ -29,7 +29,10 @@ import type {
   ModelUsage,
   PreparedModelInvocation,
 } from '../model-providers/model-provider.js';
-import { UnexpectedModelIdentityError } from '../model-providers/model-provider.js';
+import {
+  modelProviderAdapterFailure,
+  UnexpectedModelIdentityError,
+} from '../model-providers/model-provider.js';
 import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
@@ -1643,14 +1646,35 @@ function fixedTraceFailureDiagnostic(
     return Object.freeze({
       kind: 'provider_timeout',
       reason: 'timeout_after_dispatch',
-      messageSha256: fixedTraceFailureMessageSha256(error),
+      // A timeout is terminal without consulting a provider-owned rejection.
+      // Keep its fingerprint deterministic without dereferencing an untrusted
+      // thrown value.
+      messageSha256: fixedTraceFailureMessageSha256(undefined),
     });
   }
+  const adapterFailure = modelProviderAdapterFailure(error);
   if (isInvalidModelEventStreamError(error)) {
     return Object.freeze({
       kind: 'normalization_error',
       reason: 'invalid_normalized_model_event',
       messageSha256: fixedTraceFailureMessageSha256(error),
+    });
+  }
+  if (adapterFailure?.kind === 'adapter_response_normalization') {
+    return Object.freeze({
+      kind: 'adapter_response_error',
+      reason: 'adapter_response_normalization',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+      origin: adapterFailure.kind,
+    });
+  }
+  if (adapterFailure?.kind === 'provider_transport') {
+    return Object.freeze({
+      kind: 'provider_transport_error',
+      reason: 'provider_exception',
+      messageSha256: fixedTraceFailureMessageSha256(error),
+      origin: adapterFailure.kind,
+      ...(adapterFailure.httpStatus === undefined ? {} : { httpStatus: adapterFailure.httpStatus }),
     });
   }
   if (isUnexpectedModelIdentityError(error)) {
@@ -1788,6 +1812,21 @@ async function executeRouter(
       return { request, response, plan: null, output, status: 'malformed', metadata, failureDiagnostic: null };
     }
   } catch (error) {
+    if (timedOut && dispatched) {
+      const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
+      const terminalStatus = hasCompleteReturnedProviderIdentities(state)
+        ? 'timeout_after_dispatch'
+        : 'unknown_exposure';
+      return {
+        request,
+        response: null,
+        plan: null,
+        output: fallbackOutput(terminalStatus),
+        status: terminalStatus,
+        metadata: localStageMetadata(request, config, state),
+        failureDiagnostic: fixedTraceFailureDiagnostic(undefined, true, true),
+      };
+    }
     if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
     const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
     const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);
@@ -2105,6 +2144,34 @@ export async function runFixedTraceCase(
       rejectedToolCalls: [],
     };
   } catch (error) {
+    if (timedOut && dispatched) {
+      const state = {
+        invocations,
+        dispatched,
+        dispatchedCalls,
+        latencyMs: Date.now() - startedAt,
+      };
+      const finalTerminalStatus = hasCompleteReturnedProviderIdentities(state)
+        ? 'timeout_after_dispatch'
+        : 'unknown_exposure';
+      const generation = localStageMetadata(generationRequest, generationConfig, state);
+      return {
+        traceId: executionTrace.id,
+        metadata: baseMetadata(executionTrace, executionConfig, toolSchemaSha256, routed.metadata, generation),
+        terminalStage: 'generation',
+        terminalStatus: finalTerminalStatus,
+        routeDisposition: routeDisposition(architectureArm.id, hybridDecision?.mode === 'local_terminal'),
+        boundaryReason: null,
+        localReplacementReason: null,
+        failureDiagnostic: fixedTraceFailureDiagnostic(undefined, true, true),
+        finishReason: null,
+        output: fallbackOutput(finalTerminalStatus),
+        flagged: true,
+        route,
+        tools: [],
+        rejectedToolCalls: [],
+      };
+    }
     if (isFixedTraceExecutionIdentityError(error) || isFixedTracePreparationError(error)) throw error;
     const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
     const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);

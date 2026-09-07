@@ -7,6 +7,73 @@
  */
 
 export type ModelProviderId = 'anthropic' | 'openai' | 'google';
+export type ModelProviderAdapterFailureKind =
+  | 'provider_transport'
+  | 'adapter_response_normalization';
+
+export interface ModelProviderAdapterFailure {
+  readonly kind: ModelProviderAdapterFailureKind;
+  readonly httpStatus?: number;
+}
+
+/** The only message an adapter failure is allowed to expose to evaluators. */
+export const MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE = 'Model provider adapter failure';
+
+function validHttpStatus(value: unknown): number | undefined {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= 100
+    && value <= 599
+    ? value
+    : undefined;
+}
+
+// The caught provider value must never escape the adapter. Keeping the safe
+// classification in a private field also prevents it from becoming artifact
+// data through Error serialization.
+class ModelProviderAdapterError extends Error {
+  readonly #failure: ModelProviderAdapterFailure;
+
+  constructor(
+    kind: ModelProviderAdapterFailureKind,
+    httpStatus?: number,
+  ) {
+    super(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE);
+    this.name = 'ModelProviderAdapterError';
+    const safeHttpStatus = validHttpStatus(httpStatus);
+    this.#failure = Object.freeze({
+      kind,
+      ...(safeHttpStatus === undefined ? {} : { httpStatus: safeHttpStatus }),
+    });
+  }
+
+  failure(): ModelProviderAdapterFailure {
+    return this.#failure;
+  }
+}
+
+/**
+ * Creates an adapter-owned error without preserving the caught provider value
+ * or any provider-controlled diagnostic text.
+ */
+export function createModelProviderAdapterError(
+  kind: ModelProviderAdapterFailureKind,
+  httpStatus?: number,
+): Error {
+  return new ModelProviderAdapterError(kind, httpStatus);
+}
+
+/**
+ * Returns only adapter-owned metadata. Provider-thrown values cannot carry
+ * this marker, and hostile proxies are treated as unclassified.
+ */
+export function modelProviderAdapterFailure(error: unknown): ModelProviderAdapterFailure | undefined {
+  try {
+    return error instanceof ModelProviderAdapterError ? error.failure() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 export type ModelFallbackReason =
   | 'primary_unavailable'
   | 'primary_rate_limited'
