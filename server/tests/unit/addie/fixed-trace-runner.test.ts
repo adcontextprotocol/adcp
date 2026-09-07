@@ -18,6 +18,7 @@ import {
   FixedTraceBudgetAdmissionError,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
+import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 import { FixedTraceToolLoopBoundaryError } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
 import {
   FIXED_TRACE_SUITE,
@@ -1469,6 +1470,49 @@ describe('fixed trace artifact runner', () => {
       },
     });
     expect(generateContent).toHaveBeenCalledOnce();
+  });
+
+  it('grades an omitted Gemini visible-output receipt as a settled bounded truncation', async () => {
+    const selectedTrace = trace('bounded-truncation');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generateContent = vi.fn().mockResolvedValue({
+      responseId: 'google_1',
+      modelVersion: GOOGLE_ROUTER_MODEL,
+      candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [] } }],
+      usageMetadata: { promptTokenCount: 10, thoughtsTokenCount: 32, totalTokenCount: 42 },
+    });
+    const generation = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent },
+    } satisfies GoogleGenerateContentTransport);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: {
+        ...stage(generation, 3),
+        model: GOOGLE_ROUTER_MODEL,
+        reasoningEffort: 'high',
+        pricing: datedPricingProfilesForFixedTrace().find((profile) => (
+          profile.provider === 'google' && profile.model === GOOGLE_ROUTER_MODEL
+        ))!,
+      },
+    }));
+
+    expect(generateContent).toHaveBeenCalledOnce();
+    expect(generateContent.mock.calls[0]?.[0]).toMatchObject({
+      config: { maxOutputTokens: 32, thinkingConfig: { thinkingLevel: 'HIGH' } },
+    });
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'truncated',
+      finishReason: 'length',
+      output: '',
+      flagged: true,
+      metadata: { generation: { source: 'provider', usage: { inputTokens: 10, outputTokens: 32 } } },
+    });
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
+      deterministicPass: true,
+      metadataPass: true,
+      terminalFailure: true,
+    });
   });
 
   it('classifies a sanitized primitive Google rejection as provider transport', async () => {

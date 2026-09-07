@@ -689,7 +689,7 @@ describe('GoogleGenerateContentProvider', () => {
     expect(normalizeGoogleResponse(googleResponse({
       candidates: [],
       promptFeedback: { blockReason: 'SAFETY' },
-      usageMetadata: { promptTokenCount: 4, totalTokenCount: 4 },
+      usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 0, totalTokenCount: 4 },
     })).finishReason).toBe('refusal');
     expect(normalizeGoogleResponse(googleResponse({
       candidates: [{ finishReason: 'SAFETY', content: { role: 'model', parts: [] } }],
@@ -715,6 +715,35 @@ describe('GoogleGenerateContentProvider', () => {
     expect(() => normalizeGoogleResponse(googleResponse({
       candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model' } }],
     }))).toThrow('Malformed Google response content');
+  });
+
+  it.each([
+    ['empty content', { role: 'model', parts: [] }],
+    ['omitted content', undefined],
+  ])('accepts a MAX_TOKENS receipt with omitted visible output usage and %s', (_description, content) => {
+    const candidate = content === undefined
+      ? { finishReason: 'MAX_TOKENS' }
+      : { finishReason: 'MAX_TOKENS', content };
+    expect(normalizeGoogleResponse(googleResponse({
+      candidates: [candidate],
+      usageMetadata: { promptTokenCount: 4, thoughtsTokenCount: 32, totalTokenCount: 36 },
+    }))).toMatchObject({
+      finishReason: 'length',
+      content: [],
+      usage: { inputTokens: 4, outputTokens: 32 },
+    });
+  });
+
+  it.each([
+    ['STOP', { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text: 'visible' }] } }] }],
+    ['SAFETY', { candidates: [{ finishReason: 'SAFETY', content: { role: 'model', parts: [] } }] }],
+    ['RECITATION', { candidates: [{ finishReason: 'RECITATION', content: { role: 'model', parts: [] } }] }],
+    ['prompt SAFETY', { candidates: [], promptFeedback: { blockReason: 'SAFETY' } }],
+  ])('rejects omitted visible output usage for a %s refusal or terminal receipt', (_description, response) => {
+    expect(() => normalizeGoogleResponse(googleResponse({
+      ...response,
+      usageMetadata: { promptTokenCount: 4, thoughtsTokenCount: 32, totalTokenCount: 36 },
+    }))).toThrow('output usage');
   });
 
   it('propagates an abort signal in the exact request seen before dispatch', async () => {
