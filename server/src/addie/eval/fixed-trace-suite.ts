@@ -8,7 +8,9 @@ import {
 } from './fixed-trace-architecture.js';
 import {
   fixedTraceEstimatedCostUsd,
+  fixedTraceDirectFullSuiteResponsePricingPolicy,
   fixedTraceModelResolutionPolicy,
+  fixedTraceResponseUsesPricingPolicy,
   fixedTraceResponsePricingPolicy,
   type FixedTraceBudgetPricing,
 } from './fixed-trace-budget.js';
@@ -278,11 +280,12 @@ export interface FixedTracePricing extends FixedTraceBudgetPricing {
 
 /**
  * A closed response-model policy. Most profiles require literal model identity;
- * the Google router profile is the one reviewed exception for its dated model
- * revisions. The policy is fingerprinted with the requested controls.
+ * the reviewed Anthropic and Google profiles accept only their provider's
+ * dated revisions. The policy is fingerprinted with the requested controls.
  */
 export type FixedTraceModelResolutionPolicy =
   | 'exact_model_identity_v1'
+  | 'anthropic_dated_revision_v1'
   | 'google_router_dated_revision_v1';
 
 /** Immutable requested settings for one stage in every member of a cohort. */
@@ -2640,9 +2643,13 @@ function cohortControlFailures(
     || (pricing.cacheReadAccounting !== 'unsupported' && pricing.cacheReadUsdPerMillionTokens === null)
     || (pricing.cacheWriteAccounting !== 'unsupported' && pricing.cacheWriteUsdPerMillionTokens === null)
   ) fail('configured_pricing_invalid');
-  if (!['exact_model_identity_v1', 'google_router_dated_revision_v1'].includes(control.modelResolutionPolicy)) {
+  if (!['exact_model_identity_v1', 'anthropic_dated_revision_v1', 'google_router_dated_revision_v1'].includes(control.modelResolutionPolicy)) {
     fail('configured_model_resolution_policy_invalid');
   }
+  if (
+    control.modelResolutionPolicy === 'anthropic_dated_revision_v1'
+    && control.requestedProvider !== 'anthropic'
+  ) fail('configured_model_resolution_policy_invalid');
   if (
     control.modelResolutionPolicy === 'google_router_dated_revision_v1'
     && (
@@ -2789,9 +2796,24 @@ function directFullSuiteMetadataFailures(trace: FixedTraceCase, metadata: FixedT
   if (!directFullSuiteGenerationCells.has(tuple) || control.configuredMaxOutputTokens !== 900
     || control.timeoutMs !== 120_000 || control.maxIterations !== 12 || control.transportRetries !== 0
     || control.samplingMode !== 'provider_no_sampling_control' || control.temperature !== null) fail('generation_control_invalid');
-  try { fixedTraceResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing); }
+  try { fixedTraceDirectFullSuiteResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing); }
   catch { fail('generation_pricing_invalid'); }
   const generation = metadata.generation;
+  let returnedGenerationIdentityUsesPricing = false;
+  if (generation.returnedProvider !== null && generation.returnedModel !== null) {
+    try {
+      returnedGenerationIdentityUsesPricing = fixedTraceResponseUsesPricingPolicy(
+        fixedTraceDirectFullSuiteResponsePricingPolicy(
+          control.requestedProvider,
+          control.requestedModel,
+          control.pricing,
+        ),
+        { provider: generation.returnedProvider, model: generation.returnedModel },
+      );
+    } catch {
+      // Forged controls and unknown provider identities remain failures.
+    }
+  }
   const localSurface = ['ignore', 'react'].includes(trace.routing.action);
   if (localSurface) {
     if (generation.source !== 'not_run' || generation.dispatched || generation.dispatchedCalls !== 0
@@ -2800,13 +2822,24 @@ function directFullSuiteMetadataFailures(trace: FixedTraceCase, metadata: FixedT
       || generation.usageKnown || generation.usage !== null || generation.estimatedCostUsd !== 0) fail('local_surface_generation_invalid');
   } else if (generation.dispatched) {
     const exposures = generation.providerExposures;
-    if (generation.source !== 'provider' || generation.modelResolution !== 'exact'
+    if (generation.source !== 'provider'
       || generation.requestedProvider !== control.requestedProvider || generation.requestedModel !== control.requestedModel
-      || generation.returnedProvider !== control.requestedProvider || generation.returnedModel !== control.requestedModel
+      || !returnedGenerationIdentityUsesPricing
+      || generation.modelResolution !== (generation.returnedModel === control.requestedModel ? 'exact' : 'provider_canonicalized')
       || !Number.isSafeInteger(generation.dispatchedCalls) || (generation.dispatchedCalls ?? 0) < 1
       || !Array.isArray(exposures) || exposures.length !== (generation.dispatchedCalls ?? -1)
-      || exposures.some((entry, index) => entry.attempt !== index + 1 || entry.preparedProvider !== control.requestedProvider
-        || entry.preparedModel !== control.requestedModel || entry.returnedProvider !== control.requestedProvider || entry.returnedModel !== control.requestedModel)) fail('dispatched_generation_identity_invalid');
+      || exposures.some((entry, index) => {
+        if (entry.attempt !== index + 1 || entry.preparedProvider !== control.requestedProvider
+          || entry.preparedModel !== control.requestedModel) return true;
+        try {
+          return !fixedTraceResponseUsesPricingPolicy(
+            fixedTraceDirectFullSuiteResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing),
+            { provider: entry.returnedProvider, model: entry.returnedModel },
+          );
+        } catch {
+          return true;
+        }
+      })) fail('dispatched_generation_identity_invalid');
   } else if (generation.source !== 'local' || generation.requestedProvider !== control.requestedProvider
     || generation.requestedModel !== control.requestedModel || generation.returnedProvider !== null || generation.returnedModel !== null
     || generation.modelResolution !== 'local' || generation.dispatchedCalls !== 0
@@ -2830,6 +2863,7 @@ function stageMetadataFailures(
   stage: FixedTraceModelStageMetadata,
   control: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl,
   expectedEffectiveMaxOutputTokens: number | null,
+  allowDatedAnthropicRevision = false,
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
@@ -2923,14 +2957,30 @@ function stageMetadataFailures(
     if (stage.modelResolution === null || stage.modelResolution === 'local') fail('model_resolution_invalid');
     if (stage.returnedProvider !== stage.requestedProvider) fail('provider_identity_mismatch');
     if (stage.modelResolution === 'exact' && stage.returnedModel !== stage.requestedModel) fail('exact_model_identity_mismatch');
-    if (stage.modelResolution === 'provider_canonicalized' && (
-      control.modelResolutionPolicy !== 'google_router_dated_revision_v1'
-      || stage.returnedProvider !== 'google'
-      || stage.requestedModel !== GOOGLE_ROUTER_MODEL
-      || stage.returnedModel === null
-      || !isGoogleRouterModelRevision(stage.returnedModel)
-      || stage.returnedModel === stage.requestedModel
-    )) fail('model_resolution_policy_mismatch');
+    if (stage.modelResolution === 'provider_canonicalized') {
+      let canonicalizedIdentityApproved = false;
+      if (control.modelResolutionPolicy === 'anthropic_dated_revision_v1'
+        && stage.returnedProvider === 'anthropic'
+        && stage.returnedModel !== null) {
+        try {
+          canonicalizedIdentityApproved = fixedTraceResponseUsesPricingPolicy(
+            allowDatedAnthropicRevision
+              ? fixedTraceDirectFullSuiteResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing)
+              : fixedTraceResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing),
+            { provider: stage.returnedProvider, model: stage.returnedModel },
+          );
+        } catch {
+          // Forged controls and unknown provider identities remain failures.
+        }
+      } else if (control.modelResolutionPolicy === 'google_router_dated_revision_v1') {
+        canonicalizedIdentityApproved = stage.returnedProvider === 'google'
+          && stage.requestedModel === GOOGLE_ROUTER_MODEL
+          && stage.returnedModel !== null
+          && isGoogleRouterModelRevision(stage.returnedModel)
+          && stage.returnedModel !== stage.requestedModel;
+      }
+      if (!canonicalizedIdentityApproved) fail('model_resolution_policy_mismatch');
+    }
     if (stage.modelResolution === 'exact' && control.modelResolutionPolicy === 'exact_model_identity_v1' && stage.returnedModel !== control.requestedModel) {
       fail('model_resolution_policy_mismatch');
     }
@@ -3201,6 +3251,7 @@ function metadataFailures(
       'generation', metadata.generation, metadata.generationControl, metadata.generation.source === 'not_run'
         ? null
         : caseControl?.maxOutputTokens ?? metadata.generationControl.configuredMaxOutputTokens,
+      directModelScreenMode === 'direct_full_suite_model_comparison_v1',
     ));
   }
   return failures;

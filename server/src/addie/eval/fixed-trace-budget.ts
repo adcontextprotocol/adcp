@@ -82,7 +82,9 @@ interface FixedTraceApprovedPricing extends FixedTraceBudgetPricing {
 export function fixedTraceModelResolutionPolicy(
   provider: ModelProvider['id'],
   model: string,
+  allowDatedAnthropicRevision = false,
 ): FixedTraceModelResolutionPolicy {
+  if (allowDatedAnthropicRevision && provider === 'anthropic') return 'anthropic_dated_revision_v1';
   return provider === 'google' && model === GOOGLE_ROUTER_MODEL
     ? 'google_router_dated_revision_v1'
     : 'exact_model_identity_v1';
@@ -164,6 +166,34 @@ export function fixedTraceResponsePricingPolicy(
   expectedModel: string,
   pricing: FixedTraceBudgetPricing & { readonly profileId: string },
 ): FixedTraceResponsePricingPolicy {
+  return fixedTraceResponsePricingPolicyForResolution(
+    expectedProvider,
+    expectedModel,
+    pricing,
+    fixedTraceModelResolutionPolicy(expectedProvider, expectedModel),
+  );
+}
+
+/** The only policy constructor that permits dated Anthropic full-suite receipts. */
+export function fixedTraceDirectFullSuiteResponsePricingPolicy(
+  expectedProvider: ModelProvider['id'],
+  expectedModel: string,
+  pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+): FixedTraceResponsePricingPolicy {
+  return fixedTraceResponsePricingPolicyForResolution(
+    expectedProvider,
+    expectedModel,
+    pricing,
+    fixedTraceModelResolutionPolicy(expectedProvider, expectedModel, true),
+  );
+}
+
+function fixedTraceResponsePricingPolicyForResolution(
+  expectedProvider: ModelProvider['id'],
+  expectedModel: string,
+  pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+  modelResolutionPolicy: FixedTraceModelResolutionPolicy,
+): FixedTraceResponsePricingPolicy {
   const approved = FIXED_TRACE_APPROVED_PRICING.find((entry) => (
     entry.expectedProvider === expectedProvider
     && entry.expectedModel === expectedModel
@@ -183,7 +213,7 @@ export function fixedTraceResponsePricingPolicy(
     expectedProvider: approved.expectedProvider,
     expectedModel: approved.expectedModel,
     pricingProfileId: approved.profileId,
-    modelResolutionPolicy: approved.modelResolutionPolicy,
+    modelResolutionPolicy,
   });
   approvedResponsePricingPolicies.set(policy, approved);
   return policy;
@@ -191,12 +221,12 @@ export function fixedTraceResponsePricingPolicy(
 
 export function fixedTraceResponseUsesPricingPolicy(
   policy: FixedTraceResponsePricingPolicy,
-  response: ModelResponse,
+  response: Pick<ModelResponse, 'provider' | 'model'>,
 ): boolean {
   const approved = approvedResponsePricing(policy);
   if (response.provider !== policy.expectedProvider) return false;
   if (response.model === policy.expectedModel) return true;
-  if (response.provider === 'anthropic') {
+  if (policy.modelResolutionPolicy === 'anthropic_dated_revision_v1' && response.provider === 'anthropic') {
     return resolveKnownClaudePricingModel(response.model) === policy.expectedModel;
   }
   return policy.modelResolutionPolicy === 'google_router_dated_revision_v1'

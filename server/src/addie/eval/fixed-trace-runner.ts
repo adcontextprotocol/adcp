@@ -39,6 +39,7 @@ import {
 } from './fixed-trace-tool-loop.js';
 import {
   FixedTraceBudgetAdmissionError,
+  fixedTraceDirectFullSuiteResponsePricingPolicy,
   fixedTraceEstimatedCostUsd,
   fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
   fixedTraceResponsePricingPolicy,
@@ -850,11 +851,15 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
 export function fixedTraceModelResolutionPolicy(
   provider: ModelProvider['id'],
   model: string,
+  allowDatedAnthropicRevision = false,
 ): FixedTraceModelResolutionPolicy {
-  return fixedTraceBudgetModelResolutionPolicy(provider, model);
+  return fixedTraceBudgetModelResolutionPolicy(provider, model, allowDatedAnthropicRevision);
 }
 
-function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCohortStageControl {
+function cohortStageControl(
+  config: FixedTraceProviderStageConfig,
+  allowDatedAnthropicRevision = false,
+): FixedTraceCohortStageControl {
   return {
     requestedProvider: config.provider.id,
     requestedModel: config.model,
@@ -865,7 +870,7 @@ function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCo
     transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
-    modelResolutionPolicy: fixedTraceModelResolutionPolicy(config.provider.id, config.model),
+    modelResolutionPolicy: fixedTraceModelResolutionPolicy(config.provider.id, config.model, allowDatedAnthropicRevision),
     pricing: { ...config.pricing },
   };
 }
@@ -886,20 +891,28 @@ function modelResolution(
 ): 'exact' | 'provider_canonicalized' {
   if (response.model === config.model) return 'exact';
   // Preserve the provider-returned identity verbatim. Validation uses the
-  // fingerprinted policy to admit only the one reviewed Google revision form.
+  // fingerprinted policy to admit only reviewed provider revision forms.
   return 'provider_canonicalized';
 }
 
-/** The only non-literal returned model accepted by this diagnostic profile. */
+/** The only returned model identities accepted by this diagnostic profile. */
 function returnedModelUsesRecordedPricing(
   config: FixedTraceProviderStageConfig,
-  response: ModelResponse,
+  response: Pick<ModelResponse, 'provider' | 'model'>,
+  allowDatedAnthropicRevision = false,
 ): boolean {
-  return fixedTraceResponseUsesPricingPolicy(fixedTraceResponsePricingPolicy(
+  const policy = allowDatedAnthropicRevision
+    ? fixedTraceDirectFullSuiteResponsePricingPolicy(
+      config.provider.id,
+      config.model,
+      config.pricing,
+    )
+    : fixedTraceResponsePricingPolicy(
     config.provider.id,
     config.model,
     config.pricing,
-  ), response);
+    );
+  return fixedTraceResponseUsesPricingPolicy(policy, response);
 }
 
 function providerStageMetadata(
@@ -909,12 +922,13 @@ function providerStageMetadata(
   usage: ModelUsage,
   state: StageInvocationState,
   recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
+  allowDatedAnthropicRevision = false,
 ): FixedTraceModelStageMetadata {
   // Provider responses are outside evaluator ownership. Retaining their usage
   // object would let a later provider turn mutate already-recorded cost and
   // usage evidence after this case has completed.
   const recordedUsage = deepFreeze(structuredClone(usage));
-  const resolvedPricing = returnedModelUsesRecordedPricing(config, response);
+  const resolvedPricing = returnedModelUsesRecordedPricing(config, response, allowDatedAnthropicRevision);
   return {
     source: 'provider',
     dispatched: state.dispatched,
@@ -1142,7 +1156,7 @@ export function fixedTraceArchitectureConfigSha256(
       : fixedTraceExecutionEnvelopeProvenance(arm.id),
     requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, arm.id),
     routerControl: routerControlForConfig(config),
-    generationControl: cohortStageControl(config.generation),
+    generationControl: cohortStageControl(config.generation, isDirectFullSuiteComparison(config)),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
     directModelScreenMode: config.directModelScreen?.mode ?? config.directFullSuiteComparison?.mode ?? null,
@@ -1286,7 +1300,7 @@ function baseMetadata(
     directArmAdmission: admission,
     caseControl: trace.caseControl ?? null,
     routerControl: routerControlForConfig(config),
-    generationControl: cohortStageControl(config.generation),
+    generationControl: cohortStageControl(config.generation, isDirectFullSuiteComparison(config)),
     router,
     generation,
   };
@@ -1350,7 +1364,13 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
   return '';
 }
 
-/** This screen deliberately accepts no provider model alias or revision. */
+/**
+ * The older two-probe direct-screen diagnostic deliberately remains literal.
+ * The full-suite comparison instead validates returned identities with the
+ * same reviewed, fingerprinted pricing policy that settles their cost. Both
+ * retain a literal dispatch boundary, and the latter never admits arbitrary
+ * provider model names.
+ */
 function directModelScreenProviderExposuresMatch(
   config: FixedTraceRunnerConfig,
   exposures: readonly {
@@ -1360,11 +1380,17 @@ function directModelScreenProviderExposuresMatch(
     returnedModel: string;
   }[],
 ): boolean {
-  return (!isDirectModelScreen(config) && !isDirectFullSuiteComparison(config)) || exposures.every((exposure) => (
+  if (!isDirectModelScreen(config) && !isDirectFullSuiteComparison(config)) return true;
+  return exposures.every((exposure) => (
     exposure.preparedProvider === config.generation.provider.id
     && exposure.preparedModel === config.generation.model
-    && exposure.returnedProvider === config.generation.provider.id
-    && exposure.returnedModel === config.generation.model
+    && (isDirectFullSuiteComparison(config)
+      ? returnedModelUsesRecordedPricing(config.generation, {
+          provider: exposure.returnedProvider,
+          model: exposure.returnedModel,
+        }, true)
+      : exposure.returnedProvider === config.generation.provider.id
+        && exposure.returnedModel === config.generation.model)
   ));
 }
 
@@ -1722,13 +1748,20 @@ export async function runFixedTraceCase(
       result.usage,
       state,
       result.providerExposures,
+      isDirectFullSuiteComparison(executionConfig),
     );
-    const terminalStatus = hasCompleteReturnedProviderIdentities(
+    const completeProviderIdentities = hasCompleteReturnedProviderIdentities(
       state,
       undefined,
       result.providerExposures,
-    ) && returnedModelUsesRecordedPricing(generationConfig, result.response)
-      && directModelScreenProviderExposuresMatch(executionConfig, result.providerExposures)
+    );
+    const responseUsesRecordedPricing = returnedModelUsesRecordedPricing(
+      generationConfig,
+      result.response,
+      isDirectFullSuiteComparison(executionConfig),
+    );
+    const exposureIdentitiesMatch = directModelScreenProviderExposuresMatch(executionConfig, result.providerExposures);
+    const terminalStatus = completeProviderIdentities && responseUsesRecordedPricing && exposureIdentitiesMatch
       ? terminalStatusForFinishReason(result.response.finishReason, result.text)
       : 'unknown_exposure';
     return {
