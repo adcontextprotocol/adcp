@@ -796,6 +796,13 @@ Before creating or updating a PR, always:
 3. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
 4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
 5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
+6. **Apply the completion invariant before declaring the task/PR done or
+   merging** — no review comment, inline comment, conversation thread,
+   requested change, CodeQL/security annotation, or required check may remain
+   open. Respond where appropriate, implement or explicitly resolve every
+   item, and re-request review after material changes. Verify the exact final
+   head has no unresolved threads or comments and that every required check is
+   green. Never silently dismiss comments merely to make the count zero.
 
 ## Triage Routine — Manual Nudge
 
