@@ -5,6 +5,7 @@ import {
   FixedTraceBudgetAdmissionError,
   fixedTraceEstimatedCostUsd,
   fixedTraceApprovedPricingProfiles,
+  fixedTraceResponseUsesPricingPolicy,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
@@ -149,8 +150,14 @@ describe('fixed trace provider budget', () => {
   });
 
   it('retains the reviewed Haiku, Luna, and Gemini rate cohorts', () => {
-    expect(fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', HAIKU_4_5_PRICING))
+    const haikuPolicy = fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', HAIKU_4_5_PRICING);
+    expect(haikuPolicy)
       .toMatchObject({ pricingProfileId: HAIKU_4_5_PRICING.profileId });
+    expect(fixedTraceResponseUsesPricingPolicy(haikuPolicy, {
+      ...RESPONSE,
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+    })).toBe(true);
     expect(fixedTraceEstimatedCostUsd({
       inputTokens: 100, outputTokens: 20, cacheReadTokens: 1_000, cacheWriteTokens: 200,
     }, HAIKU_4_5_PRICING)).toBe(0.00055);
