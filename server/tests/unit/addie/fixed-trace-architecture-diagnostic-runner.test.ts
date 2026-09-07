@@ -8,6 +8,7 @@ import {
 import { fixedTraceCommonToolDefinitions, fixedTraceHybridPolicy } from '../../../src/addie/eval/fixed-trace-architecture.js';
 import {
   runFixedTraceArchitectureDiagnosticPilot,
+  runFixedTraceArchitectureDiagnosticSonnetFullPack,
   runFixedTraceArchitectureDiagnosticSuite,
   type FixedTraceRunnerConfig,
 } from '../../../src/addie/eval/fixed-trace-runner.js';
@@ -46,8 +47,15 @@ class SyntheticProvider implements ModelProvider {
     readonly id: 'anthropic' | 'openai' = 'anthropic',
   ) {}
 
+  private beforeDispatchMutation: (() => void) | undefined;
+
+  mutateBeforeDispatch(mutation: () => void): void {
+    this.beforeDispatchMutation = mutation;
+  }
+
   async *respond(request: ModelRequest, options: ModelRespondOptions = {}): AsyncIterable<NormalizedModelEvent> {
     const prepared = this.prepare(request);
+    this.beforeDispatchMutation?.();
     await options.beforeDispatch?.(prepared);
     this.requests.push(structuredClone(request));
     const response: ModelResponse = {
@@ -61,6 +69,21 @@ class SyntheticProvider implements ModelProvider {
     yield { type: 'text_delta', index: 0, text: (response.content[0] as { text: string }).text };
     yield { type: 'response_complete', response };
   }
+}
+
+function sonnetFullPackConfig(
+  architectureArm: FixedTraceRunnerConfig['architectureArm'],
+  router: ModelProvider,
+  generation: ModelProvider,
+): FixedTraceRunnerConfig {
+  const controls = fixedTraceArchitectureDiagnosticPilotStageControls();
+  return {
+    ...config(architectureArm, router, generation),
+    runId: `architecture-sonnet-full-pack-${architectureArm}`,
+    architectureDiagnosticMode: 'synthetic_sonnet_full_pack_v1',
+    router: { ...controls.router, provider: router },
+    generation: { ...controls.generation, provider: generation },
+  };
 }
 
 function config(
@@ -83,6 +106,108 @@ function config(
 }
 
 describe('fixed-trace architecture synthetic runner', () => {
+  it('runs the exact full pack in the distinct reviewed Sonnet/Haiku identity for every non-oracle arm', async () => {
+    const directRouter = new SyntheticProvider('router');
+    const directGeneration = new SyntheticProvider('generation');
+    const direct = await runFixedTraceArchitectureDiagnosticSonnetFullPack(
+      sonnetFullPackConfig('direct_generation', directRouter, directGeneration),
+    );
+    const routedRouter = new SyntheticProvider('router');
+    const routedGeneration = new SyntheticProvider('generation');
+    const routed = await runFixedTraceArchitectureDiagnosticSonnetFullPack(
+      sonnetFullPackConfig('two_stage_llm_router', routedRouter, routedGeneration),
+    );
+    const hybridRouter = new SyntheticProvider('router');
+    const hybridGeneration = new SyntheticProvider('generation');
+    const hybrid = await runFixedTraceArchitectureDiagnosticSonnetFullPack(
+      sonnetFullPackConfig('deterministic_policy_llm_fallback_hybrid', hybridRouter, hybridGeneration),
+    );
+
+    expect(direct).toHaveLength(24);
+    expect(routed).toHaveLength(24);
+    expect(hybrid).toHaveLength(24);
+    expect(directRouter.requests).toHaveLength(0);
+    expect(directGeneration.requests).toHaveLength(24);
+    expect(routedRouter.requests).toHaveLength(24);
+    expect(routedGeneration.requests).toHaveLength(24);
+    expect(hybridRouter.requests).toHaveLength(16);
+    expect(hybridGeneration.requests).toHaveLength(16);
+    expect(hybrid.filter((observation) => observation.terminalStage === 'surface')).toHaveLength(8);
+    for (const observation of [...direct, ...routed, ...hybrid]) {
+      expect(observation.metadata).toMatchObject({
+        architectureDiagnosticMode: 'synthetic_sonnet_full_pack_v1',
+        routerControl: { requestedModel: 'claude-haiku-4-5', maxIterations: 1 },
+        generationControl: { requestedModel: 'claude-sonnet-5', maxIterations: 2 },
+        architectureDiagnostic: { pilotDigest: null },
+      });
+    }
+  });
+
+  it.each([
+    ['subset suite', (value: FixedTraceRunnerConfig) => {
+      value.traceSuite = FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_SUITE.slice(0, 23);
+      value.traceSuiteSha256 = fixedTraceSuiteSha256(value.traceSuite);
+    }, 'differs from the predeclared synthetic pack'],
+    ['reordered suite', (value: FixedTraceRunnerConfig) => {
+      value.traceSuite = [...FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_SUITE].reverse();
+      value.traceSuiteSha256 = fixedTraceSuiteSha256(value.traceSuite);
+    }, 'differs from the predeclared synthetic pack'],
+    ['Sonnet generator model', (value: FixedTraceRunnerConfig) => {
+      value.generation = { ...value.generation, model: 'claude-haiku-4-5' };
+    }, 'differs from reviewed candidate controls'],
+    ['Sonnet generator stage control', (value: FixedTraceRunnerConfig) => {
+      value.generation = { ...value.generation, maxIterations: 3 };
+    }, 'differs from reviewed candidate controls'],
+    ['Haiku router model', (value: FixedTraceRunnerConfig) => {
+      value.router = { ...value.router, model: 'claude-sonnet-5' };
+    }, 'differs from reviewed candidate controls'],
+    ['Haiku router stage control', (value: FixedTraceRunnerConfig) => {
+      value.router = { ...value.router, maxOutputTokens: value.router.maxOutputTokens + 1 };
+    }, 'differs from reviewed candidate controls'],
+    ['tool provenance', (value: FixedTraceRunnerConfig) => {
+      value.toolDefinitionProvenance = 'fixture_local';
+    }, 'requires the evaluator-owned common tool universe'],
+    ['legacy pack mode', (value: FixedTraceRunnerConfig) => {
+      value.architectureDiagnosticMode = 'synthetic_pack_v1';
+    }, 'requires synthetic_sonnet_full_pack_v1 mode'],
+  ] as const)('rejects %s before dispatch', async (_name, mutate, error) => {
+    const router = new SyntheticProvider('router');
+    const generation = new SyntheticProvider('generation');
+    const hostile = sonnetFullPackConfig('direct_generation', router, generation);
+    mutate(hostile);
+    await expect(runFixedTraceArchitectureDiagnosticSonnetFullPack(hostile)).rejects.toThrow(error);
+    expect(router.requests).toHaveLength(0);
+    expect(generation.requests).toHaveLength(0);
+  });
+
+  it.each([
+    ['suite', (value: FixedTraceRunnerConfig) => {
+      value.traceSuite = [...FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_SUITE].reverse();
+      value.traceSuiteSha256 = fixedTraceSuiteSha256(value.traceSuite);
+    }],
+    ['stage controls', (value: FixedTraceRunnerConfig) => {
+      value.generation = { ...value.generation, maxIterations: 3 };
+    }],
+    ['tool provenance', (value: FixedTraceRunnerConfig) => {
+      value.toolDefinitionProvenance = 'fixture_local';
+    }],
+    ['mode', (value: FixedTraceRunnerConfig) => {
+      value.architectureDiagnosticMode = 'synthetic_pilot_v1';
+    }],
+    ['run provenance identity', (value: FixedTraceRunnerConfig) => {
+      value.runId = 'architecture-sonnet-full-pack-mutated';
+    }],
+  ] as const)('aborts a post-preflight %s mutation before provider dispatch', async (_name, mutate) => {
+    const router = new SyntheticProvider('router');
+    const generation = new SyntheticProvider('generation');
+    const hostile = sonnetFullPackConfig('direct_generation', router, generation);
+    generation.mutateBeforeDispatch(() => mutate(hostile));
+    await expect(runFixedTraceArchitectureDiagnosticSonnetFullPack(hostile))
+      .rejects.toThrow('execution identity');
+    expect(router.requests).toHaveLength(0);
+    expect(generation.requests).toHaveLength(0);
+  });
+
   it('executes comparable arms on one exact pack without enabling production authority', async () => {
     const directRouter = new SyntheticProvider('router');
     const directGeneration = new SyntheticProvider('generation');
