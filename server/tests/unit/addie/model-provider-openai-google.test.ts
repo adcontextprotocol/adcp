@@ -560,12 +560,29 @@ describe('GoogleGenerateContentProvider', () => {
       usageMetadata: { promptTokenCount: 4, totalTokenCount: 4 },
     })).finishReason).toBe('refusal');
     expect(normalizeGoogleResponse(googleResponse({
-      candidates: [{ finishReason: 'SAFETY' }],
+      candidates: [{ finishReason: 'SAFETY', content: { role: 'model', parts: [] } }],
       usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 0, totalTokenCount: 4 },
     })).finishReason).toBe('refusal');
     expect(() => normalizeGoogleResponse(googleResponse({
       usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 1, thoughtsTokenCount: -1 },
     }))).toThrow('thought usage');
+  });
+
+  it('accepts omitted Gemini content only for a bounded response', () => {
+    expect(normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'MAX_TOKENS' }],
+      usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 32, totalTokenCount: 36 },
+    }))).toMatchObject({ finishReason: 'length', content: [], usage: { inputTokens: 4, outputTokens: 32 } });
+
+    expect(() => normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'STOP' }],
+    }))).toThrow('Malformed Google response content');
+    expect(() => normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'SAFETY' }],
+    }))).toThrow('Malformed Google response content');
+    expect(() => normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model' } }],
+    }))).toThrow('Malformed Google response content');
   });
 
   it('propagates an abort signal in the exact request seen before dispatch', async () => {
