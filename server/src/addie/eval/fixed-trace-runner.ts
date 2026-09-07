@@ -1368,6 +1368,21 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
 
 const FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES = 512;
 
+function boundedUtf8Prefix(value: string, maxBytes: number): string {
+  let byteLength = 0;
+  let end = 0;
+  // Iterate only until the byte budget is exhausted, preserving complete
+  // Unicode code points so the later UTF-8 encoding is always well-formed.
+  for (const codePoint of value) {
+    const value = codePoint.codePointAt(0)!;
+    const codePointBytes = value <= 0x7f ? 1 : value <= 0x7ff ? 2 : value <= 0xffff ? 3 : 4;
+    if (byteLength + codePointBytes > maxBytes) break;
+    byteLength += codePointBytes;
+    end += codePoint.length;
+  }
+  return value.slice(0, end);
+}
+
 /**
  * Error messages may contain provider-generated text, request fragments, or
  * credentials. Preserve only a fixed-width fingerprint of a bounded prefix
@@ -1382,7 +1397,7 @@ function fixedTraceFailureMessageSha256(error: unknown): string {
     // An exotic thrown value must not prevent fail-closed failure recording.
   }
   return createHash('sha256')
-    .update(Buffer.from(message, 'utf8').subarray(0, FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES))
+    .update(boundedUtf8Prefix(message, FIXED_TRACE_FAILURE_MESSAGE_MAX_BYTES), 'utf8')
     .digest('hex');
 }
 

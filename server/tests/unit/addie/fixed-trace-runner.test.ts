@@ -1209,10 +1209,14 @@ describe('fixed trace artifact runner', () => {
     });
   });
 
-  it('records a frozen, bounded non-secret transport diagnostic while closing unknown exposure', async () => {
+  it('bounds an extremely large provider error before fingerprinting without leaking raw content', async () => {
     const selectedTrace = trace('knowledge-task-model');
+    // The Euro sign does not fit in the two remaining byte-budget slots. The
+    // fingerprint must omit it entirely rather than include an invalid UTF-8
+    // byte fragment, and must never encode the 8 MiB provider-controlled tail.
+    const boundedPrefix = 'a'.repeat(510);
     const secret = 'synthetic-secret-token';
-    const errorMessage = `transport lost after provider artifact: ${selectedTrace.request.message}; authorization=${secret}; ${'x'.repeat(2_048)}`;
+    const errorMessage = `${boundedPrefix}\u20acprovider artifact; authorization=${secret}; ${'x'.repeat(8 * 1024 * 1024)}`;
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
     const delegate = new ScriptedProvider([new Error(errorMessage)]);
     const budget = new FixedTraceBudget(1);
@@ -1233,14 +1237,14 @@ describe('fixed trace artifact runner', () => {
         kind: 'provider_transport_error',
         reason: 'provider_exception',
         messageSha256: createHash('sha256')
-          .update(Buffer.from(errorMessage, 'utf8').subarray(0, 512))
+          .update(boundedPrefix, 'utf8')
           .digest('hex'),
       },
     });
     expect(Object.isFrozen(observation.failureDiagnostic)).toBe(true);
     expect(observation.failureDiagnostic?.messageSha256).toHaveLength(64);
     expect(serialized).not.toContain(secret);
-    expect(serialized).not.toContain(selectedTrace.request.message);
+    expect(serialized).not.toContain('\u20acprovider artifact');
     expect(serialized).not.toContain('provider artifact');
     expect(delegate.respondCalls).toHaveLength(1);
     expect(budget.snapshot()).toMatchObject({ dispatchedCalls: 1, exposureUnknown: true });
