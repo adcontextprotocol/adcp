@@ -4,7 +4,7 @@
  * production, canary, or comparison-eligibility path.
  */
 import { createHash } from 'node:crypto';
-import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, fsyncSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { ModelProvider } from '../model-providers/model-provider.js';
@@ -392,6 +392,23 @@ export interface FixedTraceArchitectureDiagnosticOutputReservation {
   finalize(artifact: unknown): string;
 }
 
+/**
+ * A finalization attempt is terminal even when its checksum cannot be
+ * persisted. Callers must preserve the claimed paths and must not dispatch
+ * the cell again. The durability flags say exactly which terminal evidence
+ * made it to disk before the failure.
+ */
+export class FixedTraceArchitectureDiagnosticOutputFinalizationError extends Error {
+  constructor(
+    readonly artifactDurable: boolean,
+    readonly checksumDurable: boolean,
+    cause: unknown,
+  ) {
+    super('Fixed trace architecture diagnostic output finalization failed', { cause });
+    this.name = 'FixedTraceArchitectureDiagnosticOutputFinalizationError';
+  }
+}
+
 /** Reserve artifact and checksum identities together; neither is overwritten. */
 export function reserveFixedTraceArchitectureDiagnosticOutput(path: string): FixedTraceArchitectureDiagnosticOutputReservation {
   const output = resolve(path);
@@ -410,20 +427,70 @@ export function reserveFixedTraceArchitectureDiagnosticOutput(path: string): Fix
   } catch (error) {
     throw new Error(`Cannot exclusively reserve fixed-trace architecture diagnostic output: ${error instanceof Error ? error.message : String(error)}`);
   }
-  let finalized = false;
+  let finalizationAttempted = false;
   return Object.freeze({
     finalize(artifact: unknown): string {
-      if (finalized) throw new Error('Fixed trace architecture diagnostic output is already finalized');
-      const content = `${JSON.stringify(artifact, null, 2)}\n`;
-      const digest = sha256(content);
+      if (finalizationAttempted) throw new Error('Fixed trace architecture diagnostic output finalization was already attempted');
+      finalizationAttempted = true;
+      let artifactDurable = false;
+      let checksumDurable = false;
+      let finalizationFailure: unknown;
+      let finalizationFailed = false;
+      let digest: string | null = null;
       try {
+        const content = `${JSON.stringify(artifact, null, 2)}\n`;
+        digest = sha256(content);
         writeFileSync(artifactDescriptor!, content, 'utf8');
+        fsyncSync(artifactDescriptor!);
+        artifactDurable = true;
         writeFileSync(checksumDescriptor!, `${digest}  ${output}\n`, 'utf8');
-        finalized = true;
-        return digest;
-      } finally { closeSync(artifactDescriptor!); closeSync(checksumDescriptor!); }
+        fsyncSync(checksumDescriptor!);
+        checksumDurable = true;
+      } catch (error) {
+        finalizationFailure = error;
+        finalizationFailed = true;
+      }
+      try { closeSync(artifactDescriptor!); }
+      catch (error) {
+        if (!finalizationFailed) finalizationFailure = error;
+        finalizationFailed = true;
+      }
+      try { closeSync(checksumDescriptor!); }
+      catch (error) {
+        if (!finalizationFailed) finalizationFailure = error;
+        finalizationFailed = true;
+      }
+      if (finalizationFailed) {
+        throw new FixedTraceArchitectureDiagnosticOutputFinalizationError(
+          artifactDurable, checksumDurable, finalizationFailure,
+        );
+      }
+      return digest!;
     },
   });
+}
+
+/**
+ * A completed run's artifact is the only terminal evidence eligible for its
+ * claimed output. In particular, do not attempt to replace it with a setup
+ * failure artifact if persistence fails: the selector has already been
+ * consumed and a provider may have been dispatched.
+ */
+export function finalizeCompletedFixedTraceArchitectureDiagnosticArtifact(
+  output: FixedTraceArchitectureDiagnosticOutputReservation,
+  artifact: unknown,
+): string {
+  try {
+    return output.finalize(artifact);
+  } catch (error) {
+    const durability = error instanceof FixedTraceArchitectureDiagnosticOutputFinalizationError
+      ? `artifact durable=${error.artifactDurable}; checksum durable=${error.checksumDurable}`
+      : 'artifact and checksum durability are unknown';
+    throw new Error(
+      `Fixed trace architecture diagnostic completed, but terminal artifact finalization failed (${durability}). The selector remains consumed; do not dispatch this cell again.`,
+      { cause: error },
+    );
+  }
 }
 
 /** Execute all three declared arms and retain every returned observation. */

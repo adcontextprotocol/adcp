@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   admitFixedTraceArchitectureDiagnostic,
   consumeFixedTraceArchitectureDiagnosticSelector,
+  finalizeCompletedFixedTraceArchitectureDiagnosticArtifact,
   fixedTraceArchitectureDiagnosticCostCeiling,
   fixedTraceArchitectureDiagnosticPlan,
   reserveFixedTraceArchitectureDiagnosticOutput,
@@ -165,6 +166,30 @@ describe('fixed-trace architecture diagnostic execution', () => {
     expect(createHash('sha256').update(readFileSync(output, 'utf8')).digest('hex')).toBe(digest);
   });
 
+  it('does not overwrite or redispatch a completed cell when terminal artifact finalization fails', async () => {
+    const { admission, budget, raw } = admitted();
+    const artifact = await runFixedTraceArchitectureDiagnosticArtifact({
+      admission, budget, runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT, plan: plan(),
+    });
+    const finalized: unknown[] = [];
+    const output = Object.freeze({
+      finalize(value: unknown): string {
+        finalized.push(value);
+        throw new Error('synthetic checksum finalization failure');
+      },
+    });
+
+    expect(() => finalizeCompletedFixedTraceArchitectureDiagnosticArtifact(output, artifact))
+      .toThrow('selector remains consumed; do not dispatch this cell again');
+    expect(finalized).toHaveLength(1);
+    expect(finalized[0]).toBe(artifact);
+    expect(raw.calls).toHaveLength(104);
+    await expect(runFixedTraceArchitectureDiagnosticArtifact({
+      admission, budget, runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT, plan: plan(),
+    })).rejects.toThrow('no longer available');
+    expect(raw.calls).toHaveLength(104);
+  });
+
   it('never overwrites an artifact, checksum, or selector identity', () => {
     const directory = mkdtempSync(join(tmpdir(), 'architecture-diagnostic-'));
     const output = join(directory, 'artifact.json');
@@ -181,6 +206,15 @@ describe('fixed-trace architecture diagnostic execution', () => {
     unlinkSync(`${checksumCollisionOutput}.sha256`);
     reserveFixedTraceArchitectureDiagnosticOutput(checksumCollisionOutput).finalize({ retried: true });
     expect(readFileSync(checksumCollisionOutput, 'utf8')).toContain('retried');
+    const failedFinalizationOutput = join(directory, 'failed-finalization.json');
+    const failedFinalization = reserveFixedTraceArchitectureDiagnosticOutput(failedFinalizationOutput);
+    const unserializable: { self?: unknown } = {};
+    unserializable.self = unserializable;
+    expect(() => failedFinalization.finalize(unserializable)).toThrow('output finalization failed');
+    expect(() => failedFinalization.finalize({ replacement: true }))
+      .toThrow('finalization was already attempted');
+    expect(readFileSync(failedFinalizationOutput, 'utf8')).toBe('');
+    expect(readFileSync(`${failedFinalizationOutput}.sha256`, 'utf8')).toBe('');
     consumeFixedTraceArchitectureDiagnosticSelector(selector, {
       sourceBundleSha256: 'a'.repeat(64), promptConfigVersion: 'prompt',
     });

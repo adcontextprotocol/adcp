@@ -131,6 +131,8 @@ const admission = execution.admitFixedTraceArchitectureDiagnostic({
   budget,
 });
 let output: ReturnType<typeof execution.reserveFixedTraceArchitectureDiagnosticOutput> | null = null;
+let completedArtifact: Awaited<ReturnType<typeof execution.runFixedTraceArchitectureDiagnosticArtifact>> | null = null;
+let terminalArtifactFinalized = false;
 try {
   // Both evidence identities are durably claimed before the first provider
   // dispatch. A reserved empty file is intentionally retained on a crash.
@@ -139,22 +141,23 @@ try {
     sourceBundleSha256: sources.sha256,
     promptConfigVersion,
   });
-  const artifact = await execution.runFixedTraceArchitectureDiagnosticArtifact({
+  completedArtifact = await execution.runFixedTraceArchitectureDiagnosticArtifact({
     admission,
     runRootId,
     runStartedAt,
     plan,
     budget,
   });
-  const artifactSha256 = output.finalize(artifact);
+  const artifactSha256 = execution.finalizeCompletedFixedTraceArchitectureDiagnosticArtifact(output, completedArtifact);
+  terminalArtifactFinalized = true;
   console.log(JSON.stringify({
     output: arguments_.output,
     artifactSha256,
-    complete: artifact.complete,
+    complete: completedArtifact.complete,
     diagnosticOnly: true,
     comparisonEligible: false,
   }));
-  if (!artifact.complete) {
+  if (!completedArtifact.complete) {
     process.exitCode = 1;
     console.error(`Fixed trace architecture diagnostic did not complete with fully known exposure; preserved artifact ${arguments_.output} (${artifactSha256})`);
   }
@@ -163,8 +166,34 @@ try {
     admission.release();
     throw error;
   }
-  const artifactSha256 = output.finalize(
-    execution.fixedTraceArchitectureDiagnosticFailureArtifact(admission, error),
-  );
+  if (completedArtifact !== null && !terminalArtifactFinalized) {
+    // The completed artifact was the only correct terminal evidence. Its
+    // finalizer has already sealed the reservation, so a setup-failure
+    // replacement would overwrite or obscure paid execution evidence.
+    const finalizationDetail = error instanceof Error ? ` ${error.message}` : '';
+    throw new Error(
+      `Fixed trace architecture diagnostic completed, but its terminal artifact could not be finalized at ${arguments_.output}; the claimed artifact and checksum paths were retained without replacement. The selector remains consumed and this cell must not be dispatched again.${finalizationDetail}`,
+      { cause: error },
+    );
+  }
+  if (completedArtifact !== null) throw error;
+  let failureArtifact: ReturnType<typeof execution.fixedTraceArchitectureDiagnosticFailureArtifact>;
+  try {
+    failureArtifact = execution.fixedTraceArchitectureDiagnosticFailureArtifact(admission, error);
+  } catch (failureArtifactError) {
+    throw new Error(
+      `Fixed trace architecture diagnostic failed after its output and selector were claimed; the selector remains consumed and this cell must not be dispatched again.`,
+      { cause: failureArtifactError },
+    );
+  }
+  let artifactSha256: string;
+  try {
+    artifactSha256 = output.finalize(failureArtifact);
+  } catch (finalizationError) {
+    throw new Error(
+      `Fixed trace architecture diagnostic failed and its failure artifact could not be finalized; the selector remains consumed and this cell must not be dispatched again.`,
+      { cause: finalizationError },
+    );
+  }
   throw new Error(`Fixed trace architecture diagnostic failed; preserved artifact ${arguments_.output} (${artifactSha256})`, { cause: error });
 }
