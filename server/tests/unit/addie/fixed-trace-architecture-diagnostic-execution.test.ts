@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -38,9 +38,15 @@ class ScriptedAnthropicProvider implements ModelProvider {
   readonly capabilities = CAPABILITIES;
   readonly calls: ModelRequest[] = [];
 
-  constructor(private readonly unknownGenerationModel = false) {}
+  constructor(
+    private readonly unknownGenerationModel = false,
+    private readonly failAfterCalls: number | null = null,
+  ) {}
 
   prepare(request: ModelRequest): PreparedModelInvocation {
+    if (this.failAfterCalls !== null && this.calls.length >= this.failAfterCalls) {
+      throw new Error('synthetic mid-arm preparation failure');
+    }
     return {
       provider: this.id,
       model: request.model,
@@ -69,10 +75,12 @@ class ScriptedAnthropicProvider implements ModelProvider {
   }
 }
 
-function admitted(unknownGenerationModel = false) {
+const RUN_STARTED_AT = '2026-09-07T00:00:00.000Z';
+
+function admitted(unknownGenerationModel = false, failAfterCalls: number | null = null) {
   const ceiling = fixedTraceArchitectureDiagnosticCostCeiling();
   const budget = new FixedTraceBudget(ceiling.requiredSoftMaxUsd);
-  const raw = new ScriptedAnthropicProvider(unknownGenerationModel);
+  const raw = new ScriptedAnthropicProvider(unknownGenerationModel, failAfterCalls);
   const controls = fixedTraceArchitectureDiagnosticPilotStageControls();
   const router = new BudgetedFixedTraceProvider(
     raw, budget, controls.router.pricing,
@@ -83,8 +91,9 @@ function admitted(unknownGenerationModel = false) {
     fixedTraceResponsePricingPolicy('anthropic', controls.generation.model, controls.generation.pricing),
   );
   const admission = admitFixedTraceArchitectureDiagnostic({
-    runRootId: 'architecture-test-root', sourceBundleSha256: 'a'.repeat(64),
-    gitCommit: 'abcdef0', promptConfigVersion: 'architecture-test-prompt', router, generation, budget,
+    runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT,
+    sourceBundleSha256: 'a'.repeat(64), gitCommit: 'abcdef0',
+    promptConfigVersion: 'architecture-test-prompt', plan: plan(), router, generation, budget,
   });
   return { admission, budget, raw };
 }
@@ -163,11 +172,57 @@ describe('fixed-trace architecture diagnostic execution', () => {
     writeFileSync(output, 'existing');
     expect(() => reserveFixedTraceArchitectureDiagnosticOutput(output)).toThrow('Cannot exclusively reserve');
     expect(readFileSync(output, 'utf8')).toBe('existing');
+    const checksumCollisionOutput = join(directory, 'checksum-collision.json');
+    writeFileSync(`${checksumCollisionOutput}.sha256`, 'existing checksum');
+    expect(() => reserveFixedTraceArchitectureDiagnosticOutput(checksumCollisionOutput)).toThrow('Cannot exclusively reserve');
+    expect(existsSync(checksumCollisionOutput)).toBe(false);
+    // The failed checksum-only claim leaves no artifact tombstone, so a safe
+    // retry can reserve both names once the conflicting checksum is resolved.
+    unlinkSync(`${checksumCollisionOutput}.sha256`);
+    reserveFixedTraceArchitectureDiagnosticOutput(checksumCollisionOutput).finalize({ retried: true });
+    expect(readFileSync(checksumCollisionOutput, 'utf8')).toContain('retried');
     consumeFixedTraceArchitectureDiagnosticSelector(selector, {
       sourceBundleSha256: 'a'.repeat(64), promptConfigVersion: 'prompt',
     });
     expect(() => consumeFixedTraceArchitectureDiagnosticSelector(selector, {
       sourceBundleSha256: 'a'.repeat(64), promptConfigVersion: 'prompt',
     })).toThrow('already consumed');
+  });
+
+  it('rejects forged admissions and contradictory admitted provenance before any provider dispatch', async () => {
+    const { admission, budget, raw } = admitted();
+    const forged = Object.freeze({ release() {} });
+    await expect(runFixedTraceArchitectureDiagnosticArtifact({
+      admission: forged as unknown as typeof admission,
+      budget, runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT, plan: plan(),
+    })).rejects.toThrow('not authenticated');
+    await expect(runFixedTraceArchitectureDiagnosticArtifact({
+      admission,
+      budget,
+      runRootId: 'architecture-test-root',
+      runStartedAt: RUN_STARTED_AT,
+      plan: fixedTraceArchitectureDiagnosticPlan({
+        sourceFiles: ['synthetic.ts'], sourceBundleSha256: 'b'.repeat(64), promptConfigVersion: 'architecture-test-prompt',
+      }),
+    })).rejects.toThrow('provenance does not match');
+    expect(raw.calls).toHaveLength(0);
+    admission.release();
+  });
+
+  it('retains observations completed before a fatal mid-arm runner failure', async () => {
+    const { admission, budget, raw } = admitted(false, 4);
+    const artifact = await runFixedTraceArchitectureDiagnosticArtifact({
+      admission, budget, runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT, plan: plan(),
+    });
+    expect(raw.calls).toHaveLength(4);
+    expect(artifact).toMatchObject({
+      complete: false,
+      failure: expect.stringContaining('generation request preparation failed'),
+      executionFailure: expect.stringContaining('generation request preparation failed'),
+      reconciliationFailure: null,
+    });
+    expect(artifact.runs).toHaveLength(1);
+    expect((artifact.runs[0] as { observations: unknown[] }).observations).toHaveLength(4);
+    expect(budget.snapshot()).toMatchObject({ dispatchedCalls: 4, completedCalls: 4, reservedUsd: 0 });
   });
 });

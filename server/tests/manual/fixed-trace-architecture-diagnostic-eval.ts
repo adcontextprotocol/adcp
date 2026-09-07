@@ -118,11 +118,14 @@ const generation = new budgetModule.BudgetedFixedTraceProvider(
   budgetModule.fixedTraceResponsePricingPolicy('anthropic', controls.generation.model, controls.generation.pricing),
 );
 const runRootId = `architecture-diagnostic-${Date.now()}`;
+const runStartedAt = new Date().toISOString();
 const admission = execution.admitFixedTraceArchitectureDiagnostic({
   runRootId,
+  runStartedAt,
   sourceBundleSha256: sources.sha256,
   gitCommit,
   promptConfigVersion,
+  plan,
   router,
   generation,
   budget,
@@ -139,7 +142,7 @@ try {
   const artifact = await execution.runFixedTraceArchitectureDiagnosticArtifact({
     admission,
     runRootId,
-    runStartedAt: new Date().toISOString(),
+    runStartedAt,
     plan,
     budget,
   });
@@ -160,14 +163,8 @@ try {
     admission.release();
     throw error;
   }
-  const artifactSha256 = output.finalize({
-    artifactVersion: 'fixed_trace_architecture_diagnostic_execution_v1',
-    plan,
-    diagnosticOnly: true,
-    comparisonEligible: false,
-    formalExternalFinal: 'unavailable',
-    budget: budget.snapshot(),
-    failure: error instanceof Error ? error.message : String(error),
-  });
+  const artifactSha256 = output.finalize(
+    execution.fixedTraceArchitectureDiagnosticFailureArtifact(admission, error),
+  );
   throw new Error(`Fixed trace architecture diagnostic failed; preserved artifact ${arguments_.output} (${artifactSha256})`, { cause: error });
 }

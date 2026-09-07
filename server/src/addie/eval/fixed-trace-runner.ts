@@ -2246,6 +2246,7 @@ export async function runFixedTraceCase(
 
 export async function runFixedTraceSuite(
   config: FixedTraceRunnerConfig,
+  onObservation?: (observation: FixedTraceObservation) => void,
 ): Promise<FixedTraceObservation[]> {
   const identity = executionIdentity(config);
   preflightFixtureRegistrations(config, identity);
@@ -2257,7 +2258,9 @@ export async function runFixedTraceSuite(
   const observations: FixedTraceObservation[] = [];
   for (const trace of iterationPlan) {
     assertExecutionIdentity(config, identity);
-    observations.push(await runFixedTraceCase(trace, config, identity.toolSchemaSha256));
+    const observation = await runFixedTraceCase(trace, config, identity.toolSchemaSha256);
+    observations.push(observation);
+    onObservation?.(observation);
   }
   assertExecutionIdentity(config, identity);
   return observations;
@@ -2322,11 +2325,12 @@ export async function runFixedTraceArchitectureDiagnosticSuite(
  */
 export async function runFixedTraceArchitectureDiagnosticSonnetFullPack(
   config: FixedTraceRunnerConfig,
+  onObservation?: (observation: FixedTraceObservation) => void,
 ): Promise<FixedTraceObservation[]> {
   if (config.architectureDiagnosticMode !== 'synthetic_sonnet_full_pack_v1') {
     throw new Error('Fixed trace Sonnet full-pack diagnostic requires synthetic_sonnet_full_pack_v1 mode');
   }
-  const observations = await runFixedTraceSuite(config);
+  const observations = await runFixedTraceSuite(config, onObservation);
   if (observations.length !== 24) {
     throw new Error('Fixed trace Sonnet full-pack diagnostic did not preserve the complete denominator');
   }

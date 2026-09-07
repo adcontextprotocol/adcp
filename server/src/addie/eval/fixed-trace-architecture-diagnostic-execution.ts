@@ -4,8 +4,9 @@
  * production, canary, or comparison-eligibility path.
  */
 import { createHash } from 'node:crypto';
-import { closeSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { ModelProvider } from '../model-providers/model-provider.js';
 import {
   FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_PACK_DIGEST,
@@ -192,8 +193,109 @@ export function fixedTraceArchitectureDiagnosticConfig(input: Readonly<{
 }
 
 export interface FixedTraceArchitectureDiagnosticAdmission {
-  readonly configs: readonly FixedTraceRunnerConfig[];
+  /** Abandon an admitted cell before it begins; an admission cannot be reused. */
   release(): void;
+}
+
+interface FixedTraceArchitectureDiagnosticAdmissionRecord {
+  readonly configs: readonly FixedTraceRunnerConfig[];
+  readonly budget: FixedTraceBudget;
+  readonly lease: ReturnType<typeof claimFixedTraceBudgetDiagnosticLease>;
+  readonly runRootId: string;
+  readonly runStartedAt: string;
+  readonly plan: ReturnType<typeof fixedTraceArchitectureDiagnosticPlan>;
+  readonly budgetSoftMaxUsd: number;
+  state: 'admitted' | 'running' | 'released' | 'finished';
+}
+
+// The public admission is deliberately only a capability handle. Its mutable
+// execution authority, providers, lease, budget, and provenance are held in
+// this module-private registry so a matching-looking object cannot dispatch.
+const admissions = new WeakMap<FixedTraceArchitectureDiagnosticAdmission, FixedTraceArchitectureDiagnosticAdmissionRecord>();
+
+function snapshotAdmissionPlan(
+  plan: ReturnType<typeof fixedTraceArchitectureDiagnosticPlan>,
+  sourceBundleSha256: string,
+  promptConfigVersion: string,
+): ReturnType<typeof fixedTraceArchitectureDiagnosticPlan> {
+  const sourceFiles = plan?.sourceFiles;
+  if (!Array.isArray(sourceFiles) || sourceFiles.length === 0 || sourceFiles.some((file) => (
+    typeof file !== 'string' || !file || file.startsWith('/') || file.includes('..')
+  ))) {
+    throw new Error('Fixed trace architecture diagnostic plan source files are invalid');
+  }
+  const canonical = fixedTraceArchitectureDiagnosticPlan({
+    sourceFiles: [...sourceFiles], sourceBundleSha256, promptConfigVersion,
+  });
+  if (!isDeepStrictEqual(plan, canonical)) {
+    throw new Error('Fixed trace architecture diagnostic plan does not match its admitted provenance');
+  }
+  return canonical;
+}
+
+function releaseAdmission(record: FixedTraceArchitectureDiagnosticAdmissionRecord): void {
+  if (record.state === 'released' || record.state === 'finished') return;
+  record.lease.releaseWholeRunReservation();
+  record.state = 'released';
+}
+
+function rejectAdmission(record: FixedTraceArchitectureDiagnosticAdmissionRecord, message: string): never {
+  // A malformed execution request is never retried with the same paid-cell
+  // authority. Release its unspent escrow before surfacing the rejection.
+  releaseAdmission(record);
+  throw new Error(message);
+}
+
+function authenticatedAdmission(
+  admission: FixedTraceArchitectureDiagnosticAdmission,
+  input: Readonly<{
+    runRootId: string;
+    runStartedAt: string;
+    plan: ReturnType<typeof fixedTraceArchitectureDiagnosticPlan>;
+    budget: FixedTraceBudget;
+  }>,
+): FixedTraceArchitectureDiagnosticAdmissionRecord {
+  const record = admissions.get(admission);
+  if (!record || !Object.isFrozen(admission)) {
+    throw new Error('Fixed trace architecture diagnostic admission is not authenticated');
+  }
+  if (record.state !== 'admitted') {
+    throw new Error('Fixed trace architecture diagnostic admission is no longer available');
+  }
+  if (
+    input.runRootId !== record.runRootId
+    || input.runStartedAt !== record.runStartedAt
+    || input.budget !== record.budget
+    || !isDeepStrictEqual(input.plan, record.plan)
+  ) {
+    return rejectAdmission(record, 'Fixed trace architecture diagnostic artifact provenance does not match its admission');
+  }
+  if (record.budget.softMaxUsd !== record.budgetSoftMaxUsd) {
+    return rejectAdmission(record, 'Fixed trace architecture diagnostic admitted budget was modified');
+  }
+  if (record.configs.length !== EXECUTION_ARMS.length) {
+    return rejectAdmission(record, 'Fixed trace architecture diagnostic admission has an invalid arm count');
+  }
+  for (const [index, config] of record.configs.entries()) {
+    const arm = EXECUTION_ARMS[index];
+    if (
+      !arm
+      || config.runId !== `${record.runRootId}:${arm}`
+      || config.architectureArm !== arm
+      || config.sourceBundleSha256 !== record.plan.sourceBundleSha256
+      || config.promptConfigVersion !== record.plan.promptConfigVersion
+      || config.architectureDiagnosticMode !== 'synthetic_sonnet_full_pack_v1'
+      || !config.router
+    ) return rejectAdmission(record, 'Fixed trace architecture diagnostic admitted config is invalid');
+    try {
+      requireStageProvider(config.router, record.budget);
+      requireStageProvider(config.generation, record.budget);
+      preflightFixedTraceRunnerConfig(config);
+    } catch (error) {
+      return rejectAdmission(record, error instanceof Error ? error.message : String(error));
+    }
+  }
+  return record;
 }
 
 /**
@@ -202,14 +304,24 @@ export interface FixedTraceArchitectureDiagnosticAdmission {
  */
 export function admitFixedTraceArchitectureDiagnostic(input: Readonly<{
   runRootId: string;
+  runStartedAt: string;
   sourceBundleSha256: string;
   gitCommit: string;
   promptConfigVersion: string;
+  plan: ReturnType<typeof fixedTraceArchitectureDiagnosticPlan>;
   router: ModelProvider;
   generation: ModelProvider;
   budget: FixedTraceBudget;
 }>): FixedTraceArchitectureDiagnosticAdmission {
   if (!input.runRootId.trim()) throw new Error('Fixed trace architecture diagnostic run root ID is required');
+  if (!input.runStartedAt.trim()) throw new Error('Fixed trace architecture diagnostic run start time is required');
+  if (!/^[a-f0-9]{64}$/.test(input.sourceBundleSha256)) {
+    throw new Error('Fixed trace architecture diagnostic source bundle digest is invalid');
+  }
+  if (!input.gitCommit.trim() || !input.promptConfigVersion.trim()) {
+    throw new Error('Fixed trace architecture diagnostic provenance is required');
+  }
+  const plan = snapshotAdmissionPlan(input.plan, input.sourceBundleSha256, input.promptConfigVersion);
   const ceiling = fixedTraceArchitectureDiagnosticCostCeiling();
   if (input.budget.softMaxUsd < ceiling.requiredSoftMaxUsd) {
     throw new RangeError('Fixed trace architecture diagnostic soft budget is below the required whole-cell ceiling');
@@ -241,7 +353,20 @@ export function admitFixedTraceArchitectureDiagnostic(input: Readonly<{
     lease.releaseWholeRunReservation();
     throw error;
   }
-  return Object.freeze({ configs: Object.freeze(configs), release: () => lease.releaseWholeRunReservation() });
+  let admission: FixedTraceArchitectureDiagnosticAdmission;
+  const record: FixedTraceArchitectureDiagnosticAdmissionRecord = {
+    configs: Object.freeze(configs),
+    budget: input.budget,
+    lease,
+    runRootId: input.runRootId,
+    runStartedAt: input.runStartedAt,
+    plan,
+    budgetSoftMaxUsd: input.budget.softMaxUsd,
+    state: 'admitted',
+  };
+  admission = Object.freeze({ release: () => releaseAdmission(record) });
+  admissions.set(admission, record);
+  return admission;
 }
 
 /** Durable one-use cell declaration. */
@@ -276,7 +401,12 @@ export function reserveFixedTraceArchitectureDiagnosticOutput(path: string): Fix
   try {
     artifactDescriptor = openSync(output, 'wx', 0o600);
     try { checksumDescriptor = openSync(checksum, 'wx', 0o600); }
-    catch (error) { closeSync(artifactDescriptor); throw error; }
+    catch (error) {
+      // A checksum collision means this reservation never became usable. Roll
+      // back our just-created artifact claim so a corrected retry is safe.
+      try { closeSync(artifactDescriptor); } finally { unlinkSync(output); }
+      throw error;
+    }
   } catch (error) {
     throw new Error(`Cannot exclusively reserve fixed-trace architecture diagnostic output: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -304,28 +434,50 @@ export async function runFixedTraceArchitectureDiagnosticArtifact(input: Readonl
   plan: ReturnType<typeof fixedTraceArchitectureDiagnosticPlan>;
   budget: FixedTraceBudget;
 }>) {
-  const runs: unknown[] = [];
-  let failure: string | null = null;
+  const admission = authenticatedAdmission(input.admission, input);
+  admission.state = 'running';
+  const runs: Array<Record<string, unknown> & {
+    observations: readonly import('./fixed-trace-suite.js').FixedTraceObservation[];
+  }> = [];
+  let executionFailure: string | null = null;
+  let reconciliationFailure: string | null = null;
   try {
-    for (const config of input.admission.configs) {
-      const observations = await runFixedTraceArchitectureDiagnosticSonnetFullPack(config);
-      const summarized = summarizeFixedTraceRun(observations, FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_SUITE);
-      if (observations.length !== 24 || summarized.summary.comparisonEligible !== false) {
-        throw new Error('Fixed trace architecture diagnostic did not retain the complete diagnostic-only denominator');
+    for (const config of admission.configs) {
+      const observations: import('./fixed-trace-suite.js').FixedTraceObservation[] = [];
+      try {
+        const completed = await runFixedTraceArchitectureDiagnosticSonnetFullPack(config, (observation) => {
+          observations.push(observation);
+        });
+        if (completed.length !== observations.length || completed.some((observation, index) => observation !== observations[index])) {
+          throw new Error('Fixed trace architecture diagnostic observation retention is inconsistent');
+        }
+        const summarized = summarizeFixedTraceRun(observations, FIXED_TRACE_ARCHITECTURE_DIAGNOSTIC_SUITE);
+        if (observations.length !== 24 || summarized.summary.comparisonEligible !== false) {
+          throw new Error('Fixed trace architecture diagnostic did not retain the complete diagnostic-only denominator');
+        }
+        runs.push(freeze({
+          architectureArm: fixedTraceArchitectureArm(config.architectureArm),
+          runId: config.runId,
+          observations,
+          ...summarized,
+        }));
+      } catch (error) {
+        executionFailure = error instanceof Error ? error.message : String(error);
+        runs.push(freeze({
+          architectureArm: fixedTraceArchitectureArm(config.architectureArm),
+          runId: config.runId,
+          observations,
+          complete: false,
+          failure: executionFailure,
+        }));
+        break;
       }
-      runs.push(freeze({
-        architectureArm: fixedTraceArchitectureArm(config.architectureArm),
-        runId: config.runId,
-        observations,
-        ...summarized,
-      }));
     }
-  } catch (error) {
-    failure = error instanceof Error ? error.message : String(error);
   } finally {
-    input.admission.release();
+    releaseAdmission(admission);
+    admission.state = 'finished';
   }
-  const budget = input.budget.snapshot();
+  const budget = admission.budget.snapshot();
   try {
     // The runner retains invocation identity, continuation request hashes, and
     // custom-tool ledgers in each observation. This reconciles those retained
@@ -336,14 +488,14 @@ export async function runFixedTraceArchitectureDiagnosticArtifact(input: Readonl
       runs as Array<{ observations: readonly { metadata: import('./fixed-trace-suite.js').FixedTraceRunMetadata; terminalStatus: string }[] }>,
     );
   } catch (error) {
-    failure ??= error instanceof Error ? error.message : String(error);
+    reconciliationFailure = error instanceof Error ? error.message : String(error);
   }
   return freeze({
     artifactVersion: 'fixed_trace_architecture_diagnostic_execution_v1',
-    runRootId: input.runRootId,
-    runStartedAt: input.runStartedAt,
+    runRootId: admission.runRootId,
+    runStartedAt: admission.runStartedAt,
     runCompletedAt: new Date().toISOString(),
-    plan: input.plan,
+    plan: admission.plan,
     budget,
     diagnosticOnly: true,
     comparisonEligible: false,
@@ -354,10 +506,55 @@ export async function runFixedTraceArchitectureDiagnosticArtifact(input: Readonl
     formalExternalFinal: 'unavailable',
     // Denominator coverage remains visible on each run summary. A paid call
     // with unknown exposure, however, is not a complete settled execution.
-    complete: failure === null && !budget.exposureUnknown && runs.length === EXECUTION_ARMS.length && runs.every((run) => (
-      (run as { summary: { complete: boolean } }).summary.complete
-    )),
-    failure,
+    complete: executionFailure === null && reconciliationFailure === null && !budget.exposureUnknown
+      && runs.length === EXECUTION_ARMS.length && runs.every((run) => run.summary !== undefined && (
+        run.summary as { complete: boolean }
+      ).complete),
+    // Keep the former headline field for consumers while retaining an
+    // independent reconciliation result when execution itself also failed.
+    failure: executionFailure ?? reconciliationFailure,
+    executionFailure,
+    reconciliationFailure,
     runs,
+  });
+}
+
+/**
+ * Preserve a setup failure after an output path was claimed without allowing a
+ * caller to invent artifact provenance outside the authenticated admission.
+ */
+export function fixedTraceArchitectureDiagnosticFailureArtifact(
+  admission: FixedTraceArchitectureDiagnosticAdmission,
+  error: unknown,
+) {
+  const record = admissions.get(admission);
+  if (!record || !Object.isFrozen(admission)) {
+    throw new Error('Fixed trace architecture diagnostic admission is not authenticated');
+  }
+  if (record.state === 'running' || record.state === 'finished') {
+    throw new Error('Fixed trace architecture diagnostic admission cannot produce a setup failure artifact');
+  }
+  releaseAdmission(record);
+  record.state = 'finished';
+  const executionFailure = error instanceof Error ? error.message : String(error);
+  return freeze({
+    artifactVersion: 'fixed_trace_architecture_diagnostic_execution_v1',
+    runRootId: record.runRootId,
+    runStartedAt: record.runStartedAt,
+    runCompletedAt: new Date().toISOString(),
+    plan: record.plan,
+    budget: record.budget.snapshot(),
+    diagnosticOnly: true,
+    comparisonEligible: false,
+    productionEligible: false,
+    canaryEligible: false,
+    promotionEvidenceEligible: false,
+    promotionBlocker: 'trusted_evaluator_context_unavailable',
+    formalExternalFinal: 'unavailable',
+    complete: false,
+    failure: executionFailure,
+    executionFailure,
+    reconciliationFailure: null,
+    runs: [],
   });
 }
