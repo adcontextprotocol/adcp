@@ -162,6 +162,52 @@ describe('fixed-trace direct full-suite comparison', () => {
     expect(plan.judges).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'anthropic', reasoningEffort: 'provider_default', pricingProfileSha256: expect.stringMatching(/^sha256:/) })]));
   }, 30_000);
 
+  it('settles a reviewed dated Claude judge receipt while rejecting unreviewed and cross-family receipts', async () => {
+    const datedModel = 'claude-haiku-4-5-20251001';
+    const datedJudge = await run(
+      'generation:google:gemini-3.7-flash:high',
+      false,
+      {},
+      { anthropic: new FakeProvider('anthropic', false, { model: datedModel }) },
+    );
+    const datedJudgments = datedJudge.result.judgments.filter((entry) => entry.judgeProvider === 'anthropic');
+    expect(datedJudgments).toHaveLength(32);
+    expect(datedJudgments.every((entry) => entry.status === 'pass' && entry.exposure === 'settled')).toBe(true);
+    expect(datedJudgments.every((entry) => entry.returnedModel === datedModel && entry.estimatedCostUsd !== null)).toBe(true);
+    expect(datedJudge.budget.snapshot()).toMatchObject({ exposureUnknown: false });
+
+    const pricing = datedPricingProfilesForFixedTrace().find((entry) => entry.provider === 'anthropic' && entry.model === 'claude-haiku-4-5')!;
+    const policy = fixedTraceDirectFullSuiteResponsePricingPolicy('anthropic', 'claude-haiku-4-5', pricing);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'anthropic', model: 'claude-unreviewed-20990101' })).toBe(false);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'google', model: 'gemini-3.7-flash' })).toBe(false);
+
+    const unreviewedJudge = await run(
+      'generation:google:gemini-3.7-flash:high',
+      false,
+      {},
+      { anthropic: new FakeProvider('anthropic', false, { model: 'claude-unreviewed-20990101' }) },
+    );
+    const rejected = unreviewedJudge.result.judgments.filter((entry) => entry.judgeProvider === 'anthropic');
+    expect(rejected[0]).toMatchObject({
+      status: 'unknown_exposure', exposure: 'unknown', estimatedCostUsd: null,
+      returnedProvider: 'anthropic', returnedModel: 'claude-unreviewed-20990101',
+    });
+    expect(rejected.slice(1).every((entry) => entry.status === 'not_dispatched_budget' && entry.exposure === 'not_dispatched')).toBe(true);
+    expect(unreviewedJudge.budget.snapshot()).toMatchObject({ exposureUnknown: true });
+
+    const crossFamilyJudge = await run(
+      'generation:google:gemini-3.7-flash:high',
+      false,
+      {},
+      { anthropic: new FakeProvider('anthropic', false, { provider: 'google', model: 'gemini-3.7-flash' }) },
+    );
+    expect(crossFamilyJudge.result.judgments.find((entry) => entry.judgeProvider === 'anthropic')).toMatchObject({
+      status: 'unknown_exposure', exposure: 'unknown', estimatedCostUsd: null,
+      returnedProvider: 'google', returnedModel: 'gemini-3.7-flash',
+    });
+    expect(crossFamilyJudge.budget.snapshot()).toMatchObject({ exposureUnknown: true });
+  }, 30_000);
+
   it('admits a dated Claude candidate identity only when it is approved by the recorded pricing policy', async () => {
     const datedModel = 'claude-haiku-4-5-20251001';
     const { budget, result } = await run(

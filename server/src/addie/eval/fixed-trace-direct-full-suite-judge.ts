@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { collectModelResponse, InvalidModelEventStreamError } from '../model-providers/events.js';
 import type { ModelFinishReason, ModelOutputSchema, ModelProvider, ModelProviderId, ModelReasoningEffort, ModelRequest, ModelResponse, ModelUsage } from '../model-providers/model-provider.js';
 import { datedPricingProfileIdentity, datedPricingProfilesForFixedTrace } from './dated-pricing-cohort.js';
-import { fixedTraceDirectFullSuiteResponsePricingPolicy, fixedTraceEstimatedCostUsd } from './fixed-trace-budget.js';
+import { fixedTraceDirectFullSuiteResponsePricingPolicy, fixedTraceEstimatedCostUsd, fixedTraceResponseUsesPricingPolicy } from './fixed-trace-budget.js';
 import { assertFixedTraceBlindedModelJudgePacket } from './fixed-trace-model-judge-control-plane.js';
 import { FIXED_TRACE_JUDGE_PROMPT_VERSION } from './fixed-trace-judge.js';
 import type { FixedTraceCompletedJudgeSummary } from './fixed-trace-judge.js';
@@ -280,8 +280,16 @@ export async function judgeFixedTraceDirectFullSuiteObservation(input: Readonly<
       ), stage.provider.id);
       const usage = snapshotUsage(response.usage);
       const parsed = response.finishReason === 'stop' ? verdict(text(response)) : null;
-      const identityExact = response.provider === stage.provider.id && response.model === stage.model;
-      const settled = dispatched && identityExact && usage !== null;
+      // This is deliberately the same full-suite-scoped policy that admits
+      // the provider boundary. A reviewed dated Anthropic receipt can settle
+      // only in this paid full-suite path; unknown and cross-family receipts
+      // remain fail-closed.
+      const responsePricingPolicy = fixedTraceDirectFullSuiteResponsePricingPolicy(
+        stage.provider.id,
+        stage.model,
+        stage.pricing,
+      );
+      const settled = dispatched && fixedTraceResponseUsesPricingPolicy(responsePricingPolicy, response) && usage !== null;
       results.push(Object.freeze({
         traceId: input.trace.id, judgeProvider, judgeModel: stage.model,
         status: !settled ? 'unknown_exposure' : !parsed ? 'malformed' : parsed.pass ? 'pass' : 'fail',
