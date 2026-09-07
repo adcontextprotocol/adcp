@@ -57,9 +57,15 @@ import type {
   PreparedModelInvocation,
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
-  markModelProviderAdapterFailure,
+  createModelProviderAdapterError,
+  MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE,
   UnsupportedModelCapabilityError,
 } from '../../../src/addie/model-providers/model-provider.js';
+import {
+  GOOGLE_ROUTER_MODEL,
+  GoogleGenerateContentProvider,
+  type GoogleGenerateContentTransport,
+} from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 const HASH = createHash('sha256').update('fixed-trace-runner-test').digest('hex');
@@ -129,6 +135,21 @@ class ThrowingProvider extends ScriptedProvider {
     await options.beforeDispatch?.(prepared);
     this.respondCalls.push(structuredClone(request));
     throw this.thrown;
+  }
+}
+
+class AdapterTimeoutProvider extends ScriptedProvider {
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    await new Promise<void>((resolve) => {
+      options.signal?.addEventListener('abort', resolve, { once: true });
+    });
+    throw createModelProviderAdapterError('provider_transport', 504);
   }
 }
 
@@ -1377,14 +1398,25 @@ describe('fixed trace artifact runner', () => {
     expect(serialized).not.toContain('provider stack');
   });
 
-  it('records adapter-established transport provenance without retaining provider details', async () => {
+  it('hashes only the Google adapter message when an SDK error contains a provider body', async () => {
     const selectedTrace = trace('bounded-truncation');
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
-    const providerError = new Error('synthetic provider body must not be retained');
-    markModelProviderAdapterFailure(providerError, 'provider_transport', 400);
-    const generation = new ThrowingProvider(providerError);
+    const secret = 'synthetic-sdk-provider-body-secret';
+    const generateContent = vi.fn().mockRejectedValue(new ApiError({
+      message: `Google SDK error: {"error":{"message":"${secret}"}}`,
+      status: 429,
+    }));
+    const generation = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent },
+    } satisfies GoogleGenerateContentTransport);
 
-    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: {
+        ...stage(generation, 3),
+        model: GOOGLE_ROUTER_MODEL,
+        reasoningEffort: 'provider_default',
+      },
+    }));
 
     expect(observation).toMatchObject({
       terminalStage: 'generation',
@@ -1393,21 +1425,36 @@ describe('fixed trace artifact runner', () => {
         kind: 'provider_transport_error',
         reason: 'provider_exception',
         origin: 'provider_transport',
-        httpStatus: 400,
+        httpStatus: 429,
+        messageSha256: createHash('sha256')
+          .update(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE, 'utf8')
+          .digest('hex'),
       },
     });
-    expect(JSON.stringify(observation)).not.toContain('synthetic provider body');
-    expect(generation.respondCalls).toHaveLength(1);
+    expect(JSON.stringify(observation)).not.toContain(secret);
+    expect(generateContent).toHaveBeenCalledOnce();
   });
 
   it('records adapter response normalization as a distinct safe failure category', async () => {
     const selectedTrace = trace('bounded-truncation');
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
-    const adapterError = new Error('synthetic malformed provider payload');
-    markModelProviderAdapterFailure(adapterError, 'adapter_response_normalization');
-    const generation = new ThrowingProvider(adapterError);
+    const generateContent = vi.fn().mockResolvedValue({
+      responseId: 'google_1',
+      modelVersion: GOOGLE_ROUTER_MODEL,
+      candidates: [],
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+    });
+    const generation = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent },
+    } satisfies GoogleGenerateContentTransport);
 
-    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: {
+        ...stage(generation, 3),
+        model: GOOGLE_ROUTER_MODEL,
+        reasoningEffort: 'provider_default',
+      },
+    }));
 
     expect(observation).toMatchObject({
       terminalStage: 'generation',
@@ -1416,24 +1463,30 @@ describe('fixed trace artifact runner', () => {
         kind: 'adapter_response_error',
         reason: 'adapter_response_normalization',
         origin: 'adapter_response_normalization',
+        messageSha256: createHash('sha256')
+          .update(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE, 'utf8')
+          .digest('hex'),
       },
     });
-    expect(JSON.stringify(observation)).not.toContain('synthetic malformed provider payload');
-    expect(generation.respondCalls).toHaveLength(1);
+    expect(generateContent).toHaveBeenCalledOnce();
   });
 
-  it('retains an adapter marker from a hostile provider proxy without reading its details', async () => {
+  it('classifies a sanitized primitive Google rejection as provider transport', async () => {
     const selectedTrace = trace('bounded-truncation');
     const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
-    const secret = 'synthetic-hostile-marked-provider-secret';
-    const hostile = new Proxy(Object.assign(new Error(secret), { status: 400 }), {
-      get: () => { throw new Error('hostile marked provider property'); },
-      getPrototypeOf: () => { throw new Error('hostile marked provider prototype'); },
-    });
-    markModelProviderAdapterFailure(hostile, 'provider_transport');
-    const generation = new ThrowingProvider(hostile);
+    const secret = 'synthetic-primitive-provider-secret';
+    const generateContent = vi.fn().mockRejectedValue(secret);
+    const generation = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent },
+    } satisfies GoogleGenerateContentTransport);
 
-    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: {
+        ...stage(generation, 3),
+        model: GOOGLE_ROUTER_MODEL,
+        reasoningEffort: 'provider_default',
+      },
+    }));
 
     expect(observation).toMatchObject({
       terminalStage: 'generation',
@@ -1442,10 +1495,35 @@ describe('fixed trace artifact runner', () => {
         kind: 'provider_transport_error',
         reason: 'provider_exception',
         origin: 'provider_transport',
-        messageSha256: createHash('sha256').update('', 'utf8').digest('hex'),
+        messageSha256: createHash('sha256')
+          .update(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE, 'utf8')
+          .digest('hex'),
       },
     });
     expect(JSON.stringify(observation)).not.toContain(secret);
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
+    expect(generateContent).toHaveBeenCalledOnce();
+  });
+
+  it('keeps timeout classification ahead of a sanitized adapter transport error', async () => {
+    const selectedTrace = trace('bounded-truncation');
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new AdapterTimeoutProvider([]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: { ...stage(generation, 3), timeoutMs: 1 },
+    }));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_timeout',
+        reason: 'timeout_after_dispatch',
+      },
+    });
+    expect(observation.failureDiagnostic).not.toHaveProperty('origin');
+    expect(observation.failureDiagnostic).not.toHaveProperty('httpStatus');
     expect(generation.respondCalls).toHaveLength(1);
   });
 

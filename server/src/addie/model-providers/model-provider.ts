@@ -16,42 +16,60 @@ export interface ModelProviderAdapterFailure {
   readonly httpStatus?: number;
 }
 
-// Keep the raw caught value out of the public error shape. Evaluators can
-// classify the adapter-owned boundary through this private identity binding
-// without serializing a provider body, message, or credential.
-const adapterFailures = new WeakMap<object, ModelProviderAdapterFailure>();
+/** The only message an adapter failure is allowed to expose to evaluators. */
+export const MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE = 'Model provider adapter failure';
 
-export function markModelProviderAdapterFailure(
-  error: unknown,
-  kind: ModelProviderAdapterFailureKind,
-  httpStatus?: number,
-): void {
-  if (typeof error !== 'object' || error === null) return;
-  try {
-    const validHttpStatus = typeof httpStatus === 'number'
-      && Number.isInteger(httpStatus)
-      && httpStatus >= 100
-      && httpStatus <= 599
-      ? httpStatus
-      : undefined;
-    adapterFailures.set(error, Object.freeze({
+function validHttpStatus(value: unknown): number | undefined {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= 100
+    && value <= 599
+    ? value
+    : undefined;
+}
+
+// The caught provider value must never escape the adapter. Keeping the safe
+// classification in a private field also prevents it from becoming artifact
+// data through Error serialization.
+class ModelProviderAdapterError extends Error {
+  readonly #failure: ModelProviderAdapterFailure;
+
+  constructor(
+    kind: ModelProviderAdapterFailureKind,
+    httpStatus?: number,
+  ) {
+    super(MODEL_PROVIDER_ADAPTER_FAILURE_MESSAGE);
+    this.name = 'ModelProviderAdapterError';
+    const safeHttpStatus = validHttpStatus(httpStatus);
+    this.#failure = Object.freeze({
       kind,
-      ...(validHttpStatus === undefined ? {} : { httpStatus: validHttpStatus }),
-    }));
-  } catch {
-    // A revoked proxy cannot carry an adapter marker. It remains an unknown,
-    // fail-closed provider throw at the evaluator boundary.
+      ...(safeHttpStatus === undefined ? {} : { httpStatus: safeHttpStatus }),
+    });
+  }
+
+  failure(): ModelProviderAdapterFailure {
+    return this.#failure;
   }
 }
 
 /**
- * Returns only an adapter-controlled category. It intentionally never reads
- * properties from a provider-thrown value, which may be a hostile proxy.
+ * Creates an adapter-owned error without preserving the caught provider value
+ * or any provider-controlled diagnostic text.
+ */
+export function createModelProviderAdapterError(
+  kind: ModelProviderAdapterFailureKind,
+  httpStatus?: number,
+): Error {
+  return new ModelProviderAdapterError(kind, httpStatus);
+}
+
+/**
+ * Returns only adapter-owned metadata. Provider-thrown values cannot carry
+ * this marker, and hostile proxies are treated as unclassified.
  */
 export function modelProviderAdapterFailure(error: unknown): ModelProviderAdapterFailure | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
   try {
-    return adapterFailures.get(error);
+    return error instanceof ModelProviderAdapterError ? error.failure() : undefined;
   } catch {
     return undefined;
   }

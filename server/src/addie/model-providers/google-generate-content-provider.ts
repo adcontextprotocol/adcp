@@ -19,7 +19,7 @@ import type {
   PreparedModelInvocation,
 } from './model-provider.js';
 import {
-  markModelProviderAdapterFailure,
+  createModelProviderAdapterError,
   UnexpectedModelIdentityError,
 } from './model-provider.js';
 import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
@@ -76,12 +76,17 @@ function googleTransportHttpStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   for (const key of ['status', 'statusCode'] as const) {
     try {
-      const value = (error as Record<string, unknown>)[key];
+      // A data descriptor lets us reject accessors without invoking them. A
+      // proxy that prevents descriptor inspection is likewise absent evidence.
+      const descriptor = Object.getOwnPropertyDescriptor(error, key);
+      if (!descriptor || !('value' in descriptor)) continue;
+      const value = descriptor.value;
       if (typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599) {
         return value;
       }
     } catch {
-      // An SDK or proxy getter is not receipt evidence.
+      // An SDK proxy is not receipt evidence.
+      return undefined;
     }
   }
   return undefined;
@@ -454,17 +459,18 @@ export class GoogleGenerateContentProvider implements ModelProvider {
         { signal: options.signal },
       );
     } catch (error) {
-      // Do not expose provider error fields here. The runner receives only an
-      // adapter-owned boundary marker and its own bounded fingerprint.
-      markModelProviderAdapterFailure(error, 'provider_transport', googleTransportHttpStatus(error));
-      throw error;
+      // Do not expose provider error fields here. The runner receives a
+      // constant-message adapter error plus the only safe receipt field.
+      throw createModelProviderAdapterError(
+        'provider_transport',
+        googleTransportHttpStatus(error),
+      );
     }
     let normalized: ModelResponse;
     try {
       normalized = normalizeGoogleResponse(response);
-    } catch (error) {
-      markModelProviderAdapterFailure(error, 'adapter_response_normalization');
-      throw error;
+    } catch {
+      throw createModelProviderAdapterError('adapter_response_normalization');
     }
     if (!isGoogleRouterModelRevision(normalized.model)) {
       throw new UnexpectedModelIdentityError('google', request.model, normalized.model);
