@@ -293,15 +293,10 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   const candidate = response.candidates[0];
   if (typeof candidate.finishReason !== 'string') throw new Error('Malformed Google finish reason');
   const finishReason = normalizeFinishReason(candidate.finishReason);
-  // Gemini can omit the visible-candidate count when a bounded reasoning turn
-  // consumes its output allowance. That receipt has zero visible output; its
-  // validated thoughts count remains part of the actual billed output usage.
-  if (response.usageMetadata.candidatesTokenCount === undefined) {
-    if (finishReason !== 'length') throw new Error('Malformed Google output usage');
-  } else {
+  const hasOmittedCandidateOutputUsage = response.usageMetadata.candidatesTokenCount === undefined;
+  if (!hasOmittedCandidateOutputUsage) {
     assertSafeCount(response.usageMetadata.candidatesTokenCount, 'output usage');
   }
-  const outputTokens = response.usageMetadata.candidatesTokenCount ?? 0;
   const parts = candidate.content?.parts;
   if (candidate.content === undefined) {
     // Gemini can omit content after a bounded reasoning turn consumes its
@@ -313,6 +308,13 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if ((parts?.length ?? 0) > MAX_GOOGLE_RESPONSE_PARTS) {
     throw new Error('Google response content part limit exceeded');
   }
+  // Gemini can omit the visible-candidate count only when a bounded reasoning
+  // turn consumes its output allowance before emitting a candidate payload.
+  // Its validated thoughts count remains part of the actual billed output usage.
+  if (hasOmittedCandidateOutputUsage && (finishReason !== 'length' || (parts?.length ?? 0) !== 0)) {
+    throw new Error('Malformed Google output usage');
+  }
+  const outputTokens = response.usageMetadata.candidatesTokenCount ?? 0;
   const content: ModelMessageContent[] = [];
   for (const part of parts ?? []) {
     const keys = Object.keys(part).filter((key) => part[key as keyof typeof part] !== undefined);

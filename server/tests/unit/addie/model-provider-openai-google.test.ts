@@ -735,6 +735,16 @@ describe('GoogleGenerateContentProvider', () => {
   });
 
   it.each([
+    ['visible text', { role: 'model', parts: [{ text: 'visible' }] }],
+    ['a function call', { role: 'model', parts: [{ functionCall: { id: 'call_1', name: 'search_docs', args: {} }, thoughtSignature: 'sig' }] }],
+  ])('rejects a MAX_TOKENS receipt with omitted visible output usage and %s', (_description, content) => {
+    expect(() => normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'MAX_TOKENS', content }],
+      usageMetadata: { promptTokenCount: 4, thoughtsTokenCount: 32, totalTokenCount: 36 },
+    }))).toThrow('output usage');
+  });
+
+  it.each([
     ['STOP', { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text: 'visible' }] } }] }],
     ['SAFETY', { candidates: [{ finishReason: 'SAFETY', content: { role: 'model', parts: [] } }] }],
     ['RECITATION', { candidates: [{ finishReason: 'RECITATION', content: { role: 'model', parts: [] } }] }],
