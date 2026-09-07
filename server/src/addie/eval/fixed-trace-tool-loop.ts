@@ -95,6 +95,8 @@ export interface FixedTraceEvaluatorTool {
   handler: ToolHandler;
   effect: FixedTraceToolFixture['effect'];
   resultStatus: FixedTraceToolFixture['resultStatus'];
+  /** Present only when a source-pinned evaluator fixture supplied the result. */
+  fixtureResult?: string;
 }
 
 export interface FixedTraceEvaluatorToolEnvironment {
@@ -172,7 +174,7 @@ function registerTools(
         handler: tool.handler,
         effect: tool.effect,
         resultStatus: tool.resultStatus,
-        fixtureResult: null,
+        fixtureResult: tool.fixtureResult ?? null,
       });
     }
     if (registered.size !== evaluatorTools.size) {

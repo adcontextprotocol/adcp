@@ -48,6 +48,7 @@ import {
   FIXED_TRACE_DIRECT_TOOL_UNIVERSE,
   createSyntheticDirectToolReceiptHandlers,
 } from '../direct-tool-universe.js';
+import { FIXED_TRACE_ADMITTED_CELLS } from './fixed-trace-evaluation-protocol.js';
 import {
   assertFixedTraceArchitectureDiagnosticPilotSuite,
   assertFixedTraceArchitectureDiagnosticSuite,
@@ -74,6 +75,10 @@ import {
 } from './fixed-trace-architecture.js';
 import {
   FIXED_TRACE_STAGE_CONTROL_VERSION,
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE,
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256,
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS,
+  FIXED_TRACE_SUITE,
   fixedTraceArchitectureConfigSha256FromMetadata,
   FIXED_TRACE_SUITE_VERSION,
   fixedTraceSuiteSha256,
@@ -87,6 +92,12 @@ import {
   type FixedTraceTerminalStatus,
 } from './fixed-trace-suite.js';
 
+export {
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE,
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256,
+  FIXED_TRACE_DIRECT_MODEL_SCREEN_TRACE_IDS,
+} from './fixed-trace-suite.js';
+
 export interface FixedTraceProviderStageConfig {
   provider: ModelProvider;
   model: string;
@@ -98,6 +109,25 @@ export interface FixedTraceProviderStageConfig {
   samplingMode: 'temperature_zero' | 'provider_no_sampling_control';
   temperature: 0 | null;
   pricing: FixedTracePricing;
+}
+
+/**
+ * The only direct-generation screen that may cross the ordinary runner's
+ * default-closed direct-arm boundary. It is an evaluator mode, not a
+ * production dispatch selector: the suite and generation cell are both
+ * independently pinned below.
+ */
+export const FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE = 'direct_model_screen_admission_v1' as const;
+export type FixedTraceDirectModelScreenGenerationCellId =
+  | 'generation:anthropic:claude-sonnet-5:provider_default'
+  | 'generation:anthropic:claude-haiku-4-5:provider_default'
+  | 'generation:google:gemini-3.7-flash:provider_default'
+  | 'generation:google:gemini-3.7-flash:low'
+  | 'generation:google:gemini-3.7-flash:medium'
+  | 'generation:google:gemini-3.7-flash:high';
+export interface FixedTraceDirectModelScreenConfig {
+  readonly mode: typeof FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE;
+  readonly generationCellId: FixedTraceDirectModelScreenGenerationCellId;
 }
 
 export interface FixedTraceRunnerConfig {
@@ -128,8 +158,11 @@ export interface FixedTraceRunnerConfig {
   architectureDiagnosticMode?: FixedTraceArchitectureDiagnosticMode;
   /** One-based repetition identifier; runs are never silently pooled. */
   repetition?: number;
-  router: FixedTraceProviderStageConfig;
+  /** Null only for the direct-model-screen's fixed direct-generation path. */
+  router: FixedTraceProviderStageConfig | null;
   generation: FixedTraceProviderStageConfig;
+  /** Required to admit the narrow source-pinned direct model screen. */
+  directModelScreen?: FixedTraceDirectModelScreenConfig;
   /** Deterministic provider-failure fixture; enabled by default. */
   injectProviderDegradation?: boolean;
 }
@@ -145,7 +178,24 @@ interface FixedTraceExecutionIdentity {
   toolSchemaSha256: string;
   architectureConfigSha256: string;
   architectureDiagnosticMode: FixedTraceArchitectureDiagnosticMode | null;
+  directModelScreen: FixedTraceDirectModelScreenConfig | null;
   runProvenanceSha256: string;
+}
+
+const directModelScreenGenerationCellIds = new Set<FixedTraceDirectModelScreenGenerationCellId>([
+  'generation:anthropic:claude-sonnet-5:provider_default',
+  'generation:anthropic:claude-haiku-4-5:provider_default',
+  'generation:google:gemini-3.7-flash:provider_default',
+  'generation:google:gemini-3.7-flash:low',
+  'generation:google:gemini-3.7-flash:medium',
+  'generation:google:gemini-3.7-flash:high',
+]);
+
+function isDirectModelScreen(config: FixedTraceRunnerConfig): config is FixedTraceRunnerConfig & {
+  directModelScreen: FixedTraceDirectModelScreenConfig;
+  router: null;
+} {
+  return config.directModelScreen?.mode === FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE;
 }
 
 const boundTraceExecutionIdentities = new WeakMap<FixedTraceRunnerConfig, FixedTraceExecutionIdentity>();
@@ -199,6 +249,48 @@ function fixedTraceCommonToolEnvironment(): FixedTraceCommonToolEnvironmentBindi
   });
 }
 
+/**
+ * The direct screen keeps the reviewed common tool definitions visible to the
+ * candidate, but its two source-pinned traces must still deliver their
+ * canonical synthetic evidence. Only matching immutable fixture names replace
+ * an inert receipt handler; all other tools remain evaluator-only receipts and
+ * mutations remain denied by the common environment's authorization policy.
+ */
+function fixedTraceDirectModelScreenToolEnvironment(
+  trace: FixedTraceCase,
+): FixedTraceCommonToolEnvironmentBinding {
+  const common = fixedTraceCommonToolEnvironment();
+  const fixturesByName = new Map(trace.toolFixtures.map((fixture) => [fixture.name, fixture]));
+  if (fixturesByName.size !== trace.toolFixtures.length) {
+    throw new Error(`Fixed trace direct-model screen has duplicate fixture definitions: ${trace.id}`);
+  }
+  const commonNames = new Set(common.environment.tools.map((tool) => tool.definition.name));
+  if ([...fixturesByName.keys()].some((name) => !commonNames.has(name))) {
+    throw new Error(`Fixed trace direct-model screen fixture is outside the reviewed common universe: ${trace.id}`);
+  }
+  return Object.freeze({
+    definitionHandlerSha256: common.definitionHandlerSha256,
+    environment: Object.freeze({
+      ...common.environment,
+      tools: Object.freeze(common.environment.tools.map((tool) => {
+        const fixture = fixturesByName.get(tool.definition.name);
+        if (!fixture) return tool;
+        return Object.freeze({
+          ...tool,
+          effect: fixture.effect,
+          resultStatus: fixture.resultStatus,
+          fixtureResult: fixture.result,
+          handler: async () => ({
+            status: fixture.resultStatus,
+            model_context: fixture.result,
+            user_summary: fixture.result,
+          }),
+        });
+      })),
+    }),
+  });
+}
+
 class FixedTraceExecutionIdentityError extends Error {
   constructor(message: string) {
     super(message);
@@ -221,8 +313,11 @@ function snapshotExecutionConfig(config: FixedTraceRunnerConfig): FixedTraceRunn
     ...config,
     traceSuite: deepFreeze(structuredClone(config.traceSuite)),
     toolDefinitions: deepFreeze(structuredClone(config.toolDefinitions)),
-    router: snapshotStageConfig(config.router),
+    router: config.router === null ? null : snapshotStageConfig(config.router),
     generation: snapshotStageConfig(config.generation),
+    directModelScreen: config.directModelScreen === undefined
+      ? undefined
+      : deepFreeze(structuredClone(config.directModelScreen)),
   });
 }
 
@@ -243,7 +338,6 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
   // Routed/hybrid/oracle replay registers only trace fixtures. A wider definition
   // list would make the declared config differ from executable inputs. Direct
   // has its own evaluator-owned request-fact universe below.
-  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
   if (usesCommonToolUniverse(config)) {
     const environment = fixedTraceCommonToolEnvironment();
     validateFixedTraceToolLoopEnvironment(
@@ -255,6 +349,7 @@ function assertFixtureDefinitionUniverse(config: FixedTraceRunnerConfig): void {
     }
     return;
   }
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
   if (!Array.isArray(config.toolDefinitions)) {
     throw new Error('Fixed trace routed/hybrid/oracle definitions must exactly match configured suite fixtures');
   }
@@ -272,8 +367,18 @@ function assertFixtureRegistrations(config: FixedTraceRunnerConfig): void {
   // from fixture-local definitions. Routed, hybrid, and oracle replay use this exact
   // registration primitive at generation time, so validate it before router
   // dispatch as well.
-  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
+  if (isDirectModelScreen(config)) {
+    for (const trace of config.traceSuite) {
+      const environment = fixedTraceDirectModelScreenToolEnvironment(trace);
+      validateFixedTraceToolLoopEnvironment(
+        fixedTraceCommonToolDefinitions(fixedTraceArchitectureArm(config.architectureArm).id),
+        environment.environment,
+      );
+    }
+    return;
+  }
   if (usesCommonToolUniverse(config)) return;
+  if (fixedTraceArchitectureArm(config.architectureArm).id === 'direct_generation') return;
   for (const trace of config.traceSuite) {
     validateFixedTraceToolLoopFixtures(trace, resolveTraceDefinitions(trace, config.toolDefinitions));
   }
@@ -350,6 +455,12 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
     throw new Error('Fixed trace architecture diagnostic mode is invalid');
   }
   if (config.architectureDiagnosticMode !== undefined) {
+    if (config.directModelScreen !== undefined) {
+      throw new Error('Fixed trace architecture diagnostic mode excludes direct-model-screen mode');
+    }
+    if (config.router === null) {
+      throw new Error('Fixed trace architecture diagnostic mode requires a router stage');
+    }
     if (architectureArm.id === 'oracle_route_diagnostic') {
       throw new Error('Fixed trace architecture diagnostic mode excludes fixture oracle routing');
     }
@@ -377,6 +488,57 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
         throw new Error('Fixed trace architecture diagnostic pilot differs from reviewed candidate controls');
       }
     }
+  }
+  if (config.directModelScreen !== undefined) {
+    const screen = config.directModelScreen;
+    if (!screen || typeof screen !== 'object'
+      || Object.keys(screen).length !== 2
+      || !Object.prototype.hasOwnProperty.call(screen, 'mode')
+      || !Object.prototype.hasOwnProperty.call(screen, 'generationCellId')) {
+      throw new Error('Fixed trace direct-model screen config must contain only mode and generationCellId');
+    }
+    if (screen.mode !== FIXED_TRACE_DIRECT_MODEL_SCREEN_MODE) {
+      throw new Error('Fixed trace direct-model screen mode is invalid');
+    }
+    if (architectureArm.id !== 'direct_generation') {
+      throw new Error('Fixed trace direct-model screen requires the direct generation architecture arm');
+    }
+    if (config.router !== null) {
+      throw new Error('Fixed trace direct-model screen requires router null');
+    }
+    if (config.toolDefinitionProvenance !== 'evaluator_owned_common_tool_universe') {
+      throw new Error('Fixed trace direct-model screen requires the evaluator-owned common tool universe');
+    }
+    if (!directModelScreenGenerationCellIds.has(screen.generationCellId)) {
+      throw new Error('Fixed trace direct-model screen generation cell is unsupported');
+    }
+    const cell = FIXED_TRACE_ADMITTED_CELLS.find((candidate) => candidate.id === screen.generationCellId);
+    if (!cell || cell.role !== 'generation'
+      || cell.provider !== config.generation.provider.id
+      || cell.model !== config.generation.model
+      || cell.effort !== config.generation.reasoningEffort
+      || cell.pricingProfileId !== config.generation.pricing.profileId
+      || config.generation.maxOutputTokens !== 900
+      || config.generation.timeoutMs !== 120_000
+      || config.generation.maxIterations !== 2
+      || config.generation.transportRetries !== 0
+      || config.generation.samplingMode !== 'provider_no_sampling_control'
+      || config.generation.temperature !== null) {
+      throw new Error('Fixed trace direct-model screen generation stage differs from its admitted cell');
+    }
+    // This validates the complete current evaluator-owned pricing tuple before
+    // the provider's prepare/dispatch boundary, not after a billable attempt.
+    fixedTraceResponsePricingPolicy(
+      config.generation.provider.id,
+      config.generation.model,
+      config.generation.pricing,
+    );
+    if (config.traceSuiteSha256 !== FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256
+      || fixedTraceSuiteSha256(config.traceSuite) !== FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE_SHA256) {
+      throw new Error('Fixed trace direct-model screen requires the source-pinned admission suite');
+    }
+  } else if (config.router === null) {
+    throw new Error('Fixed trace runner router is required outside direct-model-screen mode');
   }
 }
 
@@ -423,6 +585,7 @@ function runProvenanceSha256(config: FixedTraceRunnerConfig): string {
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     repetition: config.repetition ?? 1,
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
+    directModelScreen: config.directModelScreen ?? null,
   });
 }
 
@@ -436,6 +599,7 @@ function executionIdentity(config: FixedTraceRunnerConfig): FixedTraceExecutionI
     toolSchemaSha256,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
+    directModelScreen: config.directModelScreen ?? null,
     runProvenanceSha256: runProvenanceSha256(config),
   };
 }
@@ -455,6 +619,7 @@ function assertExecutionIdentity(
     || actual.toolSchemaSha256 !== expected.toolSchemaSha256
     || actual.architectureConfigSha256 !== expected.architectureConfigSha256
     || actual.architectureDiagnosticMode !== expected.architectureDiagnosticMode
+    || canonicalJson(actual.directModelScreen) !== canonicalJson(expected.directModelScreen)
     || actual.runProvenanceSha256 !== expected.runProvenanceSha256
   ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed before provider dispatch');
 }
@@ -616,6 +781,12 @@ function cohortStageControl(config: FixedTraceProviderStageConfig): FixedTraceCo
     modelResolutionPolicy: fixedTraceModelResolutionPolicy(config.provider.id, config.model),
     pricing: { ...config.pricing },
   };
+}
+
+function routerControlForConfig(config: FixedTraceRunnerConfig): FixedTraceCohortStageControl | { readonly status: 'not_run' } {
+  if (isDirectModelScreen(config)) return { status: 'not_run' };
+  if (config.router === null) throw new Error('Fixed trace runner router is required outside direct-model-screen mode');
+  return cohortStageControl(config.router);
 }
 
 function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'reasoning'> | Record<string, never> {
@@ -870,10 +1041,11 @@ export function fixedTraceArchitectureConfigSha256(
       ? { source: 'evaluator_owned_synthetic_receipt_envelope', deployable: false }
       : fixedTraceExecutionEnvelopeProvenance(arm.id),
     requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, arm.id),
-    routerControl: cohortStageControl(config.router),
+    routerControl: routerControlForConfig(config),
     generationControl: cohortStageControl(config.generation),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
+    directModelScreenMode: config.directModelScreen?.mode ?? null,
     architectureDiagnostic: config.architectureDiagnosticMode === undefined
       ? null
       : fixedTraceArchitectureDiagnosticMappingBinding(config.architectureDiagnosticMode),
@@ -962,6 +1134,7 @@ function baseMetadata(
     stageControlVersion: FIXED_TRACE_STAGE_CONTROL_VERSION,
     architectureConfigSha256: fixedTraceArchitectureConfigSha256(config, toolSchemaSha256),
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
+    directModelScreenMode: config.directModelScreen?.mode ?? null,
     architectureDiagnostic: config.architectureDiagnosticMode === undefined
       ? null
       : fixedTraceArchitectureDiagnosticCaseProvenance(config.architectureDiagnosticMode, trace.id),
@@ -999,7 +1172,7 @@ function baseMetadata(
     requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, architectureArm.id),
     directArmAdmission: admission,
     caseControl: trace.caseControl ?? null,
-    routerControl: cohortStageControl(config.router),
+    routerControl: routerControlForConfig(config),
     generationControl: cohortStageControl(config.generation),
     router,
     generation,
@@ -1033,7 +1206,7 @@ export function preflightFixedTraceRunnerConfig(config: FixedTraceRunnerConfig):
   const identity = executionIdentity(config);
   preflightFixtureRegistrations(config, identity);
   const executionConfig = snapshotExecutionConfig(config);
-  validateStageConfig('router', executionConfig.router);
+  if (executionConfig.router !== null) validateStageConfig('router', executionConfig.router);
   for (const trace of executionConfig.traceSuite) {
     validateStageConfig('generation', generationConfigForTrace(trace, executionConfig));
   }
@@ -1062,6 +1235,24 @@ function fallbackOutput(status: FixedTraceTerminalStatus): string {
   if (status === 'timeout_after_dispatch') return 'The provider timed out. Please try again.';
   if (status === 'provider_error') return 'The provider is temporarily unavailable. Please try again.';
   return '';
+}
+
+/** This screen deliberately accepts no provider model alias or revision. */
+function directModelScreenProviderExposuresMatch(
+  config: FixedTraceRunnerConfig,
+  exposures: readonly {
+    preparedProvider: ModelProvider['id'];
+    preparedModel: string;
+    returnedProvider: ModelProvider['id'];
+    returnedModel: string;
+  }[],
+): boolean {
+  return !isDirectModelScreen(config) || exposures.every((exposure) => (
+    exposure.preparedProvider === config.generation.provider.id
+    && exposure.preparedModel === config.generation.model
+    && exposure.returnedProvider === config.generation.provider.id
+    && exposure.returnedModel === config.generation.model
+  ));
 }
 
 function routeDisposition(
@@ -1186,6 +1377,7 @@ export async function runFixedTraceCase(
       || boundIdentity.toolSchemaSha256 !== identity.toolSchemaSha256
       || boundIdentity.architectureConfigSha256 !== identity.architectureConfigSha256
       || boundIdentity.architectureDiagnosticMode !== identity.architectureDiagnosticMode
+      || canonicalJson(boundIdentity.directModelScreen) !== canonicalJson(identity.directModelScreen)
       || boundIdentity.runProvenanceSha256 !== identity.runProvenanceSha256
     )
   ) throw new FixedTraceExecutionIdentityError('Fixed trace runner execution identity changed after dispatch binding');
@@ -1198,11 +1390,13 @@ export async function runFixedTraceCase(
   const executionTrace = deepFreeze(structuredClone(configuredTrace));
   const toolSchemaSha256 = identity.toolSchemaSha256;
   const assertBeforeDispatch = () => assertExecutionIdentity(config, identity);
-  validateStageConfig('router', executionConfig.router);
+  if (executionConfig.router !== null) validateStageConfig('router', executionConfig.router);
   const generationConfig = generationConfigForTrace(executionTrace, executionConfig);
   validateStageConfig('generation', generationConfig);
   const architectureArm = fixedTraceArchitectureArm(executionConfig.architectureArm);
-  if (architectureArm.id === 'direct_generation' && executionConfig.architectureDiagnosticMode === undefined) {
+  if (architectureArm.id === 'direct_generation'
+    && executionConfig.architectureDiagnosticMode === undefined
+    && !isDirectModelScreen(executionConfig)) {
     // The evaluator's receipts and fixture facts are diagnostic only; an
     // admission result can never open a direct-production dispatch path.
   return {
@@ -1272,7 +1466,11 @@ export async function runFixedTraceCase(
           status: null,
           metadata: notRunStageMetadata(executionTrace),
         }
-    : await executeRouter(executionTrace, executionConfig.router, assertBeforeDispatch);
+    : await executeRouter(
+      executionTrace,
+      executionConfig.router ?? (() => { throw new Error('Fixed trace runner router is missing'); })(),
+      assertBeforeDispatch,
+    );
   const generationNotRun = notRunStageMetadata(executionTrace);
   if (!routed.plan || routed.status) {
     const status = routed.status ?? 'malformed';
@@ -1363,7 +1561,9 @@ export async function runFixedTraceCase(
 
   let timedOut = false;
   const evaluatorToolEnvironment = usesCommonToolUniverse(executionConfig)
-    ? fixedTraceCommonToolEnvironment()
+    ? isDirectModelScreen(executionConfig)
+      ? fixedTraceDirectModelScreenToolEnvironment(executionTrace)
+      : fixedTraceCommonToolEnvironment()
     : null;
   const controller = new AbortController();
   const timeout = setTimeout(() => {
@@ -1408,6 +1608,7 @@ export async function runFixedTraceCase(
       undefined,
       result.providerExposures,
     ) && returnedModelUsesRecordedPricing(generationConfig, result.response)
+      && directModelScreenProviderExposuresMatch(executionConfig, result.providerExposures)
       ? terminalStatusForFinishReason(result.response.finishReason, result.text)
       : 'unknown_exposure';
     return {
@@ -1494,6 +1695,24 @@ export async function runFixedTraceSuite(
     observations.push(await runFixedTraceCase(trace, config, identity.toolSchemaSha256));
   }
   assertExecutionIdentity(config, identity);
+  return observations;
+}
+
+/**
+ * Executes exactly one admitted direct-generation cell across the existing
+ * source-pinned admission traces. This is intentionally neither an architecture
+ * comparison nor a general direct dispatch entry point.
+ */
+export async function runFixedTraceDirectModelScreen(
+  config: FixedTraceRunnerConfig,
+): Promise<FixedTraceObservation[]> {
+  if (!isDirectModelScreen(config)) {
+    throw new Error('Fixed trace direct-model screen requires direct_model_screen_admission_v1 mode');
+  }
+  const observations = await runFixedTraceSuite(config);
+  if (observations.length !== FIXED_TRACE_DIRECT_MODEL_SCREEN_ADMISSION_SUITE.length) {
+    throw new Error('Fixed trace direct-model screen did not preserve the complete admission denominator');
+  }
   return observations;
 }
 
