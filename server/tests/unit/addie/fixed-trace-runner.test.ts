@@ -110,6 +110,19 @@ class ScriptedProvider implements ModelProvider {
   }
 }
 
+class InvalidNormalizedEventProvider extends ScriptedProvider {
+  override async *respond(
+    request: ModelRequest,
+    options: ModelRespondOptions = {},
+  ): AsyncIterable<NormalizedModelEvent> {
+    const prepared = this.prepare(request);
+    await options.beforeDispatch?.(prepared);
+    this.respondCalls.push(structuredClone(request));
+    // Deliberately violate the normalized-stream contract after dispatch.
+    yield { type: 'text_delta', index: 0, text: 'untrusted provider contents' };
+  }
+}
+
 class DeferredBeforeDispatchProvider extends ScriptedProvider {
   private releaseDispatch!: () => void;
   private readonly dispatchReleased = new Promise<void>((resolve) => { this.releaseDispatch = resolve; });
@@ -719,6 +732,7 @@ describe('fixed trace artifact runner', () => {
       terminalStatus: 'unknown_exposure',
       finishReason: 'stop',
       flagged: true,
+      failureDiagnostic: null,
       metadata: {
         generation: {
           source: 'provider',
@@ -1193,6 +1207,67 @@ describe('fixed trace artifact runner', () => {
       deterministicPass: true,
       metadataPass: true,
     });
+  });
+
+  it('records a frozen, bounded non-secret transport diagnostic while closing unknown exposure', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const secret = 'synthetic-secret-token';
+    const errorMessage = `transport lost after provider artifact: ${selectedTrace.request.message}; authorization=${secret}; ${'x'.repeat(2_048)}`;
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const delegate = new ScriptedProvider([new Error(errorMessage)]);
+    const budget = new FixedTraceBudget(1);
+    const generation = new BudgetedFixedTraceProvider(
+      delegate,
+      budget,
+      stage(delegate, 3).pricing,
+      fixedTraceResponsePricingPolicy('anthropic', 'claude-haiku-4-5', stage(delegate, 3).pricing),
+    );
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+    const serialized = JSON.stringify(observation);
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'provider_transport_error',
+        reason: 'provider_exception',
+        messageSha256: createHash('sha256')
+          .update(Buffer.from(errorMessage, 'utf8').subarray(0, 512))
+          .digest('hex'),
+      },
+    });
+    expect(Object.isFrozen(observation.failureDiagnostic)).toBe(true);
+    expect(observation.failureDiagnostic?.messageSha256).toHaveLength(64);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain(selectedTrace.request.message);
+    expect(serialized).not.toContain('provider artifact');
+    expect(delegate.respondCalls).toHaveLength(1);
+    expect(budget.snapshot()).toMatchObject({ dispatchedCalls: 1, exposureUnknown: true });
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ terminalFailure: true, deterministicPass: false });
+  });
+
+  it('classifies malformed normalized router events without dispatching generation', async () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const router = new InvalidNormalizedEventProvider([]);
+    const generation = new ScriptedProvider([]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'unknown_exposure',
+      failureDiagnostic: {
+        kind: 'normalization_error',
+        reason: 'invalid_normalized_model_event',
+        messageSha256: createHash('sha256')
+          .update('Normalized event received before response_start', 'utf8')
+          .digest('hex'),
+      },
+    });
+    expect(Object.isFrozen(observation.failureDiagnostic)).toBe(true);
+    expect(generation.respondCalls).toHaveLength(0);
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ terminalFailure: true, deterministicPass: false });
   });
 
   it('keeps exact usage for a dispatched malformed tool turn', async () => {
