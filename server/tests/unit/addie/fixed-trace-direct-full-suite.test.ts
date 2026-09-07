@@ -15,10 +15,23 @@ const HASH = createHash('sha256').update('direct-full-suite-test').digest('hex')
 class FakeProvider implements ModelProvider {
   readonly capabilities = CAPABILITIES;
   readonly requests: ModelRequest[] = [];
+  /** Boundary values observed before an SDK request is allowed to leave. */
+  readonly boundaryInvocations: PreparedModelInvocation[] = [];
   readonly prepare = vi.fn((request: ModelRequest): PreparedModelInvocation => ({ provider: this.id, model: request.model, capabilities: this.capabilities, requestMetadata: request.requestMetadata, providerRequest: structuredClone(request) as unknown as Readonly<Record<string, unknown>> }));
-  constructor(readonly id: ModelProviderId, readonly failAfterDispatch = false, readonly responsePatch: Partial<ModelResponse> = {}) {}
+  constructor(
+    readonly id: ModelProviderId,
+    readonly failAfterDispatch = false,
+    readonly responsePatch: Partial<ModelResponse> = {},
+    readonly dispatchPreparation?: (request: ModelRequest, preliminary: PreparedModelInvocation) => PreparedModelInvocation,
+  ) {}
   async *respond(request: ModelRequest, options: ModelRespondOptions = {}): AsyncIterable<NormalizedModelEvent> {
-    const prepared = this.prepare(request); await options.beforeDispatch?.(prepared); this.requests.push(structuredClone(request));
+    const preliminary = this.prepare(request);
+    const prepared = this.dispatchPreparation?.(request, preliminary) ?? preliminary;
+    this.boundaryInvocations.push(structuredClone(prepared));
+    await options.beforeDispatch?.(prepared);
+    // This is intentionally after the policy boundary: it represents the
+    // fake's one actual SDK dispatch, not merely a prepared invocation.
+    this.requests.push(structuredClone(request));
     if (this.failAfterDispatch) throw new Error('synthetic post-dispatch transport loss');
     const judge = request.requestMetadata?.purpose === 'fixed_trace_blinded_judge';
     const response: ModelResponse = { provider: this.id, model: request.model, id: `${this.id}-${this.requests.length}`, content: [{ type: 'text', text: judge ? '{"pass":true,"finding":"synthetic"}' : 'Synthetic fixed-trace response.' }], finishReason: 'stop', providerFinishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1 }, ...this.responsePatch };
@@ -33,11 +46,20 @@ function budgeted(provider: ModelProvider, model: string, budget: FixedTraceBudg
   return new BudgetedFixedTraceProvider(provider, budget, pricing, fixedTraceResponsePricingPolicy(provider.id, model, pricing));
 }
 
-async function run(cellId: typeof FIXED_TRACE_DIRECT_FULL_SUITE_CELLS[number], fail = false, judgeResponsePatch: Partial<ModelResponse> = {}) {
+async function run(
+  cellId: typeof FIXED_TRACE_DIRECT_FULL_SUITE_CELLS[number],
+  fail = false,
+  judgeResponsePatch: Partial<ModelResponse> = {},
+  judgeOverrides: Partial<Record<ModelProviderId, FakeProvider>> = {},
+) {
   const cell = fixedTraceDirectFullSuiteCell(cellId); const budget = new FixedTraceBudget(300);
   const rawCandidate = new FakeProvider(cell.provider, fail);
   const candidate = budgeted(rawCandidate, cell.model, budget);
-  const rawJudges = { anthropic: new FakeProvider('anthropic', false, judgeResponsePatch), google: new FakeProvider('google', false, judgeResponsePatch), openai: new FakeProvider('openai', false, judgeResponsePatch) };
+  const rawJudges = {
+    anthropic: judgeOverrides.anthropic ?? new FakeProvider('anthropic', false, judgeResponsePatch),
+    google: judgeOverrides.google ?? new FakeProvider('google', false, judgeResponsePatch),
+    openai: judgeOverrides.openai ?? new FakeProvider('openai', false, judgeResponsePatch),
+  };
   const judges = {
     anthropic: budgeted(rawJudges.anthropic, 'claude-haiku-4-5', budget),
     google: budgeted(rawJudges.google, 'gemini-3.7-flash', budget),
@@ -137,6 +159,42 @@ describe('fixed-trace direct full-suite comparison', () => {
     const plan = fixedTraceDirectFullSuitePlan({ cellId: 'generation:google:gemini-3.7-flash:high', sourceFiles: ['fixture.ts'], sourceBundleSha256: HASH, promptConfigVersion: HASH, softMaxUsd: 300 });
     expect(Object.isFrozen(plan)).toBe(true);
     expect(plan.judges).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'anthropic', reasoningEffort: 'provider_default', pricingProfileSha256: expect.stringMatching(/^sha256:/) })]));
+  }, 30_000);
+
+  it('records the exact dispatch-boundary judge invocation rather than an earlier preparation', async () => {
+    const divergent = new FakeProvider('anthropic', false, {}, (_request, preliminary) => Object.freeze({
+      ...preliminary,
+      providerRequest: Object.freeze({ ...preliminary.providerRequest, dispatch_boundary_only: true }),
+    }));
+    const { result } = await run(
+      'generation:google:gemini-3.7-flash:high',
+      false,
+      {},
+      { anthropic: divergent },
+    );
+    const actual = divergent.boundaryInvocations[0]!;
+    const judgment = result.judgments.find((entry) => entry.judgeProvider === 'anthropic')!;
+    expect(divergent.prepare).toHaveBeenCalledTimes(32);
+    expect(actual.providerRequest).toMatchObject({ dispatch_boundary_only: true });
+    expect(judgment.providerRequestSha256).toBe(createHash('sha256').update(JSON.stringify(actual.providerRequest), 'utf8').digest('hex'));
+  }, 30_000);
+
+  it('rejects an oversized exact judge boundary invocation before SDK dispatch', async () => {
+    const oversized = new FakeProvider('anthropic', false, {}, (_request, preliminary) => Object.freeze({
+      ...preliminary,
+      providerRequest: Object.freeze({ ...preliminary.providerRequest, dispatch_boundary_padding: 'x'.repeat(65_537) }),
+    }));
+    const { result } = await run(
+      'generation:google:gemini-3.7-flash:high',
+      false,
+      {},
+      { anthropic: oversized },
+    );
+    const anthropicJudgments = result.judgments.filter((entry) => entry.judgeProvider === 'anthropic');
+    expect(oversized.boundaryInvocations).toHaveLength(32);
+    expect(oversized.requests).toHaveLength(0);
+    expect(anthropicJudgments.every((entry) => entry.status === 'missing' && entry.dispatched === false)).toBe(true);
+    expect(anthropicJudgments[0]?.providerRequestSha256).toBe(createHash('sha256').update(JSON.stringify(oversized.boundaryInvocations[0]!.providerRequest), 'utf8').digest('hex'));
   }, 30_000);
 
   it('keeps post-dispatch unknown exposure and every missing judge slot in denominator', async () => {

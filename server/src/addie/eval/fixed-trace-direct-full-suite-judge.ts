@@ -46,7 +46,8 @@ export interface FixedTraceDirectFullSuiteJudgment {
   readonly finishReason: ModelFinishReason | null;
   readonly providerFinishReason: string | null;
   readonly promptSha256: string;
-  readonly providerRequestSha256: string;
+  /** Hash of the exact invocation admitted at the SDK dispatch boundary. */
+  readonly providerRequestSha256: string | null;
   readonly promptConfigVersion: string;
   readonly judgeConfigSha256: string;
   readonly pricingProfileId: string;
@@ -204,6 +205,33 @@ function verdict(value: string): { pass: boolean; finding: string } | null {
   } catch { return null; }
 }
 
+/**
+ * Validate the one invocation the adapter is about to hand to its SDK.  Do
+ * not call `prepare()` here: adapters prepare inside `respond()` immediately
+ * before dispatch, and that value is the only request artifact may attest to.
+ */
+function assertJudgeDispatchInvocation(
+  prepared: import('../model-providers/model-provider.js').PreparedModelInvocation,
+  request: ModelRequest,
+  plan: FixedTraceDirectFullSuiteJudgePlan,
+): void {
+  if (
+    prepared.provider !== plan.provider
+    || prepared.model !== plan.model
+    || sha256(prepared.requestMetadata) !== sha256(request.requestMetadata)
+  ) throw new Error('Fixed trace direct full-suite judge dispatch invocation differs from immutable identity/config');
+  if (
+    request.model !== plan.model
+    || request.maxOutputTokens !== plan.maxOutputTokens
+    || request.reasoning !== undefined
+    || sha256(request.outputSchema) !== plan.outputSchemaSha256
+    || sha256({ promptConfigVersion: plan.promptConfigVersion, system: request.system.map((block) => block.text).join('') }) !== plan.promptSha256
+  ) throw new Error('Fixed trace direct full-suite judge request differs from immutable plan');
+  if (Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8') > FIXED_TRACE_DIRECT_FULL_SUITE_MAX_JUDGE_PREPARED_REQUEST_BYTES) {
+    throw new Error('Fixed trace direct full-suite judge dispatch request exceeds prepared request byte ceiling');
+  }
+}
+
 /** Execute exactly the supplied provider-excluding judge slots for one blinded packet. */
 export async function judgeFixedTraceDirectFullSuiteObservation(input: Readonly<{
   trace: FixedTraceCase;
@@ -229,33 +257,25 @@ export async function judgeFixedTraceDirectFullSuiteObservation(input: Readonly<
       maxOutputTokens: stage.maxOutputTokens,
       requestMetadata: { purpose: 'fixed_trace_blinded_judge', trace_id: input.trace.id },
     };
-    const prepared = stage.provider.prepare(request);
-    const audit = Object.freeze({
-      ...judgePlan,
-      providerRequestSha256: sha256(prepared.providerRequest),
-    });
-    if (Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8') > FIXED_TRACE_DIRECT_FULL_SUITE_MAX_JUDGE_PREPARED_REQUEST_BYTES) {
-      results.push(Object.freeze({
-        traceId: input.trace.id, judgeProvider, judgeModel: stage.model, status: 'missing', finding: null,
-        latencyMs: 0, estimatedCostUsd: null, requestedProvider: stage.provider.id, requestedModel: stage.model,
-        requestedReasoningEffort: stage.reasoningEffort, returnedProvider: null, returnedModel: null, returnedReasoningEffort: null,
-        usage: null, finishReason: null, providerFinishReason: null,
-        promptSha256: audit.promptSha256, providerRequestSha256: audit.providerRequestSha256,
-        promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: audit.judgeConfigSha256,
-        pricingProfileId: audit.pricingProfileId, pricingProfileSha256: audit.pricingProfileSha256,
-        pricingSource: audit.pricingSource, pricingPolicy: audit.pricingPolicy, dispatched: false, exposure: 'not_dispatched',
-      }));
-      continue;
-    }
     const controller = new AbortController();
     const startedAt = Date.now();
     let dispatched = false;
     let timedOut = false;
+    let providerRequestSha256: string | null = null;
     const captured: CapturedJudgeResponse = { started: null, terminal: null };
     const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, stage.timeoutMs);
     try {
       const response = await collectModelResponse(observeJudgeResponse(
-        stage.provider.respond(request, { signal: controller.signal, beforeDispatch: () => { dispatched = true; } }),
+        stage.provider.respond(request, {
+          signal: controller.signal,
+          beforeDispatch: (prepared) => {
+            // Preserve evidence even when admission rejects this boundary
+            // invocation; it was observed but never sent to the SDK.
+            providerRequestSha256 = sha256(prepared.providerRequest);
+            assertJudgeDispatchInvocation(prepared, request, judgePlan);
+            dispatched = true;
+          },
+        }),
         captured,
       ), stage.provider.id);
       const usage = snapshotUsage(response.usage);
@@ -270,10 +290,10 @@ export async function judgeFixedTraceDirectFullSuiteObservation(input: Readonly<
         requestedModel: stage.model, requestedReasoningEffort: stage.reasoningEffort,
         returnedProvider: response.provider, returnedModel: response.model, returnedReasoningEffort: null,
         usage, finishReason: response.finishReason, providerFinishReason: response.providerFinishReason,
-        promptSha256: audit.promptSha256, providerRequestSha256: audit.providerRequestSha256,
-        promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: audit.judgeConfigSha256,
-        pricingProfileId: audit.pricingProfileId, pricingProfileSha256: audit.pricingProfileSha256,
-        pricingSource: audit.pricingSource, pricingPolicy: audit.pricingPolicy, dispatched, exposure: settled ? 'settled' : 'unknown',
+        promptSha256: judgePlan.promptSha256, providerRequestSha256,
+        promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: judgePlan.judgeConfigSha256,
+        pricingProfileId: judgePlan.pricingProfileId, pricingProfileSha256: judgePlan.pricingProfileSha256,
+        pricingSource: judgePlan.pricingSource, pricingPolicy: judgePlan.pricingPolicy, dispatched, exposure: settled ? 'settled' : 'unknown',
       }));
     } catch (error) {
       if (error instanceof InvalidModelEventStreamError && (captured.terminal !== null || captured.started !== null)) {
@@ -286,10 +306,10 @@ export async function judgeFixedTraceDirectFullSuiteObservation(input: Readonly<
           returnedProvider: returned?.provider ?? null, returnedModel: returned?.model ?? null, returnedReasoningEffort: null,
           usage: response ? snapshotUsage(response.usage) : null,
           finishReason: response?.finishReason ?? null, providerFinishReason: response?.providerFinishReason ?? null,
-          promptSha256: audit.promptSha256, providerRequestSha256: audit.providerRequestSha256,
-          promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: audit.judgeConfigSha256,
-          pricingProfileId: audit.pricingProfileId, pricingProfileSha256: audit.pricingProfileSha256,
-          pricingSource: audit.pricingSource, pricingPolicy: audit.pricingPolicy, dispatched, exposure: 'unknown',
+          promptSha256: judgePlan.promptSha256, providerRequestSha256,
+          promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: judgePlan.judgeConfigSha256,
+          pricingProfileId: judgePlan.pricingProfileId, pricingProfileSha256: judgePlan.pricingProfileSha256,
+          pricingSource: judgePlan.pricingSource, pricingPolicy: judgePlan.pricingPolicy, dispatched, exposure: 'unknown',
         }));
         continue;
       }
@@ -301,10 +321,10 @@ export async function judgeFixedTraceDirectFullSuiteObservation(input: Readonly<
         requestedProvider: stage.provider.id, requestedModel: stage.model,
         requestedReasoningEffort: stage.reasoningEffort, returnedProvider: null, returnedModel: null, returnedReasoningEffort: null,
         usage: null, finishReason: null, providerFinishReason: null,
-        promptSha256: audit.promptSha256, providerRequestSha256: audit.providerRequestSha256,
-        promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: audit.judgeConfigSha256,
-        pricingProfileId: audit.pricingProfileId, pricingProfileSha256: audit.pricingProfileSha256,
-        pricingSource: audit.pricingSource, pricingPolicy: audit.pricingPolicy, dispatched,
+        promptSha256: judgePlan.promptSha256, providerRequestSha256,
+        promptConfigVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION, judgeConfigSha256: judgePlan.judgeConfigSha256,
+        pricingProfileId: judgePlan.pricingProfileId, pricingProfileSha256: judgePlan.pricingProfileSha256,
+        pricingSource: judgePlan.pricingSource, pricingPolicy: judgePlan.pricingPolicy, dispatched,
         exposure: dispatched ? 'unknown' : 'not_dispatched',
       }));
     } finally { clearTimeout(timeout); }
