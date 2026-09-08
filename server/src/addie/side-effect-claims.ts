@@ -84,7 +84,7 @@ const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
   { name: 'event registered', tools: ['manage_event_registrations', 'register_event_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+registered\s+(?:an?\s+)?(?:for\s+)?event\b/i },
   { name: 'member or registry update', tools: ['set_my_name', 'set_outreach_preference', 'update_my_profile', 'save_property', 'save_brand', 'save_agent', 'update_company_listing', 'update_company_logo', 'upload_brand_logo', 'join_working_group', 'withdraw_council_interest', 'express_council_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|saved|joined|withdrawn|uploaded)\s+(?:your\s+)?(?:profile|preference|property|brand|agent|working group|logo|listing)\b/i },
   { name: 'certification record', tools: ['complete_certification_module', 'complete_certification_exam', 'start_certification_module', 'start_certification_exam', 'checkpoint_teaching_progress'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:completed|started|recorded)\s+(?:the\s+)?(?:module|exam|certification|progress)\b/i },
-  { name: 'external state change', tools: [...SIDE_EFFECT_TOOL_NAMES], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|expressed|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\s+(?:an?\s+|the\s+|your\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|domain\s+challenge|account|record|property|brand|brand\s+ownership|agent|listing|logo|asset|content|post|working\s+group|meeting|attendee|event|event\s+registration|invoice|payment|payment\s+link|escalation|council\s+interest|catalog\s+entry|certification|module|exam|progress|perspective\s+illustration|illustration|portrait|token|introduction|revisions|preference|profile|name|topic\s+subscription)\b|\b(?:the\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|account|record|property|brand|agent|listing|logo|asset|content|post|working\s+group|meeting|event|invoice|payment|escalation|catalog\s+entry|certification|module|exam|perspective\s+illustration|illustration|portrait|token|introduction)\s+(?:(?:has|have)\s+been|was)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\b/i },
+  { name: 'external state change', tools: [...SIDE_EFFECT_TOOL_NAMES], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|expressed|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\s+(?:an?\s+|the\s+|your\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|domain\s+challenge|account|record|property|brand|brand\s+ownership|agent|listing|logo|asset|content|post|working\s+group|meeting(?!\s+agenda\b)|attendee|event|event\s+registration|invoice|payment|payment\s+link|escalation|council\s+interest|catalog\s+entry|certification|module|exam|progress|perspective\s+illustration|illustration|portrait|token|introduction|revisions|preference|profile|name|topic\s+subscription)\b|\b(?:the\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|account|record|property|brand|agent|listing|logo|asset|content|post|working\s+group|meeting(?!\s+agenda\b)|event|invoice|payment|escalation|catalog\s+entry|certification|module|exam|perspective\s+illustration|illustration|portrait|token|introduction)\s+(?:(?:has|have)\s+been|was)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\b/i },
 ];
 
 function successful(executions: readonly ToolExecution[], names: readonly string[]): ToolExecution[] {
@@ -110,17 +110,31 @@ const CLAIM_ACTION_TOOL_PREFIX: Readonly<Record<string, string>> = {
 };
 
 function successfulExternalClaimReceipts(text: string, executions: readonly ToolExecution[]): ToolExecution[] {
-  const action = Object.entries(CLAIM_ACTION_TOOL_PREFIX)
-    .find(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(text));
-  if (!action) return [];
-  const prefix = action[1];
-  const target = [
+  const targets = [
     'meeting', 'event', 'invoice', 'payment', 'resource', 'bookmark', 'reminder', 'member',
     'organization', 'chapter', 'committee', 'document', 'discount', 'contact', 'prospect',
     'invitation', 'invite', 'domain', 'account', 'record', 'property', 'brand', 'agent',
     'listing', 'logo', 'asset', 'content', 'post', 'working_group', 'escalation', 'catalog',
     'certification', 'module', 'exam', 'illustration', 'portrait', 'token', 'introduction',
-  ].find((candidate) => new RegExp(`\\b${candidate.replace('_', '\\s+')}\\b`, 'i').test(text));
+  ] as const;
+  const targetIn = (sentence: string) => targets.find((candidate) => {
+    const expression = candidate === 'meeting'
+      ? '\\bmeeting(?!\\s+agenda\\b)\\b'
+      : `\\b${candidate.replace('_', '\\s+')}\\b`;
+    return new RegExp(expression, 'i').test(sentence);
+  });
+  // Bind action and object from one sentence. Incidental words elsewhere in a
+  // mixed response cannot make an otherwise exact receipt look unrelated.
+  const claimSentence = text.split(/(?<=[.!?])\\s+/).find((sentence) => (
+    Object.entries(CLAIM_ACTION_TOOL_PREFIX).some(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(sentence))
+    && targetIn(sentence) !== undefined
+  ));
+  if (!claimSentence) return [];
+  const action = Object.entries(CLAIM_ACTION_TOOL_PREFIX)
+    .find(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(claimSentence));
+  if (!action) return [];
+  const prefix = action[1];
+  const target = targetIn(claimSentence);
   return successful(executions, [...SIDE_EFFECT_TOOL_NAMES]).filter((execution) => {
     if (target && !execution.tool_name.includes(target)) return false;
     return execution.tool_name.startsWith(prefix)
@@ -164,7 +178,7 @@ function claimedReceiptUrls(text: string, rule: ClaimRule): string[] {
   return sentences.flatMap((sentence) => {
     const isOutcomeSentence = rule.pattern.test(sentence)
       || /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|resource)\s+(?:url|link)\b|\b(?:url|link)\s*:/i.test(sentence)
-      || /\b(?:join|access|view|open|track)\s+(?:at|here|via)\b/i.test(sentence);
+      || /\b(?:join|access|view|open|track|pay)\s+(?:at|here|via)\b/i.test(sentence);
     if (!isOutcomeSentence) return [];
     return receiptUrls(sentence);
   });
@@ -214,8 +228,6 @@ export function enforceSideEffectClaimReceipts(
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
     const githubClaim = rule.name === 'GitHub issue' && isGithubSuccessClaim(text);
     if (!githubClaim && !rule.pattern.test(text)) continue;
-    // A meeting agenda is ordinary in-chat prose, not a calendar side effect.
-    if (rule.name === 'external state change' && /\bmeeting\s+agenda\b/i.test(text)) continue;
     const receipts = rule.name === 'external state change'
       ? successfulExternalClaimReceipts(text, executions)
       : successful(executions, rule.tools);

@@ -105,6 +105,9 @@ describe('side-effect receipt guard — escalation 567', () => {
       ...tool('schedule_meeting'),
       result: '⚠️ You need to be an admin to schedule a meeting.',
     }])).toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts("I've scheduled the meeting.", [
+      tool('schedule_meeting', false, ''),
+    ])).toMatchObject({ enforced: true });
   });
 
   it('guards passive external-state claims and mismatched external URLs', () => {
@@ -130,6 +133,8 @@ describe('side-effect receipt guard — escalation 567', () => {
     )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
     expect(enforceSideEffectClaimReceipts('I scheduled the meeting. The meeting is confirmed.', [receipt]))
       .toMatchObject({ enforced: false });
+    expect(enforceSideEffectClaimReceipts('I scheduled the meeting. The meeting is on Monday.', [receipt]))
+      .toMatchObject({ enforced: false });
   });
 
   it('requires the tool for the claimed operation, not merely another tool in the same family', () => {
@@ -147,6 +152,21 @@ describe('side-effect receipt guard — escalation 567', () => {
     expect(enforceSideEffectClaimReceipts('I created a meeting agenda for you.', [])).toMatchObject({ enforced: false });
   });
 
+  it('does not let a meeting agenda phrase exempt a separate mutation claim', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I added the member. Here is the meeting agenda.',
+      [],
+    )).toMatchObject({
+      text: UNCONFIRMED_SIDE_EFFECT_FALLBACK,
+      enforced: true,
+      reason: 'unverified_external_state_change_claim',
+    });
+    expect(enforceSideEffectClaimReceipts(
+      'I added the member. Here is the meeting agenda.',
+      [tool('add_member_to_org')],
+    )).toMatchObject({ enforced: false });
+  });
+
   it('does not authorize a URL prefix when the exact receipt URL differs', () => {
     expect(enforceSideEffectClaimReceipts(
       'I created a payment link: https://payments.example/checkout',
@@ -157,6 +177,13 @@ describe('side-effect receipt guard — escalation 567', () => {
   it('does not treat an unrelated documentation URL as a claimed mutation receipt', () => {
     const text = 'I sent the invoice. Documentation is available at https://docs.example/invoices.';
     expect(enforceSideEffectClaimReceipts(text, [tool('send_invoice')])).toMatchObject({ enforced: false });
+  });
+
+  it('binds a payment URL offered in a follow-up payment sentence', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I created a payment link. You can pay here: https://payments.invalid/checkout',
+      [tool('create_payment_link', false, 'https://payments.example/checkout')],
+    )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
   });
 
   it('does not block ordinary read-only first-person prose or retryable resolve reads', () => {

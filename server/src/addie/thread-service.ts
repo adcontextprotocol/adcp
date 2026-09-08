@@ -524,14 +524,30 @@ export class ThreadService {
       if (input.mutation_reservation) {
         const priorUnknownOutcome = await client.query(
           `SELECT 1
-           FROM addie_thread_messages message,
-                jsonb_array_elements(COALESCE(message.tool_calls::jsonb, '[]'::jsonb)) AS call
-           WHERE message.thread_id = $1
-             AND message.delivery_status = 'interrupted'
-             AND call->>'name' = $2
-             AND call->>'result' = 'External action dispatch reserved; outcome unknown.'
-             AND COALESCE((call->>'is_error')::boolean, FALSE) = TRUE
-             AND call->'input' = $3::jsonb
+           FROM addie_thread_messages reservation,
+                jsonb_array_elements(COALESCE(reservation.tool_calls::jsonb, '[]'::jsonb)) AS reserved_call
+           WHERE reservation.thread_id = $1
+             AND reservation.delivery_status = 'interrupted'
+             AND reserved_call->>'name' = $2
+             AND reserved_call->>'result' = 'External action dispatch reserved; outcome unknown.'
+             AND COALESCE((reserved_call->>'is_error')::boolean, FALSE) = TRUE
+             AND reserved_call->'input' = $3::jsonb
+             -- Tool result checkpoints are interrupted audit rows too. An exact
+             -- later success settles this reservation; an error, empty result,
+             -- or missing result deliberately leaves it unknown and replay-safe.
+             AND NOT EXISTS (
+               SELECT 1
+               FROM addie_thread_messages receipt,
+                    jsonb_array_elements(COALESCE(receipt.tool_calls::jsonb, '[]'::jsonb)) AS receipt_call
+               WHERE receipt.thread_id = reservation.thread_id
+                 AND receipt.sequence_number > reservation.sequence_number
+                 AND receipt_call->>'name' = reserved_call->>'name'
+                 AND receipt_call->'input' = reserved_call->'input'
+                 AND receipt_call->>'is_error' = 'false'
+                 AND receipt_call->>'result' <> ''
+                 AND receipt_call->>'result' <> 'The tool returned no content.'
+                 AND receipt_call->>'result' <> 'External action dispatch reserved; outcome unknown.'
+             )
            LIMIT 1`,
           [
             input.thread_id,
