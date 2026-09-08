@@ -151,6 +151,5 @@ export function isGithubIssueCreationRequested(
   message: string,
   context?: readonly GithubIssueCreationIntentContext[],
 ): boolean {
-  return /\b(?:create|file|open|submit)\b[\s\S]{0,80}\bgithub\s+issue\b/i.test(message)
-    || (hasPendingGithubIssueDraft(context) && isStandaloneCreationConfirmation(message));
+  return hasPendingGithubIssueDraft(context) && isStandaloneCreationConfirmation(message);
 }

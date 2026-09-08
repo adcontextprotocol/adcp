@@ -35,7 +35,7 @@ describe('GitHub issue terminal receipt — Escalation #567', () => {
     expect(isGithubIssueCreationRequested('Yes, go ahead.', draft)).toBe(true);
     expect(isGithubIssueCreationRequested('Yes, go ahead.', [])).toBe(false);
     expect(isGithubIssueCreationRequested('No thanks.', draft)).toBe(false);
-    expect(isGithubIssueCreationRequested('Please create a GitHub issue.', [])).toBe(true);
+    expect(isGithubIssueCreationRequested('Please create a GitHub issue.', [])).toBe(false);
   });
 
   it('fails closed for an explicitly requested creation when the model made no tool call', () => {

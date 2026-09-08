@@ -516,9 +516,15 @@ describe('Addie empty-response fallback (#4430)', () => {
       }],
     }];
 
-    const response = await client.processMessage('Please create a GitHub issue for this.', undefined, undefined, undefined, { uncapped: true });
+    const response = await client.processMessage('Please create a GitHub issue for this.', undefined, undefined, undefined, {
+      uncapped: true,
+      githubIssueCreationRequested: true,
+    });
     const events: StreamEvent[] = [];
-    for await (const event of client.processMessageStream('Please create a GitHub issue for this.', undefined, undefined, { uncapped: true })) events.push(event);
+    for await (const event of client.processMessageStream('Please create a GitHub issue for this.', undefined, undefined, {
+      uncapped: true,
+      githubIssueCreationRequested: true,
+    })) events.push(event);
     const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
 
     expect(response.text).toContain('not confirmed');
@@ -533,6 +539,18 @@ describe('Addie empty-response fallback (#4430)', () => {
     );
     expect(confirmedResponse.text).toContain('not confirmed');
     expect(confirmedResponse.text).not.toContain('#701');
+  });
+
+  it('does not turn a read-only GitHub clarification into a failed creation', async () => {
+    mocks.createMessage.mockResolvedValueOnce(recoveredEndTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'How do I open a GitHub issue?', undefined, undefined, undefined, { uncapped: true },
+    );
+
+    expect(response.text).toBe('Issue 42 is open.');
+    expect(response.flag_reason).not.toBe('github_issue_not_confirmed');
   });
 
   it('rejects a malformed tool turn on both response paths', async () => {

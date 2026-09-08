@@ -568,7 +568,7 @@ export interface ProcessMessageOptions {
   selectedToolSetNames?: readonly string[];
   /** Optional first-turn tool requirement chosen by trusted orchestration. */
   initialToolChoice?: ModelToolChoice;
-  /** Caller-owned action intent. Legacy text surfaces use a narrow input fallback. */
+  /** Caller-owned action intent. This is never inferred from general user prose. */
   githubIssueCreationRequested?: boolean;
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
