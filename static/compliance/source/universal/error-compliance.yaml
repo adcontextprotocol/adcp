@@ -300,7 +300,7 @@ phases:
           Error response with:
           - code: a recognized AdCP error code
           - message: human-readable description
-          - recovery: correctable, transient, or fatal (optional)
+          - recovery: transient, correctable, or terminal (optional)
 
         sample_request:
           brand:
@@ -357,7 +357,7 @@ phases:
         expected: |
           Reject with:
           - code: VERSION_UNSUPPORTED
-          - recovery: fatal
+          - recovery: correctable
           - message referencing the buyer's requested version and the seller's supported set
 
         sample_request:
