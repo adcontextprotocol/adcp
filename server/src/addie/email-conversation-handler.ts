@@ -282,6 +282,7 @@ export async function handleEmailConversation(
             duration_ms: exec.duration_ms,
             is_error: exec.is_error,
             result_status: exec.normalized_result?.status,
+            ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
           }))
         : undefined,
       model: effectiveModel,

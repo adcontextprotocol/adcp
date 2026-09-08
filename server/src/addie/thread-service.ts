@@ -551,6 +551,22 @@ export class ThreadService {
                  AND receipt_call->>'result' <> ''
                  AND receipt_call->>'result' <> 'The tool returned no content.'
                  AND receipt_call->>'result' <> 'External action dispatch reserved; outcome unknown.'
+                 -- GitHub creation has a stronger settlement contract than
+                 -- other mutations: a generic ok result is never evidence that
+                 -- GitHub created anything. The durable JSONB receipt must be
+                 -- canonical too, so a malformed persisted value leaves the
+                 -- reservation unknown and blocks automatic replay.
+                 AND (
+                   receipt_call->>'name' <> 'create_github_issue'
+                   OR (
+                     jsonb_typeof(receipt_call->'github_issue_receipt') = 'object'
+                     AND receipt_call->'github_issue_receipt'->>'toolName' = 'create_github_issue'
+                     AND receipt_call->'github_issue_receipt'->>'issueNumber' ~ '^[1-9][0-9]*$'
+                     AND receipt_call->'github_issue_receipt'->>'issueUrl' =
+                       'https://github.com/adcontextprotocol/adcp/issues/'
+                       || receipt_call->'github_issue_receipt'->>'issueNumber'
+                   )
+                 )
              )
            LIMIT 1`,
           [
