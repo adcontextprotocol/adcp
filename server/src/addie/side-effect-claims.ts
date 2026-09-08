@@ -71,7 +71,8 @@ const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
   { name: 'meeting created', tools: ['schedule_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+created\s+(?:(?:an?|the)\s+)?meeting\b(?!\s+agenda\b)/i },
   { name: 'meeting updated', tools: ['update_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+updated\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+updated\b/i },
   { name: 'meeting cancelled', tools: ['cancel_meeting', 'cancel_meeting_series'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:cancelled|canceled)\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+(?:cancelled|canceled)\b/i },
-  { name: 'meeting attendee', tools: ['add_meeting_attendee', 'rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added\s+(?:an?\s+)?attendee|RSVP(?:'d|ed)?)\b/i },
+  { name: 'meeting attendee', tools: ['add_meeting_attendee'], pattern: /\b(?:I(?:'ve| have)?|we)\s+added\s+(?:an?\s+)?attendee\b/i },
+  { name: 'meeting RSVP', tools: ['rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+RSVP(?:'d|ed)?\b/i },
   { name: 'payment link', tools: ['create_payment_link'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:created|generated|sent)\s+(?:an?\s+)?payment\s+link\b|\bpayment\s+link\s+(?:was|has been)\s+created\b/i },
   { name: 'direct message', tools: ['send_member_dm'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:sent|delivered)\s+(?:an?\s+)?(?:DM|direct message|notification)\b/i },
   { name: 'content approved', tools: ['approve_content'], pattern: /\b(?:I(?:'ve| have)?|we)\s+approved\s+(?:the\s+)?content\b/i },
@@ -109,23 +110,40 @@ const CLAIM_ACTION_TOOL_PREFIX: Readonly<Record<string, string>> = {
   updated: 'update_', uploaded: 'upload_', verified: 'verify_', withdrew: 'withdraw_',
 };
 
-function successfulExternalClaimReceipts(text: string, executions: readonly ToolExecution[]): ToolExecution[] {
-  const targets = [
+const EXTERNAL_CLAIM_TARGETS = [
     'meeting', 'event', 'invoice', 'payment', 'resource', 'bookmark', 'reminder', 'member',
     'organization', 'chapter', 'committee', 'document', 'discount', 'contact', 'prospect',
     'invitation', 'invite', 'domain', 'account', 'record', 'property', 'brand', 'agent',
     'listing', 'logo', 'asset', 'content', 'post', 'working_group', 'escalation', 'catalog',
     'certification', 'module', 'exam', 'illustration', 'portrait', 'token', 'introduction',
   ] as const;
-  const targetIn = (sentence: string) => targets.find((candidate) => {
+
+function externalClaimTargetIn(sentence: string): string | undefined {
+  return EXTERNAL_CLAIM_TARGETS.find((candidate) => {
     const expression = candidate === 'meeting'
       ? '\\bmeeting(?!\\s+agenda\\b)\\b'
       : `\\b${candidate.replace('_', '\\s+')}\\b`;
     return new RegExp(expression, 'i').test(sentence);
   });
+}
+
+function hasExternalStateChangeClaim(text: string): boolean {
+  return Object.keys(CLAIM_ACTION_TOOL_PREFIX).some((action) => (
+    EXTERNAL_CLAIM_TARGETS.some((target) => {
+      const targetExpression = target === 'meeting'
+        ? '\\bmeeting(?!\\s+agenda\\b)\\b'
+        : `\\b${target.replace('_', '\\s+')}\\b`;
+      return new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').test(text)
+        || new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').test(text);
+    })
+  ));
+}
+
+function successfulExternalClaimReceipts(text: string, executions: readonly ToolExecution[]): ToolExecution[] {
+  const targetIn = externalClaimTargetIn;
   // Bind action and object from one sentence. Incidental words elsewhere in a
   // mixed response cannot make an otherwise exact receipt look unrelated.
-  const claimSentence = text.split(/(?<=[.!?])\\s+/).find((sentence) => (
+  const claimSentence = text.split(/(?<=[.!?])\s+/).find((sentence) => (
     Object.entries(CLAIM_ACTION_TOOL_PREFIX).some(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(sentence))
     && targetIn(sentence) !== undefined
   ));
@@ -227,8 +245,11 @@ export function enforceSideEffectClaimReceipts(
 ): SideEffectClaimGuardResult {
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
     const githubClaim = rule.name === 'GitHub issue' && isGithubSuccessClaim(text);
-    if (!githubClaim && !rule.pattern.test(text)) continue;
-    const receipts = rule.name === 'external state change'
+    const isExternalStateChange = rule.name === 'external state change';
+    if (!githubClaim && !(isExternalStateChange
+      ? (rule.pattern.test(text) || hasExternalStateChangeClaim(text))
+      : rule.pattern.test(text))) continue;
+    const receipts = isExternalStateChange
       ? successfulExternalClaimReceipts(text, executions)
       : successful(executions, rule.tools);
     if (receipts.length === 0) {
@@ -237,10 +258,10 @@ export function enforceSideEffectClaimReceipts(
     if (rule.name !== 'GitHub issue') {
       const claimedUrls = claimedReceiptUrls(text, rule);
       const claimedIdentifiers = claimedReceiptIdentifiers(text);
-      if (
-        claimedUrls.some((url) => !receipts.some((receipt) => receiptContainsExactValue(receipt, url)))
-        || claimedIdentifiers.some((identifier) => !receipts.some((receipt) => receiptContainsExactValue(receipt, identifier)))
-      ) {
+      const claimedValues = [...claimedUrls, ...claimedIdentifiers];
+      if (claimedValues.length > 0 && !receipts.some((receipt) => (
+        claimedValues.every((value) => receiptContainsExactValue(receipt, value))
+      ))) {
         return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'side_effect_receipt_claim_mismatch' };
       }
       continue;

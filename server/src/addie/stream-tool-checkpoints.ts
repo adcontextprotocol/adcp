@@ -11,6 +11,7 @@ export interface StoredToolCall {
   result: unknown;
   duration_ms?: number;
   is_error?: boolean;
+  result_status?: string;
 }
 
 function canonicalJson(value: unknown): string {
@@ -33,6 +34,7 @@ export function storedToolCall(execution: ToolExecution): StoredToolCall {
     result: execution.result,
     duration_ms: execution.duration_ms,
     is_error: execution.is_error,
+    ...(execution.normalized_result && { result_status: execution.normalized_result.status }),
   };
 }
 

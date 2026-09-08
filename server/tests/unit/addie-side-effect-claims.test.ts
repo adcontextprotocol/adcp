@@ -167,6 +167,28 @@ describe('side-effect receipt guard — escalation 567', () => {
     )).toMatchObject({ enforced: false });
   });
 
+  it('guards a mutation conjoined with a meeting agenda', () => {
+    const text = 'I created a meeting agenda and added the member.';
+    expect(enforceSideEffectClaimReceipts(text, [])).toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts(text, [tool('add_member_to_org')]))
+      .toMatchObject({ enforced: false });
+  });
+
+  it('binds RSVP claims to the RSVP operation instead of attendee addition', () => {
+    expect(enforceSideEffectClaimReceipts("I've RSVP'd.", [tool('add_meeting_attendee')]))
+      .toMatchObject({ enforced: true, reason: 'unverified_meeting_RSVP_claim' });
+    expect(enforceSideEffectClaimReceipts("I've RSVP'd.", [tool('rsvp_to_meeting')]))
+      .toMatchObject({ enforced: false });
+  });
+
+  it('requires an outcome ID and URL to appear together in one exact receipt', () => {
+    const text = 'I scheduled the meeting. Meeting ID meet_701. Join at https://calendar.example/meet_999';
+    expect(enforceSideEffectClaimReceipts(text, [
+      tool('schedule_meeting', false, 'Meeting scheduled: meeting_id=meet_701'),
+      tool('schedule_meeting', false, 'Meeting scheduled: join_url=https://calendar.example/meet_999'),
+    ])).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+  });
+
   it('does not authorize a URL prefix when the exact receipt URL differs', () => {
     expect(enforceSideEffectClaimReceipts(
       'I created a payment link: https://payments.example/checkout',

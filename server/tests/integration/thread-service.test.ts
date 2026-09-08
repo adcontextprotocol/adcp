@@ -173,7 +173,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         thread_id: thread.thread_id,
         role: 'assistant',
         content: '',
-        tool_calls: [{ ...reservation, result: 'Meeting scheduled: meeting_id=meet_701', is_error: false }],
+        tool_calls: [{ ...reservation, result: 'Meeting scheduled: meeting_id=meet_701', is_error: false, result_status: 'ok' }],
         model_execution: TEST_LOCAL_MODEL_EXECUTION,
         delivery_status: 'interrupted',
       });
@@ -216,7 +216,50 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         thread_id: thread.thread_id,
         role: 'assistant',
         content: '',
-        tool_calls: [{ ...reservation, result: 'Calendar provider unavailable', is_error: true }],
+        tool_calls: [{ ...reservation, result: 'Calendar provider unavailable', is_error: true, result_status: 'error' }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      })).rejects.toThrow('unknown prior outcome');
+    });
+
+    it('retains the exact replay lock when a structured result is empty', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-empty-mutation-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const reservation = {
+        name: 'schedule_meeting',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ ...reservation, result: 'No meeting was scheduled.', is_error: false, result_status: 'empty' }],
         model_execution: TEST_LOCAL_MODEL_EXECUTION,
         delivery_status: 'interrupted',
       });

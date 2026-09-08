@@ -118,7 +118,7 @@ interface CreateMessageInputBase {
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
-  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean }>;
+  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string }>;
   knowledge_ids?: number[];
   model?: string;
   latency_ms?: number;
@@ -186,7 +186,7 @@ export interface ThreadMessage {
   content: string;
   content_sanitized: string | null;
   tools_used: string[] | null;
-  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean }> | null;
+  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
   model_execution_source: 'provider' | 'local' | 'legacy' | null;
@@ -543,6 +543,10 @@ export class ThreadService {
                  AND receipt.sequence_number > reservation.sequence_number
                  AND receipt_call->>'name' = reserved_call->>'name'
                  AND receipt_call->'input' = reserved_call->'input'
+                 -- An empty result is not an error but is also not a confirmed
+                 -- mutation. Only the executor's explicit ok receipt can
+                 -- retire an unknown-outcome reservation.
+                 AND receipt_call->>'result_status' = 'ok'
                  AND receipt_call->>'is_error' = 'false'
                  AND receipt_call->>'result' <> ''
                  AND receipt_call->>'result' <> 'The tool returned no content.'

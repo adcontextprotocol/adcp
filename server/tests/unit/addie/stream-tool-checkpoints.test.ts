@@ -60,6 +60,18 @@ describe('stream tool checkpoints', () => {
     }]);
   });
 
+  it('records the normalized successful outcome status needed to settle a reservation', () => {
+    const checkpoint = buildToolResultCheckpoint({
+      threadId: 'thread-1',
+      execution: {
+        ...execution,
+        normalized_result: { status: 'ok', user_summary: 'Meeting scheduled.', source: 'structured' },
+      },
+      requestedModel: 'claude-sonnet-5',
+    });
+    expect(checkpoint.tool_calls).toEqual([expect.objectContaining({ result_status: 'ok' })]);
+  });
+
   it('surfaces the durable store refusal for an exact replay with an unknown outcome', async () => {
     const addMessage = vi.fn().mockRejectedValue(new Error('An identical external action has an unknown prior outcome and was not retried automatically.'));
     const threadService = {
