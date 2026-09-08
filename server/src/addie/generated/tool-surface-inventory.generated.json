@@ -58,7 +58,7 @@
     }
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "8a42f5eb005b1683616146b0da8cc1faa795218dc347a9115cf5b673e61cd8ee",
+    "server/src/addie/claude-client.ts": "4588d427005976d732f648d7ffcda546af327d9d534aa970d6fbb20322af1316",
     "server/src/addie/request-tool-assembly.ts": "cf4443d27ec69940f22aa9fcf46fdefd3f444762259c2700ac8fa01554ead4da",
     "server/src/addie/request-tool-replay-binding.ts": "3aed4c0bd18032e4418b8fff7e8deb263936b6c75b27941f9818a2a9a87287f2",
     "server/src/addie/prompts.ts": "3ec621f3e97eb9109fb561b94ff625a0639460c84506aa63aeebd57f683790f4",
