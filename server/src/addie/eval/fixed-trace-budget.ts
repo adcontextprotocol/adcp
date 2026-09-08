@@ -9,13 +9,11 @@ import type {
 } from '../model-providers/model-provider.js';
 import { isDeepStrictEqual } from 'node:util';
 import {
-  GOOGLE_GEMINI_3_8_FLASH_MODEL,
   GOOGLE_ROUTER_MODEL,
-  isGoogleGenerateContentModelRevision,
   isGoogleRouterModelRevision,
 } from '../model-providers/google-generate-content-provider.js';
 import { resolveKnownClaudePricingModel } from '../claude-pricing.js';
-import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION, GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
+import { GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION } from '../model-cost-pricing.js';
 import {
   datedPricingCostUsd,
   datedPricingProfilesForFixedTrace,
@@ -94,8 +92,6 @@ export function fixedTraceModelResolutionPolicy(
   if (allowDatedAnthropicRevision && provider === 'anthropic') return 'anthropic_dated_revision_v1';
   return provider === 'google' && model === GOOGLE_ROUTER_MODEL
     ? 'google_router_dated_revision_v1'
-    : provider === 'google' && model === GOOGLE_GEMINI_3_8_FLASH_MODEL
-      ? 'google_gemini_3_8_flash_exact_v1'
     : 'exact_model_identity_v1';
 }
 
@@ -277,13 +273,9 @@ export function fixedTraceResponseUsesPricingPolicy(
   if (policy.modelResolutionPolicy === 'anthropic_dated_revision_v1' && response.provider === 'anthropic') {
     return resolveKnownClaudePricingModel(response.model) === policy.expectedModel;
   }
-  if (policy.modelResolutionPolicy === 'google_router_dated_revision_v1') {
-    return approved.profileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
-      && isGoogleRouterModelRevision(response.model);
-  }
-  return policy.modelResolutionPolicy === 'google_gemini_3_8_flash_exact_v1'
-    && approved.profileId === GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION
-    && isGoogleGenerateContentModelRevision(GOOGLE_GEMINI_3_8_FLASH_MODEL, response.model);
+  return policy.modelResolutionPolicy === 'google_router_dated_revision_v1'
+    && approved.profileId === GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION
+    && isGoogleRouterModelRevision(response.model);
 }
 
 interface Reservation {

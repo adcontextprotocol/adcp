@@ -15,7 +15,6 @@ import {
   createFixedTraceDirectFullSuiteGoogleProvider,
   GOOGLE_ROUTER_MODEL,
   GoogleGenerateContentProvider,
-  GOOGLE_GEMINI_3_8_FLASH_MODEL,
   normalizeGoogleResponse,
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
@@ -529,14 +528,6 @@ describe('OpenAIResponsesProvider', () => {
 });
 
 describe('GoogleGenerateContentProvider', () => {
-  it('accepts the exact evaluator-only Gemini 3.8 Flash identity without moving the router default', async () => {
-    const provider = new GoogleGenerateContentProvider('unused', {
-      models: { generateContent: vi.fn().mockResolvedValue(googleResponse({ modelVersion: GOOGLE_GEMINI_3_8_FLASH_MODEL })) },
-    });
-    const normalized = await collectModelResponse(provider.respond(request(GOOGLE_GEMINI_3_8_FLASH_MODEL)), 'google');
-    expect(normalized.model).toBe(GOOGLE_GEMINI_3_8_FLASH_MODEL);
-    expect(GOOGLE_ROUTER_MODEL).toBe('gemini-3.7-flash');
-  });
   it.each([
     [{ type: 'auto' as const }, 'VALIDATED', ['search_docs', 'get_doc']],
     [{ type: 'required' as const }, 'ANY', ['search_docs', 'get_doc']],

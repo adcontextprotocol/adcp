@@ -13,16 +13,12 @@ import {
 } from './claude-pricing.js';
 import {
   GOOGLE_ROUTER_MODEL,
-  GOOGLE_GEMINI_3_8_FLASH_MODEL,
-  isGoogleGenerateContentModelRevision,
   isGoogleRouterModelRevision,
 } from './model-providers/google-generate-content-provider.js';
 import type { ModelProviderId, ModelUsage } from './model-providers/model-provider.js';
 
 export const GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION =
   'google-gemini-3.7-flash-through-2026-12-31' as const;
-export const GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION =
-  'google-gemini-3.8-flash-through-2026-12-31' as const;
 
 export interface ModelCostPricing {
   provider: ModelProviderId;
@@ -75,22 +71,18 @@ export function resolveModelCostPricing(
   // provider-returned eight-digit dated revisions (for example `...-20260801`). Keep this
   // mapping here, beside the reviewed rate, rather than falling back to any
   // other model or provider price.
-  const canonicalGoogleModel = provider === 'google' && isGoogleRouterModelRevision(model)
+  const canonicalGoogleModel = provider === 'google'
+    && isGoogleRouterModelRevision(model)
     ? GOOGLE_ROUTER_MODEL
-    : provider === 'google' && isGoogleGenerateContentModelRevision(GOOGLE_GEMINI_3_8_FLASH_MODEL, model)
-      ? GOOGLE_GEMINI_3_8_FLASH_MODEL
-      : null;
+    : null;
   if (canonicalGoogleModel) {
     return {
       provider: 'google',
       model,
-      version: canonicalGoogleModel === GOOGLE_GEMINI_3_8_FLASH_MODEL
-        ? GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION
-        : GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
+      version: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
       validBefore: new Date('2027-01-01T00:00:00.000Z'),
-      // The dated evaluator registry records the reviewed standard rate:
-      // $0.75/M input, $0.075/M cached input, and $3.75/M output
-      // (including thought tokens).
+      // Official standard pricing checked 2026-08-30: $0.75/M input,
+      // $0.075/M cached input, and $3.75/M output (including thought tokens).
       // A cache-read count above input is charged in addition to all input,
       // rather than deriving a negative uncached-input count.
       estimateCostMicros: (usage) => {

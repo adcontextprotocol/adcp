@@ -48,7 +48,6 @@ describe('dated prospective evaluation pricing cohort', () => {
     expect(sonnet.sourceEvidence.retrievedAt).toBe('2026-09-05T23:55:26.000Z');
     expect(officialDatedPricingRecordsForAudit().map((record) => record.source.url)).toEqual([
       'https://platform.claude.com/docs/en/about-claude/pricing',
-      'https://ai.google.dev/gemini-api/docs/pricing',
       'https://platform.claude.com/docs/en/about-claude/pricing',
       'https://platform.claude.com/docs/en/about-claude/pricing',
       'https://developers.openai.com/api/docs/models/gpt-5.6-luna',
@@ -157,12 +156,6 @@ describe('dated prospective evaluation pricing cohort', () => {
     expect(cohortReturnedModelMatches(google, 'gemini-3.7-flash-20260801')).toBe(true);
     expect(cohortReturnedModelMatches(google, 'gemini-3.7-flash-20271231')).toBe(false);
     expect(cohortReturnedModelMatches(google, 'gemini-3.7-pro-20260801')).toBe(false);
-    const gemini38Cohort = resolveCurrentEvaluationPricingCohort(AT, ['google-gemini-3-8-direct']);
-    expect(gemini38Cohort.status).toBe('available');
-    if (gemini38Cohort.status !== 'available') return;
-    const gemini38 = pricingProfileForCandidate(gemini38Cohort.cohort, 'google-gemini-3-8-direct');
-    expect(cohortReturnedModelMatches(gemini38, 'gemini-3.8-flash')).toBe(true);
-    expect(cohortReturnedModelMatches(gemini38, 'gemini-3.8-flash-20260908')).toBe(false);
     expect(cohortReturnedModelMatches(openai, 'gpt-5.6-luna-20260801')).toBe(false);
   });
 
