@@ -43,7 +43,14 @@ vi.mock('../../src/services/hosted-compliance-version.js', () => ({
       : mocks.fallbackTarget,
   agentAdvertisesHostedComplianceTarget: (versions: string[] | undefined, target: { requested: string }) =>
     Boolean(versions?.includes(target.requested)),
-  withHostedComplianceRunOptions: (options: unknown) => options,
+  withHostedComplianceRunOptions: (options: Record<string, unknown>, target: { version: string }) => ({
+    ...options,
+    version: target.version,
+  }),
+  withHostedTestOptions: (options: Record<string, unknown>, target: { version: string }) => ({
+    ...options,
+    adcpVersion: target.version,
+  }),
 }));
 
 vi.mock('../../src/utils/sdk-safe-fetch.js', () => ({
@@ -185,6 +192,30 @@ describe('hosted compliance target discovery deadline', () => {
       confirmed: false,
       source: 'stored',
     });
+    expect(mocks.discovery).toHaveBeenCalledWith(
+      'https://agent.example/mcp',
+      expect.objectContaining({ adcpVersion: mocks.selectedTarget.version }),
+    );
+  });
+
+  it('uses a pinned last-known target when discovery returns a partial profile', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { name: 'Older agent' }, steps: [] });
+
+    await expect(selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+      ['3.1'],
+    )).resolves.toEqual({
+      target: mocks.selectedTarget,
+      confirmed: false,
+      source: 'stored',
+    });
+    expect(mocks.discovery).toHaveBeenCalledWith(
+      'https://agent.example/mcp',
+      expect.objectContaining({ adcpVersion: mocks.selectedTarget.version }),
+    );
   });
 
   it('rejects recent stored versions that do not match a hosted target', async () => {

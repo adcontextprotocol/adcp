@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),
-  getRecentSupportedVersions: vi.fn(),
+  getLastKnownSupportedVersions: vi.fn(),
   countComplianceRuns: vi.fn(),
   deferComplianceCheckAfterInconclusiveTarget: vi.fn(),
   resolveOwnerAuth: vi.fn(),
@@ -49,7 +49,7 @@ vi.mock('../../src/logger.js', () => ({
 vi.mock('../../src/db/compliance-db.js', () => ({
   ComplianceDatabase: class {
     getAgentsDueForCheck = mocks.getAgentsDueForCheck;
-    getRecentSupportedVersions = mocks.getRecentSupportedVersions;
+    getLastKnownSupportedVersions = mocks.getLastKnownSupportedVersions;
     countComplianceRuns = mocks.countComplianceRuns;
     deferComplianceCheckAfterInconclusiveTarget = mocks.deferComplianceCheckAfterInconclusiveTarget;
     resolveOwnerAuth = mocks.resolveOwnerAuth;
@@ -79,10 +79,10 @@ vi.mock('../../src/addie/services/compliance-testing.js', () => ({
   presentCapabilityResolutionError: mocks.presentCapabilityResolutionError,
   badgeEligibleVersionsForTargetSelection: mocks.badgeEligibleVersionsForTargetSelection,
   hasTrustworthyComplianceTarget: (selection: { source?: string }) => selection.source !== 'default',
-  storedComplianceTargetMatchesObservedProfile: (
+  selectedComplianceTargetMatchesObservedProfile: (
     selection: { source?: string; target?: { requested?: string } },
     profile?: { adcp_supported_versions?: string[] },
-  ) => selection.source !== 'stored'
+  ) => !['stored', 'live'].includes(selection.source ?? '')
     || Boolean(profile?.adcp_supported_versions?.includes(selection.target?.requested ?? '')),
   selectComplianceTargetForAgentSelection: mocks.selectComplianceTargetForAgentSelection,
 }));
@@ -140,7 +140,7 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
     mocks.withDatabaseDeadline.mockImplementation(async (_deadline, operation) => operation());
     mocks.resolveOwnerAuth.mockResolvedValue(undefined);
-    mocks.getRecentSupportedVersions.mockResolvedValue(['3.1']);
+    mocks.getLastKnownSupportedVersions.mockResolvedValue(['3.1']);
     mocks.countComplianceRuns.mockResolvedValue(4);
     mocks.adaptAuthForSdk.mockResolvedValue(undefined);
     mocks.selectComplianceTargetForAgentSelection.mockResolvedValue({ target, confirmed: false, source: 'stored' });
@@ -523,7 +523,7 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.getAgentsDueForCheck.mockResolvedValueOnce([
       { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
     ]);
-    mocks.getRecentSupportedVersions.mockResolvedValueOnce([]);
+    mocks.getLastKnownSupportedVersions.mockResolvedValueOnce([]);
     mocks.selectComplianceTargetForAgentSelection.mockResolvedValueOnce({
       target,
       confirmed: false,

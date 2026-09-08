@@ -1169,11 +1169,6 @@ export class ComplianceDatabase {
   }
 
   /**
-   * Return the most recently observed supported AdCP versions within a bounded
-   * window. This is a warm fallback for transient capability-discovery
-   * failures; live discovery remains authoritative whenever it succeeds.
-   */
-  /**
    * Number of recorded compliance runs for an agent (all-time, including
    * dry runs). Used as the persisted per-agent `storyboard_start_offset`
    * for budget-limited heartbeat assessments (adcp#6632 /
@@ -1192,20 +1187,22 @@ export class ComplianceDatabase {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
-  async getRecentSupportedVersions(agentUrl: string, maxAgeHours = 7 * 24): Promise<string[]> {
-    if (!Number.isInteger(maxAgeHours) || maxAgeHours <= 0) {
-      throw new Error('maxAgeHours must be a positive integer');
-    }
-
+  /**
+   * Return the last observed supported AdCP versions. Historical values are
+   * only a target-selection hint: the subsequent live compliance run must
+   * advertise the selected target before its result can be published.
+   * Keeping the hint beyond seven days lets stalled agents recover instead of
+   * permanently losing the only compatible version needed to probe them.
+   */
+  async getLastKnownSupportedVersions(agentUrl: string): Promise<string[]> {
     const result = await query(
       `SELECT agent_profile_json->'adcp_supported_versions' AS supported_versions
        FROM agent_compliance_runs
        WHERE agent_url = $1
-         AND tested_at >= NOW() - make_interval(hours => $2)
          AND jsonb_typeof(agent_profile_json->'adcp_supported_versions') = 'array'
        ORDER BY tested_at DESC
        LIMIT 1`,
-      [agentUrl, maxAgeHours],
+      [agentUrl],
     );
     const versions = result.rows[0]?.supported_versions;
     if (!Array.isArray(versions)) return [];

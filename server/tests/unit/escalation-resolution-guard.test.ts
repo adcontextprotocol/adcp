@@ -56,6 +56,24 @@ describe('escalation-resolution-guard', () => {
     expect(extractEscalationAgentUrls(esc)).toEqual(['https://sales.latinxctv.com/mcp']);
   });
 
+  it('does not treat registry documentation filenames as organization domains', async () => {
+    const pool = { query: vi.fn() };
+    const esc = escalation({
+      summary: 'Checkpoint tool failed while discussing adagents.json',
+      original_request: 'Learner also explained brand.json version negotiation.',
+      addie_context: null,
+    });
+
+    expect(isRegistrySetupEscalation(esc)).toBe(false);
+    expect(extractEscalationDomains(esc)).toEqual([]);
+    await expect(guardEscalationResolution({
+      escalation: esc,
+      status: 'resolved',
+      pool: pool as any,
+    })).resolves.toEqual({ ok: true, checked: false });
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
   it('does not guard non-registry escalations', async () => {
     const pool = { query: vi.fn() };
     const result = await guardEscalationResolution({

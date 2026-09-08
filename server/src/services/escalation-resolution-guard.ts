@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { getDomain } from 'tldts';
+import { parse } from 'tldts';
 import { getPool } from '../db/client.js';
 import type { Escalation, EscalationStatus } from '../db/escalation-db.js';
 import { checkAgentHostnameAgainstDomains } from './agent-hostname-verification.js';
@@ -31,7 +31,8 @@ interface DomainRow {
   subscription_status: string | null;
 }
 
-const REGISTRY_SETUP_RE = /\b(registry|member:\s*null|domain verification|verify_brand_domain_challenge|save_agent|brand manifest|adagents|agent registration|pending sync|propagation)\b/i;
+const REGISTRY_SETUP_RE = /\b(registry|member:\s*null|domain verification|verify_brand_domain_challenge|save_agent|agent registration|pending sync|propagation)\b/i;
+const REGISTRY_FILE_OPERATION_RE = /(?:\b(?:adagents(?:\.json)?|brand manifest)\b[^\n]{0,80}\b(?:setup|publish|crawl|sync|propagation|registration|domain|verify|blocked|failure)\b|\b(?:setup|publish|crawl|sync|propagation|registration|domain|verify|blocked|failure)\b[^\n]{0,80}\b(?:adagents(?:\.json)?|brand manifest)\b)/i;
 const DOMAIN_RE = /\b(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi;
 const URL_RE = /\bhttps?:\/\/[^\s)>'"]+/gi;
 const IGNORED_DOMAINS = new Set([
@@ -52,7 +53,8 @@ function escalationText(escalation: Escalation): string {
 }
 
 export function isRegistrySetupEscalation(escalation: Escalation): boolean {
-  return REGISTRY_SETUP_RE.test(escalationText(escalation));
+  const text = escalationText(escalation);
+  return REGISTRY_SETUP_RE.test(text) || REGISTRY_FILE_OPERATION_RE.test(text);
 }
 
 function toBaseDomain(hostname: string): string | null {
@@ -61,7 +63,12 @@ function toBaseDomain(hostname: string): string | null {
     .split('/')[0]
     .split(':')[0]
     .toLowerCase();
-  return getDomain(normalized, { allowPrivateDomains: true });
+  const parsed = parse(normalized, { allowPrivateDomains: true });
+  // Unknown pseudo-TLDs make ordinary documentation filenames such as
+  // adagents.json and brand.json look like domains. Only registry-qualified
+  // public/private suffixes are actionable organization-domain evidence.
+  if (!parsed.isIcann && !parsed.isPrivate) return null;
+  return parsed.domain;
 }
 
 export function extractEscalationDomains(escalation: Escalation): string[] {

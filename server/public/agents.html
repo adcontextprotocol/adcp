@@ -1191,10 +1191,24 @@
     }
 
     async function fetchPublishers(agent) {
+        const section = document.getElementById('publishers-section');
         try {
-            const response = await fetch(`/api/public/agent-publishers?url=${encodeURIComponent(agent.url)}`);
-            const data = await response.json();
-            const section = document.getElementById('publishers-section');
+            // Use AgenticAdvertising.org's indexed authorization data. Calling the
+            // agent live here made this public page depend on each agent's
+            // auth and uptime, and non-JSON gateway errors broke rendering.
+            const response = await fetch(`/v1/agents/${encodeURIComponent(agent.url)}/publishers?status=authorized&status=revoked&limit=1000`);
+            const raw = await response.text();
+            let data;
+            try {
+                data = JSON.parse(raw);
+            } catch {
+                throw new Error(`Directory returned an invalid response (${response.status})`);
+            }
+
+            if (response.status === 404) {
+                section.innerHTML = '<div class="property-section-small">No indexed publisher authorizations are available for this agent yet.</div>';
+                return;
+            }
 
             if (!response.ok || data.error) {
                 const message = data.error?.message || data.message || data.error || 'Unknown error';
@@ -1204,64 +1218,31 @@
                 return;
             }
 
-            if (data.properties && data.properties.length > 0) {
-                const verified = data.properties.filter(p => p.verified === true);
-                const unverified = data.properties.filter(p => p.verified === false);
-                const unchecked = data.properties.filter(p => p.verified === undefined);
+            const publishers = Array.isArray(data.publishers) ? data.publishers : [];
+            if (publishers.length > 0) {
+                const authorized = publishers.filter(p => p.status === 'authorized');
+                const revoked = publishers.filter(p => p.status === 'revoked');
 
                 let html = '';
 
-                if (verified.length > 0) {
+                if (authorized.length > 0) {
                     html += '<div class="publishers-group">';
-                    html += '<h4 class="publishers-group__title publishers-group__title--verified">Verified properties</h4>';
+                    html += '<h4 class="publishers-group__title publishers-group__title--verified">Authorized publishers</h4>';
                     html += '<div class="publishers-grid">' +
-                        verified.map(p => `
+                        authorized.map(p => `
                             <div class="publisher-item publisher-item--verified">
-                                <div style="display: flex; justify-content: between; align-items: start; gap: var(--space-2);">
-                                    <div style="flex: 1;">
-                                        <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
-                                        <div class="property-section-small" style="margin-top: var(--space-1);">
-                                            <strong>Type:</strong> ${escapeHtml(p.type || 'domain')}
-                                            ${p.country ? ` | <strong>Country:</strong> ${escapeHtml(p.country)}` : ''}
-                                        </div>
-                                    </div>
-                                    ${safeHttpsUrl(p.verification_url) ? `<a href="${escapeHtml(safeHttpsUrl(p.verification_url))}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link" title="View adagents.json">
-                                        Verified
-                                    </a>` : '<span class="publisher-verify-link">Verified</span>'}
-                                </div>
-                                ${p.description ? `<div class="property-section-small" style="margin-top: var(--space-2);">${escapeHtml(p.description)}</div>` : ''}
-                                ${p.tags && p.tags.length > 0 ? `
-                                    <div class="property-tags" style="margin-top: var(--space-3);">
-                                        ${p.tags.map(tag => `<span class="property-tag">${escapeHtml(tag)}</span>`).join('')}
-                                    </div>
-                                ` : ''}
-                                ${p.metadata ? `<details class="property-metadata-toggle">
-                                    <summary>Additional metadata</summary>
-                                    <pre class="property-metadata-pre">${escapeHtml(JSON.stringify(p.metadata, null, 2))}</pre>
-                                </details>` : ''}
-                            </div>
-                        `).join('') +
-                    '</div>';
-                    html += '</div>';
-                }
-
-                if (unverified.length > 0) {
-                    html += '<div class="publishers-group">';
-                    html += '<h4 class="publishers-group__title publishers-group__title--unverified">Unverified properties (claims not authorized)</h4>';
-                    html += '<div class="publishers-grid">' +
-                        unverified.map(p => `
-                            <div class="publisher-item publisher-item--unverified">
                                 <div style="display: flex; justify-content: space-between; align-items: start; gap: var(--space-2);">
                                     <div style="flex: 1;">
-                                        <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
-                                        <div class="property-section-small" style="margin-top: var(--space-1);">${escapeHtml(p.type || 'domain')}</div>
+                                        <div class="publisher-domain">${escapeHtml(p.publisher_domain || 'Unknown')}</div>
+                                        <div class="property-section-small" style="margin-top: var(--space-1);">
+                                            <strong>Authorized properties:</strong> ${escapeHtml(String(p.properties_authorized ?? 0))} of ${escapeHtml(String(p.properties_total ?? 0))}
+                                        </div>
                                     </div>
-                                    ${safeHttpsUrl(p.verification_url) ? `<a href="${escapeHtml(safeHttpsUrl(p.verification_url))}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
-                                        Check
-                                    </a>` : ''}
+                                    <span class="publisher-verify-link">Authorized</span>
                                 </div>
-                                <div class="publisher-warning">
-                                    <strong>Warning:</strong> ${escapeHtml(p.verification_error || 'This agent is not listed in the domain\'s .well-known/adagents.json file')}
+                                <div class="property-section-small" style="margin-top: var(--space-2);">
+                                    Discovered via ${escapeHtml(String(p.discovery_method || 'directory'))}
+                                    ${p.manager_domain ? ` | <strong>Manager:</strong> ${escapeHtml(p.manager_domain)}` : ''}
                                 </div>
                             </div>
                         `).join('') +
@@ -1269,26 +1250,31 @@
                     html += '</div>';
                 }
 
-                if (unchecked.length > 0) {
+                if (revoked.length > 0) {
                     html += '<div class="publishers-group">';
-                    html += '<h4 class="publishers-group__title publishers-group__title--unchecked">Unchecked properties</h4>';
+                    html += '<h4 class="publishers-group__title publishers-group__title--unverified">Revoked publishers</h4>';
                     html += '<div class="publishers-grid">' +
-                        unchecked.map(p => `
-                            <div class="publisher-item publisher-item--unchecked">
-                                <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
-                                <div class="property-section-small" style="margin-top: var(--space-1);">${escapeHtml(p.type || 'domain')}</div>
+                        revoked.map(p => `
+                            <div class="publisher-item publisher-item--unverified">
+                                <div class="publisher-domain">${escapeHtml(p.publisher_domain || 'Unknown')}</div>
+                                <div class="publisher-warning">
+                                    <strong>Revoked:</strong> This publisher no longer authorizes the agent.
+                                </div>
                             </div>
                         `).join('') +
                     '</div>';
                     html += '</div>';
                 }
 
+                if (data.next_cursor) {
+                    html += '<div class="ds-alert ds-alert-info"><p class="ds-alert__desc">Showing the first 1,000 publisher authorizations. Additional results are available from the directory API.</p></div>';
+                }
                 section.innerHTML = html;
             } else {
-                section.innerHTML = `<div class="property-section-small">No properties available from this agent yet.</div>`;
+                section.innerHTML = '<div class="property-section-small">No indexed publisher authorizations are available for this agent yet.</div>';
             }
         } catch (error) {
-            document.getElementById('publishers-section').innerHTML = `<div class="error-text">Failed to load publishers: ${escapeHtml(error.message)}</div>`;
+            section.innerHTML = `<div class="error-text">Failed to load publishers: ${escapeHtml(error.message)}</div>`;
         }
     }
 
