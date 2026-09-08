@@ -268,6 +268,13 @@ describe('side-effect receipt guard — escalation 567', () => {
     )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
   });
 
+  it('binds a sent payment link to its creation receipt', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I sent a payment link.',
+      [tool('create_payment_link', false, 'Payment link created: https://payments.example/pay_701')],
+    )).toMatchObject({ enforced: false });
+  });
+
   it('permits distinct exact meeting and event outcomes in one turn', () => {
     const text = 'I scheduled the meeting. Meeting ID meet_701. I created an event. Event ID event_702.';
     expect(enforceSideEffectClaimReceipts(text, [

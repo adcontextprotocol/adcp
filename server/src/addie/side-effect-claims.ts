@@ -166,7 +166,8 @@ function successfulExternalClaimReceipts(
   return successful(executions, [...SIDE_EFFECT_TOOL_NAMES]).filter((execution) => {
     if (target && !execution.tool_name.includes(target)) return false;
     return execution.tool_name.startsWith(prefix)
-      || (target === 'meeting' && claim.action === 'created' && execution.tool_name === 'schedule_meeting');
+      || (target === 'meeting' && claim.action === 'created' && execution.tool_name === 'schedule_meeting')
+      || ((target === 'payment' || target === 'payment_link') && claim.action === 'sent' && execution.tool_name === 'create_payment_link');
   });
 }
 
@@ -195,12 +196,13 @@ function githubClaims(text: string): { numbers: string[]; urls: string[] } {
 }
 
 function githubClaimPairs(text: string): Array<{ number: string; url: string }> {
-  return responseSentences(text).flatMap((sentence) => (
-    [...sentence.matchAll(/\b(?:issue\s*)?#(\d+)\b[^.!?\n]*?(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)/gi)]
-      .map((match) => ({ number: match[1], url: match[2] }))
-      .concat([...sentence.matchAll(/(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)[^.!?\n]*?\b(?:issue\s*)?#(\d+)\b/gi)]
-        .map((match) => ({ number: match[2], url: match[1] })))
-  ));
+  return responseSentences(text).flatMap((sentence) => {
+    const forward = [...sentence.matchAll(/\b(?:issue\s*)?#(\d+)\b[^.!?\n]*?(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)/gi)]
+      .map((match) => ({ number: match[1], url: match[2] }));
+    if (forward.length > 0) return forward;
+    return [...sentence.matchAll(/(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)[^.!?\n]*?\b(?:issue\s*)?#(\d+)\b/gi)]
+      .map((match) => ({ number: match[2], url: match[1] }));
+  });
 }
 
 function isGithubSuccessClaim(text: string): boolean {
@@ -262,15 +264,13 @@ function receiptClaimsMatch(
 ): boolean {
   // Ordered ID/URL pairs describe ordered outcomes even when prose puts their
   // labels in adjacent sentences. Every pair must share its exact receipt.
-  if (identifiers.length > 0 && identifiers.length === urls.length) {
-    return identifiers.every((identifier, index) => receipts.some((receipt) => (
-      receiptContainsExactValue(receipt, identifier)
+  if (identifiers.length > 0 && urls.length > 0) {
+    const pairedCount = Math.min(identifiers.length, urls.length);
+    if (![...Array(pairedCount).keys()].every((index) => receipts.some((receipt) => (
+      receiptContainsExactValue(receipt, identifiers[index])
       && receiptContainsExactValue(receipt, urls[index])
-    )));
+    )))) return false;
   }
-  // A batched response can legitimately describe multiple independently
-  // confirmed outcomes. Do not reject it merely because separate receipts hold
-  // separate exact IDs or URLs.
   return [...urls, ...identifiers].every((value) => (
     receipts.some((receipt) => receiptContainsExactValue(receipt, value))
   ));
@@ -318,7 +318,14 @@ export function enforceSideEffectClaimReceipts(
     const nextSentenceStart = [...sideEffectSentenceStarts]
       .filter((candidate) => candidate > claim.sentenceIndex)
       .sort((left, right) => left - right)[0] ?? sentences.length;
+    let leadingSentence = claim.sentenceIndex;
+    while (
+      leadingSentence > 0
+      && !sideEffectSentenceStarts.has(leadingSentence - 1)
+      && /\b(?:id|number|reference|code|url|link)\b\s*:/i.test(sentences[leadingSentence - 1])
+    ) leadingSentence -= 1;
     return [
+      ...sentences.slice(leadingSentence, claim.sentenceIndex),
       sentences[claim.sentenceIndex].slice(claim.startIndex),
       ...sentences.slice(claim.sentenceIndex + 1, nextSentenceStart),
     ].join(' ');
