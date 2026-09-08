@@ -127,19 +127,26 @@ const EXTERNAL_CLAIM_TARGETS = [
 interface ExternalStateChangeClaim {
   readonly action: string;
   readonly target: string;
+  readonly sentenceIndex: number;
 }
 
-function externalStateChangeClaims(text: string): ExternalStateChangeClaim[] {
+function responseSentences(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+/);
+}
+
+function externalStateChangeClaims(sentences: readonly string[]): ExternalStateChangeClaim[] {
   const claims: ExternalStateChangeClaim[] = [];
-  for (const [action, prefix] of Object.entries(CLAIM_ACTION_TOOL_PREFIX)) {
-    for (const target of EXTERNAL_CLAIM_TARGETS) {
-      const targetExpression = target === 'meeting'
-        ? '\\bmeeting(?!\\s+agenda\\b)\\b'
-        : `\\b${target.replace('_', '\\s+')}\\b`;
-      if (
-        new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').test(text)
-        || new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').test(text)
-      ) claims.push({ action, target });
+  for (const [sentenceIndex, sentence] of sentences.entries()) {
+    for (const [action] of Object.entries(CLAIM_ACTION_TOOL_PREFIX)) {
+      for (const target of EXTERNAL_CLAIM_TARGETS) {
+        const targetExpression = target === 'meeting'
+          ? '\\bmeeting(?!\\s+agenda\\b)\\b'
+          : `\\b${target.replace('_', '\\s+')}\\b`;
+        if (
+          new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').test(sentence)
+          || new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').test(sentence)
+        ) claims.push({ action, target, sentenceIndex });
+      }
     }
   }
   return claims;
@@ -190,7 +197,7 @@ function isGithubSuccessClaim(text: string): boolean {
 
 /** URLs and identifiers are meaningful outcomes only in an action sentence or when explicitly labelled as one. */
 function claimedReceiptUrls(text: string, rule: ClaimRule): string[] {
-  const sentences = text.split(/(?<=[.!?])\s+/);
+  const sentences = responseSentences(text);
   return sentences.flatMap((sentence) => {
     const isOutcomeSentence = rule.pattern.test(sentence)
       || /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|resource)\s+(?:url|link)\b|\b(?:url|link)\s*:/i.test(sentence)
@@ -265,11 +272,28 @@ export function enforceSideEffectClaimReceipts(
   text: string,
   executions: readonly ToolExecution[],
 ): SideEffectClaimGuardResult {
+  const sentences = responseSentences(text);
+  const externalClaims = externalStateChangeClaims(sentences);
+  const sideEffectSentenceStarts = new Set<number>([
+    ...externalClaims.map((claim) => claim.sentenceIndex),
+    ...sentences.flatMap((sentence, sentenceIndex) => SIDE_EFFECT_CLAIM_RULES
+      .filter((rule) => rule.name !== 'external state change' && rule.pattern.test(sentence))
+      .map(() => sentenceIndex)),
+  ]);
+  const outcomeScope = (sentenceIndex: number): string => {
+    const nextStart = [...sideEffectSentenceStarts]
+      .filter((candidate) => candidate > sentenceIndex)
+      .sort((left, right) => left - right)[0] ?? sentences.length;
+    return sentences.slice(sentenceIndex, nextStart).join(' ');
+  };
+
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
     const githubClaim = rule.name === 'GitHub issue' && isGithubSuccessClaim(text);
     const isExternalStateChange = rule.name === 'external state change';
-    const externalClaims = isExternalStateChange ? externalStateChangeClaims(text) : [];
-    if (!githubClaim && !(isExternalStateChange ? externalClaims.length > 0 : rule.pattern.test(text))) continue;
+    const ruleSentenceStarts = sentences.flatMap((sentence, sentenceIndex) => (
+      rule.pattern.test(sentence) ? [sentenceIndex] : []
+    ));
+    if (!githubClaim && !(isExternalStateChange ? externalClaims.length > 0 : ruleSentenceStarts.length > 0)) continue;
     const receiptGroups = isExternalStateChange
       ? externalClaims.map((claim) => successfulExternalClaimReceipts(claim, executions))
       : [successful(executions, rule.tools)];
@@ -278,12 +302,21 @@ export function enforceSideEffectClaimReceipts(
       return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: `unverified_${rule.name.replaceAll(' ', '_')}_claim` };
     }
     if (rule.name !== 'GitHub issue') {
-      const claimedUrls = claimedReceiptUrls(text, rule);
-      const claimedIdentifiers = claimedReceiptIdentifiers(text);
-      if (
-        (claimedUrls.length > 0 || claimedIdentifiers.length > 0)
-        && !receiptClaimsMatch(receipts, claimedIdentifiers, claimedUrls)
-      ) {
+      const receiptChecks = isExternalStateChange
+        ? externalClaims.map((claim, index) => ({
+          receipts: receiptGroups[index],
+          scope: outcomeScope(claim.sentenceIndex),
+        }))
+        : (ruleSentenceStarts.length > 0 ? ruleSentenceStarts : [0]).map((sentenceIndex) => ({
+          receipts,
+          scope: outcomeScope(sentenceIndex),
+        }));
+      if (receiptChecks.some(({ receipts: scopedReceipts, scope }) => {
+        const claimedUrls = claimedReceiptUrls(scope, rule);
+        const claimedIdentifiers = claimedReceiptIdentifiers(scope);
+        return (claimedUrls.length > 0 || claimedIdentifiers.length > 0)
+          && !receiptClaimsMatch(scopedReceipts, claimedIdentifiers, claimedUrls);
+      })) {
         return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'side_effect_receipt_claim_mismatch' };
       }
       continue;

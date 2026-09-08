@@ -216,6 +216,22 @@ describe('side-effect receipt guard — escalation 567', () => {
     ])).toMatchObject({ enforced: false });
   });
 
+  it('binds each mixed-operation outcome to its own operation receipt', () => {
+    const text = 'I added the member. Member ID mem_701. I saved the brand. Brand ID brand_702.';
+    expect(enforceSideEffectClaimReceipts(text, [
+      tool('add_member_to_org', false, 'Member added: brand_id=brand_702'),
+      tool('save_brand', false, 'Brand saved: member_id=mem_701'),
+    ])).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+  });
+
+  it('permits distinct exact meeting and event outcomes in one turn', () => {
+    const text = 'I scheduled the meeting. Meeting ID meet_701. I created an event. Event ID event_702.';
+    expect(enforceSideEffectClaimReceipts(text, [
+      tool('schedule_meeting', false, 'Meeting scheduled: meeting_id=meet_701'),
+      tool('create_event', false, 'Event created: event_id=event_702'),
+    ])).toMatchObject({ enforced: false });
+  });
+
   it('does not authorize a URL prefix when the exact receipt URL differs', () => {
     expect(enforceSideEffectClaimReceipts(
       'I created a payment link: https://payments.example/checkout',
