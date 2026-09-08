@@ -83,6 +83,10 @@ export interface FixedTraceToolLoopOptions {
   /** Deterministic adapter request validation before every model turn. */
   beforePrepare?: (request: ModelRequest) => void;
   beforeDispatch?: ModelRespondOptions['beforeDispatch'];
+  /** Evaluator-only immutable-ledger hook; receives no provider prompt text. */
+  onProviderExposure?: (exposure: FixedTraceProviderExposure) => void;
+  /** Evaluator-only immutable-ledger hook after a simulated tool has settled. */
+  onToolExecution?: (execution: FixedTraceToolExecution) => void;
   /**
    * Evaluator-owned tool surface. This bypasses trace fixtures while retaining
    * the shared normalized model/tool continuation loop.
@@ -352,6 +356,7 @@ export async function executeFixedTraceToolLoop(
       returnedProvider: response.provider,
       returnedModel: response.model,
     }));
+    options.onProviderExposure?.(providerExposures.at(-1)!);
     const turn = activeTurn.acceptResponse(response);
 
     if (turn.providerToolCalls.length > 0 || turn.providerToolResults.length > 0) {
@@ -429,6 +434,7 @@ export async function executeFixedTraceToolLoop(
             entry.fixtureResult ?? event.executed.execution.result,
           ),
         }));
+        options.onToolExecution?.(executions.at(-1)!);
         results.push(event.executed.result);
       }
     }

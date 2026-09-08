@@ -7,7 +7,7 @@ import { GoogleGenerateContentProvider } from '../../src/addie/model-providers/g
 import { AnthropicModelProvider } from '../../src/addie/model-providers/anthropic-provider.js';
 import type { ModelProvider, ModelRequest } from '../../src/addie/model-providers/model-provider.js';
 import { modelProviderAdapterFailure } from '../../src/addie/model-providers/model-provider.js';
-import { FixedTraceToolLoopBoundaryError, executeFixedTraceToolLoop, type FixedTraceEvaluatorToolEnvironment } from '../../src/addie/eval/fixed-trace-tool-loop.js';
+import { FixedTraceToolLoopBoundaryError, executeFixedTraceToolLoop, type FixedTraceEvaluatorToolEnvironment, type FixedTraceProviderExposure, type FixedTraceToolExecution } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import type { FixedTraceCase } from '../../src/addie/eval/fixed-trace-suite.js';
 import type { AddieTool } from '../../src/addie/types.js';
 import { BudgetedFixedTraceProvider, FixedTraceBudget, fixedTraceResponsePricingPolicy } from '../../src/addie/eval/fixed-trace-budget.js';
@@ -37,6 +37,9 @@ const SOURCE_FILES = [
   'server/src/addie/eval/gemini-direct-ablation.ts',
   'server/tests/manual/gemini-direct-ablation-eval.ts',
   'server/src/addie/eval/fixed-trace-tool-loop.ts',
+  'server/src/addie/claude-client.ts',
+  'server/src/addie/prompts.ts',
+  'server/src/addie/rules/index.ts',
   'server/src/addie/model-providers/google-generate-content-provider.ts',
   'server/src/addie/model-providers/anthropic-provider.ts',
 ] as const;
@@ -149,10 +152,15 @@ function syntheticToolEnvironment(trace: typeof GEMINI_DIRECT_ABLATION_VALIDATIO
 function sha256(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 }
+function safeToolLedger(tools: readonly Readonly<{ sequence: number; name: string; effect: string; policyDisposition: string; resultStatus: string; transcriptSha256: string }>[]) {
+  return tools.map((tool) => ({ sequence: tool.sequence, name: tool.name, effect: tool.effect, policyDisposition: tool.policyDisposition, resultStatus: tool.resultStatus, transcriptSha256: tool.transcriptSha256 }));
+}
 try {
   for (const [index, trace] of GEMINI_DIRECT_ABLATION_VALIDATION_PACK.entries()) {
     const startedAt = Date.now();
     const invocationRequestSha256: string[] = [];
+    const providerExposures: FixedTraceProviderExposure[] = [];
+    const settledTools: FixedTraceToolExecution[] = [];
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -168,6 +176,8 @@ try {
             }))) throw new Error('continuation_request_bound_exceeded');
           },
           beforeDispatch: (prepared) => { invocationRequestSha256.push(sha256(prepared.providerRequest)); },
+          onProviderExposure: (exposure) => { providerExposures.push(exposure); },
+          onToolExecution: (tool) => { settledTools.push(tool); },
         });
       } finally {
         clearTimeout(timeout);
@@ -177,7 +187,7 @@ try {
       const lower = text.toLowerCase();
       const claim = geminiDirectReceiptClaimCheck(text, trace.receipt);
       const requiredText = trace.requiredText.every((needle) => lower.includes(needle));
-      const toolLedger = loop.tools.map((tool) => ({ sequence: tool.sequence, name: tool.name, effect: tool.effect, policyDisposition: tool.policyDisposition, resultStatus: tool.resultStatus, transcriptSha256: tool.transcriptSha256 }));
+      const toolLedger = safeToolLedger(loop.tools);
       const trustedReceiptExecuted = toolLedger.some((tool) => (
         tool.name === 'create_github_issue'
         && tool.policyDisposition === 'allowed'
@@ -200,7 +210,7 @@ try {
               ? 'prior_turn_receipt_not_executed' : 'no_current_turn_receipt_executed',
         },
         invocationRequestSha256,
-        providerExposures: loop.providerExposures,
+        providerExposures,
       });
     } catch (error) {
       const adapterFailure = modelProviderAdapterFailure(error);
@@ -211,8 +221,8 @@ try {
         failure: error instanceof FixedTraceToolLoopBoundaryError ? `tool_loop_${error.reason}` : adapterFailure ? `adapter_${adapterFailure.kind}` : 'transport_or_harness_failure',
         diagnosis: { providerParsing: adapterFailure ? 'adapter_failure' : 'transport_or_harness_failure', continuation: 'not_reached', staleToolState: trace.receipt, orchestration: 'not_reached' },
         invocationRequestSha256,
-        providerExposures: checkpoint?.providerExposures ?? [],
-        toolLedger: (checkpoint?.tools ?? []).map((tool) => ({ sequence: tool.sequence, name: tool.name, effect: tool.effect, policyDisposition: tool.policyDisposition, resultStatus: tool.resultStatus, transcriptSha256: tool.transcriptSha256 })),
+        providerExposures: checkpoint?.providerExposures ?? providerExposures,
+        toolLedger: safeToolLedger(checkpoint?.tools ?? settledTools),
       });
     }
   }
