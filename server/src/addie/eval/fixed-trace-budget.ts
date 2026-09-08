@@ -193,6 +193,34 @@ export function fixedTraceDirectFullSuiteResponsePricingPolicy(
   );
 }
 
+/**
+ * The architecture diagnostic's router is the one additional dated Anthropic
+ * receipt surface. Keep this separate from the direct-suite constructor: this
+ * admission is bound to the reviewed Haiku router profile, not to an arbitrary
+ * Anthropic stage which happens to use a dated identifier.
+ */
+export function fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(
+  expectedProvider: ModelProvider['id'],
+  expectedModel: string,
+  pricing: FixedTraceBudgetPricing & { readonly profileId: string },
+): FixedTraceResponsePricingPolicy {
+  const isReviewedRouterProfile = FIXED_TRACE_APPROVED_PRICING.some((entry) => (
+    entry.candidateId === 'anthropic-router'
+    && entry.expectedProvider === expectedProvider
+    && entry.expectedModel === expectedModel
+    && sameApprovedPricing(entry, pricing)
+  ));
+  if (!isReviewedRouterProfile) {
+    throw new Error('Fixed trace architecture diagnostic router pricing profile is not evaluator approved');
+  }
+  return fixedTraceResponsePricingPolicyForResolution(
+    expectedProvider,
+    expectedModel,
+    pricing,
+    'anthropic_dated_revision_v1',
+  );
+}
+
 function fixedTraceResponsePricingPolicyForResolution(
   expectedProvider: ModelProvider['id'],
   expectedModel: string,

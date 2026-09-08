@@ -45,6 +45,7 @@ import {
 } from './fixed-trace-tool-loop.js';
 import {
   FixedTraceBudgetAdmissionError,
+  fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy,
   fixedTraceDirectFullSuiteResponsePricingPolicy,
   fixedTraceEstimatedCostUsd,
   fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
@@ -874,9 +875,14 @@ export function fixedTraceModelResolutionPolicy(
   return fixedTraceBudgetModelResolutionPolicy(provider, model, allowDatedAnthropicRevision);
 }
 
+type FixedTraceReturnedModelPricingMode =
+  | 'exact'
+  | 'direct_full_suite'
+  | 'architecture_diagnostic_router';
+
 function cohortStageControl(
   config: FixedTraceProviderStageConfig,
-  allowDatedAnthropicRevision = false,
+  returnedModelPricingMode: FixedTraceReturnedModelPricingMode = 'exact',
 ): FixedTraceCohortStageControl {
   return {
     requestedProvider: config.provider.id,
@@ -888,7 +894,13 @@ function cohortStageControl(
     transportRetries: config.transportRetries,
     samplingMode: config.samplingMode,
     temperature: config.temperature,
-    modelResolutionPolicy: fixedTraceModelResolutionPolicy(config.provider.id, config.model, allowDatedAnthropicRevision),
+    modelResolutionPolicy: returnedModelPricingMode === 'architecture_diagnostic_router'
+      ? 'anthropic_dated_revision_v1'
+      : fixedTraceModelResolutionPolicy(
+        config.provider.id,
+        config.model,
+        returnedModelPricingMode === 'direct_full_suite',
+      ),
     pricing: { ...config.pricing },
   };
 }
@@ -896,7 +908,12 @@ function cohortStageControl(
 function routerControlForConfig(config: FixedTraceRunnerConfig): FixedTraceCohortStageControl | { readonly status: 'not_run' } {
   if (isDirectModelScreen(config) || isDirectFullSuiteComparison(config)) return { status: 'not_run' };
   if (config.router === null) throw new Error('Fixed trace runner router is required outside direct-model-screen mode');
-  return cohortStageControl(config.router);
+  return cohortStageControl(
+    config.router,
+    config.architectureDiagnosticMode === 'synthetic_sonnet_full_pack_v1'
+      ? 'architecture_diagnostic_router'
+      : 'exact',
+  );
 }
 
 function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'reasoning'> | Record<string, never> {
@@ -917,19 +934,25 @@ function modelResolution(
 function returnedModelUsesRecordedPricing(
   config: FixedTraceProviderStageConfig,
   response: Pick<ModelResponse, 'provider' | 'model'>,
-  allowDatedAnthropicRevision = false,
+  returnedModelPricingMode: FixedTraceReturnedModelPricingMode = 'exact',
 ): boolean {
-  const policy = allowDatedAnthropicRevision
-    ? fixedTraceDirectFullSuiteResponsePricingPolicy(
+  const policy = returnedModelPricingMode === 'architecture_diagnostic_router'
+    ? fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(
       config.provider.id,
       config.model,
       config.pricing,
     )
-    : fixedTraceResponsePricingPolicy(
-    config.provider.id,
-    config.model,
-    config.pricing,
-    );
+    : returnedModelPricingMode === 'direct_full_suite'
+      ? fixedTraceDirectFullSuiteResponsePricingPolicy(
+      config.provider.id,
+      config.model,
+      config.pricing,
+    )
+      : fixedTraceResponsePricingPolicy(
+        config.provider.id,
+        config.model,
+        config.pricing,
+      );
   return fixedTraceResponseUsesPricingPolicy(policy, response);
 }
 
@@ -940,13 +963,13 @@ function providerStageMetadata(
   usage: ModelUsage,
   state: StageInvocationState,
   recordedExposures?: NonNullable<FixedTraceModelStageMetadata["providerExposures"]>,
-  allowDatedAnthropicRevision = false,
+  returnedModelPricingMode: FixedTraceReturnedModelPricingMode = 'exact',
 ): FixedTraceModelStageMetadata {
   // Provider responses are outside evaluator ownership. Retaining their usage
   // object would let a later provider turn mutate already-recorded cost and
   // usage evidence after this case has completed.
   const recordedUsage = deepFreeze(structuredClone(usage));
-  const resolvedPricing = returnedModelUsesRecordedPricing(config, response, allowDatedAnthropicRevision);
+  const resolvedPricing = returnedModelUsesRecordedPricing(config, response, returnedModelPricingMode);
   return {
     source: 'provider',
     dispatched: state.dispatched,
@@ -1190,7 +1213,10 @@ export function fixedTraceArchitectureConfigSha256(
       : fixedTraceExecutionEnvelopeProvenance(arm.id),
     requestThreadFacts: fixedTraceRequestThreadFactsProvenance(config.traceSuite, arm.id),
     routerControl: routerControlForConfig(config),
-    generationControl: cohortStageControl(config.generation, isDirectFullSuiteComparison(config)),
+    generationControl: cohortStageControl(
+      config.generation,
+      isDirectFullSuiteComparison(config) ? 'direct_full_suite' : 'exact',
+    ),
     providerDegradationInjectionEnabled: config.injectProviderDegradation !== false,
     architectureDiagnosticMode: config.architectureDiagnosticMode ?? null,
     directModelScreenMode: config.directModelScreen?.mode ?? config.directFullSuiteComparison?.mode ?? null,
@@ -1334,7 +1360,10 @@ function baseMetadata(
     directArmAdmission: admission,
     caseControl: trace.caseControl ?? null,
     routerControl: routerControlForConfig(config),
-    generationControl: cohortStageControl(config.generation, isDirectFullSuiteComparison(config)),
+    generationControl: cohortStageControl(
+      config.generation,
+      isDirectFullSuiteComparison(config) ? 'direct_full_suite' : 'exact',
+    ),
     router,
     generation,
   };
@@ -1750,7 +1779,7 @@ function directModelScreenProviderExposuresMatch(
       ? returnedModelUsesRecordedPricing(config.generation, {
           provider: exposure.returnedProvider,
           model: exposure.returnedModel,
-        }, true)
+        }, 'direct_full_suite')
       : exposure.returnedProvider === config.generation.provider.id
         && exposure.returnedModel === config.generation.model)
   ));
@@ -1825,9 +1854,21 @@ async function executeRouter(
       },
     }), config.provider.id);
     const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt, settlementDiagnosticCursor };
-    const metadata = providerStageMetadata(request, config, response, response.usage, state);
+    const returnedModelPricingMode = architectureDiagnosticMode === 'synthetic_sonnet_full_pack_v1'
+      ? 'architecture_diagnostic_router' as const
+      : 'exact' as const;
+    const metadata = providerStageMetadata(
+      request,
+      config,
+      response,
+      response.usage,
+      state,
+      undefined,
+      returnedModelPricingMode,
+    );
     const output = extractRouterResponseText(response.content);
     const status = hasCompleteReturnedProviderIdentities(state, response)
+      && returnedModelUsesRecordedPricing(config, response, returnedModelPricingMode)
       ? terminalStatusForFinishReason(response.finishReason, output)
       : 'unknown_exposure';
     if (status !== 'complete') return { request, response, plan: null, output, status, metadata, failureDiagnostic: null };
@@ -2151,7 +2192,7 @@ export async function runFixedTraceCase(
       result.usage,
       state,
       result.providerExposures,
-      isDirectFullSuiteComparison(executionConfig),
+      isDirectFullSuiteComparison(executionConfig) ? 'direct_full_suite' : 'exact',
     );
     const completeProviderIdentities = hasCompleteReturnedProviderIdentities(
       state,
@@ -2161,7 +2202,7 @@ export async function runFixedTraceCase(
     const responseUsesRecordedPricing = returnedModelUsesRecordedPricing(
       generationConfig,
       result.response,
-      isDirectFullSuiteComparison(executionConfig),
+      isDirectFullSuiteComparison(executionConfig) ? 'direct_full_suite' : 'exact',
     );
     const exposureIdentitiesMatch = directModelScreenProviderExposuresMatch(executionConfig, result.providerExposures);
     const terminalStatus = completeProviderIdentities && responseUsesRecordedPricing && exposureIdentitiesMatch

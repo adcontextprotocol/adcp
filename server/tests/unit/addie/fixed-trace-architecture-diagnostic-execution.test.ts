@@ -16,6 +16,7 @@ import { fixedTraceArchitectureDiagnosticPilotStageControls } from '../../../src
 import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
+  fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy,
   fixedTraceResponsePricingPolicy,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import type {
@@ -42,6 +43,7 @@ class ScriptedAnthropicProvider implements ModelProvider {
   constructor(
     private readonly unknownGenerationModel = false,
     private readonly failAfterCalls: number | null = null,
+    private readonly routerModel = 'claude-haiku-4-5',
   ) {}
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -63,7 +65,7 @@ class ScriptedAnthropicProvider implements ModelProvider {
     const router = request.requestMetadata?.purpose === 'fixed_trace_router';
     const response: ModelResponse = {
       provider: this.id,
-      model: router ? 'claude-haiku-4-5' : this.unknownGenerationModel ? 'unapproved-model' : 'claude-sonnet-5',
+      model: router ? this.routerModel : this.unknownGenerationModel ? 'unapproved-model' : 'claude-sonnet-5',
       id: `synthetic-${this.calls.length}`,
       content: [{ type: 'text', text: router
         ? JSON.stringify({ action: 'respond', tool_sets: [], confidence: 'high', requires_depth: false, reason: 'Synthetic route.' })
@@ -78,14 +80,22 @@ class ScriptedAnthropicProvider implements ModelProvider {
 
 const RUN_STARTED_AT = '2026-09-07T00:00:00.000Z';
 
-function admitted(unknownGenerationModel = false, failAfterCalls: number | null = null) {
+function admitted(
+  unknownGenerationModel = false,
+  failAfterCalls: number | null = null,
+  routerModel = 'claude-haiku-4-5',
+) {
   const ceiling = fixedTraceArchitectureDiagnosticCostCeiling();
   const budget = new FixedTraceBudget(ceiling.requiredSoftMaxUsd);
-  const raw = new ScriptedAnthropicProvider(unknownGenerationModel, failAfterCalls);
+  const raw = new ScriptedAnthropicProvider(unknownGenerationModel, failAfterCalls, routerModel);
   const controls = fixedTraceArchitectureDiagnosticPilotStageControls();
   const router = new BudgetedFixedTraceProvider(
     raw, budget, controls.router.pricing,
-    fixedTraceResponsePricingPolicy('anthropic', controls.router.model, controls.router.pricing),
+    fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(
+      'anthropic',
+      controls.router.model,
+      controls.router.pricing,
+    ),
   );
   const generation = new BudgetedFixedTraceProvider(
     raw, budget, controls.generation.pricing,
@@ -146,6 +156,88 @@ describe('fixed-trace architecture diagnostic execution', () => {
       }
     }
     expect(budget.snapshot()).toMatchObject({ reservedUsd: 0, dispatchedCalls: 104, completedCalls: 104, exposureUnknown: false });
+  });
+
+  it('settles the reviewed dated Haiku router alias at its explicit profile rate', async () => {
+    const datedHaiku = 'claude-haiku-4-5-20251001';
+    const { admission, budget, raw } = admitted(false, null, datedHaiku);
+    const artifact = await runFixedTraceArchitectureDiagnosticArtifact({
+      admission, budget, runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT, plan: plan(),
+    });
+    const routerObservations = (artifact.runs as Array<{ observations: Array<{
+      metadata: {
+        architectureArm: { id: string };
+        router: { source: string; returnedModel: string | null; estimatedCostUsd: number | null; pricingProfileId: string | null };
+        routerControl?: { modelResolutionPolicy: string };
+      };
+    }> }>)
+      .flatMap((run) => run.observations)
+      .filter((observation) => (
+        observation.metadata.architectureArm.id === 'two_stage_llm_router'
+        && observation.metadata.router.source === 'provider'
+        && observation.metadata.routerControl !== undefined
+      ));
+
+    expect(routerObservations.length).toBeGreaterThan(0);
+    expect(routerObservations.every((observation) => (
+      observation.metadata.router.returnedModel === datedHaiku
+      && observation.metadata.router.estimatedCostUsd !== null
+      && observation.metadata.router.pricingProfileId === 'anthropic-standard-2026-09:claude-haiku-4-5'
+    ))).toBe(true);
+    expect(routerObservations.every((observation) => (
+      observation.metadata.routerControl.modelResolutionPolicy === 'anthropic_dated_revision_v1'
+    ))).toBe(true);
+    expect(artifact).toMatchObject({ complete: true });
+    expect((artifact.runs as Array<{ summary?: { metadataPassRate?: number } }>)
+      .every((run) => run.summary?.metadataPassRate === 1)).toBe(true);
+    expect(budget.snapshot()).toMatchObject({
+      reservedUsd: 0,
+      dispatchedCalls: 104,
+      completedCalls: 104,
+      exposureUnknown: false,
+    });
+    expect(raw.calls.some((call) => call.requestMetadata?.purpose === 'fixed_trace_router')).toBe(true);
+  });
+
+  it.each([
+    ['unknown', 'claude-unreviewed-20990101'],
+    ['cross-family', 'claude-sonnet-5-20250901'],
+  ])('rejects a %s router model without charging it or dispatching a later stage', async (_kind, routerModel) => {
+    const { admission, budget, raw } = admitted(false, null, routerModel);
+    const artifact = await runFixedTraceArchitectureDiagnosticArtifact({
+      admission, budget, runRootId: 'architecture-test-root', runStartedAt: RUN_STARTED_AT, plan: plan(),
+    });
+    const observations = (artifact.runs as Array<{ observations: Array<{
+      terminalStage: string;
+      terminalStatus: string;
+      metadata: { router: { source: string; estimatedCostUsd: number | null; settlementLedger: { entries: Array<{ reason: string }> } } };
+    }> }>).flatMap((run) => run.observations);
+    const rejected = observations.find((observation) => observation.metadata.router.source === 'provider');
+    const routerDispatch = raw.calls.findIndex((call) => call.requestMetadata?.purpose === 'fixed_trace_router');
+
+    expect(rejected).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'unknown_exposure',
+      metadata: {
+        router: {
+          estimatedCostUsd: null,
+          settlementLedger: { entries: [expect.objectContaining({ reason: 'identity_policy_rejected' })] },
+        },
+      },
+    });
+    expect(artifact).toMatchObject({ complete: false });
+    expect(routerDispatch).toBeGreaterThanOrEqual(0);
+    expect(raw.calls.slice(routerDispatch + 1)).toEqual([]);
+    expect(budget.snapshot()).toMatchObject({ exposureUnknown: true, reservedUsd: 0 });
+  });
+
+  it('does not grant the dated router policy to the generation profile', () => {
+    const controls = fixedTraceArchitectureDiagnosticPilotStageControls();
+    expect(() => fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(
+      'anthropic',
+      controls.generation.model,
+      controls.generation.pricing,
+    )).toThrow('router pricing profile is not evaluator approved');
   });
 
   it('preserves unknown provider exposure in a finalized diagnostic artifact instead of inventing cost certainty', async () => {

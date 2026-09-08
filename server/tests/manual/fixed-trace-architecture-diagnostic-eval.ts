@@ -109,7 +109,11 @@ const router = new budgetModule.BudgetedFixedTraceProvider(
   rawProvider,
   budget,
   controls.router.pricing,
-  budgetModule.fixedTraceResponsePricingPolicy('anthropic', controls.router.model, controls.router.pricing),
+  budgetModule.fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(
+    'anthropic',
+    controls.router.model,
+    controls.router.pricing,
+  ),
 );
 const generation = new budgetModule.BudgetedFixedTraceProvider(
   rawProvider,

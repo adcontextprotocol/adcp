@@ -7,6 +7,7 @@ import {
   fixedTraceRequestThreadFactsProvenance,
 } from './fixed-trace-architecture.js';
 import {
+  fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy,
   fixedTraceEstimatedCostUsd,
   fixedTraceDirectFullSuiteResponsePricingPolicy,
   fixedTraceModelResolutionPolicy,
@@ -2936,7 +2937,7 @@ function stageMetadataFailures(
   stage: FixedTraceModelStageMetadata,
   control: FixedTraceCohortStageControl | FixedTraceNotRunCohortStageControl,
   expectedEffectiveMaxOutputTokens: number | null,
-  allowDatedAnthropicRevision = false,
+  returnedModelPricingMode: 'exact' | 'direct_full_suite' | 'architecture_diagnostic_router' = 'exact',
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
@@ -3086,9 +3087,11 @@ function stageMetadataFailures(
         && stage.returnedModel !== null) {
         try {
           canonicalizedIdentityApproved = fixedTraceResponseUsesPricingPolicy(
-            allowDatedAnthropicRevision
-              ? fixedTraceDirectFullSuiteResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing)
-              : fixedTraceResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing),
+            returnedModelPricingMode === 'architecture_diagnostic_router'
+              ? fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing)
+              : returnedModelPricingMode === 'direct_full_suite'
+                ? fixedTraceDirectFullSuiteResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing)
+                : fixedTraceResponsePricingPolicy(control.requestedProvider, control.requestedModel, control.pricing),
             { provider: stage.returnedProvider, model: stage.returnedModel },
           );
         } catch {
@@ -3367,13 +3370,16 @@ function metadataFailures(
     'router', metadata.router, metadata.routerControl, metadata.router.source === 'not_run' || 'status' in metadata.routerControl
       ? null
       : metadata.routerControl.configuredMaxOutputTokens,
+    metadata.architectureDiagnosticMode === 'synthetic_sonnet_full_pack_v1'
+      ? 'architecture_diagnostic_router'
+      : 'exact',
   ));
   if (!(directModelScreenMode === 'direct_full_suite_model_comparison_v1' && ['ignore', 'react'].includes(trace.routing.action))) {
     failures.push(...stageMetadataFailures(
       'generation', metadata.generation, metadata.generationControl, metadata.generation.source === 'not_run'
         ? null
         : caseControl?.maxOutputTokens ?? metadata.generationControl.configuredMaxOutputTokens,
-      directModelScreenMode === 'direct_full_suite_model_comparison_v1',
+      directModelScreenMode === 'direct_full_suite_model_comparison_v1' ? 'direct_full_suite' : 'exact',
     ));
   }
   return failures;
