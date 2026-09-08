@@ -18,6 +18,7 @@ import {
   BudgetedFixedTraceProvider,
   FixedTraceBudget,
   claimFixedTraceBudgetDiagnosticLease,
+  fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy,
   fixedTraceResponsePricingPolicy,
   isTrustedBudgetedFixedTraceProvider,
 } from './fixed-trace-budget.js';
@@ -63,12 +64,19 @@ function stage(provider: ModelProvider, kind: 'router' | 'generation'): FixedTra
 function requireStageProvider(
   stageConfig: FixedTraceProviderStageConfig,
   budget: FixedTraceBudget,
+  kind: 'router' | 'generation',
 ): void {
-  const policy = fixedTraceResponsePricingPolicy(
-    stageConfig.provider.id,
-    stageConfig.model,
-    stageConfig.pricing,
-  );
+  const policy = kind === 'router'
+    ? fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy(
+      stageConfig.provider.id,
+      stageConfig.model,
+      stageConfig.pricing,
+    )
+    : fixedTraceResponsePricingPolicy(
+      stageConfig.provider.id,
+      stageConfig.model,
+      stageConfig.pricing,
+    );
   if (!isTrustedBudgetedFixedTraceProvider(stageConfig.provider, budget, stageConfig.pricing, policy)) {
     throw new Error('Fixed trace architecture diagnostic requires authenticated budgeted Anthropic stages');
   }
@@ -93,7 +101,7 @@ export function fixedTraceArchitectureDiagnosticCostCeiling(): FixedTraceArchite
   const router = datedPricingProfilesForFixedTrace().find((entry) => entry.profileId === controls.router.pricing.profileId);
   const generation = datedPricingProfilesForFixedTrace().find((entry) => entry.profileId === controls.generation.pricing.profileId);
   if (!router || !generation) throw new Error('Fixed trace architecture diagnostic pricing is unavailable');
-  fixedTraceResponsePricingPolicy('anthropic', controls.router.model, router);
+  fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy('anthropic', controls.router.model, router);
   fixedTraceResponsePricingPolicy('anthropic', controls.generation.model, generation);
   const routerReservationUsd = 40 * datedPricingReservationCostUsd(
     router,
@@ -288,8 +296,8 @@ function authenticatedAdmission(
       || !config.router
     ) return rejectAdmission(record, 'Fixed trace architecture diagnostic admitted config is invalid');
     try {
-      requireStageProvider(config.router, record.budget);
-      requireStageProvider(config.generation, record.budget);
+      requireStageProvider(config.router, record.budget, 'router');
+      requireStageProvider(config.generation, record.budget, 'generation');
       preflightFixedTraceRunnerConfig(config);
     } catch (error) {
       return rejectAdmission(record, error instanceof Error ? error.message : String(error));
@@ -330,8 +338,8 @@ export function admitFixedTraceArchitectureDiagnostic(input: Readonly<{
     ...input, runId: `${input.runRootId}:${architectureArm}`, architectureArm,
   }));
   for (const config of requested) {
-    requireStageProvider(config.router!, input.budget);
-    requireStageProvider(config.generation, input.budget);
+    requireStageProvider(config.router!, input.budget, 'router');
+    requireStageProvider(config.generation, input.budget, 'generation');
     preflightFixedTraceRunnerConfig(config);
   }
   const lease = claimFixedTraceBudgetDiagnosticLease(
