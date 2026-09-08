@@ -23,6 +23,11 @@ import {
   type EvaluationPricingCandidateId,
 } from './dated-pricing-cohort.js';
 import type { FixedTraceModelResolutionPolicy } from './fixed-trace-suite.js';
+import type {
+  FixedTraceSettlementDiagnostic,
+  FixedTraceSettlementDiagnosticLedger,
+} from './fixed-trace-suite.js';
+import { createHash } from 'node:crypto';
 
 export interface FixedTraceBudgetPricing {
   inputUsdPerMillionTokens: number;
@@ -253,6 +258,8 @@ interface BudgetedProviderBinding {
   readonly responsePricingPolicy: FixedTraceResponsePricingPolicy;
   readonly delegate: BudgetedDelegateIdentity;
   lease: object | null;
+  dispatchSequence: number;
+  settlementDiagnostics: FixedTraceSettlementDiagnostic[];
 }
 
 interface BudgetedDelegateIdentity {
@@ -272,6 +279,72 @@ interface BudgetedDelegateIdentity {
 const budgetedProviderBindings = new WeakMap<object, BudgetedProviderBinding>();
 const exclusiveBudgetLeases = new WeakMap<FixedTraceBudget, object>();
 const exclusiveCloneIdentities = new WeakMap<object, BudgetedDelegateIdentity>();
+const FIXED_TRACE_SETTLEMENT_DIAGNOSTIC_LIMIT = 8;
+const FIXED_TRACE_SETTLEMENT_FINGERPRINT_DOMAIN = 'adcp:addie:fixed-trace:settlement-diagnostic:v1\0';
+
+function settlementErrorFingerprint(
+  reason: FixedTraceSettlementDiagnostic['reason'],
+): string {
+  // A diagnostic artifact can be retained beyond the local execution logs.
+  // Fingerprint only our closed category, never provider-owned error text.
+  return createHash('sha256')
+    .update(FIXED_TRACE_SETTLEMENT_FINGERPRINT_DOMAIN, 'utf8')
+    .update(reason, 'utf8')
+    .digest('hex');
+}
+
+function recordSettlementDiagnostic(
+  provider: object,
+  dispatchSequence: number,
+  reason: FixedTraceSettlementDiagnostic['reason'],
+): void {
+  const binding = budgetedProviderBindings.get(provider);
+  if (!binding) throw new Error('Fixed trace budget wrapper binding is unavailable');
+  binding.settlementDiagnostics.push(Object.freeze({
+    dispatchSequence,
+    status: 'exposure_unknown',
+    reason,
+    errorFingerprintSha256: settlementErrorFingerprint(reason),
+  }));
+  if (binding.settlementDiagnostics.length > FIXED_TRACE_SETTLEMENT_DIAGNOSTIC_LIMIT) {
+    binding.settlementDiagnostics.splice(0, binding.settlementDiagnostics.length - FIXED_TRACE_SETTLEMENT_DIAGNOSTIC_LIMIT);
+  }
+}
+
+/**
+ * Capture an opaque cursor before entering a provider stage. It is meaningful
+ * only for the frozen budget wrapper; ordinary providers deliberately report
+ * an empty ledger so the runner remains usable in local-only tests.
+ */
+export function fixedTraceSettlementDiagnosticCursor(provider: ModelProvider): number {
+  return budgetedProviderBindings.get(provider)?.dispatchSequence ?? 0;
+}
+
+/** Return the bounded, redacted settlement receipts emitted after `cursor`. */
+export function fixedTraceSettlementDiagnosticLedger(
+  provider: ModelProvider,
+  cursor: number,
+): FixedTraceSettlementDiagnosticLedger {
+  if (!Number.isSafeInteger(cursor) || cursor < 0) {
+    throw new RangeError('Fixed trace settlement diagnostic cursor is invalid');
+  }
+  const binding = budgetedProviderBindings.get(provider);
+  if (!binding) return Object.freeze({
+    fromDispatchExclusive: cursor,
+    throughDispatch: cursor,
+    truncated: false,
+    entries: Object.freeze([]),
+  });
+  const oldestRetained = binding.settlementDiagnostics[0]?.dispatchSequence;
+  return Object.freeze({
+    fromDispatchExclusive: cursor,
+    throughDispatch: binding.dispatchSequence,
+    truncated: oldestRetained !== undefined && cursor < oldestRetained - 1,
+    entries: Object.freeze(binding.settlementDiagnostics
+      .filter((entry) => entry.dispatchSequence > cursor)
+      .map((entry) => Object.freeze({ ...entry }))),
+  });
+}
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -580,6 +653,8 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
       responsePricingPolicy: this.#responsePricingPolicy,
       delegate: delegateIdentity,
       lease: null,
+      dispatchSequence: 0,
+      settlementDiagnostics: [],
     });
     // A diagnostic run retains these exact wrapper objects by reference. Lock
     // their own properties now, before untrusted provider code can resume.
@@ -602,6 +677,8 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
     let reservation: Reservation | null = null;
     let dispatchStarted = false;
     let settled = false;
+    let dispatchSequence: number | null = null;
+    let interruptedReason: FixedTraceSettlementDiagnostic['reason'] = 'response_stream_interrupted';
     try {
       for await (const event of this.#delegate.respond(request, {
         ...options,
@@ -617,6 +694,9 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
           }
           this.#budget.markDispatched(reservation);
           dispatchStarted = true;
+          const binding = budgetedProviderBindings.get(this);
+          if (!binding) throw new Error('Fixed trace budget wrapper binding is unavailable');
+          dispatchSequence = ++binding.dispatchSequence;
         },
       })) {
         if (event.type === 'response_complete') {
@@ -636,6 +716,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
             ? this.#delegate.snapshotResponse(event.response)
             : structuredClone(event.response);
           if (!isDeepStrictEqual(snapshot, canonicalResponse)) {
+            interruptedReason = 'response_processing_failed';
             throw new Error('Fixed trace provider response snapshot differs from its terminal response');
           }
           const response = deepFreeze(snapshot);
@@ -647,6 +728,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
               // evidence while closing admission: a malformed or absent usage
               // block means this dispatch cannot be settled at any rate.
               this.#budget.markExposureUnknown(reservation);
+              recordSettlementDiagnostic(this, dispatchSequence!, 'usage_or_cost_settlement_failed');
             }
           } else {
             // Do not settle an unapproved returned identity at the requested
@@ -654,6 +736,7 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
             // records unknown cost and fails its stage contract; the shared
             // ledger closes before any subsequent provider call.
             this.#budget.markExposureUnknown(reservation);
+            recordSettlementDiagnostic(this, dispatchSequence!, 'identity_policy_rejected');
           }
           settled = true;
           yield { type: 'response_complete', response };
@@ -663,7 +746,10 @@ export class BudgetedFixedTraceProvider implements ModelProvider {
       }
     } finally {
       if (reservation && !settled) {
-        if (dispatchStarted) this.#budget.markExposureUnknown(reservation);
+        if (dispatchStarted) {
+          this.#budget.markExposureUnknown(reservation);
+          recordSettlementDiagnostic(this, dispatchSequence!, interruptedReason);
+        }
         else this.#budget.cancel(reservation);
       }
     }

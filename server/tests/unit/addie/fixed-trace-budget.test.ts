@@ -8,6 +8,8 @@ import {
   fixedTraceApprovedPricingProfiles,
   fixedTraceResponseUsesPricingPolicy,
   fixedTraceResponsePricingPolicy,
+  fixedTraceSettlementDiagnosticCursor,
+  fixedTraceSettlementDiagnosticLedger,
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import { datedPricingProfilesForFixedTrace } from '../../../src/addie/eval/dated-pricing-cohort.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
@@ -216,6 +218,7 @@ describe('fixed trace provider budget', () => {
     const delegate = new BudgetScriptedProvider([mismatched, RESPONSE]);
     const budget = new FixedTraceBudget(1);
     const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
+    const cursor = fixedTraceSettlementDiagnosticCursor(provider);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).resolves.toEqual(mismatched);
     expect(budget.snapshot()).toMatchObject({
@@ -223,6 +226,17 @@ describe('fixed trace provider budget', () => {
       dispatchedCalls: 1,
       completedCalls: 0,
       exposureUnknown: true,
+    });
+    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor)).toEqual({
+      fromDispatchExclusive: 0,
+      throughDispatch: 1,
+      truncated: false,
+      entries: [{
+        dispatchSequence: 1,
+        status: 'exposure_unknown',
+        reason: 'identity_policy_rejected',
+        errorFingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }],
     });
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toMatchObject({
       name: 'FixedTraceBudgetAdmissionError', reason: 'budget_exposure_unknown',
@@ -411,6 +425,7 @@ describe('fixed trace provider budget', () => {
     }]);
     const budget = new FixedTraceBudget(1);
     const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
+    const cursor = fixedTraceSettlementDiagnosticCursor(provider);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow(
       'Invalid normalized usage field: inputTokens',
@@ -422,6 +437,63 @@ describe('fixed trace provider budget', () => {
       completedCalls: 0,
       exposureUnknown: true,
     });
+    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor).entries).toEqual([{
+      dispatchSequence: 1,
+      status: 'exposure_unknown',
+      reason: 'usage_or_cost_settlement_failed',
+      errorFingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }]);
+  });
+
+  it('treats missing terminal usage as unknown exposure and rejects every later dispatch', async () => {
+    const missingUsage = { ...RESPONSE, usage: undefined } as unknown as ModelResponse;
+    const delegate = new BudgetScriptedProvider([missingUsage, RESPONSE]);
+    const budget = new FixedTraceBudget(1);
+    const provider = new BudgetedFixedTraceProvider(delegate, budget, PRICING, RESPONSE_PRICING_POLICY);
+    const cursor = fixedTraceSettlementDiagnosticCursor(provider);
+
+    await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow();
+    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor).entries).toEqual([{
+      dispatchSequence: 1,
+      status: 'exposure_unknown',
+      reason: 'usage_or_cost_settlement_failed',
+      errorFingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }]);
+    await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toMatchObject({
+      name: 'FixedTraceBudgetAdmissionError', reason: 'budget_exposure_unknown',
+    });
+    expect(delegate.dispatches).toHaveBeenCalledTimes(1);
+  });
+
+  it('fingerprints interrupted provider errors by safe category without retaining their raw contents', async () => {
+    const firstSecret = 'provider output: keep-this-out-of-artifacts';
+    const firstDelegate = new BudgetScriptedProvider([new Error(firstSecret)]);
+    const firstProvider = new BudgetedFixedTraceProvider(
+      firstDelegate, new FixedTraceBudget(1), PRICING, RESPONSE_PRICING_POLICY,
+    );
+    const firstCursor = fixedTraceSettlementDiagnosticCursor(firstProvider);
+
+    await expect(collectModelResponse(firstProvider.respond(REQUEST))).rejects.toThrow(firstSecret);
+    const firstLedger = fixedTraceSettlementDiagnosticLedger(firstProvider, firstCursor);
+    expect(firstLedger.entries).toEqual([{
+      dispatchSequence: 1,
+      status: 'exposure_unknown',
+      reason: 'response_stream_interrupted',
+      errorFingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }]);
+    expect(JSON.stringify(firstLedger)).not.toContain(firstSecret);
+
+    const secondSecret = 'a distinct provider failure that must also stay private';
+    const secondDelegate = new BudgetScriptedProvider([new Error(secondSecret)]);
+    const secondProvider = new BudgetedFixedTraceProvider(
+      secondDelegate, new FixedTraceBudget(1), PRICING, RESPONSE_PRICING_POLICY,
+    );
+    const secondCursor = fixedTraceSettlementDiagnosticCursor(secondProvider);
+    await expect(collectModelResponse(secondProvider.respond(REQUEST))).rejects.toThrow(secondSecret);
+    const secondLedger = fixedTraceSettlementDiagnosticLedger(secondProvider, secondCursor);
+    expect(JSON.stringify(secondLedger)).not.toContain(secondSecret);
+    expect(secondLedger.entries[0]!.errorFingerprintSha256)
+      .toBe(firstLedger.entries[0]!.errorFingerprintSha256);
   });
 
   it('does not mark exposure unknown when the caller hook blocks dispatch', async () => {

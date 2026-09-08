@@ -337,6 +337,27 @@ export interface FixedTraceNotRunCohortStageControl {
   readonly status: 'not_run';
 }
 
+/**
+ * A bounded, redacted receipt from the budget wrapper when a dispatched
+ * response could not be settled. Provider output and error text never enter
+ * this record; the fingerprint is derived only from the versioned, safe
+ * failure category.
+ */
+export interface FixedTraceSettlementDiagnostic {
+  dispatchSequence: number;
+  status: 'exposure_unknown';
+  reason: 'identity_policy_rejected' | 'usage_or_cost_settlement_failed' | 'response_processing_failed' | 'response_stream_interrupted';
+  errorFingerprintSha256: string;
+}
+
+/** Per-stage view of the wrapper-owned, fixed-size settlement ledger. */
+export interface FixedTraceSettlementDiagnosticLedger {
+  fromDispatchExclusive: number;
+  throughDispatch: number;
+  truncated: boolean;
+  entries: readonly FixedTraceSettlementDiagnostic[];
+}
+
 export interface FixedTraceModelStageMetadata {
   source: 'provider' | 'local' | 'not_run';
   dispatched: boolean;
@@ -354,6 +375,8 @@ export interface FixedTraceModelStageMetadata {
     returnedProvider: ModelProviderId | null;
     returnedModel: string | null;
   }[];
+  /** Bounded wrapper receipts for unpriceable dispatched completions. */
+  settlementLedger?: FixedTraceSettlementDiagnosticLedger;
   modelResolution: 'exact' | 'provider_canonicalized' | 'local' | null;
   promptSha256: string | null;
   providerRequestSha256: string | null;
@@ -2801,6 +2824,7 @@ function directModelScreenMetadataFailures(
   const directModelScreenNotRunRouterKeys = [
     'source', 'dispatched', 'dispatchedCalls', 'requestedProvider', 'requestedModel',
     'returnedProvider', 'returnedModel', 'providerExposures', 'modelResolution',
+    'settlementLedger',
     'promptSha256', 'providerRequestSha256', 'reasoningEffort', 'effectiveMaxOutputTokens',
     'timeoutMs', 'maxIterations', 'transportRetries', 'samplingMode', 'temperature',
     'usageKnown', 'usage', 'estimatedCostUsd', 'pricingSource', 'pricingProfileId', 'latencyMs',
@@ -2897,6 +2921,28 @@ function stageMetadataFailures(
 ): string[] {
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
+  const settlementLedger = stage.settlementLedger;
+  if (settlementLedger !== undefined) {
+    const entries = settlementLedger.entries;
+    if (
+      !Number.isSafeInteger(settlementLedger.fromDispatchExclusive)
+      || settlementLedger.fromDispatchExclusive < 0
+      || !Number.isSafeInteger(settlementLedger.throughDispatch)
+      || settlementLedger.throughDispatch < settlementLedger.fromDispatchExclusive
+      || typeof settlementLedger.truncated !== 'boolean'
+      || !Array.isArray(entries)
+      || entries.length > 8
+      || entries.some((entry, index) => (
+        !Number.isSafeInteger(entry.dispatchSequence)
+        || entry.dispatchSequence <= settlementLedger.fromDispatchExclusive
+        || entry.dispatchSequence > settlementLedger.throughDispatch
+        || (index > 0 && entry.dispatchSequence <= entries[index - 1]!.dispatchSequence)
+        || entry.status !== 'exposure_unknown'
+        || !['identity_policy_rejected', 'usage_or_cost_settlement_failed', 'response_processing_failed', 'response_stream_interrupted'].includes(entry.reason)
+        || !isSha256(entry.errorFingerprintSha256)
+      ))
+    ) fail('settlement_ledger_invalid');
+  }
   if ('status' in control) {
     if (
       control.status !== 'not_run'
@@ -2924,6 +2970,7 @@ function stageMetadataFailures(
       || stage.pricingProfileId !== null
       || stage.latencyMs !== 0
       || (stage.providerExposures?.length ?? 0) !== 0
+      || (settlementLedger?.entries.length ?? 0) !== 0
     ) fail('not_run_control_invalid');
     return failures;
   }
