@@ -137,6 +137,21 @@ describe('side-effect receipt guard — escalation 567', () => {
       .toMatchObject({ enforced: true });
     expect(enforceSideEffectClaimReceipts('I resent the invoice.', [tool('send_invoice')]))
       .toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts('I created a meeting.', [tool('create_event')]))
+      .toMatchObject({ enforced: true });
+  });
+
+  it('guards terse completion wording but leaves an ordinary meeting agenda alone', () => {
+    expect(enforceSideEffectClaimReceipts('Invoice sent successfully.', [])).toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts('Done — invoice sent.', [])).toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts('I created a meeting agenda for you.', [])).toMatchObject({ enforced: false });
+  });
+
+  it('does not authorize a URL prefix when the exact receipt URL differs', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I created a payment link: https://payments.example/checkout',
+      [tool('create_payment_link', false, 'https://payments.example/checkout/secret')],
+    )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
   });
 
   it('does not treat an unrelated documentation URL as a claimed mutation receipt', () => {

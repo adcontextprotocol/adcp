@@ -63,11 +63,12 @@ interface ClaimRule {
 // prose never supplies confirmation; only the current request ledger can.
 const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
   { name: 'GitHub issue', tools: ['create_github_issue'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:just\s+)?(?:filed|opened|created|submitted)\s+(?:(?:an?\s+)?(?:GitHub\s+)?issue\b|#\d+\b)|\b(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue\b|\b(?:GitHub\s+)?issue(?:\s+#\d+)?\s+(?:(?:was|has been)\s+)?(?:filed|opened|created|submitted)\b/i },
-  { name: 'invoice sent', tools: ['send_invoice', 'confirm_send_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+sent\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+sent\b/i },
+  { name: 'invoice sent', tools: ['send_invoice', 'confirm_send_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+sent\s+(?:the\s+)?invoice\b|\b(?:done\s*[—:-]\s*)?invoice\s+(?:(?:was|has been)\s+)?sent\b/i },
   { name: 'invoice resent', tools: ['resend_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+resent\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+resent\b/i },
   { name: 'billing update', tools: ['update_billing_email'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|changed)\s+(?:the\s+)?billing\s+email\b|\bbilling\s+email\s+(?:was|has been)\s+(?:updated|changed)\b/i },
   { name: 'escalation', tools: ['resolve_escalation', 'escalate_to_admin'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:resolved|escalated|notified)\s+(?:the\s+)?(?:escalation|support\s+ticket|team)\b|\b(?:the\s+)?team\s+(?:has been|was)\s+notified\b|\bescalation\s+#?\d+\s+(?:was|has been)\s+resolved\b/i },
   { name: 'meeting scheduled', tools: ['schedule_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+scheduled\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+scheduled\b/i },
+  { name: 'meeting created', tools: ['schedule_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+created\s+(?:(?:an?|the)\s+)?meeting\b(?!\s+agenda\b)/i },
   { name: 'meeting updated', tools: ['update_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+updated\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+updated\b/i },
   { name: 'meeting cancelled', tools: ['cancel_meeting', 'cancel_meeting_series'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:cancelled|canceled)\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+(?:cancelled|canceled)\b/i },
   { name: 'meeting attendee', tools: ['add_meeting_attendee', 'rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added\s+(?:an?\s+)?attendee|RSVP(?:'d|ed)?)\b/i },
@@ -113,8 +114,18 @@ function successfulExternalClaimReceipts(text: string, executions: readonly Tool
     .find(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(text));
   if (!action) return [];
   const prefix = action[1];
-  return successful(executions, [...SIDE_EFFECT_TOOL_NAMES])
-    .filter((execution) => execution.tool_name.startsWith(prefix));
+  const target = [
+    'meeting', 'event', 'invoice', 'payment', 'resource', 'bookmark', 'reminder', 'member',
+    'organization', 'chapter', 'committee', 'document', 'discount', 'contact', 'prospect',
+    'invitation', 'invite', 'domain', 'account', 'record', 'property', 'brand', 'agent',
+    'listing', 'logo', 'asset', 'content', 'post', 'working_group', 'escalation', 'catalog',
+    'certification', 'module', 'exam', 'illustration', 'portrait', 'token', 'introduction',
+  ].find((candidate) => new RegExp(`\\b${candidate.replace('_', '\\s+')}\\b`, 'i').test(text));
+  return successful(executions, [...SIDE_EFFECT_TOOL_NAMES]).filter((execution) => {
+    if (target && !execution.tool_name.includes(target)) return false;
+    return execution.tool_name.startsWith(prefix)
+      || (target === 'meeting' && action[0] === 'created' && execution.tool_name === 'schedule_meeting');
+  });
 }
 
 function githubReceipt(execution: ToolExecution): { number: string; url: string } | null {
@@ -155,14 +166,18 @@ function claimedReceiptUrls(text: string, rule: ClaimRule): string[] {
       || /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|resource)\s+(?:url|link)\b|\b(?:url|link)\s*:/i.test(sentence)
       || /\b(?:join|access|view|open|track)\s+(?:at|here|via)\b/i.test(sentence);
     if (!isOutcomeSentence) return [];
-    return sentence.split(/[\s<>()\[\]]+/).map((token) => token.replace(/[.,:;!?]+$/, '')).filter((token) => {
+    return receiptUrls(sentence);
+  });
+}
+
+function receiptUrls(text: string): string[] {
+  return text.split(/[\s<>()\[\]"'=]+/).map((token) => token.replace(/[.,:;!?]+$/, '')).filter((token) => {
       try {
         return new URL(token).protocol === 'https:';
       } catch {
         return false;
       }
     });
-  });
 }
 
 /**
@@ -178,7 +193,7 @@ function claimedReceiptIdentifiers(text: string): string[] {
 }
 
 function receiptContainsExactValue(receipt: ToolExecution, value: string): boolean {
-  if (value.startsWith('https://')) return receipt.result.includes(value);
+  if (value.startsWith('https://')) return receiptUrls(receipt.result).includes(value);
   return receipt.result
     .split(/[^A-Za-z0-9_-]+/)
     .some((token) => token === value);
@@ -199,6 +214,8 @@ export function enforceSideEffectClaimReceipts(
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
     const githubClaim = rule.name === 'GitHub issue' && isGithubSuccessClaim(text);
     if (!githubClaim && !rule.pattern.test(text)) continue;
+    // A meeting agenda is ordinary in-chat prose, not a calendar side effect.
+    if (rule.name === 'external state change' && /\bmeeting\s+agenda\b/i.test(text)) continue;
     const receipts = rule.name === 'external state change'
       ? successfulExternalClaimReceipts(text, executions)
       : successful(executions, rule.tools);
