@@ -13,6 +13,19 @@ export interface GithubIssueCreationReceipt {
   readonly issueUrl: string;
 }
 
+/**
+ * A production write needs an application-owned action signal. Ordinary chat
+ * prose may ask for a draft, but it never authorizes dispatch on its own.
+ * Isolated executions have no live external effect and retain their existing
+ * evaluation/replay behavior.
+ */
+export function mayDispatchGithubIssueCreation(
+  creationRequested: boolean,
+  executionMode: 'production' | 'evaluation' | 'replay' | 'shadow',
+): boolean {
+  return executionMode !== 'production' || creationRequested;
+}
+
 /** Application-recorded conversation data; model text is intentionally absent. */
 export interface GithubIssueCreationIntentContext {
   readonly user: string;

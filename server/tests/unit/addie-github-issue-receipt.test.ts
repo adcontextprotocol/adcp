@@ -4,6 +4,7 @@ import {
   githubIssueCreatedResult,
   githubIssueReceiptFromHandlerResult,
   isGithubIssueCreationRequested,
+  mayDispatchGithubIssueCreation,
   renderGithubIssueCreationOutcome,
 } from '../../src/addie/github-issue-receipt.js';
 import type { ToolExecution } from '../../src/addie/model-providers/tool-orchestration.js';
@@ -36,6 +37,12 @@ describe('GitHub issue terminal receipt — Escalation #567', () => {
     expect(isGithubIssueCreationRequested('Yes, go ahead.', [])).toBe(false);
     expect(isGithubIssueCreationRequested('No thanks.', draft)).toBe(false);
     expect(isGithubIssueCreationRequested('Please create a GitHub issue.', [])).toBe(false);
+  });
+
+  it('does not dispatch a live GitHub write from ordinary chat prose', () => {
+    expect(mayDispatchGithubIssueCreation(false, 'production')).toBe(false);
+    expect(mayDispatchGithubIssueCreation(true, 'production')).toBe(true);
+    expect(mayDispatchGithubIssueCreation(false, 'evaluation')).toBe(true);
   });
 
   it('fails closed for an explicitly requested creation when the model made no tool call', () => {

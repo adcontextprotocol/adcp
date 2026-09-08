@@ -112,6 +112,7 @@ import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js
 import {
   githubIssueReceiptFromStoredValue,
   isGithubIssueCreationRequested,
+  mayDispatchGithubIssueCreation,
   renderGithubIssueCreationOutcome,
   type GithubIssueCreationReceipt,
 } from './github-issue-receipt.js';
@@ -445,6 +446,26 @@ function rehydratedGithubIssueRetryExecutions(
       github_issue_receipt: verified,
     }] : [];
   });
+}
+
+/**
+ * Compose the application-owned GitHub dispatch guard with an optional
+ * caller policy. This is a pre-dispatch authorization check, not a natural
+ * language classifier: a model cannot turn an ordinary chat message into a
+ * live issue write without the explicit action signal or recorded draft
+ * confirmation that produced `creationRequested`.
+ */
+function githubIssueCreationExecutionPolicy(
+  creationRequested: boolean,
+  callerPolicy: ToolExecutionPolicy | undefined,
+): ToolExecutionPolicy {
+  return async (request) => {
+    if (
+      request.toolName === 'create_github_issue'
+      && !mayDispatchGithubIssueCreation(creationRequested, request.executionMode)
+    ) return { allowed: false };
+    return callerPolicy?.(request) ?? { allowed: request.executionMode === 'production' };
+  };
 }
 
 /** Apply the safety/style pipeline exactly once before any terminal delivery. */
@@ -1539,7 +1560,10 @@ export class AddieClaudeClient {
       allHandlers,
       {
         executionMode: options?.executionMode ?? 'production',
-        policy: options?.toolExecutionPolicy,
+        policy: githubIssueCreationExecutionPolicy(
+          githubIssueCreationRequested,
+          options?.toolExecutionPolicy,
+        ),
         reserveSideEffect: options?.reserveSideEffect,
         notificationContext: {
           slackUserId: options?.slackUserId,
@@ -2141,7 +2165,10 @@ export class AddieClaudeClient {
 
     const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
       executionMode: options?.executionMode ?? 'production',
-      policy: options?.toolExecutionPolicy,
+      policy: githubIssueCreationExecutionPolicy(
+        githubIssueCreationRequested,
+        options?.toolExecutionPolicy,
+      ),
       reserveSideEffect: options?.reserveSideEffect,
       notificationContext: {
         slackUserId: options?.slackUserId,
