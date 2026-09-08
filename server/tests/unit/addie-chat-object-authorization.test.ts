@@ -447,6 +447,31 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.processMessage).toHaveBeenCalledOnce();
   });
 
+  it('wires the synchronous web path through a durable mutation reservation before dispatch', async () => {
+    mocks.authenticated = false;
+    const ownerId = 'anonymous-owner';
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_anonymous', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'anonymous', user_id: ownerId,
+    });
+    mocks.processMessage.mockImplementation(async (...args: unknown[]) => {
+      const options = args[4] as { reserveSideEffect: (request: { toolName: string; parameters: Record<string, unknown> }) => Promise<void> };
+      await options.reserveSideEffect({ toolName: 'schedule_meeting', parameters: { title: 'Synthetic review' } });
+      return successfulModelResponse('The action was not confirmed.');
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/')
+      .set('Cookie', `addie-anonymous-owner=${issueAnonymousSessionCapability('addie-web-thread-owner', ownerId)}`)
+      .send({ message: 'Schedule a synthetic review', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant', content: '', delivery_status: 'interrupted',
+      tool_calls: [expect.objectContaining({ name: 'schedule_meeting', input: { title: 'Synthetic review' } })],
+    }));
+  });
+
   it('claims a browser-owned anonymous thread when that learner signs in', async () => {
     const ownerId = 'anonymous-owner';
     mocks.getThreadByExternalId.mockResolvedValue({

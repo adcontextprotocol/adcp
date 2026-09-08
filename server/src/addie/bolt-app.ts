@@ -175,6 +175,7 @@ import {
 import {
   blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
   type StoredToolCall,
 } from './stream-tool-checkpoints.js';
 import type { ToolExecution } from './model-providers/tool-orchestration.js';
@@ -2156,7 +2157,17 @@ async function handleUserMessage({
         log: (level, fields, message) => logger[level](fields, message),
       };
 
-      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
+      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, {
+        ...processOptions,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await reserveToolIntentCheckpoint(threadService, {
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: dmEffectiveModel,
+          });
+        },
+      })) {
         streamState = await interpretSlackDmStreamEvent(
           streamState,
           event,
@@ -2356,7 +2367,17 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+        ...processOptions,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await reserveToolIntentCheckpoint(threadService, {
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: dmEffectiveModel,
+          });
+        },
+      });
       fullText = response.text;
 
       // Send response via say() with feedback buttons and inline images
@@ -2529,6 +2550,8 @@ async function handleUserMessage({
         result: exec.result,
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
+        result_status: exec.normalized_result?.status,
+        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: dmEffectiveModel,
       model_execution: response.model_execution,
@@ -2920,7 +2943,17 @@ export async function handleAppMention({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await reserveToolIntentCheckpoint(threadService, {
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: mentionEffectiveModel,
+        });
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -2967,6 +3000,8 @@ export async function handleAppMention({
         result: exec.result,
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
+        result_status: exec.normalized_result?.status,
+        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: mentionEffectiveModel,
       model_execution: response.model_execution,
@@ -4253,7 +4288,17 @@ async function handleDirectMessage(
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await reserveToolIntentCheckpoint(threadService, {
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: directMessageEffectiveModel,
+        });
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing DM');
     response = {
@@ -4300,8 +4345,10 @@ async function handleDirectMessage(
       input: exec.parameters,
       result: exec.result,
       duration_ms: exec.duration_ms,
-      is_error: exec.is_error,
-    })),
+        is_error: exec.is_error,
+        result_status: exec.normalized_result?.status,
+        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
+      })),
     model: directMessageEffectiveModel,
     model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
@@ -4666,7 +4713,17 @@ async function handleActiveThreadReply({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await reserveToolIntentCheckpoint(threadService, {
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: activeThreadEffectiveModel,
+        });
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing active thread reply');
     response = {
@@ -4720,6 +4777,8 @@ async function handleActiveThreadReply({
         result: exec.result,
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
+        result_status: exec.normalized_result?.status,
+        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: activeThreadEffectiveModel,
       model_execution: response.model_execution,
@@ -5289,7 +5348,17 @@ async function handleChannelMessage({
       undefined,
       invocation.requestTools,
       undefined,
-      processOptions,
+      {
+        ...processOptions,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await reserveToolIntentCheckpoint(threadService, {
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: processOptions.modelOverride ?? AddieModelConfig.chat,
+          });
+        },
+      },
     );
 
     if (!response.text || response.text.trim().length === 0) {
@@ -5317,6 +5386,8 @@ async function handleChannelMessage({
         result: exec.result,
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
+        result_status: exec.normalized_result?.status,
+        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: invocation.effectiveModel,
       model_execution: response.model_execution,
@@ -6258,7 +6329,17 @@ async function handleReactionAdded({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, processOptions);
+    response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await reserveToolIntentCheckpoint(threadService, {
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: AddieModelConfig.chat,
+        });
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing reaction response');
     response = {
@@ -6300,6 +6381,8 @@ async function handleReactionAdded({
         result: exec.result,
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
+        result_status: exec.normalized_result?.status,
+        ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: AddieModelConfig.chat,
       model_execution: response.model_execution,

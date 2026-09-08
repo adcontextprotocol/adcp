@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
+import { githubIssueReceiptFromHandlerResult } from '../../server/src/addie/github-issue-receipt.js';
 
 const memberToolMocks = vi.hoisted(() => ({
   checkToolRateLimit: vi.fn(),
@@ -840,8 +841,11 @@ describe('createMemberToolHandlers', () => {
 
       const result = await handler({ title: 'Bug report', body: 'Something broke.' });
 
-      expect(result).toContain('#4242');
-      expect(result).toContain('https://github.com/adcontextprotocol/adcp/issues/4242');
+      expect(githubIssueReceiptFromHandlerResult(result)).toEqual({
+        toolName: 'create_github_issue',
+        issueNumber: 4242,
+        issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/4242',
+      });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -891,7 +895,11 @@ describe('createMemberToolHandlers', () => {
 
       const result = await handler({ title: 'T', body: 'B' });
 
-      expect(result).toContain('#77');
+      expect(githubIssueReceiptFromHandlerResult(result)).toEqual({
+        toolName: 'create_github_issue',
+        issueNumber: 77,
+        issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/77',
+      });
       expect(fetchMock).toHaveBeenCalledTimes(2);
       const retryBody = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
       expect(retryBody).not.toHaveProperty('labels');

@@ -359,6 +359,7 @@ export async function runFixedTraceIncidentEval(): Promise<FixedTraceIncidentEva
         result: execution.result,
         duration_ms: execution.duration_ms,
         is_error: execution.is_error,
+        result_status: execution.normalized_result?.status,
       })),
       model: 'claude-fixed-trace-eval',
       model_execution: slackResponse.model_execution,

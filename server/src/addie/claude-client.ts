@@ -16,6 +16,7 @@ import {
   buildAddieScopedToolReference,
   buildAddieStableToolReference,
   buildMessageTurnsWithMetadata,
+  type ThreadContextEntry,
 } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -108,6 +109,13 @@ import {
   type ToolResultPresentation,
 } from './tool-result-contract.js';
 import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js';
+import {
+  githubIssueReceiptFromStoredValue,
+  isGithubIssueCreationRequested,
+  mayDispatchGithubIssueCreation,
+  renderGithubIssueCreationOutcome,
+  type GithubIssueRetryReceipt,
+} from './github-issue-receipt.js';
 
 export interface InvocationPreparedSnapshot {
   execution_mode: AddieExecutionMode;
@@ -320,10 +328,10 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
   // pattern stays loose because it's the primary signal for the original
   // failure shape ("Done — the team has been notified (ticket #228)") where
   // no other pattern fits the punctuation context.
-  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue'] },
   { pattern: /(?:the\s+)?team\s+(?:has\s+been\s+|will\s+be\s+|is\s+being\s+)notified/i, expectedTools: ['escalate_to_admin'] },
   { pattern: /I'?ve\s+(?:flagged|escalated|notified)\s+(?:this|the\s+team|the\s+admins?)/i, expectedTools: ['escalate_to_admin'] },
-  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue'] },
 ];
 
 /**
@@ -423,14 +431,70 @@ interface FinalizedAssistantText {
   lengthExceeded: boolean;
 }
 
+function rehydratedGithubIssueRetryExecutions(
+  retries: readonly GithubIssueRetryReceipt[],
+  clientRequestId: string | undefined,
+): ToolExecution[] {
+  if (!clientRequestId) return [];
+  return retries.flatMap((retry, index) => {
+    if (retry.clientRequestId !== clientRequestId) return [];
+    const verified = githubIssueReceiptFromStoredValue(retry.receipt);
+    return verified ? [{
+      tool_name: 'create_github_issue',
+      parameters: {},
+      result: 'GitHub issue creation completed.',
+      is_error: false,
+      duration_ms: 0,
+      sequence: -(index + 1),
+      github_issue_receipt: verified,
+    }] : [];
+  });
+}
+
+/**
+ * Compose the application-owned GitHub dispatch guard with an optional
+ * caller policy. This is a pre-dispatch authorization check, not a natural
+ * language classifier: a model cannot turn an ordinary chat message into a
+ * live issue write without the explicit action signal or recorded draft
+ * confirmation that produced `creationRequested`.
+ */
+function githubIssueCreationExecutionPolicy(
+  creationRequested: boolean,
+  callerPolicy: ToolExecutionPolicy | undefined,
+): ToolExecutionPolicy {
+  return async (request) => {
+    if (
+      request.toolName === 'create_github_issue'
+      && !mayDispatchGithubIssueCreation(creationRequested, request.executionMode)
+    ) return { allowed: false };
+    return callerPolicy?.(request) ?? { allowed: request.executionMode === 'production' };
+  };
+}
+
 /** Apply the safety/style pipeline exactly once before any terminal delivery. */
 function finalizeAssistantText(
   question: string,
   rawText: string,
   toolExecutions: readonly ToolExecution[],
+  githubIssueCreationRequested: boolean,
+  githubIssueRetryReceipts: readonly GithubIssueRetryReceipt[] = [],
+  clientRequestId: string | undefined,
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
-  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(rawText, toolExecutions);
+  // This list is supplied only by the same client-request retry path.
+  const retryExecutions = rehydratedGithubIssueRetryExecutions(githubIssueRetryReceipts, clientRequestId);
+  const githubIssueOutcome = renderGithubIssueCreationOutcome({
+    creationRequested: githubIssueCreationRequested,
+    executions: [...retryExecutions, ...toolExecutions],
+  });
+  if (githubIssueOutcome.reason) {
+    logger.error(
+      { event: 'addie_github_issue_not_confirmed' },
+      'Addie: Replaced an unconfirmed GitHub issue outcome',
+    );
+  }
+  const terminalText = githubIssueOutcome.text ?? rawText;
+  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(terminalText, toolExecutions);
   if (evidenceBoundary.enforced) {
     logger.warn(
       {
@@ -450,7 +514,7 @@ function finalizeAssistantText(
   return {
     text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
     emptyReason: processed.reason,
-    localReplacementReason: evidenceBoundary.reason,
+    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason,
     lengthExceeded,
   };
 }
@@ -551,12 +615,27 @@ export interface ProcessMessageOptions {
   selectedToolSetNames?: readonly string[];
   /** Optional first-turn tool requirement chosen by trusted orchestration. */
   initialToolChoice?: ModelToolChoice;
+  /** Caller-owned action intent. This is never inferred from general user prose. */
+  githubIssueCreationRequested?: boolean;
+  /** Browser-turn ID used to bind an interrupted-delivery receipt replay. */
+  clientRequestId?: string;
+  /** Verified receipts carried only from a checkpoint bound to clientRequestId. */
+  githubIssueRetryReceipts?: readonly GithubIssueRetryReceipt[];
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
   invocationHashDomain?: string;
   /** Fail-closed hook evaluated immediately before each custom handler dispatch. */
   toolExecutionPolicy?: ToolExecutionPolicy;
+  /**
+   * Caller-provided durable unknown-outcome write performed immediately before
+   * a production mutation handler is dispatched. Missing or failed writes
+   * fail closed at the shared executor boundary.
+   */
+  reserveSideEffect?: (request: {
+    toolName: string;
+    parameters: Record<string, unknown>;
+  }) => void | Promise<void>;
   /**
    * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
@@ -711,6 +790,9 @@ const MAX_ITERATIONS_FALLBACK_TEXT = "I'm having trouble completing that request
 
 interface TerminalAddieResponseCommon {
   userMessage: string;
+  githubIssueCreationRequested: boolean;
+  clientRequestId?: string;
+  githubIssueRetryReceipts?: readonly GithubIssueRetryReceipt[];
   rawText: string;
   toolsUsed: readonly string[];
   toolExecutions: readonly ToolExecution[];
@@ -751,10 +833,17 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
     input.userMessage,
     terminalRawText,
     input.toolExecutions,
+    input.githubIssueCreationRequested,
+    input.githubIssueRetryReceipts,
+    input.clientRequestId,
     input.kind === 'provider' && input.disposition === 'truncated',
   );
+  const terminalExecutions = [
+    ...rehydratedGithubIssueRetryExecutions(input.githubIssueRetryReceipts ?? [], input.clientRequestId),
+    ...input.toolExecutions,
+  ];
   const hallucinationReason = input.kind === 'provider' && input.disposition === 'complete'
-    ? detectHallucinatedAction(finalized.text, input.toolExecutions)
+    ? detectHallucinatedAction(finalized.text, terminalExecutions)
     : null;
   const flagReason = input.kind === 'max_iterations'
     ? 'Max tool iterations reached'
@@ -1210,7 +1299,7 @@ export class AddieClaudeClient {
   /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
   private prepareFirstInvocation(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
@@ -1324,7 +1413,7 @@ export class AddieClaudeClient {
    */
   prepareMessageInvocation(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
@@ -1368,13 +1457,15 @@ export class AddieClaudeClient {
    */
   async processMessage(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    const githubIssueCreationRequested = options?.githubIssueCreationRequested
+      ?? isGithubIssueCreationRequested(userMessage, threadContext);
     if (operationalExecution && this.modelProvider.id !== 'anthropic') {
       throw new Error('Alternate Addie model providers are restricted to isolated execution');
     }
@@ -1477,7 +1568,11 @@ export class AddieClaudeClient {
       allHandlers,
       {
         executionMode: options?.executionMode ?? 'production',
-        policy: options?.toolExecutionPolicy,
+        policy: githubIssueCreationExecutionPolicy(
+          githubIssueCreationRequested,
+          options?.toolExecutionPolicy,
+        ),
+        reserveSideEffect: options?.reserveSideEffect,
         notificationContext: {
           slackUserId: options?.slackUserId,
           userDisplayName: options?.userDisplayName,
@@ -1780,6 +1875,9 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'truncated',
           userMessage,
+          githubIssueCreationRequested,
+          clientRequestId: options?.clientRequestId,
+          githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
           rawText,
           toolsUsed,
           toolExecutions,
@@ -1829,6 +1927,9 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'complete',
           userMessage,
+          githubIssueCreationRequested,
+          clientRequestId: options?.clientRequestId,
+          githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
           rawText,
           toolsUsed,
           toolExecutions,
@@ -1888,6 +1989,9 @@ export class AddieClaudeClient {
     const terminal = buildTerminalAddieResponse({
       kind: 'max_iterations',
       userMessage,
+      githubIssueCreationRequested,
+      clientRequestId: options?.clientRequestId,
+      githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
       rawText: '',
       toolsUsed,
       toolExecutions,
@@ -1934,12 +2038,14 @@ export class AddieClaudeClient {
    */
   async *processMessageStream(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    const githubIssueCreationRequested = options?.githubIssueCreationRequested
+      ?? isGithubIssueCreationRequested(userMessage, threadContext);
     if (operationalExecution && this.modelProvider.id !== 'anthropic') {
       throw new Error('Alternate Addie model providers are restricted to isolated execution');
     }
@@ -2070,7 +2176,11 @@ export class AddieClaudeClient {
 
     const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
       executionMode: options?.executionMode ?? 'production',
-      policy: options?.toolExecutionPolicy,
+      policy: githubIssueCreationExecutionPolicy(
+        githubIssueCreationRequested,
+        options?.toolExecutionPolicy,
+      ),
+      reserveSideEffect: options?.reserveSideEffect,
       notificationContext: {
         slackUserId: options?.slackUserId,
         userDisplayName: options?.userDisplayName,
@@ -2527,6 +2637,9 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'truncated',
             userMessage,
+            githubIssueCreationRequested,
+            clientRequestId: options?.clientRequestId,
+            githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
             rawText: logicalText,
             toolsUsed,
             toolExecutions,
@@ -2579,6 +2692,9 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'complete',
             userMessage,
+            githubIssueCreationRequested,
+            clientRequestId: options?.clientRequestId,
+            githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
             rawText: logicalText,
             toolsUsed,
             toolExecutions,
@@ -2635,6 +2751,9 @@ export class AddieClaudeClient {
       const terminal = buildTerminalAddieResponse({
         kind: 'max_iterations',
         userMessage,
+        githubIssueCreationRequested,
+        clientRequestId: options?.clientRequestId,
+        githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
         rawText: logicalText,
         toolsUsed,
         toolExecutions,

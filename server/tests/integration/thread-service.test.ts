@@ -146,6 +146,212 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
   });
 
   describe('addMessage', () => {
+    it('allows a later identical mutation after an exact successful receipt settles its reservation', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-settled-mutation-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const reservation = {
+        name: 'schedule_meeting',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ ...reservation, result: 'Meeting scheduled: meeting_id=meet_701', is_error: false, result_status: 'ok' }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      })).resolves.toBeDefined();
+    });
+
+    it('retains the exact replay lock when the later tool result is an error', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-unknown-mutation-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const reservation = {
+        name: 'schedule_meeting',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ ...reservation, result: 'Calendar provider unavailable', is_error: true, result_status: 'error' }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      })).rejects.toThrow('unknown prior outcome');
+    });
+
+    it('does not settle a GitHub creation reservation from a receiptless ok result', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-github-receiptless-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Synthetic issue', body: 'Synthetic body' };
+      const reservation = {
+        name: 'create_github_issue', input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.', is_error: true,
+      };
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '', tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'create_github_issue', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '',
+        tool_calls: [{ ...reservation, result: 'Issue created.', is_error: false, result_status: 'ok' }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '',
+        tool_calls: [{
+          ...reservation, result: 'Issue created.', is_error: false, result_status: 'ok',
+          // Text extraction alone would accept this; the durable receipt must
+          // retain the same JSON types as the application-owned constructor.
+          github_issue_receipt: {
+            toolName: 'create_github_issue', issueNumber: '701',
+            issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+          },
+        }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '', tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'create_github_issue', input: parameters },
+      })).rejects.toThrow('unknown prior outcome');
+    });
+
+    it('settles a GitHub creation reservation only from its canonical typed receipt', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-github-receipted-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Synthetic issue', body: 'Synthetic body' };
+      const reservation = {
+        name: 'create_github_issue', input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.', is_error: true,
+      };
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '', tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'create_github_issue', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '',
+        tool_calls: [{
+          ...reservation, result: 'GitHub issue creation completed.', is_error: false, result_status: 'ok',
+          github_issue_receipt: {
+            toolName: 'create_github_issue', issueNumber: 701,
+            issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+          },
+        }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '', tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'create_github_issue', input: parameters },
+      })).resolves.toBeDefined();
+    });
+
+    it('retains the exact replay lock when a structured result is empty', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-empty-mutation-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const reservation = {
+        name: 'schedule_meeting',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ ...reservation, result: 'No meeting was scheduled.', is_error: false, result_status: 'empty' }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      })).rejects.toThrow('unknown prior outcome');
+    });
+
     it('should add a message to a thread', async () => {
       const thread = await threadService.getOrCreateThread({
         channel: 'slack',
