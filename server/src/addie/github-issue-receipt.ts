@@ -50,6 +50,17 @@ function canonicalReceipt(input: { issueNumber: number; issueUrl: string }): Git
   });
 }
 
+/** Revalidate a receipt read from durable request-local checkpoint data. */
+export function githubIssueReceiptFromStoredValue(value: unknown): GithubIssueCreationReceipt | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Partial<GithubIssueCreationReceipt>;
+  if (candidate.toolName !== 'create_github_issue') return null;
+  return canonicalReceipt({
+    issueNumber: candidate.issueNumber as number,
+    issueUrl: candidate.issueUrl as string,
+  });
+}
+
 /** Constructed only by the application handler after GitHub returns an issue. */
 export function githubIssueCreatedResult(input: {
   issueNumber: number;
@@ -74,9 +85,7 @@ export function githubIssueReceiptFromHandlerResult(result: ToolHandlerResult): 
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const candidate = result as Partial<GithubIssueCreationResult>;
   if (candidate.kind !== 'github_issue_creation' || candidate.status !== 'ok') return null;
-  const receipt = candidate.receipt;
-  if (!receipt || receipt.toolName !== 'create_github_issue') return null;
-  return canonicalReceipt(receipt);
+  return githubIssueReceiptFromStoredValue(candidate.receipt);
 }
 
 function receiptLine(receipt: GithubIssueCreationReceipt): string {

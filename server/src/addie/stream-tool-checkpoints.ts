@@ -12,6 +12,7 @@ export interface StoredToolCall {
   duration_ms?: number;
   is_error?: boolean;
   result_status?: string;
+  github_issue_receipt?: unknown;
 }
 
 function canonicalJson(value: unknown): string {
@@ -35,6 +36,7 @@ export function storedToolCall(execution: ToolExecution): StoredToolCall {
     duration_ms: execution.duration_ms,
     is_error: execution.is_error,
     ...(execution.normalized_result && { result_status: execution.normalized_result.status }),
+    ...(execution.github_issue_receipt && { github_issue_receipt: execution.github_issue_receipt }),
   };
 }
 

@@ -539,6 +539,34 @@ describe('Addie empty-response fallback (#4430)', () => {
     );
     expect(confirmedResponse.text).toContain('not confirmed');
     expect(confirmedResponse.text).not.toContain('#701');
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const retryResponse = await client.processMessage('Continue the interrupted reply.', undefined, undefined, undefined, {
+      uncapped: true,
+      githubIssueRetryReceipts: [{
+        toolName: 'create_github_issue',
+        issueNumber: 701,
+        issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+      }],
+    });
+    expect(retryResponse.text).toBe('GitHub issue created:\n- [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    expect(retryResponse.flag_reason).toBeUndefined();
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const staleHistoryResponse = await client.processMessage('Create the next issue.', [{
+      user: 'Addie',
+      text: 'Prior issue result.',
+      toolCalls: [{
+        name: 'create_github_issue',
+        input: { title: 'Prior issue' },
+        result: 'GitHub issue creation completed.',
+      }],
+    }], undefined, undefined, {
+      uncapped: true,
+      githubIssueCreationRequested: true,
+    });
+    expect(staleHistoryResponse.text).toContain('not confirmed');
+    expect(staleHistoryResponse.text).not.toContain('#701');
   });
 
   it('does not turn a read-only GitHub clarification into a failed creation', async () => {

@@ -37,6 +37,7 @@ import {
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
+import { githubIssueReceiptFromStoredValue } from '../addie/github-issue-receipt.js';
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   MAX_INPUT_LENGTH,
@@ -1439,6 +1440,7 @@ export function createAddieChatRouter(options?: {
               duration_ms: exec.duration_ms,
               is_error: exec.is_error,
               result_status: exec.normalized_result?.status,
+              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
             }))
           : undefined,
         model: effectiveModel,
@@ -1760,6 +1762,16 @@ export function createAddieChatRouter(options?: {
             ))
             .flatMap((message) => message.tool_calls ?? [])
         : [];
+      // Only the same client-request retry may carry a durable receipt across
+      // an interrupted delivery. Revalidate each JSONB value before it reaches
+      // terminal rendering; later turns never enter this path.
+      const retryGithubIssueReceipts = retryCheckpointToolCalls.flatMap((call) => (
+        call.name === 'create_github_issue'
+          && call.is_error !== true
+          && call.result_status === 'ok'
+          ? [githubIssueReceiptFromStoredValue(call.github_issue_receipt)]
+          : []
+      )).filter((receipt): receipt is NonNullable<typeof receipt> => receipt !== null);
 
       // Save user message
       if (!existingUserMessage) {
@@ -1915,6 +1927,7 @@ export function createAddieChatRouter(options?: {
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
         githubIssueCreationRequested,
+        ...(retryGithubIssueReceipts.length > 0 && { githubIssueRetryReceipts: retryGithubIssueReceipts }),
         reserveSideEffect: async ({ toolName, parameters }) => {
           await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
@@ -2161,6 +2174,7 @@ export function createAddieChatRouter(options?: {
               duration_ms: exec.duration_ms,
               is_error: exec.is_error,
               result_status: exec.normalized_result?.status,
+              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
             }))
           : undefined,
         model: effectiveModel,

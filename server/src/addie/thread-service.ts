@@ -118,7 +118,7 @@ interface CreateMessageInputBase {
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
-  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string }>;
+  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; github_issue_receipt?: unknown }>;
   knowledge_ids?: number[];
   model?: string;
   latency_ms?: number;
@@ -186,7 +186,7 @@ export interface ThreadMessage {
   content: string;
   content_sanitized: string | null;
   tools_used: string[] | null;
-  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string }> | null;
+  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; github_issue_receipt?: unknown }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
   model_execution_source: 'provider' | 'local' | 'legacy' | null;

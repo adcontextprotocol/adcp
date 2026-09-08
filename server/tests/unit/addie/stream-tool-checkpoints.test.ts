@@ -72,6 +72,32 @@ describe('stream tool checkpoints', () => {
     expect(checkpoint.tool_calls).toEqual([expect.objectContaining({ result_status: 'ok' })]);
   });
 
+  it('preserves a typed GitHub receipt for the same client-request retry', () => {
+    const checkpoint = buildToolResultCheckpoint({
+      threadId: 'thread-1',
+      execution: {
+        ...execution,
+        tool_name: 'create_github_issue',
+        normalized_result: { status: 'ok', user_summary: 'Issue created.', source: 'structured' },
+        github_issue_receipt: {
+          toolName: 'create_github_issue',
+          issueNumber: 701,
+          issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+        },
+      },
+      requestedModel: 'claude-sonnet-5',
+      clientRequestId: 'request-1',
+    });
+    expect(checkpoint.tool_calls).toEqual([expect.objectContaining({
+      result_status: 'ok',
+      github_issue_receipt: {
+        toolName: 'create_github_issue',
+        issueNumber: 701,
+        issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+      },
+    })]);
+  });
+
   it('surfaces the durable store refusal for an exact replay with an unknown outcome', async () => {
     const addMessage = vi.fn().mockRejectedValue(new Error('An identical external action has an unknown prior outcome and was not retried automatically.'));
     const threadService = {
