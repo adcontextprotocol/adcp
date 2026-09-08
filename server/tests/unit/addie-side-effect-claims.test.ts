@@ -13,6 +13,7 @@ const issue = (number: number, is_error = false): ToolExecution => ({
   is_error,
   duration_ms: 1,
   sequence: number,
+  normalized_result: { status: 'ok', user_summary: 'Issue created.', source: 'classified' },
 });
 
 const tool = (tool_name: string, is_error = false, result = 'Synthetic completed action.'): ToolExecution => ({
@@ -22,6 +23,7 @@ const tool = (tool_name: string, is_error = false, result = 'Synthetic completed
   is_error,
   duration_ms: 1,
   sequence: 1,
+  normalized_result: { status: 'ok', user_summary: 'Synthetic completed action.', source: 'structured' },
 });
 
 describe('side-effect receipt guard — escalation 567', () => {
@@ -179,6 +181,23 @@ describe('side-effect receipt guard — escalation 567', () => {
       .toMatchObject({ enforced: true, reason: 'unverified_meeting_RSVP_claim' });
     expect(enforceSideEffectClaimReceipts("I've RSVP'd.", [tool('rsvp_to_meeting')]))
       .toMatchObject({ enforced: false });
+  });
+
+  it.each(['empty', 'error', 'recoverable_error', 'access_denied', 'invalid_input'] as const)(
+    'does not treat a structured %s result as a successful receipt',
+    (status) => {
+      expect(enforceSideEffectClaimReceipts("I've scheduled the meeting.", [{
+        ...tool('schedule_meeting', false, 'No meeting was scheduled.'),
+        normalized_result: { status, user_summary: 'No meeting was scheduled.', source: 'structured' },
+      }])).toMatchObject({ enforced: true, reason: 'unverified_meeting_scheduled_claim' });
+    },
+  );
+
+  it('binds every generic mutation verb to its adjacent target', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I added an agenda item and updated the member.',
+      [tool('add_member_to_org', false, 'Member added: member_id=mem_701')],
+    )).toMatchObject({ enforced: true, reason: 'unverified_external_state_change_claim' });
   });
 
   it('requires an outcome ID and URL to appear together in one exact receipt', () => {

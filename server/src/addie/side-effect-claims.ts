@@ -92,6 +92,10 @@ function successful(executions: readonly ToolExecution[], names: readonly string
   return executions.filter((execution) => (
     names.includes(execution.tool_name)
     && !execution.is_error
+    // The orchestration boundary always classifies a live result. A success
+    // receipt must be explicitly `ok`; empty and error-shaped structured
+    // results are not confirmation even when their rendered text is nonempty.
+    && execution.normalized_result?.status === 'ok'
     && execution.result.trim() !== ''
     && execution.result.trim() !== 'The tool returned no content.'
     && !legacyResultIndicatesFailure(execution.result)
@@ -112,51 +116,45 @@ const CLAIM_ACTION_TOOL_PREFIX: Readonly<Record<string, string>> = {
 
 const EXTERNAL_CLAIM_TARGETS = [
     'meeting', 'event', 'invoice', 'payment', 'resource', 'bookmark', 'reminder', 'member',
-    'organization', 'chapter', 'committee', 'document', 'discount', 'contact', 'prospect',
+    'organization', 'chapter', 'committee', 'co_leader', 'document', 'discount', 'contact', 'prospect',
     'invitation', 'invite', 'domain', 'account', 'record', 'property', 'brand', 'agent',
-    'listing', 'logo', 'asset', 'content', 'post', 'working_group', 'escalation', 'catalog',
-    'certification', 'module', 'exam', 'illustration', 'portrait', 'token', 'introduction',
+    'brand_ownership', 'listing', 'logo', 'asset', 'content', 'post', 'working_group', 'attendee',
+    'event_registration', 'payment_link', 'escalation', 'council_interest', 'catalog_entry', 'catalog',
+    'certification', 'module', 'exam', 'progress', 'perspective_illustration', 'illustration', 'portrait',
+    'token', 'introduction', 'revisions', 'preference', 'profile', 'name', 'topic_subscription',
   ] as const;
 
-function externalClaimTargetIn(sentence: string): string | undefined {
-  return EXTERNAL_CLAIM_TARGETS.find((candidate) => {
-    const expression = candidate === 'meeting'
-      ? '\\bmeeting(?!\\s+agenda\\b)\\b'
-      : `\\b${candidate.replace('_', '\\s+')}\\b`;
-    return new RegExp(expression, 'i').test(sentence);
-  });
+interface ExternalStateChangeClaim {
+  readonly action: string;
+  readonly target: string;
 }
 
-function hasExternalStateChangeClaim(text: string): boolean {
-  return Object.keys(CLAIM_ACTION_TOOL_PREFIX).some((action) => (
-    EXTERNAL_CLAIM_TARGETS.some((target) => {
+function externalStateChangeClaims(text: string): ExternalStateChangeClaim[] {
+  const claims: ExternalStateChangeClaim[] = [];
+  for (const [action, prefix] of Object.entries(CLAIM_ACTION_TOOL_PREFIX)) {
+    for (const target of EXTERNAL_CLAIM_TARGETS) {
       const targetExpression = target === 'meeting'
         ? '\\bmeeting(?!\\s+agenda\\b)\\b'
         : `\\b${target.replace('_', '\\s+')}\\b`;
-      return new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').test(text)
-        || new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').test(text);
-    })
-  ));
+      if (
+        new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').test(text)
+        || new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').test(text)
+      ) claims.push({ action, target });
+    }
+  }
+  return claims;
 }
 
-function successfulExternalClaimReceipts(text: string, executions: readonly ToolExecution[]): ToolExecution[] {
-  const targetIn = externalClaimTargetIn;
-  // Bind action and object from one sentence. Incidental words elsewhere in a
-  // mixed response cannot make an otherwise exact receipt look unrelated.
-  const claimSentence = text.split(/(?<=[.!?])\s+/).find((sentence) => (
-    Object.entries(CLAIM_ACTION_TOOL_PREFIX).some(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(sentence))
-    && targetIn(sentence) !== undefined
-  ));
-  if (!claimSentence) return [];
-  const action = Object.entries(CLAIM_ACTION_TOOL_PREFIX)
-    .find(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(claimSentence));
-  if (!action) return [];
-  const prefix = action[1];
-  const target = targetIn(claimSentence);
+function successfulExternalClaimReceipts(
+  claim: ExternalStateChangeClaim,
+  executions: readonly ToolExecution[],
+): ToolExecution[] {
+  const prefix = CLAIM_ACTION_TOOL_PREFIX[claim.action];
+  const { target } = claim;
   return successful(executions, [...SIDE_EFFECT_TOOL_NAMES]).filter((execution) => {
     if (target && !execution.tool_name.includes(target)) return false;
     return execution.tool_name.startsWith(prefix)
-      || (target === 'meeting' && action[0] === 'created' && execution.tool_name === 'schedule_meeting');
+      || (target === 'meeting' && claim.action === 'created' && execution.tool_name === 'schedule_meeting');
   });
 }
 
@@ -246,13 +244,13 @@ export function enforceSideEffectClaimReceipts(
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
     const githubClaim = rule.name === 'GitHub issue' && isGithubSuccessClaim(text);
     const isExternalStateChange = rule.name === 'external state change';
-    if (!githubClaim && !(isExternalStateChange
-      ? (rule.pattern.test(text) || hasExternalStateChangeClaim(text))
-      : rule.pattern.test(text))) continue;
-    const receipts = isExternalStateChange
-      ? successfulExternalClaimReceipts(text, executions)
-      : successful(executions, rule.tools);
-    if (receipts.length === 0) {
+    const externalClaims = isExternalStateChange ? externalStateChangeClaims(text) : [];
+    if (!githubClaim && !(isExternalStateChange ? externalClaims.length > 0 : rule.pattern.test(text))) continue;
+    const receiptGroups = isExternalStateChange
+      ? externalClaims.map((claim) => successfulExternalClaimReceipts(claim, executions))
+      : [successful(executions, rule.tools)];
+    const receipts = receiptGroups.flat();
+    if (receiptGroups.some((receiptsForClaim) => receiptsForClaim.length === 0)) {
       return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: `unverified_${rule.name.replaceAll(' ', '_')}_claim` };
     }
     if (rule.name !== 'GitHub issue') {
