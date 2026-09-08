@@ -14,6 +14,16 @@ export interface GithubIssueCreationReceipt {
 }
 
 /**
+ * A verified receipt recovered after an interrupted delivery. The request ID
+ * is deliberately outside the receipt issued by GitHub: it binds that durable
+ * checkpoint to the single browser turn that is allowed to replay it.
+ */
+export interface GithubIssueRetryReceipt {
+  readonly clientRequestId: string;
+  readonly receipt: GithubIssueCreationReceipt;
+}
+
+/**
  * A production write needs an application-owned action signal. Ordinary chat
  * prose may ask for a draft, but it never authorizes dispatch on its own.
  * Isolated executions have no live external effect and retain their existing

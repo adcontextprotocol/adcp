@@ -1769,13 +1769,17 @@ export function createAddieChatRouter(options?: {
       // Only the same client-request retry may carry a durable receipt across
       // an interrupted delivery. Revalidate each JSONB value before it reaches
       // terminal rendering; later turns never enter this path.
-      const retryGithubIssueReceipts = retryCheckpointToolCalls.flatMap((call) => (
-        call.name === 'create_github_issue'
-          && call.is_error !== true
-          && call.result_status === 'ok'
-          ? [githubIssueReceiptFromStoredValue(call.github_issue_receipt)]
-          : []
-      )).filter((receipt): receipt is NonNullable<typeof receipt> => receipt !== null);
+      const retryGithubIssueReceipts = clientRequestId
+        ? retryCheckpointToolCalls.flatMap((call) => {
+            if (
+              call.name !== 'create_github_issue'
+              || call.is_error === true
+              || call.result_status !== 'ok'
+            ) return [];
+            const receipt = githubIssueReceiptFromStoredValue(call.github_issue_receipt);
+            return receipt ? [{ clientRequestId, receipt }] : [];
+          })
+        : [];
 
       // Save user message
       if (!existingUserMessage) {
@@ -1931,6 +1935,7 @@ export function createAddieChatRouter(options?: {
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
         githubIssueCreationRequested,
+        clientRequestId: clientRequestId || undefined,
         ...(retryGithubIssueReceipts.length > 0 && { githubIssueRetryReceipts: retryGithubIssueReceipts }),
         reserveSideEffect: async ({ toolName, parameters }) => {
           await reserveToolIntentCheckpoint(threadService, {

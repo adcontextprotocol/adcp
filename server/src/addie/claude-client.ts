@@ -114,7 +114,7 @@ import {
   isGithubIssueCreationRequested,
   mayDispatchGithubIssueCreation,
   renderGithubIssueCreationOutcome,
-  type GithubIssueCreationReceipt,
+  type GithubIssueRetryReceipt,
 } from './github-issue-receipt.js';
 
 export interface InvocationPreparedSnapshot {
@@ -432,10 +432,13 @@ interface FinalizedAssistantText {
 }
 
 function rehydratedGithubIssueRetryExecutions(
-  receipts: readonly GithubIssueCreationReceipt[],
+  retries: readonly GithubIssueRetryReceipt[],
+  clientRequestId: string | undefined,
 ): ToolExecution[] {
-  return receipts.flatMap((receipt, index) => {
-    const verified = githubIssueReceiptFromStoredValue(receipt);
+  if (!clientRequestId) return [];
+  return retries.flatMap((retry, index) => {
+    if (retry.clientRequestId !== clientRequestId) return [];
+    const verified = githubIssueReceiptFromStoredValue(retry.receipt);
     return verified ? [{
       tool_name: 'create_github_issue',
       parameters: {},
@@ -474,11 +477,12 @@ function finalizeAssistantText(
   rawText: string,
   toolExecutions: readonly ToolExecution[],
   githubIssueCreationRequested: boolean,
-  githubIssueRetryReceipts: readonly GithubIssueCreationReceipt[] = [],
+  githubIssueRetryReceipts: readonly GithubIssueRetryReceipt[] = [],
+  clientRequestId: string | undefined,
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
   // This list is supplied only by the same client-request retry path.
-  const retryExecutions = rehydratedGithubIssueRetryExecutions(githubIssueRetryReceipts);
+  const retryExecutions = rehydratedGithubIssueRetryExecutions(githubIssueRetryReceipts, clientRequestId);
   const githubIssueOutcome = renderGithubIssueCreationOutcome({
     creationRequested: githubIssueCreationRequested,
     executions: [...retryExecutions, ...toolExecutions],
@@ -613,8 +617,10 @@ export interface ProcessMessageOptions {
   initialToolChoice?: ModelToolChoice;
   /** Caller-owned action intent. This is never inferred from general user prose. */
   githubIssueCreationRequested?: boolean;
-  /** Verified receipts carried only from the same client-request retry checkpoint. */
-  githubIssueRetryReceipts?: readonly GithubIssueCreationReceipt[];
+  /** Browser-turn ID used to bind an interrupted-delivery receipt replay. */
+  clientRequestId?: string;
+  /** Verified receipts carried only from a checkpoint bound to clientRequestId. */
+  githubIssueRetryReceipts?: readonly GithubIssueRetryReceipt[];
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
@@ -785,7 +791,8 @@ const MAX_ITERATIONS_FALLBACK_TEXT = "I'm having trouble completing that request
 interface TerminalAddieResponseCommon {
   userMessage: string;
   githubIssueCreationRequested: boolean;
-  githubIssueRetryReceipts?: readonly GithubIssueCreationReceipt[];
+  clientRequestId?: string;
+  githubIssueRetryReceipts?: readonly GithubIssueRetryReceipt[];
   rawText: string;
   toolsUsed: readonly string[];
   toolExecutions: readonly ToolExecution[];
@@ -828,10 +835,11 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
     input.toolExecutions,
     input.githubIssueCreationRequested,
     input.githubIssueRetryReceipts,
+    input.clientRequestId,
     input.kind === 'provider' && input.disposition === 'truncated',
   );
   const terminalExecutions = [
-    ...rehydratedGithubIssueRetryExecutions(input.githubIssueRetryReceipts ?? []),
+    ...rehydratedGithubIssueRetryExecutions(input.githubIssueRetryReceipts ?? [], input.clientRequestId),
     ...input.toolExecutions,
   ];
   const hallucinationReason = input.kind === 'provider' && input.disposition === 'complete'
@@ -1868,6 +1876,7 @@ export class AddieClaudeClient {
           disposition: 'truncated',
           userMessage,
           githubIssueCreationRequested,
+          clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
           rawText,
           toolsUsed,
@@ -1919,6 +1928,7 @@ export class AddieClaudeClient {
           disposition: 'complete',
           userMessage,
           githubIssueCreationRequested,
+          clientRequestId: options?.clientRequestId,
           githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
           rawText,
           toolsUsed,
@@ -1980,6 +1990,7 @@ export class AddieClaudeClient {
       kind: 'max_iterations',
       userMessage,
       githubIssueCreationRequested,
+      clientRequestId: options?.clientRequestId,
       githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
       rawText: '',
       toolsUsed,
@@ -2627,6 +2638,7 @@ export class AddieClaudeClient {
             disposition: 'truncated',
             userMessage,
             githubIssueCreationRequested,
+            clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
             rawText: logicalText,
             toolsUsed,
@@ -2681,6 +2693,7 @@ export class AddieClaudeClient {
             disposition: 'complete',
             userMessage,
             githubIssueCreationRequested,
+            clientRequestId: options?.clientRequestId,
             githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
             rawText: logicalText,
             toolsUsed,
@@ -2739,6 +2752,7 @@ export class AddieClaudeClient {
         kind: 'max_iterations',
         userMessage,
         githubIssueCreationRequested,
+        clientRequestId: options?.clientRequestId,
         githubIssueRetryReceipts: options?.githubIssueRetryReceipts,
         rawText: logicalText,
         toolsUsed,

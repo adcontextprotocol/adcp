@@ -543,14 +543,35 @@ describe('Addie empty-response fallback (#4430)', () => {
     mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
     const retryResponse = await client.processMessage('Continue the interrupted reply.', undefined, undefined, undefined, {
       uncapped: true,
+      clientRequestId: 'request-current',
       githubIssueRetryReceipts: [{
-        toolName: 'create_github_issue',
-        issueNumber: 701,
-        issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+        clientRequestId: 'request-current',
+        receipt: {
+          toolName: 'create_github_issue',
+          issueNumber: 701,
+          issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+        },
       }],
     });
     expect(retryResponse.text).toBe('GitHub issue created:\n- [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
     expect(retryResponse.flag_reason).toBeUndefined();
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const staleRetryResponse = await client.processMessage('Continue the interrupted reply.', undefined, undefined, undefined, {
+      uncapped: true,
+      clientRequestId: 'request-current',
+      githubIssueCreationRequested: true,
+      githubIssueRetryReceipts: [{
+        clientRequestId: 'request-prior-turn',
+        receipt: {
+          toolName: 'create_github_issue',
+          issueNumber: 701,
+          issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+        },
+      }],
+    });
+    expect(staleRetryResponse.text).toContain('not confirmed');
+    expect(staleRetryResponse.text).not.toContain('#701');
 
     mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
     const staleHistoryResponse = await client.processMessage('Create the next issue.', [{
