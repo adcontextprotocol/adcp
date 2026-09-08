@@ -158,7 +158,7 @@ Regardless of source, the result is a brand identity that can be referenced by a
 `BrandRef.domain` is a lowercase dotted domain, not a local hostname alias. Bare
 names such as `localhost`, `unknown`, and `intranet` are invalid because another
 agent cannot resolve them in the same DNS context. Production resolvers require
-a registrable domain and apply the protocol's DNS and SSRF checks before fetching
+a hostname with a registrable ICANN or private-PSL parent and apply the protocol's DNS and SSRF checks before fetching
 `/.well-known/brand.json`.
 
 For local development and deterministic fixtures, SDKs may explicitly allow

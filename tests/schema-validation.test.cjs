@@ -2975,6 +2975,9 @@ async function runTests() {
           return `${schemaFile} accepted single-label domain ${domain}`;
         }
       }
+      if (validate({ domain: `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(62)}` })) {
+        return `${schemaFile} accepted a domain longer than 253 characters`;
+      }
     }
     return true;
   });

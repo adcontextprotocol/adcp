@@ -181,6 +181,9 @@ function placeholderFor(schema, depth = 0) {
     if (resolved.pattern === '^sha256:[A-Za-z0-9_-]{43}$') return SHA256_DIGEST_PLACEHOLDER;
     if (resolved.pattern === '^[A-Fa-f0-9]{64}$') return 'a'.repeat(64);
     if (resolved.pattern === '^[A-Z]{3}$') return 'USD';
+    if (resolved.pattern === '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$') {
+      return 'placeholder.example';
+    }
     // Object variant nested inside a oneOf/anyOf at a location where the
     // author's substitution will resolve to that shape at runtime. Synthesize
     // the concrete shape instead of returning a string that fails required.
