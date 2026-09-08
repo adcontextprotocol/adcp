@@ -1125,7 +1125,19 @@ export function createAddieChatRouter(options?: {
         });
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments, organization_id } = req.body;
+      const {
+        message,
+        conversation_id,
+        user_name,
+        message_source: rawMessageSource,
+        attachments: rawAttachments,
+        organization_id,
+        github_issue_creation_requested: rawGithubIssueCreationRequested,
+      } = req.body;
+      // This is an explicit UI/API action signal, never a text classifier. A
+      // model reply cannot set it, and it only controls whether a missing
+      // same-turn issue receipt must yield the deterministic fallback.
+      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true;
       const attachments = validateChatAttachments(rawAttachments);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
@@ -1350,6 +1362,7 @@ export function createAddieChatRouter(options?: {
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
           inputAttachments: attachments,
+          githubIssueCreationRequested,
           reserveSideEffect: async ({ toolName, parameters }) => {
             await reserveToolIntentCheckpoint(threadService, {
               threadId: thread.thread_id,
@@ -1542,10 +1555,14 @@ export function createAddieChatRouter(options?: {
         organization_id,
         client_request_id,
         retry,
+        github_issue_creation_requested: rawGithubIssueCreationRequested,
       } = req.body;
       const attachments = validateChatAttachments(rawAttachmentsStream);
       const clientRequestId = typeof client_request_id === 'string' ? client_request_id : null;
       const retryRequested = retry === true;
+      // See the non-streaming path: this formal action flag is the only
+      // direct-request input to the terminal issue-receipt gate.
+      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true;
 
       if (clientRequestId && !uuidValidate(clientRequestId)) {
         return res.status(400).json({ error: 'client_request_id must be a valid UUID' });
@@ -1897,6 +1914,7 @@ export function createAddieChatRouter(options?: {
         userDisplayName: displayName || undefined,
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
+        githubIssueCreationRequested,
         reserveSideEffect: async ({ toolName, parameters }) => {
           await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
