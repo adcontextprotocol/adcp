@@ -75,6 +75,13 @@ describe('side-effect receipt guard — escalation 567', () => {
     )).toMatchObject({ enforced: true, reason: 'github_issue_receipt_claim_mismatch' });
   });
 
+  it('rejects a reverse-order crossed GitHub issue URL and number', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I opened https://github.com/adcontextprotocol/adcp/issues/702 for issue #701.',
+      [issue(701), issue(702)],
+    )).toMatchObject({ enforced: true, reason: 'github_issue_receipt_claim_mismatch' });
+  });
+
   it('blocks mixed success/failure claims but permits repeated verified references', () => {
     expect(enforceSideEffectClaimReceipts("I've submitted issue #701 and issue #702.", [issue(701), issue(702, true)]))
       .toMatchObject({ enforced: true });
@@ -244,6 +251,21 @@ describe('side-effect receipt guard — escalation 567', () => {
       tool('add_member_to_org', false, 'Member added: brand_id=brand_702'),
       tool('save_brand', false, 'Brand saved: member_id=mem_701'),
     ])).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+  });
+
+  it('permits exact mixed-operation outcomes in one sentence', () => {
+    const text = 'I added the member, Member ID mem_701, and saved the brand, Brand ID brand_702.';
+    expect(enforceSideEffectClaimReceipts(text, [
+      tool('add_member_to_org', false, 'Member added: member_id=mem_701'),
+      tool('save_brand', false, 'Brand saved: brand_id=brand_702'),
+    ])).toMatchObject({ enforced: false });
+  });
+
+  it('checks an explicitly labelled outcome preceding its action', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'Payment link: https://payments.example/wrong. I created a payment link.',
+      [tool('create_payment_link', false, 'Payment link: https://payments.example/right')],
+    )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
   });
 
   it('permits distinct exact meeting and event outcomes in one turn', () => {

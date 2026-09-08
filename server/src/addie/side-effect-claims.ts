@@ -133,6 +133,7 @@ interface ExternalStateChangeClaim {
   readonly action: string;
   readonly target: string;
   readonly sentenceIndex: number;
+  readonly startIndex: number;
 }
 
 function responseSentences(text: string): string[] {
@@ -147,10 +148,9 @@ function externalStateChangeClaims(sentences: readonly string[]): ExternalStateC
         const targetExpression = target === 'meeting'
           ? '\\bmeeting(?!\\s+agenda\\b)\\b'
           : `\\b${target.replace('_', '\\s+')}\\b`;
-        if (
-          new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').test(sentence)
-          || new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').test(sentence)
-        ) claims.push({ action, target, sentenceIndex });
+        const match = new RegExp(`\\b${action}\\b\\s+(?:an?\\s+|the\\s+|your\\s+)?${targetExpression}`, 'i').exec(sentence)
+          ?? new RegExp(`${targetExpression}\\s+(?:(?:has|have)\\s+been|was)\\s+${action}\\b`, 'i').exec(sentence);
+        if (match) claims.push({ action, target, sentenceIndex, startIndex: match.index });
       }
     }
   }
@@ -198,6 +198,8 @@ function githubClaimPairs(text: string): Array<{ number: string; url: string }> 
   return responseSentences(text).flatMap((sentence) => (
     [...sentence.matchAll(/\b(?:issue\s*)?#(\d+)\b[^.!?\n]*?(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)/gi)]
       .map((match) => ({ number: match[1], url: match[2] }))
+      .concat([...sentence.matchAll(/(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)[^.!?\n]*?\b(?:issue\s*)?#(\d+)\b/gi)]
+        .map((match) => ({ number: match[2], url: match[1] })))
   ));
 }
 
@@ -298,7 +300,28 @@ export function enforceSideEffectClaimReceipts(
     const nextStart = [...sideEffectSentenceStarts]
       .filter((candidate) => candidate > sentenceIndex)
       .sort((left, right) => left - right)[0] ?? sentences.length;
-    return sentences.slice(sentenceIndex, nextStart).join(' ');
+    let firstSentence = sentenceIndex;
+    // An explicitly labelled outcome immediately before its action belongs to
+    // that action too (for example, "Payment link: URL. I created one.").
+    while (
+      firstSentence > 0
+      && !sideEffectSentenceStarts.has(firstSentence - 1)
+      && /\b(?:id|number|reference|code|url|link)\b\s*:/i.test(sentences[firstSentence - 1])
+    ) firstSentence -= 1;
+    return sentences.slice(firstSentence, nextStart).join(' ');
+  };
+  const externalOutcomeScope = (claim: ExternalStateChangeClaim): string => {
+    const nextClaim = externalClaims
+      .filter((candidate) => candidate.sentenceIndex === claim.sentenceIndex && candidate.startIndex > claim.startIndex)
+      .sort((left, right) => left.startIndex - right.startIndex)[0];
+    if (nextClaim) return sentences[claim.sentenceIndex].slice(claim.startIndex, nextClaim.startIndex);
+    const nextSentenceStart = [...sideEffectSentenceStarts]
+      .filter((candidate) => candidate > claim.sentenceIndex)
+      .sort((left, right) => left - right)[0] ?? sentences.length;
+    return [
+      sentences[claim.sentenceIndex].slice(claim.startIndex),
+      ...sentences.slice(claim.sentenceIndex + 1, nextSentenceStart),
+    ].join(' ');
   };
 
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
@@ -319,7 +342,7 @@ export function enforceSideEffectClaimReceipts(
       const receiptChecks = isExternalStateChange
         ? externalClaims.map((claim, index) => ({
           receipts: receiptGroups[index],
-          scope: outcomeScope(claim.sentenceIndex),
+          scope: externalOutcomeScope(claim),
         }))
         : (ruleSentenceStarts.length > 0 ? ruleSentenceStarts : [0]).map((sentenceIndex) => ({
           receipts,
