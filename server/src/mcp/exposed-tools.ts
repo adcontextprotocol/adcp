@@ -12,8 +12,11 @@
 
 import { createLogger } from '../logger.js';
 import { MEMBER_TOOLS, createMemberToolHandlers } from '../addie/mcp/member-tools.js';
-import { githubIssueReceiptFromHandlerResult, renderGithubIssueCreationReceipt } from '../addie/github-issue-receipt.js';
-import { normalizeToolResult, renderToolResultForUser } from '../addie/tool-result-contract.js';
+import {
+  GITHUB_ISSUE_NOT_CONFIRMED_OUTCOME,
+  githubIssueReceiptFromHandlerResult,
+  renderGithubIssueCreationReceipt,
+} from '../addie/github-issue-receipt.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from '../addie/mcp/schema-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from '../addie/mcp/property-tools.js';
 import type { MemberContext } from '../addie/member-context.js';
@@ -169,12 +172,19 @@ export function createMemberToolHandler(toolName: string) {
     }
 
     const result = await handler(args);
-    const githubReceipt = toolName === 'create_github_issue'
-      ? githubIssueReceiptFromHandlerResult(result)
-      : null;
-    const text = githubReceipt
-      ? renderGithubIssueCreationReceipt(githubReceipt)
-      : renderToolResultForUser(normalizeToolResult(toolName, result).presentation);
+    // Keep existing direct-MCP tool text intact. GitHub creation alone has a
+    // receipt-owned terminal contract: a string or malformed object is never
+    // evidence that an issue exists.
+    const text = toolName === 'create_github_issue'
+      ? (() => {
+          const receipt = githubIssueReceiptFromHandlerResult(result);
+          return receipt
+            ? renderGithubIssueCreationReceipt(receipt)
+            : GITHUB_ISSUE_NOT_CONFIRMED_OUTCOME;
+        })()
+      : typeof result === 'string'
+        ? result
+        : 'The tool completed successfully.';
     return { content: [{ type: 'text', text }] };
   };
 }
