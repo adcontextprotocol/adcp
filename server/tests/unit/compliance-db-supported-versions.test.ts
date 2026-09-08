@@ -16,37 +16,32 @@ import { query } from '../../src/db/client.js';
 
 const mockedQuery = vi.mocked(query);
 
-describe('ComplianceDatabase.getRecentSupportedVersions', () => {
+describe('ComplianceDatabase.getLastKnownSupportedVersions', () => {
   const db = new ComplianceDatabase();
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('returns string versions from the most recent profile inside the default seven-day window', async () => {
+  it('returns string versions from the most recent profile without expiring the recovery hint', async () => {
     mockedQuery.mockResolvedValueOnce({
       rows: [{ supported_versions: ['3.1', null, '', '3.0'] }],
       rowCount: 1,
     } as never);
 
-    await expect(db.getRecentSupportedVersions('https://agent.example/mcp'))
+    await expect(db.getLastKnownSupportedVersions('https://agent.example/mcp'))
       .resolves.toEqual(['3.1', '3.0']);
     expect(mockedQuery).toHaveBeenCalledWith(
       expect.stringContaining("jsonb_typeof(agent_profile_json->'adcp_supported_versions') = 'array'"),
-      ['https://agent.example/mcp', 168],
+      ['https://agent.example/mcp'],
     );
+    expect(mockedQuery.mock.calls[0]?.[0]).not.toContain('make_interval');
   });
 
-  it('returns an empty list when no recent stored profile exists', async () => {
+  it('returns an empty list when no stored profile exists', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
 
-    await expect(db.getRecentSupportedVersions('https://agent.example/mcp')).resolves.toEqual([]);
-  });
-
-  it('rejects an invalid recency window before querying', async () => {
-    await expect(db.getRecentSupportedVersions('https://agent.example/mcp', 0))
-      .rejects.toThrow('maxAgeHours must be a positive integer');
-    expect(mockedQuery).not.toHaveBeenCalled();
+    await expect(db.getLastKnownSupportedVersions('https://agent.example/mcp')).resolves.toEqual([]);
   });
 
   it('defers an inconclusive check only while its future heartbeat lock is still held', async () => {

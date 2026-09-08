@@ -50,7 +50,7 @@ import {
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
-  storedComplianceTargetMatchesObservedProfile,
+  selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
@@ -8010,7 +8010,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           storyboard_start_offset: storyboardStartOffset,
           ...(complianceAuth && { auth: complianceAuth }),
         };
-        const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
+        const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agentUrl);
         const runTargetSelection = await selectComplianceTargetForAgentSelection(
           agentUrl,
           complyOptions,
@@ -8025,7 +8025,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         lease.assertValid();
         const complyResult = await comply(agentUrl, complyOptions, runTarget);
         lease.assertValid();
-        if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
+        if (!selectedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
           throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
         }
         const runBadgeEligibleVersions = [
@@ -9155,7 +9155,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           storyboards: [req.params.storyboardId],
           ...(sdkAuth && { auth: sdkAuth }),
         };
-        const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
+        const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agentUrl);
         const runTargetSelection = await selectComplianceTargetForAgentSelection(
           agentUrl,
           complyOptions,
@@ -9186,7 +9186,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }
-        if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
+        if (!selectedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
           return res.status(422).json({
             error: UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
             error_kind: 'unresolved_compliance_target',

@@ -29,6 +29,7 @@ import {
   selectHostedComplianceTargetForSupportedVersions,
   withHostedAuthTestKit,
   withHostedComplianceOptions,
+  withHostedTestOptions,
 } from '../../src/services/hosted-compliance-version.js';
 import {
   isComplianceVersionSupported,
@@ -37,7 +38,7 @@ import {
 } from '@adcp/sdk/testing';
 import {
   badgeEligibleVersionsForTargetSelection,
-  storedComplianceTargetMatchesObservedProfile,
+  selectedComplianceTargetMatchesObservedProfile,
 } from '../../src/addie/services/compliance-testing.js';
 
 /**
@@ -307,19 +308,35 @@ describe('wrapper contract', () => {
       { target: stable, confirmed: false, source: 'explicit' },
       { adcp_supported_versions: ['3.0'] },
     )).toEqual(['3.0']);
-    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true, source: 'live' })).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection(
+      { target: stable, confirmed: true, source: 'live', supportedVersions: ['3.0'] },
+    )).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection(
+      { target: stable, confirmed: true, source: 'live', supportedVersions: ['3.0'] },
+      { adcp_supported_versions: ['3.1'] },
+    )).toEqual([]);
   });
 
   it('lets the live run profile supersede a stored compliance target before publication', () => {
     const stable = hostedComplianceTarget('3.0');
     const storedSelection = { target: stable, confirmed: false, source: 'stored' as const };
 
-    expect(storedComplianceTargetMatchesObservedProfile(
+    expect(selectedComplianceTargetMatchesObservedProfile(
       storedSelection,
       { adcp_supported_versions: ['3.0'] },
     )).toBe(true);
-    expect(storedComplianceTargetMatchesObservedProfile(
+    expect(selectedComplianceTargetMatchesObservedProfile(
       storedSelection,
+      { adcp_supported_versions: ['3.1'] },
+    )).toBe(false);
+
+    const liveSelection = { target: stable, confirmed: true, source: 'live' as const };
+    expect(selectedComplianceTargetMatchesObservedProfile(
+      liveSelection,
+      { adcp_supported_versions: ['3.0'] },
+    )).toBe(true);
+    expect(selectedComplianceTargetMatchesObservedProfile(
+      liveSelection,
       { adcp_supported_versions: ['3.1'] },
     )).toBe(false);
   });
@@ -334,6 +351,14 @@ describe('wrapper contract', () => {
     const options = withHostedComplianceOptions({ version: '3.0' }, target);
     expect(options.version).toBe(target.version);
     expect(options.complianceDir).toContain(target.version);
+  });
+
+  it('keeps an exact stable diagnostic target pinned for capability discovery', () => {
+    const target = hostedComplianceTarget('3.1.20');
+    const options = withHostedTestOptions({}, target);
+
+    expect(target.version).toBe('3.1.20');
+    expect(options.adcpVersion).toBe('3.1.20');
   });
 
   it('threads bearer auth into the hosted runtime test kit', () => {

@@ -15,7 +15,7 @@ import {
   hasTrustworthyComplianceTarget,
   HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
   selectComplianceTargetForAgentSelection,
-  storedComplianceTargetMatchesObservedProfile,
+  selectedComplianceTargetMatchesObservedProfile,
   type ComplyOptions,
   type ComplianceTargetSelection,
 } from '../services/compliance-testing.js';
@@ -177,7 +177,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         userAgent: AAO_UA_COMPLIANCE,
         storyboard_start_offset: storyboardStartOffset,
       };
-      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agent.agent_url);
+      const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agent.agent_url);
 
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         agent.agent_url,
@@ -200,14 +200,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       assertExecutionFence();
       const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
       assertExecutionFence();
-      if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complianceResult.agent_profile)) {
+      if (!selectedComplianceTargetMatchesObservedProfile(runTargetSelection, complianceResult.agent_profile)) {
         logger.warn(
           {
             agentUrl: agent.agent_url,
             selectedTarget: runTarget.requested,
             observedSupportedVersions: complianceResult.agent_profile?.adcp_supported_versions,
           },
-          'Compliance heartbeat skipped because the live run superseded its stored target',
+          'Compliance heartbeat skipped because the completed run superseded its selected target',
         );
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;

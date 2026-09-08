@@ -54,7 +54,7 @@ import {
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
-  storedComplianceTargetMatchesObservedProfile,
+  selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
   type CapabilityResolutionErrorInfo,
@@ -222,7 +222,7 @@ function explicitTargetProbeFailureMessage(
   return [
     `**Error:** compliance_target \`${target.requested}\` resolves to \`${target.version}\`, but I could not verify this agent advertises support for that target.`,
     `Capability discovery failed${safeProbeError ? ` with agent-reported error ${safeProbeError}` : ''}.`,
-    'Fix capability discovery or authentication, then retry the prerelease diagnostic.',
+    'Fix capability discovery or authentication, then retry the requested compliance diagnostic.',
   ].join('\n');
 }
 
@@ -272,9 +272,12 @@ async function explicitTargetSupportErrorFromAgent(
   if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target)) return undefined;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
-      ...(auth && { auth }),
-    }));
+    const caps = await testCapabilityDiscovery(
+      agentUrl,
+      withSdkSafeTransport(withHostedTestOptions({
+        ...(auth && { auth }),
+      }, target)),
+    );
     const oauthError = capabilityDiscoveryOAuthError(caps);
     if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId);
 
@@ -282,7 +285,7 @@ async function explicitTargetSupportErrorFromAgent(
     if (probeFailure) return probeFailure;
     return explicitTargetSupportError(input, target, caps.profile);
   } catch (error) {
-    logger.warn({ err: error, agentUrl }, 'Could not verify explicit prerelease compliance target support');
+    logger.warn({ err: error, agentUrl }, 'Could not verify explicit compliance target support');
     return [
       `**Error:** cannot run compliance_target \`${target.requested}\` because the agent's advertised supported versions could not be verified.`,
       'Retry after `get_adcp_capabilities` is reachable, or use `3.0`.',
@@ -4662,7 +4665,7 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
 
     if (!hasExplicitComplianceTarget(input)) {
-      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(resolved.resolvedUrl);
+      const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(resolved.resolvedUrl);
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         resolved.resolvedUrl,
         { auth: authOption },
@@ -4697,7 +4700,7 @@ export function createMemberToolHandlers(
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
-      if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, result.agent_profile)) {
+      if (!selectedComplianceTargetMatchesObservedProfile(runTargetSelection, result.agent_profile)) {
         return (
           `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
           `The agent's live profile changed after the diagnostic target was selected; retry the evaluation.`
