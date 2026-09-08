@@ -253,6 +253,19 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         tool_calls: [{ ...reservation, result: 'Issue created.', is_error: false, result_status: 'ok' }],
         model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
       });
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: '',
+        tool_calls: [{
+          ...reservation, result: 'Issue created.', is_error: false, result_status: 'ok',
+          // Text extraction alone would accept this; the durable receipt must
+          // retain the same JSON types as the application-owned constructor.
+          github_issue_receipt: {
+            toolName: 'create_github_issue', issueNumber: '701',
+            issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+          },
+        }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted',
+      });
 
       await expect(threadService.addMessage({
         thread_id: thread.thread_id, role: 'assistant', content: '', tool_calls: [reservation],

@@ -561,7 +561,16 @@ export class ThreadService {
                    OR (
                      jsonb_typeof(receipt_call->'github_issue_receipt') = 'object'
                      AND receipt_call->'github_issue_receipt'->>'toolName' = 'create_github_issue'
+                     AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueNumber') = 'number'
                      AND receipt_call->'github_issue_receipt'->>'issueNumber' ~ '^[1-9][0-9]*$'
+                     AND (
+                       char_length(receipt_call->'github_issue_receipt'->>'issueNumber') < 16
+                       OR (
+                         char_length(receipt_call->'github_issue_receipt'->>'issueNumber') = 16
+                         AND receipt_call->'github_issue_receipt'->>'issueNumber' <= '9007199254740991'
+                       )
+                     )
+                     AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueUrl') = 'string'
                      AND receipt_call->'github_issue_receipt'->>'issueUrl' =
                        'https://github.com/adcontextprotocol/adcp/issues/'
                        || receipt_call->'github_issue_receipt'->>'issueNumber'
