@@ -54,11 +54,11 @@ describe('Addie tool result contract', () => {
     expect(normalized.presentation.display).toEqual({ type: 'fields', data: { count: 3 } });
   });
 
-  it('treats only an exact GitHub creation receipt as a successful mutation', () => {
+  it('does not accept a GitHub creation-looking string as a successful mutation', () => {
     expect(normalizeToolResult(
       'create_github_issue',
       'Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)',
-    ).status).toBe('ok');
+    ).status).toBe('error');
     expect(normalizeToolResult(
       'create_github_issue',
       'Failed to create issue due to a network error.',

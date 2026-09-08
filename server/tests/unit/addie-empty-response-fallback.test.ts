@@ -502,21 +502,21 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(getGithubIssue).not.toHaveBeenCalled();
   });
 
-  it('replaces an unverified side-effect claim on both terminal delivery paths', async () => {
+  it('fails closed for an explicitly requested issue creation on both terminal delivery paths', async () => {
     mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
     mocks.streamMessage.mockReturnValueOnce(makeStream(unverifiedIssueEndTurn as typeof recoveredEndTurn));
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
 
-    const response = await client.processMessage('file the synthetic issue', undefined, undefined, undefined, { uncapped: true });
+    const response = await client.processMessage('file the synthetic issue', undefined, undefined, undefined, { uncapped: true, githubIssueCreationRequested: true });
     const events: StreamEvent[] = [];
-    for await (const event of client.processMessageStream('file the synthetic issue', undefined, undefined, { uncapped: true })) events.push(event);
+    for await (const event of client.processMessageStream('file the synthetic issue', undefined, undefined, { uncapped: true, githubIssueCreationRequested: true })) events.push(event);
     const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
 
-    expect(response.text).toContain("couldn't confirm that external action");
+    expect(response.text).toContain('not confirmed');
     expect(response.text).not.toContain('#701');
-    expect(response.flag_reason).toBe('unverified_GitHub_issue_claim');
+    expect(response.flag_reason).toBe('github_issue_not_confirmed');
     expect(done?.response.text).toBe(response.text);
-    expect(done?.response.flag_reason).toBe('unverified_GitHub_issue_claim');
+    expect(done?.response.flag_reason).toBe('github_issue_not_confirmed');
   });
 
   it('rejects a malformed tool turn on both response paths', async () => {

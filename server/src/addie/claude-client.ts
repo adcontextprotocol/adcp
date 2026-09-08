@@ -108,7 +108,10 @@ import {
   type ToolResultPresentation,
 } from './tool-result-contract.js';
 import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js';
-import { enforceSideEffectClaimReceipts } from './side-effect-claims.js';
+import {
+  isExplicitGithubIssueCreationRequest,
+  renderGithubIssueCreationOutcome,
+} from './github-issue-receipt.js';
 
 export interface InvocationPreparedSnapshot {
   execution_mode: AddieExecutionMode;
@@ -429,16 +432,21 @@ function finalizeAssistantText(
   question: string,
   rawText: string,
   toolExecutions: readonly ToolExecution[],
+  githubIssueCreationRequested: boolean,
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
-  const sideEffectReceipt = enforceSideEffectClaimReceipts(rawText, toolExecutions);
-  if (sideEffectReceipt.enforced) {
+  const githubIssueOutcome = renderGithubIssueCreationOutcome({
+    creationRequested: githubIssueCreationRequested,
+    executions: toolExecutions,
+  });
+  if (githubIssueOutcome.reason) {
     logger.error(
-      { event: 'addie_unverified_side_effect_claim_blocked', reason: sideEffectReceipt.reason },
-      'Addie: Replaced an unverified external side-effect claim',
+      { event: 'addie_github_issue_not_confirmed' },
+      'Addie: Replaced an unconfirmed GitHub issue outcome',
     );
   }
-  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(sideEffectReceipt.text, toolExecutions);
+  const terminalText = githubIssueOutcome.text ?? rawText;
+  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(terminalText, toolExecutions);
   if (evidenceBoundary.enforced) {
     logger.warn(
       {
@@ -458,7 +466,7 @@ function finalizeAssistantText(
   return {
     text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
     emptyReason: processed.reason,
-    localReplacementReason: sideEffectReceipt.reason ?? evidenceBoundary.reason,
+    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason,
     lengthExceeded,
   };
 }
@@ -559,6 +567,8 @@ export interface ProcessMessageOptions {
   selectedToolSetNames?: readonly string[];
   /** Optional first-turn tool requirement chosen by trusted orchestration. */
   initialToolChoice?: ModelToolChoice;
+  /** Caller-owned action intent. Legacy text surfaces use a narrow input fallback. */
+  githubIssueCreationRequested?: boolean;
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
@@ -728,6 +738,7 @@ const MAX_ITERATIONS_FALLBACK_TEXT = "I'm having trouble completing that request
 
 interface TerminalAddieResponseCommon {
   userMessage: string;
+  githubIssueCreationRequested: boolean;
   rawText: string;
   toolsUsed: readonly string[];
   toolExecutions: readonly ToolExecution[];
@@ -768,6 +779,7 @@ function buildTerminalAddieResponse(input: TerminalAddieResponseInput): Terminal
     input.userMessage,
     terminalRawText,
     input.toolExecutions,
+    input.githubIssueCreationRequested,
     input.kind === 'provider' && input.disposition === 'truncated',
   );
   const hallucinationReason = input.kind === 'provider' && input.disposition === 'complete'
@@ -1392,6 +1404,8 @@ export class AddieClaudeClient {
   ): Promise<AddieResponse> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    const githubIssueCreationRequested = options?.githubIssueCreationRequested
+      ?? isExplicitGithubIssueCreationRequest(userMessage);
     if (operationalExecution && this.modelProvider.id !== 'anthropic') {
       throw new Error('Alternate Addie model providers are restricted to isolated execution');
     }
@@ -1798,6 +1812,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'truncated',
           userMessage,
+          githubIssueCreationRequested,
           rawText,
           toolsUsed,
           toolExecutions,
@@ -1847,6 +1862,7 @@ export class AddieClaudeClient {
           kind: 'provider',
           disposition: 'complete',
           userMessage,
+          githubIssueCreationRequested,
           rawText,
           toolsUsed,
           toolExecutions,
@@ -1906,6 +1922,7 @@ export class AddieClaudeClient {
     const terminal = buildTerminalAddieResponse({
       kind: 'max_iterations',
       userMessage,
+      githubIssueCreationRequested,
       rawText: '',
       toolsUsed,
       toolExecutions,
@@ -1958,6 +1975,8 @@ export class AddieClaudeClient {
   ): AsyncGenerator<StreamEvent> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    const githubIssueCreationRequested = options?.githubIssueCreationRequested
+      ?? isExplicitGithubIssueCreationRequest(userMessage);
     if (operationalExecution && this.modelProvider.id !== 'anthropic') {
       throw new Error('Alternate Addie model providers are restricted to isolated execution');
     }
@@ -2546,6 +2565,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'truncated',
             userMessage,
+            githubIssueCreationRequested,
             rawText: logicalText,
             toolsUsed,
             toolExecutions,
@@ -2598,6 +2618,7 @@ export class AddieClaudeClient {
             kind: 'provider',
             disposition: 'complete',
             userMessage,
+            githubIssueCreationRequested,
             rawText: logicalText,
             toolsUsed,
             toolExecutions,
@@ -2654,6 +2675,7 @@ export class AddieClaudeClient {
       const terminal = buildTerminalAddieResponse({
         kind: 'max_iterations',
         userMessage,
+        githubIssueCreationRequested,
         rawText: logicalText,
         toolsUsed,
         toolExecutions,

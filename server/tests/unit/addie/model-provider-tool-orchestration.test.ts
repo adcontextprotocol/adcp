@@ -17,6 +17,7 @@ import {
   orchestrateAcceptedAddieTurn,
   recordProviderToolResults,
 } from '../../../src/addie/model-providers/tool-orchestration.js';
+import { githubIssueCreatedResult } from '../../../src/addie/github-issue-receipt.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 const notifyToolError = vi.hoisted(() => vi.fn());
@@ -75,7 +76,10 @@ describe('createAddieToolExecutor', () => {
 
   it('blocks a duplicate external mutation before a continuation can dispatch it twice', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
-    const handler = vi.fn().mockResolvedValue('Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    const handler = vi.fn().mockResolvedValue(githubIssueCreatedResult({
+      issueNumber: 701,
+      issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+    }));
     const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
       executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
@@ -93,7 +97,10 @@ describe('createAddieToolExecutor', () => {
 
   it('refuses a production mutation before dispatch when no durable reservation is available', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
-    const handler = vi.fn().mockResolvedValue('Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    const handler = vi.fn().mockResolvedValue(githubIssueCreatedResult({
+      issueNumber: 701,
+      issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+    }));
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
       executionMode: 'production', policy: () => ({ allowed: true }),
     });

@@ -304,12 +304,10 @@ function classifySearchResult(toolName: string, text: string): {
   return { status: 'ok', summary: STATUS_FALLBACKS.ok };
 }
 
-/** A GitHub issue is confirmed only by this exact handler receipt. */
+/** GitHub issue strings are never receipts; success uses the typed handler result. */
 function classifyMutationResult(toolName: string, text: string): ToolResultStatus | null {
   if (toolName !== 'create_github_issue') return null;
-  return /^Issue created:\s*\[#\d+\]\(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+\)$/i.test(text.trim())
-    ? 'ok'
-    : 'error';
+  return 'error';
 }
 
 function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {

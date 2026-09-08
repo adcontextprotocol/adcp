@@ -8,6 +8,7 @@ import {
 } from '../mcp/url-tools.js';
 import { ToolError } from '../tool-error.js';
 import { isSideEffectTool, sideEffectReplayKey } from '../side-effect-claims.js';
+import { githubIssueReceiptFromHandlerResult, type GithubIssueCreationReceipt } from '../github-issue-receipt.js';
 import {
   isToolResultError,
   normalizeToolError,
@@ -72,6 +73,8 @@ export interface ToolExecution {
   sequence: number;
   blocked_by_policy?: true;
   normalized_result?: ToolResultPresentation;
+  /** Present only when the application handler produced a verified GitHub receipt. */
+  github_issue_receipt?: GithubIssueCreationReceipt;
 }
 
 export interface ToolExecutionNotificationContext {
@@ -795,6 +798,9 @@ export function createAddieToolExecutor(
         call.name,
         normalizeToolResult(call.name, handlerResult),
       );
+      const githubIssueReceipt = call.name === 'create_github_issue'
+        ? githubIssueReceiptFromHandlerResult(handlerResult)
+        : null;
       const presentation = recordedPresentation(options.executionMode, normalized);
       const isError = isToolResultError(normalized.status);
       const modelResult = renderToolResultForModel(call.name, normalized);
@@ -826,6 +832,7 @@ export function createAddieToolExecutor(
           duration_ms: durationMs,
           sequence,
           normalized_result: presentation,
+          ...(githubIssueReceipt && { github_issue_receipt: githubIssueReceipt }),
         },
       };
     } catch (error) {
