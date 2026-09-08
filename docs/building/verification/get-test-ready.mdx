@@ -214,7 +214,7 @@ Start with the first failing step; later failures are often consequences of lost
 | Missing status or malformed response | Put `status` and `adcp_version` on the protocol envelope, not inside the task payload; validate the raw wire response against the referenced response schema |
 | A later step cannot resolve an ID | Preserve the prior step's captured entity and account scope; do not replace storyboard-generated IDs with fixture literals |
 | Error-path context mismatch | Echo request `context` on success and error branches so correlation survives validation, authorization, and state errors |
-| Authenticated steps return 401 while discovery works | `get_adcp_capabilities` is public, but the reverse proxy must forward the `Authorization` header unchanged on authenticated task calls |
+| Authenticated steps return 401 while discovery works | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) is public, but the reverse proxy must forward the `Authorization` header unchanged on authenticated task calls |
 
 Run the single failed storyboard with debug output before rerunning the full suite. The step's `schema_ref`, `response_schema_ref`, validation path, and raw response identify whether the defect is transport, envelope shape, state continuity, or capability declaration.
 
