@@ -571,9 +571,10 @@ export class ThreadService {
                        )
                      )
                      AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueUrl') = 'string'
-                     AND receipt_call->'github_issue_receipt'->>'issueUrl' =
-                       'https://github.com/adcontextprotocol/adcp/issues/'
-                       || receipt_call->'github_issue_receipt'->>'issueNumber'
+                     AND receipt_call->'github_issue_receipt'->>'issueUrl' = (
+                       'https://github.com/adcontextprotocol/adcp/issues/' ||
+                       (receipt_call->'github_issue_receipt'->>'issueNumber')
+                     )
                    )
                  )
              )
