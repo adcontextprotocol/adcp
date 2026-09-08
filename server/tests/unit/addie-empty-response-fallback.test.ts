@@ -506,10 +506,19 @@ describe('Addie empty-response fallback (#4430)', () => {
     mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
     mocks.streamMessage.mockReturnValueOnce(makeStream(unverifiedIssueEndTurn as typeof recoveredEndTurn));
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const confirmedDraftContext = [{
+      user: 'Addie',
+      text: 'Here is the requested issue draft. Shall I create it?',
+      toolCalls: [{
+        name: 'draft_github_issue',
+        input: { title: 'Synthetic issue' },
+        result: 'Draft ready.',
+      }],
+    }];
 
-    const response = await client.processMessage('file the synthetic issue', undefined, undefined, undefined, { uncapped: true, githubIssueCreationRequested: true });
+    const response = await client.processMessage('Please create a GitHub issue for this.', undefined, undefined, undefined, { uncapped: true });
     const events: StreamEvent[] = [];
-    for await (const event of client.processMessageStream('file the synthetic issue', undefined, undefined, { uncapped: true, githubIssueCreationRequested: true })) events.push(event);
+    for await (const event of client.processMessageStream('Please create a GitHub issue for this.', undefined, undefined, { uncapped: true })) events.push(event);
     const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
 
     expect(response.text).toContain('not confirmed');
@@ -517,6 +526,13 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(response.flag_reason).toBe('github_issue_not_confirmed');
     expect(done?.response.text).toBe(response.text);
     expect(done?.response.flag_reason).toBe('github_issue_not_confirmed');
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const confirmedResponse = await client.processMessage(
+      'Yes, go ahead.', confirmedDraftContext, undefined, undefined, { uncapped: true },
+    );
+    expect(confirmedResponse.text).toContain('not confirmed');
+    expect(confirmedResponse.text).not.toContain('#701');
   });
 
   it('rejects a malformed tool turn on both response paths', async () => {

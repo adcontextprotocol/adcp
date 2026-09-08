@@ -16,6 +16,7 @@ import {
   buildAddieScopedToolReference,
   buildAddieStableToolReference,
   buildMessageTurnsWithMetadata,
+  type ThreadContextEntry,
 } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -109,7 +110,7 @@ import {
 } from './tool-result-contract.js';
 import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js';
 import {
-  isExplicitGithubIssueCreationRequest,
+  isGithubIssueCreationRequested,
   renderGithubIssueCreationOutcome,
 } from './github-issue-receipt.js';
 
@@ -1239,7 +1240,7 @@ export class AddieClaudeClient {
   /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
   private prepareFirstInvocation(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
@@ -1353,7 +1354,7 @@ export class AddieClaudeClient {
    */
   prepareMessageInvocation(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
@@ -1397,7 +1398,7 @@ export class AddieClaudeClient {
    */
   async processMessage(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
@@ -1405,7 +1406,7 @@ export class AddieClaudeClient {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
     const githubIssueCreationRequested = options?.githubIssueCreationRequested
-      ?? isExplicitGithubIssueCreationRequest(userMessage);
+      ?? isGithubIssueCreationRequested(userMessage, threadContext);
     if (operationalExecution && this.modelProvider.id !== 'anthropic') {
       throw new Error('Alternate Addie model providers are restricted to isolated execution');
     }
@@ -1969,14 +1970,14 @@ export class AddieClaudeClient {
    */
   async *processMessageStream(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>,
+    threadContext?: ThreadContextEntry[],
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
     const githubIssueCreationRequested = options?.githubIssueCreationRequested
-      ?? isExplicitGithubIssueCreationRequest(userMessage);
+      ?? isGithubIssueCreationRequested(userMessage, threadContext);
     if (operationalExecution && this.modelProvider.id !== 'anthropic') {
       throw new Error('Alternate Addie model providers are restricted to isolated execution');
     }

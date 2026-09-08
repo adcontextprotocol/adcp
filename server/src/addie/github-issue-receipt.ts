@@ -13,6 +13,15 @@ export interface GithubIssueCreationReceipt {
   readonly issueUrl: string;
 }
 
+/** Application-recorded conversation data; model text is intentionally absent. */
+export interface GithubIssueCreationIntentContext {
+  readonly user: string;
+  readonly toolCalls?: readonly {
+    readonly name: string;
+    readonly is_error?: boolean;
+  }[] | null;
+}
+
 interface GithubIssueCreationResult {
   readonly kind: 'github_issue_creation';
   readonly status: 'ok';
@@ -109,11 +118,39 @@ export function renderGithubIssueCreationOutcome(input: {
   };
 }
 
+function hasPendingGithubIssueDraft(context: readonly GithubIssueCreationIntentContext[] | undefined): boolean {
+  const priorAssistantMessage = context?.at(-1);
+  // A draft is application-recorded tool metadata, not text saying that a
+  // draft exists. Only the immediately preceding completed assistant turn can
+  // establish the confirmation context.
+  return priorAssistantMessage?.user === 'Addie'
+    && priorAssistantMessage.toolCalls?.some((call) => (
+      call.name === 'draft_github_issue' && call.is_error !== true
+    )) === true;
+}
+
+function isStandaloneCreationConfirmation(message: string): boolean {
+  const normalized = message.trim().toLowerCase().replace(/[,.!]/g, ' ').replace(/\s+/g, ' ').trim();
+  return new Set([
+    'yes', 'yep', 'yeah', 'sure', 'ok', 'okay',
+    'please do', 'go ahead', 'do it', 'create it', 'file it', 'open it',
+    'yes go ahead', 'yes please do',
+  ]).has(normalized);
+}
+
 /**
- * This is intentionally only an input-intent convenience for existing text
- * surfaces. It never parses model output and never authorizes success; an
- * explicit caller-owned `githubIssueCreationRequested` option can replace it.
+ * Determines whether this user turn asks to create an issue. This boundary is
+ * deliberately about request routing only: it cannot authorize a success,
+ * number, or URL. Those always come from a same-turn typed tool receipt.
+ *
+ * A compact confirmation is accepted only after a server-recorded successful
+ * draft in the immediately preceding assistant turn. This supports the normal
+ * draft → confirm workflow without reading model-authored draft prose.
  */
-export function isExplicitGithubIssueCreationRequest(message: string): boolean {
-  return /\b(?:create|file|open|submit)\b[\s\S]{0,80}\bgithub\s+issue\b/i.test(message);
+export function isGithubIssueCreationRequested(
+  message: string,
+  context?: readonly GithubIssueCreationIntentContext[],
+): boolean {
+  return /\b(?:create|file|open|submit)\b[\s\S]{0,80}\bgithub\s+issue\b/i.test(message)
+    || (hasPendingGithubIssueDraft(context) && isStandaloneCreationConfirmation(message));
 }

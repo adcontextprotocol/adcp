@@ -144,7 +144,7 @@ export function estimateTokens(text: string): number {
  */
 export interface MessageTurnToolCall {
   name: string;
-  input?: Record<string, unknown>;
+  input?: unknown;
   result: string;
   is_error?: boolean;
 }

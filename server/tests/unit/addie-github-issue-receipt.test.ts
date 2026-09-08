@@ -3,6 +3,7 @@ import {
   GITHUB_ISSUE_NOT_CONFIRMED_OUTCOME,
   githubIssueCreatedResult,
   githubIssueReceiptFromHandlerResult,
+  isGithubIssueCreationRequested,
   renderGithubIssueCreationOutcome,
 } from '../../src/addie/github-issue-receipt.js';
 import type { ToolExecution } from '../../src/addie/model-providers/tool-orchestration.js';
@@ -26,6 +27,17 @@ const issueExecution = (number: number, overrides: Partial<ToolExecution> = {}):
 });
 
 describe('GitHub issue terminal receipt — Escalation #567', () => {
+  it('recognizes a confirmation only from the immediately prior server-recorded draft', () => {
+    const draft = [{
+      user: 'Addie',
+      toolCalls: [{ name: 'draft_github_issue', is_error: false }],
+    }];
+    expect(isGithubIssueCreationRequested('Yes, go ahead.', draft)).toBe(true);
+    expect(isGithubIssueCreationRequested('Yes, go ahead.', [])).toBe(false);
+    expect(isGithubIssueCreationRequested('No thanks.', draft)).toBe(false);
+    expect(isGithubIssueCreationRequested('Please create a GitHub issue.', [])).toBe(true);
+  });
+
   it('fails closed for an explicitly requested creation when the model made no tool call', () => {
     expect(renderGithubIssueCreationOutcome({ creationRequested: true, executions: [] })).toEqual({
       text: GITHUB_ISSUE_NOT_CONFIRMED_OUTCOME,

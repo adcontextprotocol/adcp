@@ -95,6 +95,26 @@ describe('createAddieToolExecutor', () => {
     expect(blocked.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
   });
 
+  it('does not let an ok-shaped GitHub result settle a mutation without its typed receipt', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn().mockResolvedValue({
+      status: 'ok',
+      model_context: 'Issue created: #701',
+      user_summary: 'Issue created.',
+    });
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect: vi.fn(),
+    });
+
+    const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      normalized_result: { status: 'error' },
+    });
+    expect(result.execution.github_issue_receipt).toBeUndefined();
+  });
+
   it('refuses a production mutation before dispatch when no durable reservation is available', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
     const handler = vi.fn().mockResolvedValue(githubIssueCreatedResult({

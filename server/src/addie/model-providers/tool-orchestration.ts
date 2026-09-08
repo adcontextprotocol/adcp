@@ -794,13 +794,24 @@ export function createAddieToolExecutor(
         };
       }
 
-      const normalized = observeNormalizedToolResult(
+      const handlerNormalized = observeNormalizedToolResult(
         call.name,
         normalizeToolResult(call.name, handlerResult),
       );
       const githubIssueReceipt = call.name === 'create_github_issue'
         ? githubIssueReceiptFromHandlerResult(handlerResult)
         : null;
+      // A generic `{ status: 'ok' }` cannot settle a GitHub mutation. The
+      // receipt is the application-owned success proof, and a malformed
+      // success-looking handler value leaves the pre-dispatch reservation in
+      // its durable unknown-outcome state.
+      const normalized = call.name === 'create_github_issue' && !githubIssueReceipt
+        ? observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+            status: 'error',
+            model_context: 'Error: GitHub issue creation was not confirmed by a valid receipt.',
+            user_summary: 'GitHub issue creation was not confirmed.',
+          }))
+        : handlerNormalized;
       const presentation = recordedPresentation(options.executionMode, normalized);
       const isError = isToolResultError(normalized.status);
       const modelResult = renderToolResultForModel(call.name, normalized);
