@@ -607,8 +607,12 @@ function buildShareLinks(
   awardedDate: Date = new Date(),
 ): string[] {
   const lines: string[] = [];
-  const year = awardedDate.getFullYear();
-  const month = awardedDate.getMonth() + 1;
+  // awardedDate is a UTC instant (DB awarded_at / test fixtures use "...T00:00:00.000Z"
+  // literals) - the local accessors return the wrong month (and, near year boundaries, the
+  // wrong year) on any server running a timezone behind UTC, since a UTC-midnight instant is
+  // still the previous local day there.
+  const year = awardedDate.getUTCFullYear();
+  const month = awardedDate.getUTCMonth() + 1;
   let linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
     + `&name=${encodeURIComponent(credName)}`
     + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
