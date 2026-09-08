@@ -25,7 +25,12 @@ import { AAO_HOST } from "./config/aao.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
-import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
+import {
+  agentProfileChangedFields,
+  type AgentInventoryProfile,
+  type AgentInventoryProfilesDatabase,
+  type ProfileUpsertInput,
+} from "./db/agent-inventory-profiles-db.js";
 import { getDedicatedClient, query, withDatabaseDeadline } from "./db/client.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import { verifyHostedPropertyOrigin } from "./services/hosted-property-origin-verifier.js";
@@ -706,6 +711,14 @@ export class CrawlerService {
 
       // Snapshot pre-crawl state for diffing
       const preCrawlAgents = await this.snapshotAgentState();
+      // Capture previously-persisted profiles BEFORE buildInventoryProfiles()
+      // overwrites them via upsertProfiles() — this is the only point in the
+      // crawl where the "before" values are still readable (see
+      // agentProfileChangedFields).
+      const previousProfiles = this.profilesDb
+        ? await this.profilesDb.getProfilesByUrls([...preCrawlAgents.keys()])
+        : [];
+      const previousProfilesByUrl = new Map(previousProfiles.map(profile => [profile.agent_url, profile]));
       assertExecutionLock();
 
       // Populate federated index from PropertyIndex and adagents.json files,
@@ -743,7 +756,7 @@ export class CrawlerService {
 
       // Diff and produce events (after profiles are built so discovery events include profile data)
       assertExecutionLock();
-      await this.produceEventsFromDiff(preCrawlAgents, builtProfiles);
+      await this.produceEventsFromDiff(preCrawlAgents, builtProfiles, previousProfilesByUrl);
 
       // Scan brand.json for all crawled domains + all hosted brand domains
       const hostedDomains = await this.brandDb.listAllHostedBrandDomains();
@@ -2435,7 +2448,8 @@ export class CrawlerService {
 
   private async produceEventsFromDiff(
     preCrawlAgents: Map<string, { domains: Set<string> }>,
-    profiles: Map<string, ProfileUpsertInput>
+    profiles: Map<string, ProfileUpsertInput>,
+    previousProfilesByUrl: Map<string, AgentInventoryProfile> = new Map()
   ): Promise<void> {
     if (!this.eventsDb) return;
 
@@ -2514,6 +2528,39 @@ export class CrawlerService {
           });
         }
       }
+    }
+
+    // Detect profile changes for already-known agents that are still present.
+    // Newly discovered agents are covered by agent.discovered above (their
+    // full profile ships there instead); removed agents have no new profile
+    // to diff against.
+    for (const [url] of postCrawlAgents) {
+      if (!preCrawlAgents.has(url)) continue;
+      const profile = profiles.get(url);
+      if (!profile) continue;
+      const changedFields = agentProfileChangedFields(previousProfilesByUrl.get(url), profile);
+      if (changedFields.length === 0) continue;
+      events.push({
+        event_type: 'agent.profile_updated',
+        entity_type: 'agent',
+        entity_id: url,
+        payload: {
+          agent_url: url,
+          channels: profile.channels,
+          property_types: profile.property_types,
+          markets: profile.markets,
+          categories: profile.categories,
+          tags: profile.tags,
+          delivery_types: profile.delivery_types,
+          format_kinds: profile.format_kinds,
+          property_count: profile.property_count,
+          publisher_count: profile.publisher_count,
+          has_tmp: profile.has_tmp,
+          category_taxonomy: profile.category_taxonomy ?? null,
+          changed_fields: changedFields,
+        },
+        actor: 'pipeline:crawler',
+      });
     }
 
     if (events.length > 0) {
