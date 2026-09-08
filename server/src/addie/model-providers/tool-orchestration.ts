@@ -84,6 +84,15 @@ export interface AddieToolExecutorOptions {
   executionMode: AddieExecutionMode;
   policy?: ToolExecutionPolicy;
   notificationContext?: ToolExecutionNotificationContext;
+  /**
+   * Persists an unknown-outcome intent immediately before a live mutation.
+   * A production mutation is never dispatched if this durable handshake is
+   * absent or fails: a retry could otherwise create a duplicate side effect.
+   */
+  reserveSideEffect?: (request: {
+    toolName: string;
+    parameters: Record<string, unknown>;
+  }) => void | Promise<void>;
 }
 
 export interface AddieToolCallResult {
@@ -706,7 +715,37 @@ export function createAddieToolExecutor(
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
     }
 
-    if (sideEffectKey) dispatchedSideEffects.add(sideEffectKey);
+    if (sideEffectKey) {
+      if (operationalExecution && !options.reserveSideEffect) {
+        const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+          status: 'error',
+          model_context: 'Error: External action was not run because a durable outcome reservation was unavailable.',
+          user_summary: 'The external action was not run because its outcome could not be reserved safely.',
+        }));
+        logger.error(
+          { event: 'addie_mutation_reservation_missing', toolName: call.name },
+          'Addie: Refusing production mutation without a durable outcome reservation',
+        );
+        return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+      }
+      try {
+        await options.reserveSideEffect?.({ toolName: call.name, parameters: call.input });
+      } catch (error) {
+        const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+          status: 'error',
+          model_context: 'Error: External action was not run because its durable outcome reservation failed.',
+          user_summary: 'The external action was not run because its outcome could not be reserved safely.',
+        }));
+        logger.error(
+          { event: 'addie_mutation_reservation_failed', toolName: call.name, error },
+          'Addie: Refusing mutation after durable outcome reservation failure',
+        );
+        return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+      }
+      // Record before dispatch so a provider continuation or recovery never
+      // resubmits an action whose handler outcome is ambiguous.
+      dispatchedSideEffects.add(sideEffectKey);
+    }
 
     try {
       const handlerResult = await registered.handler(structuredClone(call.input));

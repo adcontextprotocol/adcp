@@ -15,10 +15,10 @@ const issue = (number: number, is_error = false): ToolExecution => ({
   sequence: number,
 });
 
-const tool = (tool_name: string, is_error = false): ToolExecution => ({
+const tool = (tool_name: string, is_error = false, result = 'Synthetic completed action.'): ToolExecution => ({
   tool_name,
   parameters: {},
-  result: 'Synthetic completed action.',
+  result,
   is_error,
   duration_ms: 1,
   sequence: 1,
@@ -58,7 +58,7 @@ describe('side-effect receipt guard — escalation 567', () => {
   });
 
   it('requires one-to-one exact matching for multiple issue receipts', () => {
-    const good = 'I opened issue #701 and issue #702: https://github.com/adcontextprotocol/adcp/issues/701 https://github.com/adcontextprotocol/adcp/issues/702';
+    const good = 'I opened issue #701 and opened issue #702: https://github.com/adcontextprotocol/adcp/issues/701 https://github.com/adcontextprotocol/adcp/issues/702';
     expect(enforceSideEffectClaimReceipts(good, [issue(701), issue(702)])).toMatchObject({ enforced: false });
     expect(enforceSideEffectClaimReceipts("I opened issue #701 and issue #999.", [issue(701), issue(702)]))
       .toMatchObject({ enforced: true, reason: 'github_issue_receipt_claim_mismatch' });
@@ -101,6 +101,10 @@ describe('side-effect receipt guard — escalation 567', () => {
       ...tool('resend_invoice'),
       result: '❌ Could not resend invoice: timeout',
     }])).toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts("I've scheduled the meeting.", [{
+      ...tool('schedule_meeting'),
+      result: '⚠️ You need to be an admin to schedule a meeting.',
+    }])).toMatchObject({ enforced: true });
   });
 
   it('guards passive external-state claims and mismatched external URLs', () => {
@@ -109,7 +113,26 @@ describe('side-effect receipt guard — escalation 567', () => {
     expect(enforceSideEffectClaimReceipts(
       'I created a payment link: https://payments.invalid/checkout',
       [{ ...tool('create_payment_link'), result: '{"success":true,"payment_url":"https://payments.example/checkout"}' }],
-    )).toMatchObject({ enforced: true, reason: 'payment_link_receipt_claim_mismatch' });
+    )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+  });
+
+  it('binds every labelled non-GitHub outcome identifier and URL to its exact receipt', () => {
+    const receipt = tool(
+      'schedule_meeting',
+      false,
+      'Meeting scheduled: meeting_id=meet_701; join_url=https://calendar.example/meet_701',
+    );
+    const confirmed = 'I scheduled the meeting. Meeting ID: meet_701. Meeting URL: https://calendar.example/meet_701';
+    expect(enforceSideEffectClaimReceipts(confirmed, [receipt])).toMatchObject({ enforced: false });
+    expect(enforceSideEffectClaimReceipts(
+      'I scheduled the meeting. Meeting ID: meet_999. Meeting URL: https://calendar.example/meet_999',
+      [receipt],
+    )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+  });
+
+  it('does not treat an unrelated documentation URL as a claimed mutation receipt', () => {
+    const text = 'I sent the invoice. Documentation is available at https://docs.example/invoices.';
+    expect(enforceSideEffectClaimReceipts(text, [tool('send_invoice')])).toMatchObject({ enforced: false });
   });
 
   it('does not block ordinary read-only first-person prose or retryable resolve reads', () => {
@@ -118,6 +141,22 @@ describe('side-effect receipt guard — escalation 567', () => {
     expect(isSideEffectTool('resolve_brand')).toBe(false);
     expect(isSideEffectTool('resolve_catalog')).toBe(false);
     expect(isSideEffectTool('resolve_property')).toBe(false);
+  });
+
+  it('does not mistake a related issue reference for a newly-created receipt', () => {
+    const text = 'I filed issue #701 to track this, related to #689.';
+    expect(enforceSideEffectClaimReceipts(text, [issue(701)])).toMatchObject({ enforced: false });
+  });
+
+  it('guards supported mutations outside the GitHub, billing, and meeting tool families', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I generated a perspective illustration. Illustration URL: https://images.example/generated-701',
+      [],
+    )).toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts(
+      'I transferred the brand ownership. Reference: ownership_701',
+      [tool('transfer_brand_ownership', false, 'Ownership transferred: reference=ownership_701')],
+    )).toMatchObject({ enforced: false });
   });
 
   it('does not permit a draft tool to confirm actual filing', () => {

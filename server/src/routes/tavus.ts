@@ -95,6 +95,10 @@ import { AddieModelConfig } from "../config/models.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
 import { getThreadService } from "../addie/thread-service.js";
+import {
+  buildToolIntentCheckpoint,
+  buildToolResultCheckpoint,
+} from "../addie/stream-tool-checkpoints.js";
 import { optionalAuth } from "../middleware/auth.js";
 import {
   getWebMemberContext,
@@ -972,6 +976,15 @@ export function createTavusRouter(options?: {
           selectedToolSetNames: routedVoiceTools?.selectedToolSets,
           allowedToolNames: routedVoiceTools?.allowedToolNames,
           costScope,
+          reserveSideEffect: async ({ toolName, parameters }) => {
+            if (!threadId) throw new Error('A durable conversation thread is required for an external action');
+            await getThreadService().addMessage(buildToolIntentCheckpoint({
+              threadId,
+              toolName,
+              parameters,
+              requestedModel: AddieModelConfig.voice,
+            }));
+          },
         }
       )) {
         if (connectionClosed) break;
@@ -993,6 +1006,23 @@ export function createTavusRouter(options?: {
           logger.error({ error: event.error }, "Tavus: Addie stream error");
           streamError = true;
           break;
+        } else if (event.type === 'tool_end') {
+          if (!threadId) {
+            logger.error({ toolName: event.tool_name }, 'Tavus: Missing thread for tool outcome checkpoint');
+            streamError = true;
+            break;
+          }
+          try {
+            await getThreadService().addMessage(buildToolResultCheckpoint({
+              threadId,
+              execution: event.execution,
+              requestedModel: AddieModelConfig.voice,
+            }));
+          } catch (checkpointError) {
+            logger.error({ checkpointError, threadId, toolName: event.tool_name }, 'Tavus: Tool outcome checkpoint failed');
+            streamError = true;
+            break;
+          }
         } else if (event.type === "done") {
           terminalResponse = event.response;
         }

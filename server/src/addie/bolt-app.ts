@@ -178,7 +178,6 @@ import {
   buildToolResultCheckpoint,
   type StoredToolCall,
 } from './stream-tool-checkpoints.js';
-import { isSideEffectTool } from './side-effect-claims.js';
 import type { ToolExecution } from './model-providers/tool-orchestration.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
@@ -2158,30 +2157,17 @@ async function handleUserMessage({
         log: (level, fields, message) => logger[level](fields, message),
       };
 
-      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
-        if (event.type === 'tool_start' && event.pre_dispatch && isSideEffectTool(event.tool_name)) {
-          try {
-            await threadService.addMessage(buildToolIntentCheckpoint({
-              threadId: thread.thread_id,
-              toolName: event.tool_name,
-              parameters: event.parameters,
-              requestedModel: dmEffectiveModel,
-            }));
-          } catch (checkpointError) {
-            logger.error(
-              { checkpointError, threadId: thread.thread_id, toolName: event.tool_name },
-              'Addie Bolt: Mutation reservation failed — stopping before dispatch',
-            );
-            streamWasInterrupted = true;
-            streamInterruptCategory = 'mutation_reservation_failed';
-            try {
-              await say("I couldn't safely reserve that external action, so it was not run.");
-            } catch (recoveryError) {
-              logger.error({ recoveryError }, 'Addie Bolt: Mutation reservation recovery notice failed');
-            }
-            break;
-          }
-        }
+      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, {
+        ...processOptions,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await threadService.addMessage(buildToolIntentCheckpoint({
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: dmEffectiveModel,
+          }));
+        },
+      })) {
         streamState = await interpretSlackDmStreamEvent(
           streamState,
           event,
@@ -2381,7 +2367,17 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+        ...processOptions,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await threadService.addMessage(buildToolIntentCheckpoint({
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: dmEffectiveModel,
+          }));
+        },
+      });
       fullText = response.text;
 
       // Send response via say() with feedback buttons and inline images
@@ -2945,7 +2941,17 @@ export async function handleAppMention({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await threadService.addMessage(buildToolIntentCheckpoint({
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: mentionEffectiveModel,
+        }));
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -4278,7 +4284,17 @@ async function handleDirectMessage(
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await threadService.addMessage(buildToolIntentCheckpoint({
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: directMessageEffectiveModel,
+        }));
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing DM');
     response = {
@@ -4691,7 +4707,17 @@ async function handleActiveThreadReply({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await threadService.addMessage(buildToolIntentCheckpoint({
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: activeThreadEffectiveModel,
+        }));
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing active thread reply');
     response = {
@@ -5314,7 +5340,17 @@ async function handleChannelMessage({
       undefined,
       invocation.requestTools,
       undefined,
-      processOptions,
+      {
+        ...processOptions,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await threadService.addMessage(buildToolIntentCheckpoint({
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: processOptions.modelOverride ?? AddieModelConfig.chat,
+          }));
+        },
+      },
     );
 
     if (!response.text || response.text.trim().length === 0) {
@@ -6283,7 +6319,17 @@ async function handleReactionAdded({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, processOptions);
+    response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, {
+      ...processOptions,
+      reserveSideEffect: async ({ toolName, parameters }) => {
+        await threadService.addMessage(buildToolIntentCheckpoint({
+          threadId: thread.thread_id,
+          toolName,
+          parameters,
+          requestedModel: AddieModelConfig.chat,
+        }));
+      },
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing reaction response');
     response = {

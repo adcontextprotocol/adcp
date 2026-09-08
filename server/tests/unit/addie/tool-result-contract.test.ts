@@ -71,6 +71,7 @@ describe('Addie tool result contract', () => {
       error: 'Failed to send invoice.',
     })).status).toBe('error');
     expect(normalizeToolResult('resend_invoice', '❌ Could not resend invoice: timeout').status).toBe('error');
+    expect(normalizeToolResult('schedule_meeting', '⚠️ You need to be an admin to schedule a meeting.').status).toBe('error');
   });
 
   it('bounds oversized model context and user summaries', () => {

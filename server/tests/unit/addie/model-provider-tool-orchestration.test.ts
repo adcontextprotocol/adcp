@@ -76,8 +76,9 @@ describe('createAddieToolExecutor', () => {
   it('blocks a duplicate external mutation before a continuation can dispatch it twice', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
     const handler = vi.fn().mockResolvedValue('Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
-      executionMode: 'production', policy: () => ({ allowed: true }),
+      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
     });
     const first = { ...call({ title: 'Synthetic issue', body: 'Synthetic body' }), id: 'call_issue_1', name: 'create_github_issue' };
     const duplicate = { ...first, id: 'call_issue_2' };
@@ -86,7 +87,36 @@ describe('createAddieToolExecutor', () => {
     const blocked = await execute(duplicate, 2);
 
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(reserveSideEffect).toHaveBeenCalledTimes(1);
     expect(blocked.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
+  it('refuses a production mutation before dispatch when no durable reservation is available', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn().mockResolvedValue('Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production', policy: () => ({ allowed: true }),
+    });
+
+    const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
+  it('refuses a production mutation when the durable reservation write fails', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn();
+    const reserveSideEffect = vi.fn().mockRejectedValue(new Error('storage unavailable'));
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+    });
+
+    const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+
+    expect(reserveSideEffect).toHaveBeenCalledWith({ toolName: 'create_github_issue', parameters: { id: 'abc' } });
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
   });
 
   it('rejects structurally malformed provider input before policy or handler dispatch', async () => {

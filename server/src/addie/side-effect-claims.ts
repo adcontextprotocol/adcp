@@ -62,18 +62,18 @@ interface ClaimRule {
 // Centrally auditable, conservative coverage of user-visible mutations. Model
 // prose never supplies confirmation; only the current request ledger can.
 const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
-  { name: 'GitHub issue', tools: ['create_github_issue'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:just\s+)?(?:filed|opened|created|submitted)\s+(?:(?:an?\s+)?(?:GitHub\s+)?issue\b|#\d+\b|https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+\b)|\b(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue\b|\b(?:GitHub\s+)?issue(?:\s+(?:#\d+|https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+))?\s+(?:(?:was|has been)\s+)?(?:filed|opened|created|submitted)\b/i },
+  { name: 'GitHub issue', tools: ['create_github_issue'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:just\s+)?(?:filed|opened|created|submitted)\s+(?:(?:an?\s+)?(?:GitHub\s+)?issue\b|#\d+\b)|\b(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue\b|\b(?:GitHub\s+)?issue(?:\s+#\d+)?\s+(?:(?:was|has been)\s+)?(?:filed|opened|created|submitted)\b/i },
   { name: 'invoice', tools: ['resend_invoice', 'send_invoice', 'confirm_send_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:sent|resent)\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+(?:sent|resent)\b/i },
   { name: 'billing update', tools: ['update_billing_email'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|changed)\s+(?:the\s+)?billing\s+email\b|\bbilling\s+email\s+(?:was|has been)\s+(?:updated|changed)\b/i },
   { name: 'escalation', tools: ['resolve_escalation', 'escalate_to_admin'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:resolved|escalated|notified)\s+(?:the\s+)?(?:escalation|support\s+ticket|team)\b|\b(?:the\s+)?team\s+(?:has been|was)\s+notified\b|\bescalation\s+#?\d+\s+(?:was|has been)\s+resolved\b/i },
-  { name: 'meeting', tools: ['schedule_meeting', 'update_meeting', 'cancel_meeting', 'cancel_meeting_series', 'add_meeting_attendee', 'rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:scheduled|updated|cancelled|canceled|added)\s+(?:an?\s+)?(?:meeting|attendee)\b|\bmeeting\s+(?:was|has been)\s+(?:scheduled|updated|cancelled|canceled)\b/i },
+  { name: 'meeting', tools: ['schedule_meeting', 'update_meeting', 'cancel_meeting', 'cancel_meeting_series', 'add_meeting_attendee', 'rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:scheduled|updated|cancelled|canceled|added)\s+(?:(?:an?|the)\s+)?(?:meeting|attendee)\b|\bmeeting\s+(?:was|has been)\s+(?:scheduled|updated|cancelled|canceled)\b/i },
   { name: 'payment link', tools: ['create_payment_link'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:created|generated|sent)\s+(?:an?\s+)?payment\s+link\b|\bpayment\s+link\s+(?:was|has been)\s+created\b/i },
   { name: 'direct message', tools: ['send_member_dm'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:sent|delivered)\s+(?:an?\s+)?(?:DM|direct message|notification)\b/i },
   { name: 'content decision', tools: ['approve_content', 'reject_content', 'request_revisions', 'publish_brand_canonical_document', 'create_working_group_post'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:approved|rejected|published|posted|requested revisions)\s+(?:the\s+)?(?:content|post|document)\b/i },
   { name: 'event change', tools: ['create_event', 'update_event', 'invite_to_event', 'manage_event_registrations', 'register_event_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:created|updated|invited|registered)\s+(?:an?\s+)?event\b/i },
   { name: 'member or registry update', tools: ['set_my_name', 'set_outreach_preference', 'update_my_profile', 'save_property', 'save_brand', 'save_agent', 'update_company_listing', 'update_company_logo', 'upload_brand_logo', 'join_working_group', 'withdraw_council_interest', 'express_council_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|saved|joined|withdrawn|uploaded)\s+(?:your\s+)?(?:profile|preference|property|brand|agent|working group|logo|listing)\b/i },
   { name: 'certification record', tools: ['complete_certification_module', 'complete_certification_exam', 'start_certification_module', 'start_certification_exam', 'checkpoint_teaching_progress'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:completed|started|recorded)\s+(?:the\s+)?(?:module|exam|certification|progress)\b/i },
-  { name: 'external state change', tools: [...SIDE_EFFECT_TOOL_NAMES], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|filed|invited|issued|joined|published|registered|removed|renamed|saved|scheduled|sent|updated|uploaded|verified)\s+(?:an?\s+|the\s+|your\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|document|discount|contact|prospect|invitation|domain|account|record|property|brand|agent|listing|working\s+group|content|post)\b|\b(?:the\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|document|discount|contact|prospect|invitation|domain|account|record)\s+(?:(?:has|have)\s+been|was)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|filed|invited|issued|joined|published|registered|removed|renamed|saved|scheduled|sent|updated|uploaded|verified)\b/i },
+  { name: 'external state change', tools: [...SIDE_EFFECT_TOOL_NAMES], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|expressed|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\s+(?:an?\s+|the\s+|your\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|domain\s+challenge|account|record|property|brand|brand\s+ownership|agent|listing|logo|asset|content|post|working\s+group|meeting|attendee|event|event\s+registration|invoice|payment|payment\s+link|escalation|council\s+interest|catalog\s+entry|certification|module|exam|progress|perspective\s+illustration|illustration|portrait|token|introduction|revisions|preference|profile|name|topic\s+subscription)\b|\b(?:the\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|account|record|property|brand|agent|listing|logo|asset|content|post|working\s+group|meeting|event|invoice|payment|escalation|catalog\s+entry|certification|module|exam|perspective\s+illustration|illustration|portrait|token|introduction)\s+(?:(?:has|have)\s+been|was)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\b/i },
 ];
 
 function successful(executions: readonly ToolExecution[], names: readonly string[]): ToolExecution[] {
@@ -93,13 +93,62 @@ function githubReceipt(execution: ToolExecution): { number: string; url: string 
 }
 
 function githubClaims(text: string): { numbers: string[]; urls: string[] } {
-  const urls = [...text.matchAll(/\bhttps:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+\b/gi)].map((match) => match[0]);
-  const numbers = [...text.matchAll(/(?:\bissue\s*)?#(\d+)\b/gi)].map((match) => match[1]);
+  const urls = text.split(/[\s<>()\[\]]+/).map((token) => token.replace(/[.,:;!?]+$/, '')).filter((token) => {
+    try {
+      const url = new URL(token);
+      return url.protocol === 'https:'
+        && url.hostname === 'github.com'
+        && /^\/adcontextprotocol\/adcp\/issues\/\d+$/.test(url.pathname);
+    } catch {
+      return false;
+    }
+  });
+  // Only a number syntactically coupled to a creation assertion is a claimed
+  // newly-created issue. A related `#123` elsewhere in the sentence is not.
+  const numbers = [...text.matchAll(/\b(?:filed|opened|created|submitted)\s+(?:(?:an?\s+)?(?:GitHub\s+)?issue\s*)?#(\d+)\b|\bissue\s+#(\d+)\s+(?:(?:was|has been)\s+)?(?:filed|opened|created|submitted)\b|\bdone\s*[—:-]\s*#(\d+)\b|\b(?:and|,)\s+(?:(?:an?\s+)?(?:GitHub\s+)?issue\s*)#(\d+)\b/gi)]
+    .map((match) => match[1] ?? match[2] ?? match[3] ?? match[4]);
   return { numbers, urls };
 }
 
 function isGithubSuccessClaim(text: string): boolean {
-  return /\b(?:issue\s+created|(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue|successfully\s+(?:filed|opened|created|submitted)|done\s*[—:-]\s*(?:#\d+|https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+))/i.test(text);
+  if (/\b(?:issue\s+created|(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue|successfully\s+(?:filed|opened|created|submitted)|done\s*[—:-]\s*#\d+)/i.test(text)) return true;
+  return githubClaims(text).urls.length > 0
+    && /\b(?:filed|opened|created|submitted|done)\b/i.test(text);
+}
+
+/** URLs and identifiers are meaningful outcomes only in an action sentence or when explicitly labelled as one. */
+function claimedReceiptUrls(text: string, rule: ClaimRule): string[] {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  return sentences.flatMap((sentence) => {
+    const isOutcomeSentence = rule.pattern.test(sentence)
+      || /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|resource)\s+(?:url|link)\b|\b(?:url|link)\s*:/i.test(sentence);
+    if (!isOutcomeSentence) return [];
+    return sentence.split(/[\s<>()\[\]]+/).map((token) => token.replace(/[.,:;!?]+$/, '')).filter((token) => {
+      try {
+        return new URL(token).protocol === 'https:';
+      } catch {
+        return false;
+      }
+    });
+  });
+}
+
+/**
+ * Restrict identifier extraction to explicit result labels. This avoids treating
+ * ordinary prose or a date as an external identifier while still covering
+ * "meeting ID", "invoice #", and a following "ID: ..." result sentence.
+ */
+function claimedReceiptIdentifiers(text: string): string[] {
+  const named = /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|record|request|invitation|member|organization|document|bookmark|reminder)\s*(?:id|number|reference|code)?\s*(?::|\bis\b|#)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
+  const labelled = /\b(?:id|number|reference|confirmation\s+code)\s*(?::|\bis\b)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
+  return [...text.matchAll(named), ...text.matchAll(labelled)].map((match) => match[1]);
+}
+
+function receiptContainsExactValue(receipt: ToolExecution, value: string): boolean {
+  if (value.startsWith('https://')) return receipt.result.includes(value);
+  return receipt.result
+    .split(/[^A-Za-z0-9_-]+/)
+    .some((token) => token === value);
 }
 
 export interface SideEffectClaimGuardResult {
@@ -121,13 +170,17 @@ export function enforceSideEffectClaimReceipts(
     if (receipts.length === 0) {
       return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: `unverified_${rule.name.replaceAll(' ', '_')}_claim` };
     }
-    if (rule.name === 'payment link') {
-      const claimedUrls = [...text.matchAll(/https:\/\/[^\s)\]]+/gi)].map((match) => match[0]);
-      if (claimedUrls.some((url) => !receipts.some((receipt) => receipt.result.includes(url)))) {
-        return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'payment_link_receipt_claim_mismatch' };
+    if (rule.name !== 'GitHub issue') {
+      const claimedUrls = claimedReceiptUrls(text, rule);
+      const claimedIdentifiers = claimedReceiptIdentifiers(text);
+      if (
+        claimedUrls.some((url) => !receipts.some((receipt) => receiptContainsExactValue(receipt, url)))
+        || claimedIdentifiers.some((identifier) => !receipts.some((receipt) => receiptContainsExactValue(receipt, identifier)))
+      ) {
+        return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'side_effect_receipt_claim_mismatch' };
       }
+      continue;
     }
-    if (rule.name !== 'GitHub issue') continue;
     const trusted = receipts.map(githubReceipt);
     if (trusted.some((receipt) => receipt === null)) {
       return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'malformed_github_issue_receipt' };

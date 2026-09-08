@@ -16,6 +16,7 @@ import {
   validateOutput,
 } from './security.js';
 import { getThreadService } from './thread-service.js';
+import { buildToolIntentCheckpoint } from './stream-tool-checkpoints.js';
 import type { Thread } from './thread-service.js';
 import { sanitizeSpeakerName } from './prompts.js';
 import { sendEmailReply, type EmailThreadContext } from '../notifications/email.js';
@@ -227,6 +228,14 @@ export async function handleEmailConversation(
         threadId: thread.thread_id,
         userDisplayName: input.senderDisplayName || undefined,
         currentSpeakerName: speakerName,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await threadService.addMessage(buildToolIntentCheckpoint({
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: effectiveModel,
+          }));
+        },
         costScope: { userId: emailScopeKey, tier: 'anonymous' },
       }
     );

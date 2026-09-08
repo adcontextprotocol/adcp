@@ -270,7 +270,7 @@ export function legacyResultIndicatesFailure(raw: string): boolean {
     // Non-JSON legacy strings are classified from their leading receipt text.
   }
   const firstLine = text.split(/\r?\n/, 1)[0] || '';
-  return /^\s*(?:❌|error:|failed\b|failure\b|could not\b|couldn't\b|unable\b|cannot\b|denied\b|invalid\b|not completed\b)/i.test(firstLine);
+  return /^\s*(?:❌|⚠️?|error:|failed\b|failure\b|could not\b|couldn't\b|unable\b|cannot\b|denied\b|invalid\b|not completed\b)/i.test(firstLine);
 }
 
 function classifySearchResult(toolName: string, text: string): {

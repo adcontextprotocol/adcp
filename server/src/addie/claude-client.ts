@@ -566,6 +566,15 @@ export interface ProcessMessageOptions {
   /** Fail-closed hook evaluated immediately before each custom handler dispatch. */
   toolExecutionPolicy?: ToolExecutionPolicy;
   /**
+   * Caller-provided durable unknown-outcome write performed immediately before
+   * a production mutation handler is dispatched. Missing or failed writes
+   * fail closed at the shared executor boundary.
+   */
+  reserveSideEffect?: (request: {
+    toolName: string;
+    parameters: Record<string, unknown>;
+  }) => void | Promise<void>;
+  /**
    * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
    */
@@ -856,7 +865,7 @@ function providerUnavailableResponse(
  */
 export type StreamEvent =
   | { type: 'text'; text: string }
-  | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown>; pre_dispatch?: true }
+  | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
   | {
       type: 'tool_end';
       tool_name: string;
@@ -1486,6 +1495,7 @@ export class AddieClaudeClient {
       {
         executionMode: options?.executionMode ?? 'production',
         policy: options?.toolExecutionPolicy,
+        reserveSideEffect: options?.reserveSideEffect,
         notificationContext: {
           slackUserId: options?.slackUserId,
           userDisplayName: options?.userDisplayName,
@@ -2079,6 +2089,7 @@ export class AddieClaudeClient {
     const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
       executionMode: options?.executionMode ?? 'production',
       policy: options?.toolExecutionPolicy,
+      reserveSideEffect: options?.reserveSideEffect,
       notificationContext: {
         slackUserId: options?.slackUserId,
         userDisplayName: options?.userDisplayName,
@@ -2476,7 +2487,6 @@ export class AddieClaudeClient {
               type: 'tool_start',
               tool_name: event.call.name,
               parameters: this.recordedToolParameters(options, event.call.input),
-              pre_dispatch: true,
             };
           } else {
             yield {

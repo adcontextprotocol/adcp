@@ -36,7 +36,6 @@ import {
   buildToolResultCheckpoint,
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
-import { isSideEffectTool } from '../addie/side-effect-claims.js';
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
@@ -1351,6 +1350,14 @@ export function createAddieChatRouter(options?: {
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
           inputAttachments: attachments,
+          reserveSideEffect: async ({ toolName, parameters }) => {
+            await threadService.addMessage(buildToolIntentCheckpoint({
+              threadId: thread.thread_id,
+              toolName,
+              parameters,
+              requestedModel: effectiveModel,
+            }));
+          },
           ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
           costScope: authedScope
             ? authedScope
@@ -1889,6 +1896,15 @@ export function createAddieChatRouter(options?: {
         userDisplayName: displayName || undefined,
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await threadService.addMessage(buildToolIntentCheckpoint({
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: effectiveModel,
+            clientRequestId: clientRequestId || undefined,
+          }));
+        },
         ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
         ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
         ...(streamAuthedScope
@@ -1907,29 +1923,6 @@ export function createAddieChatRouter(options?: {
           fullText += event.text;
           sendEvent("text", { text: event.text });
         } else if (event.type === 'tool_start') {
-          if (event.pre_dispatch && isSideEffectTool(event.tool_name)) {
-            try {
-              await threadService.addMessage(buildToolIntentCheckpoint({
-                threadId: thread.thread_id,
-                toolName: event.tool_name,
-                parameters: event.parameters,
-                requestedModel: effectiveModel,
-                clientRequestId: clientRequestId || undefined,
-              }));
-            } catch (checkpointError) {
-              logger.error(
-                { checkpointError, threadId: thread.thread_id, toolName: event.tool_name },
-                'Addie Chat Stream: Mutation reservation failed — stopping before dispatch',
-              );
-              sendEvent('stream_error', {
-                error: 'I could not safely reserve that external action, so it was not run.',
-                reason: 'mutation_reservation_failed',
-                recoverable: false,
-              });
-              res.end();
-              return;
-            }
-          }
           toolsUsed.push(event.tool_name);
           sendEvent("tool_start", { tool_name: event.tool_name });
         } else if (event.type === 'tool_end') {
