@@ -3,6 +3,7 @@ import type {
   ToolExecution,
   ToolExecutionPolicy,
 } from './model-providers/tool-orchestration.js';
+import { isSideEffectTool, sideEffectReplayKey } from './side-effect-claims.js';
 
 export interface StoredToolCall {
   name: string;
@@ -66,6 +67,40 @@ export function buildToolResultCheckpoint(input: {
 }
 
 /**
+ * Persist a mutation reservation before dispatch. If result persistence later
+ * fails, this durable unknown-outcome record blocks an automatic replay.
+ */
+export function buildToolIntentCheckpoint(input: {
+  threadId: string;
+  toolName: string;
+  parameters: Record<string, unknown>;
+  requestedModel: string;
+  clientRequestId?: string;
+}): CreateMessageInput {
+  return {
+    thread_id: input.threadId,
+    role: 'assistant',
+    content: '',
+    tools_used: [input.toolName],
+    tool_calls: [{
+      name: input.toolName,
+      input: input.parameters,
+      result: 'External action dispatch reserved; outcome unknown.',
+      is_error: true,
+    }],
+    model: input.requestedModel,
+    model_execution: {
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: input.requestedModel,
+      reason: 'stream_interrupted',
+    },
+    delivery_status: 'interrupted',
+    ...(input.clientRequestId && { client_request_id: input.clientRequestId }),
+  };
+}
+
+/**
  * Prevent an interrupted-turn retry from dispatching an exact tool call whose
  * result is already present in model history. Non-matching calls still pass
  * through the caller's existing policy (or are allowed when no policy exists).
@@ -80,12 +115,19 @@ export function blockCheckpointedToolReplays(
   // retry it.
   const completed = new Set(
     checkpoints
-      .filter((call) => call.is_error !== true)
-      .map((call) => replayKey(call.name, call.input)),
+      // Failed reads may be retried. A mutation with an error has an
+      // ambiguous external outcome, so it is never automatically replayed.
+      .filter((call) => call.is_error !== true || isSideEffectTool(call.name))
+      .map((call) => isSideEffectTool(call.name)
+        ? sideEffectReplayKey(call.name, call.input)
+        : replayKey(call.name, call.input)),
   );
   if (completed.size === 0) return delegate;
   return async (request) => {
-    if (completed.has(replayKey(request.toolName, request.input))) return { allowed: false };
+    const key = isSideEffectTool(request.toolName)
+      ? sideEffectReplayKey(request.toolName, request.input)
+      : replayKey(request.toolName, request.input);
+    if (completed.has(key)) return { allowed: false };
     return delegate ? delegate(request) : { allowed: true };
   };
 }

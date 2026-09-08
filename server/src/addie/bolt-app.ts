@@ -174,9 +174,11 @@ import {
 } from './thread-utils.js';
 import {
   blockCheckpointedToolReplays,
+  buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
   type StoredToolCall,
 } from './stream-tool-checkpoints.js';
+import { isSideEffectTool } from './side-effect-claims.js';
 import type { ToolExecution } from './model-providers/tool-orchestration.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
@@ -2157,6 +2159,29 @@ async function handleUserMessage({
       };
 
       for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
+        if (event.type === 'tool_start' && event.pre_dispatch && isSideEffectTool(event.tool_name)) {
+          try {
+            await threadService.addMessage(buildToolIntentCheckpoint({
+              threadId: thread.thread_id,
+              toolName: event.tool_name,
+              parameters: event.parameters,
+              requestedModel: dmEffectiveModel,
+            }));
+          } catch (checkpointError) {
+            logger.error(
+              { checkpointError, threadId: thread.thread_id, toolName: event.tool_name },
+              'Addie Bolt: Mutation reservation failed — stopping before dispatch',
+            );
+            streamWasInterrupted = true;
+            streamInterruptCategory = 'mutation_reservation_failed';
+            try {
+              await say("I couldn't safely reserve that external action, so it was not run.");
+            } catch (recoveryError) {
+              logger.error({ recoveryError }, 'Addie Bolt: Mutation reservation recovery notice failed');
+            }
+            break;
+          }
+        }
         streamState = await interpretSlackDmStreamEvent(
           streamState,
           event,

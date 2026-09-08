@@ -7,6 +7,7 @@ import {
   type FileReadResult,
 } from '../mcp/url-tools.js';
 import { ToolError } from '../tool-error.js';
+import { isSideEffectTool, sideEffectReplayKey } from '../side-effect-claims.js';
 import {
   isToolResultError,
   normalizeToolError,
@@ -571,6 +572,7 @@ export function createAddieToolExecutor(
   options: AddieToolExecutorOptions,
 ): AddieToolExecutor {
   const registry = new Map<string, RegisteredTool>();
+  const dispatchedSideEffects = new Set<string>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
     registry.set(definition.name, {
@@ -661,6 +663,21 @@ export function createAddieToolExecutor(
       );
     }
 
+    // A provider continuation or recovery must never submit an identical
+    // mutation twice. Record before dispatch so an ambiguous transport error
+    // is also fail-closed rather than silently retried.
+    const sideEffectKey = (isSideEffectTool(call.name) || registered.definition.replaySafety === 'mutation')
+      ? sideEffectReplayKey(call.name, call.input)
+      : null;
+    if (sideEffectKey && dispatchedSideEffects.has(sideEffectKey)) {
+      const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+        status: 'error',
+        model_context: 'Error: Duplicate external action blocked; its prior outcome was not retried automatically.',
+        user_summary: 'Duplicate external action blocked; the earlier outcome was not retried.',
+      }));
+      return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+    }
+
     let allowed = !isIsolatedExecution(options.executionMode);
     if (options.policy) {
       try {
@@ -688,6 +705,8 @@ export function createAddieToolExecutor(
       }));
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
     }
+
+    if (sideEffectKey) dispatchedSideEffects.add(sideEffectKey);
 
     try {
       const handlerResult = await registered.handler(structuredClone(call.input));

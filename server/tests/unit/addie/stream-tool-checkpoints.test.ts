@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   blockCheckpointedToolReplays,
+  buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
 } from '../../../src/addie/stream-tool-checkpoints.js';
 
@@ -44,6 +45,20 @@ describe('stream tool checkpoints', () => {
     });
   });
 
+  it('stores a mutation reservation before dispatch with an unknown outcome', () => {
+    expect(buildToolIntentCheckpoint({
+      threadId: 'thread-1',
+      toolName: 'schedule_meeting',
+      parameters: execution.parameters,
+      requestedModel: 'claude-sonnet-5',
+    }).tool_calls).toEqual([{
+      name: 'schedule_meeting',
+      input: execution.parameters,
+      result: 'External action dispatch reserved; outcome unknown.',
+      is_error: true,
+    }]);
+  });
+
   it('blocks only exact completed calls and preserves the existing policy', async () => {
     const delegate = vi.fn().mockReturnValue({ allowed: true });
     const policy = blockCheckpointedToolReplays([{
@@ -68,7 +83,7 @@ describe('stream tool checkpoints', () => {
     expect(delegate).toHaveBeenCalledWith(changed);
   });
 
-  it('leaves failed checkpointed calls retryable through the existing policy', async () => {
+  it('blocks a failed mutation checkpoint because its external outcome is ambiguous', async () => {
     const delegate = vi.fn().mockReturnValue({ allowed: true });
     const policy = blockCheckpointedToolReplays([{
       name: 'schedule_meeting',
@@ -82,6 +97,16 @@ describe('stream tool checkpoints', () => {
       executionMode: 'production' as const,
     };
 
+    expect(await policy(request)).toEqual({ allowed: false });
+    expect(delegate).not.toHaveBeenCalled();
+  });
+
+  it('leaves failed read-only checkpoints retryable through the existing policy', async () => {
+    const delegate = vi.fn().mockReturnValue({ allowed: true });
+    const policy = blockCheckpointedToolReplays([{
+      name: 'get_github_issue', input: { issue_number: 701 }, result: 'GitHub unavailable', is_error: true,
+    }], delegate)!;
+    const request = { toolName: 'get_github_issue', input: { issue_number: 701 }, executionMode: 'production' as const };
     expect(await policy(request)).toEqual({ allowed: true });
     expect(delegate).toHaveBeenCalledWith(request);
   });

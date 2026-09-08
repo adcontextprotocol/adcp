@@ -108,6 +108,7 @@ import {
   type ToolResultPresentation,
 } from './tool-result-contract.js';
 import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js';
+import { enforceSideEffectClaimReceipts } from './side-effect-claims.js';
 
 export interface InvocationPreparedSnapshot {
   execution_mode: AddieExecutionMode;
@@ -320,10 +321,10 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
   // pattern stays loose because it's the primary signal for the original
   // failure shape ("Done — the team has been notified (ticket #228)") where
   // no other pattern fits the punctuation context.
-  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue'] },
   { pattern: /(?:the\s+)?team\s+(?:has\s+been\s+|will\s+be\s+|is\s+being\s+)notified/i, expectedTools: ['escalate_to_admin'] },
   { pattern: /I'?ve\s+(?:flagged|escalated|notified)\s+(?:this|the\s+team|the\s+admins?)/i, expectedTools: ['escalate_to_admin'] },
-  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue'] },
 ];
 
 /**
@@ -430,7 +431,14 @@ function finalizeAssistantText(
   toolExecutions: readonly ToolExecution[],
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
-  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(rawText, toolExecutions);
+  const sideEffectReceipt = enforceSideEffectClaimReceipts(rawText, toolExecutions);
+  if (sideEffectReceipt.enforced) {
+    logger.error(
+      { event: 'addie_unverified_side_effect_claim_blocked', reason: sideEffectReceipt.reason },
+      'Addie: Replaced an unverified external side-effect claim',
+    );
+  }
+  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(sideEffectReceipt.text, toolExecutions);
   if (evidenceBoundary.enforced) {
     logger.warn(
       {
@@ -450,7 +458,7 @@ function finalizeAssistantText(
   return {
     text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
     emptyReason: processed.reason,
-    localReplacementReason: evidenceBoundary.reason,
+    localReplacementReason: sideEffectReceipt.reason ?? evidenceBoundary.reason,
     lengthExceeded,
   };
 }
@@ -848,7 +856,7 @@ function providerUnavailableResponse(
  */
 export type StreamEvent =
   | { type: 'text'; text: string }
-  | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
+  | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown>; pre_dispatch?: true }
   | {
       type: 'tool_end';
       tool_name: string;
@@ -2468,6 +2476,7 @@ export class AddieClaudeClient {
               type: 'tool_start',
               tool_name: event.call.name,
               parameters: this.recordedToolParameters(options, event.call.input),
+              pre_dispatch: true,
             };
           } else {
             yield {

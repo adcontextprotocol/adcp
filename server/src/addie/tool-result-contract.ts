@@ -251,6 +251,28 @@ function firstParagraph(text: string): string {
   return text.split(/\n\s*\n/, 1)[0]?.trim() || '';
 }
 
+/**
+ * Legacy handlers still return strings. Treat explicit negative envelopes and
+ * conventional failure prefixes as errors before a handler result becomes a
+ * receipt that may authorize a user-facing side-effect claim.
+ */
+export function legacyResultIndicatesFailure(raw: string): boolean {
+  const text = raw.trim();
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed === 'object'
+      && parsed !== null
+      && !Array.isArray(parsed)
+      && (parsed as Record<string, unknown>).success === false
+    ) return true;
+  } catch {
+    // Non-JSON legacy strings are classified from their leading receipt text.
+  }
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  return /^\s*(?:❌|error:|failed\b|failure\b|could not\b|couldn't\b|unable\b|cannot\b|denied\b|invalid\b|not completed\b)/i.test(firstLine);
+}
+
 function classifySearchResult(toolName: string, text: string): {
   status: ToolResultStatus;
   summary: string;
@@ -282,6 +304,14 @@ function classifySearchResult(toolName: string, text: string): {
   return { status: 'ok', summary: STATUS_FALLBACKS.ok };
 }
 
+/** A GitHub issue is confirmed only by this exact handler receipt. */
+function classifyMutationResult(toolName: string, text: string): ToolResultStatus | null {
+  if (toolName !== 'create_github_issue') return null;
+  return /^Issue created:\s*\[#\d+\]\(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+\)$/i.test(text.trim())
+    ? 'ok'
+    : 'error';
+}
+
 function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
   const boundedModel = truncate(
     raw.trim() ? raw : 'The tool returned no content.',
@@ -302,8 +332,9 @@ function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
   }
 
   const classified = classifySearchResult(toolName, raw);
-  const status = classified?.status ?? (/^error:/i.test(raw.trim()) ? 'error' : 'ok');
-  const source = classified ? 'classified' : 'legacy';
+  const mutationStatus = classifyMutationResult(toolName, raw);
+  const status = mutationStatus ?? classified?.status ?? (legacyResultIndicatesFailure(raw) ? 'error' : 'ok');
+  const source = classified || mutationStatus ? 'classified' : 'legacy';
   const boundedSummary = truncate(
     classified?.summary || STATUS_FALLBACKS[status],
     MAX_TOOL_USER_SUMMARY_LENGTH,

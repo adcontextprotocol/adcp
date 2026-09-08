@@ -73,6 +73,22 @@ describe('createAddieToolExecutor', () => {
     });
   });
 
+  it('blocks a duplicate external mutation before a continuation can dispatch it twice', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn().mockResolvedValue('Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production', policy: () => ({ allowed: true }),
+    });
+    const first = { ...call({ title: 'Synthetic issue', body: 'Synthetic body' }), id: 'call_issue_1', name: 'create_github_issue' };
+    const duplicate = { ...first, id: 'call_issue_2' };
+
+    expect((await execute(first, 1)).execution.is_error).toBe(false);
+    const blocked = await execute(duplicate, 2);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(blocked.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
   it('rejects structurally malformed provider input before policy or handler dispatch', async () => {
     const handler = vi.fn();
     const policy = vi.fn().mockReturnValue({ allowed: true });

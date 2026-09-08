@@ -54,6 +54,25 @@ describe('Addie tool result contract', () => {
     expect(normalized.presentation.display).toEqual({ type: 'fields', data: { count: 3 } });
   });
 
+  it('treats only an exact GitHub creation receipt as a successful mutation', () => {
+    expect(normalizeToolResult(
+      'create_github_issue',
+      'Issue created: [#701](https://github.com/adcontextprotocol/adcp/issues/701)',
+    ).status).toBe('ok');
+    expect(normalizeToolResult(
+      'create_github_issue',
+      'Failed to create issue due to a network error.',
+    ).status).toBe('error');
+  });
+
+  it('treats explicit legacy failure envelopes as errors', () => {
+    expect(normalizeToolResult('confirm_send_invoice', JSON.stringify({
+      success: false,
+      error: 'Failed to send invoice.',
+    })).status).toBe('error');
+    expect(normalizeToolResult('resend_invoice', '❌ Could not resend invoice: timeout').status).toBe('error');
+  });
+
   it('bounds oversized model context and user summaries', () => {
     const normalized = normalizeToolResult('typed_tool', {
       status: 'ok',
