@@ -12,35 +12,54 @@ export interface ConversationStats {
   outcome_breakdown: Record<string, number>;
   escalation_count: number;
   escalation_by_category: Record<string, number>;
+  /** Number of assistant responses included in avg_rating. */
+  rated_response_count?: number;
+  /** Number of risk-weighted threads sent to the analysis model. */
+  sampled_thread_count?: number;
+  /** Deduplicated failed tool executions observed in persisted conversations. */
+  tool_failure_count?: number;
+  tool_failures_by_name?: Record<string, number>;
+  tool_failure_thread_ids?: Record<string, string[]>;
+  /** Local non-empty fallback responses emitted after an empty provider response. */
+  empty_response_fallback_count?: number;
+  empty_response_fallback_thread_ids?: string[];
+  /** Browser turns that remained interrupted at report generation time. */
+  unrecovered_interruption_count?: number;
+  unrecovered_interruption_thread_ids?: string[];
 }
 
-export interface QuestionTheme {
+interface EvidenceBackedInsight {
+  /** Sampled thread IDs that directly support this conclusion. */
+  evidence_thread_ids?: string[];
+}
+
+export interface QuestionTheme extends EvidenceBackedInsight {
   theme: string;
   sample_count: number;
   description: string;
   example_questions: string[];
 }
 
-export interface DocumentationGap {
+export interface DocumentationGap extends EvidenceBackedInsight {
   topic: string;
   evidence: string;
   suggested_action: string;
 }
 
-export interface TrainingGap {
+export interface TrainingGap extends EvidenceBackedInsight {
   topic: string;
   evidence: string;
   suggested_module: string;
 }
 
-export interface AddieImprovement {
+export interface AddieImprovement extends EvidenceBackedInsight {
   area: string;
   evidence: string;
   suggested_fix: string;
   severity: 'low' | 'medium' | 'high';
 }
 
-export interface EscalationPattern {
+export interface EscalationPattern extends EvidenceBackedInsight {
   pattern: string;
   count: number;
   root_cause: string;
@@ -49,6 +68,7 @@ export interface EscalationPattern {
 
 export interface ConversationAnalysis {
   executive_summary: string;
+  executive_summary_evidence_thread_ids?: string[];
   question_themes: QuestionTheme[];
   documentation_gaps: DocumentationGap[];
   training_gaps: TrainingGap[];

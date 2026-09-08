@@ -1461,6 +1461,50 @@ export function quickMatchRoutingContext(ctx: RoutingContext): ExecutionPlan | n
       }
     }
 
+    // Product entry points use stable prompts. Route them deterministically so
+    // registration and certification cannot lose their required write tools to
+    // a model-router classification miss.
+    if (ctx.source !== "channel") {
+      const agentRegistrationPattern =
+        /^(?:please\s+)?(?:help\s+me\s+)?(?:register|save|add|set\s+up)\s+(?:my|an?|this)\s+(?:adcp\s+)?(?:sales\s+|buying\s+)?agent[.!?]*$/i;
+      if (agentRegistrationPattern.test(text)) {
+        return {
+          action: "respond",
+          tool_sets: ["adcp_agent_management"],
+          confidence: "high",
+          reason: "Agent registration request",
+          decision_method: "quick_match",
+          latency_ms: Date.now() - startTime,
+        };
+      }
+
+      const certificationProgressPattern =
+        /^(?:show|check|tell\s+me|what(?:'s|\s+is)|where(?:'s|\s+is))\b.{0,40}\b(?:certification|academy)\s+(?:progress|status)\b[.!?]*$/i;
+      if (certificationProgressPattern.test(text)) {
+        return {
+          action: "respond",
+          tool_sets: ["certification_overview"],
+          confidence: "high",
+          reason: "Certification progress request",
+          decision_method: "quick_match",
+          latency_ms: Date.now() - startTime,
+        };
+      }
+
+      const certificationLearningPattern =
+        /^(?:please\s+)?(?:help\s+me\s+)?(?:start|resume|continue)\b.{0,50}\b(?:certification|academy|module\s+[a-z]+\d+[a-z]?)\b[.!?]*$/i;
+      if (certificationLearningPattern.test(text)) {
+        return {
+          action: "respond",
+          tool_sets: ["certification_learning"],
+          confidence: "high",
+          reason: "Certification learning request",
+          decision_method: "quick_match",
+          latency_ms: Date.now() - startTime,
+        };
+      }
+    }
+
     // Event attendee queries - "who's coming to X", "attendee list for X"
     const eventAttendeePattern =
       /who(?:'s|\s+is)\s+(coming\s+to|going\s+to\s+(?:the|cannes|ces|dmexco)|registered\s+for|attending|signed\s+up\s+for)|attendee\s+list|guest\s+list|who\s+will\s+be\s+(?:at\s+the|there\s+(?:at|for)|coming\s+to)/i;

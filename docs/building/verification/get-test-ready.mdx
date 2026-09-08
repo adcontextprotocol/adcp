@@ -203,11 +203,29 @@ Two rules of thumb:
 
 To check: swap a storyboard's fixture IDs for random UUIDs and rerun. If the run still passes, your controller is correct. If it breaks, you have hardcoded behavior to fix.
 
+## Debug a failed storyboard
+
+Start with the first failing step; later failures are often consequences of lost state. Check these recurring classes before changing protocol behavior:
+
+| Failure | What to inspect |
+|---|---|
+| Capability storyboard skips or selects the wrong tracks | `get_adcp_capabilities.supported_protocols` and `specialisms[]` must describe only the surface actually implemented |
+| Version-negotiation failure | Keep legacy `adcp.major_versions`, add release-precision `adcp.supported_versions`, and echo the served release as envelope-level `adcp_version` |
+| Missing status or malformed response | Put `status` and `adcp_version` on the protocol envelope, not inside the task payload; validate the raw wire response against the referenced response schema |
+| A later step cannot resolve an ID | Preserve the prior step's captured entity and account scope; do not replace storyboard-generated IDs with fixture literals |
+| Error-path context mismatch | Echo request `context` on success and error branches so correlation survives validation, authorization, and state errors |
+| Authenticated steps return 401 while discovery works | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) is public, but the reverse proxy must forward the `Authorization` header unchanged on authenticated task calls |
+
+Run the single failed storyboard with debug output before rerunning the full suite. The step's `schema_ref`, `response_schema_ref`, validation path, and raw response identify whether the defect is transport, envelope shape, state continuity, or capability declaration.
+
 ## Readiness checklist
 
 Before your first full storyboard sweep:
 
 - [ ] [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) returns only protocols and specialisms you actually implement
+- [ ] Capabilities include both `adcp.major_versions` and release-precision `adcp.supported_versions`; responses echo the served `adcp_version` at envelope level
+- [ ] Success and error responses preserve request `context`, including `correlation_id`
+- [ ] Your ingress/proxy preserves `Authorization` on authenticated task calls
 - [ ] `account.sandbox: true` is declared and honored — sandbox requests produce no real spend, no production platform calls, no persisted production state
 - [ ] [`sync_accounts`](/docs/accounts/tasks/sync_accounts) (implicit) or [`list_accounts`](/docs/accounts/tasks/list_accounts) (explicit) handles sandbox requests per step 2
 - [ ] [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) is absent from `tools/list` on any production endpoint

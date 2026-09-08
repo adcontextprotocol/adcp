@@ -256,6 +256,34 @@ describe('AddieRouter.quickMatch', () => {
     });
   });
 
+  describe('product workflow quick-match', () => {
+    it('routes the dashboard registration handoff to agent management tools', () => {
+      const plan = router.quickMatch(makeCtx({ message: 'Help me register my agent.' }));
+      expect(plan).toMatchObject({
+        action: 'respond',
+        tool_sets: ['adcp_agent_management'],
+        decision_method: 'quick_match',
+      });
+    });
+
+    it.each([
+      ['Resume module A2B', 'certification_learning'],
+      ['Continue my certification', 'certification_learning'],
+      ['Show me my certification progress', 'certification_overview'],
+    ])('routes "%s" to %s', (message, toolSet) => {
+      const plan = router.quickMatch(makeCtx({ message }));
+      expect(plan).toMatchObject({ action: 'respond', tool_sets: [toolSet] });
+    });
+
+    it('does not activate account-changing registration tools from a channel post', () => {
+      const plan = router.quickMatch(makeCtx({
+        message: 'Help me register my agent.',
+        source: 'channel',
+      }));
+      expect(plan).toBeNull();
+    });
+  });
+
   describe('admin commands must NOT be caught by quick patterns', () => {
     it('should return null for "add @Paarth as leader of media buy working group"', () => {
       const plan = router.quickMatch(

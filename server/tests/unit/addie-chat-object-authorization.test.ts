@@ -504,6 +504,17 @@ describe('Addie chat conversation object authorization', () => {
       user_type: 'workos',
       user_id: 'user_attacker',
     });
+    mocks.processMessage.mockResolvedValue({
+      ...successfulModelResponse(),
+      tools_used: ['get_learner_progress'],
+      tool_executions: [{
+        tool_name: 'get_learner_progress',
+        parameters: {},
+        result: 'Tool unavailable',
+        duration_ms: 8,
+        is_error: true,
+      }],
+    });
 
     const response = await request(mountChatRouter())
       .post('/')
@@ -517,6 +528,15 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_attacker', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).toHaveBeenCalledOnce();
+    const assistantWrite = mocks.addMessage.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.role === 'assistant');
+    expect(assistantWrite).toEqual(expect.objectContaining({
+      tool_calls: [expect.objectContaining({
+        name: 'get_learner_progress',
+        is_error: true,
+      })],
+    }));
   });
 
   it('denies a cross-user conversation UUID through the streaming path before side effects', async () => {
