@@ -7,6 +7,11 @@ const CELLS = [
   'generation:anthropic:claude-sonnet-5:provider_default', 'generation:anthropic:claude-haiku-4-5:provider_default',
   'generation:google:gemini-3.7-flash:provider_default', 'generation:google:gemini-3.7-flash:low',
   'generation:google:gemini-3.7-flash:medium', 'generation:google:gemini-3.7-flash:high',
+  'generation:anthropic:claude-opus-5:provider_default',
+  'generation:openai:gpt-5.6-luna:provider_default',
+  'generation:openai:gpt-5.6-terra:provider_default',
+  'generation:openai:gpt-5.6-sol:provider_default',
+  'generation:google:gemini-3.8-flash:provider_default',
 ] as const;
 type CellId = typeof CELLS[number];
 
@@ -61,6 +66,9 @@ const sources = fullSuite.fixedTraceDirectFullSuiteSourceBundle([
   'server/src/addie/eval/fixed-trace-direct-full-suite.ts', 'server/src/addie/eval/fixed-trace-runner.ts',
   'server/src/addie/eval/fixed-trace-suite.ts', 'server/src/addie/eval/fixed-trace-tool-loop.ts',
   'server/src/addie/eval/fixed-trace-budget.ts', 'server/src/addie/eval/fixed-trace-tools.ts', 'server/src/addie/eval/fixed-trace-direct-full-suite-judge.ts',
+  'server/src/addie/eval/dated-pricing-cohort.ts',
+  'server/src/addie/model-providers/openai-responses-provider.ts',
+  'server/src/addie/model-providers/google-generate-content-provider.ts',
   'server/tests/manual/fixed-trace-direct-full-suite-eval.ts',
 ]);
 const promptConfigVersion = createHash('sha256').update(readFileSync('server/src/addie/prompts.ts'))
@@ -80,7 +88,7 @@ if (existsSync(arguments_.selector) || existsSync(arguments_.output) || existsSy
 if (execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) throw new Error('Git source drift: execute only from an exact clean reviewed head');
 if (readFileSync('.git/HEAD', 'utf8').length === 0) throw new Error('Git source identity is unavailable');
 const budget = new budgetModule.FixedTraceBudget(arguments_.softMaxUsd);
-async function providerFor(id: 'anthropic' | 'google' | 'openai') {
+async function providerFor(id: 'anthropic' | 'google' | 'openai', directFullSuite = false) {
   if (id === 'anthropic') {
     const apiKey = fullSuite.fixedTraceDirectFullSuiteAnthropicApiKey(process.env);
     if (!apiKey) throw new Error('ADDIE_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY is required for candidate or judge');
@@ -89,12 +97,16 @@ async function providerFor(id: 'anthropic' | 'google' | 'openai') {
   }
   if (id === 'google') {
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is required for candidate or judge');
-    const { GoogleGenerateContentProvider } = await import('../../src/addie/model-providers/google-generate-content-provider.js');
-    return new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY);
+    const { GoogleGenerateContentProvider, createFixedTraceDirectFullSuiteGoogleProvider } = await import('../../src/addie/model-providers/google-generate-content-provider.js');
+    return directFullSuite
+      ? createFixedTraceDirectFullSuiteGoogleProvider(process.env.GEMINI_API_KEY)
+      : new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY);
   }
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for candidate or judge');
-  const { OpenAIResponsesProvider } = await import('../../src/addie/model-providers/openai-responses-provider.js');
-  return new OpenAIResponsesProvider(process.env.OPENAI_API_KEY);
+  const { OpenAIResponsesProvider, createFixedTraceDirectFullSuiteOpenAIProvider } = await import('../../src/addie/model-providers/openai-responses-provider.js');
+  return directFullSuite
+    ? createFixedTraceDirectFullSuiteOpenAIProvider(process.env.OPENAI_API_KEY)
+    : new OpenAIResponsesProvider(process.env.OPENAI_API_KEY);
 }
 function budgetedProvider(provider: Awaited<ReturnType<typeof providerFor>>, model: string) {
   const pricing = pricingModule.datedPricingProfilesForFixedTrace().find((candidate) => candidate.provider === provider.id && candidate.model === model);
@@ -109,7 +121,7 @@ function budgetedProvider(provider: Awaited<ReturnType<typeof providerFor>>, mod
     budgetModule.fixedTraceDirectFullSuiteResponsePricingPolicy(provider.id, model, pricing),
   );
 }
-const rawCandidate = await providerFor(cell.provider);
+const rawCandidate = await providerFor(cell.provider, true);
 const rawJudges = Object.fromEntries(await Promise.all(cell.judgeProviders.map(async (id) => [id, await providerFor(id)]))) as Record<'anthropic' | 'google' | 'openai', Awaited<ReturnType<typeof providerFor>>>;
 const candidateProvider = budgetedProvider(rawCandidate, cell.model);
 const judgeProviders = Object.fromEntries(cell.judgeProviders.map((id) => [id, budgetedProvider(rawJudges[id]!, id === 'anthropic' ? 'claude-haiku-4-5' : id === 'google' ? 'gemini-3.7-flash' : 'gpt-5.6-luna')]));

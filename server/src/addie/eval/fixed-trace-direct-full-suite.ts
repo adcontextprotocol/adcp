@@ -14,9 +14,10 @@ import { FIXED_TRACE_DIRECT_FULL_SUITE_MAX_JUDGE_PREPARED_REQUEST_BYTES, fixedTr
 import { datedPricingProfileIdentity, datedPricingProfilesForFixedTrace, datedPricingReservationCostUsd, type DatedPricingProfile } from './dated-pricing-cohort.js';
 import {
   FIXED_TRACE_DIRECT_FULL_SUITE_COMPARISON_MODE,
+  FIXED_TRACE_DIRECT_FULL_SUITE_GENERATION_CELL_IDS,
   FIXED_TRACE_DIRECT_FULL_SUITE_MAX_PREPARED_REQUEST_BYTES,
   runFixedTraceDirectFullSuiteComparison,
-  type FixedTraceDirectModelScreenGenerationCellId,
+  type FixedTraceDirectFullSuiteGenerationCellId,
   type FixedTraceProviderStageConfig,
   type FixedTraceRunnerConfig,
 } from './fixed-trace-runner.js';
@@ -24,26 +25,19 @@ import { MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS } from './fixed-trace-tool-loop.js
 import { FIXED_TRACE_SUITE, FIXED_TRACE_SUITE_VERSION, fixedTraceSuiteSha256, summarizeFixedTraceRun } from './fixed-trace-suite.js';
 import { canonicalFixedTraceToolDefinitions } from './fixed-trace-tools.js';
 
-export const FIXED_TRACE_DIRECT_FULL_SUITE_CELLS = Object.freeze([
-  'generation:anthropic:claude-sonnet-5:provider_default',
-  'generation:anthropic:claude-haiku-4-5:provider_default',
-  'generation:google:gemini-3.7-flash:provider_default',
-  'generation:google:gemini-3.7-flash:low',
-  'generation:google:gemini-3.7-flash:medium',
-  'generation:google:gemini-3.7-flash:high',
-] as const satisfies readonly FixedTraceDirectModelScreenGenerationCellId[]);
-export type FixedTraceDirectFullSuiteCellId = (typeof FIXED_TRACE_DIRECT_FULL_SUITE_CELLS)[number];
+export const FIXED_TRACE_DIRECT_FULL_SUITE_CELLS = FIXED_TRACE_DIRECT_FULL_SUITE_GENERATION_CELL_IDS;
+export type FixedTraceDirectFullSuiteCellId = FixedTraceDirectFullSuiteGenerationCellId;
 
 export const FIXED_TRACE_DIRECT_FULL_SUITE_JUDGES = Object.freeze({
   anthropic: Object.freeze(['google', 'openai'] as const),
   google: Object.freeze(['anthropic', 'openai'] as const),
-  openai: Object.freeze([] as const),
+  openai: Object.freeze(['anthropic', 'google'] as const),
 });
 
 export const FIXED_TRACE_DIRECT_FULL_SUITE_MAX_GENERATION_DISPATCHES = FIXED_TRACE_SUITE.length * MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS;
 export const FIXED_TRACE_DIRECT_FULL_SUITE_MAX_JUDGE_DISPATCHES = FIXED_TRACE_SUITE.length * 2;
 
-const CELL = /^generation:(anthropic|google):([^:]+):(provider_default|low|medium|high)$/;
+const CELL = /^generation:(anthropic|google|openai):([^:]+):(provider_default|low|medium|high)$/;
 
 /** Session-scoped Addie credentials take precedence without exposing them. */
 export function fixedTraceDirectFullSuiteAnthropicApiKey(environment: Readonly<Record<string, string | undefined>>): string | undefined {
@@ -56,8 +50,8 @@ function sha256(value: string): string {
 
 export function fixedTraceDirectFullSuiteCell(cellId: string): {
   readonly id: FixedTraceDirectFullSuiteCellId;
-  readonly provider: 'anthropic' | 'google';
-  readonly model: 'claude-sonnet-5' | 'claude-haiku-4-5' | 'gemini-3.7-flash';
+  readonly provider: 'anthropic' | 'google' | 'openai';
+  readonly model: 'claude-sonnet-5' | 'claude-haiku-4-5' | 'claude-opus-5' | 'gemini-3.7-flash' | 'gemini-3.8-flash' | 'gpt-5.6-luna' | 'gpt-5.6-terra' | 'gpt-5.6-sol';
   readonly effort: ModelReasoningEffort;
   readonly judgeProviders: readonly ModelProviderId[];
 } {
@@ -65,14 +59,14 @@ export function fixedTraceDirectFullSuiteCell(cellId: string): {
     throw new Error('Fixed trace direct full-suite comparison cell is unsupported');
   }
   const match = CELL.exec(cellId);
-  if (!match || (match[1] !== 'anthropic' && match[1] !== 'google')) throw new Error('Fixed trace direct full-suite comparison cell is malformed');
-  const provider = match[1];
+  if (!match || !['anthropic', 'google', 'openai'].includes(match[1])) throw new Error('Fixed trace direct full-suite comparison cell is malformed');
+  const provider = match[1] as 'anthropic' | 'google' | 'openai';
   const model = match[2];
   const effort = match[3] as ModelReasoningEffort;
   return Object.freeze({
     id: cellId as FixedTraceDirectFullSuiteCellId,
     provider,
-    model: model as 'claude-sonnet-5' | 'claude-haiku-4-5' | 'gemini-3.7-flash',
+    model: model as 'claude-sonnet-5' | 'claude-haiku-4-5' | 'claude-opus-5' | 'gemini-3.7-flash' | 'gemini-3.8-flash' | 'gpt-5.6-luna' | 'gpt-5.6-terra' | 'gpt-5.6-sol',
     effort,
     judgeProviders: FIXED_TRACE_DIRECT_FULL_SUITE_JUDGES[provider],
   });
@@ -173,7 +167,11 @@ function reservationComponent(input: Readonly<{
       ? [{ category: 'cache_write' as const, accounting: 'additive' as const, tokens, usdPerMillionTokens: input.profile.cacheWriteUsdPerMillionTokens, usd: tokens * input.profile.cacheWriteUsdPerMillionTokens / 1_000_000 }] : []),
   ];
   const reservationPerDispatchUsd = datedPricingReservationCostUsd(input.profile, tokens, input.maxOutputTokens);
-  if (Math.abs(pricingBuckets.reduce((total, bucket) => total + bucket.usd, 0) - reservationPerDispatchUsd) > Number.EPSILON) {
+  const bucketTotal = pricingBuckets.reduce((total, bucket) => total + bucket.usd, 0);
+  // Both values are derived from the same immutable decimal rates. Allow only
+  // IEEE-754 summation noise; the exposed reservation remains the exact shared
+  // pricing function result.
+  if (Math.abs(bucketTotal - reservationPerDispatchUsd) > Number.EPSILON * Math.max(1, Math.abs(reservationPerDispatchUsd))) {
     throw new Error('Fixed trace direct full-suite reservation buckets do not reconcile');
   }
   return Object.freeze({

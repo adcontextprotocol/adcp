@@ -13,10 +13,16 @@ describe('fixed-trace direct full-suite CLI', () => {
     expect(source).not.toContain('fixedTraceResponsePricingPolicy(provider.id, model, pricing)');
   });
 
-  it('keeps validate-only provider-free and stdout to one exact JSON line', () => {
+  it.each([
+    'generation:anthropic:claude-opus-5:provider_default',
+    'generation:openai:gpt-5.6-luna:provider_default',
+    'generation:openai:gpt-5.6-terra:provider_default',
+    'generation:openai:gpt-5.6-sol:provider_default',
+    'generation:google:gemini-3.8-flash:provider_default',
+  ])('keeps validate-only provider-free and stdout to one exact JSON line for %s', (cell) => {
     const result = spawnSync(process.execPath, [
       tsx, 'server/tests/manual/fixed-trace-direct-full-suite-eval.ts', '--validate-only',
-      '--cell=generation:google:gemini-3.7-flash:high', '--soft-max-usd=300',
+      `--cell=${cell}`, '--soft-max-usd=2000',
       '--output=/tmp/addie-full-suite.json', '--selector=/tmp/addie-full-suite.used',
     ], { cwd: root, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' } });
     expect(result.status).toBe(0);
@@ -25,7 +31,7 @@ describe('fixed-trace direct full-suite CLI', () => {
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0]!)).toMatchObject({
       validateOnly: true, providerCalls: 0, outputWritten: false, selectorConsumed: false,
-      plan: { mode: 'direct_full_suite_model_comparison_v1', traceCount: 32, requiredJudgeProviders: ['anthropic', 'openai'], wholeCellCostCeiling: { totalUsd: expect.any(Number) } },
+      plan: { mode: 'direct_full_suite_model_comparison_v1', cell, traceCount: 32, requiredJudgeProviders: expect.any(Array), wholeCellCostCeiling: { totalUsd: expect.any(Number) } },
     });
   }, 20_000);
 

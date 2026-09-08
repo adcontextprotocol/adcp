@@ -95,7 +95,7 @@ export function fixedTraceModelResolutionPolicy(
     : 'exact_model_identity_v1';
 }
 
-const FIXED_TRACE_APPROVED_PRICING = Object.freeze(datedPricingProfilesForFixedTrace().map((profile) => Object.freeze({
+const FIXED_TRACE_ALL_PRICING = Object.freeze(datedPricingProfilesForFixedTrace().map((profile) => Object.freeze({
   candidateId: profile.candidateId,
   expectedProvider: profile.provider,
   expectedModel: profile.model,
@@ -107,10 +107,19 @@ const FIXED_TRACE_APPROVED_PRICING = Object.freeze(datedPricingProfilesForFixedT
   cacheReadAccounting: profile.cacheReadAccounting,
   cacheWriteAccounting: profile.cacheWriteAccounting,
   source: profile.source,
-  modelResolutionPolicy: profile.provider === 'google'
-    ? 'google_router_dated_revision_v1' as const
-    : 'exact_model_identity_v1' as const,
+  modelResolutionPolicy: fixedTraceModelResolutionPolicy(profile.provider, profile.model),
 } satisfies FixedTraceApprovedPricing)));
+
+/**
+ * Preserve the sealed evaluation approval surface. The four newly reviewed
+ * prices are reachable only from the separately admitted full-suite path.
+ */
+const FIXED_TRACE_APPROVED_PRICING = Object.freeze(FIXED_TRACE_ALL_PRICING.filter((entry) => ![
+  'anthropic-direct-full-suite-opus',
+  'openai-direct-full-suite-terra',
+  'openai-direct-full-suite-sol',
+  'google-direct-full-suite-3-8',
+].includes(entry.candidateId)));
 
 /**
  * The complete live approval surface. It is intentionally inspectable for
@@ -190,6 +199,7 @@ export function fixedTraceDirectFullSuiteResponsePricingPolicy(
     expectedModel,
     pricing,
     fixedTraceModelResolutionPolicy(expectedProvider, expectedModel, true),
+    FIXED_TRACE_ALL_PRICING,
   );
 }
 
@@ -226,8 +236,9 @@ function fixedTraceResponsePricingPolicyForResolution(
   expectedModel: string,
   pricing: FixedTraceBudgetPricing & { readonly profileId: string },
   modelResolutionPolicy: FixedTraceModelResolutionPolicy,
+  approvedPricing: readonly FixedTraceApprovedPricing[] = FIXED_TRACE_APPROVED_PRICING,
 ): FixedTraceResponsePricingPolicy {
-  const approved = FIXED_TRACE_APPROVED_PRICING.find((entry) => (
+  const approved = approvedPricing.find((entry) => (
     entry.expectedProvider === expectedProvider
     && entry.expectedModel === expectedModel
     && entry.modelResolutionPolicy === fixedTraceModelResolutionPolicy(expectedProvider, expectedModel)

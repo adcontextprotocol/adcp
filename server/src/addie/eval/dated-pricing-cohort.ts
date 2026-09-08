@@ -8,8 +8,9 @@ import { types as utilTypes } from 'node:util';
 import { ModelConfig } from '../../config/models.js';
 import { resolveKnownClaudePricingModel } from '../claude-pricing.js';
 import {
+  GOOGLE_DIRECT_FULL_SUITE_MODEL,
   GOOGLE_ROUTER_MODEL,
-  isGoogleRouterModelRevision,
+  googleReturnedModelIdentityMatches,
 } from '../model-providers/google-generate-content-provider.js';
 import {
   OPENAI_ROUTER_MODEL,
@@ -20,12 +21,18 @@ import type { ModelProviderId } from '../model-providers/model-provider.js';
 const COHORT_DIGEST_DOMAIN = 'adcp:addie:dated-prospective-pricing-cohort:v1\0';
 const PROFILE_DIGEST_DOMAIN = 'adcp:addie:dated-prospective-pricing-profile:v1\0';
 const CHECKED_AT = '2026-09-05T23:55:26.000Z';
+/** Separate evidence date for the direct full-suite-only candidate expansion. */
+const DIRECT_FULL_SUITE_CHECKED_AT = '2026-09-08T09:00:00.000Z';
 
 export type EvaluationPricingCandidateId =
   | 'anthropic-router'
   | 'anthropic-generation'
   | 'openai-router-generator'
-  | 'google-router-generator';
+  | 'openai-direct-full-suite-terra'
+  | 'openai-direct-full-suite-sol'
+  | 'google-router-generator'
+  | 'google-direct-full-suite-3-8'
+  | 'anthropic-direct-full-suite-opus';
 export type CacheAccounting = 'additive' | 'subset' | 'unsupported';
 
 export interface OfficialPricingSource {
@@ -140,7 +147,11 @@ const CANDIDATE_PROVIDERS: Readonly<Record<EvaluationPricingCandidateId, ModelPr
   'anthropic-router': 'anthropic',
   'anthropic-generation': 'anthropic',
   'openai-router-generator': 'openai',
+  'openai-direct-full-suite-terra': 'openai',
+  'openai-direct-full-suite-sol': 'openai',
   'google-router-generator': 'google',
+  'google-direct-full-suite-3-8': 'google',
+  'anthropic-direct-full-suite-opus': 'anthropic',
 });
 
 const OFFICIAL_PRICING_RECORDS: readonly DatedPricingRecord[] = deepFreeze([
@@ -159,6 +170,23 @@ const OFFICIAL_PRICING_RECORDS: readonly DatedPricingRecord[] = deepFreeze([
       evidence: 'Claude API standard rates; cache reads are 0.1x and five-minute writes are 1.25x base input.',
     },
     sourceLabel: 'Anthropic pricing page: Claude Haiku 4.5, checked 2026-09-05.',
+    identityDependency: 'not_required',
+  },
+  {
+    candidateId: 'anthropic-direct-full-suite-opus', provider: 'anthropic', model: 'claude-opus-5',
+    serviceTier: 'standard', effectiveFrom: DIRECT_FULL_SUITE_CHECKED_AT, effectiveBefore: null,
+    profileId: 'anthropic-standard-2026-09:claude-opus-5',
+    rates: {
+      inputUsdPerMillionTokens: 5, outputUsdPerMillionTokens: 25,
+      cacheReadUsdPerMillionTokens: 0.5, cacheWriteUsdPerMillionTokens: 6.25,
+      cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
+    },
+    source: {
+      provider: 'anthropic', url: 'https://platform.claude.com/docs/en/about-claude/pricing',
+      retrievedAt: DIRECT_FULL_SUITE_CHECKED_AT, unit: 'USD per 1M tokens', serviceTier: 'standard', currency: 'USD',
+      evidence: 'Claude Opus 5 standard rate; cache reads are 0.1x and five-minute cache writes are 1.25x base input, both additive provider usage categories.',
+    },
+    sourceLabel: 'Anthropic pricing page: Claude Opus 5 standard (5-minute cache write), checked 2026-09-08.',
     identityDependency: 'not_required',
   },
   {
@@ -201,6 +229,40 @@ const OFFICIAL_PRICING_RECORDS: readonly DatedPricingRecord[] = deepFreeze([
     identityDependency: 'exact_returned_model_identity_enforced',
   },
   {
+    candidateId: 'openai-direct-full-suite-terra', provider: 'openai', model: 'gpt-5.6-terra',
+    serviceTier: 'standard', effectiveFrom: DIRECT_FULL_SUITE_CHECKED_AT, effectiveBefore: null,
+    profileId: 'openai-gpt-5.6-terra-standard-2026-09-08',
+    rates: {
+      inputUsdPerMillionTokens: 2, outputUsdPerMillionTokens: 12,
+      cacheReadUsdPerMillionTokens: 0.2, cacheWriteUsdPerMillionTokens: 2.5,
+      cacheReadAccounting: 'subset', cacheWriteAccounting: 'subset',
+    },
+    source: {
+      provider: 'openai', url: 'https://developers.openai.com/api/docs/models/gpt-5.6-terra',
+      retrievedAt: DIRECT_FULL_SUITE_CHECKED_AT, unit: 'USD per 1M tokens', serviceTier: 'standard', currency: 'USD',
+      evidence: 'Responses API model card lists input, cached-input, and output rates; cache writes are billed at 1.25x uncached input and are a subset of input_tokens.',
+    },
+    sourceLabel: 'OpenAI gpt-5.6-terra standard, checked 2026-09-08.',
+    identityDependency: 'exact_returned_model_identity_enforced',
+  },
+  {
+    candidateId: 'openai-direct-full-suite-sol', provider: 'openai', model: 'gpt-5.6-sol',
+    serviceTier: 'standard', effectiveFrom: DIRECT_FULL_SUITE_CHECKED_AT, effectiveBefore: null,
+    profileId: 'openai-gpt-5.6-sol-standard-2026-09-08',
+    rates: {
+      inputUsdPerMillionTokens: 4, outputUsdPerMillionTokens: 20,
+      cacheReadUsdPerMillionTokens: 0.4, cacheWriteUsdPerMillionTokens: 5,
+      cacheReadAccounting: 'subset', cacheWriteAccounting: 'subset',
+    },
+    source: {
+      provider: 'openai', url: 'https://developers.openai.com/api/docs/models/gpt-5.6-sol',
+      retrievedAt: DIRECT_FULL_SUITE_CHECKED_AT, unit: 'USD per 1M tokens', serviceTier: 'standard', currency: 'USD',
+      evidence: 'Responses API model card lists input, cached-input, and output rates; cache writes are billed at 1.25x uncached input and are a subset of input_tokens.',
+    },
+    sourceLabel: 'OpenAI gpt-5.6-sol standard, checked 2026-09-08.',
+    identityDependency: 'exact_returned_model_identity_enforced',
+  },
+  {
     candidateId: 'google-router-generator', provider: 'google', model: 'gemini-3.7-flash',
     serviceTier: 'standard', effectiveFrom: CHECKED_AT, effectiveBefore: '2027-01-01T00:00:00.000Z',
     profileId: 'google-gemini-3.7-flash-through-2026-12-31',
@@ -216,6 +278,23 @@ const OFFICIAL_PRICING_RECORDS: readonly DatedPricingRecord[] = deepFreeze([
     },
     sourceLabel: 'Google Gemini 3.7 Flash introductory standard, checked 2026-09-05.',
     identityDependency: 'not_required',
+  },
+  {
+    candidateId: 'google-direct-full-suite-3-8', provider: 'google', model: GOOGLE_DIRECT_FULL_SUITE_MODEL,
+    serviceTier: 'standard', effectiveFrom: DIRECT_FULL_SUITE_CHECKED_AT, effectiveBefore: '2027-01-01T00:00:00.000Z',
+    profileId: 'google-gemini-3.8-flash-through-2026-12-31',
+    rates: {
+      inputUsdPerMillionTokens: 0.75, outputUsdPerMillionTokens: 3.75,
+      cacheReadUsdPerMillionTokens: 0.075, cacheWriteUsdPerMillionTokens: null,
+      cacheReadAccounting: 'subset', cacheWriteAccounting: 'unsupported',
+    },
+    source: {
+      provider: 'google', url: 'https://ai.google.dev/gemini-api/docs/pricing',
+      retrievedAt: DIRECT_FULL_SUITE_CHECKED_AT, unit: 'USD per 1M tokens', serviceTier: 'standard', currency: 'USD',
+      evidence: 'Paid standard introductory rates through December 31, 2026; output includes thinking tokens and the adapter exposes only cached-content reads, not a cache-write token category.',
+    },
+    sourceLabel: 'Google Gemini 3.8 Flash introductory standard, checked 2026-09-08.',
+    identityDependency: 'exact_returned_model_identity_enforced',
   },
 ]);
 
@@ -331,7 +410,7 @@ function assertRecord(record: unknown): asserts record is DatedPricingRecord {
   const source = ownData(record, 'source');
   const sourceLabel = ownData(record, 'sourceLabel');
   const identityDependency = ownData(record, 'identityDependency');
-  if (!['anthropic-router', 'anthropic-generation', 'openai-router-generator', 'google-router-generator'].includes(candidateId as string)
+  if (!['anthropic-router', 'anthropic-generation', 'openai-router-generator', 'openai-direct-full-suite-terra', 'openai-direct-full-suite-sol', 'google-router-generator', 'google-direct-full-suite-3-8', 'anthropic-direct-full-suite-opus'].includes(candidateId as string)
     || !['anthropic', 'openai', 'google'].includes(provider as string)
     || typeof model !== 'string' || !model.trim() || serviceTier !== 'standard'
     || typeof profileId !== 'string' || !profileId.trim() || typeof sourceLabel !== 'string' || !sourceLabel.trim()
@@ -413,7 +492,7 @@ function cohortDigest(profiles: readonly DatedPricingProfile[]): string {
 
 /** Review-only profiles for fixed-trace artifact validation; this grants no provider admission. */
 export function datedPricingProfilesForFixedTrace(): readonly DatedPricingProfile[] {
-  const result = buildDatedPricingCohort(OFFICIAL_PRICING_RECORDS, new Date(CHECKED_AT));
+  const result = buildDatedPricingCohort(OFFICIAL_PRICING_RECORDS, new Date(DIRECT_FULL_SUITE_CHECKED_AT));
   if (result.status !== 'available') throw new Error('built-in dated pricing registry is invalid');
   return result.cohort.profiles;
 }
@@ -447,7 +526,7 @@ export function resolveCurrentEvaluationPricingCohort(
 ): ResolveDatedPricingCohortResult {
   const candidateValues = ownArrayValues(candidateIds);
   const allowed = new Set<EvaluationPricingCandidateId>([
-    'anthropic-router', 'anthropic-generation', 'openai-router-generator', 'google-router-generator',
+    'anthropic-router', 'anthropic-generation', 'openai-router-generator', 'openai-direct-full-suite-terra', 'openai-direct-full-suite-sol', 'google-router-generator', 'google-direct-full-suite-3-8', 'anthropic-direct-full-suite-opus',
   ]);
   if (!candidateValues || candidateValues.length === 0
     || candidateValues.some((candidate) => typeof candidate !== 'string' || !allowed.has(candidate as EvaluationPricingCandidateId))
@@ -615,6 +694,6 @@ export function datedPricingCostMicros(profile: DatedPricingCostProfile, usage: 
 /** Existing adapter-specific identity rules remain the only alias authority. */
 export function cohortReturnedModelMatches(profile: DatedPricingProfile, returnedModel: string): boolean {
   if (profile.provider === 'anthropic') return resolveKnownClaudePricingModel(returnedModel) === profile.model;
-  if (profile.provider === 'google') return profile.model === GOOGLE_ROUTER_MODEL && isGoogleRouterModelRevision(returnedModel);
+  if (profile.provider === 'google') return googleReturnedModelIdentityMatches(profile.model, returnedModel);
   return openaiReturnedModelIdentityMatches(profile.model, returnedModel);
 }

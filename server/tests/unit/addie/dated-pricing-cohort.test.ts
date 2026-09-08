@@ -10,7 +10,7 @@ import {
   resolveCurrentEvaluationPricingCohort,
 } from '../../../src/addie/eval/dated-pricing-cohort.js';
 
-const AT = new Date('2026-09-05T23:55:26.000Z');
+const AT = new Date('2026-09-08T12:00:00.000Z');
 
 function records() {
   return structuredClone(officialDatedPricingRecordsForAudit());
@@ -49,9 +49,38 @@ describe('dated prospective evaluation pricing cohort', () => {
     expect(officialDatedPricingRecordsForAudit().map((record) => record.source.url)).toEqual([
       'https://platform.claude.com/docs/en/about-claude/pricing',
       'https://platform.claude.com/docs/en/about-claude/pricing',
+      'https://platform.claude.com/docs/en/about-claude/pricing',
       'https://developers.openai.com/api/docs/models/gpt-5.6-luna',
+      'https://developers.openai.com/api/docs/models/gpt-5.6-terra',
+      'https://developers.openai.com/api/docs/models/gpt-5.6-sol',
+      'https://ai.google.dev/gemini-api/docs/pricing',
       'https://ai.google.dev/gemini-api/docs/pricing',
     ]);
+  });
+
+  it('records the exact direct full-suite rates and identity boundaries', () => {
+    const profiles = datedPricingProfilesForFixedTrace();
+    expect(profiles.filter((profile) => profile.model === 'claude-opus-5')).toEqual([expect.objectContaining({
+      inputUsdPerMillionTokens: 5, outputUsdPerMillionTokens: 25,
+      cacheReadUsdPerMillionTokens: 0.5, cacheWriteUsdPerMillionTokens: 6.25,
+      cacheReadAccounting: 'additive', cacheWriteAccounting: 'additive',
+    })]);
+    expect(profiles.filter((profile) => profile.model === 'gpt-5.6-terra' || profile.model === 'gpt-5.6-sol').map((profile) => [
+      profile.model, profile.inputUsdPerMillionTokens, profile.cacheReadUsdPerMillionTokens,
+      profile.outputUsdPerMillionTokens, profile.cacheWriteUsdPerMillionTokens,
+    ])).toEqual([
+      ['gpt-5.6-sol', 4, 0.4, 20, 5],
+      ['gpt-5.6-terra', 2, 0.2, 12, 2.5],
+    ]);
+    const google38 = profiles.find((profile) => profile.model === 'gemini-3.8-flash')!;
+    expect(google38).toMatchObject({
+      inputUsdPerMillionTokens: 0.75, cacheReadUsdPerMillionTokens: 0.075,
+      outputUsdPerMillionTokens: 3.75, cacheReadAccounting: 'subset',
+      cacheWriteAccounting: 'unsupported', effectiveBefore: '2027-01-01T00:00:00.000Z',
+    });
+    expect(cohortReturnedModelMatches(google38, 'gemini-3.8-flash')).toBe(true);
+    expect(cohortReturnedModelMatches(google38, 'gemini-3.7-flash-20260801')).toBe(false);
+    expect(cohortReturnedModelMatches(google38, 'gemini-3.8-flash-20260801')).toBe(false);
   });
 
   it('uses an inclusive lower bound and exclusive effective-before bound', () => {
@@ -131,8 +160,9 @@ describe('dated prospective evaluation pricing cohort', () => {
   });
 
   it('canonicalizes order, freezes snapshots, and domain-separates the digest', () => {
-    const first = buildDatedPricingCohort(records(), AT);
-    const reordered = buildDatedPricingCohort(records().reverse(), AT);
+    const directSuiteAt = new Date('2026-09-08T09:00:00.000Z');
+    const first = buildDatedPricingCohort(records(), directSuiteAt);
+    const reordered = buildDatedPricingCohort(records().reverse(), directSuiteAt);
     expect(first.status).toBe('available');
     expect(reordered.status).toBe('available');
     if (first.status !== 'available' || reordered.status !== 'available') return;
@@ -144,7 +174,7 @@ describe('dated prospective evaluation pricing cohort', () => {
     expect(first.cohort.digest).not.toBe(unseparated);
     const altered = records();
     altered[0]!.rates.inputUsdPerMillionTokens = 1.001;
-    const changed = buildDatedPricingCohort(altered, AT);
+    const changed = buildDatedPricingCohort(altered, directSuiteAt);
     expect(changed.status).toBe('available');
     if (changed.status === 'available') expect(changed.cohort.digest).not.toBe(first.cohort.digest);
   });
