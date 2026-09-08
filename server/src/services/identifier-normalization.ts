@@ -48,10 +48,7 @@ export function isDevelopmentBrandDomain(domain: string): boolean {
  * like "localhost", empty strings, or unparseable garbage from upstream
  * profile fields.
  */
-export function assertValidBrandDomain(
-  canonical: string,
-  options: { allowDevelopmentDomains?: boolean } = {},
-): void {
+export function assertValidBrandDomain(canonical: string): void {
   if (
     !BRAND_DOMAIN_RE.test(canonical)
     || canonical.length > 253
@@ -59,6 +56,19 @@ export function assertValidBrandDomain(
   ) {
     throw new Error(`"${canonical}" is not a valid brand domain.`);
   }
+
+}
+
+/**
+ * Throw unless a syntactically valid domain has a registrable parent in the
+ * ICANN or private Public Suffix List. Reserved dotted names may be admitted
+ * only by an explicit development-only caller option.
+ */
+export function assertRegistrableBrandDomain(
+  canonical: string,
+  options: { allowDevelopmentDomains?: boolean } = {},
+): void {
+  assertValidBrandDomain(canonical);
 
   const developmentDomain = isDevelopmentBrandDomain(canonical);
   if (developmentDomain && options.allowDevelopmentDomains === true) return;

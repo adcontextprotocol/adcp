@@ -12,6 +12,7 @@ const {
   buildTarball,
   pinGeneratedAt,
   pinPublishedVersion,
+  pinSchemaTreeVersion,
   resolveBuildMetadata,
   writeIntegritySidecars,
 } = require('../scripts/build-protocol-tarball.cjs');
@@ -252,6 +253,31 @@ describe('build-protocol-tarball.cjs', () => {
         adcp_version: '3.2.0-beta.9',
         baseUrl: '/schemas/3.2.0-beta.9',
         schemas: {},
+      });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('pins schema ids and references in release-compatible PR bundles', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-protocol-schema-tree-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'core'), { recursive: true });
+      const schemaPath = path.join(tmp, 'core', 'manifest.json');
+      fs.writeFileSync(schemaPath, JSON.stringify({
+        $id: 'https://adcontextprotocol.org/schemas/latest/core/manifest.json',
+        properties: {
+          entry: { $ref: '/schemas/latest/core/entry.json' },
+        },
+      }));
+
+      pinSchemaTreeVersion(tmp, '3.2.0-beta.9');
+
+      assert.deepEqual(JSON.parse(fs.readFileSync(schemaPath, 'utf8')), {
+        $id: 'https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/manifest.json',
+        properties: {
+          entry: { $ref: '/schemas/3.2.0-beta.9/core/entry.json' },
+        },
       });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

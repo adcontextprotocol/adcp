@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalizeBrandDomain, assertValidBrandDomain, assertClaimableBrandDomain } from '../../src/services/identifier-normalization.js';
+import { canonicalizeBrandDomain, assertValidBrandDomain, assertRegistrableBrandDomain, assertClaimableBrandDomain } from '../../src/services/identifier-normalization.js';
 
 describe('canonicalizeBrandDomain', () => {
   it('strips https:// protocol', () => {
@@ -40,7 +40,7 @@ describe('canonicalizeBrandDomain', () => {
   });
 });
 
-describe('assertValidBrandDomain', () => {
+describe('brand domain validation', () => {
   it('accepts a typical apex domain', () => {
     expect(() => assertValidBrandDomain('kyber1.com')).not.toThrow();
   });
@@ -58,17 +58,17 @@ describe('assertValidBrandDomain', () => {
       'brand.10.in-addr.arpa',
       'example.com',
     ]) {
-      expect(() => assertValidBrandDomain(domain)).toThrow();
+      expect(() => assertRegistrableBrandDomain(domain)).toThrow();
     }
   });
 
   it('admits only narrow dotted development names with explicit opt-in', () => {
     for (const domain of ['brand.localhost', 'brand.test', 'brand.example', 'brand.invalid', 'example.com']) {
-      expect(() => assertValidBrandDomain(domain)).toThrow();
-      expect(() => assertValidBrandDomain(domain, { allowDevelopmentDomains: true })).not.toThrow();
+      expect(() => assertRegistrableBrandDomain(domain)).toThrow();
+      expect(() => assertRegistrableBrandDomain(domain, { allowDevelopmentDomains: true })).not.toThrow();
     }
-    expect(() => assertValidBrandDomain('localhost', { allowDevelopmentDomains: true })).toThrow();
-    expect(() => assertValidBrandDomain('brand.local', { allowDevelopmentDomains: true })).toThrow();
+    expect(() => assertRegistrableBrandDomain('localhost', { allowDevelopmentDomains: true })).toThrow();
+    expect(() => assertRegistrableBrandDomain('brand.local', { allowDevelopmentDomains: true })).toThrow();
   });
 
   it('rejects labels longer than 63 octets', () => {

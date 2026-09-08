@@ -13,7 +13,7 @@ import type {
 } from './types';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
-import { assertValidBrandDomain } from './services/identifier-normalization.js';
+import { assertRegistrableBrandDomain } from './services/identifier-normalization.js';
 import {
   observeBrandRelationshipDeclaration,
   type BrandRelationshipDeclaration,
@@ -277,7 +277,7 @@ export class BrandManager {
       .replace(/^https?:\/\//, '')
       .replace(/\/$/, '');
     try {
-      assertValidBrandDomain(normalized, {
+      assertRegistrableBrandDomain(normalized, {
         allowDevelopmentDomains: this.allowDevelopmentDomains,
       });
       return normalized;
