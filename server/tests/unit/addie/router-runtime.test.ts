@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LUNA_ROUTER_PRIMARY_DEADLINE_MS,
+  LUNA_VOICE_ROUTER_PRIMARY_DEADLINE_MS,
   createProductionRouter,
 } from '../../../src/addie/router-runtime.js';
 
@@ -9,8 +10,20 @@ describe('production router runtime', () => {
     const runtime = createProductionRouter(' openai-key ');
 
     expect(runtime.primaryProvider).toBe('openai');
+    expect(runtime.primaryDeadlineMs).toBe(LUNA_ROUTER_PRIMARY_DEADLINE_MS);
     expect(runtime.router).toBeDefined();
     expect(LUNA_ROUTER_PRIMARY_DEADLINE_MS).toBe(15_000);
+  });
+
+  it('supports the bounded voice-routing deadline', () => {
+    const runtime = createProductionRouter(
+      'openai-key',
+      undefined,
+      LUNA_VOICE_ROUTER_PRIMARY_DEADLINE_MS,
+    );
+
+    expect(runtime.primaryDeadlineMs).toBe(3_000);
+    expect(runtime.primaryDeadlineMs).toBeLessThan(LUNA_ROUTER_PRIMARY_DEADLINE_MS);
   });
 
   it.each([undefined, '', '   '])('fails startup when the OpenAI key is absent (%j)', (apiKey) => {

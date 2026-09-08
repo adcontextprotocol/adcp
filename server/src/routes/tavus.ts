@@ -12,7 +12,10 @@ import {
   type ExecutionPlan,
   type RoutingContext,
 } from "../addie/router.js";
-import { createProductionRouter } from "../addie/router-runtime.js";
+import {
+  createProductionRouter,
+  LUNA_VOICE_ROUTER_PRIMARY_DEADLINE_MS,
+} from "../addie/router-runtime.js";
 import { selectBoundedRoutedToolSets } from "../addie/slack-tool-selection.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import {
@@ -136,7 +139,11 @@ async function initializeTavusClient(): Promise<void> {
       return;
     }
     claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.voice);
-    tavusRouter = createProductionRouter(process.env.OPENAI_API_KEY?.trim()).router;
+    tavusRouter = createProductionRouter(
+      process.env.OPENAI_API_KEY?.trim(),
+      undefined,
+      LUNA_VOICE_ROUTER_PRIMARY_DEADLINE_MS,
+    ).router;
     await initializeKnowledgeSearch();
     const knowledgeHandlers = createKnowledgeToolHandlers({
       slackAccess: { kind: 'public-only' },
@@ -867,25 +874,23 @@ export function createTavusRouter(options?: {
       });
       const routerForTurn = costAdmission.ok ? resolveRouter() : null;
 
-      if (pendingVoiceToolSelection) {
-        routedVoiceTools = await selectRoutedTavusVoiceTools({
-          message: spokenMessage,
-          threadId: threadId!,
-          threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
-          router: pendingVoiceToolSelection.forceSafeFallback ? null : routerForTurn,
-          ...pendingVoiceToolSelection,
-        });
-        voiceRequestTools = routedVoiceTools.requestTools;
-        logger.debug(
-          {
-            userId: voiceUserId,
-            toolCount: voiceRequestTools.tools.length,
-            selectedToolSets: routedVoiceTools.selectedToolSets,
-            costAdmitted: costAdmission.ok,
-          },
-          'Tavus: Selected bounded voice tools for stream dispatch',
-        );
-      }
+      routedVoiceTools = await selectRoutedTavusVoiceTools({
+        message: spokenMessage,
+        threadId: threadId!,
+        threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+        router: pendingVoiceToolSelection.forceSafeFallback ? null : routerForTurn,
+        ...pendingVoiceToolSelection,
+      });
+      voiceRequestTools = routedVoiceTools.requestTools;
+      logger.debug(
+        {
+          userId: voiceUserId,
+          toolCount: voiceRequestTools.tools.length,
+          selectedToolSets: routedVoiceTools.selectedToolSets,
+          costAdmitted: costAdmission.ok,
+        },
+        'Tavus: Selected bounded voice tools for stream dispatch',
+      );
 
       requestContext = [
         voiceContext,
