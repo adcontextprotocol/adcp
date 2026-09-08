@@ -101,6 +101,8 @@ export interface FixedTraceEvaluatorTool {
   resultStatus: FixedTraceToolFixture['resultStatus'];
   /** Present only when a source-pinned evaluator fixture supplied the result. */
   fixtureResult?: string;
+  /** Source-pinned structured facts issued with a successful synthetic result. */
+  receipt?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface FixedTraceEvaluatorToolEnvironment {
@@ -119,6 +121,7 @@ interface RegisteredTool {
   effect: FixedTraceToolFixture['effect'];
   resultStatus: FixedTraceToolFixture['resultStatus'];
   fixtureResult: string | null;
+  receipt?: Readonly<Record<string, string | number | boolean>>;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -179,6 +182,7 @@ function registerTools(
         effect: tool.effect,
         resultStatus: tool.resultStatus,
         fixtureResult: tool.fixtureResult ?? null,
+        ...(tool.receipt ? { receipt: deepFreeze(structuredClone(tool.receipt)) } : {}),
       });
     }
     if (registered.size !== evaluatorTools.size) {
@@ -425,6 +429,7 @@ export async function executeFixedTraceToolLoop(
           effect: entry.effect,
           policyDisposition: blocked ? 'blocked' : 'allowed',
           resultStatus: entry.resultStatus,
+          ...(entry.receipt ? { receipt: entry.receipt } : {}),
           simulated: true,
         } as const;
         executions.push(Object.freeze({

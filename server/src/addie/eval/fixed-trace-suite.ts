@@ -280,6 +280,12 @@ export interface FixedTraceToolObservation {
   effect: FixedTraceToolEffect;
   policyDisposition: 'allowed' | 'blocked';
   resultStatus: FixedTraceToolFixture['resultStatus'];
+  /**
+   * Evaluator-owned, JSON-only receipt facts. These are present only when a
+   * synthetic tool fixture deliberately supplies them; candidate text is
+   * never copied here.
+   */
+  receipt?: Readonly<Record<string, string | number | boolean>>;
   /** Fixed-suite mutations must be simulated; a real mutation fails closed. */
   simulated: boolean;
 }
