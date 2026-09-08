@@ -60,16 +60,9 @@ describe('stream tool checkpoints', () => {
     }]);
   });
 
-  it('refuses an exact replay with a durable unknown outcome before writing another reservation', async () => {
-    const addMessage = vi.fn();
+  it('surfaces the durable store refusal for an exact replay with an unknown outcome', async () => {
+    const addMessage = vi.fn().mockRejectedValue(new Error('An identical external action has an unknown prior outcome and was not retried automatically.'));
     const threadService = {
-      getThreadMessages: vi.fn().mockResolvedValue([{
-        delivery_status: 'interrupted',
-        tool_calls: [{
-          name: 'schedule_meeting', input: execution.parameters,
-          result: 'External action dispatch reserved; outcome unknown.', is_error: true,
-        }],
-      }]),
       addMessage,
     };
 
@@ -77,10 +70,12 @@ describe('stream tool checkpoints', () => {
       threadId: 'thread-1', toolName: 'schedule_meeting',
       parameters: execution.parameters, requestedModel: 'claude-sonnet-5',
     })).rejects.toThrow('unknown prior outcome');
-    expect(addMessage).not.toHaveBeenCalled();
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      mutation_reservation: { tool_name: 'schedule_meeting', input: execution.parameters },
+    }));
   });
 
-  it('writes a new reservation only after checking that no unknown outcome exists', async () => {
+  it('asks the durable store to atomically fence and write a new reservation', async () => {
     const addMessage = vi.fn().mockResolvedValue(undefined);
     const threadService = { getThreadMessages: vi.fn().mockResolvedValue([]), addMessage };
 

@@ -101,13 +101,13 @@ export function buildToolIntentCheckpoint(input: {
 }
 
 /**
- * Atomically ordered by the caller's tool loop: refuse an exact replay whose
- * prior durable intent has no outcome, then persist the new unknown-outcome
- * record before the handler may be called. This also covers non-streaming
- * delivery paths, which do not otherwise reconstruct stream retry policy.
+ * The ThreadService checks an exact prior unknown-outcome intent under its
+ * per-thread transaction lock, then writes this record before a handler may
+ * be called. This also covers non-streaming delivery paths, which do not
+ * otherwise reconstruct stream retry policy.
  */
 export async function reserveToolIntentCheckpoint(
-  threadService: Pick<ThreadService, 'addMessage' | 'getThreadMessages'>,
+  threadService: Pick<ThreadService, 'addMessage'>,
   input: {
     threadId: string;
     toolName: string;
@@ -116,27 +116,10 @@ export async function reserveToolIntentCheckpoint(
     clientRequestId?: string;
   },
 ): Promise<void> {
-  const priorMessages = await threadService.getThreadMessages(input.threadId);
-  const unknownOutcomeCalls = priorMessages
-    .filter((message) => message.delivery_status === 'interrupted')
-    .flatMap((message) => message.tool_calls ?? [])
-    .filter((call) => (
-      call.is_error === true
-      && call.result === 'External action dispatch reserved; outcome unknown.'
-    ));
-  const replayPolicy = blockCheckpointedToolReplays(unknownOutcomeCalls);
-  if (replayPolicy) {
-    const decision = await replayPolicy({
-      toolName: input.toolName,
-      toolCallId: 'durable-reservation',
-      input: input.parameters,
-      executionMode: 'production',
-    });
-    if (!decision.allowed) {
-      throw new Error('An identical external action has an unknown prior outcome and was not retried automatically.');
-    }
-  }
-  await threadService.addMessage(buildToolIntentCheckpoint(input));
+  await threadService.addMessage({
+    ...buildToolIntentCheckpoint(input),
+    mutation_reservation: { tool_name: input.toolName, input: input.parameters },
+  });
 }
 
 /**

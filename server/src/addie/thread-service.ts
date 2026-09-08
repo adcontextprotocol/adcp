@@ -166,6 +166,11 @@ interface CreateMessageInputBase {
   /** Internal web-turn fencing: terminal status and message commit atomically. */
   client_turn_lease_id?: string;
   finalize_client_turn_status?: 'completed' | 'interrupted';
+  /**
+   * Internal durable mutation fence. It is checked under the same per-thread
+   * transaction lock as the intent insert and is never persisted as a column.
+   */
+  mutation_reservation?: { tool_name: string; input: unknown };
 }
 
 export type CreateMessageInput = CreateMessageInputBase & (
@@ -515,6 +520,29 @@ export class ThreadService {
       // value, producing duplicate sequence numbers and nondeterministic
       // ordering in getThreadMessages.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [input.thread_id]);
+
+      if (input.mutation_reservation) {
+        const priorUnknownOutcome = await client.query(
+          `SELECT 1
+           FROM addie_thread_messages message,
+                jsonb_array_elements(COALESCE(message.tool_calls::jsonb, '[]'::jsonb)) AS call
+           WHERE message.thread_id = $1
+             AND message.delivery_status = 'interrupted'
+             AND call->>'name' = $2
+             AND call->>'result' = 'External action dispatch reserved; outcome unknown.'
+             AND COALESCE((call->>'is_error')::boolean, FALSE) = TRUE
+             AND call->'input' = $3::jsonb
+           LIMIT 1`,
+          [
+            input.thread_id,
+            input.mutation_reservation.tool_name,
+            stripNullBytesFromJson(JSON.stringify(input.mutation_reservation.input)),
+          ],
+        );
+        if ((priorUnknownOutcome.rowCount ?? 0) > 0) {
+          throw new Error('An identical external action has an unknown prior outcome and was not retried automatically.');
+        }
+      }
 
       if (input.client_turn_lease_id && input.client_request_id && input.finalize_client_turn_status) {
         const finalized = await client.query(
