@@ -297,6 +297,34 @@ describe('Luna router shadow', () => {
     expect(completionParameters?.[5]).toBeNull();
   });
 
+  it('records a valid strict response as a mismatch when production did not produce a plan', async () => {
+    const primaryObservation = observation();
+    primaryObservation.productionPlan = null;
+    const provider = fakeProvider(JSON.stringify({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      confidence: 'high',
+      requires_depth: false,
+      reason: 'bounded',
+    }));
+    const runQuery = claimedQuery();
+
+    const result = await runRouterShadow({
+      ...cohortInput,
+      observation: primaryObservation,
+    }, {
+      env: environment(),
+      provider,
+      query: runQuery,
+    });
+
+    expect(result).toEqual({ status: 'succeeded', reason: 'valid_plan' });
+    const beginParameters = runQuery.mock.calls.find(
+      ([sql]) => sql.includes('INSERT INTO addie_router_shadow_attempts'),
+    )?.[1];
+    expect(beginParameters).toEqual(expect.arrayContaining(['plan_mismatch']));
+  });
+
   it('records quota exhaustion without a paid call', async () => {
     const provider = fakeProvider('never called');
     const runQuery = vi.fn(async (sql: string) => {

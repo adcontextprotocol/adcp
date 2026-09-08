@@ -806,11 +806,8 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize Claude client
   claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat, providerHealth);
 
-  const routerRuntime = createProductionRouter(anthropicKey, openAiKey, providerHealth);
+  const routerRuntime = createProductionRouter(openAiKey, providerHealth);
   addieRouter = routerRuntime.router;
-  if (routerRuntime.primaryProvider !== 'openai') {
-    logger.warn('Addie Bolt: OPENAI_API_KEY missing; using Haiku router fallback only');
-  }
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -1558,7 +1555,7 @@ export async function selectRoutedDirectSlackTools(input: {
   isPublicChannel?: boolean;
 }): Promise<RoutedDirectSlackTools> {
   let plan: ExecutionPlan | null = null;
-  let routerAvailable = input.router !== null;
+  const routerAvailable = input.router !== null;
   const routingContext: RoutingContext = {
     message: input.message,
     source: input.source,
@@ -1570,13 +1567,8 @@ export async function selectRoutedDirectSlackTools(input: {
   };
 
   if (input.router) {
-    try {
-      plan = input.router.quickMatch(routingContext)
-        ?? await input.router.route(routingContext, { failureMode: 'throw' });
-    } catch (error) {
-      routerAvailable = false;
-      logger.warn({ error, threadId: input.threadId }, 'Addie Bolt: Direct-response router unavailable; using safe read-only fallback');
-    }
+    plan = input.router.quickMatch(routingContext)
+      ?? await input.router.route(routingContext);
   }
 
   const requestDefinitionNames = new Set(input.requestTools.tools.map((tool) => tool.name));
@@ -2054,21 +2046,32 @@ async function handleUserMessage({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
-  const routedTools = await selectRoutedToolsForSlackResponse(
-    inputValidation.sanitized,
-    'dm',
-    memberContext,
-    userId,
-    thread.thread_id,
-    slackThreadContext,
-    {
-      isThread: true,
-      activeCertificationKind,
-      threadMessages: conversationHistory
-        ?.slice(-6)
-        .map((turn) => `${turn.user}: ${turn.text}`),
+  let routedTools: Awaited<ReturnType<typeof selectRoutedToolsForSlackResponse>>;
+  try {
+    routedTools = await selectRoutedToolsForSlackResponse(
+      inputValidation.sanitized,
+      'dm',
+      memberContext,
+      userId,
+      thread.thread_id,
+      slackThreadContext,
+      {
+        isThread: true,
+        activeCertificationKind,
+        threadMessages: conversationHistory
+          ?.slice(-6)
+          .map((turn) => `${turn.user}: ${turn.text}`),
+      }
+    );
+  } catch (error) {
+    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for assistant DM');
+    try {
+      await say("I'm sorry, I can't process that request right now. Please try again.");
+    } catch (deliveryError) {
+      logger.error({ error: deliveryError }, 'Addie Bolt: Failed to send assistant DM routing error');
     }
-  );
+    return;
+  }
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
@@ -2589,6 +2592,10 @@ type AppMentionHandlerDependencies = {
   claudeClient?: AddieClaudeClient;
   resolveChannelContext?: (channelId: string) => Promise<ThreadContext | null>;
   getThreadService?: typeof getThreadService;
+  getChannelHistory?: typeof getChannelHistory;
+  getThreadReplies?: typeof getThreadReplies;
+  getMemberContext?: typeof getMemberContext;
+  buildRequestContext?: typeof buildRequestContext;
   selectRoutedTools?: typeof selectRoutedToolsForSlackResponse;
   buildCurrentChannelCostOptions?: typeof buildCurrentChannelCostOptions;
   logInteraction?: typeof logInteraction;
@@ -2679,13 +2686,13 @@ export async function handleAppMention({
     let contextLabel = '';
 
     if (isInThread && event.thread_ts) {
-      const threadMessages = await getThreadReplies(channelId, event.thread_ts);
+      const threadMessages = await (dependencies?.getThreadReplies ?? getThreadReplies)(channelId, event.thread_ts);
       rawMessages = threadMessages;
       contextLabel = 'Thread';
     } else {
       // Fetch recent channel messages before this mention.
       // conversations.history returns newest-first; reverse to chronological order.
-      const { messages: channelMessages } = await getChannelHistory(channelId, {
+      const { messages: channelMessages } = await (dependencies?.getChannelHistory ?? getChannelHistory)(channelId, {
         latest: event.ts,
         limit: MAX_CONTEXT_MESSAGES + 1, // +1 because the current message may be included
       });
@@ -2768,7 +2775,7 @@ export async function handleAppMention({
   // Fetch member context early so we can store display name on the thread
   let mentionMemberContext: MemberContext | null = null;
   try {
-    mentionMemberContext = await getMemberContext(userId);
+    mentionMemberContext = await (dependencies?.getMemberContext ?? getMemberContext)(userId);
   } catch (error) {
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for mention');
   }
@@ -2821,7 +2828,7 @@ export async function handleAppMention({
 
   // Build per-request context (member info, channel, goals) for system prompt
   // Pass pre-fetched member context to avoid a duplicate DB call
-  const { requestContext: memberRequestContext, memberContext } = await buildRequestContext(
+  const { requestContext: memberRequestContext, memberContext } = await (dependencies?.buildRequestContext ?? buildRequestContext)(
     userId,
     mentionChannelContext,
     mentionMemberContext
@@ -2857,15 +2864,29 @@ export async function handleAppMention({
     ? buildThreadSummaryForRouter(mentionRawMessages, context.botUserId || '', event.ts, userId)
     : undefined;
 
-  const routedTools = await (dependencies?.selectRoutedTools ?? selectRoutedToolsForSlackResponse)(
-    inputValidation.sanitized,
-    'mention',
-    memberContext,
-    userId,
-    thread.thread_id,
-    mentionChannelContext,
-    { isThread: isInThread, threadMessages: mentionThreadSummary }
-  );
+  let routedTools: Awaited<ReturnType<typeof selectRoutedToolsForSlackResponse>>;
+  try {
+    routedTools = await (dependencies?.selectRoutedTools ?? selectRoutedToolsForSlackResponse)(
+      inputValidation.sanitized,
+      'mention',
+      memberContext,
+      userId,
+      thread.thread_id,
+      mentionChannelContext,
+      { isThread: isInThread, threadMessages: mentionThreadSummary }
+    );
+  } catch (error) {
+    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for mention');
+    try {
+      await say({
+        text: "I'm sorry, I can't process that request right now. Please try again.",
+        thread_ts: threadTs,
+      });
+    } catch (deliveryError) {
+      logger.error({ error: deliveryError }, 'Addie Bolt: Failed to send mention routing error');
+    }
+    return;
+  }
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
@@ -4170,21 +4191,36 @@ async function handleDirectMessage(
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
   }
 
-  const routedTools = await selectRoutedToolsForSlackResponse(
-    inputValidation.sanitized,
-    'dm',
-    memberContext,
-    userId,
-    thread.thread_id,
-    null,
-    {
-      isThread: true,
-      activeCertificationKind,
-      threadMessages: conversationHistory
-        ?.slice(-6)
-        .map((turn) => `${turn.user}: ${turn.text}`),
-    },
-  );
+  let routedTools: Awaited<ReturnType<typeof selectRoutedToolsForSlackResponse>>;
+  try {
+    routedTools = await selectRoutedToolsForSlackResponse(
+      inputValidation.sanitized,
+      'dm',
+      memberContext,
+      userId,
+      thread.thread_id,
+      null,
+      {
+        isThread: true,
+        activeCertificationKind,
+        threadMessages: conversationHistory
+          ?.slice(-6)
+          .map((turn) => `${turn.user}: ${turn.text}`),
+      },
+    );
+  } catch (error) {
+    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for DM');
+    try {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        text: "I'm sorry, I can't process that request right now. Please try again.",
+        thread_ts: event.thread_ts || event.ts,
+      });
+    } catch (deliveryError) {
+      logger.error({ error: deliveryError }, 'Addie Bolt: Failed to send DM routing error');
+    }
+    return;
+  }
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
@@ -4562,15 +4598,30 @@ async function handleActiveThreadReply({
     userId,
   );
 
-  const routedTools = await selectRoutedToolsForSlackResponse(
-    inputValidation.sanitized,
-    'channel',
-    memberContext,
-    userId,
-    thread.thread_id,
-    channelContext,
-    { isThread: true, threadMessages: threadSummary }
-  );
+  let routedTools: Awaited<ReturnType<typeof selectRoutedToolsForSlackResponse>>;
+  try {
+    routedTools = await selectRoutedToolsForSlackResponse(
+      inputValidation.sanitized,
+      'channel',
+      memberContext,
+      userId,
+      thread.thread_id,
+      channelContext,
+      { isThread: true, threadMessages: threadSummary }
+    );
+  } catch (error) {
+    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for active thread reply');
+    try {
+      await boltApp?.client.chat.postMessage({
+        channel: channelId,
+        text: "I'm sorry, I can't process that request right now. Please try again.",
+        thread_ts: threadTs,
+      });
+    } catch (deliveryError) {
+      logger.error({ error: deliveryError }, 'Addie Bolt: Failed to send active thread routing error');
+    }
+    return;
+  }
 
   // Suppress low-confidence replies in active channel threads, flag for review
   if (routedTools.confidence === 'low') {
@@ -6128,10 +6179,9 @@ async function handleReactionAdded({
 
   // Reactions are user-visible thread continuations, but selection is kept
   // separate from the reaction trigger, persistence, audit, and delivery
-  // mechanics above. Invalid/non-response/over-broad router output receives
-  // the same explicit read-only fallback as authenticated web chat.
+  // mechanics above.
   let reactionPlan: ExecutionPlan | null = null;
-  let reactionRouterAvailable = addieRouter !== null;
+  const reactionRouterAvailable = addieRouter !== null;
   if (addieRouter) {
     const routingContext: RoutingContext = {
       message: userInput,
@@ -6144,10 +6194,19 @@ async function handleReactionAdded({
     };
     try {
       reactionPlan = addieRouter.quickMatch(routingContext)
-        ?? await addieRouter.route(routingContext, { failureMode: 'throw' });
+        ?? await addieRouter.route(routingContext);
     } catch (error) {
-      reactionRouterAvailable = false;
-      logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Reaction router unavailable; using safe read-only fallback');
+      logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for reaction response');
+      try {
+        await client.chat.postMessage({
+          channel: itemChannel,
+          text: "I'm sorry, I can't process that request right now. Please try again.",
+          thread_ts: threadTs,
+        });
+      } catch (deliveryError) {
+        logger.error({ error: deliveryError }, 'Addie Bolt: Failed to send reaction routing error');
+      }
+      return;
     }
   }
   const requestDefinitionNames = new Set(userTools.tools.map((tool) => tool.name));

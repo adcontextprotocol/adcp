@@ -352,7 +352,7 @@ export async function selectRoutedWebTools(input: {
   threadMessages?: string[];
 }): Promise<RoutedWebTools> {
   let plan: ExecutionPlan | null = null;
-  let routerAvailable = input.router !== null;
+  const routerAvailable = input.router !== null;
 
   if (input.router) {
     const routingContext: RoutingContext = {
@@ -363,13 +363,8 @@ export async function selectRoutedWebTools(input: {
       isAAOAdmin: input.isAAOAdmin,
       threadMessages: input.threadMessages,
     };
-    try {
-      plan = input.router.quickMatch(routingContext)
-        ?? await input.router.route(routingContext, { failureMode: 'throw' });
-    } catch (error) {
-      routerAvailable = false;
-      logger.warn({ error, threadId: input.threadId }, 'Addie Chat: Router unavailable; using safe read-only fallback');
-    }
+    plan = input.router.quickMatch(routingContext)
+      ?? await input.router.route(routingContext);
   }
 
   const definitions = new Map(input.requestTools.tools.map((tool) => [tool.name, tool]));
@@ -422,7 +417,7 @@ async function initializeChatClient(): Promise<void> {
 
   // Client defaults to Sonnet; anonymous requests override to Haiku per-request
   claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
-  webChatRouter = createProductionRouter(apiKey, process.env.OPENAI_API_KEY?.trim()).router;
+  webChatRouter = createProductionRouter(process.env.OPENAI_API_KEY?.trim()).router;
 
   // Initialize knowledge search
   await initializeKnowledgeSearch();

@@ -68,7 +68,6 @@ describe('authenticated Tavus voice Addie tool routing', () => {
         isAAOAdmin: false,
         threadMessages: ['User: Earlier spoken request'],
       }),
-      { failureMode: 'throw' },
     );
   });
 
@@ -98,10 +97,6 @@ describe('authenticated Tavus voice Addie tool routing', () => {
 
   it.each([
     ['unavailable router', null],
-    ['failed router', {
-      quickMatch: vi.fn().mockReturnValue(null),
-      route: vi.fn().mockRejectedValue(new Error('router unavailable')),
-    }],
     ['invalid plan', routerFor(['obsolete_router_alias'])],
     ['non-response plan', {
       quickMatch: vi.fn().mockReturnValue({ action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }),
@@ -115,6 +110,15 @@ describe('authenticated Tavus voice Addie tool routing', () => {
       'capture_learning', 'set_outreach_preference', 'create_payment_link', 'add_prospect',
     ]));
     expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual(['search_docs']);
+  });
+
+  it('propagates a voice router failure', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockRejectedValue(new Error('router unavailable')),
+    };
+
+    await expect(select(router)).rejects.toThrow('router unavailable');
   });
 
   it('falls back when a selected voice domain has an incomplete registration', async () => {

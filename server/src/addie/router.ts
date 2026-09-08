@@ -1127,7 +1127,7 @@ export interface RouterModelObservation {
   canonicalRequest: ModelRequest;
   primaryInvocation: PreparedModelInvocation | null;
   isAdmin: boolean;
-  productionPlan: ExecutionPlan;
+  productionPlan: ExecutionPlan | null;
   rawResponseText: string | null;
   responseContent: ReadonlyArray<ModelMessageContent>;
   finishReason: ModelFinishReason | null;
@@ -1149,9 +1149,7 @@ export interface RouterRouteOptions {
    * It cannot change or delay the production decision.
    */
   observer?: (observation: RouterModelObservation) => void | Promise<void>;
-  /** Used by a higher-level canary boundary so it can invoke the fallback provider. */
-  failureMode?: 'safe_fallback' | 'throw';
-  /** Cancels the provider request without changing the default fallback behavior. */
+  /** Cancels the provider request. */
   signal?: AbortSignal;
 }
 
@@ -1160,9 +1158,7 @@ export interface AddieRouterProviderOptions {
   reasoning?: ModelRequest['reasoning'];
   /** Reject malformed, incomplete, or unauthorized plans instead of normalizing them. */
   strictOutput?: boolean;
-  /** Router to invoke when this provider fails or returns invalid strict output. */
-  fallbackRouter?: AddieRouter;
-  /** Hard deadline for this provider before invoking the fallback router. */
+  /** Hard deadline for this provider before failing the request. */
   primaryDeadlineMs?: number;
 }
 
@@ -1185,7 +1181,7 @@ function queueRouterObserver(
 /**
  * Addie Router class
  *
- * Uses a fast model for routing decisions, with an optional provider fallback.
+ * Uses a fast model for routing decisions.
  */
 export class AddieRouter {
   private readonly provider: ModelProvider;
@@ -1193,7 +1189,6 @@ export class AddieRouter {
   private readonly model: string;
   private readonly reasoning?: ModelRequest['reasoning'];
   private readonly strictOutput: boolean;
-  private readonly fallbackRouter?: AddieRouter;
   private readonly primaryDeadlineMs?: number;
 
   constructor(
@@ -1209,7 +1204,6 @@ export class AddieRouter {
     this.model = options.model ?? ModelConfig.fast;
     this.reasoning = options.reasoning;
     this.strictOutput = options.strictOutput ?? false;
-    this.fallbackRouter = options.fallbackRouter;
     if (
       options.primaryDeadlineMs !== undefined
       && (!Number.isSafeInteger(options.primaryDeadlineMs)
@@ -1393,8 +1387,7 @@ export class AddieRouter {
       );
       const failureLatencyMs = Date.now() - startTime;
       if (primaryResponse) {
-        // Strict-output failures still incur provider cost. Track that attempt
-        // separately from the successful fallback call.
+        // Strict-output failures still incur provider cost.
         void trackApiCall({
           model: this.model,
           purpose: ApiPurpose.ROUTER,
@@ -1403,27 +1396,11 @@ export class AddieRouter {
           latency_ms: failureLatencyMs,
         });
       }
-      if (this.fallbackRouter) {
-        logger.warn(
-          { category, primaryTimedOut, primaryProvider: this.provider.id },
-          "Router: Primary failed, invoking fallback provider",
-        );
-        return this.fallbackRouter.route(ctx, options);
-      }
-      // On error, retain the pre-split safe read-only knowledge domains.
-      const fallbackPlan: ExecutionPlan = {
-        action: "respond",
-        tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
-        confidence: "high",
-        reason: "Router error - defaulting to safe knowledge tools",
-        decision_method: "llm",
-        latency_ms: failureLatencyMs,
-      };
       queueRouterObserver(options.observer, {
         canonicalRequest,
         primaryInvocation,
         isAdmin: ctx.isAAOAdmin ?? false,
-        productionPlan: fallbackPlan,
+        productionPlan: null,
         rawResponseText,
         responseContent: primaryResponse?.content ?? [],
         finishReason: primaryResponse?.finishReason ?? null,
@@ -1438,8 +1415,7 @@ export class AddieRouter {
         cacheWriteTokens: primaryResponse?.usage.cacheWriteTokens ?? null,
         latencyMs: failureLatencyMs,
       });
-      if (options.failureMode === 'throw') throw error;
-      return fallbackPlan;
+      throw error;
     }
   }
 

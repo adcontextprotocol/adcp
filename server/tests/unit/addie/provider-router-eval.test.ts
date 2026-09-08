@@ -248,26 +248,23 @@ describe('strict router eval', () => {
     expect(observer).toHaveBeenCalledOnce();
   });
 
-  it('observes the exact primary request and terminal provider failure without changing fallback', async () => {
+  it('observes the exact primary request and propagates a terminal provider failure', async () => {
     const provider = fakeProvider('unused');
     provider.respond = async function* (request, options) {
       await options?.beforeDispatch?.(this.prepare(request));
       throw new Error('private provider failure');
     };
     const observer = vi.fn();
-    const plan = await new AddieRouter('unused', provider).route(
+    await expect(new AddieRouter('unused', provider).route(
       { message: 'route failure safely', source: 'channel' },
       { observer },
-    );
-    expect(plan).toMatchObject({
-      action: 'respond',
-      tool_sets: ['knowledge', 'community_research', 'schema_reference'],
-    });
+    )).rejects.toThrow('private provider failure');
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(observer).toHaveBeenCalledWith(expect.objectContaining({
       requestedProvider: 'openai',
       returnedProvider: null,
       primaryErrorCategory: 'provider_error',
+      productionPlan: null,
       primaryInvocation: expect.objectContaining({
         provider: 'openai',
         providerRequest: expect.objectContaining({ marker: 'actual-dispatch' }),

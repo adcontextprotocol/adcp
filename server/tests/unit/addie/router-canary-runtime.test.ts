@@ -156,7 +156,6 @@ describe('Luna router canary runtime', () => {
       reason: 'candidate_succeeded',
     });
     const routeOptions = candidateRoute.mock.calls[0][1];
-    expect(routeOptions.failureMode).toBe('throw');
     expect(routeOptions.signal).toBeInstanceOf(AbortSignal);
     expect(record).toHaveBeenCalledWith(admission(), {
       status: 'candidate_succeeded',

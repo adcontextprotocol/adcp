@@ -81,7 +81,7 @@ describe('direct Slack Addie response tool routing', () => {
     expect(selected.requiresPrecision).toBe(true);
     expect(selected.requiresDepth).toBe(true);
     expect(selected.confidence).toBe('medium');
-    expect(router.route).toHaveBeenCalledWith(expect.objectContaining({ source, isThread: true }), { failureMode: 'throw' });
+    expect(router.route).toHaveBeenCalledWith(expect.objectContaining({ source, isThread: true }));
   });
 
   it('retains explicit knowledge and valid two-domain direct routes', async () => {
@@ -105,10 +105,6 @@ describe('direct Slack Addie response tool routing', () => {
       quickMatch: vi.fn().mockReturnValue({ action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }),
       route: vi.fn(),
     }],
-    ['router throw', {
-      quickMatch: vi.fn().mockReturnValue(null),
-      route: vi.fn().mockRejectedValue(new Error('router unavailable')),
-    }],
   ] as const)('keeps direct %s interactions answerable through the safe fallback', async (label, router) => {
     const selected = await select({ router });
 
@@ -119,6 +115,15 @@ describe('direct Slack Addie response tool routing', () => {
     ]));
     expect(selected.requiresPrecision).toBe(false);
     expect(selected.requiresDepth).toBe(false);
+  });
+
+  it('propagates a direct router failure', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockRejectedValue(new Error('router unavailable')),
+    };
+
+    await expect(select({ router })).rejects.toThrow('router unavailable');
   });
 
   it('falls back when a selected request definition lacks its exact handler pair', async () => {
@@ -191,6 +196,51 @@ describe('direct Slack Addie response tool routing', () => {
     expect(logInteraction).not.toHaveBeenCalled();
     expect(modelDispatch).not.toHaveBeenCalled();
     expect(responseDelivery).not.toHaveBeenCalled();
+  });
+
+  it('reports an app-mention routing error without dispatching the model', async () => {
+    const modelDispatch = vi.fn();
+    const responseDelivery = vi.fn();
+    const selectRoutedTools = vi.fn().mockRejectedValue(new Error('router unavailable'));
+    const buildCurrentChannelCostOptions = vi.fn();
+    const logInteraction = vi.fn();
+    const threadService = {
+      getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+      getThreadMessages: vi.fn().mockResolvedValue([]),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await handleAppMention({
+      event: { channel: 'C_PRIVATE', ts: '1', user: 'U_TEST', text: '<@B_ADDIE> help' },
+      context: { botUserId: 'B_ADDIE' },
+      say: responseDelivery,
+    } as never, {
+      claudeClient: { processMessage: modelDispatch } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({
+        viewing_channel_name: 'private-test',
+        viewing_channel_is_private: true,
+      }),
+      getChannelHistory: vi.fn().mockResolvedValue({ messages: [], has_more: false }),
+      getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({
+        requestContext: 'test request context',
+        memberContext: null,
+        activeCertificationKind: undefined,
+      }),
+      getThreadService: vi.fn(() => threadService as never),
+      selectRoutedTools,
+      buildCurrentChannelCostOptions,
+      logInteraction,
+    });
+
+    expect(selectRoutedTools).toHaveBeenCalledOnce();
+    expect(modelDispatch).not.toHaveBeenCalled();
+    expect(buildCurrentChannelCostOptions).not.toHaveBeenCalled();
+    expect(logInteraction).not.toHaveBeenCalled();
+    expect(responseDelivery).toHaveBeenCalledWith({
+      text: "I'm sorry, I can't process that request right now. Please try again.",
+      thread_ts: '1',
+    });
   });
 
   it('fails closed to the audited public surface when mention privacy is unknown', async () => {

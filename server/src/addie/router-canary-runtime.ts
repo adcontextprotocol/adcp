@@ -225,7 +225,6 @@ export async function routeWithRouterCanary(
 
   try {
     const plan = await dependencies.candidateRoute(input.routingContext, {
-      failureMode: 'throw',
       signal: controller.signal,
       observer: (observation) => {
         candidateCapture.current = observation;

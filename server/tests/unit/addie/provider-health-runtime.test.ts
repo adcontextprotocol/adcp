@@ -70,17 +70,15 @@ describe('shared Addie provider circuit', () => {
     anthropicCall.mockClear();
   });
 
-  it('turns router billing exhaustion into one safe fallback and gates chat dispatch', async () => {
+  it('propagates router billing exhaustion and gates subsequent provider dispatch', async () => {
     const health = new ProviderHealthController();
     const provider = new BillingExhaustedProvider();
     const router = new AddieRouter('unused', provider, health);
 
-    const firstRoute = await router.route({ message: 'important question', source: 'dm' });
-    const secondRoute = await router.route({ message: 'another question', source: 'dm' });
-
-    const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
-    expect(firstRoute).toMatchObject({ action: 'respond', tool_sets: safeKnowledgeFallback });
-    expect(secondRoute).toMatchObject({ action: 'respond', tool_sets: safeKnowledgeFallback });
+    await expect(router.route({ message: 'important question', source: 'dm' }))
+      .rejects.toThrow(/credit balance/i);
+    await expect(router.route({ message: 'another question', source: 'dm' }))
+      .rejects.toThrow(/provider circuit is open/i);
     expect(provider.calls).toBe(1);
 
     const client = new AddieClaudeClient('unused', 'claude-sonnet-4-6', health);

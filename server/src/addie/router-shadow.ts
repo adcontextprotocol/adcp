@@ -304,6 +304,7 @@ function plansMatchProduction(
   strict: StrictRouterPlan,
   production: RouterModelObservation['productionPlan'],
 ): boolean {
+  if (!production) return false;
   if (strict.action !== production.action) return false;
   if (strict.action === 'react') {
     return production.action === 'react' && strict.emoji === production.emoji;
