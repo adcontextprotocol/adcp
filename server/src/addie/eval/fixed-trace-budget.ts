@@ -320,7 +320,13 @@ export function fixedTraceSettlementDiagnosticCursor(provider: ModelProvider): n
   return budgetedProviderBindings.get(provider)?.dispatchSequence ?? 0;
 }
 
-/** Return the bounded, redacted settlement receipts emitted after `cursor`. */
+/**
+ * Return the bounded, redacted settlement receipts emitted after `cursor`.
+ *
+ * The cursor is wrapper-private global state. Published sequences are local
+ * to this stage so a serialized receipt range is intrinsically bound to the
+ * stage's own dispatch count and cannot claim a prior or future stage.
+ */
 export function fixedTraceSettlementDiagnosticLedger(
   provider: ModelProvider,
   cursor: number,
@@ -336,13 +342,20 @@ export function fixedTraceSettlementDiagnosticLedger(
     entries: Object.freeze([]),
   });
   const oldestRetained = binding.settlementDiagnostics[0]?.dispatchSequence;
+  const throughDispatch = binding.dispatchSequence - cursor;
+  if (throughDispatch < 0) {
+    throw new RangeError('Fixed trace settlement diagnostic cursor is ahead of provider dispatches');
+  }
   return Object.freeze({
-    fromDispatchExclusive: cursor,
-    throughDispatch: binding.dispatchSequence,
+    fromDispatchExclusive: 0,
+    throughDispatch,
     truncated: oldestRetained !== undefined && cursor < oldestRetained - 1,
     entries: Object.freeze(binding.settlementDiagnostics
       .filter((entry) => entry.dispatchSequence > cursor)
-      .map((entry) => Object.freeze({ ...entry }))),
+      .map((entry) => Object.freeze({
+        ...entry,
+        dispatchSequence: entry.dispatchSequence - cursor,
+      }))),
   });
 }
 

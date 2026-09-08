@@ -61,7 +61,7 @@ const HASH = createHash('sha256').update('fixture').digest('hex');
 function stage(
   overrides: Partial<FixedTraceModelStageMetadata> = {},
 ): FixedTraceModelStageMetadata {
-  return {
+  const value = {
     source: 'provider',
     dispatched: true,
     requestedProvider: 'anthropic',
@@ -86,6 +86,19 @@ function stage(
     latencyMs: 5,
     ...overrides,
   };
+  // Derive the default after overrides: local/not-run fixtures must not
+  // inherit the provider fixture's one-dispatch ledger.
+  const dispatchedCalls = overrides.dispatchedCalls ?? (value.dispatched ? 1 : 0);
+  return {
+    ...value,
+    dispatchedCalls,
+    settlementLedger: value.settlementLedger ?? {
+      fromDispatchExclusive: 0,
+      throughDispatch: dispatchedCalls,
+      truncated: false,
+      entries: [],
+    },
+  };
 }
 
 function notRunStage(
@@ -100,6 +113,12 @@ function notRunStage(
     returnedProvider: null,
     returnedModel: null,
     providerExposures: [],
+    settlementLedger: {
+      fromDispatchExclusive: 0,
+      throughDispatch: 0,
+      truncated: false,
+      entries: [],
+    },
     modelResolution: null,
     promptSha256: null,
     providerRequestSha256: null,
@@ -1509,6 +1528,62 @@ describe('fixed cross-provider trace suite', () => {
       'generation_cost_provenance_missing',
       'generation_provider_identity_missing',
     ]));
+  });
+
+  it('strictly binds redacted settlement receipts to their dispatched stage', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.category === 'knowledge')!;
+    const validFingerprint = createHash('sha256')
+      .update('adcp:addie:fixed-trace:settlement-diagnostic:v1\0', 'utf8')
+      .update('response_stream_interrupted', 'utf8')
+      .digest('hex');
+    const receipt = {
+      dispatchSequence: 1,
+      status: 'exposure_unknown' as const,
+      reason: 'response_stream_interrupted' as const,
+      errorFingerprintSha256: validFingerprint,
+    };
+    const withReceipt = () => {
+      const observation = passingObservation(trace);
+      observation.metadata.router = stage({
+        source: 'local',
+        dispatched: true,
+        returnedProvider: null,
+        returnedModel: null,
+        modelResolution: 'local',
+        usageKnown: false,
+        usage: null,
+        estimatedCostUsd: null,
+        pricingSource: null,
+        settlementLedger: {
+          fromDispatchExclusive: 0,
+          throughDispatch: 1,
+          truncated: false,
+          entries: [{ ...receipt }],
+        },
+      });
+      return observation;
+    };
+
+    expect(gradeFixedTrace(trace, withReceipt()).failures)
+      .not.toContain('router_settlement_ledger_invalid');
+
+    const rawProviderError = withReceipt();
+    (rawProviderError.metadata.router.settlementLedger!.entries[0] as Record<string, unknown>).rawProviderError = 'provider-owned detail';
+    expect(gradeFixedTrace(trace, rawProviderError).failures).toContain('router_settlement_ledger_invalid');
+
+    const arbitraryFingerprint = withReceipt();
+    arbitraryFingerprint.metadata.router.settlementLedger!.entries[0]!.errorFingerprintSha256 = HASH;
+    expect(gradeFixedTrace(trace, arbitraryFingerprint).failures).toContain('router_settlement_ledger_invalid');
+
+    const omitted = withReceipt();
+    delete omitted.metadata.router.settlementLedger;
+    expect(gradeFixedTrace(trace, omitted).failures).toContain('router_settlement_ledger_missing');
+
+    const unrelatedRange = withReceipt();
+    unrelatedRange.metadata.router.settlementLedger!.fromDispatchExclusive = 8;
+    unrelatedRange.metadata.router.settlementLedger!.throughDispatch = 9;
+    unrelatedRange.metadata.router.settlementLedger!.entries[0]!.dispatchSequence = 9;
+    expect(gradeFixedTrace(trace, unrelatedRange).failures).toContain('router_settlement_ledger_invalid');
   });
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {

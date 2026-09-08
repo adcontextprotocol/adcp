@@ -358,11 +358,30 @@ export interface FixedTraceSettlementDiagnosticLedger {
   entries: readonly FixedTraceSettlementDiagnostic[];
 }
 
+const FIXED_TRACE_SETTLEMENT_FINGERPRINT_DOMAIN = 'adcp:addie:fixed-trace:settlement-diagnostic:v1\0';
+const fixedTraceSettlementDiagnosticReasons = new Set<FixedTraceSettlementDiagnostic['reason']>([
+  'identity_policy_rejected',
+  'usage_or_cost_settlement_failed',
+  'response_processing_failed',
+  'response_stream_interrupted',
+]);
+
+function fixedTraceSettlementDiagnosticFingerprint(
+  reason: FixedTraceSettlementDiagnostic['reason'],
+): string {
+  // This is intentionally derived only from the closed wrapper category.
+  // Never admit provider-owned error material to a retained artifact.
+  return createHash('sha256')
+    .update(FIXED_TRACE_SETTLEMENT_FINGERPRINT_DOMAIN, 'utf8')
+    .update(reason, 'utf8')
+    .digest('hex');
+}
+
 export interface FixedTraceModelStageMetadata {
   source: 'provider' | 'local' | 'not_run';
   dispatched: boolean;
   /** Exact calls which crossed the stage's before-dispatch boundary. */
-  dispatchedCalls?: number;
+  dispatchedCalls: number;
   requestedProvider: ModelProviderId | null;
   requestedModel: string | null;
   returnedProvider: ModelProviderId | null;
@@ -376,7 +395,7 @@ export interface FixedTraceModelStageMetadata {
     returnedModel: string | null;
   }[];
   /** Bounded wrapper receipts for unpriceable dispatched completions. */
-  settlementLedger?: FixedTraceSettlementDiagnosticLedger;
+  settlementLedger: FixedTraceSettlementDiagnosticLedger;
   modelResolution: 'exact' | 'provider_canonicalized' | 'local' | null;
   promptSha256: string | null;
   providerRequestSha256: string | null;
@@ -2922,25 +2941,51 @@ function stageMetadataFailures(
   const failures: string[] = [];
   const fail = (reason: string) => failures.push(`${stageName}_${reason}`);
   const settlementLedger = stage.settlementLedger;
-  if (settlementLedger !== undefined) {
-    const entries = settlementLedger.entries;
+  if (settlementLedger === undefined) {
+    fail('settlement_ledger_missing');
+  } else if (!isPlainRecord(settlementLedger)
+    || Object.keys(settlementLedger).length !== 4
+    || !['fromDispatchExclusive', 'throughDispatch', 'truncated', 'entries']
+      .every((key) => Object.prototype.hasOwnProperty.call(settlementLedger, key))) {
+    fail('settlement_ledger_invalid');
+  } else {
+    const entries = settlementLedger.entries as unknown;
+    const dispatchedCalls = stage.dispatchedCalls;
     if (
       !Number.isSafeInteger(settlementLedger.fromDispatchExclusive)
-      || settlementLedger.fromDispatchExclusive < 0
+      // Serialized ranges are stage-local: the wrapper's global cursor is
+      // deliberately not artifact material. This prevents a receipt from a
+      // different stage being shifted into this one.
+      || settlementLedger.fromDispatchExclusive !== 0
       || !Number.isSafeInteger(settlementLedger.throughDispatch)
-      || settlementLedger.throughDispatch < settlementLedger.fromDispatchExclusive
-      || typeof settlementLedger.truncated !== 'boolean'
+      || typeof dispatchedCalls !== 'number'
+      || !Number.isSafeInteger(dispatchedCalls)
+      || (dispatchedCalls ?? -1) < 0
+      || stage.dispatched !== ((dispatchedCalls ?? 0) > 0)
+      // The cursor is captured immediately before this stage. A stage cannot
+      // claim another stage's receipts, omit an in-range call, or be truncated.
+      || settlementLedger.throughDispatch !== settlementLedger.fromDispatchExclusive + (dispatchedCalls ?? -1)
+      || settlementLedger.truncated !== false
       || !Array.isArray(entries)
       || entries.length > 8
       || entries.some((entry, index) => (
-        !Number.isSafeInteger(entry.dispatchSequence)
-        || entry.dispatchSequence <= settlementLedger.fromDispatchExclusive
-        || entry.dispatchSequence > settlementLedger.throughDispatch
+        !isPlainRecord(entry)
+        || Object.keys(entry).length !== 4
+        || !['dispatchSequence', 'status', 'reason', 'errorFingerprintSha256']
+          .every((key) => Object.prototype.hasOwnProperty.call(entry, key))
+        || !Number.isSafeInteger(entry.dispatchSequence)
+        || entry.dispatchSequence !== settlementLedger.throughDispatch
         || (index > 0 && entry.dispatchSequence <= entries[index - 1]!.dispatchSequence)
         || entry.status !== 'exposure_unknown'
-        || !['identity_policy_rejected', 'usage_or_cost_settlement_failed', 'response_processing_failed', 'response_stream_interrupted'].includes(entry.reason)
+        || !fixedTraceSettlementDiagnosticReasons.has(entry.reason as FixedTraceSettlementDiagnostic['reason'])
+        || typeof entry.errorFingerprintSha256 !== 'string'
         || !isSha256(entry.errorFingerprintSha256)
+        || entry.errorFingerprintSha256 !== fixedTraceSettlementDiagnosticFingerprint(
+          entry.reason as FixedTraceSettlementDiagnostic['reason'],
+        )
       ))
+      || (stage.dispatched && (!stage.usageKnown || stage.estimatedCostUsd === null || stage.pricingSource === null)
+        && entries.length === 0)
     ) fail('settlement_ledger_invalid');
   }
   if ('status' in control) {
