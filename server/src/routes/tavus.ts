@@ -12,7 +12,10 @@ import {
   type ExecutionPlan,
   type RoutingContext,
 } from "../addie/router.js";
-import { createProductionRouter } from "../addie/router-runtime.js";
+import {
+  createProductionRouter,
+  LUNA_VOICE_ROUTER_PRIMARY_DEADLINE_MS,
+} from "../addie/router-runtime.js";
 import { selectBoundedRoutedToolSets } from "../addie/slack-tool-selection.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import {
@@ -136,7 +139,11 @@ async function initializeTavusClient(): Promise<void> {
       return;
     }
     claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.voice);
-    tavusRouter = createProductionRouter(apiKey, process.env.OPENAI_API_KEY?.trim()).router;
+    tavusRouter = createProductionRouter(
+      process.env.OPENAI_API_KEY?.trim(),
+      undefined,
+      LUNA_VOICE_ROUTER_PRIMARY_DEADLINE_MS,
+    ).router;
     await initializeKnowledgeSearch();
     const knowledgeHandlers = createKnowledgeToolHandlers({
       slackAccess: { kind: 'public-only' },
@@ -331,7 +338,7 @@ export async function selectRoutedTavusVoiceTools(input: {
   threadMessages?: string[];
 }): Promise<RoutedTavusVoiceTools> {
   let plan: ExecutionPlan | null = null;
-  let routerAvailable = input.router !== null;
+  const routerAvailable = input.router !== null;
 
   if (input.router) {
     const routingContext: RoutingContext = {
@@ -342,13 +349,8 @@ export async function selectRoutedTavusVoiceTools(input: {
       isAAOAdmin: input.isAAOAdmin,
       threadMessages: input.threadMessages,
     };
-    try {
-      plan = input.router.quickMatch(routingContext)
-        ?? await input.router.route(routingContext, { failureMode: 'throw' });
-    } catch (error) {
-      routerAvailable = false;
-      logger.warn({ error, threadId: input.threadId }, 'Tavus: Router unavailable; using safe read-only fallback');
-    }
+    plan = input.router.quickMatch(routingContext)
+      ?? await input.router.route(routingContext);
   }
 
   const definitions = new Map(input.requestTools.tools.map((tool) => [tool.name, tool]));
@@ -851,6 +853,57 @@ export function createTavusRouter(options?: {
     );
     const voiceContext = voiceContextLines.join("\n");
 
+    // Complete provider-neutral admission and routing before opening the SSE
+    // response. If routing is unavailable, Tavus must receive an explicit HTTP
+    // error rather than a successful stream containing only a filler and DONE.
+    const voiceScope = voiceUserId
+      ? { userId: voiceUserId, tier: await resolveUserTierFromDb(voiceUserId) }
+      : null;
+    const costScope = voiceScope ?? {
+      userId: `tavus:ip:${req.ip ?? 'unknown'}`,
+      tier: 'anonymous' as const,
+    };
+    let requestContext: string;
+    try {
+      // Do the existing provider-neutral admission read before selecting a
+      // live router plan. The client repeats this immediately before model
+      // dispatch, which preserves its race-safe final admission boundary.
+      // A refused or unavailable admission must never initiate paid routing.
+      const costAdmission = await checkCostCap(costScope.userId, costScope.tier, {
+        selection: { provider: 'anthropic', model: AddieModelConfig.voice },
+      });
+      const routerForTurn = costAdmission.ok ? resolveRouter() : null;
+
+      routedVoiceTools = await selectRoutedTavusVoiceTools({
+        message: spokenMessage,
+        threadId: threadId!,
+        threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+        router: pendingVoiceToolSelection.forceSafeFallback ? null : routerForTurn,
+        ...pendingVoiceToolSelection,
+      });
+      voiceRequestTools = routedVoiceTools.requestTools;
+      logger.debug(
+        {
+          userId: voiceUserId,
+          toolCount: voiceRequestTools.tools.length,
+          selectedToolSets: routedVoiceTools.selectedToolSets,
+          costAdmitted: costAdmission.ok,
+        },
+        'Tavus: Selected bounded voice tools for stream dispatch',
+      );
+
+      requestContext = [
+        voiceContext,
+        memberRequestContext,
+        routedVoiceTools?.unavailableHint,
+      ].filter(Boolean).join("\n\n");
+    } catch (err) {
+      logger.error({ err }, 'Tavus: Routing unavailable');
+      return res.status(503).json({
+        error: { message: 'LLM routing temporarily unavailable' },
+      });
+    }
+
     const completionId = `chatcmpl-${uuidv4().replace(/-/g, "").slice(0, 28)}`;
     const created = Math.floor(Date.now() / 1000);
     const startTime = Date.now();
@@ -909,72 +962,6 @@ export function createTavusRouter(options?: {
     let streamError = false;
     let terminalResponse: AddieResponse | undefined;
     try {
-      // Cost cap (#2790 / #2945 f/u): voice sessions carry a
-      // thread.user_id resolved from session-init auth. When that
-      // resolves, charge the WorkOS user and honor their
-      // subscription tier (member_paid vs member_free). If it
-      // doesn't (misconfigured / abandoned thread, or a caller
-      // reaching the LLM endpoint with the shared-secret but no
-      // valid thread), bucket by IP under the anonymous tier so a
-      // leaked TAVUS_LLM_SECRET still hits a bounded daily spend.
-      const voiceScope = voiceUserId
-        ? { userId: voiceUserId, tier: await resolveUserTierFromDb(voiceUserId) }
-        : null;
-      const costScope = voiceScope ?? {
-        userId: `tavus:ip:${req.ip ?? 'unknown'}`,
-        tier: 'anonymous' as const,
-      };
-
-      // Do the existing provider-neutral admission read before selecting a
-      // live router plan. The client repeats this immediately before model
-      // dispatch, which preserves its race-safe final admission boundary.
-      // A refused or unavailable admission must never initiate paid routing.
-      const costAdmission = await checkCostCap(costScope.userId, costScope.tier, {
-        selection: { provider: 'anthropic', model: AddieModelConfig.voice },
-      });
-      const routerForTurn = costAdmission.ok ? resolveRouter() : null;
-
-      if (pendingVoiceToolSelection) {
-        try {
-          routedVoiceTools = await selectRoutedTavusVoiceTools({
-            // Route the sanitized spoken turn, after Tavus has delivered its
-            // immediate stream/filler but before prompt/tool dispatch.
-            message: spokenMessage,
-            threadId: threadId!,
-            threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
-            router: pendingVoiceToolSelection.forceSafeFallback ? null : routerForTurn,
-            ...pendingVoiceToolSelection,
-          });
-        } catch (error) {
-          logger.warn({ error, threadId }, 'Tavus: Tool selection failed; using safe read-only fallback');
-          routedVoiceTools = await selectRoutedTavusVoiceTools({
-            message: spokenMessage,
-            threadId: threadId!,
-            threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
-            router: null,
-            memberContext: pendingVoiceToolSelection.memberContext,
-            isAAOAdmin: pendingVoiceToolSelection.isAAOAdmin,
-            requestTools: pendingVoiceToolSelection.requestTools,
-          });
-        }
-        voiceRequestTools = routedVoiceTools.requestTools;
-        logger.debug(
-          {
-            userId: voiceUserId,
-            toolCount: voiceRequestTools.tools.length,
-            selectedToolSets: routedVoiceTools.selectedToolSets,
-            costAdmitted: costAdmission.ok,
-          },
-          'Tavus: Selected bounded voice tools for stream dispatch',
-        );
-      }
-
-      const requestContext = [
-        voiceContext,
-        memberRequestContext,
-        routedVoiceTools?.unavailableHint,
-      ].filter(Boolean).join("\n\n");
-
       for await (const event of activeVoiceClient.processMessageStream(
         currentMessage,
         threadContext,

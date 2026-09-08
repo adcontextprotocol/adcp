@@ -328,6 +328,50 @@ describe('mounted Addie web-thread ownership', () => {
     expect(streamOptions.allowedToolNames).toEqual(jsonOptions.allowedToolNames);
   });
 
+  it('returns 500 without model dispatch when authenticated JSON routing fails', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockRejectedValue(new Error('router unavailable')),
+    };
+    chatClient.processMessage.mockClear();
+    chatClient.processMessageStream.mockClear();
+
+    const response = await request(app(router))
+      .post('/api/addie/chat')
+      .set('x-test-user-id', 'user_123')
+      .send({ message: 'Find an agent' });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: 'Internal server error',
+      message: 'Unable to process message',
+    });
+    expect(router.route).toHaveBeenCalledOnce();
+    expect(chatClient.processMessage).not.toHaveBeenCalled();
+    expect(chatClient.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('emits a stream error without model dispatch when authenticated SSE routing fails', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockRejectedValue(new Error('router unavailable')),
+    };
+    chatClient.processMessage.mockClear();
+    chatClient.processMessageStream.mockClear();
+
+    const response = await request(app(router))
+      .post('/api/addie/chat/stream')
+      .set('x-test-user-id', 'user_123')
+      .send({ message: 'Find an agent' });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('event: stream_error');
+    expect(response.text).toContain('Internal server error');
+    expect(router.route).toHaveBeenCalledOnce();
+    expect(chatClient.processMessage).not.toHaveBeenCalled();
+    expect(chatClient.processMessageStream).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['JSON', '/api/addie/chat', chatClient.processMessage, 4],
     ['streaming', '/api/addie/chat/stream', chatClient.processMessageStream, 3],

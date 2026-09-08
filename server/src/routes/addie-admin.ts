@@ -83,14 +83,7 @@ const addieDb = new AddieDatabase();
 let addieRouter: AddieRouter | null = null;
 function getAddieRouter(): AddieRouter {
   if (!addieRouter) {
-    const anthropicApiKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-    if (!anthropicApiKey) {
-      throw new Error("ANTHROPIC_API_KEY not configured");
-    }
-    addieRouter = createProductionRouter(
-      anthropicApiKey,
-      process.env.OPENAI_API_KEY,
-    ).router;
+    addieRouter = createProductionRouter(process.env.OPENAI_API_KEY).router;
   }
   return addieRouter;
 }

@@ -3,7 +3,9 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const originalApiKey = process.env.ADDIE_ANTHROPIC_API_KEY;
+const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 process.env.ADDIE_ANTHROPIC_API_KEY = 'test-addie-object-authorization-key';
+process.env.OPENAI_API_KEY = 'test-addie-object-authorization-router-key';
 
 const mocks = vi.hoisted(() => ({
   authenticated: true,
@@ -243,6 +245,11 @@ afterAll(() => {
     delete process.env.ADDIE_ANTHROPIC_API_KEY;
   } else {
     process.env.ADDIE_ANTHROPIC_API_KEY = originalApiKey;
+  }
+  if (originalOpenAiApiKey === undefined) {
+    delete process.env.OPENAI_API_KEY;
+  } else {
+    process.env.OPENAI_API_KEY = originalOpenAiApiKey;
   }
 });
 

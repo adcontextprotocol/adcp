@@ -823,7 +823,7 @@ describe('AddieRouter.route', () => {
       strictOutput: true,
     });
 
-    const plan = await subject.route(context, { failureMode: 'throw' });
+    const plan = await subject.route(context);
 
     expect(provider.requests).toEqual([
       buildRouterModelRequest(context, 'gpt-5.6-luna', { effort: 'none' }),
@@ -835,49 +835,35 @@ describe('AddieRouter.route', () => {
     });
   });
 
-  it('uses Haiku after strict Luna output failure and accounts for both calls', async () => {
+  it('propagates strict Luna output failure and accounts for the failed call', async () => {
     vi.mocked(trackApiCall).mockClear();
     const lunaProvider = fakeRouterProvider([{ type: 'text', text: 'not-json' }], {
       providerId: 'openai',
     });
-    const haikuProvider = fakeRouterProvider([{
-      type: 'text',
-      text: '{"action":"respond","tool_sets":["knowledge"],"confidence":"high","reason":"fallback"}',
-    }]);
-    const haikuRouter = new AddieRouter('unused', haikuProvider);
     const observer = vi.fn();
     const subject = new AddieRouter('unused', lunaProvider, undefined, {
       model: 'gpt-5.6-luna',
       reasoning: { effort: 'none' },
       strictOutput: true,
-      fallbackRouter: haikuRouter,
     });
 
     await expect(subject.route({ message: 'How does AdCP work?', source: 'dm' }, {
       observer,
-    })).resolves.toMatchObject({
-      action: 'respond',
-      tool_sets: ['knowledge'],
-      reason: 'fallback',
-      model: ModelConfig.fast,
-    });
+    })).rejects.toThrow('Router response is not JSON');
 
     expect(lunaProvider.requests).toHaveLength(1);
-    expect(haikuProvider.requests).toHaveLength(1);
-    expect(trackApiCall).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(trackApiCall).mock.calls.map(([call]) => call.model)).toEqual([
-      'gpt-5.6-luna',
-      ModelConfig.fast,
-    ]);
+    expect(trackApiCall).toHaveBeenCalledOnce();
+    expect(vi.mocked(trackApiCall).mock.calls[0][0].model).toBe('gpt-5.6-luna');
     await vi.waitFor(() => expect(observer).toHaveBeenCalledOnce());
     expect(observer.mock.calls[0][0]).toMatchObject({
-      requestedProvider: 'anthropic',
-      requestedModel: ModelConfig.fast,
-      primaryErrorCategory: null,
+      requestedProvider: 'openai',
+      requestedModel: 'gpt-5.6-luna',
+      primaryErrorCategory: 'invalid_json',
+      productionPlan: null,
     });
   });
 
-  it('falls back when the Luna provider exceeds its hard deadline', async () => {
+  it('fails when the Luna provider exceeds its hard deadline', async () => {
     let primarySignal: AbortSignal | undefined;
     const lunaProvider: ModelProvider = {
       id: 'openai',
@@ -904,21 +890,15 @@ describe('AddieRouter.route', () => {
         });
       },
     };
-    const haikuProvider = fakeRouterProvider([{
-      type: 'text',
-      text: '{"action":"ignore","reason":"fallback"}',
-    }]);
     const subject = new AddieRouter('unused', lunaProvider, undefined, {
       model: 'gpt-5.6-luna',
       strictOutput: true,
-      fallbackRouter: new AddieRouter('unused', haikuProvider),
       primaryDeadlineMs: 5,
     });
 
     await expect(subject.route({ message: 'route me', source: 'channel' }))
-      .resolves.toMatchObject({ action: 'ignore', reason: 'fallback' });
+      .rejects.toThrow('router_primary_timeout');
     expect(primarySignal?.aborted).toBe(true);
-    expect(haikuProvider.requests).toHaveLength(1);
   });
 
   it('rejects invalid primary deadlines', () => {
@@ -938,7 +918,6 @@ describe('AddieRouter.route', () => {
     controller.abort(deadlineError);
 
     await expect(subject.route({ message: 'route me', source: 'channel' }, {
-      failureMode: 'throw',
       signal: controller.signal,
     })).rejects.toBe(deadlineError);
     expect(provider.signals).toEqual([controller.signal]);
@@ -954,7 +933,7 @@ describe('AddieRouter.route', () => {
       type: 'text',
       text: '{"action":"ignore","reason":"partial"}',
     }], 'length'],
-  ] as const)('throws on strict %s so a caller can invoke fallback', async (
+  ] as const)('throws on strict %s', async (
     _name,
     content,
     finishReason,
@@ -965,10 +944,10 @@ describe('AddieRouter.route', () => {
       message: 'important question',
       source: 'channel',
       isAAOAdmin: false,
-    }, { failureMode: 'throw' })).rejects.toThrow();
+    })).rejects.toThrow();
   });
 
-  it('observes strict candidate failure metadata before the caller falls back', async () => {
+  it('observes strict candidate failure metadata before rejecting', async () => {
     const provider = fakeRouterProvider([{ type: 'text', text: 'not-json' }], {
       providerId: 'openai',
     });
@@ -979,7 +958,6 @@ describe('AddieRouter.route', () => {
     });
 
     await expect(subject.route({ message: 'route me', source: 'channel' }, {
-      failureMode: 'throw',
       observer,
     })).rejects.toThrow('Router response is not JSON');
     await vi.waitFor(() => expect(observer).toHaveBeenCalledOnce());
@@ -1017,19 +995,13 @@ describe('AddieRouter.route', () => {
     expect(filtered).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
   });
 
-  it('returns the existing safe fallback when provider events fail', async () => {
+  it('propagates provider event failures', async () => {
     const provider = fakeRouterProvider([], { error: new Error('provider unavailable') });
 
     await expect(new AddieRouter('unused', provider).route({
       message: 'important question',
       source: 'dm',
-    })).resolves.toMatchObject({
-      action: 'respond',
-      tool_sets: ['knowledge', 'community_research', 'schema_reference'],
-      confidence: 'high',
-      reason: 'Router error - defaulting to safe knowledge tools',
-      decision_method: 'llm',
-    });
+    })).rejects.toThrow('provider unavailable');
   });
 });
 

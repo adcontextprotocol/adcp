@@ -75,7 +75,6 @@ describe('authenticated web Addie tool routing', () => {
         isAAOAdmin: false,
         threadMessages: ['User: Earlier request'],
       }),
-      { failureMode: 'throw' },
     );
   });
 
@@ -165,59 +164,22 @@ describe('authenticated web Addie tool routing', () => {
     expect(selected.allowedToolNames).not.toContain('send_to_si_agent');
   });
 
-  it('fails closed to the safe read-only fallback when the router fails', async () => {
+  it('propagates router failures instead of selecting fallback tools', async () => {
     const router = {
       quickMatch: vi.fn().mockReturnValue(null),
       route: vi.fn().mockRejectedValue(new Error('router unavailable')),
     };
-    const selected = await select(router);
-
-    expect(selected.selectedToolSets).toEqual([
-      'knowledge',
-      'community_research',
-      'schema_reference',
-    ]);
-    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual(['search_docs']);
-    for (const mutation of [
-      'capture_learning',
-      'set_outreach_preference',
-      'escalate_to_admin',
-      'resolve_escalation',
-      'create_payment_link',
-      'add_prospect',
-    ]) {
-      expect(selected.allowedToolNames).not.toContain(mutation);
-    }
+    await expect(select(router)).rejects.toThrow('router unavailable');
   });
 
-  it('forces router outages into the safe fallback instead of accepting a returned fallback plan', async () => {
+  it('does not accept a synthetic plan after a router provider outage', async () => {
     const router = {
       quickMatch: vi.fn().mockReturnValue(null),
-      route: vi.fn().mockImplementation(async (_context, options) => {
-        // This is deliberately a single, otherwise-authorized admin domain:
-        // without failureMode: throw it would evade a set-count guard.
-        if (options?.failureMode !== 'throw') {
-          return {
-            action: 'respond' as const,
-            tool_sets: ['admin_prospect_pipeline'],
-            confidence: 'high' as const,
-            reason: 'internal router fallback',
-            decision_method: 'llm' as const,
-          };
-        }
-        throw new Error('provider outage');
-      }),
+      route: vi.fn().mockRejectedValue(new Error('provider outage')),
     };
 
-    const selected = await select(router, true);
-
-    expect(router.route).toHaveBeenCalledWith(expect.any(Object), { failureMode: 'throw' });
-    expect(selected.selectedToolSets).toEqual([
-      'knowledge',
-      'community_research',
-      'schema_reference',
-    ]);
-    expect(selected.allowedToolNames).not.toContain('add_prospect');
+    await expect(select(router, true)).rejects.toThrow('provider outage');
+    expect(router.route).toHaveBeenCalledWith(expect.any(Object));
   });
 
   it('never returns a definition or handler without its counterpart', async () => {

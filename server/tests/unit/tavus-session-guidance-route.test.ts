@@ -365,7 +365,6 @@ describe("Tavus session guidance route boundary", () => {
         isThread: true,
         isAAOAdmin: false,
       }),
-      { failureMode: 'throw' },
     );
     const [_message, _history, requestTools, options] = mocks.processMessageStream.mock.calls[0] as [
       string,
@@ -379,7 +378,7 @@ describe("Tavus session guidance route boundary", () => {
     expect([...requestTools.handlers.keys()]).toContain('create_payment_link');
   });
 
-  it('emits the initial SSE filler before awaiting a live router plan', async () => {
+  it('completes live routing before opening the SSE stream', async () => {
     const writes: string[] = [];
     let fillerWasWrittenBeforeRouting = false;
     const router = {
@@ -408,7 +407,32 @@ describe("Tavus session guidance route boundary", () => {
 
     expect(response.status).toBe(200);
     expect(router.route).toHaveBeenCalledOnce();
-    expect(fillerWasWrittenBeforeRouting).toBe(true);
+    expect(fillerWasWrittenBeforeRouting).toBe(false);
+  });
+
+  it('returns 503 without opening a stream or dispatching the model when routing fails', async () => {
+    const writes: string[] = [];
+    const router = {
+      quickMatch: () => null,
+      route: vi.fn().mockRejectedValue(new Error('router timeout')),
+    };
+
+    const response = await request(mountApp(router, undefined, (chunk) => writes.push(chunk)))
+      .post('/api/addie/v1/chat/completions')
+      .set('Authorization', 'Bearer test-llm-secret')
+      .send({
+        messages: [
+          { role: 'system', content: `[conductor:thread_id=${THREAD_ID}] server context` },
+          { role: 'user', content: 'Could you explain how I should pay an invoice for my membership?' },
+        ],
+      });
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      error: { message: 'LLM routing temporarily unavailable' },
+    });
+    expect(writes).toEqual([]);
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
   });
 
   it('refuses an over-budget voice turn before it can invoke the live router', async () => {
