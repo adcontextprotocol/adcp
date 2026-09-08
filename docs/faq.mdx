@@ -97,6 +97,12 @@ Three pillars support the mission: [open standards](https://docs.adcontextprotoc
 Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0). There is no cost to use, implement, or license the protocol, and no permission required. The specification, [JSON schemas](https://adcontextprotocol.org/schemas/v3/), and documentation are freely available — no fee, no license agreement, no membership requirement.
 </Accordion>
 
+<Accordion title="Does a media buy identify the individual buyer who placed it?">
+Not as a general media-buy field today. AdCP authenticates the calling agent and scopes durable media-buy state to the buyer's [`account`](/docs/accounts/overview), so the protocol models organizational and delegated-agent authority rather than a human operator on every transaction.
+
+The exception is a signed insertion order: `io_acceptance.signatory` records the human name or agent identifier that accepted that IO. It is not a general-purpose audit field and is absent when no signed IO is involved. Implementations that need individual operator attribution should retain it in their own authenticated audit log. A portable buyer-operator identity field would require a Media Buy Protocol proposal; raise that through the [Media Buy working group](/docs/community/working-group) or a public [GitHub issue](https://github.com/adcontextprotocol/adcp/issues).
+</Accordion>
+
 <Accordion title="How mature is the protocol?">
 AdCP **3.1** is the current stable release line. The protocol is stable and production-ready. See the [schema registry](https://adcontextprotocol.org/schemas/) for the latest 3.1 patch, [Release notes](/docs/reference/release-notes) for the full change log, and [What's new in v3](/docs/reference/whats-new-in-v3) for the 2.5 → 3.0 migration summary.
 

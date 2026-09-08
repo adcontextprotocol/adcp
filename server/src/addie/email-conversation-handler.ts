@@ -16,6 +16,7 @@ import {
   validateOutput,
 } from './security.js';
 import { getThreadService } from './thread-service.js';
+import { reserveToolIntentCheckpoint } from './stream-tool-checkpoints.js';
 import type { Thread } from './thread-service.js';
 import { sanitizeSpeakerName } from './prompts.js';
 import { sendEmailReply, type EmailThreadContext } from '../notifications/email.js';
@@ -227,6 +228,14 @@ export async function handleEmailConversation(
         threadId: thread.thread_id,
         userDisplayName: input.senderDisplayName || undefined,
         currentSpeakerName: speakerName,
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await reserveToolIntentCheckpoint(threadService, {
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: effectiveModel,
+          });
+        },
         costScope: { userId: emailScopeKey, tier: 'anonymous' },
       }
     );
@@ -271,6 +280,9 @@ export async function handleEmailConversation(
             input: exec.parameters,
             result: exec.result,
             duration_ms: exec.duration_ms,
+            is_error: exec.is_error,
+            result_status: exec.normalized_result?.status,
+            ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
           }))
         : undefined,
       model: effectiveModel,

@@ -112,6 +112,13 @@ const recoveredEndTurn = {
   usage: { input_tokens: 12, output_tokens: 6 },
 };
 
+const unverifiedIssueEndTurn = {
+  model: 'claude-sonnet-5-20260801',
+  stop_reason: 'end_turn',
+  content: [{ type: 'text', text: "I've filed GitHub issue #701: https://github.com/adcontextprotocol/adcp/issues/701" }],
+  usage: { input_tokens: 12, output_tokens: 12 },
+};
+
 const unsupportedAfterLookupFailure = {
   model: 'claude-sonnet-5-20260801',
   stop_reason: 'end_turn',
@@ -493,6 +500,106 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(mocks.createMessage).toHaveBeenCalledOnce();
     expect(mocks.streamMessage).toHaveBeenCalledOnce();
     expect(getGithubIssue).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for an explicitly requested issue creation on both terminal delivery paths', async () => {
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    mocks.streamMessage.mockReturnValueOnce(makeStream(unverifiedIssueEndTurn as typeof recoveredEndTurn));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const confirmedDraftContext = [{
+      user: 'Addie',
+      text: 'Here is the requested issue draft. Shall I create it?',
+      toolCalls: [{
+        name: 'draft_github_issue',
+        input: { title: 'Synthetic issue' },
+        result: 'Draft ready.',
+      }],
+    }];
+
+    const response = await client.processMessage('Please create a GitHub issue for this.', undefined, undefined, undefined, {
+      uncapped: true,
+      githubIssueCreationRequested: true,
+    });
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream('Please create a GitHub issue for this.', undefined, undefined, {
+      uncapped: true,
+      githubIssueCreationRequested: true,
+    })) events.push(event);
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+
+    expect(response.text).toContain('not confirmed');
+    expect(response.text).not.toContain('#701');
+    expect(response.flag_reason).toBe('github_issue_not_confirmed');
+    expect(done?.response.text).toBe(response.text);
+    expect(done?.response.flag_reason).toBe('github_issue_not_confirmed');
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const confirmedResponse = await client.processMessage(
+      'Yes, go ahead.', confirmedDraftContext, undefined, undefined, { uncapped: true },
+    );
+    expect(confirmedResponse.text).toContain('not confirmed');
+    expect(confirmedResponse.text).not.toContain('#701');
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const retryResponse = await client.processMessage('Continue the interrupted reply.', undefined, undefined, undefined, {
+      uncapped: true,
+      clientRequestId: 'request-current',
+      githubIssueRetryReceipts: [{
+        clientRequestId: 'request-current',
+        receipt: {
+          toolName: 'create_github_issue',
+          issueNumber: 701,
+          issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+        },
+      }],
+    });
+    expect(retryResponse.text).toBe('GitHub issue created:\n- [#701](https://github.com/adcontextprotocol/adcp/issues/701)');
+    expect(retryResponse.flag_reason).toBeUndefined();
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const staleRetryResponse = await client.processMessage('Continue the interrupted reply.', undefined, undefined, undefined, {
+      uncapped: true,
+      clientRequestId: 'request-current',
+      githubIssueCreationRequested: true,
+      githubIssueRetryReceipts: [{
+        clientRequestId: 'request-prior-turn',
+        receipt: {
+          toolName: 'create_github_issue',
+          issueNumber: 701,
+          issueUrl: 'https://github.com/adcontextprotocol/adcp/issues/701',
+        },
+      }],
+    });
+    expect(staleRetryResponse.text).toContain('not confirmed');
+    expect(staleRetryResponse.text).not.toContain('#701');
+
+    mocks.createMessage.mockResolvedValueOnce(unverifiedIssueEndTurn);
+    const staleHistoryResponse = await client.processMessage('Create the next issue.', [{
+      user: 'Addie',
+      text: 'Prior issue result.',
+      toolCalls: [{
+        name: 'create_github_issue',
+        input: { title: 'Prior issue' },
+        result: 'GitHub issue creation completed.',
+      }],
+    }], undefined, undefined, {
+      uncapped: true,
+      githubIssueCreationRequested: true,
+    });
+    expect(staleHistoryResponse.text).toContain('not confirmed');
+    expect(staleHistoryResponse.text).not.toContain('#701');
+  });
+
+  it('does not turn a read-only GitHub clarification into a failed creation', async () => {
+    mocks.createMessage.mockResolvedValueOnce(recoveredEndTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'How do I open a GitHub issue?', undefined, undefined, undefined, { uncapped: true },
+    );
+
+    expect(response.text).toBe('Issue 42 is open.');
+    expect(response.flag_reason).not.toBe('github_issue_not_confirmed');
   });
 
   it('rejects a malformed tool turn on both response paths', async () => {

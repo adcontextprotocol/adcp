@@ -7,6 +7,8 @@ import {
   type FileReadResult,
 } from '../mcp/url-tools.js';
 import { ToolError } from '../tool-error.js';
+import { isSideEffectTool, sideEffectReplayKey } from '../side-effect-claims.js';
+import { githubIssueReceiptFromHandlerResult, type GithubIssueCreationReceipt } from '../github-issue-receipt.js';
 import {
   isToolResultError,
   normalizeToolError,
@@ -71,6 +73,8 @@ export interface ToolExecution {
   sequence: number;
   blocked_by_policy?: true;
   normalized_result?: ToolResultPresentation;
+  /** Present only when the application handler produced a verified GitHub receipt. */
+  github_issue_receipt?: GithubIssueCreationReceipt;
 }
 
 export interface ToolExecutionNotificationContext {
@@ -83,6 +87,15 @@ export interface AddieToolExecutorOptions {
   executionMode: AddieExecutionMode;
   policy?: ToolExecutionPolicy;
   notificationContext?: ToolExecutionNotificationContext;
+  /**
+   * Persists an unknown-outcome intent immediately before a live mutation.
+   * A production mutation is never dispatched if this durable handshake is
+   * absent or fails: a retry could otherwise create a duplicate side effect.
+   */
+  reserveSideEffect?: (request: {
+    toolName: string;
+    parameters: Record<string, unknown>;
+  }) => void | Promise<void>;
 }
 
 export interface AddieToolCallResult {
@@ -571,6 +584,7 @@ export function createAddieToolExecutor(
   options: AddieToolExecutorOptions,
 ): AddieToolExecutor {
   const registry = new Map<string, RegisteredTool>();
+  const dispatchedSideEffects = new Set<string>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
     registry.set(definition.name, {
@@ -661,6 +675,21 @@ export function createAddieToolExecutor(
       );
     }
 
+    // A provider continuation or recovery must never submit an identical
+    // mutation twice. Record before dispatch so an ambiguous transport error
+    // is also fail-closed rather than silently retried.
+    const sideEffectKey = (isSideEffectTool(call.name) || registered.definition.replaySafety === 'mutation')
+      ? sideEffectReplayKey(call.name, call.input)
+      : null;
+    if (sideEffectKey && dispatchedSideEffects.has(sideEffectKey)) {
+      const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+        status: 'error',
+        model_context: 'Error: Duplicate external action blocked; its prior outcome was not retried automatically.',
+        user_summary: 'Duplicate external action blocked; the earlier outcome was not retried.',
+      }));
+      return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+    }
+
     let allowed = !isIsolatedExecution(options.executionMode);
     if (options.policy) {
       try {
@@ -687,6 +716,38 @@ export function createAddieToolExecutor(
         user_summary: 'This tool action was blocked by execution policy.',
       }));
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+    }
+
+    if (sideEffectKey) {
+      if (operationalExecution && !options.reserveSideEffect) {
+        const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+          status: 'error',
+          model_context: 'Error: External action was not run because a durable outcome reservation was unavailable.',
+          user_summary: 'The external action was not run because its outcome could not be reserved safely.',
+        }));
+        logger.error(
+          { event: 'addie_mutation_reservation_missing', toolName: call.name },
+          'Addie: Refusing production mutation without a durable outcome reservation',
+        );
+        return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+      }
+      try {
+        await options.reserveSideEffect?.({ toolName: call.name, parameters: call.input });
+      } catch (error) {
+        const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+          status: 'error',
+          model_context: 'Error: External action was not run because its durable outcome reservation failed.',
+          user_summary: 'The external action was not run because its outcome could not be reserved safely.',
+        }));
+        logger.error(
+          { event: 'addie_mutation_reservation_failed', toolName: call.name, error },
+          'Addie: Refusing mutation after durable outcome reservation failure',
+        );
+        return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+      }
+      // Record before dispatch so a provider continuation or recovery never
+      // resubmits an action whose handler outcome is ambiguous.
+      dispatchedSideEffects.add(sideEffectKey);
     }
 
     try {
@@ -733,10 +794,24 @@ export function createAddieToolExecutor(
         };
       }
 
-      const normalized = observeNormalizedToolResult(
+      const handlerNormalized = observeNormalizedToolResult(
         call.name,
         normalizeToolResult(call.name, handlerResult),
       );
+      const githubIssueReceipt = call.name === 'create_github_issue'
+        ? githubIssueReceiptFromHandlerResult(handlerResult)
+        : null;
+      // A generic `{ status: 'ok' }` cannot settle a GitHub mutation. The
+      // receipt is the application-owned success proof, and a malformed
+      // success-looking handler value leaves the pre-dispatch reservation in
+      // its durable unknown-outcome state.
+      const normalized = call.name === 'create_github_issue' && !githubIssueReceipt
+        ? observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+            status: 'error',
+            model_context: 'Error: GitHub issue creation was not confirmed by a valid receipt.',
+            user_summary: 'GitHub issue creation was not confirmed.',
+          }))
+        : handlerNormalized;
       const presentation = recordedPresentation(options.executionMode, normalized);
       const isError = isToolResultError(normalized.status);
       const modelResult = renderToolResultForModel(call.name, normalized);
@@ -768,6 +843,7 @@ export function createAddieToolExecutor(
           duration_ms: durationMs,
           sequence,
           normalized_result: presentation,
+          ...(githubIssueReceipt && { github_issue_receipt: githubIssueReceipt }),
         },
       };
     } catch (error) {

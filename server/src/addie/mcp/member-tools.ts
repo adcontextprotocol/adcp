@@ -23,8 +23,10 @@ import {
 } from '../../services/agent-hostname-verification.js';
 import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
+import type { ToolHandlerResult } from '../tool-result-contract.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
+import { githubIssueCreatedResult } from '../github-issue-receipt.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
@@ -2512,8 +2514,8 @@ export function createMemberToolHandlers(
   slackUserId?: string,
   certificationModuleContext?: { moduleId?: string },
   accountLinkOrigin?: AccountLinkOriginInput,
-): Map<string, (input: Record<string, unknown>) => Promise<string>> {
-  const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+): Map<string, (input: Record<string, unknown>) => Promise<ToolHandlerResult>> {
+  const handlers = new Map<string, (input: Record<string, unknown>) => Promise<ToolHandlerResult>>();
 
   // ============================================
   // WORKING GROUPS
@@ -6910,7 +6912,7 @@ export function createMemberToolHandlers(
               issueNumber: issue.number,
               issueUrl: issue.html_url,
             });
-            return `Issue created: [#${issue.number}](${issue.html_url})`;
+            return githubIssueCreatedResult({ issueNumber: issue.number, issueUrl: issue.html_url });
           }
         }
         return `Failed to create issue (${response.status}). Use draft_github_issue to generate a link instead.`;
@@ -6925,7 +6927,7 @@ export function createMemberToolHandlers(
         issueNumber: issue.number,
         issueUrl: issue.html_url,
       });
-      return `Issue created: [#${issue.number}](${issue.html_url})`;
+      return githubIssueCreatedResult({ issueNumber: issue.number, issueUrl: issue.html_url });
     } catch (error) {
       logger.error({ error, repo }, 'create_github_issue: Failed to create issue');
       return 'Failed to create issue due to a network error. Use draft_github_issue to generate a link instead.';

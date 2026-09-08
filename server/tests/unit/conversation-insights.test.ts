@@ -36,10 +36,33 @@ vi.mock('../../src/logger.js', () => ({
   }),
 }));
 
-import { runConversationInsightsJob } from '../../src/addie/jobs/conversation-insights.js';
+import {
+  getPreviousWeekRange,
+  runConversationInsightsJob,
+} from '../../src/addie/jobs/conversation-insights.js';
 import { getInsightByWeek, createInsight, markPosted } from '../../src/db/conversation-insights-db.js';
 import { buildConversationInsights } from '../../src/addie/services/conversation-insights-builder.js';
 import { sendChannelMessage } from '../../src/slack/client.js';
+
+describe('conversation insight reporting helpers', () => {
+  it('uses exact Eastern week boundaries across a DST transition', () => {
+    const range = getPreviousWeekRange(new Date('2026-03-09T12:00:00Z'));
+    expect(range.weekStart.toISOString()).toBe('2026-03-02T05:00:00.000Z');
+    expect(range.weekEnd.toISOString()).toBe('2026-03-09T04:00:00.000Z');
+  });
+
+  it('uses standard-time Eastern boundaries in winter', () => {
+    const range = getPreviousWeekRange(new Date('2026-01-12T13:00:00Z'));
+    expect(range.weekStart.toISOString()).toBe('2026-01-05T05:00:00.000Z');
+    expect(range.weekEnd.toISOString()).toBe('2026-01-12T05:00:00.000Z');
+  });
+
+  it('selects the prior completed week when run on Sunday in Eastern time', () => {
+    const range = getPreviousWeekRange(new Date('2026-09-06T16:00:00Z'));
+    expect(range.weekStart.toISOString()).toBe('2026-08-24T04:00:00.000Z');
+    expect(range.weekEnd.toISOString()).toBe('2026-08-31T04:00:00.000Z');
+  });
+});
 
 describe('Conversation Insights Job', () => {
   beforeEach(() => {
@@ -98,7 +121,7 @@ describe('Conversation Insights Job', () => {
       vi.mocked(getInsightByWeek).mockResolvedValue({
         id: 1,
         week_start: new Date('2026-03-16'),
-        week_end: new Date('2026-03-22'),
+        week_end: new Date('2026-03-23'),
         status: 'posted',
         stats: {} as any,
         analysis: {} as any,
@@ -140,10 +163,19 @@ describe('Conversation Insights Job', () => {
           outcome_breakdown: { resolved: 18, unresolved: 7 },
           escalation_count: 2,
           escalation_by_category: { capability_gap: 1, needs_human_action: 1 },
+          rated_response_count: 12,
+          sampled_thread_count: 20,
+          tool_failure_count: 2,
+          tool_failures_by_name: { get_learner_progress: 2 },
+          tool_failure_thread_ids: { get_learner_progress: ['thread-123456789'] },
+          empty_response_fallback_count: 1,
+          empty_response_fallback_thread_ids: ['thread-123456789'],
+          unrecovered_interruption_count: 0,
+          unrecovered_interruption_thread_ids: [],
         },
         analysis: {
           executive_summary: 'Active week with strong engagement.',
-          question_themes: [{ theme: 'AdCP setup', sample_count: 8, description: 'Questions about getting started', example_questions: ['How do I set up adagents.json?'] }],
+          question_themes: [{ theme: 'AdCP setup', sample_count: 8, description: 'Questions about getting started', example_questions: ['How do I set up adagents.json?'], evidence_thread_ids: ['thread-123456789'] }],
           documentation_gaps: [{ topic: 'adagents.json', evidence: 'Multiple questions about config format', suggested_action: 'Add quickstart guide' }],
           training_gaps: [],
           addie_improvements: [],
@@ -158,7 +190,7 @@ describe('Conversation Insights Job', () => {
       const mockRecord = {
         id: 1,
         week_start: new Date('2026-03-16'),
-        week_end: new Date('2026-03-22'),
+        week_end: new Date('2026-03-23'),
         status: 'generated' as const,
         stats: {
           total_threads: 25,
@@ -170,10 +202,19 @@ describe('Conversation Insights Job', () => {
           outcome_breakdown: { resolved: 18, unresolved: 7 },
           escalation_count: 2,
           escalation_by_category: { capability_gap: 1, needs_human_action: 1 },
+          rated_response_count: 12,
+          sampled_thread_count: 20,
+          tool_failure_count: 2,
+          tool_failures_by_name: { get_learner_progress: 2 },
+          tool_failure_thread_ids: { get_learner_progress: ['thread-123456789'] },
+          empty_response_fallback_count: 1,
+          empty_response_fallback_thread_ids: ['thread-123456789'],
+          unrecovered_interruption_count: 0,
+          unrecovered_interruption_thread_ids: [],
         },
         analysis: {
           executive_summary: 'Active week with strong engagement.',
-          question_themes: [{ theme: 'AdCP setup', sample_count: 8, description: 'Getting started questions', example_questions: ['How do I set up adagents.json?'] }],
+          question_themes: [{ theme: 'AdCP setup', sample_count: 8, description: 'Getting started questions', example_questions: ['How do I set up adagents.json?'], evidence_thread_ids: ['thread-123456789'] }],
           documentation_gaps: [{ topic: 'adagents.json', evidence: 'Multiple questions', suggested_action: 'Add quickstart guide' }],
           training_gaps: [],
           addie_improvements: [],
@@ -202,7 +243,12 @@ describe('Conversation Insights Job', () => {
       expect(result.posted).toBe(true);
       expect(createInsight).toHaveBeenCalled();
       expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('Addie conversation insights') }));
+      expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('Mar 16 – Mar 22') }));
       expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('8× in sample') }));
+      expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('threads by channel: slack: 20, web: 5') }));
+      expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('4.20/5 from 12 ratings') }));
+      expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('2 failed tool executions') }));
+      expect(sendChannelMessage).toHaveBeenCalledWith('C_EDITORIAL', expect.objectContaining({ text: expect.stringContaining('admin/addie?thread=thread-123456789') }));
       expect(markPosted).toHaveBeenCalledWith(1, 'C_EDITORIAL', '123.456');
     });
 

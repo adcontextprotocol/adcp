@@ -1050,7 +1050,7 @@ export interface ThreadContextEntry {
   /** Tool calls made during this turn (assistant messages only). When present,
    *  these are reconstructed as proper tool_use/tool_result API blocks instead
    *  of being flattened into message text. */
-  toolCalls?: Array<{ name: string; input?: Record<string, unknown>; result: unknown; is_error?: boolean }>;
+  toolCalls?: Array<{ name: string; input?: unknown; result: unknown; is_error?: boolean }>;
 }
 
 

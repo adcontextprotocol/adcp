@@ -33,9 +33,11 @@ import { classifyLocalModelExecution } from "../addie/model-providers/model-prov
 import {
   blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
+import { githubIssueReceiptFromStoredValue } from '../addie/github-issue-receipt.js';
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
   MAX_INPUT_LENGTH,
@@ -1124,7 +1126,21 @@ export function createAddieChatRouter(options?: {
         });
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments, organization_id } = req.body;
+      const {
+        message,
+        conversation_id,
+        user_name,
+        message_source: rawMessageSource,
+        attachments: rawAttachments,
+        organization_id,
+        github_issue_creation_requested: rawGithubIssueCreationRequested,
+      } = req.body;
+      // This is an explicit UI/API action signal, never a text classifier. A
+      // model reply cannot set it, and it only controls whether a missing
+      // same-turn issue receipt must yield the deterministic fallback.
+      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true
+        ? true
+        : undefined;
       const attachments = validateChatAttachments(rawAttachments);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
@@ -1349,6 +1365,15 @@ export function createAddieChatRouter(options?: {
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
           inputAttachments: attachments,
+          githubIssueCreationRequested,
+          reserveSideEffect: async ({ toolName, parameters }) => {
+            await reserveToolIntentCheckpoint(threadService, {
+              threadId: thread.thread_id,
+              toolName,
+              parameters,
+              requestedModel: effectiveModel,
+            });
+          },
           ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
           costScope: authedScope
             ? authedScope
@@ -1415,6 +1440,9 @@ export function createAddieChatRouter(options?: {
               input: exec.parameters,
               result: exec.result,
               duration_ms: exec.duration_ms,
+              is_error: exec.is_error,
+              result_status: exec.normalized_result?.status,
+              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
             }))
           : undefined,
         model: effectiveModel,
@@ -1531,10 +1559,16 @@ export function createAddieChatRouter(options?: {
         organization_id,
         client_request_id,
         retry,
+        github_issue_creation_requested: rawGithubIssueCreationRequested,
       } = req.body;
       const attachments = validateChatAttachments(rawAttachmentsStream);
       const clientRequestId = typeof client_request_id === 'string' ? client_request_id : null;
       const retryRequested = retry === true;
+      // See the non-streaming path: this formal action flag is the only
+      // direct-request input to the terminal issue-receipt gate.
+      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true
+        ? true
+        : undefined;
 
       if (clientRequestId && !uuidValidate(clientRequestId)) {
         return res.status(400).json({ error: 'client_request_id must be a valid UUID' });
@@ -1732,6 +1766,20 @@ export function createAddieChatRouter(options?: {
             ))
             .flatMap((message) => message.tool_calls ?? [])
         : [];
+      // Only the same client-request retry may carry a durable receipt across
+      // an interrupted delivery. Revalidate each JSONB value before it reaches
+      // terminal rendering; later turns never enter this path.
+      const retryGithubIssueReceipts = clientRequestId
+        ? retryCheckpointToolCalls.flatMap((call) => {
+            if (
+              call.name !== 'create_github_issue'
+              || call.is_error === true
+              || call.result_status !== 'ok'
+            ) return [];
+            const receipt = githubIssueReceiptFromStoredValue(call.github_issue_receipt);
+            return receipt ? [{ clientRequestId, receipt }] : [];
+          })
+        : [];
 
       // Save user message
       if (!existingUserMessage) {
@@ -1886,6 +1934,18 @@ export function createAddieChatRouter(options?: {
         userDisplayName: displayName || undefined,
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
+        githubIssueCreationRequested,
+        clientRequestId: clientRequestId || undefined,
+        ...(retryGithubIssueReceipts.length > 0 && { githubIssueRetryReceipts: retryGithubIssueReceipts }),
+        reserveSideEffect: async ({ toolName, parameters }) => {
+          await reserveToolIntentCheckpoint(threadService, {
+            threadId: thread.thread_id,
+            toolName,
+            parameters,
+            requestedModel: effectiveModel,
+            clientRequestId: clientRequestId || undefined,
+          });
+        },
         ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
         ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
         ...(streamAuthedScope
@@ -2122,6 +2182,8 @@ export function createAddieChatRouter(options?: {
               result: exec.result,
               duration_ms: exec.duration_ms,
               is_error: exec.is_error,
+              result_status: exec.normalized_result?.status,
+              ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
             }))
           : undefined,
         model: effectiveModel,
