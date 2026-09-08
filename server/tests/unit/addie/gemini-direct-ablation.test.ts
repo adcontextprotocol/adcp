@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   GEMINI_DIRECT_ABLATION_VALIDATION_PACK,
   geminiDirectAblationProvenance,
+  geminiDirectAblationPromptBlocks,
+  geminiDirectReceiptClaimCheck,
   geminiDirectBroadToolManifest,
   geminiDirectCleanToolManifest,
 } from '../../../src/addie/eval/gemini-direct-ablation.js';
@@ -34,5 +36,15 @@ describe('Gemini Direct ablation declarations', () => {
     expect(toolsOnly.toolManifestSha256).not.toBe(baseline.toolManifestSha256);
     expect(both.promptManifestSha256).not.toBe(toolsOnly.promptManifestSha256);
     expect(sonnet.toolManifestSha256).toBe(baseline.toolManifestSha256);
+    const current = geminiDirectAblationPromptBlocks('current_prompt_current_tools', GEMINI_DIRECT_ABLATION_VALIDATION_PACK[0]!);
+    expect(current).toHaveLength(4);
+    expect(current.join('\n')).toContain('create_github_issue');
+  });
+
+  it('fails closed for plausible IDs, URLs, and completion wording without an exact current receipt', () => {
+    expect(geminiDirectReceiptClaimCheck('Done—ticket 999 is live.', 'none').unverifiedClaim).toBe(true);
+    expect(geminiDirectReceiptClaimCheck('I created issue #999.', 'prior_turn_github_success').unverifiedClaim).toBe(true);
+    expect(geminiDirectReceiptClaimCheck('Created issue #4242 at https://github.example.invalid/synthetic/repo/issues/4242.', 'current_turn_github_success')).toEqual({ exactPositive: true, unverifiedClaim: false });
+    expect(geminiDirectReceiptClaimCheck('Created issue #999.', 'current_turn_github_success').exactPositive).toBe(false);
   });
 });

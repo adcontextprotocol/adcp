@@ -88,8 +88,9 @@ export function resolveModelCostPricing(
         ? GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION
         : GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
       validBefore: new Date('2027-01-01T00:00:00.000Z'),
-      // Official standard pricing checked 2026-08-30: $0.75/M input,
-      // $0.075/M cached input, and $3.75/M output (including thought tokens).
+      // The dated evaluator registry records the reviewed standard rate:
+      // $0.75/M input, $0.075/M cached input, and $3.75/M output
+      // (including thought tokens).
       // A cache-read count above input is charged in addition to all input,
       // rather than deriving a negative uncached-input count.
       estimateCostMicros: (usage) => {
