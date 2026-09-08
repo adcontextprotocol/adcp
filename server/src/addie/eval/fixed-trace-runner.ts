@@ -157,6 +157,30 @@ export type FixedTraceDirectModelScreenGenerationCellId =
   | 'generation:google:gemini-3.7-flash:low'
   | 'generation:google:gemini-3.7-flash:medium'
   | 'generation:google:gemini-3.7-flash:high';
+/**
+ * The paid current-suite comparison has its own reviewed pool. It must not
+ * expand the older two-probe direct-screen or component-smoke cell sets.
+ */
+export type FixedTraceDirectFullSuiteGenerationCellId =
+  | FixedTraceDirectModelScreenGenerationCellId
+  | 'generation:anthropic:claude-opus-5:provider_default'
+  | 'generation:openai:gpt-5.6-luna:provider_default'
+  | 'generation:openai:gpt-5.6-terra:provider_default'
+  | 'generation:openai:gpt-5.6-sol:provider_default'
+  | 'generation:google:gemini-3.8-flash:provider_default';
+export const FIXED_TRACE_DIRECT_FULL_SUITE_GENERATION_CELL_IDS = Object.freeze([
+  'generation:anthropic:claude-sonnet-5:provider_default',
+  'generation:anthropic:claude-haiku-4-5:provider_default',
+  'generation:google:gemini-3.7-flash:provider_default',
+  'generation:google:gemini-3.7-flash:low',
+  'generation:google:gemini-3.7-flash:medium',
+  'generation:google:gemini-3.7-flash:high',
+  'generation:anthropic:claude-opus-5:provider_default',
+  'generation:openai:gpt-5.6-luna:provider_default',
+  'generation:openai:gpt-5.6-terra:provider_default',
+  'generation:openai:gpt-5.6-sol:provider_default',
+  'generation:google:gemini-3.8-flash:provider_default',
+] as const satisfies readonly FixedTraceDirectFullSuiteGenerationCellId[]);
 export type FixedTraceGoogleThreeTurnGenerationCellId =
   | 'generation:google:gemini-3.7-flash:provider_default'
   | 'generation:google:gemini-3.7-flash:low'
@@ -172,7 +196,7 @@ export type FixedTraceDirectModelScreenConfig = {
 
 export interface FixedTraceDirectFullSuiteComparisonConfig {
   readonly mode: typeof FIXED_TRACE_DIRECT_FULL_SUITE_COMPARISON_MODE;
-  readonly generationCellId: FixedTraceDirectModelScreenGenerationCellId;
+  readonly generationCellId: FixedTraceDirectFullSuiteGenerationCellId;
 }
 
 export interface FixedTraceRunnerConfig {
@@ -244,6 +268,9 @@ const directModelScreenGoogleThreeTurnGenerationCellIds = new Set<FixedTraceGoog
   'generation:google:gemini-3.7-flash:medium',
   'generation:google:gemini-3.7-flash:high',
 ]);
+const directFullSuiteGenerationCellIds = new Set<FixedTraceDirectFullSuiteGenerationCellId>(
+  FIXED_TRACE_DIRECT_FULL_SUITE_GENERATION_CELL_IDS,
+);
 
 function isDirectModelScreen(config: FixedTraceRunnerConfig): config is FixedTraceRunnerConfig & {
   directModelScreen: FixedTraceDirectModelScreenConfig;
@@ -613,7 +640,7 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
       || !Object.prototype.hasOwnProperty.call(comparison, 'mode')
       || !Object.prototype.hasOwnProperty.call(comparison, 'generationCellId')
       || comparison.mode !== FIXED_TRACE_DIRECT_FULL_SUITE_COMPARISON_MODE
-      || !directModelScreenGenerationCellIds.has(comparison.generationCellId)) {
+      || !directFullSuiteGenerationCellIds.has(comparison.generationCellId)) {
       throw new Error('Fixed trace direct full-suite comparison config is invalid');
     }
     if (config.directModelScreen !== undefined
@@ -622,12 +649,10 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
       || config.toolDefinitionProvenance !== 'fixture_local') {
       throw new Error('Fixed trace direct full-suite comparison requires direct generation, router null, and fixture-local synthetic tools');
     }
-    const cell = FIXED_TRACE_ADMITTED_CELLS.find((candidate) => candidate.id === comparison.generationCellId);
-    if (!cell || cell.role !== 'generation'
-      || cell.provider !== config.generation.provider.id
-      || cell.model !== config.generation.model
-      || cell.effort !== config.generation.reasoningEffort
-      || cell.pricingProfileId !== config.generation.pricing.profileId
+    const [, expectedProvider, expectedModel, expectedEffort] = comparison.generationCellId.split(':');
+    if (expectedProvider !== config.generation.provider.id
+      || expectedModel !== config.generation.model
+      || expectedEffort !== config.generation.reasoningEffort
       || config.generation.maxOutputTokens !== 900
       || config.generation.timeoutMs !== 120_000
       || config.generation.maxIterations !== MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS
@@ -639,7 +664,7 @@ function validateRunProvenance(config: FixedTraceRunnerConfig): void {
       || config.traceSuite.length !== FIXED_TRACE_SUITE.length) {
       throw new Error('Fixed trace direct full-suite comparison differs from its exact current-suite cell contract');
     }
-    fixedTraceResponsePricingPolicy(config.generation.provider.id, config.generation.model, config.generation.pricing);
+    fixedTraceDirectFullSuiteResponsePricingPolicy(config.generation.provider.id, config.generation.model, config.generation.pricing);
   } else if (config.directModelScreen === undefined && config.router === null) {
     throw new Error('Fixed trace runner router is required outside direct-model-screen mode');
   }

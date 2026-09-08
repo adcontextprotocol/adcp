@@ -90,6 +90,8 @@ describe('fixed-trace direct full-suite comparison', () => {
     expect(result.grades.find((grade) => grade.traceId === 'provider-unavailable')?.failures).not.toContain('direct_full_suite_local_generation_identity_invalid');
     expect(result.judgments).toHaveLength(64);
     expect(new Set(result.judgments.map((entry) => entry.judgeProvider))).toEqual(new Set(cell.judgeProviders));
+    expect(cell.judgeProviders).toHaveLength(2);
+    expect(cell.judgeProviders).not.toContain(cell.provider);
     // The canonical corpus's two deterministic ignore/react surfaces remain
     // in the 32-case denominator without a generation request.
     expect(rawCandidate.requests).toHaveLength(30);
@@ -116,6 +118,11 @@ describe('fixed-trace direct full-suite comparison', () => {
       ['generation:google:gemini-3.7-flash:low', 82.30558719999999],
       ['generation:google:gemini-3.7-flash:medium', 82.30558719999999],
       ['generation:google:gemini-3.7-flash:high', 82.30558719999999],
+      ['generation:anthropic:claude-opus-5:provider_default', 1193.5783999999999],
+      ['generation:openai:gpt-5.6-luna:provider_default', 32.165715199999994],
+      ['generation:openai:gpt-5.6-terra:provider_default', 262.39061119999997],
+      ['generation:openai:gpt-5.6-sol:provider_default', 516.8136512],
+      ['generation:google:gemini-3.8-flash:provider_default', 82.30558719999999],
     ]);
     const ceiling = fixedTraceDirectFullSuiteCostCeiling('generation:anthropic:claude-sonnet-5:provider_default');
     expect(ceiling).toMatchObject({ candidateMaxDispatches: 384, judgeMaxDispatches: 64, requiredSoftMaxUsd: ceiling.totalUsd });
@@ -228,6 +235,14 @@ describe('fixed-trace direct full-suite comparison', () => {
       .every((grade) => !grade.failures.includes('generation_model_resolution_policy_mismatch'))).toBe(true);
     expect(budget.snapshot()).toMatchObject({ exposureUnknown: false });
   }, 30_000);
+
+  it('keeps the reviewed dated-alias policy for the direct Opus cell only within its exact family', () => {
+    const pricing = datedPricingProfilesForFixedTrace().find((entry) => entry.model === 'claude-opus-5')!;
+    const policy = fixedTraceDirectFullSuiteResponsePricingPolicy('anthropic', 'claude-opus-5', pricing);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'anthropic', model: 'claude-opus-5-20251001' })).toBe(true);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'anthropic', model: 'claude-sonnet-5-20251001' })).toBe(false);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'google', model: 'gemini-3.8-flash' })).toBe(false);
+  });
 
   it('continues to fail closed for an unreviewed Claude candidate identity', async () => {
     const { result } = await run(

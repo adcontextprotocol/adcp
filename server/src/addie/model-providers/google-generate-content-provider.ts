@@ -26,6 +26,8 @@ import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
+export const GOOGLE_DIRECT_FULL_SUITE_MODEL = 'gemini-3.8-flash';
+const FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE = Symbol('fixed-trace-direct-full-suite');
 const GOOGLE_ROUTER_REVIEWED_REVISIONS = new Set([
   'gemini-3.7-flash-20260801',
 ]);
@@ -33,6 +35,22 @@ const GOOGLE_ROUTER_REVIEWED_REVISIONS = new Set([
 /** Provider-returned dated revisions accepted for the frozen router model. */
 export function isGoogleRouterModelRevision(model: string): boolean {
   return model === GOOGLE_ROUTER_MODEL || GOOGLE_ROUTER_REVIEWED_REVISIONS.has(model);
+}
+
+export function isGoogleGenerateContentAllowedModel(
+  model: string,
+  directFullSuiteScope = false,
+): model is typeof GOOGLE_ROUTER_MODEL | typeof GOOGLE_DIRECT_FULL_SUITE_MODEL {
+  return model === GOOGLE_ROUTER_MODEL
+    || (directFullSuiteScope && model === GOOGLE_DIRECT_FULL_SUITE_MODEL);
+}
+
+/** Gemini 3.7 has its existing dated-revision exception; 3.8 remains exact. */
+export function googleReturnedModelIdentityMatches(requestedModel: string, returnedModel: string): boolean {
+  return requestedModel === GOOGLE_ROUTER_MODEL
+    ? isGoogleRouterModelRevision(returnedModel)
+    : requestedModel === GOOGLE_DIRECT_FULL_SUITE_MODEL
+      && returnedModel === GOOGLE_DIRECT_FULL_SUITE_MODEL;
 }
 
 export interface GoogleGenerateContentTransport {
@@ -184,9 +202,12 @@ function toGoogleContents(messages: ModelRequest['messages']): GenerateContentPa
   return merged;
 }
 
-function toGoogleRequest(request: ModelRequest): GenerateContentParameters {
+function toGoogleRequest(
+  request: ModelRequest,
+  directFullSuiteScope: boolean,
+): GenerateContentParameters {
   validateModelCapabilities('google', GOOGLE_GENERATE_CONTENT_CAPABILITIES, request);
-  if (request.model !== GOOGLE_ROUTER_MODEL) {
+  if (!isGoogleGenerateContentAllowedModel(request.model, directFullSuiteScope)) {
     throw new Error(`Unsupported Google router model: ${request.model}`);
   }
   if (request.system.some((block) => block.cacheHint !== undefined)) {
@@ -404,8 +425,14 @@ export class GoogleGenerateContentProvider implements ModelProvider {
   readonly id = 'google' as const;
   readonly capabilities = GOOGLE_GENERATE_CONTENT_CAPABILITIES;
   private readonly transport: GoogleGenerateContentTransport;
+  private readonly directFullSuiteScope: boolean;
 
-  constructor(apiKey: string, transport?: GoogleGenerateContentTransport) {
+  constructor(
+    apiKey: string,
+    transport?: GoogleGenerateContentTransport,
+    scope?: typeof FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE,
+  ) {
+    this.directFullSuiteScope = scope === FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE;
     if (transport) {
       this.transport = transport;
     } else {
@@ -431,7 +458,7 @@ export class GoogleGenerateContentProvider implements ModelProvider {
 
   prepare(request: ModelRequest): PreparedModelInvocation {
     const providerRequest = (
-      deepFreeze(structuredClone(toGoogleRequest(request)))
+      deepFreeze(structuredClone(toGoogleRequest(request, this.directFullSuiteScope)))
     ) as unknown as Readonly<Record<string, unknown>>;
     return deepFreeze({
       provider: this.id,
@@ -487,7 +514,7 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     } catch {
       throw createModelProviderAdapterError('adapter_response_normalization');
     }
-    if (!isGoogleRouterModelRevision(normalized.model)) {
+    if (!googleReturnedModelIdentityMatches(request.model, normalized.model)) {
       throw new UnexpectedModelIdentityError('google', request.model, normalized.model);
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };
@@ -498,4 +525,12 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     }
     yield { type: 'response_complete', response: normalized };
   }
+}
+
+/** The evaluator-only factory owns the otherwise private model admission. */
+export function createFixedTraceDirectFullSuiteGoogleProvider(
+  apiKey: string,
+  transport?: GoogleGenerateContentTransport,
+): GoogleGenerateContentProvider {
+  return new GoogleGenerateContentProvider(apiKey, transport, FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE);
 }

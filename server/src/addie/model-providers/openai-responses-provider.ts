@@ -23,6 +23,26 @@ import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const OPENAI_ROUTER_MODEL = 'gpt-5.6-luna';
+/**
+ * The paid direct full-suite evaluator has a separate, explicit model pool.
+ * These entries deliberately are not the default runtime adapter allowlist.
+ */
+export const OPENAI_DIRECT_FULL_SUITE_MODELS = Object.freeze([
+  OPENAI_ROUTER_MODEL,
+  'gpt-5.6-terra',
+  'gpt-5.6-sol',
+] as const);
+const FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE = Symbol('fixed-trace-direct-full-suite');
+
+/** This is an allowlist, never a prefix or provider alias policy. */
+export function isOpenAIResponsesAllowedModel(
+  model: string,
+  directFullSuiteScope = false,
+): model is typeof OPENAI_ROUTER_MODEL | (typeof OPENAI_DIRECT_FULL_SUITE_MODELS)[number] {
+  return model === OPENAI_ROUTER_MODEL
+    || (directFullSuiteScope
+      && (OPENAI_DIRECT_FULL_SUITE_MODELS as readonly string[]).includes(model));
+}
 
 /**
  * The Responses adapter has no reviewed alias allowlist. Keep this exported
@@ -146,9 +166,12 @@ function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
   return input;
 }
 
-function toOpenAIRequest(request: ModelRequest): ResponseCreateParamsNonStreaming {
+function toOpenAIRequest(
+  request: ModelRequest,
+  directFullSuiteScope: boolean,
+): ResponseCreateParamsNonStreaming {
   validateModelCapabilities('openai', OPENAI_RESPONSES_CAPABILITIES, request);
-  if (request.model !== OPENAI_ROUTER_MODEL) {
+  if (!isOpenAIResponsesAllowedModel(request.model, directFullSuiteScope)) {
     throw new Error(`Unsupported OpenAI router model: ${request.model}`);
   }
   if (request.system.some((block) => block.cacheHint !== undefined)) {
@@ -285,14 +308,20 @@ export class OpenAIResponsesProvider implements ModelProvider {
   readonly id = 'openai' as const;
   readonly capabilities = OPENAI_RESPONSES_CAPABILITIES;
   private readonly transport: OpenAIResponsesTransport;
+  private readonly directFullSuiteScope: boolean;
 
-  constructor(apiKey: string, transport?: OpenAIResponsesTransport) {
+  constructor(
+    apiKey: string,
+    transport?: OpenAIResponsesTransport,
+    scope?: typeof FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE,
+  ) {
     this.transport = transport ?? new OpenAI({ apiKey, maxRetries: 0 });
+    this.directFullSuiteScope = scope === FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE;
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
     const providerRequest = (
-      deepFreeze(structuredClone(toOpenAIRequest(request)))
+      deepFreeze(structuredClone(toOpenAIRequest(request, this.directFullSuiteScope)))
     ) as unknown as Readonly<Record<string, unknown>>;
     return deepFreeze({
       provider: this.id,
@@ -329,4 +358,15 @@ export class OpenAIResponsesProvider implements ModelProvider {
     }
     yield { type: 'response_complete', response: normalized };
   }
+}
+
+/**
+ * The sole public route to the evaluator-only model allowlist. A generic
+ * runtime constructor cannot be widened with a caller-provided string flag.
+ */
+export function createFixedTraceDirectFullSuiteOpenAIProvider(
+  apiKey: string,
+  transport?: OpenAIResponsesTransport,
+): OpenAIResponsesProvider {
+  return new OpenAIResponsesProvider(apiKey, transport, FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE);
 }

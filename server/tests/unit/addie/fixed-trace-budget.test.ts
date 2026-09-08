@@ -112,7 +112,7 @@ describe('fixed trace provider budget', () => {
     });
   });
 
-  it('exposes only reviewed production pricing and rejects former test profiles before dispatch', () => {
+  it('preserves the sealed non-direct pricing surface and rejects former test profiles before dispatch', () => {
     const liveProfiles = fixedTraceApprovedPricingProfiles();
     expect(liveProfiles).toHaveLength(4);
     for (const profile of liveProfiles) {
@@ -131,6 +131,15 @@ describe('fixed trace provider budget', () => {
       source: 'Synthetic manual artifact pricing.',
     })).toThrow('Fixed trace pricing profile is not evaluator approved');
     expect(delegate.dispatches).not.toHaveBeenCalled();
+  });
+
+  it('accepts Gemini 3.8 only as an exact fixed-trace pricing identity', () => {
+    const pricing = DATED_PROFILES.find((profile) => profile.model === 'gemini-3.8-flash')!;
+    const policy = fixedTraceDirectFullSuiteResponsePricingPolicy('google', 'gemini-3.8-flash', pricing);
+    expect(policy.modelResolutionPolicy).toBe('exact_model_identity_v1');
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'google', model: 'gemini-3.8-flash' })).toBe(true);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'google', model: 'gemini-3.7-flash-20260801' })).toBe(false);
+    expect(fixedTraceResponseUsesPricingPolicy(policy, { provider: 'google', model: 'gemini-3.8-flash-20260801' })).toBe(false);
   });
 
   it('accepts only the reviewed September Sonnet 5 policy and applies its additive cache rates', () => {

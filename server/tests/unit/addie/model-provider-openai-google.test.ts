@@ -4,11 +4,15 @@ import type { GenerateContentResponse } from '@google/genai';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import {
   OPENAI_ROUTER_MODEL,
+  OPENAI_DIRECT_FULL_SUITE_MODELS,
+  createFixedTraceDirectFullSuiteOpenAIProvider,
   OpenAIResponsesProvider,
   normalizeOpenAIResponse,
   type OpenAIResponsesTransport,
 } from '../../../src/addie/model-providers/openai-responses-provider.js';
 import {
+  GOOGLE_DIRECT_FULL_SUITE_MODEL,
+  createFixedTraceDirectFullSuiteGoogleProvider,
   GOOGLE_ROUTER_MODEL,
   GoogleGenerateContentProvider,
   normalizeGoogleResponse,
@@ -93,6 +97,17 @@ function googleResponse(overrides: Record<string, unknown> = {}): GenerateConten
 }
 
 describe('OpenAIResponsesProvider', () => {
+  it('keeps the runtime adapter pinned to Luna', () => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    expect(provider.prepare(request(OPENAI_ROUTER_MODEL)).providerRequest).toMatchObject({ model: OPENAI_ROUTER_MODEL });
+    expect(() => provider.prepare(request('gpt-5.6-terra'))).toThrow('Unsupported OpenAI router model');
+  });
+
+  it.each(OPENAI_DIRECT_FULL_SUITE_MODELS)('allows only the reviewed exact direct full-suite OpenAI request ID %s', (model) => {
+    const provider = createFixedTraceDirectFullSuiteOpenAIProvider('unused', {} as OpenAIResponsesTransport);
+    expect(provider.prepare(request(model)).providerRequest).toMatchObject({ model });
+  });
+
   it.each([
     [{ type: 'auto' as const }, 'auto'],
     [{ type: 'required' as const }, 'required'],
@@ -175,6 +190,19 @@ describe('OpenAIResponsesProvider', () => {
         expectedModel: OPENAI_ROUTER_MODEL,
         actualModel: model,
       });
+  });
+
+  it.each(OPENAI_DIRECT_FULL_SUITE_MODELS)('requires the same exact returned OpenAI model ID for %s', async (model) => {
+    const provider = createFixedTraceDirectFullSuiteOpenAIProvider('unused', {
+      responses: { create: vi.fn().mockResolvedValue(openAIResponse({ model })) },
+    });
+    await expect(collectModelResponse(provider.respond(request(model))))
+      .resolves.toMatchObject({ model });
+  });
+
+  it.each(['gpt-5.6-luna-latest', 'gpt-5.6-terra-20260901', 'gpt-5.6-sol-preview'])('rejects an OpenAI request alias %s', (model) => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    expect(() => provider.prepare(request(model))).toThrow('Unsupported OpenAI router model');
   });
 
   it.each([
@@ -376,6 +404,47 @@ describe('OpenAIResponsesProvider', () => {
     const provider = new GoogleGenerateContentProvider('unused', transport);
     await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL))))
       .rejects.toBeInstanceOf(UnexpectedModelIdentityError);
+  });
+
+  it('keeps the runtime adapter pinned to Gemini 3.7 Flash', () => {
+    const provider = new GoogleGenerateContentProvider('unused', {} as GoogleGenerateContentTransport);
+    expect(provider.prepare(request(GOOGLE_ROUTER_MODEL)).providerRequest).toMatchObject({ model: GOOGLE_ROUTER_MODEL });
+    expect(() => provider.prepare(request(GOOGLE_DIRECT_FULL_SUITE_MODEL))).toThrow('Unsupported Google router model');
+  });
+
+  it('allows Gemini 3.8 Flash only in the direct full-suite adapter scope', () => {
+    const provider = createFixedTraceDirectFullSuiteGoogleProvider('unused', {} as GoogleGenerateContentTransport);
+    expect(provider.prepare(request(GOOGLE_DIRECT_FULL_SUITE_MODEL)).providerRequest)
+      .toMatchObject({ model: GOOGLE_DIRECT_FULL_SUITE_MODEL });
+  });
+
+  it.each([
+    GOOGLE_ROUTER_MODEL,
+    'gemini-3.7-flash-20260801',
+    'gemini-3.8-flash-20260801',
+    'gemini-3.8-pro',
+  ])('rejects non-exact, cross-family, and dated Google 3.8 returned identities: %s', async (model) => {
+    const provider = createFixedTraceDirectFullSuiteGoogleProvider('unused', {
+      models: { generateContent: vi.fn().mockResolvedValue(googleResponse({ modelVersion: model })) },
+    });
+    await expect(collectModelResponse(provider.respond(request(GOOGLE_DIRECT_FULL_SUITE_MODEL))))
+      .rejects.toMatchObject({
+        name: 'UnexpectedModelIdentityError', provider: 'google',
+        expectedModel: GOOGLE_DIRECT_FULL_SUITE_MODEL, actualModel: model,
+      });
+  });
+
+  it('accepts only the existing reviewed Google 3.7 dated revision', async () => {
+    const provider = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent: vi.fn().mockResolvedValue(googleResponse({ modelVersion: 'gemini-3.7-flash-20260801' })) },
+    });
+    await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL))))
+      .resolves.toMatchObject({ model: 'gemini-3.7-flash-20260801' });
+  });
+
+  it.each(['gemini-3.8-flash-20260801', 'gemini-3.7-flash-20260801', 'gemini-3.8-pro'])('rejects unreviewed Google request ID %s', (model) => {
+    const provider = new GoogleGenerateContentProvider('unused', {} as GoogleGenerateContentTransport);
+    expect(() => provider.prepare(request(model))).toThrow('Unsupported Google router model');
   });
 
   it('omits unavailable optional cache usage fields', () => {
