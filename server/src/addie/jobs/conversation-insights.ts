@@ -51,25 +51,56 @@ function formatDate(date: Date): string {
 /**
  * Get previous week's Monday and Sunday dates
  */
-function getPreviousWeekRange(): { weekStart: Date; weekEnd: Date } {
-  const now = new Date();
-  // Get today in ET
-  const etDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const dayOfWeek = etDate.getDay(); // 0=Sun, 1=Mon
+export function getPreviousWeekRange(now: Date = new Date()): { weekStart: Date; weekEnd: Date } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((entry) => entry.type === type)?.value);
+  const etCalendarDate = new Date(Date.UTC(part('year'), part('month') - 1, part('day')));
+  const daysToThisMonday = (etCalendarDate.getUTCDay() + 6) % 7;
+  const thisMondayCalendar = new Date(etCalendarDate);
+  thisMondayCalendar.setUTCDate(etCalendarDate.getUTCDate() - daysToThisMonday);
+  const previousMondayCalendar = new Date(thisMondayCalendar);
+  previousMondayCalendar.setUTCDate(thisMondayCalendar.getUTCDate() - 7);
 
-  // Previous Monday: go back to this Monday, then back 7 more days
-  const daysToThisMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const thisMonday = new Date(etDate);
-  thisMonday.setDate(etDate.getDate() - daysToThisMonday);
-  thisMonday.setHours(0, 0, 0, 0);
+  return {
+    weekStart: easternMidnight(previousMondayCalendar),
+    weekEnd: easternMidnight(thisMondayCalendar),
+  };
+}
 
-  const prevMonday = new Date(thisMonday);
-  prevMonday.setDate(thisMonday.getDate() - 7);
-
-  // Previous Sunday (end of prev week, exclusive for queries)
-  const prevSunday = new Date(thisMonday);
-
-  return { weekStart: prevMonday, weekEnd: prevSunday };
+/** Convert a UTC calendar-only date to midnight for that date in US Eastern time. */
+function easternMidnight(calendarDate: Date): Date {
+  const year = calendarDate.getUTCFullYear();
+  const month = calendarDate.getUTCMonth();
+  const day = calendarDate.getUTCDate();
+  const noonUtc = new Date(Date.UTC(year, month, day, 12));
+  const zonedParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(noonUtc);
+  const zonedPart = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(zonedParts.find((entry) => entry.type === type)?.value);
+  const representedAsUtc = Date.UTC(
+    zonedPart('year'),
+    zonedPart('month') - 1,
+    zonedPart('day'),
+    zonedPart('hour'),
+    zonedPart('minute'),
+    zonedPart('second'),
+  );
+  const offsetMs = representedAsUtc - noonUtc.getTime();
+  return new Date(Date.UTC(year, month, day) - offsetMs);
 }
 
 /**
@@ -173,9 +204,11 @@ async function postToSlack(record: ConversationInsightsRecord): Promise<boolean>
   }
 }
 
-function formatSlackMessage(record: ConversationInsightsRecord) {
+export function formatSlackMessage(record: ConversationInsightsRecord) {
   const { stats, analysis } = record;
-  const weekLabel = `${formatShortDate(record.week_start)} – ${formatShortDate(record.week_end)}`;
+  // These are PostgreSQL DATE columns. Render them as calendar dates rather
+  // than Eastern instants (node-postgres parses DATE at UTC midnight).
+  const weekLabel = `${formatShortDate(record.week_start)} – ${formatShortDate(record.week_end, -1)}`;
 
   const sections: string[] = [];
 
@@ -188,29 +221,65 @@ function formatSlackMessage(record: ConversationInsightsRecord) {
     .join(', ');
   sections.push(
     `${stats.total_threads} threads · ${stats.total_messages} messages · ${stats.unique_users} users` +
-    (channelBreakdown ? ` (${channelBreakdown})` : '') +
-    (stats.avg_rating ? ` · avg rating: ${stats.avg_rating.toFixed(1)}/5` : '') +
+    (channelBreakdown ? ` · threads by channel: ${channelBreakdown}` : '') +
+    (typeof stats.avg_rating === 'number'
+      ? ` · avg rating: ${stats.avg_rating.toFixed(2)}/5${stats.rated_response_count !== undefined ? ` from ${stats.rated_response_count} ratings` : ''}`
+      : '') +
     (stats.escalation_count > 0 ? ` · ${stats.escalation_count} escalations` : ''),
   );
 
+  if (stats.sampled_thread_count !== undefined) {
+    sections.push(`Analysis sample: ${stats.sampled_thread_count}/${stats.total_threads} threads (risk-weighted toward escalations and low ratings).`);
+  }
+
+  const hasOperationalSignals = [
+    stats.tool_failure_count,
+    stats.empty_response_fallback_count,
+    stats.unrecovered_interruption_count,
+  ].some((value) => value !== undefined);
+  if (hasOperationalSignals) {
+    const operationalSummary = [
+      `${stats.tool_failure_count ?? 0} failed tool executions`,
+      `${stats.empty_response_fallback_count ?? 0} empty-response fallbacks`,
+      `${stats.unrecovered_interruption_count ?? 0} unrecovered browser turns`,
+    ];
+    sections.push(`\n*Operational signals*\n${operationalSummary.join(' · ')}`);
+    for (const [name, count] of Object.entries(stats.tool_failures_by_name ?? {}).slice(0, 5)) {
+      sections.push(`• *${name}*: ${count}${formatEvidenceLinks(stats.tool_failure_thread_ids?.[name])}`);
+    }
+    if ((stats.empty_response_fallback_count ?? 0) > 0) {
+      sections.push(`• Empty-response fallbacks${formatEvidenceLinks(stats.empty_response_fallback_thread_ids)}`);
+    }
+    if ((stats.unrecovered_interruption_count ?? 0) > 0) {
+      sections.push(`• Unrecovered browser turns${formatEvidenceLinks(stats.unrecovered_interruption_thread_ids)}`);
+    }
+  }
+
+  if (stats.escalation_count > 0) {
+    const escalationBreakdown = Object.entries(stats.escalation_by_category)
+      .map(([category, count]) => `${category}: ${count}`)
+      .join(', ');
+    if (escalationBreakdown) sections.push(`Escalations by category: ${escalationBreakdown}`);
+  }
+
   // Executive summary
   if (analysis.executive_summary) {
-    sections.push(`\n${analysis.executive_summary}`);
+    sections.push(`\n${analysis.executive_summary}${formatEvidenceLinks(analysis.executive_summary_evidence_thread_ids)}`);
   }
 
   // Question themes
   if (analysis.question_themes.length > 0) {
     sections.push('\n*Top question themes (from sampled threads, organic only)*');
     for (const theme of analysis.question_themes.slice(0, 5)) {
-      sections.push(`• *${theme.theme}* (${theme.sample_count}× in sample) – ${theme.description}`);
+      sections.push(`• *${theme.theme}* (${theme.sample_count}× in sample) – ${theme.description}${formatEvidenceLinks(theme.evidence_thread_ids)}`);
     }
   }
 
   // Documentation gaps
   if (analysis.documentation_gaps.length > 0) {
-    sections.push('\n*Documentation gaps*');
+    sections.push('\n*Documentation candidates (verify against current docs)*');
     for (const gap of analysis.documentation_gaps.slice(0, 3)) {
-      sections.push(`• *${gap.topic}*: ${gap.suggested_action}`);
+      sections.push(`• *${gap.topic}*: ${gap.suggested_action}${formatEvidenceLinks(gap.evidence_thread_ids)}`);
     }
   }
 
@@ -218,7 +287,7 @@ function formatSlackMessage(record: ConversationInsightsRecord) {
   if (analysis.training_gaps.length > 0) {
     sections.push('\n*Training gaps*');
     for (const gap of analysis.training_gaps.slice(0, 3)) {
-      sections.push(`• *${gap.topic}*: ${gap.suggested_module}`);
+      sections.push(`• *${gap.topic}*: ${gap.suggested_module}${formatEvidenceLinks(gap.evidence_thread_ids)}`);
     }
   }
 
@@ -227,7 +296,7 @@ function formatSlackMessage(record: ConversationInsightsRecord) {
   if (highPriority.length > 0) {
     sections.push('\n*Addie improvements (high priority)*');
     for (const item of highPriority.slice(0, 3)) {
-      sections.push(`• *${item.area}*: ${item.suggested_fix}`);
+      sections.push(`• *${item.area}*: ${item.suggested_fix}${formatEvidenceLinks(item.evidence_thread_ids)}`);
     }
   }
 
@@ -235,17 +304,32 @@ function formatSlackMessage(record: ConversationInsightsRecord) {
   if (analysis.escalation_patterns.length > 0) {
     sections.push('\n*Escalation patterns*');
     for (const pattern of analysis.escalation_patterns.slice(0, 3)) {
-      sections.push(`• *${pattern.pattern}* (${pattern.count}x) – ${pattern.suggested_action}`);
+      sections.push(`• *${pattern.pattern}* (${pattern.count}× in escalation sample) – ${pattern.suggested_action}${formatEvidenceLinks(pattern.evidence_thread_ids)}`);
     }
   }
 
   return { text: sections.join('\n') };
 }
 
-function formatShortDate(date: Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
+function formatEvidenceLinks(threadIds: string[] | undefined): string {
+  const uniqueIds = [...new Set(threadIds ?? [])].slice(0, 3);
+  if (uniqueIds.length === 0) return '';
+  const links = uniqueIds.map((threadId) =>
+    `<https://agenticadvertising.org/admin/addie?thread=${encodeURIComponent(threadId)}|thread ${threadId.slice(0, 8)}>`,
+  );
+  return ` — evidence: ${links.join(', ')}`;
+}
+
+function formatShortDate(date: Date, dayOffset = 0): string {
+  const parsed = new Date(date);
+  const calendarDate = new Date(Date.UTC(
+    parsed.getUTCFullYear(),
+    parsed.getUTCMonth(),
+    parsed.getUTCDate() + dayOffset,
+  ));
+  return calendarDate.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    timeZone: 'America/New_York',
+    timeZone: 'UTC',
   });
 }

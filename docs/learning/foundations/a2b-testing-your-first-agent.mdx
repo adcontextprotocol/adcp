@@ -178,6 +178,14 @@ curl -X POST https://test-agent.adcontextprotocol.org/sales/mcp \
             }
           }
         ],
+        "validation_mode": "strict",
+        "assignment_operations": [
+          {
+            "operation": "assign",
+            "creative_id": "nova-ctv-30s-v1",
+            "package_id": "<package-id-from-step-2>"
+          }
+        ],
         "dry_run": true
       }
     },
@@ -185,7 +193,20 @@ curl -X POST https://test-agent.adcontextprotocol.org/sales/mcp \
   }'
 ```
 
-Remove `"dry_run": true` to apply. The response includes `creatives[].status` — `approved`, `pending_review`, or `rejected`.
+Remove `"dry_run": true` to apply. Inspect each result's `action` first (`created`, `updated`, `unchanged`, or `failed`) and read per-item `errors` when it failed. Accepted items may also include an advisory review `status`, such as `processing`, `pending_review`, or `approved`; sellers without a review lifecycle omit it, and it is not a spend-authorization signal.
+
+#### Sync semantics and format matching
+
+`sync_creatives` is declarative at the creative-ID level, but an ordinary call is an upsert—not a replacement of the whole library:
+
+| Request shape | Effect |
+|---|---|
+| Default (`delete_missing` omitted or `false`) | Create or update the supplied `creative_id` values; preserve every omitted creative |
+| `creative_ids` supplied | Limit the sync scope for partial recovery; preserve creatives outside that scope |
+| `delete_missing: true` | Treat the request as the desired full creative set and archive omitted creatives; do not combine with `creative_ids` |
+| `dry_run: true` | Validate the exact operation without changing library, assignment, review, or serving state |
+
+Match each upload to the package's canonical creative requirement. The create response's `packages[].formats_to_provide[]` is the immutable booking-time checklist. When a product offers multiple options with the same `format_kind`, include the exact `format_option_ref`; the format kind alone is ambiguous. After applying the sync, call `get_media_buys`: `packages[].formats_pending[]` is the subset that still lacks coverage. An empty array means the package is covered; an absent field does not.
 
 ### Step 4 — Check status
 

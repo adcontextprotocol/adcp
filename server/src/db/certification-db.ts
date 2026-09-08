@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { query, getClient } from './client.js';
 import { createLogger } from '../logger.js';
 import {
@@ -1677,14 +1678,21 @@ export async function saveTeachingCheckpoint(checkpoint: {
   demonstration_evidence?: Record<string, string>;
   notes?: string;
 }): Promise<TeachingCheckpoint> {
+  // query() retries transient connection failures. Keep the ID stable for
+  // that retry so a successful-but-disconnected INSERT cannot create a second
+  // checkpoint, while separate checkpoint calls still create history rows.
+  const checkpointId = randomUUID();
   const result = await query<TeachingCheckpoint>(
     `INSERT INTO teaching_checkpoints
-       (workos_user_id, module_id, thread_id, concepts_covered, concepts_remaining,
+       (id, workos_user_id, module_id, thread_id, concepts_covered, concepts_remaining,
         learner_strengths, learner_gaps, current_phase, preliminary_scores,
         demonstrations_verified, demonstration_evidence, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     ON CONFLICT (id) DO UPDATE
+       SET id = EXCLUDED.id
      RETURNING *`,
     [
+      checkpointId,
       checkpoint.workos_user_id,
       checkpoint.module_id,
       checkpoint.thread_id || null,

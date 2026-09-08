@@ -271,6 +271,7 @@ export async function handleEmailConversation(
             input: exec.parameters,
             result: exec.result,
             duration_ms: exec.duration_ms,
+            is_error: exec.is_error,
           }))
         : undefined,
       model: effectiveModel,
