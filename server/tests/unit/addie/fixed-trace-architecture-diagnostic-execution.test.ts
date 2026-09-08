@@ -151,7 +151,7 @@ describe('fixed-trace architecture diagnostic execution', () => {
   it('preserves unknown provider exposure in a finalized diagnostic artifact instead of inventing cost certainty', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'architecture-diagnostic-'));
     const output = join(directory, 'artifact.json');
-    const { admission, budget } = admitted(true);
+    const { admission, budget, raw } = admitted(true);
     const artifact = await runFixedTraceArchitectureDiagnosticArtifact({
       admission, budget, runRootId: 'architecture-test-root', runStartedAt: '2026-09-07T00:00:00.000Z', plan: plan(),
     });
@@ -161,7 +161,20 @@ describe('fixed-trace architecture diagnostic execution', () => {
     // be represented as a completed settled execution.
     expect(artifact).toMatchObject({ complete: false, comparisonEligible: false, failure: null });
     expect(artifact.runs).toHaveLength(3);
+    const settlementEntries = (artifact.runs as Array<{ observations: Array<{
+      metadata: { generation: { settlementLedger?: { entries: unknown[] } } };
+    }> }>)
+      .flatMap((run) => run.observations)
+      .flatMap((observation) => observation.metadata.generation.settlementLedger?.entries ?? []);
+    expect(settlementEntries).toEqual([expect.objectContaining({
+      status: 'exposure_unknown',
+      reason: 'identity_policy_rejected',
+      errorFingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    })]);
     expect(budget.snapshot()).toMatchObject({ exposureUnknown: true, completedCalls: 0, dispatchedCalls: 1, reservedUsd: 0 });
+    expect(raw.calls).toHaveLength(1);
+    expect(readFileSync(output, 'utf8')).toContain('identity_policy_rejected');
+    expect(readFileSync(output, 'utf8')).not.toContain('Fixed trace budget usage is invalid');
     expect(readFileSync(`${output}.sha256`, 'utf8')).toBe(`${digest}  ${output}\n`);
     expect(createHash('sha256').update(readFileSync(output, 'utf8')).digest('hex')).toBe(digest);
   });

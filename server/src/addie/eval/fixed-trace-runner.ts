@@ -50,6 +50,8 @@ import {
   fixedTraceModelResolutionPolicy as fixedTraceBudgetModelResolutionPolicy,
   fixedTraceResponsePricingPolicy,
   fixedTraceResponseUsesPricingPolicy,
+  fixedTraceSettlementDiagnosticCursor,
+  fixedTraceSettlementDiagnosticLedger,
   type FixedTraceBudgetRejectionReason,
 } from './fixed-trace-budget.js';
 import {
@@ -752,6 +754,7 @@ interface StageInvocationState {
   dispatched: boolean;
   dispatchedCalls: number;
   latencyMs: number;
+  settlementDiagnosticCursor?: number;
 }
 
 function providerExposures(
@@ -953,6 +956,11 @@ function providerStageMetadata(
     returnedProvider: response.provider,
     returnedModel: response.model,
     providerExposures: providerExposures(state, response, recordedExposures),
+    settlementLedger: fixedTraceSettlementDiagnosticLedger(
+      config.provider,
+      state.settlementDiagnosticCursor ?? fixedTraceSettlementDiagnosticCursor(config.provider),
+      state.dispatchedCalls,
+    ),
     modelResolution: modelResolution(config, response),
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
@@ -992,6 +1000,11 @@ function localStageMetadata(
     returnedProvider: null,
     returnedModel: null,
     providerExposures: providerExposures(state, undefined, recordedExposures),
+    settlementLedger: fixedTraceSettlementDiagnosticLedger(
+      config.provider,
+      state.settlementDiagnosticCursor ?? fixedTraceSettlementDiagnosticCursor(config.provider),
+      state.dispatchedCalls,
+    ),
     modelResolution: 'local',
     promptSha256: promptSha256(request),
     providerRequestSha256: providerRequestSha256(state.invocations),
@@ -1023,6 +1036,12 @@ function notRunStageMetadata(trace: FixedTraceCase): FixedTraceModelStageMetadat
     returnedProvider: null,
     returnedModel: null,
     providerExposures: Object.freeze([]),
+    settlementLedger: Object.freeze({
+      fromDispatchExclusive: 0,
+      throughDispatch: 0,
+      truncated: false,
+      entries: Object.freeze([]),
+    }),
     modelResolution: null,
     promptSha256: null,
     providerRequestSha256: null,
@@ -1779,6 +1798,7 @@ async function executeRouter(
   let dispatched = false;
   let dispatchedCalls = 0;
   let timedOut = false;
+  const settlementDiagnosticCursor = fixedTraceSettlementDiagnosticCursor(config.provider);
   const controller = new AbortController();
   const startedAt = Date.now();
   // `prepare` is the provider boundary's deterministic validation and request
@@ -1804,7 +1824,7 @@ async function executeRouter(
         invocations.push(prepared);
       },
     }), config.provider.id);
-    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt, settlementDiagnosticCursor };
     const metadata = providerStageMetadata(request, config, response, response.usage, state);
     const output = extractRouterResponseText(response.content);
     const status = hasCompleteReturnedProviderIdentities(state, response)
@@ -1826,7 +1846,7 @@ async function executeRouter(
     }
   } catch (error) {
     if (timedOut && dispatched) {
-      const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
+      const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt, settlementDiagnosticCursor };
       const terminalStatus = hasCompleteReturnedProviderIdentities(state)
         ? 'timeout_after_dispatch'
         : 'unknown_exposure';
@@ -1844,7 +1864,7 @@ async function executeRouter(
     const budgetAdmission = snapshotFixedTraceBudgetAdmission(error);
     const toolLoopBoundary = snapshotFixedTraceToolLoopBoundary(error);
     if (budgetAdmission) invocations.push(budgetAdmission.prepared);
-    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt, settlementDiagnosticCursor };
     const status = budgetAdmission
       ? 'not_dispatched_budget'
       : timedOut && dispatched
@@ -2046,6 +2066,7 @@ export async function runFixedTraceCase(
   let dispatched = false;
   let dispatchedCalls = 0;
   const startedAt = Date.now();
+  const settlementDiagnosticCursor = fixedTraceSettlementDiagnosticCursor(generationConfig.provider);
 
   if (executionTrace.category === 'provider_degradation' && executionConfig.injectProviderDegradation !== false) {
     invocations.push(prepareFixedTraceRequest('generation', generationConfig, {
@@ -2122,7 +2143,7 @@ export async function runFixedTraceCase(
         },
       },
     );
-    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt };
+    const state = { invocations, dispatched, dispatchedCalls, latencyMs: Date.now() - startedAt, settlementDiagnosticCursor };
     const generation = providerStageMetadata(
       generationRequest,
       generationConfig,
@@ -2169,6 +2190,7 @@ export async function runFixedTraceCase(
         dispatched,
         dispatchedCalls,
         latencyMs: Date.now() - startedAt,
+        settlementDiagnosticCursor,
       };
       const finalTerminalStatus = hasCompleteReturnedProviderIdentities(state)
         ? 'timeout_after_dispatch'
@@ -2208,6 +2230,7 @@ export async function runFixedTraceCase(
       dispatched,
       dispatchedCalls,
       latencyMs: Date.now() - startedAt,
+      settlementDiagnosticCursor,
     };
     const generation = localStageMetadata(
       generationRequest,

@@ -856,12 +856,24 @@ describe('fixed trace artifact runner', () => {
       dispatched: true,
       usage: { inputTokens: 10, outputTokens: 5 },
       estimatedCostUsd: 0.000035,
+      settlementLedger: {
+        fromDispatchExclusive: 0,
+        throughDispatch: 1,
+        truncated: false,
+        entries: [],
+      },
     });
     expect(observation.metadata.generation).toMatchObject({
       source: 'provider',
       dispatched: true,
       usage: { inputTokens: 20, outputTokens: 10 },
       estimatedCostUsd: 0.00007,
+      settlementLedger: {
+        fromDispatchExclusive: 0,
+        throughDispatch: 2,
+        truncated: false,
+        entries: [],
+      },
     });
     expect(observation.metadata.generation.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(generation.respondCalls).toHaveLength(2);

@@ -203,6 +203,18 @@ describe('fixed-trace common evaluator tool universe', () => {
     expect(router.requests).toHaveLength(1);
     expect(generation.requests).toHaveLength(1);
     expect(serialized[0]!.metadata.toolDefinitionProvenance).toBe('evaluator_owned_common_tool_universe');
+    expect(serialized[0]!.metadata.router.settlementLedger).toEqual({
+      fromDispatchExclusive: 0,
+      throughDispatch: 1,
+      truncated: false,
+      entries: [],
+    });
+    expect(serialized[0]!.metadata.generation.settlementLedger).toEqual({
+      fromDispatchExclusive: 0,
+      throughDispatch: 1,
+      truncated: false,
+      entries: [],
+    });
     expect(regraded.grades[0]).toMatchObject({ metadataPass: true });
     expect(regraded.grades[0]!.failures).not.toContain('tool_universe_provenance_invalid');
     expect(regraded.grades[0]!.failures).not.toContain('execution_envelope_provenance_invalid');
