@@ -312,6 +312,22 @@ describe('mounted Addie web-thread ownership', () => {
       .toMatchObject({ githubIssueCreationRequested: true });
   });
 
+  it.each([
+    ['JSON', '/api/addie/chat', chatClient.processMessage, 4],
+    ['streaming', '/api/addie/chat/stream', chatClient.processMessageStream, 3],
+  ])('leaves issue intent undefined without the formal action flag on the %s route', async (
+    _label,
+    path,
+    processMessage,
+    optionsArgument,
+  ) => {
+    processMessage.mockClear();
+
+    await request(app()).post(path).send({ message: 'Yes, go ahead.' }).expect(200);
+
+    expect(processMessage.mock.calls[0]?.[optionsArgument]?.githubIssueCreationRequested).toBeUndefined();
+  });
+
   it('uses identical routed tools and prompt modules for authenticated JSON and streaming requests', async () => {
     const router = {
       quickMatch: vi.fn().mockReturnValue(null),

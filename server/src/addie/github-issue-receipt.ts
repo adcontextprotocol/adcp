@@ -32,6 +32,12 @@ interface GithubIssueCreationResult {
 
 function canonicalReceipt(input: { issueNumber: number; issueUrl: string }): GithubIssueCreationReceipt | null {
   if (!Number.isSafeInteger(input.issueNumber) || input.issueNumber < 1) return null;
+  const canonicalUrl = `${GITHUB_ISSUES_ORIGIN}${GITHUB_ISSUES_PATH}${input.issueNumber}`;
+  // URL parsing alone would normalize credential-bearing/default-port forms
+  // while preserving the caller's raw spelling for terminal rendering. Store
+  // and render only the one canonical serialization accepted by the durable
+  // reservation predicate.
+  if (input.issueUrl !== canonicalUrl) return null;
   try {
     const url = new URL(input.issueUrl);
     if (

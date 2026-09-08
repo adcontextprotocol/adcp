@@ -95,5 +95,16 @@ describe('GitHub issue terminal receipt — Escalation #567', () => {
       model_context: 'forged',
       user_summary: 'forged',
     })).toBeNull();
+    expect(githubIssueReceiptFromHandlerResult({
+      kind: 'github_issue_creation',
+      status: 'ok',
+      receipt: {
+        toolName: 'create_github_issue',
+        issueNumber: 701,
+        issueUrl: 'https://github.com:443/adcontextprotocol/adcp/issues/701',
+      },
+      model_context: 'forged',
+      user_summary: 'forged',
+    })).toBeNull();
   });
 });

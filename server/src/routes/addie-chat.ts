@@ -1138,7 +1138,9 @@ export function createAddieChatRouter(options?: {
       // This is an explicit UI/API action signal, never a text classifier. A
       // model reply cannot set it, and it only controls whether a missing
       // same-turn issue receipt must yield the deterministic fallback.
-      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true;
+      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true
+        ? true
+        : undefined;
       const attachments = validateChatAttachments(rawAttachments);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
@@ -1564,7 +1566,9 @@ export function createAddieChatRouter(options?: {
       const retryRequested = retry === true;
       // See the non-streaming path: this formal action flag is the only
       // direct-request input to the terminal issue-receipt gate.
-      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true;
+      const githubIssueCreationRequested = rawGithubIssueCreationRequested === true
+        ? true
+        : undefined;
 
       if (clientRequestId && !uuidValidate(clientRequestId)) {
         return res.status(400).json({ error: 'client_request_id must be a valid UUID' });
