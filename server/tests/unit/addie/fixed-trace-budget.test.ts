@@ -97,6 +97,21 @@ class BudgetScriptedProvider implements ModelProvider {
 }
 
 describe('fixed trace provider budget', () => {
+  it('projects an ordinary provider as an empty stage-local settlement interval', () => {
+    const provider = new BudgetScriptedProvider([]);
+
+    expect(fixedTraceSettlementDiagnosticLedger(
+      provider,
+      fixedTraceSettlementDiagnosticCursor(provider),
+      2,
+    )).toEqual({
+      fromDispatchExclusive: 0,
+      throughDispatch: 2,
+      truncated: false,
+      entries: [],
+    });
+  });
+
   it('exposes only reviewed production pricing and rejects former test profiles before dispatch', () => {
     const liveProfiles = fixedTraceApprovedPricingProfiles();
     expect(liveProfiles).toHaveLength(4);
@@ -227,7 +242,7 @@ describe('fixed trace provider budget', () => {
       completedCalls: 0,
       exposureUnknown: true,
     });
-    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor)).toEqual({
+    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor, 1)).toEqual({
       fromDispatchExclusive: 0,
       throughDispatch: 1,
       truncated: false,
@@ -238,6 +253,9 @@ describe('fixed trace provider budget', () => {
         errorFingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       }],
     });
+    expect(() => fixedTraceSettlementDiagnosticLedger(provider, cursor, 0)).toThrow(
+      'Fixed trace settlement diagnostic dispatch count does not match the budget wrapper',
+    );
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toMatchObject({
       name: 'FixedTraceBudgetAdmissionError', reason: 'budget_exposure_unknown',
     });
@@ -437,7 +455,7 @@ describe('fixed trace provider budget', () => {
       completedCalls: 0,
       exposureUnknown: true,
     });
-    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor).entries).toEqual([{
+    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor, 1).entries).toEqual([{
       dispatchSequence: 1,
       status: 'exposure_unknown',
       reason: 'usage_or_cost_settlement_failed',
@@ -453,7 +471,7 @@ describe('fixed trace provider budget', () => {
     const cursor = fixedTraceSettlementDiagnosticCursor(provider);
 
     await expect(collectModelResponse(provider.respond(REQUEST))).rejects.toThrow();
-    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor).entries).toEqual([{
+    expect(fixedTraceSettlementDiagnosticLedger(provider, cursor, 1).entries).toEqual([{
       dispatchSequence: 1,
       status: 'exposure_unknown',
       reason: 'usage_or_cost_settlement_failed',
@@ -474,7 +492,7 @@ describe('fixed trace provider budget', () => {
     const firstCursor = fixedTraceSettlementDiagnosticCursor(firstProvider);
 
     await expect(collectModelResponse(firstProvider.respond(REQUEST))).rejects.toThrow(firstSecret);
-    const firstLedger = fixedTraceSettlementDiagnosticLedger(firstProvider, firstCursor);
+    const firstLedger = fixedTraceSettlementDiagnosticLedger(firstProvider, firstCursor, 1);
     expect(firstLedger.entries).toEqual([{
       dispatchSequence: 1,
       status: 'exposure_unknown',
@@ -490,7 +508,7 @@ describe('fixed trace provider budget', () => {
     );
     const secondCursor = fixedTraceSettlementDiagnosticCursor(secondProvider);
     await expect(collectModelResponse(secondProvider.respond(REQUEST))).rejects.toThrow(secondSecret);
-    const secondLedger = fixedTraceSettlementDiagnosticLedger(secondProvider, secondCursor);
+    const secondLedger = fixedTraceSettlementDiagnosticLedger(secondProvider, secondCursor, 1);
     expect(JSON.stringify(secondLedger)).not.toContain(secondSecret);
     expect(secondLedger.entries[0]!.errorFingerprintSha256)
       .toBe(firstLedger.entries[0]!.errorFingerprintSha256);

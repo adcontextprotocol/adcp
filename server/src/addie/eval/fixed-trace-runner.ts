@@ -959,6 +959,7 @@ function providerStageMetadata(
     settlementLedger: fixedTraceSettlementDiagnosticLedger(
       config.provider,
       state.settlementDiagnosticCursor ?? fixedTraceSettlementDiagnosticCursor(config.provider),
+      state.dispatchedCalls,
     ),
     modelResolution: modelResolution(config, response),
     promptSha256: promptSha256(request),
@@ -1002,6 +1003,7 @@ function localStageMetadata(
     settlementLedger: fixedTraceSettlementDiagnosticLedger(
       config.provider,
       state.settlementDiagnosticCursor ?? fixedTraceSettlementDiagnosticCursor(config.provider),
+      state.dispatchedCalls,
     ),
     modelResolution: 'local',
     promptSha256: promptSha256(request),

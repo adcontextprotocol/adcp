@@ -330,14 +330,19 @@ export function fixedTraceSettlementDiagnosticCursor(provider: ModelProvider): n
 export function fixedTraceSettlementDiagnosticLedger(
   provider: ModelProvider,
   cursor: number,
+  dispatchedCalls: number,
 ): FixedTraceSettlementDiagnosticLedger {
-  if (!Number.isSafeInteger(cursor) || cursor < 0) {
+  if (!Number.isSafeInteger(cursor) || cursor < 0
+    || !Number.isSafeInteger(dispatchedCalls) || dispatchedCalls < 0) {
     throw new RangeError('Fixed trace settlement diagnostic cursor is invalid');
   }
   const binding = budgetedProviderBindings.get(provider);
   if (!binding) return Object.freeze({
-    fromDispatchExclusive: cursor,
-    throughDispatch: cursor,
+    // Ordinary providers cannot produce wrapper receipts, but their empty
+    // interval is still stage-local evidence: it covers every dispatch the
+    // runner observed in this stage.
+    fromDispatchExclusive: 0,
+    throughDispatch: dispatchedCalls,
     truncated: false,
     entries: Object.freeze([]),
   });
@@ -345,6 +350,12 @@ export function fixedTraceSettlementDiagnosticLedger(
   const throughDispatch = binding.dispatchSequence - cursor;
   if (throughDispatch < 0) {
     throw new RangeError('Fixed trace settlement diagnostic cursor is ahead of provider dispatches');
+  }
+  // A wrapped provider owns authoritative dispatch and settlement state. Do
+  // not allow a runner-side count to shift its receipt interval or omit a
+  // redacted unknown-settlement receipt.
+  if (throughDispatch !== dispatchedCalls) {
+    throw new RangeError('Fixed trace settlement diagnostic dispatch count does not match the budget wrapper');
   }
   return Object.freeze({
     fromDispatchExclusive: 0,
