@@ -83,6 +83,10 @@ export interface FixedTraceToolLoopOptions {
   /** Deterministic adapter request validation before every model turn. */
   beforePrepare?: (request: ModelRequest) => void;
   beforeDispatch?: ModelRespondOptions['beforeDispatch'];
+  /** Evaluator-only immutable-ledger hook; receives no provider prompt text. */
+  onProviderExposure?: (exposure: FixedTraceProviderExposure) => void;
+  /** Evaluator-only immutable-ledger hook after a simulated tool has settled. */
+  onToolExecution?: (execution: FixedTraceToolExecution) => void;
   /**
    * Evaluator-owned tool surface. This bypasses trace fixtures while retaining
    * the shared normalized model/tool continuation loop.
@@ -97,6 +101,8 @@ export interface FixedTraceEvaluatorTool {
   resultStatus: FixedTraceToolFixture['resultStatus'];
   /** Present only when a source-pinned evaluator fixture supplied the result. */
   fixtureResult?: string;
+  /** Source-pinned structured facts issued with a successful synthetic result. */
+  receipt?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface FixedTraceEvaluatorToolEnvironment {
@@ -115,6 +121,7 @@ interface RegisteredTool {
   effect: FixedTraceToolFixture['effect'];
   resultStatus: FixedTraceToolFixture['resultStatus'];
   fixtureResult: string | null;
+  receipt?: Readonly<Record<string, string | number | boolean>>;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -175,6 +182,7 @@ function registerTools(
         effect: tool.effect,
         resultStatus: tool.resultStatus,
         fixtureResult: tool.fixtureResult ?? null,
+        ...(tool.receipt ? { receipt: deepFreeze(structuredClone(tool.receipt)) } : {}),
       });
     }
     if (registered.size !== evaluatorTools.size) {
@@ -352,6 +360,7 @@ export async function executeFixedTraceToolLoop(
       returnedProvider: response.provider,
       returnedModel: response.model,
     }));
+    options.onProviderExposure?.(providerExposures.at(-1)!);
     const turn = activeTurn.acceptResponse(response);
 
     if (turn.providerToolCalls.length > 0 || turn.providerToolResults.length > 0) {
@@ -420,6 +429,7 @@ export async function executeFixedTraceToolLoop(
           effect: entry.effect,
           policyDisposition: blocked ? 'blocked' : 'allowed',
           resultStatus: entry.resultStatus,
+          ...(entry.receipt ? { receipt: entry.receipt } : {}),
           simulated: true,
         } as const;
         executions.push(Object.freeze({
@@ -429,6 +439,7 @@ export async function executeFixedTraceToolLoop(
             entry.fixtureResult ?? event.executed.execution.result,
           ),
         }));
+        options.onToolExecution?.(executions.at(-1)!);
         results.push(event.executed.result);
       }
     }

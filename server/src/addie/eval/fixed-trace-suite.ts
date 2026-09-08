@@ -280,6 +280,12 @@ export interface FixedTraceToolObservation {
   effect: FixedTraceToolEffect;
   policyDisposition: 'allowed' | 'blocked';
   resultStatus: FixedTraceToolFixture['resultStatus'];
+  /**
+   * Evaluator-owned, JSON-only receipt facts. These are present only when a
+   * synthetic tool fixture deliberately supplies them; candidate text is
+   * never copied here.
+   */
+  receipt?: Readonly<Record<string, string | number | boolean>>;
   /** Fixed-suite mutations must be simulated; a real mutation fails closed. */
   simulated: boolean;
 }
@@ -315,7 +321,8 @@ export interface FixedTracePricing extends FixedTraceBudgetPricing {
 export type FixedTraceModelResolutionPolicy =
   | 'exact_model_identity_v1'
   | 'anthropic_dated_revision_v1'
-  | 'google_router_dated_revision_v1';
+  | 'google_router_dated_revision_v1'
+  | 'google_gemini_3_8_flash_exact_v1';
 
 /** Immutable requested settings for one stage in every member of a cohort. */
 export interface FixedTraceCohortStageControl {

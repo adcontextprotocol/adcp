@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, existsSync } from 'fs';
+import { createHash } from 'node:crypto';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { createLogger } from '../../logger.js';
@@ -301,6 +302,21 @@ export function loadResponseStyle(): string {
   if (cachedResponseStyle) return cachedResponseStyle;
   cachedResponseStyle = readFileSync(join(__dirname, RESPONSE_STYLE_FILE), 'utf-8').trim();
   return cachedResponseStyle;
+}
+
+/**
+ * Fingerprint the exact rendered prompt blocks, not just the TypeScript
+ * assembly code. Evaluation plans use this to bind Markdown, dynamic context,
+ * and a provider-specific adapter after the same rendering path production
+ * uses. Length prefixes make distinct block boundaries unambiguous.
+ */
+export function renderedPromptBlocksSha256(blocks: readonly string[]): string {
+  const hash = createHash('sha256');
+  for (const block of blocks) {
+    if (typeof block !== 'string') throw new TypeError('Rendered prompt block must be text');
+    hash.update(String(Buffer.byteLength(block, 'utf8'))).update(':').update(block).update('\0');
+  }
+  return hash.digest('hex');
 }
 
 export function invalidateRulesCache(): void {

@@ -699,6 +699,45 @@ export interface RulesOverride {
   systemPrompt: string;
 }
 
+/** Shared production assembly seam for direct-model evaluations. */
+export function buildAddieRuntimeSystemBlocks(input: Readonly<{
+  availableToolNames: readonly string[];
+  selectedToolSetNames?: readonly string[];
+  requestContext?: string;
+  rulesOverride?: RulesOverride;
+}>): ModelSystemBlock[] {
+  if (input.rulesOverride) {
+    return [
+      { text: input.rulesOverride.systemPrompt, cacheHint: 'ephemeral' },
+      ...(input.requestContext?.trim() ? [{ text: input.requestContext }] : []),
+    ];
+  }
+  const stableToolReference = buildAddieStableToolReference();
+  const scopedToolReference = buildAddieScopedToolReference({
+    availableToolNames: input.availableToolNames,
+    selectedToolSetNames: input.selectedToolSetNames,
+  });
+  try {
+    const basePrompt = loadCoreRules();
+    const scopedRules = loadScopedRules(input.selectedToolSetNames ?? []);
+    const constraints = loadConstraintRules();
+    const responseStyle = loadResponseStyle();
+    return [
+      { text: `${basePrompt}\n\n---\n\n${stableToolReference}`, cacheHint: 'ephemeral' },
+      { text: [scopedRules, scopedToolReference].filter(Boolean).join('\n\n---\n\n') },
+      ...(input.requestContext?.trim() ? [{ text: input.requestContext }] : []),
+      { text: `${constraints}\n\n---\n\n${responseStyle}` },
+    ];
+  } catch (error) {
+    logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
+    return [
+      { text: assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, stableToolReference), cacheHint: 'ephemeral' },
+      { text: scopedToolReference },
+      ...(input.requestContext?.trim() ? [{ text: input.requestContext }] : []),
+    ];
+  }
+}
+
 export interface AddieResponse {
   text: string;
   tools_used: string[];
@@ -1061,45 +1100,7 @@ export class AddieClaudeClient {
     requestContext?: string,
     rulesOverride?: RulesOverride,
   ): ModelSystemBlock[] {
-    if (rulesOverride) {
-      return [
-        { text: rulesOverride.systemPrompt, cacheHint: 'ephemeral' },
-        ...(requestContext?.trim() ? [{ text: requestContext }] : []),
-      ];
-    }
-
-    const stableToolReference = buildAddieStableToolReference();
-    const scopedToolReference = buildAddieScopedToolReference({
-      availableToolNames,
-      selectedToolSetNames,
-    });
-    try {
-      const basePrompt = loadCoreRules();
-      const scopedRules = loadScopedRules(selectedToolSetNames ?? []);
-      const constraints = loadConstraintRules();
-      const responseStyle = loadResponseStyle();
-      return [
-        {
-          text: `${basePrompt}\n\n---\n\n${stableToolReference}`,
-          cacheHint: 'ephemeral',
-        },
-        {
-          text: [scopedRules, scopedToolReference].filter(Boolean).join('\n\n---\n\n'),
-        },
-        ...(requestContext?.trim() ? [{ text: requestContext }] : []),
-        { text: `${constraints}\n\n---\n\n${responseStyle}` },
-      ];
-    } catch (error) {
-      logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
-      return [
-        {
-          text: assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, stableToolReference),
-          cacheHint: 'ephemeral',
-        },
-        { text: scopedToolReference },
-        ...(requestContext?.trim() ? [{ text: requestContext }] : []),
-      ];
-    }
+    return buildAddieRuntimeSystemBlocks({ availableToolNames, selectedToolSetNames, requestContext, rulesOverride });
   }
 
   private estimateMessageContentChars(content: readonly ModelMessageContent[]): number {

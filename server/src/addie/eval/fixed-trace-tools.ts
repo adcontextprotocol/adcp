@@ -9,6 +9,7 @@ import { MEETING_TOOLS } from '../mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../mcp/member-tools.js';
 import { PROPERTY_TOOLS } from '../mcp/property-tools.js';
 import { SI_HOST_TOOLS } from '../mcp/si-host-tools.js';
+import { CERTIFICATION_TOOLS } from '../mcp/certification-tools.js';
 import type { AddieTool } from '../types.js';
 import { FIXED_TRACE_SUITE, type FixedTraceCase } from './fixed-trace-suite.js';
 
@@ -24,7 +25,27 @@ const FIXED_TRACE_TOOL_SOURCES: readonly (readonly AddieTool[])[] = [
   ILLUSTRATION_TOOLS,
   PROPERTY_TOOLS,
   SI_HOST_TOOLS,
+  CERTIFICATION_TOOLS,
 ];
+
+/**
+ * Stable broad manifest for evaluator-only direct-tool discovery studies.
+ * It intentionally exposes every corpus-relevant registered definition to
+ * the model, rather than selecting definitions from an oracle route.
+ */
+export function allFixedTraceToolDefinitions(): AddieTool[] {
+  const definitions = new Map<string, AddieTool>();
+  for (const source of FIXED_TRACE_TOOL_SOURCES) {
+    for (const definition of source) {
+      const prior = definitions.get(definition.name);
+      if (prior && JSON.stringify(prior) !== JSON.stringify(definition)) {
+        throw new Error(`Conflicting fixed-trace tool definition: ${definition.name}`);
+      }
+      if (!prior) definitions.set(definition.name, definition);
+    }
+  }
+  return [...definitions.values()];
+}
 
 /**
  * Resolve the exact canonical definitions needed by the fixed suite.
