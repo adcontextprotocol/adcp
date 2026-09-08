@@ -3,6 +3,7 @@
  * production registration authority and never invokes a model provider.
  */
 import { createHash } from 'node:crypto';
+import { githubIssueReceiptFromStoredValue } from '../github-issue-receipt.js';
 import { renderedPromptBlocksSha256 } from '../rules/index.js';
 import { buildAddieRuntimeSystemBlocks } from '../claude-client.js';
 import { allFixedTraceToolDefinitions } from './fixed-trace-tools.js';
@@ -16,6 +17,14 @@ export const GEMINI_DIRECT_ABLATION_MODEL = 'gemini-3.8-flash' as const;
  * asserting coverage over arbitrary model prose.
  */
 export const GEMINI_DIRECT_SEMANTIC_RUBRIC_VERSION = 'gemini-direct-semantic-rubric-v1' as const;
+/**
+ * A synthetically chosen canonical receipt identity. Its only authority is
+ * `github-issue-receipt.ts`; the evaluator neither accepts nor mints an
+ * alternate receipt schema.
+ */
+export const GEMINI_DIRECT_SYNTHETIC_GITHUB_ISSUE_NUMBER = 2_147_483_647;
+export const GEMINI_DIRECT_SYNTHETIC_GITHUB_ISSUE_URL =
+  `https://github.com/adcontextprotocol/adcp/issues/${GEMINI_DIRECT_SYNTHETIC_GITHUB_ISSUE_NUMBER}`;
 
 export type GeminiDirectSemanticOutcome =
   | 'informational_response'
@@ -112,13 +121,14 @@ export function geminiDirectStructuredTraceFacts(
   const successfulCreateCall = createCalls.find((tool) => (
     tool.policyDisposition === 'allowed' && tool.resultStatus === 'ok'
   ));
-  const receipt = successfulCreateCall?.receipt;
-  const exactCurrentTurnReceipt = receipt?.trusted === true
-    && receipt.turn_id === trace.turnId
-    && receipt.tool_name === 'create_github_issue'
-    && receipt.outcome === 'succeeded'
-    && receipt.issue_number === 4242
-    && receipt.issue_url === 'https://github.example.invalid/synthetic/repo/issues/4242';
+  // The generic evaluator ledger is deliberately only a transport envelope.
+  // Re-parse its receipt with the production authority before measuring it.
+  const receipt = successfulCreateCall
+    ? githubIssueReceiptFromStoredValue(successfulCreateCall.receipt)
+    : null;
+  const exactCurrentTurnReceipt = receipt?.toolName === 'create_github_issue'
+    && receipt.issueNumber === GEMINI_DIRECT_SYNTHETIC_GITHUB_ISSUE_NUMBER
+    && receipt.issueUrl === GEMINI_DIRECT_SYNTHETIC_GITHUB_ISSUE_URL;
   const continuation = mutationCalls.length === 0
     ? 'not_required'
     : iterations > 1 ? 'post_tool_response_completed' : 'post_tool_response_missing';
@@ -128,7 +138,7 @@ export function geminiDirectStructuredTraceFacts(
     mutationToolCalled: mutationCalls.some((tool) => tool.policyDisposition === 'allowed'),
     trustedCurrentTurnReceipt: exactCurrentTurnReceipt,
     exactReceiptIdentifiers: exactCurrentTurnReceipt
-      ? Object.freeze({ issue_number: receipt.issue_number as number, issue_url: receipt.issue_url as string }) : null,
+      ? Object.freeze({ issue_number: receipt.issueNumber, issue_url: receipt.issueUrl }) : null,
     continuation,
     outcomeMatchesTrace: expectedReceipt
       ? createCalls.length === 1 && exactCurrentTurnReceipt && continuation === 'post_tool_response_completed'
