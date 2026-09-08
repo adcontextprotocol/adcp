@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalizeBrandDomain, assertValidBrandDomain, assertClaimableBrandDomain } from '../../src/services/identifier-normalization.js';
+import { canonicalizeBrandDomain, assertValidBrandDomain, assertRegistrableBrandDomain, assertClaimableBrandDomain } from '../../src/services/identifier-normalization.js';
 
 describe('canonicalizeBrandDomain', () => {
   it('strips https:// protocol', () => {
@@ -40,13 +40,39 @@ describe('canonicalizeBrandDomain', () => {
   });
 });
 
-describe('assertValidBrandDomain', () => {
+describe('brand domain validation', () => {
   it('accepts a typical apex domain', () => {
     expect(() => assertValidBrandDomain('kyber1.com')).not.toThrow();
   });
 
   it('accepts a multi-label subdomain', () => {
     expect(() => assertValidBrandDomain('app.kyber1.com')).not.toThrow();
+  });
+
+  it('rejects public suffixes, unknown suffixes, IP literals, and special-use names', () => {
+    for (const domain of [
+      'co.uk',
+      'brand.unknown',
+      '1.2.3.4',
+      'brand.local',
+      'brand.10.in-addr.arpa',
+      'example.com',
+    ]) {
+      expect(() => assertRegistrableBrandDomain(domain)).toThrow();
+    }
+  });
+
+  it('admits only narrow dotted development names with explicit opt-in', () => {
+    for (const domain of ['brand.localhost', 'brand.test', 'brand.example', 'brand.invalid', 'example.com']) {
+      expect(() => assertRegistrableBrandDomain(domain)).toThrow();
+      expect(() => assertRegistrableBrandDomain(domain, { allowDevelopmentDomains: true })).not.toThrow();
+    }
+    expect(() => assertRegistrableBrandDomain('localhost', { allowDevelopmentDomains: true })).toThrow();
+    expect(() => assertRegistrableBrandDomain('brand.local', { allowDevelopmentDomains: true })).toThrow();
+  });
+
+  it('rejects labels longer than 63 octets', () => {
+    expect(() => assertValidBrandDomain(`${'a'.repeat(64)}.com`)).toThrow();
   });
 
   it('rejects a single-label hostname', () => {
@@ -145,7 +171,7 @@ describe('assertClaimableBrandDomain', () => {
   it('does NOT match domains that merely look like a suffix substring', () => {
     // The suffix matcher requires a leading `.`; otherwise `xhubspotusercontent.com`
     // would falsely match `hubspotusercontent.com`.
-    expect(() => assertClaimableBrandDomain('foo.example.com')).not.toThrow();
+    expect(() => assertClaimableBrandDomain('foo.example-corp.com')).not.toThrow();
     expect(() => assertClaimableBrandDomain('myhubspotusercontent.com')).not.toThrow();
   });
 

@@ -2958,6 +2958,30 @@ async function runTests() {
     return true;
   });
 
+  await test('brand identity references require portable dotted domains', async () => {
+    for (const schemaFile of ['core/brand-ref.json', 'core/brand-key.json']) {
+      const schema = loadSchema(path.join(SCHEMA_BASE_DIR, schemaFile));
+      const testAjv = new Ajv({ allErrors: true, strict: false, loadSchema: loadExternalSchema });
+      addFormats(testAjv);
+      const validate = await testAjv.compileAsync(schema);
+
+      for (const domain of ['brand.example', 'ads.brand.co.uk', 'brand.localhost']) {
+        if (!validate({ domain })) {
+          return `${schemaFile} rejected dotted wire domain ${domain}: ${JSON.stringify(validate.errors)}`;
+        }
+      }
+      for (const domain of ['localhost', 'unknown', 'intranet']) {
+        if (validate({ domain })) {
+          return `${schemaFile} accepted single-label domain ${domain}`;
+        }
+      }
+      if (validate({ domain: `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(62)}` })) {
+        return `${schemaFile} accepted a domain longer than 253 characters`;
+      }
+    }
+    return true;
+  });
+
   // Test 13: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)

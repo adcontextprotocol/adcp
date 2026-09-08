@@ -13,7 +13,7 @@ import type {
 } from './types';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
-import { assertValidBrandDomain } from './services/identifier-normalization.js';
+import { assertRegistrableBrandDomain } from './services/identifier-normalization.js';
 import {
   observeBrandRelationshipDeclaration,
   type BrandRelationshipDeclaration,
@@ -203,15 +203,19 @@ export class BrandManager {
   // Cache for failed lookups (5 minutes, never longer than a resolution miss)
   private failedLookupCache: Cache<BrandValidationResult>;
   private observeRelationshipDeclaration: RelationshipDeclarationObserver;
+  private allowDevelopmentDomains: boolean;
 
   constructor(options: {
     observeRelationshipDeclaration?: RelationshipDeclarationObserver;
+    /** Admit only the protocol's reserved dotted development names. */
+    allowDevelopmentDomains?: boolean;
   } = {}) {
     this.validationCache = new Cache<BrandValidationResult>(BRAND_MANAGER_CACHE_TTL_SECONDS.origin / 60, BRAND_CACHE_MAX_ENTRIES);
     this.resolutionCache = new Cache<ResolvedBrand | null>(BRAND_MANAGER_CACHE_TTL_SECONDS.origin / 60, BRAND_CACHE_MAX_ENTRIES);
     this.failedLookupCache = new Cache<BrandValidationResult>(BRAND_MANAGER_CACHE_TTL_SECONDS.negative / 60, BRAND_FAILED_CACHE_MAX_ENTRIES);
     this.observeRelationshipDeclaration = options.observeRelationshipDeclaration
       ?? observeBrandRelationshipDeclaration;
+    this.allowDevelopmentDomains = options.allowDevelopmentDomains === true;
   }
 
   /**
@@ -273,7 +277,9 @@ export class BrandManager {
       .replace(/^https?:\/\//, '')
       .replace(/\/$/, '');
     try {
-      assertValidBrandDomain(normalized);
+      assertRegistrableBrandDomain(normalized, {
+        allowDevelopmentDomains: this.allowDevelopmentDomains,
+      });
       return normalized;
     } catch {
       return null;

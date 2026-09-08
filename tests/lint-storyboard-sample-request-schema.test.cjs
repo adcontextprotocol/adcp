@@ -289,6 +289,13 @@ test('normalizeSubstitutions produces a schema-valid currency placeholder', () =
   }), 'USD');
 });
 
+test('normalizeSubstitutions produces a schema-valid dotted domain placeholder', () => {
+  assert.equal(normalizeSubstitutions('$context.brand_domain', {
+    type: 'string',
+    pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$',
+  }), 'placeholder.example');
+});
+
 // Object-typed substitution synthesis — the lint change landed in this PR.
 // A substitution that lands at an object location (plain or inside a
 // discriminated oneOf) must produce a shape-valid placeholder or ajv will

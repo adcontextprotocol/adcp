@@ -1,3 +1,5 @@
+import { parse as parseTld } from 'tldts';
+
 /**
  * Identifier normalization for the property catalog.
  *
@@ -22,6 +24,23 @@ export function canonicalizeBrandDomain(raw: string): string {
 }
 
 const BRAND_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const DEVELOPMENT_DOMAIN_SUFFIXES = ['localhost', 'test', 'example', 'invalid'] as const;
+const DEVELOPMENT_DOMAIN_EXACT_NAMES = new Set(['example.com', 'example.net', 'example.org']);
+const SPECIAL_USE_DOMAIN_SUFFIXES = [
+  'alt', '6tisch.arpa', 'eap.arpa', 'eap-noob.arpa', 'home.arpa',
+  'in-addr.arpa', 'ip6.arpa', 'ipv4only.arpa', 'resolver.arpa', 'service.arpa',
+  'example', 'example.com', 'example.net', 'example.org', 'invalid', 'local',
+  'localhost', 'onion', 'test',
+] as const;
+
+function hasDomainSuffix(domain: string, suffix: string): boolean {
+  return domain === suffix || domain.endsWith(`.${suffix}`);
+}
+
+export function isDevelopmentBrandDomain(domain: string): boolean {
+  return DEVELOPMENT_DOMAIN_EXACT_NAMES.has(domain)
+    || DEVELOPMENT_DOMAIN_SUFFIXES.some((suffix) => domain.endsWith(`.${suffix}`));
+}
 
 /**
  * Throw if the canonicalized value isn't a plausible domain (multi-label,
@@ -30,8 +49,45 @@ const BRAND_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-
  * profile fields.
  */
 export function assertValidBrandDomain(canonical: string): void {
-  if (!BRAND_DOMAIN_RE.test(canonical) || canonical.length > 253) {
+  if (
+    !BRAND_DOMAIN_RE.test(canonical)
+    || canonical.length > 253
+    || canonical.split('.').some((label) => label.length > 63)
+  ) {
     throw new Error(`"${canonical}" is not a valid brand domain.`);
+  }
+
+}
+
+/**
+ * Throw unless a syntactically valid domain has a registrable parent in the
+ * ICANN or private Public Suffix List. Reserved dotted names may be admitted
+ * only by an explicit development-only caller option.
+ */
+export function assertRegistrableBrandDomain(
+  canonical: string,
+  options: { allowDevelopmentDomains?: boolean } = {},
+): void {
+  assertValidBrandDomain(canonical);
+
+  const developmentDomain = isDevelopmentBrandDomain(canonical);
+  if (developmentDomain && options.allowDevelopmentDomains === true) return;
+
+  const parsed = parseTld(canonical, {
+    allowPrivateDomains: true,
+    detectSpecialUse: true,
+    extractHostname: false,
+  });
+  const specialUse = SPECIAL_USE_DOMAIN_SUFFIXES.some((suffix) => hasDomainSuffix(canonical, suffix));
+  if (
+    developmentDomain
+    || specialUse
+    || parsed.isIp
+    || parsed.isSpecialUse
+    || !parsed.domain
+    || (!parsed.isIcann && !parsed.isPrivate)
+  ) {
+    throw new Error(`"${canonical}" is not a registrable production brand domain.`);
   }
 }
 

@@ -7,8 +7,9 @@
   "properties": {
     "domain": {
       "type": "string",
-      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "maxLength": 253,
+      "description": "Lowercase dotted domain that hosts /.well-known/brand.json or is registered for the brand. Single-label names such as localhost and intranet aliases are invalid. This schema checks portable wire syntax only; production resolvers additionally require a registrable domain and reject IP literals, IANA special-use names, and private or reserved resolution targets. SDK development overrides may admit only explicitly configured dotted test names and do not make those names production-conformant.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
     },
     "brand_id": {
       "$ref": "/schemas/core/brand-id.json",

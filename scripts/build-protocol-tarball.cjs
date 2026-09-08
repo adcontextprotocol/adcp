@@ -168,6 +168,30 @@ function pinPublishedVersion(filePath, publishedVersion) {
   });
 }
 
+function pinSchemaTreeVersion(schemaDir, publishedVersion) {
+  const latestMarker = '/schemas/latest/';
+  const pinnedMarker = `/schemas/${publishedVersion}/`;
+
+  function pinReferences(value) {
+    if (!value || typeof value !== 'object') return false;
+    let changed = false;
+    for (const [key, child] of Object.entries(value)) {
+      if ((key === '$id' || key === '$ref') && typeof child === 'string' && child.includes(latestMarker)) {
+        value[key] = child.replace(latestMarker, pinnedMarker);
+        changed = true;
+      } else if (pinReferences(child)) {
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  for (const relativePath of walk(schemaDir)) {
+    if (!relativePath.endsWith('.json')) continue;
+    updateJsonFile(path.join(schemaDir, relativePath), pinReferences);
+  }
+}
+
 function writeBundleReadme(bundleDir, version, isDev) {
   const extractedDir = isDev ? 'adcp-latest' : `adcp-${version}`;
   const quickstart = isDev
@@ -304,6 +328,7 @@ function stageBundle(
   pinGeneratedAt(path.join(schemasDst, 'manifest.json'), metadata.generatedAt);
   if (publishedVersion !== version) {
     pinPublishedVersion(path.join(schemasDst, 'index.json'), publishedVersion);
+    pinSchemaTreeVersion(schemasDst, publishedVersion);
   }
 
   const complianceSource = path.join(DIST_COMPLIANCE, version);
@@ -472,6 +497,7 @@ module.exports = {
   buildTarball,
   pinGeneratedAt,
   pinPublishedVersion,
+  pinSchemaTreeVersion,
   resolveBuildMetadata,
   writeIntegritySidecars
 };
