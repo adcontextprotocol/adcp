@@ -48,6 +48,7 @@ describe('dated prospective evaluation pricing cohort', () => {
     expect(sonnet.sourceEvidence.retrievedAt).toBe('2026-09-05T23:55:26.000Z');
     expect(officialDatedPricingRecordsForAudit().map((record) => record.source.url)).toEqual([
       'https://platform.claude.com/docs/en/about-claude/pricing',
+      'https://ai.google.dev/gemini-api/docs/pricing',
       'https://platform.claude.com/docs/en/about-claude/pricing',
       'https://platform.claude.com/docs/en/about-claude/pricing',
       'https://developers.openai.com/api/docs/models/gpt-5.6-luna',

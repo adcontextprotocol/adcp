@@ -114,7 +114,7 @@ describe('fixed trace provider budget', () => {
 
   it('preserves the sealed non-direct pricing surface and rejects former test profiles before dispatch', () => {
     const liveProfiles = fixedTraceApprovedPricingProfiles();
-    expect(liveProfiles).toHaveLength(4);
+    expect(liveProfiles).toHaveLength(5);
     for (const profile of liveProfiles) {
       expect(`${profile.expectedModel}\n${profile.profileId}\n${profile.source}`).not.toMatch(/synthetic|test/i);
     }

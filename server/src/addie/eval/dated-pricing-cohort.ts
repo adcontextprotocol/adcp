@@ -411,6 +411,7 @@ function assertRecord(record: unknown): asserts record is DatedPricingRecord {
   const sourceLabel = ownData(record, 'sourceLabel');
   const identityDependency = ownData(record, 'identityDependency');
   if (!['anthropic-router', 'anthropic-generation', 'openai-router-generator', 'openai-direct-full-suite-terra', 'openai-direct-full-suite-sol', 'google-router-generator', 'google-direct-full-suite-3-8', 'anthropic-direct-full-suite-opus'].includes(candidateId as string)
+  if (!['anthropic-router', 'anthropic-generation', 'openai-router-generator', 'openai-direct-full-suite-terra', 'openai-direct-full-suite-sol', 'google-router-generator', 'google-direct-full-suite-3-8', 'anthropic-direct-full-suite-opus'].includes(candidateId as string)
     || !['anthropic', 'openai', 'google'].includes(provider as string)
     || typeof model !== 'string' || !model.trim() || serviceTier !== 'standard'
     || typeof profileId !== 'string' || !profileId.trim() || typeof sourceLabel !== 'string' || !sourceLabel.trim()

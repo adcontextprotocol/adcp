@@ -315,7 +315,8 @@ export interface FixedTracePricing extends FixedTraceBudgetPricing {
 export type FixedTraceModelResolutionPolicy =
   | 'exact_model_identity_v1'
   | 'anthropic_dated_revision_v1'
-  | 'google_router_dated_revision_v1';
+  | 'google_router_dated_revision_v1'
+  | 'google_gemini_3_8_flash_exact_v1';
 
 /** Immutable requested settings for one stage in every member of a cohort. */
 export interface FixedTraceCohortStageControl {
