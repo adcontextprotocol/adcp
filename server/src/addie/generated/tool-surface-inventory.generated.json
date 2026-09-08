@@ -58,10 +58,10 @@
     }
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "97f5d4f76e7b10a28daebf9600e0800a9b702864e23372f9077a16c75fc48641",
+    "server/src/addie/claude-client.ts": "af1d59089917b5addbe6ff9471abc74c4ce43f48680dc582d4ffec24b4349ff3",
     "server/src/addie/request-tool-assembly.ts": "cf4443d27ec69940f22aa9fcf46fdefd3f444762259c2700ac8fa01554ead4da",
     "server/src/addie/request-tool-replay-binding.ts": "3aed4c0bd18032e4418b8fff7e8deb263936b6c75b27941f9818a2a9a87287f2",
-    "server/src/addie/prompts.ts": "f091b8d7dd9c3b09b9630d858370c4dff00260e05bdbf0fb2c94b9bb9ae958fa",
+    "server/src/addie/prompts.ts": "3ec621f3e97eb9109fb561b94ff625a0639460c84506aa63aeebd57f683790f4",
     "server/src/addie/tool-wire-shape.ts": "4c5bcb95c32164b153c0f9d36648ea9f885e1df05e9796fdd71684c56162a81e",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
