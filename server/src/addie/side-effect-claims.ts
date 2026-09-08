@@ -194,6 +194,13 @@ function githubClaims(text: string): { numbers: string[]; urls: string[] } {
   return { numbers, urls };
 }
 
+function githubClaimPairs(text: string): Array<{ number: string; url: string }> {
+  return responseSentences(text).flatMap((sentence) => (
+    [...sentence.matchAll(/\b(?:issue\s*)?#(\d+)\b[^.!?\n]*?(https:\/\/github\.com\/adcontextprotocol\/adcp\/issues\/\d+)/gi)]
+      .map((match) => ({ number: match[1], url: match[2] }))
+  ));
+}
+
 function isGithubSuccessClaim(text: string): boolean {
   if (/\b(?:issue\s+created|(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue|successfully\s+(?:filed|opened|created|submitted)|done\s*[—:-]\s*#\d+)/i.test(text)) return true;
   return githubClaims(text).urls.length > 0
@@ -333,6 +340,7 @@ export function enforceSideEffectClaimReceipts(
       return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'malformed_github_issue_receipt' };
     }
     const claimed = githubClaims(text);
+    const claimedPairs = githubClaimPairs(text);
     const numbers = new Set(trusted.map((receipt) => receipt!.number));
     const urls = new Set(trusted.map((receipt) => receipt!.url));
     const claimedNumbers = new Set([
@@ -340,6 +348,11 @@ export function enforceSideEffectClaimReceipts(
       ...claimed.urls.map((url) => /\/issues\/(\d+)$/i.exec(url)![1]),
     ]);
     if (
+      claimedPairs.some(({ number, url }) => (
+        !url.endsWith(`/issues/${number}`)
+        || !trusted.some((receipt) => receipt!.number === number && receipt!.url === url)
+      ))
+      ||
       claimed.numbers.some((number) => !numbers.has(number))
       || claimed.urls.some((url) => !urls.has(url))
       || (receipts.length > 1 && claimedNumbers.size === 0)

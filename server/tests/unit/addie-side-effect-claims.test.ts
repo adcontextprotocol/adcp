@@ -68,6 +68,13 @@ describe('side-effect receipt guard — escalation 567', () => {
       .toMatchObject({ enforced: true, reason: 'github_issue_receipt_claim_mismatch' });
   });
 
+  it('rejects crossed GitHub issue number and URL pairs', () => {
+    expect(enforceSideEffectClaimReceipts(
+      'I opened issue #701: https://github.com/adcontextprotocol/adcp/issues/702 and issue #702: https://github.com/adcontextprotocol/adcp/issues/701',
+      [issue(701), issue(702)],
+    )).toMatchObject({ enforced: true, reason: 'github_issue_receipt_claim_mismatch' });
+  });
+
   it('blocks mixed success/failure claims but permits repeated verified references', () => {
     expect(enforceSideEffectClaimReceipts("I've submitted issue #701 and issue #702.", [issue(701), issue(702, true)]))
       .toMatchObject({ enforced: true });
