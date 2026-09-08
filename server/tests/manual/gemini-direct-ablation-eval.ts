@@ -135,6 +135,9 @@ const plan = Object.freeze({ version: 'gemini-direct-ablation-execution-v2', cel
 const planSha256 = sha256(plan);
 
 if (softMaxUsd < reservationUsd) throw new Error('Soft maximum is below required whole-cell reservation');
+if (resolve(selector) !== resolve(geminiDirectAblationSelectorPath(cellId))) {
+  throw new Error('Gemini Direct accepts only the predeclared tuning selector for this cell');
+}
 if (validateOnly) {
   console.log(JSON.stringify({ validateOnly: true, providerCalls: 0, selectorConsumed: false, outputWritten: false, plan, planSha256 }));
   process.exit(0);
@@ -147,9 +150,6 @@ if (!/^[0-9a-f]{64}$/i.test(expectedSourceBundleSha256 ?? '') || expectedSourceB
 }
 if (!/^[0-9a-f]{64}$/i.test(expectedPlanSha256 ?? '') || expectedPlanSha256 !== planSha256) {
   throw new Error('Execute requires the exact pre-registered plan');
-}
-if (resolve(selector) !== resolve(geminiDirectAblationSelectorPath(cellId))) {
-  throw new Error('Execute accepts only the predeclared Gemini Direct tuning selector for this cell');
 }
 if (execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) throw new Error('Git source drift: execute only from exact clean reviewed head');
 const gitCommit = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).trim();
