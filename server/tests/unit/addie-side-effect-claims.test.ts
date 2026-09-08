@@ -216,6 +216,21 @@ describe('side-effect receipt guard — escalation 567', () => {
     ])).toMatchObject({ enforced: false });
   });
 
+  it('rejects crossed URLs between otherwise exact batched outcome receipts', () => {
+    const text = 'I scheduled the meeting. Meeting ID meet_701. Join at https://calendar.example/meet_701. Meeting ID meet_702. Join at https://calendar.example/meet_702.';
+    expect(enforceSideEffectClaimReceipts(text, [
+      tool('schedule_meeting', false, 'Meeting scheduled: meeting_id=meet_701 join_url=https://calendar.example/meet_702'),
+      tool('schedule_meeting', false, 'Meeting scheduled: meeting_id=meet_702 join_url=https://calendar.example/meet_701'),
+    ])).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+  });
+
+  it('does not allow escalation or certification operations to authorize each other', () => {
+    expect(enforceSideEffectClaimReceipts('I resolved the escalation.', [tool('escalate_to_admin')]))
+      .toMatchObject({ enforced: true, reason: 'unverified_escalation_resolved_claim' });
+    expect(enforceSideEffectClaimReceipts('I recorded the progress.', [tool('start_certification_exam')]))
+      .toMatchObject({ enforced: true, reason: 'unverified_certification_progress_recorded_claim' });
+  });
+
   it('binds each mixed-operation outcome to its own operation receipt', () => {
     const text = 'I added the member. Member ID mem_701. I saved the brand. Brand ID brand_702.';
     expect(enforceSideEffectClaimReceipts(text, [

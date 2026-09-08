@@ -66,7 +66,8 @@ const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
   { name: 'invoice sent', tools: ['send_invoice', 'confirm_send_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+sent\s+(?:the\s+)?invoice\b|\b(?:done\s*[—:-]\s*)?invoice\s+(?:(?:was|has been)\s+)?sent\b/i },
   { name: 'invoice resent', tools: ['resend_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+resent\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+resent\b/i },
   { name: 'billing update', tools: ['update_billing_email'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|changed)\s+(?:the\s+)?billing\s+email\b|\bbilling\s+email\s+(?:was|has been)\s+(?:updated|changed)\b/i },
-  { name: 'escalation', tools: ['resolve_escalation', 'escalate_to_admin'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:resolved|escalated|notified)\s+(?:the\s+)?(?:escalation|support\s+ticket|team)\b|\b(?:the\s+)?team\s+(?:has been|was)\s+notified\b|\bescalation\s+#?\d+\s+(?:was|has been)\s+resolved\b/i },
+  { name: 'escalation resolved', tools: ['resolve_escalation'], pattern: /\b(?:I(?:'ve| have)?|we)\s+resolved\s+(?:the\s+)?(?:escalation|support\s+ticket)\b|\bescalation\s+#?\d+\s+(?:was|has been)\s+resolved\b/i },
+  { name: 'escalation escalated', tools: ['escalate_to_admin'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:escalated|notified)\s+(?:the\s+)?(?:escalation|support\s+ticket|team)\b|\b(?:the\s+)?team\s+(?:has been|was)\s+notified\b/i },
   { name: 'meeting scheduled', tools: ['schedule_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+scheduled\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+scheduled\b/i },
   { name: 'meeting created', tools: ['schedule_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+created\s+(?:(?:an?|the)\s+)?meeting\b(?!\s+agenda\b)/i },
   { name: 'meeting updated', tools: ['update_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+updated\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+updated\b/i },
@@ -84,7 +85,11 @@ const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
   { name: 'event invited', tools: ['invite_to_event'], pattern: /\b(?:I(?:'ve| have)?|we)\s+invited\s+(?:an?\s+)?(?:member\s+to\s+)?event\b/i },
   { name: 'event registered', tools: ['manage_event_registrations', 'register_event_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+registered\s+(?:an?\s+)?(?:for\s+)?event\b/i },
   { name: 'member or registry update', tools: ['set_my_name', 'set_outreach_preference', 'update_my_profile', 'save_property', 'save_brand', 'save_agent', 'update_company_listing', 'update_company_logo', 'upload_brand_logo', 'join_working_group', 'withdraw_council_interest', 'express_council_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|saved|joined|withdrawn|uploaded)\s+(?:your\s+)?(?:profile|preference|property|brand|agent|working group|logo|listing)\b/i },
-  { name: 'certification record', tools: ['complete_certification_module', 'complete_certification_exam', 'start_certification_module', 'start_certification_exam', 'checkpoint_teaching_progress'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:completed|started|recorded)\s+(?:the\s+)?(?:module|exam|certification|progress)\b/i },
+  { name: 'certification module completed', tools: ['complete_certification_module'], pattern: /\b(?:I(?:'ve| have)?|we)\s+completed\s+(?:the\s+)?(?:module|certification)\b/i },
+  { name: 'certification exam completed', tools: ['complete_certification_exam'], pattern: /\b(?:I(?:'ve| have)?|we)\s+completed\s+(?:the\s+)?exam\b/i },
+  { name: 'certification module started', tools: ['start_certification_module'], pattern: /\b(?:I(?:'ve| have)?|we)\s+started\s+(?:the\s+)?(?:module|certification)\b/i },
+  { name: 'certification exam started', tools: ['start_certification_exam'], pattern: /\b(?:I(?:'ve| have)?|we)\s+started\s+(?:the\s+)?exam\b/i },
+  { name: 'certification progress recorded', tools: ['checkpoint_teaching_progress'], pattern: /\b(?:I(?:'ve| have)?|we)\s+recorded\s+(?:the\s+)?progress\b/i },
   { name: 'external state change', tools: [...SIDE_EFFECT_TOOL_NAMES], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|expressed|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\s+(?:an?\s+|the\s+|your\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|domain\s+challenge|account|record|property|brand|brand\s+ownership|agent|listing|logo|asset|content|post|working\s+group|meeting(?!\s+agenda\b)|attendee|event|event\s+registration|invoice|payment|payment\s+link|escalation|council\s+interest|catalog\s+entry|certification|module|exam|progress|perspective\s+illustration|illustration|portrait|token|introduction|revisions|preference|profile|name|topic\s+subscription)\b|\b(?:the\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|account|record|property|brand|agent|listing|logo|asset|content|post|working\s+group|meeting(?!\s+agenda\b)|event|invoice|payment|escalation|catalog\s+entry|certification|module|exam|perspective\s+illustration|illustration|portrait|token|introduction)\s+(?:(?:has|have)\s+been|was)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\b/i },
 ];
 
@@ -234,7 +239,9 @@ function claimedReceiptIdentifiers(text: string): string[] {
 
 function receiptContainsExactValue(receipt: ToolExecution, value: string): boolean {
   if (value.startsWith('https://')) return receiptUrls(receipt.result).includes(value);
-  return receipt.result
+  // A URL path fragment must not masquerade as a separately claimed ID. That
+  // would let crossed ID/URL pairs appear co-located in one receipt.
+  return receipt.result.replace(/https?:\/\/[^\s<>()\[\]"'=]+/gi, ' ')
     .split(/[^A-Za-z0-9_-]+/)
     .some((token) => token === value);
 }
@@ -244,13 +251,13 @@ function receiptClaimsMatch(
   identifiers: readonly string[],
   urls: readonly string[],
 ): boolean {
-  // A lone identifier and URL describe one outcome even when prose puts their
-  // labels in adjacent sentences, so they must be present in the same receipt.
-  if (identifiers.length === 1 && urls.length === 1) {
-    return receipts.some((receipt) => (
-      receiptContainsExactValue(receipt, identifiers[0])
-      && receiptContainsExactValue(receipt, urls[0])
-    ));
+  // Ordered ID/URL pairs describe ordered outcomes even when prose puts their
+  // labels in adjacent sentences. Every pair must share its exact receipt.
+  if (identifiers.length > 0 && identifiers.length === urls.length) {
+    return identifiers.every((identifier, index) => receipts.some((receipt) => (
+      receiptContainsExactValue(receipt, identifier)
+      && receiptContainsExactValue(receipt, urls[index])
+    )));
   }
   // A batched response can legitimately describe multiple independently
   // confirmed outcomes. Do not reject it merely because separate receipts hold
