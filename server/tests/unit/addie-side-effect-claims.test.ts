@@ -208,6 +208,14 @@ describe('side-effect receipt guard — escalation 567', () => {
     ])).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
   });
 
+  it('permits multiple exact identifiers from separate receipts in one turn', () => {
+    const text = 'I sent the invoice. Invoice ID inv_701. I sent the invoice. Invoice ID inv_702.';
+    expect(enforceSideEffectClaimReceipts(text, [
+      tool('send_invoice', false, 'Invoice sent: invoice_id=inv_701'),
+      tool('send_invoice', false, 'Invoice sent: invoice_id=inv_702'),
+    ])).toMatchObject({ enforced: false });
+  });
+
   it('does not authorize a URL prefix when the exact receipt URL differs', () => {
     expect(enforceSideEffectClaimReceipts(
       'I created a payment link: https://payments.example/checkout',

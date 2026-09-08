@@ -219,7 +219,10 @@ function claimedReceiptIdentifiers(text: string): string[] {
   const namedLabel = /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|record|request|invitation|member|organization|document|bookmark|reminder)\s+(?:id|number|reference|code)\s*(?::|\bis\b|\s+)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
   const namedHash = /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|record|request|invitation|member|organization|document|bookmark|reminder)\s*#(\d+)\b/gi;
   const labelled = /\b(?:id|number|reference|confirmation\s+code)\s*(?::|\bis\b|\s+)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
-  return [...text.matchAll(namedLabel), ...text.matchAll(namedHash), ...text.matchAll(labelled)].map((match) => match[1]);
+  return [...new Set(
+    [...text.matchAll(namedLabel), ...text.matchAll(namedHash), ...text.matchAll(labelled)]
+      .map((match) => match[1]),
+  )];
 }
 
 function receiptContainsExactValue(receipt: ToolExecution, value: string): boolean {
@@ -227,6 +230,27 @@ function receiptContainsExactValue(receipt: ToolExecution, value: string): boole
   return receipt.result
     .split(/[^A-Za-z0-9_-]+/)
     .some((token) => token === value);
+}
+
+function receiptClaimsMatch(
+  receipts: readonly ToolExecution[],
+  identifiers: readonly string[],
+  urls: readonly string[],
+): boolean {
+  // A lone identifier and URL describe one outcome even when prose puts their
+  // labels in adjacent sentences, so they must be present in the same receipt.
+  if (identifiers.length === 1 && urls.length === 1) {
+    return receipts.some((receipt) => (
+      receiptContainsExactValue(receipt, identifiers[0])
+      && receiptContainsExactValue(receipt, urls[0])
+    ));
+  }
+  // A batched response can legitimately describe multiple independently
+  // confirmed outcomes. Do not reject it merely because separate receipts hold
+  // separate exact IDs or URLs.
+  return [...urls, ...identifiers].every((value) => (
+    receipts.some((receipt) => receiptContainsExactValue(receipt, value))
+  ));
 }
 
 export interface SideEffectClaimGuardResult {
@@ -256,10 +280,10 @@ export function enforceSideEffectClaimReceipts(
     if (rule.name !== 'GitHub issue') {
       const claimedUrls = claimedReceiptUrls(text, rule);
       const claimedIdentifiers = claimedReceiptIdentifiers(text);
-      const claimedValues = [...claimedUrls, ...claimedIdentifiers];
-      if (claimedValues.length > 0 && !receipts.some((receipt) => (
-        claimedValues.every((value) => receiptContainsExactValue(receipt, value))
-      ))) {
+      if (
+        (claimedUrls.length > 0 || claimedIdentifiers.length > 0)
+        && !receiptClaimsMatch(receipts, claimedIdentifiers, claimedUrls)
+      ) {
         return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: 'side_effect_receipt_claim_mismatch' };
       }
       continue;
