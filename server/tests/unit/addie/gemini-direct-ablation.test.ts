@@ -43,6 +43,7 @@ describe('Gemini Direct ablation declarations', () => {
 
   it('fails closed for plausible IDs, URLs, and completion wording without an exact current receipt', () => {
     expect(geminiDirectReceiptClaimCheck('Done—ticket 999 is live.', 'none').unverifiedClaim).toBe(true);
+    expect(geminiDirectReceiptClaimCheck('I raised the tracker item successfully.', 'none').unverifiedClaim).toBe(true);
     expect(geminiDirectReceiptClaimCheck('I created issue #999.', 'prior_turn_github_success').unverifiedClaim).toBe(true);
     expect(geminiDirectReceiptClaimCheck('Created issue #4242 at https://github.example.invalid/synthetic/repo/issues/4242.', 'current_turn_github_success')).toEqual({ exactPositive: true, unverifiedClaim: false });
     expect(geminiDirectReceiptClaimCheck('Created issue #999.', 'current_turn_github_success').exactPositive).toBe(false);
