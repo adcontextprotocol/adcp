@@ -32,8 +32,8 @@ import {
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
 import {
   blockCheckpointedToolReplays,
-  buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
@@ -1351,12 +1351,12 @@ export function createAddieChatRouter(options?: {
           currentSpeakerName: displayName || undefined,
           inputAttachments: attachments,
           reserveSideEffect: async ({ toolName, parameters }) => {
-            await threadService.addMessage(buildToolIntentCheckpoint({
+            await reserveToolIntentCheckpoint(threadService, {
               threadId: thread.thread_id,
               toolName,
               parameters,
               requestedModel: effectiveModel,
-            }));
+            });
           },
           ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
           costScope: authedScope
@@ -1897,13 +1897,13 @@ export function createAddieChatRouter(options?: {
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await threadService.addMessage(buildToolIntentCheckpoint({
+          await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
             requestedModel: effectiveModel,
             clientRequestId: clientRequestId || undefined,
-          }));
+          });
         },
         ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
         ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),

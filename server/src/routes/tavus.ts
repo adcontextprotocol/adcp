@@ -96,8 +96,8 @@ import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
 import { getThreadService } from "../addie/thread-service.js";
 import {
-  buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
 } from "../addie/stream-tool-checkpoints.js";
 import { optionalAuth } from "../middleware/auth.js";
 import {
@@ -978,12 +978,12 @@ export function createTavusRouter(options?: {
           costScope,
           reserveSideEffect: async ({ toolName, parameters }) => {
             if (!threadId) throw new Error('A durable conversation thread is required for an external action');
-            await getThreadService().addMessage(buildToolIntentCheckpoint({
+            await reserveToolIntentCheckpoint(getThreadService(), {
               threadId,
               toolName,
               parameters,
               requestedModel: AddieModelConfig.voice,
-            }));
+            });
           },
         }
       )) {

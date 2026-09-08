@@ -122,12 +122,21 @@ describe('side-effect receipt guard — escalation 567', () => {
       false,
       'Meeting scheduled: meeting_id=meet_701; join_url=https://calendar.example/meet_701',
     );
-    const confirmed = 'I scheduled the meeting. Meeting ID: meet_701. Meeting URL: https://calendar.example/meet_701';
+    const confirmed = 'I scheduled the meeting. Meeting ID meet_701. Join at https://calendar.example/meet_701';
     expect(enforceSideEffectClaimReceipts(confirmed, [receipt])).toMatchObject({ enforced: false });
     expect(enforceSideEffectClaimReceipts(
-      'I scheduled the meeting. Meeting ID: meet_999. Meeting URL: https://calendar.example/meet_999',
+      'I scheduled the meeting. Meeting ID meet_999. Join at https://calendar.example/meet_999',
       [receipt],
     )).toMatchObject({ enforced: true, reason: 'side_effect_receipt_claim_mismatch' });
+    expect(enforceSideEffectClaimReceipts('I scheduled the meeting. The meeting is confirmed.', [receipt]))
+      .toMatchObject({ enforced: false });
+  });
+
+  it('requires the tool for the claimed operation, not merely another tool in the same family', () => {
+    expect(enforceSideEffectClaimReceipts('I cancelled the meeting.', [tool('update_meeting')]))
+      .toMatchObject({ enforced: true });
+    expect(enforceSideEffectClaimReceipts('I resent the invoice.', [tool('send_invoice')]))
+      .toMatchObject({ enforced: true });
   });
 
   it('does not treat an unrelated documentation URL as a claimed mutation receipt', () => {

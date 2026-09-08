@@ -3,6 +3,7 @@ import {
   blockCheckpointedToolReplays,
   buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
 } from '../../../src/addie/stream-tool-checkpoints.js';
 
 const execution = {
@@ -57,6 +58,40 @@ describe('stream tool checkpoints', () => {
       result: 'External action dispatch reserved; outcome unknown.',
       is_error: true,
     }]);
+  });
+
+  it('refuses an exact replay with a durable unknown outcome before writing another reservation', async () => {
+    const addMessage = vi.fn();
+    const threadService = {
+      getThreadMessages: vi.fn().mockResolvedValue([{
+        delivery_status: 'interrupted',
+        tool_calls: [{
+          name: 'schedule_meeting', input: execution.parameters,
+          result: 'External action dispatch reserved; outcome unknown.', is_error: true,
+        }],
+      }]),
+      addMessage,
+    };
+
+    await expect(reserveToolIntentCheckpoint(threadService as never, {
+      threadId: 'thread-1', toolName: 'schedule_meeting',
+      parameters: execution.parameters, requestedModel: 'claude-sonnet-5',
+    })).rejects.toThrow('unknown prior outcome');
+    expect(addMessage).not.toHaveBeenCalled();
+  });
+
+  it('writes a new reservation only after checking that no unknown outcome exists', async () => {
+    const addMessage = vi.fn().mockResolvedValue(undefined);
+    const threadService = { getThreadMessages: vi.fn().mockResolvedValue([]), addMessage };
+
+    await reserveToolIntentCheckpoint(threadService as never, {
+      threadId: 'thread-1', toolName: 'schedule_meeting',
+      parameters: execution.parameters, requestedModel: 'claude-sonnet-5',
+    });
+
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      tool_calls: [expect.objectContaining({ result: 'External action dispatch reserved; outcome unknown.' })],
+    }));
   });
 
   it('blocks only exact completed calls and preserves the existing policy', async () => {

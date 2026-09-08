@@ -63,14 +63,24 @@ interface ClaimRule {
 // prose never supplies confirmation; only the current request ledger can.
 const SIDE_EFFECT_CLAIM_RULES: readonly ClaimRule[] = [
   { name: 'GitHub issue', tools: ['create_github_issue'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:just\s+)?(?:filed|opened|created|submitted)\s+(?:(?:an?\s+)?(?:GitHub\s+)?issue\b|#\d+\b)|\b(?:filed|opened|created|submitted)\s+(?:an?\s+)?GitHub\s+issue\b|\b(?:GitHub\s+)?issue(?:\s+#\d+)?\s+(?:(?:was|has been)\s+)?(?:filed|opened|created|submitted)\b/i },
-  { name: 'invoice', tools: ['resend_invoice', 'send_invoice', 'confirm_send_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:sent|resent)\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+(?:sent|resent)\b/i },
+  { name: 'invoice sent', tools: ['send_invoice', 'confirm_send_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+sent\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+sent\b/i },
+  { name: 'invoice resent', tools: ['resend_invoice'], pattern: /\b(?:I(?:'ve| have)?|we)\s+resent\s+(?:the\s+)?invoice\b|\binvoice\s+(?:was|has been)\s+resent\b/i },
   { name: 'billing update', tools: ['update_billing_email'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|changed)\s+(?:the\s+)?billing\s+email\b|\bbilling\s+email\s+(?:was|has been)\s+(?:updated|changed)\b/i },
   { name: 'escalation', tools: ['resolve_escalation', 'escalate_to_admin'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:resolved|escalated|notified)\s+(?:the\s+)?(?:escalation|support\s+ticket|team)\b|\b(?:the\s+)?team\s+(?:has been|was)\s+notified\b|\bescalation\s+#?\d+\s+(?:was|has been)\s+resolved\b/i },
-  { name: 'meeting', tools: ['schedule_meeting', 'update_meeting', 'cancel_meeting', 'cancel_meeting_series', 'add_meeting_attendee', 'rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:scheduled|updated|cancelled|canceled|added)\s+(?:(?:an?|the)\s+)?(?:meeting|attendee)\b|\bmeeting\s+(?:was|has been)\s+(?:scheduled|updated|cancelled|canceled)\b/i },
+  { name: 'meeting scheduled', tools: ['schedule_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+scheduled\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+scheduled\b/i },
+  { name: 'meeting updated', tools: ['update_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+updated\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+updated\b/i },
+  { name: 'meeting cancelled', tools: ['cancel_meeting', 'cancel_meeting_series'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:cancelled|canceled)\s+(?:(?:an?|the)\s+)?meeting\b|\bmeeting\s+(?:was|has been)\s+(?:cancelled|canceled)\b/i },
+  { name: 'meeting attendee', tools: ['add_meeting_attendee', 'rsvp_to_meeting'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added\s+(?:an?\s+)?attendee|RSVP(?:'d|ed)?)\b/i },
   { name: 'payment link', tools: ['create_payment_link'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:created|generated|sent)\s+(?:an?\s+)?payment\s+link\b|\bpayment\s+link\s+(?:was|has been)\s+created\b/i },
   { name: 'direct message', tools: ['send_member_dm'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:sent|delivered)\s+(?:an?\s+)?(?:DM|direct message|notification)\b/i },
-  { name: 'content decision', tools: ['approve_content', 'reject_content', 'request_revisions', 'publish_brand_canonical_document', 'create_working_group_post'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:approved|rejected|published|posted|requested revisions)\s+(?:the\s+)?(?:content|post|document)\b/i },
-  { name: 'event change', tools: ['create_event', 'update_event', 'invite_to_event', 'manage_event_registrations', 'register_event_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:created|updated|invited|registered)\s+(?:an?\s+)?event\b/i },
+  { name: 'content approved', tools: ['approve_content'], pattern: /\b(?:I(?:'ve| have)?|we)\s+approved\s+(?:the\s+)?content\b/i },
+  { name: 'content rejected', tools: ['reject_content'], pattern: /\b(?:I(?:'ve| have)?|we)\s+rejected\s+(?:the\s+)?content\b/i },
+  { name: 'content published', tools: ['publish_brand_canonical_document', 'create_working_group_post'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:published|posted)\s+(?:the\s+)?(?:content|post|document)\b/i },
+  { name: 'content revisions requested', tools: ['request_revisions'], pattern: /\b(?:I(?:'ve| have)?|we)\s+requested revisions\s+(?:to|for)\s+(?:the\s+)?(?:content|post|document)\b/i },
+  { name: 'event created', tools: ['create_event'], pattern: /\b(?:I(?:'ve| have)?|we)\s+created\s+(?:an?\s+)?event\b/i },
+  { name: 'event updated', tools: ['update_event'], pattern: /\b(?:I(?:'ve| have)?|we)\s+updated\s+(?:an?\s+)?event\b/i },
+  { name: 'event invited', tools: ['invite_to_event'], pattern: /\b(?:I(?:'ve| have)?|we)\s+invited\s+(?:an?\s+)?(?:member\s+to\s+)?event\b/i },
+  { name: 'event registered', tools: ['manage_event_registrations', 'register_event_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+registered\s+(?:an?\s+)?(?:for\s+)?event\b/i },
   { name: 'member or registry update', tools: ['set_my_name', 'set_outreach_preference', 'update_my_profile', 'save_property', 'save_brand', 'save_agent', 'update_company_listing', 'update_company_logo', 'upload_brand_logo', 'join_working_group', 'withdraw_council_interest', 'express_council_interest'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:updated|saved|joined|withdrawn|uploaded)\s+(?:your\s+)?(?:profile|preference|property|brand|agent|working group|logo|listing)\b/i },
   { name: 'certification record', tools: ['complete_certification_module', 'complete_certification_exam', 'start_certification_module', 'start_certification_exam', 'checkpoint_teaching_progress'], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:completed|started|recorded)\s+(?:the\s+)?(?:module|exam|certification|progress)\b/i },
   { name: 'external state change', tools: [...SIDE_EFFECT_TOOL_NAMES], pattern: /\b(?:I(?:'ve| have)?|we)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|expressed|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\s+(?:an?\s+|the\s+|your\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|domain\s+challenge|account|record|property|brand|brand\s+ownership|agent|listing|logo|asset|content|post|working\s+group|meeting|attendee|event|event\s+registration|invoice|payment|payment\s+link|escalation|council\s+interest|catalog\s+entry|certification|module|exam|progress|perspective\s+illustration|illustration|portrait|token|introduction|revisions|preference|profile|name|topic\s+subscription)\b|\b(?:the\s+)?(?:resource|bookmark|reminder|member|organization|chapter|committee|co-leader|document|discount|contact|prospect|invitation|invite|domain|account|record|property|brand|agent|listing|logo|asset|content|post|working\s+group|meeting|event|invoice|payment|escalation|catalog\s+entry|certification|module|exam|perspective\s+illustration|illustration|portrait|token|introduction)\s+(?:(?:has|have)\s+been|was)\s+(?:added|approved|attached|bookmarked|cancelled|canceled|completed|created|deleted|disputed|enhanced|filed|generated|imported|invited|issued|joined|managed|notified|offered|posted|published|registered|removed|renamed|requested|revoked|saved|scheduled|sent|set|started|transferred|triaged|updated|uploaded|verified|withdrew)\b/i },
@@ -84,6 +94,27 @@ function successful(executions: readonly ToolExecution[], names: readonly string
     && execution.result.trim() !== 'The tool returned no content.'
     && !legacyResultIndicatesFailure(execution.result)
   ));
+}
+
+const CLAIM_ACTION_TOOL_PREFIX: Readonly<Record<string, string>> = {
+  added: 'add_', approved: 'approve_', attached: 'attach_', bookmarked: 'bookmark_',
+  cancelled: 'cancel_', canceled: 'cancel_', completed: 'complete_', created: 'create_',
+  deleted: 'delete_', disputed: 'dispute_', enhanced: 'enhance_', expressed: 'express_',
+  generated: 'generate_', imported: 'import_', invited: 'invite_', issued: 'issue_',
+  joined: 'join_', managed: 'manage_', notified: 'notify_', offered: 'offer_', posted: 'post_',
+  published: 'publish_', registered: 'register_', removed: 'remove_', renamed: 'rename_',
+  requested: 'request_', revoked: 'revoke_', saved: 'save_', scheduled: 'schedule_',
+  sent: 'send_', set: 'set_', started: 'start_', transferred: 'transfer_', triaged: 'triage_',
+  updated: 'update_', uploaded: 'upload_', verified: 'verify_', withdrew: 'withdraw_',
+};
+
+function successfulExternalClaimReceipts(text: string, executions: readonly ToolExecution[]): ToolExecution[] {
+  const action = Object.entries(CLAIM_ACTION_TOOL_PREFIX)
+    .find(([verb]) => new RegExp(`\\b${verb}\\b`, 'i').test(text));
+  if (!action) return [];
+  const prefix = action[1];
+  return successful(executions, [...SIDE_EFFECT_TOOL_NAMES])
+    .filter((execution) => execution.tool_name.startsWith(prefix));
 }
 
 function githubReceipt(execution: ToolExecution): { number: string; url: string } | null {
@@ -121,7 +152,8 @@ function claimedReceiptUrls(text: string, rule: ClaimRule): string[] {
   const sentences = text.split(/(?<=[.!?])\s+/);
   return sentences.flatMap((sentence) => {
     const isOutcomeSentence = rule.pattern.test(sentence)
-      || /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|resource)\s+(?:url|link)\b|\b(?:url|link)\s*:/i.test(sentence);
+      || /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|resource)\s+(?:url|link)\b|\b(?:url|link)\s*:/i.test(sentence)
+      || /\b(?:join|access|view|open|track)\s+(?:at|here|via)\b/i.test(sentence);
     if (!isOutcomeSentence) return [];
     return sentence.split(/[\s<>()\[\]]+/).map((token) => token.replace(/[.,:;!?]+$/, '')).filter((token) => {
       try {
@@ -139,9 +171,10 @@ function claimedReceiptUrls(text: string, rule: ClaimRule): string[] {
  * "meeting ID", "invoice #", and a following "ID: ..." result sentence.
  */
 function claimedReceiptIdentifiers(text: string): string[] {
-  const named = /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|record|request|invitation|member|organization|document|bookmark|reminder)\s*(?:id|number|reference|code)?\s*(?::|\bis\b|#)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
-  const labelled = /\b(?:id|number|reference|confirmation\s+code)\s*(?::|\bis\b)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
-  return [...text.matchAll(named), ...text.matchAll(labelled)].map((match) => match[1]);
+  const namedLabel = /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|record|request|invitation|member|organization|document|bookmark|reminder)\s+(?:id|number|reference|code)\s*(?::|\bis\b|\s+)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
+  const namedHash = /\b(?:issue|ticket|meeting|event|invoice|payment|confirmation|record|request|invitation|member|organization|document|bookmark|reminder)\s*#(\d+)\b/gi;
+  const labelled = /\b(?:id|number|reference|confirmation\s+code)\s*(?::|\bis\b|\s+)\s*#?([A-Za-z0-9][A-Za-z0-9_-]{1,})\b/gi;
+  return [...text.matchAll(namedLabel), ...text.matchAll(namedHash), ...text.matchAll(labelled)].map((match) => match[1]);
 }
 
 function receiptContainsExactValue(receipt: ToolExecution, value: string): boolean {
@@ -166,7 +199,9 @@ export function enforceSideEffectClaimReceipts(
   for (const rule of SIDE_EFFECT_CLAIM_RULES) {
     const githubClaim = rule.name === 'GitHub issue' && isGithubSuccessClaim(text);
     if (!githubClaim && !rule.pattern.test(text)) continue;
-    const receipts = successful(executions, rule.tools);
+    const receipts = rule.name === 'external state change'
+      ? successfulExternalClaimReceipts(text, executions)
+      : successful(executions, rule.tools);
     if (receipts.length === 0) {
       return { text: UNCONFIRMED_SIDE_EFFECT_FALLBACK, enforced: true, reason: `unverified_${rule.name.replaceAll(' ', '_')}_claim` };
     }

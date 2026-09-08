@@ -174,8 +174,8 @@ import {
 } from './thread-utils.js';
 import {
   blockCheckpointedToolReplays,
-  buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
   type StoredToolCall,
 } from './stream-tool-checkpoints.js';
 import type { ToolExecution } from './model-providers/tool-orchestration.js';
@@ -2160,12 +2160,12 @@ async function handleUserMessage({
       for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await threadService.addMessage(buildToolIntentCheckpoint({
+          await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
             requestedModel: dmEffectiveModel,
-          }));
+          });
         },
       })) {
         streamState = await interpretSlackDmStreamEvent(
@@ -2370,12 +2370,12 @@ async function handleUserMessage({
       response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await threadService.addMessage(buildToolIntentCheckpoint({
+          await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
             requestedModel: dmEffectiveModel,
-          }));
+          });
         },
       });
       fullText = response.text;
@@ -2944,12 +2944,12 @@ export async function handleAppMention({
     response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await threadService.addMessage(buildToolIntentCheckpoint({
+        await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
           requestedModel: mentionEffectiveModel,
-        }));
+        });
       },
     });
   } catch (error) {
@@ -4287,12 +4287,12 @@ async function handleDirectMessage(
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await threadService.addMessage(buildToolIntentCheckpoint({
+        await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
           requestedModel: directMessageEffectiveModel,
-        }));
+        });
       },
     });
   } catch (error) {
@@ -4710,12 +4710,12 @@ async function handleActiveThreadReply({
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await threadService.addMessage(buildToolIntentCheckpoint({
+        await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
           requestedModel: activeThreadEffectiveModel,
-        }));
+        });
       },
     });
   } catch (error) {
@@ -5343,12 +5343,12 @@ async function handleChannelMessage({
       {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await threadService.addMessage(buildToolIntentCheckpoint({
+          await reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
             requestedModel: processOptions.modelOverride ?? AddieModelConfig.chat,
-          }));
+          });
         },
       },
     );
@@ -6322,12 +6322,12 @@ async function handleReactionAdded({
     response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await threadService.addMessage(buildToolIntentCheckpoint({
+        await reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
           requestedModel: AddieModelConfig.chat,
-        }));
+        });
       },
     });
   } catch (error) {
