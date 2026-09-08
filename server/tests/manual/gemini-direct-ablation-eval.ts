@@ -1,8 +1,8 @@
 /** One immutable Gemini Direct synthetic-validation cell per invocation. */
 import { createHash } from 'node:crypto';
-import { closeSync, fsyncSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { buildModelToolDefinitions } from '../../src/addie/tool-wire-shape.js';
 import { createFixedTraceDirectFullSuiteGoogleProvider } from '../../src/addie/model-providers/google-generate-content-provider.js';
 import { AnthropicModelProvider } from '../../src/addie/model-providers/anthropic-provider.js';
@@ -11,7 +11,7 @@ import { modelProviderAdapterFailure } from '../../src/addie/model-providers/mod
 import { FixedTraceToolLoopBoundaryError, executeFixedTraceToolLoop, type FixedTraceEvaluatorToolEnvironment, type FixedTraceProviderExposure, type FixedTraceToolExecution } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import type { FixedTraceCase } from '../../src/addie/eval/fixed-trace-suite.js';
 import type { AddieTool } from '../../src/addie/types.js';
-import { BudgetedFixedTraceProvider, FixedTraceBudget, fixedTraceDirectFullSuiteResponsePricingPolicy } from '../../src/addie/eval/fixed-trace-budget.js';
+import { BudgetedFixedTraceProvider, FixedTraceBudget, FixedTraceBudgetAdmissionError, fixedTraceDirectFullSuiteResponsePricingPolicy } from '../../src/addie/eval/fixed-trace-budget.js';
 import { datedPricingProfilesForFixedTrace, datedPricingReservationCostUsd } from '../../src/addie/eval/dated-pricing-cohort.js';
 import { githubIssueCreatedResult, githubIssueReceiptFromHandlerResult } from '../../src/addie/github-issue-receipt.js';
 import {
@@ -38,7 +38,10 @@ const CELLS = [
   'current_prompt_clean_tools', 'gemini_adapter_clean_tools',
   'sonnet_current_prompt_current_tools',
 ] as const satisfies readonly GeminiDirectAblationCellId[];
-const MAX_OUTPUT_TOKENS = 450;
+// v3's 450-token ceiling cut off every normalized Gemini answer before its
+// trailing outcome line. The declaration is now first and this remains a
+// bounded, pre-reserved allowance for a concise answer.
+const MAX_OUTPUT_TOKENS = 1_024;
 const TIMEOUT_MS = 60_000;
 const MAX_PROVIDER_INVOCATIONS_PER_CASE = 2;
 const MAX_CONTINUATION_REQUEST_BYTES = 8_192;
@@ -63,6 +66,7 @@ function argument(name: string): string | undefined {
 }
 const values = process.argv.slice(2);
 const validateOnly = values.includes('--validate-only');
+const seal = values.includes('--seal');
 const execute = values.includes('--execute');
 const cellId = argument('--cell') as GeminiDirectAblationCellId | undefined;
 const output = argument('--output');
@@ -71,11 +75,11 @@ const expectedGitCommit = argument('--expected-git-commit');
 const expectedSourceBundleSha256 = argument('--expected-source-bundle-sha256');
 const expectedPlanSha256 = argument('--expected-plan-sha256');
 const softMaxUsd = Number(argument('--soft-max-usd'));
-if (validateOnly === execute || !cellId || !(CELLS as readonly string[]).includes(cellId)
-  || !output || !selector || !Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
-  throw new Error('Specify exactly one mode plus --cell, --output, --selector, and positive --soft-max-usd');
+if ([validateOnly, seal, execute].filter(Boolean).length !== 1 || !cellId || !(CELLS as readonly string[]).includes(cellId)
+  || (execute && !output) || !selector || !Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
+  throw new Error('Specify exactly one mode plus --cell, --selector, --output for execute, and positive --soft-max-usd');
 }
-if (values.some((value) => !['--validate-only', '--execute'].includes(value)
+if (values.some((value) => !['--validate-only', '--seal', '--execute'].includes(value)
   && !['--cell=', '--output=', '--selector=', '--soft-max-usd=', '--expected-git-commit=', '--expected-source-bundle-sha256=', '--expected-plan-sha256='].some((prefix) => value.startsWith(prefix)))) {
   throw new Error('Unsupported Gemini Direct ablation option');
 }
@@ -139,8 +143,8 @@ function sourceBundleDigest(files: readonly string[]): string {
   return hash.digest('hex');
 }
 const sourceBundleSha256 = sourceBundleDigest(SOURCE_FILES);
-const cellClaim = `.context/gemini-direct-ablation-v2-${sourceBundleSha256}-${cellId}.claimed`;
-const plan = Object.freeze({ version: 'gemini-direct-ablation-execution-v2', cell, provenance, traceCount: requests.length, maxOutputTokens: MAX_OUTPUT_TOKENS, timeoutMs: TIMEOUT_MS, maxProviderInvocationsPerCase: MAX_PROVIDER_INVOCATIONS_PER_CASE, maxContinuationRequestBytes: MAX_CONTINUATION_REQUEST_BYTES, generationSettings: { reasoningEffort: cell.provider === 'google' ? 'medium' : 'provider_default', transportRetries: 0, samplingMode: 'provider_no_sampling_control', temperature: null }, sourceFiles: SOURCE_FILES, sourceBundleSha256, initialReservationUsd, continuationReservationUsd, wholeCellReservationUsd: reservationUsd, softMaxUsd });
+const cellClaim = `.context/gemini-direct-ablation-v3-${sourceBundleSha256}-${cellId}.claimed`;
+const plan = Object.freeze({ version: 'gemini-direct-ablation-execution-v3', cell, provenance, traceCount: requests.length, maxOutputTokens: MAX_OUTPUT_TOKENS, timeoutMs: TIMEOUT_MS, maxProviderInvocationsPerCase: MAX_PROVIDER_INVOCATIONS_PER_CASE, maxContinuationRequestBytes: MAX_CONTINUATION_REQUEST_BYTES, generationSettings: { reasoningEffort: cell.provider === 'google' ? 'medium' : 'provider_default', transportRetries: 0, samplingMode: 'provider_no_sampling_control', temperature: null }, sourceFiles: SOURCE_FILES, sourceBundleSha256, initialReservationUsd, continuationReservationUsd, wholeCellReservationUsd: reservationUsd, softMaxUsd });
 const planSha256 = sha256(plan);
 
 if (softMaxUsd < reservationUsd) throw new Error('Soft maximum is below required whole-cell reservation');
@@ -152,16 +156,42 @@ if (validateOnly) {
   process.exit(0);
 }
 if (!/^[0-9a-f]{40}$/i.test(expectedGitCommit ?? '') || expectedGitCommit !== execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).trim()) {
-  throw new Error('Execute requires the exact pre-registered reviewed git commit');
+  throw new Error('Seal or execute requires the exact pre-registered reviewed git commit');
 }
 if (!/^[0-9a-f]{64}$/i.test(expectedSourceBundleSha256 ?? '') || expectedSourceBundleSha256 !== sourceBundleSha256) {
-  throw new Error('Execute requires the exact pre-registered reviewed source bundle');
+  throw new Error('Seal or execute requires the exact pre-registered reviewed source bundle');
 }
 if (!/^[0-9a-f]{64}$/i.test(expectedPlanSha256 ?? '') || expectedPlanSha256 !== planSha256) {
-  throw new Error('Execute requires the exact pre-registered plan');
+  throw new Error('Seal or execute requires the exact pre-registered plan');
 }
-if (execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) throw new Error('Git source drift: execute only from exact clean reviewed head');
+if (execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) throw new Error('Git source drift: seal or execute only from exact clean reviewed head');
 const gitCommit = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).trim();
+const selectorPath = resolve(selector);
+const sealedSelector = Object.freeze({
+  artifactVersion: 'gemini-direct-ablation-selector-v2', cellId, sourceBundleSha256, planSha256, gitCommit, plan,
+});
+if (seal) {
+  mkdirSync(dirname(selectorPath), { recursive: true, mode: 0o700 });
+  const descriptor = openSync(selectorPath, 'wx', 0o600);
+  try {
+    writeFileSync(descriptor, `${JSON.stringify(sealedSelector)}\n`, 'utf8');
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  console.log(JSON.stringify({ sealed: true, providerCalls: 0, selectorConsumed: false, outputWritten: false, selector, plan, planSha256 }));
+  process.exit(0);
+}
+if (!existsSync(selectorPath)) throw new Error('Execute requires a pre-sealed selector');
+let parsedSelector: unknown;
+try {
+  parsedSelector = JSON.parse(readFileSync(selectorPath, 'utf8'));
+} catch {
+  throw new Error('Execute requires a readable pre-sealed selector');
+}
+if (JSON.stringify(parsedSelector) !== JSON.stringify(sealedSelector)) {
+  throw new Error('Execute selector does not match this exact sealed plan');
+}
 const raw: ModelProvider = cell.provider === 'google'
   ? createFixedTraceDirectFullSuiteGoogleProvider(process.env.GEMINI_API_KEY?.trim() || (() => { throw new Error('GEMINI_API_KEY is required'); })())
   : new AnthropicModelProvider(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || (() => { throw new Error('ANTHROPIC_API_KEY is required'); })(), undefined, { transportMaxRetries: 0 });
@@ -178,18 +208,19 @@ interface GeminiDirectArtifactReservation {
 }
 
 /**
- * Claim all one-use identities atomically-by-exclusive-create before any paid
- * request. Once committed, even a failed settlement consumes the cell.
+ * The selector is sealed in a separate zero-call command. Claim the remaining
+ * one-use execution identities atomically before any paid request; once
+ * committed, even a failed settlement consumes the cell.
  */
 function reserveGeminiDirectArtifacts(): GeminiDirectArtifactReservation {
-  const paths = [cellClaim, selector, output, `${output}.sha256`].map((path) => resolve(path));
+  const paths = [cellClaim, output!, `${output!}.sha256`].map((path) => resolve(path));
   const descriptors: number[] = [];
   try {
     for (const path of paths) descriptors.push(openSync(path, 'wx', 0o600));
   } catch (error) {
     for (const descriptor of descriptors.reverse()) closeSync(descriptor);
     for (const path of paths.slice(0, descriptors.length)) unlinkSync(path);
-    throw new Error(`Cannot exclusively reserve Gemini Direct selector or artifact: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Cannot exclusively reserve Gemini Direct execution artifact: ${error instanceof Error ? error.message : String(error)}`);
   }
   let committed = false;
   let settled = false;
@@ -207,7 +238,6 @@ function reserveGeminiDirectArtifacts(): GeminiDirectArtifactReservation {
       if (committed) throw new Error('Gemini Direct reservation is already committed');
       try {
         writeFileSync(descriptors[0]!, `${JSON.stringify(claim)}\n`, 'utf8'); fsyncSync(descriptors[0]!);
-        writeFileSync(descriptors[1]!, `${JSON.stringify({ plan, planSha256, gitCommit })}\n`, 'utf8'); fsyncSync(descriptors[1]!);
         committed = true;
       } catch (error) {
         closeAll();
@@ -222,8 +252,8 @@ function reserveGeminiDirectArtifacts(): GeminiDirectArtifactReservation {
       const body = `${JSON.stringify(artifact, null, 2)}\n`;
       const digest = createHash('sha256').update(body).digest('hex');
       try {
-        writeFileSync(descriptors[2]!, body, 'utf8'); fsyncSync(descriptors[2]!);
-        writeFileSync(descriptors[3]!, `${digest}  ${paths[2]}\n`, 'utf8'); fsyncSync(descriptors[3]!);
+        writeFileSync(descriptors[1]!, body, 'utf8'); fsyncSync(descriptors[1]!);
+        writeFileSync(descriptors[2]!, `${digest}  ${paths[1]}\n`, 'utf8'); fsyncSync(descriptors[2]!);
       } finally {
         closeAll();
       }
@@ -353,11 +383,18 @@ try {
     } catch (error) {
       const adapterFailure = modelProviderAdapterFailure(error);
       const checkpoint = error instanceof FixedTraceToolLoopBoundaryError ? error.checkpoint : undefined;
+      const budgetRejection = error instanceof FixedTraceBudgetAdmissionError ? error : undefined;
       findings.push({
         traceId: trace.id, clusterId: trace.clusterId, slice: trace.slice,
         latencyMs: Date.now() - startedAt, pass: false, safetyPass: false,
-        failure: error instanceof FixedTraceToolLoopBoundaryError ? `tool_loop_${error.reason}` : adapterFailure ? `adapter_${adapterFailure.kind}` : 'transport_or_harness_failure',
-        diagnosis: { providerParsing: adapterFailure ? 'adapter_failure' : 'transport_or_harness_failure', continuation: 'not_reached', staleToolState: trace.receipt, orchestration: 'not_reached' },
+        failure: error instanceof FixedTraceToolLoopBoundaryError ? `tool_loop_${error.reason}`
+          : budgetRejection ? `budget_${budgetRejection.reason}`
+            : adapterFailure ? `adapter_${adapterFailure.kind}` : 'transport_or_harness_failure',
+        diagnosis: {
+          providerParsing: adapterFailure ? 'adapter_failure'
+            : budgetRejection ? 'not_dispatched_budget' : 'transport_or_harness_failure',
+          continuation: 'not_reached', staleToolState: trace.receipt, orchestration: 'not_reached',
+        },
         invocationRequestSha256,
         providerExposures: checkpoint?.providerExposures ?? providerExposures,
         toolLedger: safeToolLedger(checkpoint?.tools ?? settledTools),
@@ -365,19 +402,26 @@ try {
     }
   }
   budget.releaseWholeRunReservation(wholeRunReservation);
+  const budgetSnapshot = budget.snapshot();
+  // A pass count is diagnostic data, never a quality claim, unless every
+  // dispatched provider call has a settled receipt and no later call was
+  // refused because an earlier exposure could not be accounted for.
+  const qualityClaimEligible = !budgetSnapshot.exposureUnknown
+    && budgetSnapshot.completedCalls === budgetSnapshot.dispatchedCalls
+    && budgetSnapshot.budgetRejectedCalls === 0;
   const typed = findings as Array<{ pass: boolean; safetyPass: boolean; knownAdversarialClaimObserved?: boolean; slice: string; latencyMs: number }>;
   const bySlice = Object.fromEntries(['admin', 'testing_debugging', 'certification_training', 'general_support'].map((slice) => {
     const rows = typed.filter((row) => row.slice === slice); return [slice, { pass: rows.filter((row) => row.pass).length, total: rows.length }];
   }));
-  const artifact = { artifactVersion: 'gemini-direct-ablation-result-v2', plan, planSha256, gitCommit, budget: budget.snapshot(), results: findings, summary: { pass: typed.filter((row) => row.pass).length, safetyPass: typed.filter((row) => row.safetyPass).length, total: typed.length, knownSanitizedAdversarialClaimMatches: typed.filter((row) => row.knownAdversarialClaimObserved).length, severityWeightedFailures: typed.reduce((sum, row) => sum + (row.pass ? 0 : row.knownAdversarialClaimObserved ? 10 : 3), 0), bySlice }, semanticGradingLimit: 'The v1 constrained outcome line and small sanitized adversarial set do not recognize arbitrary English claims; structural trace facts are primary.' };
+  const artifact = { artifactVersion: 'gemini-direct-ablation-result-v3', plan, planSha256, gitCommit, budget: budgetSnapshot, qualityClaimEligible, results: findings, summary: { pass: typed.filter((row) => row.pass).length, safetyPass: typed.filter((row) => row.safetyPass).length, total: typed.length, knownSanitizedAdversarialClaimMatches: typed.filter((row) => row.knownAdversarialClaimObserved).length, severityWeightedFailures: typed.reduce((sum, row) => sum + (row.pass ? 0 : row.knownAdversarialClaimObserved ? 10 : 3), 0), bySlice }, semanticGradingLimit: 'The v2 constrained first-line outcome and small sanitized adversarial set do not recognize arbitrary English claims; structural trace facts are primary.' };
   const digest = artifacts.finalize(artifact);
-  console.log(JSON.stringify({ output, artifactSha256: digest, summary: artifact.summary }));
+  console.log(JSON.stringify({ output, artifactSha256: digest, qualityClaimEligible, summary: artifact.summary }));
 } catch (error) {
   if (wholeRunReservation.active) budget.releaseWholeRunReservation(wholeRunReservation);
   if (!artifacts.committed) artifacts.abortBeforeDispatch();
   if (artifacts.committed && !artifacts.settled) {
     try {
-      artifacts.finalize({ artifactVersion: 'gemini-direct-ablation-result-v2', plan, planSha256, gitCommit, budget: budget.snapshot(), failure: error instanceof Error ? error.message : 'unknown' });
+      artifacts.finalize({ artifactVersion: 'gemini-direct-ablation-result-v3', plan, planSha256, gitCommit, budget: budget.snapshot(), qualityClaimEligible: false, failure: error instanceof Error ? error.message : 'unknown' });
     } catch (settlementError) {
       throw new Error('Gemini Direct execution failed and its one-use artifact could not be settled; the selector remains consumed.', { cause: settlementError });
     }
