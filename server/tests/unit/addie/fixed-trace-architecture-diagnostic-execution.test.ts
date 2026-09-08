@@ -188,6 +188,8 @@ describe('fixed-trace architecture diagnostic execution', () => {
       observation.metadata.routerControl.modelResolutionPolicy === 'anthropic_dated_revision_v1'
     ))).toBe(true);
     expect(artifact).toMatchObject({ complete: true });
+    expect((artifact.runs as Array<{ summary?: { metadataPassRate?: number } }>)
+      .every((run) => run.summary?.metadataPassRate === 1)).toBe(true);
     expect(budget.snapshot()).toMatchObject({
       reservedUsd: 0,
       dispatchedCalls: 104,
@@ -223,6 +225,7 @@ describe('fixed-trace architecture diagnostic execution', () => {
         },
       },
     });
+    expect(artifact).toMatchObject({ complete: false });
     expect(routerDispatch).toBeGreaterThanOrEqual(0);
     expect(raw.calls.slice(routerDispatch + 1)).toEqual([]);
     expect(budget.snapshot()).toMatchObject({ exposureUnknown: true, reservedUsd: 0 });
