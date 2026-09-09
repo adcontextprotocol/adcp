@@ -613,7 +613,7 @@ describe('GoogleGenerateContentProvider', () => {
     expect(generateContent).toHaveBeenCalledTimes(1);
     expect(beforeDispatch).toHaveBeenCalledTimes(1);
     expect(normalized.finishReason).toBe('stop');
-    expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 8 });
+    expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 8, reasoningTokens: 3 });
   });
 
   it('preserves the 32-token ceiling and classifies a high-thinking transport rejection once', async () => {
@@ -942,7 +942,7 @@ describe('GoogleGenerateContentProvider', () => {
     ]);
     expect(result.text).toBe('AdCP has versioned documentation.');
     expect(result.iterations).toBe(2);
-    expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 11 });
+    expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 11, reasoningTokens: 2 });
     expect(result.toolExecutions).toEqual([{
       sequence: 1,
       toolName: 'search_docs',

@@ -181,7 +181,8 @@
     "eval:addie-google-read-only-tools": "tsx --import dotenv/config server/tests/manual/provider-read-only-tool-loop.ts",
     "eval:addie-fixed-traces-direct-full-suite": "tsx --import dotenv/config server/tests/manual/fixed-trace-direct-full-suite-eval.ts",
     "eval:addie-gemini-direct-ablation": "tsx --import dotenv/config server/tests/manual/gemini-direct-ablation-eval.ts",
-    "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts"
+    "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
+    "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
   },
   "dependencies": {
     "@adcp/sdk": "14.0.0-rc.33",
