@@ -21,7 +21,7 @@
     "context_id": {
       "type": "string",
       "minLength": 1,
-      "description": "3.x compatibility field. On MCP, servers ignore this value; callers MUST NOT rely on it for session continuity. A2A conversation continuity uses the transport-native Message/Task contextId, not this request-body field."
+      "description": "MCP compatibility field: servers ignore this value; A2A uses transport-native Message/Task contextId."
     },
     "context": {
       "allOf": [{ "$ref": "/schemas/core/context.json" }],
