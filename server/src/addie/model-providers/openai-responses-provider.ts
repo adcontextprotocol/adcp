@@ -12,7 +12,6 @@ import type {
   ModelMessageContent,
   ModelProvider,
   ModelProviderCapabilities,
-  ModelReasoningEffort,
   ModelRequest,
   ModelRespondOptions,
   ModelResponse,
@@ -73,20 +72,6 @@ export const OPENAI_RESPONSES_CAPABILITIES: ModelProviderCapabilities = Object.f
   imageInput: false,
   documentInput: false,
 });
-
-/**
- * Evaluation-only control vocabulary. xhigh/max remain outside the ordinary
- * Addie provider contract until production has separately reviewed them.
- */
-type OpenAIResponsesEvaluationReasoningEffort = ModelReasoningEffort | 'xhigh' | 'max';
-const OPENAI_RESPONSES_EVALUATION_CAPABILITIES = Object.freeze({
-  ...OPENAI_RESPONSES_CAPABILITIES,
-  reasoningEfforts: Object.freeze(['provider_default', 'none', 'low', 'medium', 'high', 'xhigh', 'max'] as const),
-} satisfies Omit<ModelProviderCapabilities, 'reasoningEfforts'> & {
-  reasoningEfforts: readonly OpenAIResponsesEvaluationReasoningEffort[];
-});
-const OPENAI_RESPONSES_EVALUATION_CAPABILITIES_FOR_PREPARED =
-  OPENAI_RESPONSES_EVALUATION_CAPABILITIES as unknown as ModelProviderCapabilities;
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -382,19 +367,15 @@ export class OpenAIResponsesProvider implements ModelProvider {
   }
 }
 
-/**
- * Separate adapter surface for sealed evaluators. It intentionally does not
- * implement ModelProvider, so an ordinary production loop cannot pass xhigh
- * or max merely by receiving this object.
- */
 /** Pure evaluator-only request projection. Dispatch remains sealed in the
- * matched-v4 authority; this helper accepts neither credentials nor transport. */
+ * matched-v4 authority; it retains the ordinary adapter's native effort
+ * capability boundary and accepts neither credentials nor transport. */
 export function prepareOpenAIResponsesEvaluationRequest(
   request: ModelRequest,
 ): Readonly<Record<string, unknown>> {
   return deepFreeze(structuredClone(toOpenAIRequest(
       request,
       true,
-      OPENAI_RESPONSES_EVALUATION_CAPABILITIES_FOR_PREPARED,
+      OPENAI_RESPONSES_CAPABILITIES,
     ))) as unknown as Readonly<Record<string, unknown>>;
 }
