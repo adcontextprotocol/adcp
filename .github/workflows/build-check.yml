@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   pull_request:
-    branches: [main, develop, '3.1.x', '3.0.x']
+    branches: [main, develop, "3.1.x", "3.0.x"]
   push:
-    branches: [main, develop, '3.1.x', '3.0.x']
+    branches: [main, develop, "3.1.x", "3.0.x"]
 
 concurrency:
   group: build-check-${{ github.ref }}
@@ -19,20 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
 
       - name: Audit production dependencies
         # Keep newly published advisories visible without making the live
@@ -98,20 +98,20 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
 
       - name: Run canonical test stages
         env:
@@ -135,20 +135,20 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
 
       - name: Run server unit test shard
         run: npm run test:server-unit -- --shard=${{ matrix.shard }}/4
@@ -189,7 +189,9 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: ci_runner
-          POSTGRES_PASSWORD: ci_runner_throwaway_no_secret_value
+          # Each matrix job owns this loopback-only service; database roles,
+          # rather than a fixture secret, enforce the authority boundary.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: adcp_test
         ports:
           - 5432:5432
@@ -199,25 +201,111 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
+      DATABASE_URL: postgresql://ci_runner@127.0.0.1:5432/adcp_test
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
 
-      - name: Apply migrations to test database
+      - name: Generate masked evaluator runtime password
+        id: runtime_password
+        run: |
+          value="$(openssl rand -base64 36 | tr -d '\n' | tr '/+' '_-')"
+          echo "::add-mask::$value"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Provision matched-v4 evaluator roles outside the application migration
+        env:
+          RUNTIME_PASSWORD: ${{ steps.runtime_password.outputs.value }}
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U ci_runner -d adcp_test -v ON_ERROR_STOP=1 \
+            <<'SQL'
+          \getenv runtime_password RUNTIME_PASSWORD
+          -- The DBA prerequisite, rather than the migration principal,
+          -- creates both static roles and their two bridges. PostgreSQL 16
+          -- would otherwise give a CREATEROLE creator an implicit ADMIN edge.
+          CREATE ROLE addie_matched_v4_operator NOLOGIN NOINHERIT;
+          CREATE ROLE addie_matched_v4_runtime NOLOGIN NOINHERIT;
+          CREATE ROLE addie_matched_v4_provisioner_ci LOGIN NOINHERIT NOCREATEROLE;
+          GRANT CREATE ON DATABASE adcp_test TO addie_matched_v4_provisioner_ci;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_provisioner_ci WITH GRANT OPTION;
+          CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
+          GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci;
+          GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
+          GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_operator;
+          SQL
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' \
+            -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto' \
+            -v runtime_principal=addie_matched_v4_runtime_ci \
+            -v migration_principal=addie_matched_v4_provisioner_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql
+
+      - name: Apply evaluator schema from the external operator boundary
+        env:
+          PGOPTIONS: -c role=addie_matched_v4_operator
+        run: >-
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1
+          -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+
+      - name: Reject direct evaluator-table access for the actual app login
+        env:
+          DATABASE_URL: postgresql://addie_matched_v4_runtime_ci:${{ steps.runtime_password.outputs.value }}@127.0.0.1:5432/adcp_test
+          ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED: "true"
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U ci_runner -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT SELECT ON public.addie_matched_v4_private_runs TO addie_matched_v4_runtime_ci'
+          if npx tsx server/src/db/migrate.ts; then
+            echo 'Ordinary migrator accepted direct evaluator-table access for the app login.' >&2
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U ci_runner -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE SELECT ON public.addie_matched_v4_private_runs FROM addie_matched_v4_runtime_ci'
+
+      - name: Apply ordinary migrations and record evaluator schema
+        env:
+          DATABASE_URL: postgresql://addie_matched_v4_runtime_ci:${{ steps.runtime_password.outputs.value }}@127.0.0.1:5432/adcp_test
+          ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED: "true"
         run: npx tsx server/src/db/migrate.ts
+
+      - name: Assert app login has only scoped evaluator functions
+        env:
+          PGPASSWORD: ${{ steps.runtime_password.outputs.value }}
+        run: |
+          set -euo pipefail
+          RUNTIME=(psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1)
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_55555555555555555555555555555555','screening',repeat('a',64),1) AS runtime_can_reserve"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_55555555555555555555555555555555','mv4_attempt_55555555555555555555555555555555','ci-runtime',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64)) AS runtime_can_intent"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_settle('mv4_55555555555555555555555555555555','mv4_attempt_55555555555555555555555555555555','settled',repeat('d',64),1) AS runtime_can_settle"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reconcile('mv4_00000000000000000000000000000000') AS runtime_can_execute_scoped_function"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_halt('mv4_55555555555555555555555555555555','ci') AS runtime_can_halt"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_claim_admission(repeat('0',40),repeat('0',64),'not-authorized') AS runtime_can_execute_claim_function"
+          if "${RUNTIME[@]}" -c 'SET ROLE addie_matched_v4_operator'; then exit 1; fi
+          if "${RUNTIME[@]}" -c "INSERT INTO public.addie_matched_v4_private_admissions (admission_id,merge_sha,authority_manifest_sha256,operator_gate_id,status) VALUES ('mv4_admission_00000000000000000000000000000000',repeat('0',40),repeat('0',64),'ci-denied','operator_authorized')"; then exit 1; fi
+
+      - name: Assert app deployment configuration has no evaluator credential path
+        run: |
+          set -euo pipefail
+          if rg -n 'DATABASE_MIGRATION_URL|MATCHED_V4_EVALUATOR_(ADMIN|OPERATOR)_DATABASE_URL' \
+            fly.toml server/src Dockerfile; then
+            echo 'Privileged evaluator credentials must stay in the protected control-plane workflow.' >&2
+            exit 1
+          fi
 
       - name: Run server integration test shard
         run: npm run test:server-integration -- --shard=${{ matrix.shard }}/4

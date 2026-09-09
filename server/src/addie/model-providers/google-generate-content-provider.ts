@@ -27,7 +27,6 @@ import { validateNormalizedModelResponse } from './events.js';
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
 export const GOOGLE_DIRECT_FULL_SUITE_MODEL = 'gemini-3.8-flash';
-const FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE = Symbol('fixed-trace-direct-full-suite');
 const GOOGLE_ROUTER_REVIEWED_REVISIONS = new Set([
   'gemini-3.7-flash-20260801',
 ]);
@@ -421,6 +420,17 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   return normalized;
 }
 
+/**
+ * Pure evaluator request projection. This deliberately owns neither a client
+ * nor a transport: callers can inspect a frozen request, but cannot use this
+ * helper to inject executable Google dispatch into the paid authority.
+ */
+export function prepareGoogleGenerateContentEvaluationRequest(
+  request: ModelRequest,
+): Readonly<GenerateContentParameters> {
+  return deepFreeze(structuredClone(toGoogleRequest(request, true)));
+}
+
 export class GoogleGenerateContentProvider implements ModelProvider {
   readonly id = 'google' as const;
   readonly capabilities = GOOGLE_GENERATE_CONTENT_CAPABILITIES;
@@ -430,9 +440,12 @@ export class GoogleGenerateContentProvider implements ModelProvider {
   constructor(
     apiKey: string,
     transport?: GoogleGenerateContentTransport,
-    scope?: typeof FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE,
   ) {
-    this.directFullSuiteScope = scope === FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE;
+    // The ordinary adapter is permanently router-only. Gemini 3.8 request
+    // construction is a pure helper consumed inside the sealed authority;
+    // no public constructor or factory can opt an injected transport into the
+    // evaluator's paid model scope.
+    this.directFullSuiteScope = false;
     if (transport) {
       this.transport = transport;
     } else {
@@ -525,12 +538,4 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     }
     yield { type: 'response_complete', response: normalized };
   }
-}
-
-/** The evaluator-only factory owns the otherwise private model admission. */
-export function createFixedTraceDirectFullSuiteGoogleProvider(
-  apiKey: string,
-  transport?: GoogleGenerateContentTransport,
-): GoogleGenerateContentProvider {
-  return new GoogleGenerateContentProvider(apiKey, transport, FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE);
 }

@@ -12,6 +12,7 @@ import type {
   ModelMessageContent,
   ModelProvider,
   ModelProviderCapabilities,
+  ModelReasoningEffort,
   ModelRequest,
   ModelRespondOptions,
   ModelResponse,
@@ -72,6 +73,20 @@ export const OPENAI_RESPONSES_CAPABILITIES: ModelProviderCapabilities = Object.f
   imageInput: false,
   documentInput: false,
 });
+
+/**
+ * Evaluation-only control vocabulary. xhigh/max remain outside the ordinary
+ * Addie provider contract until production has separately reviewed them.
+ */
+type OpenAIResponsesEvaluationReasoningEffort = ModelReasoningEffort | 'xhigh' | 'max';
+const OPENAI_RESPONSES_EVALUATION_CAPABILITIES = Object.freeze({
+  ...OPENAI_RESPONSES_CAPABILITIES,
+  reasoningEfforts: Object.freeze(['provider_default', 'none', 'low', 'medium', 'high', 'xhigh', 'max'] as const),
+} satisfies Omit<ModelProviderCapabilities, 'reasoningEfforts'> & {
+  reasoningEfforts: readonly OpenAIResponsesEvaluationReasoningEffort[];
+});
+const OPENAI_RESPONSES_EVALUATION_CAPABILITIES_FOR_PREPARED =
+  OPENAI_RESPONSES_EVALUATION_CAPABILITIES as unknown as ModelProviderCapabilities;
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -169,8 +184,9 @@ function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
 function toOpenAIRequest(
   request: ModelRequest,
   directFullSuiteScope: boolean,
+  capabilities: ModelProviderCapabilities = OPENAI_RESPONSES_CAPABILITIES,
 ): ResponseCreateParamsNonStreaming {
-  validateModelCapabilities('openai', OPENAI_RESPONSES_CAPABILITIES, request);
+  validateModelCapabilities('openai', capabilities, request);
   if (!isOpenAIResponsesAllowedModel(request.model, directFullSuiteScope)) {
     throw new Error(`Unsupported OpenAI router model: ${request.model}`);
   }
@@ -225,6 +241,9 @@ export function normalizeOpenAIResponse(response: Response): ModelResponse {
   if (!response.usage) throw new Error('Malformed OpenAI response usage');
   assertSafeCount(response.usage.input_tokens, 'input usage');
   assertSafeCount(response.usage.output_tokens, 'output usage');
+  if (response.usage.output_tokens_details?.reasoning_tokens !== undefined) {
+    assertSafeCount(response.usage.output_tokens_details.reasoning_tokens, 'reasoning usage');
+  }
   if (!Array.isArray(response.output)) throw new Error('Malformed OpenAI response output');
 
   let finishReason: ModelFinishReason;
@@ -292,6 +311,9 @@ export function normalizeOpenAIResponse(response: Response): ModelResponse {
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
+      ...(response.usage.output_tokens_details?.reasoning_tokens !== undefined && {
+        reasoningTokens: response.usage.output_tokens_details.reasoning_tokens,
+      }),
       ...(response.usage.input_tokens_details.cached_tokens !== undefined && {
         cacheReadTokens: response.usage.input_tokens_details.cached_tokens,
       }),
@@ -361,12 +383,18 @@ export class OpenAIResponsesProvider implements ModelProvider {
 }
 
 /**
- * The sole public route to the evaluator-only model allowlist. A generic
- * runtime constructor cannot be widened with a caller-provided string flag.
+ * Separate adapter surface for sealed evaluators. It intentionally does not
+ * implement ModelProvider, so an ordinary production loop cannot pass xhigh
+ * or max merely by receiving this object.
  */
-export function createFixedTraceDirectFullSuiteOpenAIProvider(
-  apiKey: string,
-  transport?: OpenAIResponsesTransport,
-): OpenAIResponsesProvider {
-  return new OpenAIResponsesProvider(apiKey, transport, FIXED_TRACE_DIRECT_FULL_SUITE_SCOPE);
+/** Pure evaluator-only request projection. Dispatch remains sealed in the
+ * matched-v4 authority; this helper accepts neither credentials nor transport. */
+export function prepareOpenAIResponsesEvaluationRequest(
+  request: ModelRequest,
+): Readonly<Record<string, unknown>> {
+  return deepFreeze(structuredClone(toOpenAIRequest(
+      request,
+      true,
+      OPENAI_RESPONSES_EVALUATION_CAPABILITIES_FOR_PREPARED,
+    ))) as unknown as Readonly<Record<string, unknown>>;
 }

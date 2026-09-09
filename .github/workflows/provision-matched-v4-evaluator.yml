@@ -1,0 +1,118 @@
+name: Provision matched-v4 evaluator schema
+
+# workflow_run definitions are evaluated from the repository default branch.
+# This secret-bearing workflow is consequently never interpreted from a
+# workflow_dispatch-selected ref. Its sole trigger is the no-secret default
+# branch coordinator below.
+on:
+  workflow_run:
+    workflows: ["Authorize matched-v4 evaluator provision"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: matched-v4-evaluator-provision
+  cancel-in-progress: false
+
+jobs:
+  verify-origin-main:
+    name: Verify trusted default-branch coordinator and current main
+    runs-on: ubuntu-latest
+    outputs:
+      approved_main_sha: ${{ steps.verify.outputs.approved_main_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+      - id: verify
+        env:
+          COORDINATOR_SHA: ${{ github.event.workflow_run.head_sha }}
+          COORDINATOR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          COORDINATOR_EVENT: ${{ github.event.workflow_run.event }}
+          COORDINATOR_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COORDINATOR_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # Do not silently skip this job for an untrusted coordinator. A
+          # skipped workflow can still be reported successful and accidentally
+          # satisfy a weak deploy-side run lookup. Fail the trusted workflow
+          # before any protected environment or SQL step is reachable.
+          test "$COORDINATOR_CONCLUSION" = success || {
+            echo 'Coordinator did not succeed; refusing protected provision.' >&2
+            exit 1
+          }
+          test "$COORDINATOR_EVENT" = workflow_run || {
+            echo 'Coordinator was not a trusted Build Check continuation; refusing protected provision.' >&2
+            exit 1
+          }
+          test "$COORDINATOR_BRANCH" = "$DEFAULT_BRANCH" || {
+            echo 'Coordinator did not run from the default branch; refusing protected provision.' >&2
+            exit 1
+          }
+          test "$COORDINATOR_REPOSITORY" = "$EXPECTED_REPOSITORY" || {
+            echo 'Coordinator repository is untrusted; refusing protected provision.' >&2
+            exit 1
+          }
+          current_main_sha=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          test -n "$current_main_sha"
+          test "$COORDINATOR_SHA" = "$current_main_sha" || {
+            echo 'Coordinator SHA is stale or not current origin/main.' >&2
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$current_main_sha" || exit 1
+          echo "approved_main_sha=$current_main_sha" >> "$GITHUB_OUTPUT"
+
+  provision:
+    needs: verify-origin-main
+    environment: matched-v4-evaluator-operator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify-origin-main.outputs.approved_main_sha }}
+          fetch-depth: 1
+      - name: Revalidate current origin/main after protected approval
+        env:
+          APPROVED_MAIN_SHA: ${{ needs.verify-origin-main.outputs.approved_main_sha }}
+        run: |
+          set -euo pipefail
+          current_main_sha=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          test -n "$current_main_sha" && test "$current_main_sha" = "$APPROVED_MAIN_SHA" || {
+            echo 'origin/main changed while protected approval was pending; refusing SQL.' >&2
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$APPROVED_MAIN_SHA"
+      - name: Provision schema and durable post-merge admission
+        env:
+          PGHOST: ${{ secrets.MATCHED_V4_EVALUATOR_PGHOST }}
+          PGPORT: ${{ secrets.MATCHED_V4_EVALUATOR_PGPORT }}
+          PGDATABASE: ${{ secrets.MATCHED_V4_EVALUATOR_PGDATABASE }}
+          PGUSER: ${{ secrets.MATCHED_V4_EVALUATOR_PGUSER }}
+          PGPASSWORD: ${{ secrets.MATCHED_V4_EVALUATOR_PGPASSWORD }}
+          PGSSLMODE: require
+          RUNTIME_PRINCIPAL: ${{ vars.MATCHED_V4_RUNTIME_PRINCIPAL }}
+          MIGRATION_PRINCIPAL: ${{ vars.MATCHED_V4_MIGRATION_PRINCIPAL }}
+          AUTHORITY_MANIFEST_SHA256: ${{ vars.MATCHED_V4_AUTHORITY_MANIFEST_SHA256 }}
+          APPROVED_MAIN_SHA: ${{ needs.verify-origin-main.outputs.approved_main_sha }}
+        run: |
+          set -euo pipefail
+          for required in PGHOST PGPORT PGDATABASE PGUSER PGPASSWORD RUNTIME_PRINCIPAL MIGRATION_PRINCIPAL AUTHORITY_MANIFEST_SHA256; do test -n "${!required}" || exit 1; done
+          [[ "$RUNTIME_PRINCIPAL" =~ ^[a-z_][a-z0-9_]{0,62}$ ]]
+          [[ "$MIGRATION_PRINCIPAL" =~ ^[a-z_][a-z0-9_]{0,62}$ ]]
+          [[ "$AUTHORITY_MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          psql --set ON_ERROR_STOP=1 --single-transaction -v runtime_principal="$RUNTIME_PRINCIPAL" -v migration_principal="$MIGRATION_PRINCIPAL" -f server/scripts/addie-matched-v4-role-bootstrap.sql
+          psql --set ON_ERROR_STOP=1 --single-transaction -c 'SET ROLE addie_matched_v4_operator' -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+          admission_valid=$(psql --set ON_ERROR_STOP=1 --single-transaction \
+            -c 'SET ROLE addie_matched_v4_operator' \
+            -v merge_sha="$APPROVED_MAIN_SHA" -v manifest_sha="$AUTHORITY_MANIFEST_SHA256" \
+            -Atqc "WITH expected AS (SELECT 'mv4_admission_' || md5(:'merge_sha' || :'manifest_sha' || 'addie_matched_v4_post_merge_operator_v1') AS admission_id), inserted AS (INSERT INTO public.addie_matched_v4_private_admissions (admission_id, merge_sha, authority_manifest_sha256, operator_gate_id, status) SELECT admission_id, :'merge_sha', :'manifest_sha', 'addie_matched_v4_post_merge_operator_v1', 'operator_authorized' FROM expected ON CONFLICT (merge_sha, authority_manifest_sha256) DO NOTHING RETURNING admission_id), candidates AS (SELECT admission_id, :'merge_sha'::text AS merge_sha, :'manifest_sha'::text AS authority_manifest_sha256, 'addie_matched_v4_post_merge_operator_v1'::text AS operator_gate_id, 'operator_authorized'::text AS status, NULL::timestamptz AS claimed_at FROM inserted UNION ALL SELECT admission_id, merge_sha, authority_manifest_sha256, operator_gate_id, status, claimed_at FROM public.addie_matched_v4_private_admissions) SELECT EXISTS (SELECT 1 FROM candidates admission CROSS JOIN expected WHERE admission.admission_id = expected.admission_id AND admission.merge_sha = :'merge_sha' AND admission.authority_manifest_sha256 = :'manifest_sha' AND admission.operator_gate_id = 'addie_matched_v4_post_merge_operator_v1' AND admission.status = 'operator_authorized' AND admission.claimed_at IS NULL)")
+          test "$admission_valid" = t || {
+            echo 'Protected evaluator admission is missing, claimed, or differs from the exact reviewed SHA/manifest/gate.' >&2
+            exit 1
+          }

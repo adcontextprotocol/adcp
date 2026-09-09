@@ -1,0 +1,32 @@
+name: Authorize matched-v4 evaluator provision
+
+# This coordinator carries no protected environment or secrets. It is itself
+# defined and executed from the default branch as a workflow_run continuation
+# of a successful Build Check. The protected workflow consumes only this run.
+on:
+  workflow_run:
+    workflows: [Build Check]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  coordinate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a trusted successful main Build Check
+        env:
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_CONCLUSION" = success
+          test "$SOURCE_EVENT" = push
+          test "$SOURCE_BRANCH" = "$DEFAULT_BRANCH"
+          test "$SOURCE_REPOSITORY" = "$EXPECTED_REPOSITORY"

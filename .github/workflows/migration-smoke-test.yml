@@ -4,23 +4,29 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - '.github/workflows/migration-smoke-test.yml'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'server/src/db/**'
-      - 'server/src/config.ts'
-      - 'server/tsconfig.json'
-      - 'Dockerfile'
+      - ".github/workflows/migration-smoke-test.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "server/src/db/**"
+      - "server/scripts/addie-matched-v4-role-bootstrap.sql"
+      - ".github/workflows/provision-matched-v4-evaluator.yml"
+      - ".github/workflows/authorize-matched-v4-evaluator-provision.yml"
+      - "server/src/config.ts"
+      - "server/tsconfig.json"
+      - "Dockerfile"
   push:
     branches: [main]
     paths:
-      - '.github/workflows/migration-smoke-test.yml'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'server/src/db/**'
-      - 'server/src/config.ts'
-      - 'server/tsconfig.json'
-      - 'Dockerfile'
+      - ".github/workflows/migration-smoke-test.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "server/src/db/**"
+      - "server/scripts/addie-matched-v4-role-bootstrap.sql"
+      - ".github/workflows/provision-matched-v4-evaluator.yml"
+      - ".github/workflows/authorize-matched-v4-evaluator-provision.yml"
+      - "server/src/config.ts"
+      - "server/tsconfig.json"
+      - "Dockerfile"
 
 jobs:
   migrate:
@@ -31,7 +37,9 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          # This isolated service uses local trust authentication.  It proves
+          # role separation by database authorization, not a fixture password.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: adcp_test
         ports:
           - 5432:5432
@@ -42,18 +50,138 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+
+      - name: Generate masked evaluator runtime password
+        id: runtime_password
+        run: |
+          value="$(openssl rand -base64 36 | tr -d '\n' | tr '/+' '_-')"
+          echo "::add-mask::$value"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Reject incomplete or same-principal evaluator bootstrap inputs
+        run: |
+          set -euo pipefail
+          if psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql; then
+            echo 'Bootstrap accepted missing required principals.' >&2
+            exit 1
+          fi
+          # A superuser can SET ROLE to a nominated provisioner. The bootstrap
+          # must reject that impersonation because session_user is not the
+          # declared migration principal.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE addie_matched_v4_bootstrap_negative_ci NOLOGIN'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT addie_matched_v4_bootstrap_negative_ci TO postgres'
+          if PGOPTIONS='-c role=addie_matched_v4_bootstrap_negative_ci' \
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+              -v runtime_principal=addie_matched_v4_runtime_ci \
+              -v migration_principal=addie_matched_v4_bootstrap_negative_ci \
+              -f server/scripts/addie-matched-v4-role-bootstrap.sql; then
+            echo 'Bootstrap accepted SET ROLE impersonation of its provisioner.' >&2
+            exit 1
+          fi
+          if psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -v runtime_principal=addie_matched_v4_same_ci \
+            -v migration_principal=addie_matched_v4_same_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql; then
+            echo 'Bootstrap accepted a runtime principal that can assume operator.' >&2
+            exit 1
+          fi
+
+      - name: Provision matched-v4 evaluator roles outside the application migration
+        env:
+          RUNTIME_PASSWORD: ${{ steps.runtime_password.outputs.value }}
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            <<'SQL'
+          \getenv runtime_password RUNTIME_PASSWORD
+          -- Static evaluator roles and the two bridges are created by this
+          -- DBA-only prerequisite, never by the migration principal. PostgreSQL
+          -- 16 otherwise gives a CREATEROLE creator an implicit ADMIN edge to
+          -- every role it creates.
+          CREATE ROLE addie_matched_v4_operator NOLOGIN NOINHERIT;
+          CREATE ROLE addie_matched_v4_runtime NOLOGIN NOINHERIT;
+          CREATE ROLE addie_matched_v4_provisioner_ci LOGIN NOINHERIT NOCREATEROLE;
+          GRANT CREATE ON DATABASE adcp_test TO addie_matched_v4_provisioner_ci;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_provisioner_ci WITH GRANT OPTION;
+          CREATE ROLE addie_matched_v4_partial_runtime_ci NOLOGIN;
+          CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
+          GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci;
+          GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
+          GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_operator;
+          SQL
+          # Bootstrap is deliberately non-mutating. A malformed app principal
+          # must fail without altering the DBA-created static role graph, and
+          # a retry with the real app login must remain possible.
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -v runtime_principal=addie_matched_v4_partial_runtime_ci \
+            -v migration_principal=addie_matched_v4_provisioner_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql; then
+            echo 'Bootstrap accepted a non-login runtime principal.' >&2
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc \
+            "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'addie_matched_v4_operator') AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'addie_matched_v4_runtime') AND NOT pg_has_role('addie_matched_v4_partial_runtime_ci', 'addie_matched_v4_runtime', 'member')" \
+            | grep -qx t || {
+              echo 'Failed bootstrap mutated the external evaluator role graph.' >&2
+              exit 1
+            }
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP ROLE addie_matched_v4_partial_runtime_ci'
+          # Historical migrations request trusted extensions. The least-
+          # privileged provisioner installs them before the ordinary app
+          # migrator runs, so an app credential never needs extension rights.
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' \
+            -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto' \
+            -v runtime_principal=addie_matched_v4_runtime_ci \
+            -v migration_principal=addie_matched_v4_provisioner_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql
+
+      - name: Assert bootstrap leaves only the intended evaluator role bridges
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc \
+            "SELECT count(*) = 2 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_runtime'::regrole AND member = 'addie_matched_v4_runtime_ci'::regrole AND inherit_option AND NOT set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_operator'::regrole, 'addie_matched_v4_provisioner_ci'::regrole)) = 1 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_operator'::regrole AND member = 'addie_matched_v4_provisioner_ci'::regrole AND NOT inherit_option AND set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_runtime'::regrole, 'addie_matched_v4_runtime_ci'::regrole)) = 1 FROM pg_auth_members WHERE roleid IN ('addie_matched_v4_runtime'::regrole, 'addie_matched_v4_operator'::regrole)" \
+            | grep -qx t || {
+              echo 'Bootstrap left an unintended evaluator runtime/operator membership bridge.' >&2
+              exit 1
+            }
+
+      - name: Reject a PostgreSQL 16 ADMIN OPTION bridge tamper
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT addie_matched_v4_runtime TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET FALSE, ADMIN TRUE'
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -v runtime_principal=addie_matched_v4_runtime_ci \
+            -v migration_principal=addie_matched_v4_provisioner_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql; then
+            echo 'Bootstrap accepted a runtime ADMIN OPTION bridge.' >&2
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE addie_matched_v4_runtime FROM addie_matched_v4_provisioner_ci'
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -v runtime_principal=addie_matched_v4_runtime_ci \
+            -v migration_principal=addie_matched_v4_provisioner_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql
 
       - name: Compile server (tsc only — no schemas/compliance/tarball)
         run: npx tsc --project server/tsconfig.json
@@ -63,17 +191,321 @@ jobs:
           mkdir -p dist/db
           cp -R server/src/db/migrations dist/db/migrations
 
-      - name: Run built migrations
+      - name: Apply evaluator schema from the external operator boundary
         env:
-          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/adcp_test
+          PGOPTIONS: -c role=addie_matched_v4_operator
+        run: >-
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1
+          -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+
+      - name: Reject every tampered runtime table privilege before recording evaluator schema
+        env:
+          DATABASE_URL: postgresql://addie_matched_v4_runtime_ci:${{ steps.runtime_password.outputs.value }}@127.0.0.1:5432/adcp_test
+          ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED: "true"
+        run: |
+          set -euo pipefail
+          expect_guard_rejection() {
+            if node dist/db/migrate.js; then
+              echo "Ordinary migrator accepted malformed evaluator guard: $1" >&2
+              exit 1
+            fi
+          }
+          expect_retry_rejection() {
+            if PGOPTIONS='-c role=addie_matched_v4_operator' \
+              psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test \
+                --single-transaction -v ON_ERROR_STOP=1 \
+                -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql; then
+              echo "Evaluator migration retry accepted malformed custody ACL: $1" >&2
+              exit 1
+            fi
+          }
+          restore_guard() {
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+              'DROP TRIGGER IF EXISTS addie_matched_v4_private_attempt_guard ON public.addie_matched_v4_private_attempts'
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+              'CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE OR DELETE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()'
+          }
+          for privilege in TRUNCATE REFERENCES TRIGGER; do
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+              -c "GRANT ${privilege} ON public.addie_matched_v4_private_admissions TO addie_matched_v4_runtime"
+            if node dist/db/migrate.js; then
+              echo "Ordinary migrator accepted tampered runtime ${privilege} privilege." >&2
+              exit 1
+            fi
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+              -c "REVOKE ${privilege} ON public.addie_matched_v4_private_admissions FROM addie_matched_v4_runtime"
+          done
+          # PUBLIC ACLs are independent of runtime-role ACLs and must not
+          # become an alternate evaluator-table or SECURITY DEFINER route.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT SELECT ON public.addie_matched_v4_private_runs TO PUBLIC'
+          if node dist/db/migrate.js; then
+            echo 'Ordinary migrator accepted PUBLIC evaluator table access.' >&2
+            exit 1
+          fi
+          expect_retry_rejection 'PUBLIC evaluator table access'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE SELECT ON public.addie_matched_v4_private_runs FROM PUBLIC'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) TO PUBLIC'
+          if node dist/db/migrate.js; then
+            echo 'Ordinary migrator accepted PUBLIC evaluator function access.' >&2
+            exit 1
+          fi
+          expect_retry_rejection 'PUBLIC evaluator function access'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) FROM PUBLIC'
+          # Function identity is more than name/signature: a configuration
+          # change alters pg_get_functiondef and must fail its digest pin.
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "ALTER FUNCTION public.addie_matched_v4_private_append_only_guard() SET statement_timeout = '1s'"
+          expect_guard_rejection 'append-only guard definition digest drift'
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER FUNCTION public.addie_matched_v4_private_append_only_guard() RESET ALL'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_attempts DISABLE TRIGGER addie_matched_v4_private_attempt_guard'
+          if node dist/db/migrate.js; then
+            echo 'Ordinary migrator accepted a disabled evaluator attempt guard.' >&2
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_attempts ENABLE TRIGGER addie_matched_v4_private_attempt_guard'
+          # A same-named trigger on another table/schema cannot substitute for
+          # the exact public attempts-table guard.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP TRIGGER addie_matched_v4_private_attempt_guard ON public.addie_matched_v4_private_attempts; CREATE SCHEMA mv4_tamper; CREATE TABLE mv4_tamper.attempts (id integer); CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE ON mv4_tamper.attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()'
+          expect_guard_rejection 'same name on another schema/table'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c 'DROP SCHEMA mv4_tamper CASCADE'
+          restore_guard
+          # A public-table trigger must use the exact public guard function;
+          # a same-named function in an earlier schema is not an identity
+          # substitute even when it is operator-owned.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            "DROP TRIGGER addie_matched_v4_private_attempt_guard ON public.addie_matched_v4_private_attempts; CREATE SCHEMA mv4_tamper AUTHORIZATION addie_matched_v4_operator; CREATE FUNCTION mv4_tamper.addie_matched_v4_private_attempt_guard() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RETURN NEW; END \$\$; CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION mv4_tamper.addie_matched_v4_private_attempt_guard()"
+          expect_guard_rejection 'same name from earlier schema function'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c 'DROP SCHEMA mv4_tamper CASCADE'
+          restore_guard
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP TRIGGER addie_matched_v4_private_attempt_guard ON public.addie_matched_v4_private_attempts; CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE ON public.addie_matched_v4_private_attempts FOR EACH ROW WHEN (false) EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()'
+          expect_guard_rejection 'WHEN false cap-guard bypass'
+          # Retry preflight is independently fail-closed: it must not use its
+          # CREATE/DROP statements to repair a malformed existing guard.
+          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql; then
+            echo 'Evaluator migration retry repaired an inert cap guard.' >&2
+            exit 1
+          fi
+          restore_guard
+          # Exact OID alone is insufficient: event/timing/row shape is part of
+          # the cap guard contract, and each malformed shape must fail closed.
+          for shape in after_row before_statement before_delete; do
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+              'DROP TRIGGER addie_matched_v4_private_attempt_guard ON public.addie_matched_v4_private_attempts'
+            case "$shape" in
+              after_row) trigger='CREATE TRIGGER addie_matched_v4_private_attempt_guard AFTER INSERT OR UPDATE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()' ;;
+              before_statement) trigger='CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE ON public.addie_matched_v4_private_attempts FOR EACH STATEMENT EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()' ;;
+              before_delete) trigger='CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE DELETE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()' ;;
+            esac
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c "$trigger"
+            expect_guard_rejection "$shape"
+            restore_guard
+          done
+          for table in runs admissions attempts; do
+            trigger="addie_matched_v4_private_${table}_append_only_guard"
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+              "ALTER TABLE public.addie_matched_v4_private_${table} DISABLE TRIGGER ${trigger}"
+            expect_guard_rejection "disabled append-only DELETE guard: ${table}"
+            psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+              "ALTER TABLE public.addie_matched_v4_private_${table} ENABLE TRIGGER ${trigger}"
+          done
+          # The expected guards are not sufficient if an additional trigger
+          # can rewrite NEW before them. Runtime re-attestation and a 584
+          # retry must both fail rather than accept or repair that state.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            "CREATE FUNCTION public.mv4_extra_custody_trigger() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN NEW.status := NEW.status; RETURN NEW; END \$\$; CREATE TRIGGER mv4_extra_custody_trigger BEFORE INSERT ON public.addie_matched_v4_private_runs FOR EACH ROW EXECUTE FUNCTION public.mv4_extra_custody_trigger()"
+          expect_guard_rejection 'unexpected custody-table trigger'
+          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql; then
+            echo 'Evaluator migration retry accepted an extra custody-table trigger.' >&2
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP TRIGGER mv4_extra_custody_trigger ON public.addie_matched_v4_private_runs; DROP FUNCTION public.mv4_extra_custody_trigger()'
+          # A grant directly to the login is distinct from a grant to its
+          # inherited evaluator runtime role and must be rejected pre-record.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT SELECT ON public.addie_matched_v4_private_runs TO addie_matched_v4_runtime_ci'
+          expect_guard_rejection 'direct app-principal table privilege'
+          # A privileged operator retry cannot enumerate every application
+          # login that may inherit the runtime role. The ordinary migrator's
+          # current authenticated login performs this attestation above; keep
+          # that direct-login rejection rather than asserting an impossible
+          # operator-session equivalent here.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE SELECT ON public.addie_matched_v4_private_runs FROM addie_matched_v4_runtime_ci'
+          # This must run before the clean first record: a privileged session
+          # that SET ROLE to the app cannot satisfy session_user=current_user.
+          if PGOPTIONS='-c role=addie_matched_v4_runtime_ci' \
+            DATABASE_URL='postgresql://postgres@127.0.0.1:5432/adcp_test' \
+            ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=true \
+            node dist/db/migrate.js; then
+            echo 'Ordinary migrator accepted privileged SET ROLE runtime impersonation.' >&2
+            exit 1
+          fi
+
+      - name: Run ordinary built migrations and record external evaluator schema
+        env:
+          DATABASE_URL: postgresql://addie_matched_v4_runtime_ci:${{ steps.runtime_password.outputs.value }}@127.0.0.1:5432/adcp_test
+          ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED: "true"
         run: node dist/db/migrate.js
+
+      - name: Confirm recorded evaluator drift never blocks ordinary app boot
+        env:
+          DATABASE_URL: postgresql://addie_matched_v4_runtime_ci:${{ steps.runtime_password.outputs.value }}@127.0.0.1:5432/adcp_test
+          ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED: "false"
+        run: node dist/db/migrate.js
+
+      - name: Assert app login has only scoped evaluator functions
+        env:
+          PGPASSWORD: ${{ steps.runtime_password.outputs.value }}
+        run: |
+          set -euo pipefail
+          RUNTIME=(psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1)
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_33333333333333333333333333333333','screening',repeat('a',64),1) AS runtime_can_reserve"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_33333333333333333333333333333333','mv4_attempt_33333333333333333333333333333333','ci-runtime',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64)) AS runtime_can_intent"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_settle('mv4_33333333333333333333333333333333','mv4_attempt_33333333333333333333333333333333','settled',repeat('d',64),1) AS runtime_can_settle"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reconcile('mv4_00000000000000000000000000000000') AS runtime_can_execute_scoped_function"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_halt('mv4_33333333333333333333333333333333','ci') AS runtime_can_halt"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_claim_admission(repeat('0',40),repeat('0',64),'not-authorized') AS runtime_can_execute_claim_function"
+          if "${RUNTIME[@]}" -c 'SET ROLE addie_matched_v4_operator'; then exit 1; fi
+          if "${RUNTIME[@]}" -c "INSERT INTO public.addie_matched_v4_private_admissions (admission_id,merge_sha,authority_manifest_sha256,operator_gate_id,status) VALUES ('mv4_admission_00000000000000000000000000000000',repeat('0',40),repeat('0',64),'ci-denied','operator_authorized')"; then exit 1; fi
+
+      - name: Assert clean evaluator guard enforces the pre-network cap
+        env:
+          PGOPTIONS: -c role=addie_matched_v4_operator
+        run: |
+          set -euo pipefail
+          OPERATOR=(psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1)
+          "${OPERATOR[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_11111111111111111111111111111111','screening',repeat('a',64),1)"
+          "${OPERATOR[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_11111111111111111111111111111111','mv4_attempt_11111111111111111111111111111111','ci-cap',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64))"
+          if "${OPERATOR[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_11111111111111111111111111111111','mv4_attempt_22222222222222222222222222222222','ci-cap',2,repeat('d',64),clock_timestamp(),'standard','ci',repeat('e',64))"; then
+            echo 'Evaluator guard accepted an intent beyond its dispatch cap.' >&2
+            exit 1
+          fi
+          if "${OPERATOR[@]}" -c "DELETE FROM public.addie_matched_v4_private_attempts WHERE reservation_id = 'mv4_11111111111111111111111111111111'"; then
+            echo 'Evaluator operator erased an append-only attempt row.' >&2
+            exit 1
+          fi
+
+  upgrade-migration-role-boundary:
+    name: Existing migration ledger uses external operator role
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          # This isolated service uses local trust authentication.  It proves
+          # role separation by database authorization, not a fixture password.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: adcp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d adcp_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+
+      - name: Generate masked evaluator runtime password
+        id: runtime_password
+        run: |
+          value="$(openssl rand -base64 36 | tr -d '\n' | tr '/+' '_-')"
+          echo "::add-mask::$value"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Seed an existing migration ledger outside the operator role
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c 'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, filename VARCHAR(255) NOT NULL, applied_at TIMESTAMPTZ DEFAULT now())'
+          for migration in server/src/db/migrations/*.sql; do
+            filename="${migration##*/}"
+            version="${filename%%_*}"
+            if [ "$version" != '584' ]; then
+              psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (version, filename) VALUES (${version#0}, '${filename}')"
+            fi
+          done
+
+      - name: Apply evaluator boundary externally then let ordinary migrator record it
+        env:
+          RUNTIME_PASSWORD: ${{ steps.runtime_password.outputs.value }}
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            <<'SQL'
+          \getenv runtime_password RUNTIME_PASSWORD
+          CREATE ROLE addie_matched_v4_operator NOLOGIN NOINHERIT;
+          CREATE ROLE addie_matched_v4_runtime NOLOGIN NOINHERIT;
+          CREATE ROLE addie_matched_v4_provisioner_ci LOGIN NOINHERIT NOCREATEROLE;
+          GRANT CREATE ON DATABASE adcp_test TO addie_matched_v4_provisioner_ci;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_provisioner_ci WITH GRANT OPTION;
+          CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
+          GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci;
+          GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
+          GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
+          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_operator;
+          GRANT SELECT, INSERT ON schema_migrations TO addie_matched_v4_runtime_ci;
+          SQL
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto' -v runtime_principal=addie_matched_v4_runtime_ci -v migration_principal=addie_matched_v4_provisioner_ci -f server/scripts/addie-matched-v4-role-bootstrap.sql
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) = 2 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_runtime'::regrole AND member = 'addie_matched_v4_runtime_ci'::regrole AND inherit_option AND NOT set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_operator'::regrole, 'addie_matched_v4_provisioner_ci'::regrole)) = 1 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_operator'::regrole AND member = 'addie_matched_v4_provisioner_ci'::regrole AND NOT inherit_option AND set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_runtime'::regrole, 'addie_matched_v4_runtime_ci'::regrole)) = 1 FROM pg_auth_members WHERE roleid IN ('addie_matched_v4_runtime'::regrole, 'addie_matched_v4_operator'::regrole)" | grep -qx t || { echo 'Upgrade bootstrap left an unintended evaluator runtime/operator membership bridge.' >&2; exit 1; }
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+          npx tsc --project server/tsconfig.json
+          mkdir -p dist/db
+          cp -R server/src/db/migrations dist/db/migrations
+          ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=true DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${RUNTIME_PASSWORD}@127.0.0.1:5432/adcp_test" node dist/db/migrate.js
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc "SELECT filename FROM schema_migrations WHERE version = 584" | grep -qx '584_addie_matched_v4_private_authority.sql'
+          DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${RUNTIME_PASSWORD}@127.0.0.1:5432/adcp_test" node dist/db/migrate.js
+
+      - name: Assert upgrade runtime API and operator boundary
+        env:
+          PGPASSWORD: ${{ steps.runtime_password.outputs.value }}
+        run: |
+          set -euo pipefail
+          RUNTIME=(psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1)
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_44444444444444444444444444444444','screening',repeat('a',64),1) AS upgrade_runtime_can_reserve"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_44444444444444444444444444444444','mv4_attempt_44444444444444444444444444444444','ci-runtime',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64)) AS upgrade_runtime_can_intent"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_settle('mv4_44444444444444444444444444444444','mv4_attempt_44444444444444444444444444444444','settled',repeat('d',64),1) AS upgrade_runtime_can_settle"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reconcile('mv4_00000000000000000000000000000000') AS upgrade_runtime_can_reconcile"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_halt('mv4_44444444444444444444444444444444','ci') AS upgrade_runtime_can_halt"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_claim_admission(repeat('0',40),repeat('0',64),'not-authorized') AS upgrade_runtime_can_claim"
+          if "${RUNTIME[@]}" -c 'SET ROLE addie_matched_v4_operator'; then exit 1; fi
+          if "${RUNTIME[@]}" -c "INSERT INTO public.addie_matched_v4_private_admissions (admission_id,merge_sha,authority_manifest_sha256,operator_gate_id,status) VALUES ('mv4_admission_00000000000000000000000000000000',repeat('0',40),repeat('0',64),'ci-denied','operator_authorized')"; then exit 1; fi
+
+      - name: Assert app deployment configuration has no evaluator credential path
+        run: |
+          set -euo pipefail
+          if rg -n 'DATABASE_MIGRATION_URL|MATCHED_V4_EVALUATOR_(ADMIN|OPERATOR)_DATABASE_URL' \
+            fly.toml server/src Dockerfile; then
+            echo 'Privileged evaluator credentials must stay in the protected control-plane workflow.' >&2
+            exit 1
+          fi
 
   docker-build:
     name: Production Docker build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build production image with lifecycle scripts disabled
         run: docker build --build-arg SKIP_PRECLONE_REPOS=true --tag adcp-migration-smoke .

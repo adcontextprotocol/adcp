@@ -4,7 +4,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, un
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { buildModelToolDefinitions } from '../../src/addie/tool-wire-shape.js';
-import { createFixedTraceDirectFullSuiteGoogleProvider } from '../../src/addie/model-providers/google-generate-content-provider.js';
+import { prepareGoogleGenerateContentEvaluationRequest } from '../../src/addie/model-providers/google-generate-content-provider.js';
 import { AnthropicModelProvider } from '../../src/addie/model-providers/anthropic-provider.js';
 import type { ModelProvider, ModelRequest } from '../../src/addie/model-providers/model-provider.js';
 import { modelProviderAdapterFailure } from '../../src/addie/model-providers/model-provider.js';
@@ -113,7 +113,7 @@ const requests = GEMINI_DIRECT_ABLATION_VALIDATION_PACK.map((trace): ModelReques
 }));
 function preparedRequestBytes(request: ModelRequest): number {
   const prepared = cell.provider === 'google'
-    ? createFixedTraceDirectFullSuiteGoogleProvider('', { models: { generateContent: async () => { throw new Error('validate only'); } } }).prepare(request)
+    ? { providerRequest: prepareGoogleGenerateContentEvaluationRequest(request) }
     : new AnthropicModelProvider('', undefined, { transportMaxRetries: 0 }).prepare(request);
   return Buffer.byteLength(JSON.stringify(prepared.providerRequest), 'utf8');
 }
@@ -193,7 +193,7 @@ if (JSON.stringify(parsedSelector) !== JSON.stringify(sealedSelector)) {
   throw new Error('Execute selector does not match this exact sealed plan');
 }
 const raw: ModelProvider = cell.provider === 'google'
-  ? createFixedTraceDirectFullSuiteGoogleProvider(process.env.GEMINI_API_KEY?.trim() || (() => { throw new Error('GEMINI_API_KEY is required'); })())
+  ? (() => { throw new Error('Gemini Direct execution is sealed to the matched-v4 authority'); })()
   : new AnthropicModelProvider(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || (() => { throw new Error('ANTHROPIC_API_KEY is required'); })(), undefined, { transportMaxRetries: 0 });
 const budget = new FixedTraceBudget(softMaxUsd);
 const provider = new BudgetedFixedTraceProvider(raw, budget, profile, fixedTraceDirectFullSuiteResponsePricingPolicy(cell.provider, cell.model, profile));

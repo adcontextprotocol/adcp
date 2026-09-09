@@ -123,6 +123,11 @@ export function classifyLocalModelExecution(
     reason,
   };
 }
+/**
+ * `provider_default` intentionally means that no effort control is sent.
+ * The remaining values are the reviewed cross-provider control vocabulary;
+ * individual adapters expose only the values their selected model supports.
+ */
 export type ModelReasoningEffort = 'provider_default' | 'none' | 'low' | 'medium' | 'high';
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
@@ -281,6 +286,11 @@ export type ModelFinishReason =
 export interface ModelUsage {
   inputTokens: number;
   outputTokens: number;
+  /**
+   * OpenAI Responses exposes this as `output_tokens_details.reasoning_tokens`.
+   * It is a separately recorded breakdown, not an additional output total.
+   */
+  reasoningTokens?: number;
   cacheWriteTokens?: number;
   cacheReadTokens?: number;
 }

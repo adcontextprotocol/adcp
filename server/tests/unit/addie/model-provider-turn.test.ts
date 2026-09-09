@@ -155,13 +155,14 @@ describe('appendModelTurnContinuation', () => {
 });
 
 describe('addModelUsage', () => {
-  it('accumulates token and cache metrics', () => {
+  it('accumulates token, reasoning, and cache metrics', () => {
     expect(addModelUsage(
-      { inputTokens: 10, outputTokens: 4, cacheWriteTokens: 3 },
-      { inputTokens: 6, outputTokens: 2, cacheReadTokens: 5 },
+      { inputTokens: 10, outputTokens: 4, reasoningTokens: 2, cacheWriteTokens: 3 },
+      { inputTokens: 6, outputTokens: 2, reasoningTokens: 1, cacheReadTokens: 5 },
     )).toEqual({
       inputTokens: 16,
       outputTokens: 6,
+      reasoningTokens: 3,
       cacheWriteTokens: 3,
       cacheReadTokens: 5,
     });

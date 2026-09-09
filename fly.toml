@@ -10,6 +10,9 @@ primary_region = 'iad'
 # Run migrations ONCE before deployment, not on every machine startup
 # If this fails, the deployment is rolled back automatically
 [deploy]
+  # The external matched-v4 evaluator bootstrap is run from a protected
+  # deployment control plane. App machines receive no operator credential;
+  # this ordinary migrator validates and records that completed schema.
   release_command = "node dist/db/migrate.js"
   release_command_timeout = "15m"
   strategy = "rolling"

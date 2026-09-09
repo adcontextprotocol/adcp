@@ -2,11 +2,15 @@ name: Deploy
 
 on:
   workflow_run:
-    workflows: [Build Check]
+    # Deploy is sequenced from the protected evaluator provision rather than
+    # polling it from Build Check. This prevents a protected-approval delay
+    # from losing the sole deploy trigger for an otherwise valid main SHA.
+    workflows: [Provision matched-v4 evaluator schema]
     types: [completed]
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -21,15 +25,16 @@ jobs:
   preflight:
     name: Preflight
     # workflow_run has access to deployment secrets, so only trust a successful
-    # push run from this repository's main branch. Never deploy a PR run.
+    # protected-provision continuation from this repository's main branch.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.event == 'workflow_run' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     outputs:
       deploy_current: ${{ steps.current-main.outputs.deploy_current }}
+      evaluator_provisioned: ${{ steps.evaluator-provision.outputs.evaluator_provisioned }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,12 +77,34 @@ jobs:
           fi
           echo "No duplicate migration numbers on main."
 
+      - name: Require the triggering protected evaluator provision
+        id: evaluator-provision
+        if: steps.current-main.outputs.deploy_current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROVISION_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          jobs=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${PROVISION_RUN_ID}/jobs?per_page=100")
+          echo "$jobs" | jq -e '
+            .jobs | any(.[]; .name == "provision" and .conclusion == "success")
+          ' >/dev/null || {
+            echo "::error::The triggering protected evaluator provision did not complete its provision job." >&2
+            exit 1
+          }
+          echo "evaluator_provisioned=true" >> "$GITHUB_OUTPUT"
+
   deploy:
     name: Deploy to Fly.io
     needs: preflight
-    if: needs.preflight.outputs.deploy_current == 'true'
+    if: needs.preflight.outputs.deploy_current == 'true' && needs.preflight.outputs.evaluator_provisioned == 'true'
     runs-on: ubuntu-latest
     steps:
+      # This must precede every flyctl invocation. In particular, staging the
+      # non-secret admission SHA still requires the Fly CLI binary.
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -94,8 +121,37 @@ jobs:
             exit 1
           fi
 
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+      - name: Recheck triggering evaluator provision immediately before protected deploy use
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROVISION_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          jobs=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${PROVISION_RUN_ID}/jobs?per_page=100")
+          echo "$jobs" | jq -e '
+            .jobs | any(.[]; .name == "provision" and .conclusion == "success")
+          ' >/dev/null || {
+            echo '::error::Triggering evaluator provision is no longer a successful provision job.' >&2
+            exit 1
+          }
+
+      # This SHA is not a database or evaluator credential. It binds the
+      # ordinary app runtime to the exact protected admission that this
+      # already-verified deploy is releasing; the app never receives the
+      # operator/control-plane PostgreSQL connection.
+      - name: Stage exact matched-v4 admission SHA for ordinary runtime
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TESTED_SHA" =~ ^[a-f0-9]{40}$ ]] || {
+            echo '::error::Refusing to stage an invalid matched-v4 merge SHA.' >&2
+            exit 1
+          }
+          flyctl secrets set --stage \
+            ADDIE_MATCHED_V4_MERGE_SHA="$TESTED_SHA" \
+            ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=true
 
       - name: Reject publisher crawl queue secret override
         env:

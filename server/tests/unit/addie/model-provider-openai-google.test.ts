@@ -5,17 +5,18 @@ import { collectModelResponse } from '../../../src/addie/model-providers/events.
 import {
   OPENAI_ROUTER_MODEL,
   OPENAI_DIRECT_FULL_SUITE_MODELS,
-  createFixedTraceDirectFullSuiteOpenAIProvider,
   OpenAIResponsesProvider,
   normalizeOpenAIResponse,
+  prepareOpenAIResponsesEvaluationRequest,
   type OpenAIResponsesTransport,
 } from '../../../src/addie/model-providers/openai-responses-provider.js';
 import {
   GOOGLE_DIRECT_FULL_SUITE_MODEL,
-  createFixedTraceDirectFullSuiteGoogleProvider,
   GOOGLE_ROUTER_MODEL,
   GoogleGenerateContentProvider,
+  googleReturnedModelIdentityMatches,
   normalizeGoogleResponse,
+  prepareGoogleGenerateContentEvaluationRequest,
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import {
@@ -104,8 +105,7 @@ describe('OpenAIResponsesProvider', () => {
   });
 
   it.each(OPENAI_DIRECT_FULL_SUITE_MODELS)('allows only the reviewed exact direct full-suite OpenAI request ID %s', (model) => {
-    const provider = createFixedTraceDirectFullSuiteOpenAIProvider('unused', {} as OpenAIResponsesTransport);
-    expect(provider.prepare(request(model)).providerRequest).toMatchObject({ model });
+    expect(prepareOpenAIResponsesEvaluationRequest(request(model))).toMatchObject({ model });
   });
 
   it.each([
@@ -156,6 +156,26 @@ describe('OpenAIResponsesProvider', () => {
     expect(Object.isFrozen(prepared.providerRequest.input)).toBe(true);
   });
 
+  it.each(['none', 'low', 'medium', 'high'] as const)(
+    'sends the production-reviewed OpenAI reasoning control %s without changing provider-default semantics',
+    (effort) => {
+      const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+      expect(provider.prepare(request(OPENAI_ROUTER_MODEL, { reasoning: { effort } })).providerRequest)
+        .toMatchObject({ reasoning: { effort } });
+      expect(provider.prepare(request(OPENAI_ROUTER_MODEL, { reasoning: { effort: 'provider_default' } })).providerRequest)
+        .not.toHaveProperty('reasoning');
+    },
+  );
+
+  it.each(['xhigh', 'max'] as const)('scopes OpenAI evaluation-only control %s outside the runtime adapter', (effort) => {
+    const runtime = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    const evaluationRequest = request(OPENAI_ROUTER_MODEL, { reasoning: { effort } as never });
+    expect(() => runtime.prepare(evaluationRequest)).toThrow('reasoning');
+    expect(prepareOpenAIResponsesEvaluationRequest(evaluationRequest)).toMatchObject({ reasoning: { effort } });
+    expect(prepareOpenAIResponsesEvaluationRequest(request(OPENAI_ROUTER_MODEL, { reasoning: { effort: 'provider_default' } })))
+      .not.toHaveProperty('reasoning');
+  });
+
   it('dispatches exactly once with SDK retries disabled', async () => {
     const create = vi.fn().mockResolvedValue(openAIResponse());
     const provider = new OpenAIResponsesProvider('unused', { responses: { create } });
@@ -169,7 +189,7 @@ describe('OpenAIResponsesProvider', () => {
     expect(beforeDispatch).toHaveBeenCalledTimes(1);
     expect(normalized.model).toBe(OPENAI_ROUTER_MODEL);
     expect(normalized.finishReason).toBe('stop');
-    expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 });
+    expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 5, reasoningTokens: 1, cacheReadTokens: 2, cacheWriteTokens: 0 });
   });
 
   it.each([
@@ -193,11 +213,7 @@ describe('OpenAIResponsesProvider', () => {
   });
 
   it.each(OPENAI_DIRECT_FULL_SUITE_MODELS)('requires the same exact returned OpenAI model ID for %s', async (model) => {
-    const provider = createFixedTraceDirectFullSuiteOpenAIProvider('unused', {
-      responses: { create: vi.fn().mockResolvedValue(openAIResponse({ model })) },
-    });
-    await expect(collectModelResponse(provider.respond(request(model))))
-      .resolves.toMatchObject({ model });
+    expect(normalizeOpenAIResponse(openAIResponse({ model }))).toMatchObject({ model });
   });
 
   it.each(['gpt-5.6-luna-latest', 'gpt-5.6-terra-20260901', 'gpt-5.6-sol-preview'])('rejects an OpenAI request alias %s', (model) => {
@@ -413,8 +429,7 @@ describe('OpenAIResponsesProvider', () => {
   });
 
   it('allows Gemini 3.8 Flash only in the direct full-suite adapter scope', () => {
-    const provider = createFixedTraceDirectFullSuiteGoogleProvider('unused', {} as GoogleGenerateContentTransport);
-    expect(provider.prepare(request(GOOGLE_DIRECT_FULL_SUITE_MODEL)).providerRequest)
+    expect(prepareGoogleGenerateContentEvaluationRequest(request(GOOGLE_DIRECT_FULL_SUITE_MODEL)))
       .toMatchObject({ model: GOOGLE_DIRECT_FULL_SUITE_MODEL });
   });
 
@@ -424,14 +439,7 @@ describe('OpenAIResponsesProvider', () => {
     'gemini-3.8-flash-20260801',
     'gemini-3.8-pro',
   ])('rejects non-exact, cross-family, and dated Google 3.8 returned identities: %s', async (model) => {
-    const provider = createFixedTraceDirectFullSuiteGoogleProvider('unused', {
-      models: { generateContent: vi.fn().mockResolvedValue(googleResponse({ modelVersion: model })) },
-    });
-    await expect(collectModelResponse(provider.respond(request(GOOGLE_DIRECT_FULL_SUITE_MODEL))))
-      .rejects.toMatchObject({
-        name: 'UnexpectedModelIdentityError', provider: 'google',
-        expectedModel: GOOGLE_DIRECT_FULL_SUITE_MODEL, actualModel: model,
-      });
+    expect(googleReturnedModelIdentityMatches(GOOGLE_DIRECT_FULL_SUITE_MODEL, model)).toBe(false);
   });
 
   it('accepts only the existing reviewed Google 3.7 dated revision', async () => {
@@ -475,9 +483,9 @@ describe('OpenAIResponsesProvider', () => {
         output_tokens_details: { reasoning_tokens: 1 },
       },
     }));
-    expect(withoutEither.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
-    expect(withoutWrite.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2 });
-    expect(withoutRead.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheWriteTokens: 3 });
+    expect(withoutEither.usage).toEqual({ inputTokens: 10, outputTokens: 5, reasoningTokens: 1 });
+    expect(withoutWrite.usage).toEqual({ inputTokens: 10, outputTokens: 5, reasoningTokens: 1, cacheReadTokens: 2 });
+    expect(withoutRead.usage).toEqual({ inputTokens: 10, outputTokens: 5, reasoningTokens: 1, cacheWriteTokens: 3 });
   });
 
   it('fails closed on unsupported models, provider tools, cache hints, and unsupported input', () => {

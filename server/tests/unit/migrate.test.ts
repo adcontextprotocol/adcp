@@ -14,6 +14,7 @@ describe("Database Migrations", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED;
 
     mockClient = {
       query: vi.fn().mockResolvedValue({}),
@@ -164,6 +165,60 @@ describe("Database Migrations", () => {
       expect(insertCalls[0][1]).toEqual([1, "001_first.sql"]);
       expect(insertCalls[1][1]).toEqual([2, "002_second.sql"]);
       expect(insertCalls[2][1]).toEqual([3, "003_third.sql"]);
+    });
+  });
+
+  describe("evaluator-only migration isolation", () => {
+    const externalMigration = "584_addie_matched_v4_private_authority.sql";
+
+    beforeEach(() => {
+      vi.mocked(fs.readdir).mockResolvedValue([externalMigration] as any);
+      vi.mocked(fs.readFile).mockResolvedValue("-- externally provisioned");
+      mockPool.query
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [] });
+    });
+
+    it("lets an evaluator-disabled fresh application boot without private schema", async () => {
+      const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+      await runMigrations();
+
+      expect(wasMigrationApplied()).toBe(false);
+      expect(infoSpy).toHaveBeenCalledWith(
+        `Skipping evaluator-only migration: ${externalMigration}`,
+      );
+      infoSpy.mockRestore();
+    });
+
+    it("does not re-attest post-record evaluator drift during ordinary app boot", async () => {
+      mockPool.query.mockReset();
+      mockPool.query
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({
+          rows: [{ version: 584, filename: externalMigration }],
+        });
+
+      await runMigrations();
+
+      expect(wasMigrationApplied()).toBe(false);
+      expect(mockClient.query).not.toHaveBeenCalledWith(
+        expect.stringContaining("canonical_shape"),
+      );
+    });
+
+    it("fails closed on absent evaluator schema only for the protected opt-in", async () => {
+      process.env.ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED = "true";
+      mockClient.query.mockImplementation((text: string) =>
+        Promise.resolve(
+          text.includes("canonical_shape") ? { rows: [] } : {},
+        ),
+      );
+
+      await expect(runMigrations()).rejects.toThrow(
+        "Migration 584 evaluator tables do not match the reviewed full catalog shape.",
+      );
+      expect(wasMigrationApplied()).toBe(true);
     });
   });
 

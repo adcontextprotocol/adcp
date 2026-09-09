@@ -96,17 +96,17 @@ async function providerFor(id: 'anthropic' | 'google' | 'openai', directFullSuit
     return new AnthropicModelProvider(apiKey, undefined, { transportMaxRetries: 0 });
   }
   if (id === 'google') {
+    if (directFullSuite) {
+      throw new Error('Direct full-suite Google dispatch is sealed to the matched-v4 authority');
+    }
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is required for candidate or judge');
-    const { GoogleGenerateContentProvider, createFixedTraceDirectFullSuiteGoogleProvider } = await import('../../src/addie/model-providers/google-generate-content-provider.js');
-    return directFullSuite
-      ? createFixedTraceDirectFullSuiteGoogleProvider(process.env.GEMINI_API_KEY)
-      : new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY);
+    const { GoogleGenerateContentProvider } = await import('../../src/addie/model-providers/google-generate-content-provider.js');
+    return new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY);
   }
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for candidate or judge');
-  const { OpenAIResponsesProvider, createFixedTraceDirectFullSuiteOpenAIProvider } = await import('../../src/addie/model-providers/openai-responses-provider.js');
-  return directFullSuite
-    ? createFixedTraceDirectFullSuiteOpenAIProvider(process.env.OPENAI_API_KEY)
-    : new OpenAIResponsesProvider(process.env.OPENAI_API_KEY);
+  if (directFullSuite) throw new Error('Direct full-suite provider dispatch is sealed to the matched-v4 authority');
+  const { OpenAIResponsesProvider } = await import('../../src/addie/model-providers/openai-responses-provider.js');
+  return new OpenAIResponsesProvider(process.env.OPENAI_API_KEY);
 }
 function budgetedProvider(provider: Awaited<ReturnType<typeof providerFor>>, model: string) {
   const pricing = pricingModule.datedPricingProfilesForFixedTrace().find((candidate) => candidate.provider === provider.id && candidate.model === model);

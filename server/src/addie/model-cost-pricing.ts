@@ -36,6 +36,7 @@ export function hasCompleteModelUsage(usage: unknown): usage is ModelUsage {
     typeof count === 'number' && Number.isSafeInteger(count) && count >= 0;
   return isSafeCount(value.inputTokens)
     && isSafeCount(value.outputTokens)
+    && (value.reasoningTokens === undefined || isSafeCount(value.reasoningTokens))
     && (value.cacheReadTokens === undefined || isSafeCount(value.cacheReadTokens))
     && (value.cacheWriteTokens === undefined || isSafeCount(value.cacheWriteTokens));
 }
