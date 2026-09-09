@@ -499,6 +499,16 @@
       "pullRequestNo": 7273,
       "comment_id": 5544639769,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7273#issuecomment-5544639769"
+    },
+    {
+      "name": "LukasGoTom",
+      "id": 131183788,
+      "created_at": "2026-09-09T13:06:44Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 2861,
+      "comment_id": 5602338499,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client/pull/2861#issuecomment-5602338499"
     }
   ]
 }
