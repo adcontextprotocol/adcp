@@ -104,7 +104,8 @@ provider call cannot reserve durable evidence before that call.
 Do not configure a GitHub Actions or Fly environment to work around this
 gate. In particular, no `ALLOW_*` flag, caller-provided adapter, local path,
 content-addressed R2 upload, or OIDC identity assertion authorizes paid
-dispatch. The manual command intentionally refuses before reading credentials.
+dispatch. The manual command itself intentionally refuses before it accesses
+execution configuration or dispatches a provider request.
 
 Before the gate may be replaced, a separate reviewed change must provide all
 of the following:
