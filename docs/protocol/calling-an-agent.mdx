@@ -22,7 +22,9 @@ Walk these in order on first contact with any new agent:
 
 ## Idempotency: replay vs. new operation
 
-Every mutating tool requires an `idempotency_key` (UUID).
+Every mutating tool requires an `idempotency_key` (UUID). The published 3.x [`get_products`](/docs/media-buy/task-reference/get_products) compatibility facade keeps its key optional on every arm. Pure-read wrappers must tolerate an optional key, but may ignore it; callers cannot rely on read-response replay. Buyers SHOULD include a key whenever `get_products` may allocate a task, finalize a proposal, or otherwise change observable state.
+
+For a key-required mutation, or an optional-key operation that the seller documents as replay-protected:
 
 - **Same key on retry** → server replays the **same response**, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
 - **Fresh key** → **new operation**, regardless of body. Generating a new UUID because the previous attempt failed is the most common way naïve callers create duplicate media buys.

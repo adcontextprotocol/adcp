@@ -1251,6 +1251,35 @@ async function runTests() {
     'get_products filters.signal_targeting accepts deprecated signal_id during SignalRef migration window'
   );
   await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ],
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000'
+    },
+    'Legacy get_products finalization accepts an idempotency key'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ]
+    },
+    'Legacy get_products finalization remains valid without an idempotency key throughout 3.x'
+  );
+  await testSchemaValidation(
     '/schemas/core/wholesale-feed-event.json',
     {
       event_id: '018f4f28-6b5d-7f50-9d57-111111111111',

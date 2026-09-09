@@ -37,6 +37,13 @@
     }
   ],
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Optional client-generated key on the AdCP 3.x compatibility facade. The field remains optional on every arm for wire compatibility. A seller MAY ignore a supplied key on a guaranteed side-effect-free synchronous read. Buyers SHOULD supply a key whenever the request may allocate a task, finalize a proposal, or otherwise change observable state. When a key is supplied on such a request and the seller declares adcp.idempotency.supported: true, the seller MUST apply the AdCP replay contract before that effect. If the key is omitted or the seller declares adcp.idempotency.supported: false, the buyer has no portable at-most-once retry guarantee after an ambiguous result. Keys MUST be unique per seller and logical request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "buying_mode": {
       "type": "string",
       "enum": [
