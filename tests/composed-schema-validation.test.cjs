@@ -3524,6 +3524,35 @@ async function runTests() {
     'Legacy get_products remains valid without an idempotency key throughout 3.x'
   );
   await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ],
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440000'
+    },
+    'Legacy get_products finalization accepts an idempotency key'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'proposal-123',
+          action: 'finalize'
+        }
+      ]
+    },
+    'Legacy get_products finalization rejects a missing idempotency key'
+  );
+  await testSchemaValidation(
     '/schemas/media-buy/list-products-request.json',
     { fields: ['product_id', 'pricing_options'] },
     'list_products is a key-optional synchronous read'

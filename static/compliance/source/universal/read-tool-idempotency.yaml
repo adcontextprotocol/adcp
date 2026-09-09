@@ -1,18 +1,18 @@
 id: read_tool_idempotency
 version: "1.0.0"
 introduced_in: "3.1"
-title: "Read-tool idempotency_key tolerance"
+title: "Read-tool idempotency_key envelope tolerance"
 category: idempotency
-summary: "Validates that read-only AdCP tasks and the 3.x get_products compatibility facade accept an optional idempotency_key without strict wrapper rejection."
+summary: "Validates that read-only AdCP tasks and the 3.x get_products compatibility facade tolerate an optional idempotency_key without claiming read-response replay."
 track: core
 required_tools: []  # protocol-level baseline; read-tool probes gate themselves per step
 
 narrative: |
-  AdCP 3.1 extends the `idempotency_key` request envelope from mutating
-  operations to every task request, including read-only tools. Sellers MUST
-  tolerate the field on reads in 3.1. Tool wrappers must pass it through their
-  envelope normalization layer instead of rejecting it as an unknown
-  task-specific input.
+  AdCP requires `idempotency_key` replay protection for state-mutating
+  requests. Read-only tools leave the field optional, but their wrappers MUST
+  tolerate it instead of rejecting it as an unknown task-specific input. A
+  pure-read handler MAY ignore the field, and buyers MUST NOT infer a
+  byte-stable replay guarantee from this storyboard.
 
   This storyboard focuses on the 3.1 read-side contract. It sends
   `idempotency_key`, `context`, and `ext` on representative read tools and
@@ -46,7 +46,7 @@ phases:
   - id: read_requests_accept_idempotency_key
     title: "Read requests accept idempotency_key"
     narrative: |
-      Send representative read requests with the full 3.1 request envelope:
+      Send representative read requests with optional envelope fields:
       `idempotency_key`, `context`, and `ext`. Passing these probes confirms
       that task wrappers do not treat read request schemas as closed
       task-specific payloads.
@@ -67,7 +67,8 @@ phases:
         stateful: false
         expected: |
           Return capabilities normally. The read wrapper MUST tolerate the
-          3.1 every-request envelope fields and echo context unchanged.
+          optional envelope fields and echo context unchanged. This step does
+          not require the response to be stored or replayed.
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#read_tools_3_1_capabilities"
@@ -95,9 +96,9 @@ phases:
         title: "Product discovery read accepts idempotency_key"
         narrative: |
           This brief-mode `get_products` probe resolves synchronously as a read,
-          but the tool is polymorphic: other calls may create a task or finalize
-          a proposal. Its request schema therefore declares `idempotency_key`,
-          and sellers must apply the same replay contract to this read result.
+          but the compatibility tool is polymorphic: other calls may create a
+          task or finalize a proposal. Its request schema therefore declares an
+          optional `idempotency_key`; this read arm may ignore it.
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"

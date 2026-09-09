@@ -64,6 +64,7 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 - 3.2 request `Signature` and `Content-Digest` values use RFC 8941 padded standard Base64 `sf-binary`, not the 3.0/3.1 unpadded Base64URL override. Webhook v1 retains its separately routed legacy encoding.
 - 3.2 producers emit integer `error.retry_after` seconds.
 - A 3.2 verification claim requires release advertisement and response echo even though those fields remain schema-optional for 3.x compatibility.
+- Idempotency replay is required for state-mutating requests, not pure reads. Read wrappers must tolerate an optional `idempotency_key`, but may ignore it; buyers cannot infer read-response replay from `adcp.idempotency.supported: true`.
 
 ### Compact product and MediaBuy lifecycle (#6115)
 
@@ -82,7 +83,7 @@ AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, `decline
 - The release manifest labels each legacy fallback as `direct`, `orchestrated`, or `none`, so SDKs can expose the split API without claiming lossy calls are aliases.
 - `task_result_resolution` maps each tracked `task_type` to its tool `response_schema` or a retained 3.x event override, letting SDKs generate `TaskStatus<Result>` without embedding the global async-result union in `getTaskStatus`.
 
-New integrations SHOULD use the compact tools. Existing integrations do not need an immediate migration: the three compatibility facades retain their 3.x contracts, and sellers MUST honor replay protection whenever a key is supplied.
+New integrations SHOULD use the compact tools. Existing integrations do not need an immediate migration: the three compatibility facades retain their 3.x request shapes. On `get_products`, a seller may ignore an optional key for a guaranteed side-effect-free synchronous read, but an arm that allocates a task or changes observable state must require a key and be fenced before that effect.
 
 ### Inline asset-access credentials deprecated (#5698)
 
@@ -151,7 +152,7 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 - **SDK and compliance readiness:** named codegen schemas, async-response refs, open-payload markers, capability-gated storyboards, packaged compliance closure, and release-artifact drift checks.
 
 <Info>
-**Upgrading from 3.0.x?** No code changes are required to remain on stable `"3.0"`. To claim or consume 3.1, follow the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1): pin `"3.1"` on the wire, add read-task idempotency keys if you are hand-rolled, and tolerate envelope fields. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
+**Upgrading from 3.0.x?** No code changes are required to remain on stable `"3.0"`. To claim or consume 3.1, follow the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1): pin `"3.1"` on the wire, add mutation idempotency keys if you are hand-rolled, and tolerate optional envelope fields on reads. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
 </Info>
 
 ### Adopter action
@@ -253,11 +254,11 @@ Existing exact durations and closed ranges remain valid. PR [#5323](https://gith
 
 ### Wire conformance — idempotency & envelope tolerance (#4399 / #4399b, #2911, #4227, #4371, #4418, #4107, #4196, #4043)
 
-A bundle of normative clarifications that codify deployed behavior and close ambiguities that surfaced from real adopter integrations.
+A bundle of normative changes that addressed wrapper failures and attempted to extend replay to reads. The read-replay requirement was not implemented by the reference SDKs and is relaxed by the 3.2 mutation-only contract described above.
 
-**`get_products` accepts keyed replay (#4399b).** Sellers MUST accept `idempotency_key` on product discovery and apply the normal replay contract. AdCP 3.2 subsequently adds explicit read, recommendation, refinement, and finalization tools while preserving the optional-key legacy facade throughout 3.x.
+**`get_products` accepts optional keys (#4399b).** Sellers MUST accept `idempotency_key` on product discovery. The original 3.1 text required normal replay even for a pure-read result. AdCP 3.2 corrects that overreach: a guaranteed side-effect-free synchronous arm may ignore the key, while an arm that allocates a task or changes observable state must require a key and apply replay before that effect. The legacy facade remains available throughout 3.x.
 
-The cache holds read responses too from 3.1 onward — sellers MUST encrypt the cache tier at rest with the same controls applied to the underlying resource store. Operators with read-heavy buyer mixes SHOULD raise the rule-8 insert ceiling (sized originally against write-heavy traffic). See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency) for the full contract.
+A seller may voluntarily cache keyed reads, but buyers cannot rely on that behavior. Such sellers follow the full durability, rate-limit, and encryption contract and isolate read inserts from mutation replay capacity. See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency) for the current contract.
 
 **MCP envelope serialization is now normative — flat on the wire (#2911).** `core/protocol-envelope.json` drops `required: [status, payload]`; envelope fields and body fields are siblings at the root of the MCP tool response (no nested `payload:` key). Matches shipping SDK behavior. `context` joins the envelope as a first-class caller-supplied opaque echo (`/schemas/core/context.json`). It is distinct from A2A's native `contextId`; a request-body `context_id` on MCP is compatibility-only where declared. A2A and REST serializations are normative in the envelope's `notes` array.
 
@@ -279,7 +280,7 @@ The cache holds read responses too from 3.1 onward — sellers MUST encrypt the 
 
 | If you are… | What you need to do |
 |---|---|
-| A buyer using `@adcp/client` or `adcp-py` | Nothing. Both SDKs already send `idempotency_key` uniformly on every call. |
+| A buyer using `@adcp/client` or `adcp-py` | Nothing for pure reads. Both SDKs generate `idempotency_key` for requests they classify as mutating and omit it otherwise. |
 | A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Prefer the AdCP 3.2 split product-discovery tools and include `idempotency_key` on recommendations, refinements, and finalization. Existing `get_products` calls remain valid throughout 3.x. |
 | A seller on FastMCP/Pydantic, Zod `.strict()`, or OpenAPI codegen | Audit input models — they MUST accept every field admitted by the selected request schema. An admitted MCP `context_id` is accepted and ignored for compatibility. Use `extra='allow'` (Pydantic), drop `.strict()` (Zod), or fix codegen config (OpenAPI) for open input schemas. |
 | A seller emitting `create_media_buy` synchronous-success responses with embedded `status` | Nothing changes. Existing byte-stable replay already conforms; the rule was silent on this case before, now it's explicit. |

@@ -28,6 +28,28 @@
         },
         "required": ["buying_mode"]
       }
+    },
+    {
+      "description": "Legacy proposal finalization changes observable state and requires replay protection.",
+      "if": {
+        "properties": {
+          "refine": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "const": "finalize"
+                }
+              },
+              "required": ["action"]
+            }
+          }
+        },
+        "required": ["refine"]
+      },
+      "then": {
+        "required": ["idempotency_key"]
+      }
     }
   ],
   "x-mutates-state": true,
@@ -38,7 +60,7 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Optional client-generated key for retry-safe use of the AdCP 3.x compatibility facade. New callers SHOULD use the compact 3.2 tasks; each stateful split task has its own idempotency identity, so callers MUST retry with the same tool name. Keys MUST be unique per seller and logical request.",
+      "description": "Conditionally required client-generated key on the AdCP 3.x compatibility facade. It is optional when the selected execution arm is guaranteed to be a side-effect-free synchronous read, and the seller MAY ignore a supplied key on that arm. An arm that allocates a task, finalizes a proposal, or otherwise changes observable state MUST require a key and apply the AdCP replay contract before that effect. New callers SHOULD use the compact 3.2 tasks; each stateful split task has its own idempotency identity, so callers MUST retry with the same tool name. Keys MUST be unique per seller and logical request.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
