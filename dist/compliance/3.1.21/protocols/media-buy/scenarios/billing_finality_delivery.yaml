@@ -1,0 +1,354 @@
+id: media_buy_seller/billing_finality_delivery
+version: "1.0.0"
+title: "Billing finality delivery and usage reporting"
+category: media_buy_seller
+summary: "Verifies that 3.1 billing-grade delivery rows distinguish provisional from final numbers and that report_usage accepts final usage records with finality metadata."
+track: reporting
+introduced_in: "3.1"
+required_tools:
+  - sync_accounts
+  - create_media_buy
+  - get_media_buy_delivery
+  - report_usage
+  - comply_test_controller
+
+narrative: |
+  Billing reconciliation depends on knowing which numbers are still provisional
+  and which are final enough to invoice against. AdCP 3.1 adds finality markers
+  to delivery reporting and usage reporting so buyers can hold provisional data
+  out of invoice reconciliation until the declared measurement window closes.
+
+  This storyboard creates a media buy whose billing measurement reconciles
+  against a post-SIVT window, injects provisional delivery first, then injects
+  final delivery. The buyer reads both snapshots and verifies that provisional
+  rows do not carry finalization timestamps while final rows carry `is_final:
+  true` and `finalized_at`. The buyer then submits a final `report_usage`
+  record with `final`, `finalized_at`, and `measurement_window` populated.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - billing_finality
+  examples:
+    - "Digital sellers with post-IVT billing reconciliation"
+    - "CTV sellers with third-party finalization windows"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner seeds a guaranteed video product with measurement windows. The
+    comply_test_controller `simulate_delivery` scenario accepts finality fields
+    (`is_final`, `finalized_at`, `measurement_window`) and projects them into
+    subsequent `get_media_buy_delivery` responses.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "billing_finality_video_q3"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - clicks
+          - spend
+        measurement_windows:
+          - window_id: "post_givt"
+            description: "Preliminary delivery after general invalid-traffic filtering"
+            duration_days: 0
+            expected_availability_days: 1
+            is_guarantee_basis: false
+          - window_id: "post_sivt"
+            description: "Billing-grade delivery after sophisticated invalid-traffic filtering"
+            duration_days: 0
+            expected_availability_days: 3
+            is_guarantee_basis: true
+  pricing_options:
+    - product_id: "billing_finality_video_q3"
+      pricing_option_id: "cpm_billing_finality"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18.0
+
+phases:
+  - id: setup
+    title: "Create a media buy with billing measurement terms"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#billing_finality_delivery_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: create_media_buy
+        title: "Create buy reconciled on post-SIVT data"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Create the media buy and return a media_buy_id for delivery and
+          usage reconciliation. The accepted package binds billing
+          reconciliation to the post_sivt measurement window.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
+          packages:
+            - product_id: "billing_finality_video_q3"
+              budget: 30000
+              pricing_option_id: "cpm_billing_finality"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "measurementvendor.example"
+                  measurement_window: "post_sivt"
+                  max_variance_percent: 5
+                makegood_policy:
+                  available_remedies: ["credit"]
+          idempotency_key: "$generate:uuid_v4#billing_finality_delivery_create_media_buy"
+        context_outputs:
+          - key: "media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+
+  - id: provisional_delivery
+    title: "Buyer sees provisional delivery before reconciliation"
+    narrative: |
+      The buyer pulls delivery while the measurement window is still maturing.
+      These numbers may guide pacing, but they are not billing-grade and must
+      not be reconciled to an invoice.
+
+    steps:
+      - id: simulate_provisional_delivery
+        title: "Inject provisional post-GIVT delivery"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The controller records provisional delivery for the media buy.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 90000
+            clicks: 900
+            reported_spend:
+              amount: 1620.00
+              currency: "USD"
+            is_final: false
+            measurement_window: "post_givt"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Provisional delivery simulation succeeds"
+
+      - id: get_provisional_delivery
+        title: "Verify provisional delivery is not final"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return delivery data marked as provisional. The buyer can use it for
+          pacing but must not invoice-reconcile from this snapshot.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_value
+            path: "media_buy_deliveries[0].is_final"
+            value: false
+            description: "Row-level delivery is explicitly provisional"
+          - check: field_absent
+            path: "media_buy_deliveries[0].finalized_at"
+            description: "Provisional row does not carry finalized_at"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: false
+            description: "Package delivery is explicitly provisional"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "post_givt"
+            description: "Package delivery identifies the provisional measurement window"
+          - check: field_absent
+            path: "media_buy_deliveries[0].by_package[0].finalized_at"
+            description: "Provisional package row does not carry finalized_at"
+
+  - id: final_delivery
+    title: "Buyer sees billing-grade final delivery"
+    narrative: |
+      Once post-SIVT processing closes, the buyer reads final delivery. These
+      numbers are the billing-grade basis for invoice reconciliation.
+
+    steps:
+      - id: simulate_final_delivery
+        title: "Inject final post-SIVT delivery"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The controller records final delivery for the media buy with a
+          finalization timestamp.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 10000
+            clicks: 110
+            reported_spend:
+              amount: 180.00
+              currency: "USD"
+            is_final: true
+            finalized_at: "2099-08-03T12:00:00Z"
+            measurement_window: "post_sivt"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Final delivery simulation succeeds"
+
+      - id: get_final_delivery
+        title: "Verify final delivery carries finalized_at"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return delivery data marked final at both row and package levels.
+          The buyer can use this snapshot for invoice reconciliation.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_value
+            path: "media_buy_deliveries[0].is_final"
+            value: true
+            description: "Row-level delivery is final"
+          - check: field_present
+            path: "media_buy_deliveries[0].finalized_at"
+            description: "Final row carries finalized_at"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: true
+            description: "Package delivery is final"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].finalized_at"
+            description: "Final package row carries finalized_at"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "post_sivt"
+            description: "Package delivery identifies the billing measurement window"
+
+  - id: final_usage_reporting
+    title: "Buyer reports final usage for reconciliation"
+    narrative: |
+      A final usage record carries the same finality signal as the delivery
+      snapshot. Receivers store the record as billing-authoritative for the
+      reporting period and measurement window.
+
+    steps:
+      - id: report_final_usage
+        title: "Submit final usage record"
+        task: report_usage
+        schema_ref: "account/report-usage-request.json"
+        response_schema_ref: "account/report-usage-response.json"
+        doc_ref: "/accounts/tasks/report_usage"
+        stateful: true
+        expected: |
+          Accept the final usage record. The request carries `final: true`,
+          `finalized_at`, and `measurement_window` so the receiver can
+          reconcile it against the media buy's billing measurement terms.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#billing_finality_delivery_report_final_usage"
+          reporting_period:
+            start: "2099-07-01T00:00:00Z"
+            end: "2099-07-31T23:59:59Z"
+          usage:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              media_buy_id: "$context.media_buy_id"
+              pricing_option_id: "cpm_billing_finality"
+              impressions: 100000
+              vendor_cost: 1800.00
+              currency: "USD"
+              final: true
+              finalized_at: "2099-08-03T12:00:00Z"
+              measurement_window: "post_sivt"
+          context:
+            correlation_id: "billing_finality_delivery--report_usage"
+        validations:
+          - check: response_schema
+            description: "Response matches report-usage-response.json schema"
+          - check: field_value
+            path: "accepted"
+            value: 1
+            description: "Final usage record is accepted"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "billing_finality_delivery--report_usage"
+            description: "Context correlation_id returned unchanged"

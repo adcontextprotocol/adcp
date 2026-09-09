@@ -1,0 +1,262 @@
+# Nova Motors — Signal-Focused Advertiser Test Kit
+#
+# Entity definition: fictional-entities.yaml → advertisers[nova_motors]
+# Data providers defined in this kit: see fictional-entities.yaml → data_providers
+#
+# This brand is registered as a sandbox brand in AgenticAdvertising.org (AAO).
+# Agents resolve novamotors.example via the standard AAO brand resolution path.
+# AAO returns the brand.json below but excludes sandbox brands from production
+# brand discovery results.
+
+id: nova_motors
+name: "Nova Motors"
+description: |
+  Signal-focused test kit for the Nova Motors Volta EV launch campaign.
+  Provides sample signal definitions, pricing options, and destination
+  configurations for testing signal agent storyboards.
+sandbox: true
+
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+#
+# probe_task is `get_signals` because this kit's primary consumers are
+# signal agents (specialisms/signal-owned, specialisms/signal-marketplace)
+# where list_creatives is not implemented. Non-signal storyboards that
+# reuse this kit (collection-lists, sales-broadcast-tv, sponsored-
+# intelligence) should select acme-outdoor for security_baseline, or
+# override probe_task at the storyboard layer.
+auth:
+  api_key: "demo-nova-motors-v1"
+  probe_task: get_signals
+
+brand:
+  house:
+    domain: "novamotors.example"
+    name: "Nova Motors"
+  brand_id: "nova_motors"
+  names:
+    - en: "Nova Motors"
+  description: "Electric vehicles for the next generation. The Volta EV — performance meets sustainability."
+  industry: "automotive"
+  keller_type: "master"
+  logos:
+    - url: "https://test-assets.adcontextprotocol.org/nova-motors/logo-primary.png"
+      orientation: "horizontal"
+      background: "light-bg"
+      variant: "primary"
+      width: 400
+      height: 100
+    - url: "https://test-assets.adcontextprotocol.org/nova-motors/logo-icon.png"
+      orientation: "square"
+      background: "transparent-bg"
+      variant: "icon"
+      width: 200
+      height: 200
+  colors:
+    primary: "#0D47A1"
+    secondary: "#00BFA5"
+    accent: "#FF6D00"
+    background: "#F5F5F5"
+    text: "#1A1A1A"
+  fonts:
+    heading:
+      family: "Inter"
+      weight: 700
+      url: "https://fonts.googleapis.com/css2?family=Inter:wght@700"
+    body:
+      family: "Inter"
+      weight: 400
+      url: "https://fonts.googleapis.com/css2?family=Inter"
+  tone:
+    voice: "Forward-thinking and precise. We speak to drivers who care about engineering and the planet — no greenwashing, no hype."
+    attributes:
+      - "innovative"
+      - "precise"
+      - "optimistic"
+    dos:
+      - "Lead with performance specs"
+      - "Reference sustainability with evidence"
+      - "Use clean, modern language"
+    donts:
+      - "Greenwash or overstate environmental claims"
+      - "Use legacy automotive clichés"
+      - "Condescend about range anxiety"
+
+campaign:
+  brand: "Nova Motors"
+  product: "Volta EV"
+  brief: "Reach in-market EV buyers with high purchase propensity, near dealerships, who haven't bought a Nova vehicle before."
+  budget: 250000
+  currency: "USD"
+  markets: ["US"]
+
+signals:
+  marketplace:
+    - signal_agent_segment_id: "trident_likely_ev_buyers"
+      name: "Likely EV Buyers"
+      data_provider_domain: "tridentauto.example"
+      signal_id: "likely_ev_buyers"
+      value_type: "binary"
+      signal_type: "marketplace"
+      coverage_percentage: 8
+      pricing:
+        - pricing_option_id: "po_trident_ev_cpm"
+          model: "cpm"
+          cpm: 3.50
+          currency: "USD"
+
+    - signal_agent_segment_id: "trident_purchase_propensity"
+      name: "Purchase Propensity"
+      data_provider_domain: "tridentauto.example"
+      signal_id: "purchase_propensity"
+      value_type: "numeric"
+      signal_type: "marketplace"
+      range:
+        min: 0
+        max: 1
+      coverage_percentage: 55
+      pricing:
+        - pricing_option_id: "po_trident_propensity_cpm"
+          model: "cpm"
+          cpm: 4.00
+          currency: "USD"
+
+    - signal_agent_segment_id: "meridian_competitor_visitors"
+      name: "Competitor Visitors"
+      data_provider_domain: "meridiangeo.example"
+      signal_id: "competitor_visitors"
+      value_type: "binary"
+      signal_type: "marketplace"
+      coverage_percentage: 6
+      pricing:
+        - pricing_option_id: "po_meridian_visitors_cpm"
+          model: "cpm"
+          cpm: 5.00
+          currency: "USD"
+
+    - signal_agent_segment_id: "shopgrid_new_to_brand"
+      name: "New to Brand"
+      data_provider_domain: "shopgrid.example"
+      signal_id: "new_to_brand"
+      value_type: "binary"
+      signal_type: "marketplace"
+      coverage_percentage: 25
+      pricing:
+        - pricing_option_id: "po_shopgrid_retail_cpm"
+          model: "cpm"
+          cpm: 3.50
+          currency: "USD"
+
+  owned:
+    - signal_agent_segment_id: "prism_high_ltv"
+      name: "High LTV Customers"
+      value_type: "binary"
+      signal_type: "owned"
+      coverage_percentage: 12
+      pricing:
+        - pricing_option_id: "po_prism_flat_monthly"
+          model: "flat_fee"
+          amount: 5000
+          period: "monthly"
+          currency: "USD"
+
+    - signal_agent_segment_id: "prism_cart_abandoner"
+      name: "Cart Abandoners"
+      value_type: "binary"
+      signal_type: "owned"
+      coverage_percentage: 18
+      pricing:
+        - pricing_option_id: "po_prism_abandoner_cpm"
+          model: "cpm"
+          cpm: 8.00
+          currency: "USD"
+
+    - signal_agent_segment_id: "prism_engagement_score"
+      name: "Engagement Score"
+      value_type: "numeric"
+      signal_type: "owned"
+      range:
+        min: 0
+        max: 100
+      coverage_percentage: 65
+      pricing:
+        - pricing_option_id: "po_prism_engagement_cpm"
+          model: "cpm"
+          cpm: 2.50
+          currency: "USD"
+
+    - signal_agent_segment_id: "prism_churn_risk"
+      name: "Churn Risk"
+      value_type: "categorical"
+      signal_type: "owned"
+      categories: ["low_risk", "medium_risk", "high_risk", "churned"]
+      coverage_percentage: 70
+      pricing:
+        - pricing_option_id: "po_prism_churn_pom"
+          model: "percent_of_media"
+          percent: 12
+          max_cpm: 3.00
+          currency: "USD"
+
+assets:
+  images:
+    - id: "hero_300x250"
+      url: "https://test-assets.adcontextprotocol.org/nova-motors/hero-300x250.jpg"
+      width: 300
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Medium rectangle hero — Volta EV on coastal highway"
+
+    - id: "hero_728x90"
+      url: "https://test-assets.adcontextprotocol.org/nova-motors/hero-728x90.jpg"
+      width: 728
+      height: 90
+      mime_type: "image/jpeg"
+      description: "Leaderboard hero — Volta EV front profile with charging station"
+
+    - id: "hero_320x50"
+      url: "https://test-assets.adcontextprotocol.org/nova-motors/hero-320x50.jpg"
+      width: 320
+      height: 50
+      mime_type: "image/jpeg"
+      description: "Mobile banner hero — Volta EV dashboard detail"
+
+    - id: "hero_160x600"
+      url: "https://test-assets.adcontextprotocol.org/nova-motors/hero-160x600.jpg"
+      width: 160
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Wide skyscraper hero — vertical Volta EV silhouette"
+
+    - id: "hero_master"
+      url: "https://test-assets.adcontextprotocol.org/nova-motors/hero-master.jpg"
+      width: 1200
+      height: 628
+      mime_type: "image/jpeg"
+      description: "Master hero image — high-res Volta EV in motion"
+
+  text:
+    headlines:
+      - "The Volta EV — 0 to 60 in 3.2s"
+      - "Performance Meets Sustainability"
+      - "Drive Electric. Drive Nova."
+    descriptions:
+      - "340 miles of range. 15-minute fast charge. The Volta EV is engineered for drivers who refuse to compromise."
+      - "Zero emissions, zero compromises. Test drive the Volta EV at your nearest Nova Motors dealer."
+    cta:
+      - "Reserve Yours"
+      - "Schedule a Test Drive"
+      - "Explore the Volta"
+
+  click_url: "https://novamotors.example/volta-ev"
+
+destinations:
+  platforms:
+    - type: "platform"
+      platform: "the-trade-desk"
+      account: "agency-123-ttd"
+    - type: "platform"
+      platform: "streamhaus"
+      account: "agency-ctv-seat-456"
+  agents:
+    - type: "agent"
+      agent_url: "https://wonderstruck.salesagents.example"

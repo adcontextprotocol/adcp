@@ -1,0 +1,294 @@
+id: media_buy_seller/provenance_truth_of_claim
+version: "1.0.0"
+title: "Seller refutes a buyer's provenance claim via on-list verifier"
+category: media_buy_seller
+summary: "Buyer attaches a digital_source_type claim. Seller invokes get_creative_features against an on-list verifier (creative_policy.accepted_verifiers); when the verifier contradicts the claim, seller rejects with PROVENANCE_CLAIM_CONTRADICTED carrying audit-safe error.details."
+track: creative
+required_tools:
+  - get_products
+  - sync_creatives
+
+narrative: |
+  This is the truth-of-claim half of the provenance enforcement contract.
+  The structural-rejection half (media_buy_seller/provenance_enforcement)
+  exercises the PROVENANCE_*_MISSING / PROVENANCE_VERIFIER_NOT_ACCEPTED
+  codes — failures the seller detects by inspecting the submission against
+  creative_policy. This scenario exercises PROVENANCE_CLAIM_CONTRADICTED:
+  the seller calls a governance agent from creative_policy.accepted_verifiers
+  via get_creative_features; the verifier returns a result that contradicts
+  the buyer's provenance claim (e.g., buyer claims digital_source_type:
+  digital_capture but the AI-detection feature returns ai_generated: true
+  above the seller's confidence threshold), and the seller rejects.
+
+  Three phases:
+    1. Discover — get_products surfaces accepted_verifiers
+    2. Reject contradicted — buyer claims digital_capture (non-AI) but
+       attaches an asset URL the verifier flags as AI-generated. Seller
+       invokes the verifier, observes contradiction, returns
+       PROVENANCE_CLAIM_CONTRADICTED with error.details carrying the
+       audit-safe allowlist.
+    3. Accept consistent — buyer claims digital_capture and attaches an
+       asset URL the verifier confirms as non-AI. Seller invokes the
+       verifier, observes agreement, accepts.
+
+  The training agent's verifier is deterministic: substring "ai-generated-true"
+  in any asset URL drives the verifier to return ai_generated:true with
+  confidence 0.95; "ai-generated-false" drives ai_generated:false. This
+  removes any per-test stateful bookkeeping — the storyboard fixture's
+  asset URLs are the contract.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publishers and SSPs that run independent AI detection against buyer-claimed provenance"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller publishes a product with creative_policy.accepted_verifiers
+    pointing at a governance agent that implements get_creative_features.
+    The training agent acts as both seller and verifier in-process; the
+    accepted_verifiers entry's agent_url is a sentinel value that the
+    seller maps to its internal verifier.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product-truth-of-claim"
+      name: "Provenance Truth-of-Claim Test Product"
+      description: "Sandbox display inventory exercising verifier-driven contradiction of buyer provenance claims via accepted verifier allowlist"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      creative_policy:
+        co_branding: "optional"
+        landing_page: "any"
+        templates_available: false
+        provenance_required: true
+        accepted_verifiers:
+          - agent_url: "https://governance.encypher.seller.example"
+            feature_id: "ai_generated"
+            providers: ["Encypher"]
+      pricing_options:
+        - pricing_option_id: "test-pricing-cpm"
+          pricing_model: "cpm"
+          rate: 5.00
+          currency: "USD"
+
+phases:
+  - id: discover_verifier
+    title: "Discover the verifier allowlist"
+    narrative: |
+      The buyer reads creative_policy.accepted_verifiers from get_products
+      so it knows which on-list governance agent it can attach to its
+      embedded_provenance entries. This is the same get_products flow as
+      the structural-rejection storyboard.
+
+    steps:
+      - id: get_products_with_accepted_verifiers
+        title: "Read accepted_verifiers from creative_policy"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the seeded product with creative_policy.accepted_verifiers
+          populated. Buyer reads the agent_url for use on its
+          verify_agent reference in the next phase.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Provenance Truth-of-Claim display inventory — verifier-driven AI detection on accepted verifier allowlist"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "provenance_truth_of_claim--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].creative_policy.accepted_verifiers[0].agent_url"
+            description: "Seller publishes at least one accepted verifier"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_truth_of_claim--get_products"
+            description: "Context correlation_id returned unchanged"
+
+  - id: reject_contradicted_claim
+    title: "Sync with contradicted claim — rejected"
+    narrative: |
+      The buyer claims digital_source_type: digital_capture (non-AI) but
+      attaches an asset URL containing "ai-generated-true" — which drives
+      the seller's deterministic verifier to return ai_generated:true with
+      confidence 0.95. The seller invokes the verifier (via
+      get_creative_features against the on-list accepted_verifiers entry),
+      observes the contradiction, and rejects the per-creative entry with
+      PROVENANCE_CLAIM_CONTRADICTED.
+
+      error.details carries only the audit-safe allowlist defined in
+      error-code.json: agent_url, feature_id, claimed_value, observed_value,
+      confidence (and substituted_for when the seller substitutes a
+      different on-list agent than the buyer nominated). No detail_url, no
+      verifier extension fields — that's the trust boundary that prevents
+      verifier responses from leaking cross-tenant data through the seller.
+
+    steps:
+      - id: sync_creatives_contradicted
+        title: "Submit creative whose claim contradicts the verifier's verdict"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          The seller invokes the on-list verifier against the manifest's
+          asset URLs, observes ai_generated:true with confidence >= 0.9,
+          and refutes the buyer's digital_capture claim. Per-creative
+          result: action: failed, errors[0].code: PROVENANCE_CLAIM_CONTRADICTED.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_truth_of_claim_probe_001"
+              name: "Acme truth-of-claim probe — contradicted"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "digital_capture"
+                declared_by:
+                  role: "agency"
+                disclosure:
+                  required: false
+                embedded_provenance:
+                  - method: "provenance_markers"
+                    provider: "Encypher"
+                    verify_agent:
+                      agent_url: "https://governance.encypher.seller.example"
+                      feature_id: "ai_generated"
+          idempotency_key: "$generate:uuid_v4#provenance_truth_of_claim_reject_contradicted_sync"
+          context:
+            correlation_id: "provenance_truth_of_claim--reject_contradicted"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Per-creative action is failed when verifier contradicts the claim"
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "PROVENANCE_CLAIM_CONTRADICTED"
+            description: "Per-creative error code is PROVENANCE_CLAIM_CONTRADICTED"
+          - check: field_present
+            path: "creatives[0].errors[0].details.agent_url"
+            description: "error.details carries the verifier's agent_url for audit"
+          - check: field_present
+            path: "creatives[0].errors[0].details.feature_id"
+            description: "error.details carries the queried feature_id"
+          - check: field_value
+            path: "creatives[0].errors[0].details.claimed_value"
+            value: "digital_capture"
+            description: "error.details carries the buyer's claimed digital_source_type"
+          - check: field_value
+            path: "creatives[0].errors[0].details.observed_value"
+            value: true
+            description: "error.details carries the verifier's observed ai_generated value"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_truth_of_claim--reject_contradicted"
+            description: "Context correlation_id returned unchanged on rejection"
+
+  - id: accept_consistent_claim
+    title: "Sync with consistent claim — accepted"
+    narrative: |
+      The buyer's claim and the verifier's observation agree: buyer claims
+      digital_source_type: digital_capture (non-AI), asset URL contains
+      "ai-generated-false" which drives the verifier to return
+      ai_generated:false. Seller's verifier-call confirms the claim; the
+      creative enters the seller's review lifecycle.
+
+    steps:
+      - id: sync_creatives_consistent
+        title: "Submit creative whose claim matches the verifier's verdict"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          The seller invokes the verifier, observes ai_generated:false,
+          confirms the claim, and accepts. Per-creative result: action
+          created or updated; no per-creative errors[].
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_truth_of_claim_probe_002"
+              name: "Acme truth-of-claim probe — consistent"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-false.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "digital_capture"
+                declared_by:
+                  role: "agency"
+                disclosure:
+                  required: false
+                embedded_provenance:
+                  - method: "provenance_markers"
+                    provider: "Encypher"
+                    verify_agent:
+                      agent_url: "https://governance.encypher.seller.example"
+                      feature_id: "ai_generated"
+          idempotency_key: "$generate:uuid_v4#provenance_truth_of_claim_accept_consistent_sync"
+          context:
+            correlation_id: "provenance_truth_of_claim--accept_consistent"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["created", "updated"]
+            description: "Per-creative action is created or updated when verifier confirms the claim"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_truth_of_claim--accept_consistent"
+            description: "Context correlation_id returned unchanged"
