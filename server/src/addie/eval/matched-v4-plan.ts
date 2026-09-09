@@ -4,9 +4,10 @@ import type {
   ModelProviderId,
   ModelReasoningEffort,
 } from "../model-providers/model-provider.js";
+import type { AddieMatchedV4ToolSurface } from "./matched-v4-runtime-surface.js";
 
 export const ADDIE_MATCHED_V4_EVALUATION_VERSION =
-  "addie-matched-v4-evaluation-v1" as const;
+  "addie-matched-v4-evaluation-v2" as const;
 export const ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_NUMBER = 567;
 export const ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_URL = `https://github.com/adcontextprotocol/adcp/issues/${ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_NUMBER}`;
 
@@ -280,10 +281,10 @@ function assertDisjointSyntheticPacks(): void {
 assertDisjointSyntheticPacks();
 
 export type AddieMatchedV4CellId =
-  | `direct:openai:gpt-5.6-${"luna" | "terra" | "sol"}:${"provider_default" | "none" | "low" | "medium" | "high" | "xhigh" | "max"}`
-  | `direct:google:gemini-3.${"7" | "8"}-flash:${"provider_default" | "low" | "medium" | "high"}`
-  | `direct:anthropic:${"claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5"}:provider_default`
-  | "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default";
+  | `direct:openai:gpt-5.6-${"luna" | "terra" | "sol"}:${"provider_default" | "none" | "low" | "medium" | "high" | "xhigh" | "max"}:${AddieMatchedV4ToolSurface}`
+  | `direct:google:gemini-3.${"7" | "8"}-flash:${"provider_default" | "low" | "medium" | "high"}:${AddieMatchedV4ToolSurface}`
+  | `direct:anthropic:${"claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5"}:${"provider_default" | "medium"}:${AddieMatchedV4ToolSurface}`
+  | `routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:${AddieMatchedV4ToolSurface}`;
 
 /** xhigh/max are legal only on the sealed OpenAI evaluation adapter. */
 export type AddieMatchedV4ReasoningEffort =
@@ -294,6 +295,8 @@ export interface AddieMatchedV4Cell {
   readonly arm: "direct" | "routed_haiku_sonnet_baseline";
   readonly provider: ModelProviderId;
   readonly model: string;
+  /** Broad is screened at every native setting; clean is a preregistered paired comparison subset. */
+  readonly toolSurface: AddieMatchedV4ToolSurface;
   /** Explicit even when omitted from the provider request. */
   readonly reasoningEffort: AddieMatchedV4ReasoningEffort;
   readonly router?: Readonly<{
@@ -318,17 +321,23 @@ const GOOGLE_EFFORTS = Object.freeze([
   "medium",
   "high",
 ] as const);
+const ANTHROPIC_EFFORTS = Object.freeze([
+  "provider_default",
+  "medium",
+] as const);
+const FULL_MAX_PROMOTED_CELLS = 16;
 
-export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
+const BROAD_SCREENING_CELLS = [
   ...(["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"] as const).flatMap(
     (model) =>
       OPENAI_EFFORTS.map(
         (reasoningEffort) =>
           ({
-            id: `direct:openai:${model}:${reasoningEffort}`,
+            id: `direct:openai:${model}:${reasoningEffort}:broad`,
             arm: "direct",
             provider: "openai",
             model,
+            toolSurface: "broad",
             reasoningEffort,
           }) as const,
       ),
@@ -337,29 +346,33 @@ export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
     GOOGLE_EFFORTS.map(
       (reasoningEffort) =>
         ({
-          id: `direct:google:${model}:${reasoningEffort}`,
+          id: `direct:google:${model}:${reasoningEffort}:broad`,
           arm: "direct",
           provider: "google",
           model,
+          toolSurface: "broad",
           reasoningEffort,
         }) as const,
     ),
   ),
-  ...(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const).map(
-    (model) =>
+  ...(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const).flatMap(
+    (model) => ANTHROPIC_EFFORTS.map((reasoningEffort) =>
       ({
-        id: `direct:anthropic:${model}:provider_default`,
+        id: `direct:anthropic:${model}:${reasoningEffort}:broad`,
         arm: "direct",
         provider: "anthropic",
         model,
-        reasoningEffort: "provider_default",
+        toolSurface: "broad",
+        reasoningEffort,
       }) as const,
+    ),
   ),
   {
-    id: "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default",
+    id: "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad",
     arm: "routed_haiku_sonnet_baseline",
     provider: "anthropic",
     model: "claude-sonnet-5",
+    toolSurface: "broad",
     reasoningEffort: "provider_default",
     router: {
       provider: "anthropic",
@@ -367,10 +380,37 @@ export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
       reasoningEffort: "provider_default",
     },
   },
-] as const satisfies readonly AddieMatchedV4Cell[]);
+] as const satisfies readonly AddieMatchedV4Cell[];
+
+/**
+ * These exact broad/clean pairs are sealed before any screening call.  Every
+ * exposed native effort is still screened on broad; this compact subset makes
+ * the tool-surface question answerable without silently expanding migration
+ * 584's 1,584-dispatch ledger ceiling.
+ */
+const CLEAN_COMPARISON_BROAD_CELL_IDS = new Set<string>([
+  "direct:openai:gpt-5.6-luna:provider_default:broad",
+  "direct:openai:gpt-5.6-terra:medium:broad",
+  "direct:openai:gpt-5.6-sol:high:broad",
+  "direct:google:gemini-3.7-flash:medium:broad",
+  "direct:google:gemini-3.8-flash:medium:broad",
+  "direct:anthropic:claude-sonnet-5:provider_default:broad",
+  "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad",
+]);
+
+export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
+  ...BROAD_SCREENING_CELLS,
+  ...BROAD_SCREENING_CELLS
+    .filter((cell) => CLEAN_COMPARISON_BROAD_CELL_IDS.has(cell.id))
+    .map((cell) => ({
+      ...cell,
+      id: cell.id.replace(/:broad$/, ":clean") as AddieMatchedV4CellId,
+      toolSurface: "clean" as const,
+    })),
+] satisfies readonly AddieMatchedV4Cell[]);
 
 export const ADDIE_MATCHED_V4_BASELINE_CELL_ID =
-  "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default" as const;
+  "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad" as const;
 
 export interface AddieMatchedV4Plan {
   readonly version: typeof ADDIE_MATCHED_V4_EVALUATION_VERSION;
@@ -384,7 +424,7 @@ export interface AddieMatchedV4Plan {
     maxProviderDispatches: number;
   }>;
   readonly promotion: Readonly<{
-    rule: "pareto_non_dominated_only";
+    rule: "pareto_non_dominated_then_preregistered_cap_order";
     requiresCompleteSettledScreening: true;
   }>;
   readonly full: Readonly<{
@@ -417,7 +457,7 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
   const screeningDispatches =
     ADDIE_MATCHED_V4_SCREENING_CELLS.length * SCREENING_TRACES.length * 3;
   const fullDispatches =
-    ADDIE_MATCHED_V4_SCREENING_CELLS.length * FULL_TRACES.length * 3;
+    (FULL_MAX_PROMOTED_CELLS + 1) * FULL_TRACES.length * 3;
   const plan = freeze({
     version: ADDIE_MATCHED_V4_EVALUATION_VERSION,
     executionAuthority:
@@ -431,13 +471,15 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
       maxProviderDispatches: screeningDispatches,
     },
     promotion: {
-      rule: "pareto_non_dominated_only",
+      rule: "pareto_non_dominated_then_preregistered_cap_order",
       requiresCompleteSettledScreening: true,
     },
     full: {
       packSha256: digest(FULL_TRACES),
       traceIds: FULL_TRACES.map((trace) => trace.id),
-      maxPromotedCells: ADDIE_MATCHED_V4_SCREENING_CELLS.length - 1,
+      // 16 promoted direct cells plus the declared baseline remain strictly
+      // below migration 584's immutable 1,584 physical-dispatch cap.
+      maxPromotedCells: FULL_MAX_PROMOTED_CELLS,
       maxProviderDispatchesPerTrace: 3,
       maxProviderDispatches: fullDispatches,
     },

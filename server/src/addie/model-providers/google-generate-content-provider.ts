@@ -302,6 +302,10 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
       usage: {
         inputTokens: response.usageMetadata.promptTokenCount,
         outputTokens: response.usageMetadata.candidatesTokenCount + (response.usageMetadata.thoughtsTokenCount ?? 0),
+        ...(response.usageMetadata.thoughtsTokenCount !== undefined && {
+          // A breakdown of outputTokens, not an additional billable total.
+          reasoningTokens: response.usageMetadata.thoughtsTokenCount,
+        }),
       },
     } satisfies ModelResponse);
     validateNormalizedModelResponse(refused);
@@ -411,6 +415,9 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
     usage: {
       inputTokens: response.usageMetadata.promptTokenCount,
       outputTokens: outputTokens + (response.usageMetadata.thoughtsTokenCount ?? 0),
+      ...(response.usageMetadata.thoughtsTokenCount !== undefined && {
+        reasoningTokens: response.usageMetadata.thoughtsTokenCount,
+      }),
       ...(response.usageMetadata.cachedContentTokenCount !== undefined && {
         cacheReadTokens: response.usageMetadata.cachedContentTokenCount,
       }),

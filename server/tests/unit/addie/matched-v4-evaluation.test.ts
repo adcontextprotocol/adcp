@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const testRuntime = vi.hoisted(() => {
@@ -68,6 +69,12 @@ const testRuntime = vi.hoisted(() => {
  * production module exports a fixture transport, ledger, or execute bridge. */
 vi.mock("../../../src/db/client.js", () => ({
   getPool: () => testRuntime.pool,
+}));
+// Production never has an implementation until a sanctioned immutable sink
+// exists. This test-only module replacement permits isolated custody tests;
+// it is neither a caller input nor an environment bypass in the shipped path.
+vi.mock("../../../src/addie/eval/matched-v4-immutable-artifact-sink.js", () => ({
+  assertMatchedV4SanctionedImmutableArtifactSink: () => undefined,
 }));
 vi.mock(
   "../../../src/addie/model-providers/anthropic-provider.js",
@@ -158,6 +165,7 @@ type Bad =
   | "usage"
   | "receipt"
   | "tool_args"
+  | "unexpected_tool"
   | "throw"
   | "timeout"
   | "google_dated_alias"
@@ -504,7 +512,7 @@ function responseFixture(bad?: Bad) {
       issued = Object.freeze({
         type: "tool_call",
         id: "fixture-tool-call",
-        name: "create_github_issue",
+        name: bad === "unexpected_tool" ? "search_docs" : "create_github_issue",
         input: {
           title: bad === "tool_args" ? "" : "Synthetic escalation",
           body: "Evaluator-only attestation",
@@ -742,7 +750,7 @@ function responseFixture(bad?: Bad) {
             {
               type: "function_call",
               call_id: "fixture-tool-call",
-              name: "create_github_issue",
+              name: bad === "unexpected_tool" ? "search_docs" : "create_github_issue",
               arguments: JSON.stringify({
                 title: bad === "tool_args" ? "" : "Synthetic escalation",
                 body: "Evaluator-only attestation",
@@ -958,10 +966,12 @@ describe("matched-v4 sealed private authority", () => {
       r = await a.execute("screening");
     expect(r).toEqual(expect.objectContaining({ status: "completed" }));
     expect(testRuntime.pool.connections).toBeGreaterThan(0);
-    expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(33);
+    // Every native setting is screened on broad; seven preregistered cells
+    // add a paired clean-surface comparison without exceeding the ledger cap.
+    expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(43);
     expect(
       testRuntime.settled.filter((x) => x.status === "settled"),
-    ).toHaveLength(305);
+    ).toHaveLength(403);
     // The actual routed Sonnet request retains the generic sealed response
     // contract alongside (rather than underneath) the trusted Haiku decision.
     // The complete choice set has no trace-specific expected label, marked
@@ -1001,8 +1011,8 @@ describe("matched-v4 sealed private authority", () => {
     if (r.status === "completed") {
       // Each #567 continuation remains a distinct durable dispatch; it must
       // not be collapsed into the initial tool-call usage record.
-      expect(r.artifact.attemptedProviderDispatches).toBe(305);
-      expect(r.artifact.completedProviderDispatches).toBe(305);
+      expect(r.artifact.attemptedProviderDispatches).toBe(403);
+      expect(r.artifact.completedProviderDispatches).toBe(403);
     }
     expect(a.promotionReceipt()).not.toBeNull();
   });
@@ -1063,6 +1073,7 @@ describe("matched-v4 sealed private authority", () => {
       // caller cannot inject a point estimate, outcomes, or fake promotion.
       expect(full.pairedCiGate?.length).toBeGreaterThan(0);
       expect(Object.isFrozen(full.artifact)).toBe(true);
+      expect(full.artifact.requestSetSha256).toMatch(/^[a-f0-9]{64}$/);
       expect(
         Reflect.set(full.artifact as object, "artifactSha256", "forged"),
       ).toBe(false);
@@ -1077,7 +1088,14 @@ describe("matched-v4 sealed private authority", () => {
         googleApiKey: "fixture-google",
         stage: "full",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      kind: "addie_matched_v4_authorized_execution_report",
+      requestedStage: "full",
+      stages: [
+        expect.objectContaining({ stage: "screening" }),
+        expect.objectContaining({ stage: "full" }),
+      ],
+    });
   });
   it("uses the reviewed Gemini alias predicate and preserves the opaque continuation object", async () => {
     const accepted = await authority("google_dated_alias");
@@ -1103,7 +1121,6 @@ describe("matched-v4 sealed private authority", () => {
   it.each([
     "identity",
     "usage",
-    "receipt",
     "tool_args",
     "throw",
     "truncated",
@@ -1383,6 +1400,29 @@ describe("matched-v4 sealed private authority", () => {
         .every((metric) => metric.outcomes["mv4-screen-567-current"] === false),
     ).toBe(true);
   });
+  it("settles an unexpected advertised tool choice as a failed observation without executing it", async () => {
+    const result = await (await authority("unexpected_tool")).execute("screening");
+    expect(result).toMatchObject({ status: "completed" });
+    if (result.status !== "completed") return;
+    expect(
+      result.metrics.every(
+        (metric) => metric.outcomes["mv4-screen-567-current"] === false,
+      ),
+    ).toBe(true);
+    expect(testRuntime.intents).toHaveLength(testRuntime.settled.length);
+    expect(testRuntime.settled.every((settlement) => settlement.status === "settled")).toBe(true);
+  });
+  it("settles a missing current #567 receipt as a failed side-effect claim", async () => {
+    const result = await (await authority("receipt")).execute("screening");
+    expect(result).toMatchObject({ status: "completed" });
+    if (result.status !== "completed") return;
+    expect(
+      result.metrics.every(
+        (metric) => metric.outcomes["mv4-screen-567-current"] === false,
+      ),
+    ).toBe(true);
+    expect(testRuntime.intents).toHaveLength(testRuntime.settled.length);
+  });
   it("passes a real prior-turn tool result as data yet rejects it as current-turn proof", async () => {
     const accepted = await authority();
     await expect(accepted.execute("screening")).resolves.toMatchObject({
@@ -1420,12 +1460,12 @@ describe("matched-v4 sealed private authority", () => {
     const currentTurnIntents = testRuntime.intents.filter((intent) =>
       intent.assignmentId.endsWith(":mv4-screen-567-current"),
     );
-    // 32 direct cells issue an initial+continuation pair; the routed
+    // 43 direct cells issue an initial+continuation pair; the routed
     // baseline has router+generation initial+generation continuation.
-    expect(currentTurnIntents).toHaveLength(67);
+    expect(currentTurnIntents).toHaveLength(88);
     expect(
       new Set(currentTurnIntents.map((intent) => intent.requestSha256)).size,
-    ).toBe(67);
+    ).toBe(88);
     const reused = await authority("prior_reuse_claim");
     await expect(reused.execute("screening")).resolves.toMatchObject({
       status: "refused",
@@ -1433,9 +1473,44 @@ describe("matched-v4 sealed private authority", () => {
   });
   it("retains every continuation fingerprint and usage as a distinct durable dispatch", async () => {
     const a = await authority("continuation_usage_split");
-    await expect(a.execute("screening")).resolves.toMatchObject({
-      status: "completed",
-    });
+    const result = await a.execute("screening");
+    expect(result).toMatchObject({ status: "completed" });
+    if (result.status !== "completed") return;
+    // Seven ordinary traces plus the current-turn initial and its distinctive
+    // continuation make the receipt trace observable in the sealed metrics,
+    // rather than only in transient ledger rows.
+    expect(
+      result.metrics
+        .filter((metric) => metric.cell.arm === "direct")
+        .every(
+          (metric) =>
+            metric.totalInputTokens > 35 && metric.totalOutputTokens > 200,
+        ),
+    ).toBe(true);
+    expect(result.artifact.requestSetSha256).toMatch(/^[a-f0-9]{64}$/);
+    const evidence = result.artifactEvidence;
+    expect(
+      evidence.observations.some((observation) =>
+        observation.dispatches.some(
+          (dispatch) =>
+            dispatch.continuationOfPreparedRequestFingerprint !== null &&
+            dispatch.usage.outputTokens === 259,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      createHash("sha256")
+        .update(
+          JSON.stringify({
+            selector: evidence.selectorFingerprint,
+            runtimeWireSurfaces: evidence.runtimeWireSurfaces,
+            requestSetSha256: evidence.requestSetSha256,
+            observations: evidence.observations,
+          }),
+          "utf8",
+        )
+        .digest("hex"),
+    ).toBe(result.artifact.artifactSha256);
     const currentTurnIntents = testRuntime.intents.filter((intent) =>
       intent.assignmentId.endsWith(":mv4-screen-567-current"),
     );
