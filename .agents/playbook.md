@@ -791,11 +791,153 @@ Apply this pattern when restructuring protocol sections.
 
 Before creating or updating a PR, always:
 
-1. **Check CodeQL comments on the PR** — run `gh api repos/adcontextprotocol/adcp/pulls/{PR_NUMBER}/comments` and look for CodeQL findings. These are the most common CI blockers and must be resolved before merge.
-2. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
-3. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
-4. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
-5. **Run `gh pr checks {PR_NUMBER}`** to verify all CI passes before requesting review.
+1. **Clear all PR feedback.** Before declaring a PR done, ready, mergeable, or
+   complete—or enabling or expecting its merge—enumerate and classify every
+   GraphQL review thread (including inline bot and human threads), REST
+   issue/conversation comment, REST standalone/inline review comment, and REST
+   submitted review body as actionable or non-actionable. Every actionable item
+   **MUST** be fixed and revalidated. Only a non-actionable item may receive a
+   specific, evidence-backed disposition. For every non-actionable item across
+   all four surfaces, record its URL or ID and that specific, evidence-backed
+   disposition. Record every actionable item's URL or ID plus the commit and
+   file/line or focused revalidation that proves its fix.
+
+   Completion is forbidden until every review thread is GitHub-resolved only
+   after its actionable fix and revalidation, or its non-actionable
+   disposition, has been recorded; enumeration and recording state alone are
+   insufficient.
+   For each thread, individually record whether it was fixed and revalidated or
+   documented non-actionable before resolving it. Only review threads can be
+   GitHub-resolved; non-thread feedback still requires classification and the
+   corresponding record above. Passing CI, approval, dismissal, bot authorship,
+   or outdated status never justifies blanket or automatic resolution.
+2. **Satisfy every applicable independent approval gate.** Completion is
+   forbidden until every required approval applies to the PR's current immutable
+   head. The PR author cannot satisfy any required independent, human, or
+   CODEOWNER approval themselves. For a gated path—including `.agents/**`—the
+   designated human/CODEOWNER must approve that current head. Bot, automated,
+   and AI/Sol reviews can provide findings but never replace a required
+   human/CODEOWNER approval.
+3. **Require caller-supplied `PR_NUMBER` and `EXPECTED_PR_HEAD`, then use
+   GitHub GraphQL as the authoritative thread inventory.** Do not default
+   either value. Require a positive PR number and verify that it identifies the
+   intended pull request's exact head OID before querying feedback:
+
+   ```bash
+   set -euo pipefail
+   : "${PR_NUMBER:?Set PR_NUMBER to the intended pull-request number}"
+   : "${EXPECTED_PR_HEAD:?Set EXPECTED_PR_HEAD to the intended pull request head OID}"
+   case "$PR_NUMBER" in
+     ''|*[!0-9]*|0) echo 'PR_NUMBER must be a positive integer' >&2; exit 1 ;;
+   esac
+   case "$EXPECTED_PR_HEAD" in
+     *[!0-9a-f]*) echo 'EXPECTED_PR_HEAD must be a lowercase hexadecimal OID' >&2; exit 1 ;;
+   esac
+   test "${#EXPECTED_PR_HEAD}" -eq 40 \
+     || { echo 'EXPECTED_PR_HEAD must be a 40-character OID' >&2; exit 1; }
+   actual_pr="$(gh pr view "$PR_NUMBER" --repo adcontextprotocol/adcp \
+     --json number,headRefOid --jq '[.number, .headRefOid] | @tsv')" \
+     || { echo "PR #$PR_NUMBER was not found" >&2; exit 1; }
+   actual_number="${actual_pr%%$'\t'*}"
+   actual_head="${actual_pr#*$'\t'}"
+   test "$actual_number" != "$actual_pr" \
+     && test "$actual_number" = "$PR_NUMBER" \
+     && test "$actual_head" = "$EXPECTED_PR_HEAD" \
+     || { echo "PR_NUMBER=$PR_NUMBER does not identify the intended PR head $EXPECTED_PR_HEAD" >&2; exit 1; }
+
+   gh api graphql \
+     -F owner=adcontextprotocol \
+     -F repo=adcp \
+     -F number="$PR_NUMBER" \
+     -f query='
+   query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+     repository(owner: $owner, name: $repo) {
+       pullRequest(number: $number) {
+         reviewThreads(first: 100, after: $cursor) {
+           nodes {
+             id
+             isResolved
+             isOutdated
+             path
+             line
+             comments(first: 100) {
+               totalCount
+               nodes {
+                 id
+                 createdAt
+                 updatedAt
+                 replyTo { id }
+                 author { login }
+                 body
+                 url
+               }
+               pageInfo { hasNextPage endCursor }
+             }
+           }
+           pageInfo { hasNextPage endCursor }
+         }
+       }
+     }
+   }'
+   ```
+
+   Inspect each page. If `reviewThreads.pageInfo.hasNextPage` is `true`, repeat
+   the query with `-f cursor='<endCursor>'` from that page, continuing until it
+   is `false`. For every thread whose `comments.pageInfo.hasNextPage` is `true`
+   (or whose `comments.totalCount` exceeds the returned nodes), fetch every
+   remaining comment with this query. Start with that thread's initial
+   `comments.pageInfo.endCursor`, then repeat with each response's
+   `comments.pageInfo.endCursor` until `hasNextPage` is `false`:
+
+   ```bash
+   gh api graphql \
+     -F threadId='<thread-id>' \
+     -f commentCursor='<comments.pageInfo.endCursor>' \
+     -f query='
+   query($threadId: ID!, $commentCursor: String) {
+     node(id: $threadId) {
+       ... on PullRequestReviewThread {
+         comments(first: 100, after: $commentCursor) {
+           totalCount
+           nodes {
+             id
+             createdAt
+             updatedAt
+             replyTo { id }
+             author { login }
+             body
+             url
+           }
+           pageInfo { hasNextPage endCursor }
+         }
+       }
+     }
+   }'
+   ```
+
+   Include resolved and outdated threads in the review; classify each one under
+   step 1 before resolving it.
+4. **Inventory feedback outside resolvable threads.** Inspect and classify the
+   top-level PR conversation, submitted review bodies, and inline review
+   comments. Record the URL or ID and specific evidence-backed disposition for
+   every non-actionable item; these surfaces are not all represented as
+   resolvable threads:
+
+   ```bash
+   gh api --paginate "repos/adcontextprotocol/adcp/issues/$PR_NUMBER/comments?per_page=100"
+   gh api --paginate "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/reviews?per_page=100"
+   gh api --paginate "repos/adcontextprotocol/adcp/pulls/$PR_NUMBER/comments?per_page=100"
+   ```
+
+5. **Check CodeQL feedback in the inline inventory** — look for CodeQL findings
+   in the paginated inline review comments above. Classify every finding. Every
+   actionable CodeQL finding **MUST** be fixed and revalidated; only a
+   non-actionable finding may receive a specific, evidence-backed disposition
+   with its URL or ID before merge.
+6. **Fix unused imports/variables** — CodeQL flags these. Remove them, don't ignore them.
+7. **Check for XSS patterns** — any `innerHTML`, `contenteditable`, or template string interpolation of user data gets flagged. Use `textContent` or escape functions.
+8. **Avoid polynomial regexes on user input** — simple string checks (`.includes()`, `.startsWith()`) are safer and faster than regex for validation.
+9. **Run `gh pr checks "$PR_NUMBER"`** to verify all CI passes before requesting review.
 
 ## Triage Routine — Manual Nudge
 
