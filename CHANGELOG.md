@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.21
+
+### Patch Changes
+
+- 2d4b210: Scope guaranteed idempotency replay to state-mutating requests while requiring read wrappers to tolerate optional keys.
+
 ## 3.1.20
 
 ### Patch Changes

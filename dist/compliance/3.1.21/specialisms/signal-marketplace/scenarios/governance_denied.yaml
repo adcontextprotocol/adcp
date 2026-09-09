@@ -1,0 +1,174 @@
+id: signal_marketplace/governance_denied
+version: "1.0.0"
+title: "Signal agent rejects activation without governance approval"
+category: signal_marketplace
+summary: "Verifies that a signal agent requires a governance approval context before activating signals on governed accounts."
+track: signals
+required_tools:
+  - sync_governance
+  - get_signals
+  - activate_signal
+
+narrative: |
+  Signal activation is a spending event: activating a third-party segment costs per-user
+  or per-activation fees that must be authorized against the buyer's governance plan. The
+  buyer-side orchestrator must call check_governance before sending a governed activation
+  request. The signal agent enforces that contract by rejecting activations for governed
+  accounts when the request does not carry a valid governance_context.
+
+  This scenario registers a governance agent with the signal agent via sync_governance,
+  then attempts to activate a signal without the prior check_governance approval context.
+  The signal agent must fail closed with PERMISSION_DENIED.
+
+  By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+agent:
+  interaction_model: marketplace_catalog
+  capabilities:
+    - governance_aware
+  examples:
+    - "Any signal agent that honors governance before activation"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    A governance agent URL to register, and a signal agent that supports
+    sync_governance + activate_signal.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: signal_agent_setup
+    title: "Register account and governance with the signal agent"
+    steps:
+      - id: sync_accounts
+        title: "Establish account with signal agent"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Signal agent returns the account with account_id active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_signal_agent_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_governance
+        title: "Register governance agent with signal agent"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Signal agent acknowledges governance registration.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_signal_agent_setup_sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+  - id: activation_denied
+    title: "Attempt activation without governance context"
+    steps:
+      - id: get_signals_list
+        title: "Discover a signal to activate"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/task-reference/get_signals"
+        comply_scenario: signal_discovery
+        stateful: false
+        expected: |
+          Return at least one signal with a signal_agent_segment_id and pricing.
+        sample_request:
+          signal_spec: "outdoor enthusiasts, age 25-54, US"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "signals[0].signal_agent_segment_id"
+            key: "signal_agent_segment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "Signal has an activation identifier"
+
+      - id: activate_signal_denied
+        title: "activate_signal — missing governance approval"
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/task-reference/activate_signal"
+        comply_scenario: signal_activation
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Signal agent rejects with:
+          - code: PERMISSION_DENIED
+          - findings explaining that check_governance must run first
+
+        sample_request:
+          signal_agent_segment_id: "$context.signal_agent_segment_id"
+          destinations:
+            - type: "platform"
+              platform: "the-trade-desk"
+              account: "acmeoutdoor-ttd-seat"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#signal-gov-denied"
+
+          context:
+            correlation_id: "signal_marketplace--governance_denied--activate"
+        sample_response:
+          status: "failed"
+          errors:
+            - code: "PERMISSION_DENIED"
+              message: "Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account."
+              details:
+                findings:
+                  - category_id: "governance_context"
+                    severity: "critical"
+                    explanation: "Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account."
+        validations:
+          - check: error_code
+            value: "PERMISSION_DENIED"
+            description: "Error code is PERMISSION_DENIED"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
