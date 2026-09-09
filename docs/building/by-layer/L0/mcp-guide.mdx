@@ -761,7 +761,7 @@ const products = await handleAdcpCall('get_products', {
 
 ### Server-side tool wrappers MUST tolerate envelope fields
 
-Buyer SDKs send envelope-level fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) uniformly across all AdCP tool calls — including read-only tools that don't consume them. MCP tool implementations MUST accept these fields and ignore the ones they don't use; they MUST NOT reject a call because an envelope field is present. Common traps:
+Buyer SDKs and generic transport wrappers may send envelope-level fields admitted by the selected request schema, either as declared properties or through `additionalProperties: true`. Reference SDKs auto-generate `idempotency_key` only for mutating requests. MCP tool implementations MUST accept schema-admitted fields and ignore the ones they do not consume. An explicitly closed schema may reject undeclared fields. An admitted `context_id` is always a compatibility no-op; callers do not send it for continuity. Common traps:
 
 - **FastMCP / Pydantic strict signatures** — declare `idempotency_key: str | None = None` (and the other envelope fields) as accept-and-ignore optionals, or use `**kwargs` to swallow unknowns. `model_config = ConfigDict(extra='allow')` on input models if you control them.
 - **Zod / valibot with `.strict()`** on input schemas — drop `.strict()` or use a passthrough variant.

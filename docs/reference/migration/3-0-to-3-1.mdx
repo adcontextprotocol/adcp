@@ -23,7 +23,7 @@ For the feature narrative, start with [What's New in AdCP 3.1](/docs/reference/w
 | 2 | SDKs and hand-rolled clients | Add an `adcp_version` release pin on every request. Send `"3.1"` only to agents that advertise it. |
 | 3 | Sellers and agents | Advertise every accepted release in `get_adcp_capabilities.adcp.supported_versions` and echo the served release at the envelope root. |
 | 4 | Buyers | Decode `VERSION_UNSUPPORTED` and retry only against a version that the seller advertised. |
-| 5 | Hand-rolled buyers | Add `idempotency_key` to read tasks as well as mutating tasks before claiming 3.1 behavior. |
+| 5 | Hand-rolled buyers | Add `idempotency_key` to mutating tasks; accept optional envelope fields on read responses and tolerate an optional key on read requests. |
 | 6 | MCP and A2A adapters | Accept envelope fields and transport wrappers without rejecting unknown root members. |
 | 7 | Error handlers | Treat `error.code` as an open string and dispatch on `error.recovery` when present. |
 | 8 | Compliance operators | Run the 3.1 storyboard bundle and keep the 3.0 compatibility line green until the 3.1 badge is issued. |
@@ -40,9 +40,9 @@ Sellers should reject unsupported pins with `VERSION_UNSUPPORTED` and include th
 
 ## Runtime changes to audit
 
-### Idempotency on every task
+### Idempotency and read-envelope tolerance
 
-3.0 required `idempotency_key` on mutating requests. 3.1 extends the reliability model to every task so retries, replays, and downstream reconciliation behave uniformly. SDK users should pick up this behavior from the SDK release. Hand-rolled buyers should generate a UUID v4 idempotency key for read tasks as well as writes.
+3.0 required `idempotency_key` on mutating requests. The original 3.1 text extended keyed replay to reads, but reference SDKs continued to generate keys only for requests they classified as mutating. Read wrappers must tolerate an optional key; buyers should not rely on byte-stable read replay. Hand-rolled buyers should generate UUID v4 keys for mutations and may omit them on pure reads.
 
 When a response is marked `replayed: true`, treat it as the historical result of the original operation. If you need fresh state before acting, re-read the relevant resource after handling the replayed response.
 
@@ -84,8 +84,8 @@ Creative agents should expose canonical `format_kind` values and discover build 
 
 | Role | Minimum prep before claiming 3.1 |
 |---|---|
-| SDK buyer | Upgrade to an SDK that emits `adcp_version`, pins `"3.1"` when the seller supports it, adds idempotency keys consistently, and accepts open error codes. |
-| Hand-rolled buyer | Add release pins, read-task idempotency keys, envelope tolerance, forward-compatible error decoding, and replay handling. |
+| SDK buyer | Upgrade to an SDK that emits `adcp_version`, pins `"3.1"` when the seller supports it, adds idempotency keys to mutations, and accepts open error codes. |
+| Hand-rolled buyer | Add release pins, mutation idempotency keys, read-envelope tolerance, forward-compatible error decoding, and replay handling. |
 | Seller | Advertise `supported_versions`, echo the served release, tolerate envelope fields, reject unsupported pins with `VERSION_UNSUPPORTED`, and audit idempotency/replay/error behavior. |
 | Creative agent | Move discovery to `list_transformers`, publish canonical formats, and keep legacy format references only as compatibility aliases. |
 | Signal agent | Separate owned-signal discovery from marketplace activation; expose product-scoped targeting options only where buyers can select them. |
