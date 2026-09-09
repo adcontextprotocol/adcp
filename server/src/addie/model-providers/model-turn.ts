@@ -374,6 +374,9 @@ export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage 
   return {
     inputTokens: total.inputTokens + usage.inputTokens,
     outputTokens: total.outputTokens + usage.outputTokens,
+    ...(total.reasoningTokens !== undefined || usage.reasoningTokens !== undefined
+      ? { reasoningTokens: (total.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0) }
+      : {}),
     ...(total.cacheWriteTokens !== undefined || usage.cacheWriteTokens !== undefined
       ? { cacheWriteTokens: (total.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0) }
       : {}),

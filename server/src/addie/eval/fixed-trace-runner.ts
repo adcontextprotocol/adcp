@@ -1516,7 +1516,8 @@ function isModelUsage(value: unknown): value is ModelUsage {
     return false;
   }
   return (value.cacheReadTokens === undefined || isSafeTokenCount(value.cacheReadTokens))
-    && (value.cacheWriteTokens === undefined || isSafeTokenCount(value.cacheWriteTokens));
+    && (value.cacheWriteTokens === undefined || isSafeTokenCount(value.cacheWriteTokens))
+    && (value.reasoningTokens === undefined || isSafeTokenCount(value.reasoningTokens));
 }
 
 function isPreparedModelInvocation(value: unknown): value is PreparedModelInvocation {

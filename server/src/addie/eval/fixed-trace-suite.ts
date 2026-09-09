@@ -3041,6 +3041,7 @@ function stageMetadataFailures(
     || !Number.isSafeInteger(stage.usage.outputTokens) || stage.usage.outputTokens < 0
     || (stage.usage.cacheReadTokens !== undefined && (!Number.isSafeInteger(stage.usage.cacheReadTokens) || stage.usage.cacheReadTokens < 0))
     || (stage.usage.cacheWriteTokens !== undefined && (!Number.isSafeInteger(stage.usage.cacheWriteTokens) || stage.usage.cacheWriteTokens < 0))
+    || (stage.usage.reasoningTokens !== undefined && (!Number.isSafeInteger(stage.usage.reasoningTokens) || stage.usage.reasoningTokens < 0))
   )) fail('usage_invalid');
   if (stage.dispatched && stage.usageKnown && (stage.estimatedCostUsd === null || stage.pricingSource === null)) {
     fail('cost_provenance_missing');
