@@ -1,0 +1,33 @@
+{
+  "name": "Content-Digest header does not match SHA-256 of received body",
+  "spec_reference": "#verifier-checklist-requests step 11",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:2p3oUaH5wK2ORtjDicHj69JEe6MDkrDUha0gIp8lw9qG2W1dQHSDvU4NkAwSeIIf8ieLaPGlE7X_yGu9enllAQ:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_digest_mismatch",
+    "failed_step": 11
+  },
+  "$comment": "The Content-Digest header asserts sha-256 of 32 zero bytes, which is a value that is not the SHA-256 of the request body (the body hashes to something non-zero). The signature IS valid over the base that includes the Content-Digest header value as-is — step 10 passes. Step 11 recomputes the body's actual SHA-256 and compares against the header value, producing a mismatch. Verifiers MUST reject with request_signature_digest_mismatch at step 11; rejecting earlier with request_signature_invalid is non-conformant for this vector.",
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/create_media_buy\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\""
+}
