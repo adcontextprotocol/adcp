@@ -1376,7 +1376,10 @@ describe('training agent idempotency middleware', () => {
         reason: 'user_exit',
       }, other);
       expect(terminate.data).toEqual(expect.objectContaining({
-        errors: [expect.objectContaining({ code: 'SESSION_NOT_FOUND' })],
+        session_id: sessionId,
+        terminated: true,
+        session_status: 'terminated',
+        note: 'Session already terminated or not found.',
       }));
 
       const ownerSend = await executeTrainingAgentTool('si_send_message', {

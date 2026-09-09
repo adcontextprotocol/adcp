@@ -638,18 +638,10 @@ export async function handleSiTerminateSession(args: ToolArgs, ctx: TrainingCont
 
   const session = sessions.get(sessionId);
   const principal = ctx.principal ?? ctx.userId ?? 'anonymous';
-  if (session && session.principal !== principal) {
-    return {
-      errors: [{
-        code: 'SESSION_NOT_FOUND',
-        message: `Session "${sessionId}" not found. Use si_initiate_session to start a session.`,
-        field: 'session_id',
-        recovery: 'correctable',
-      }],
-    };
-  }
-  if (!session) {
-    // Termination is idempotent — a not-found session_id is treated as already terminated.
+  if (!session || session.principal !== principal) {
+    // Termination is idempotent. Return the same result for absent and
+    // cross-principal IDs so callers cannot use this endpoint as a session
+    // existence oracle; a foreign principal still cannot mutate the session.
     return {
       session_id: sessionId,
       terminated: true,
