@@ -145,7 +145,14 @@ vi.mock(
   }),
 );
 
-import { ADDIE_MATCHED_V4_SCREENING_CELLS } from "../../../src/addie/eval/matched-v4-evaluation.js";
+import {
+  ADDIE_MATCHED_V4_SCREENING_CELLS,
+  ADDIE_MATCHED_V4_TOOL_SURFACES,
+  createAddieMatchedV4Plan,
+} from "../../../src/addie/eval/matched-v4-evaluation.js";
+import { ANTHROPIC_PROVIDER_CAPABILITIES } from "../../../src/addie/model-providers/anthropic-provider.js";
+import { GOOGLE_GENERATE_CONTENT_CAPABILITIES } from "../../../src/addie/model-providers/google-generate-content-provider.js";
+import { OPENAI_RESPONSES_CAPABILITIES } from "../../../src/addie/model-providers/openai-responses-provider.js";
 import * as privateAuthorityModule from "../../../src/addie/eval/matched-v4-private-authority.js";
 import {
   createAddieMatchedV4PaidAuthority,
@@ -942,6 +949,74 @@ describe("matched-v4 sealed private authority", () => {
       paidDispatchGate: "closed",
     });
   });
+  it("seals native effort and real tool-surface controls into paired cells", () => {
+    const plan = createAddieMatchedV4Plan();
+    const openaiEfforts = new Set(
+      ADDIE_MATCHED_V4_SCREENING_CELLS.filter(
+        (cell) => cell.provider === "openai",
+      ).map((cell) => cell.reasoningEffort),
+    );
+    const anthropicEfforts = new Set(
+      ADDIE_MATCHED_V4_SCREENING_CELLS.filter(
+        (cell) => cell.provider === "anthropic" && cell.arm === "direct",
+      ).map((cell) => cell.reasoningEffort),
+    );
+    expect([...openaiEfforts].sort()).toEqual([
+      "high",
+      "low",
+      "medium",
+      "none",
+      "provider_default",
+    ]);
+    expect([...anthropicEfforts].sort()).toEqual(["medium", "provider_default"]);
+    expect([...openaiEfforts].sort()).toEqual(
+      [...OPENAI_RESPONSES_CAPABILITIES.reasoningEfforts].sort(),
+    );
+    expect([...anthropicEfforts].sort()).toEqual(
+      [...ANTHROPIC_PROVIDER_CAPABILITIES.reasoningEfforts].sort(),
+    );
+    expect(
+      new Set(
+        ADDIE_MATCHED_V4_SCREENING_CELLS.filter(
+          (cell) => cell.provider === "google",
+        ).map((cell) => cell.reasoningEffort),
+      ),
+    ).toEqual(new Set(GOOGLE_GENERATE_CONTENT_CAPABILITIES.reasoningEfforts));
+    expect(ADDIE_MATCHED_V4_TOOL_SURFACES.map((surface) => surface.id)).toEqual([
+      "broad_current_tool_surface",
+      "cleaned_tool_minimized_surface",
+    ]);
+    const [broad, minimized] = ADDIE_MATCHED_V4_TOOL_SURFACES;
+    expect(broad!.tools.length).toBeGreaterThan(minimized!.tools.length);
+    expect(minimized!.toolNames).toEqual(["create_github_issue"]);
+    expect(broad!.toolNames).toContain("create_github_issue");
+    expect(broad!.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(broad!.toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(minimized!.toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(plan.baselineCellIdsByToolSurface).toEqual({
+      broad_current_tool_surface:
+        "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad_current_tool_surface",
+      cleaned_tool_minimized_surface:
+        "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:cleaned_tool_minimized_surface",
+    });
+    for (const cell of ADDIE_MATCHED_V4_SCREENING_CELLS) {
+      const surface = ADDIE_MATCHED_V4_TOOL_SURFACES.find(
+        (candidate) => candidate.id === cell.toolSurface,
+      )!;
+      expect(cell.id).toContain(`:${cell.toolSurface}`);
+      expect(cell.controls).toMatchObject({
+        sourceSha256: surface.sourceSha256,
+        toolSchemaSha256: surface.toolSchemaSha256,
+        pricingAdmission: {
+          provider: cell.provider,
+          model: cell.model,
+          serviceTier: "standard",
+        },
+        maxProviderDispatchesPerTrace: 3,
+      });
+      expect(cell.controls.promptSha256).toMatch(/^[a-f0-9]{64}$/);
+    }
+  });
   it.each(["anthropicApiKey", "openaiApiKey", "googleApiKey"] as const)(
     "rejects an empty %s before acquiring any ledger or provider authority",
     async (credential) => {
@@ -958,10 +1033,10 @@ describe("matched-v4 sealed private authority", () => {
       r = await a.execute("screening");
     expect(r).toEqual(expect.objectContaining({ status: "completed" }));
     expect(testRuntime.pool.connections).toBeGreaterThan(0);
-    expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(33);
+    expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(60);
     expect(
       testRuntime.settled.filter((x) => x.status === "settled"),
-    ).toHaveLength(305);
+    ).toHaveLength(556);
     // The actual routed Sonnet request retains the generic sealed response
     // contract alongside (rather than underneath) the trusted Haiku decision.
     // The complete choice set has no trace-specific expected label, marked
@@ -998,11 +1073,56 @@ describe("matched-v4 sealed private authority", () => {
     expect(contract).not.toMatch(
       /(?:expected|correct) (?:label|choice|conclusion)|for this trace|mv4-/i,
     );
+    const broad = ADDIE_MATCHED_V4_TOOL_SURFACES.find(
+      (surface) => surface.id === "broad_current_tool_surface",
+    )!;
+    const minimized = ADDIE_MATCHED_V4_TOOL_SURFACES.find(
+      (surface) => surface.id === "cleaned_tool_minimized_surface",
+    )!;
+    const directToolRequests = testRuntime.requests.filter(
+      (request) => request.requestMetadata?.role === "direct",
+    );
+    expect(
+      directToolRequests.some(
+        (request) =>
+          request.tools.map((tool: { name: string }) => tool.name).join("\0") ===
+          broad.toolNames.join("\0"),
+      ),
+    ).toBe(true);
+    expect(
+      directToolRequests.some(
+        (request) =>
+          request.tools.map((tool: { name: string }) => tool.name).join("\0") ===
+          minimized.toolNames.join("\0"),
+      ),
+    ).toBe(true);
+    expect(
+      directToolRequests.every((request) =>
+        request.system.every(
+          (entry: { text?: unknown }) =>
+            !String(entry.text).includes("broad_current_tool_surface") &&
+            !String(entry.text).includes("cleaned_tool_minimized_surface"),
+        ),
+      ),
+    ).toBe(true);
     if (r.status === "completed") {
       // Each #567 continuation remains a distinct durable dispatch; it must
       // not be collapsed into the initial tool-call usage record.
-      expect(r.artifact.attemptedProviderDispatches).toBe(305);
-      expect(r.artifact.completedProviderDispatches).toBe(305);
+      expect(r.artifact.attemptedProviderDispatches).toBe(556);
+      expect(r.artifact.completedProviderDispatches).toBe(556);
+      for (const metric of r.metrics) {
+        expect(metric.outcomeSlice).toMatchObject({
+          provider: metric.cell.provider,
+          model: metric.cell.model,
+          reasoningEffort: metric.cell.reasoningEffort,
+          toolSurface: metric.cell.toolSurface,
+          sourceSha256: metric.cell.controls.sourceSha256,
+          promptSha256: metric.cell.controls.promptSha256,
+          toolSchemaSha256: metric.cell.controls.toolSchemaSha256,
+          pricingAdmission: metric.cell.controls.pricingAdmission,
+          maxProviderDispatchesPerTrace: 3,
+        });
+      }
     }
     expect(a.promotionReceipt()).not.toBeNull();
   });
@@ -1149,9 +1269,7 @@ describe("matched-v4 sealed private authority", () => {
     expect(result).toMatchObject({ status: "completed" });
     if (result.status !== "completed") return;
     const requestedEffortRequest = testRuntime.openaiRequests.find(
-      (request) =>
-        request.reasoning?.effort === "xhigh" ||
-        request.reasoning?.effort === "max",
+      (request) => request.reasoning?.effort === "high",
     );
     expect(requestedEffortRequest).toBeDefined();
     expect(Object.isFrozen(requestedEffortRequest)).toBe(true);
@@ -1170,9 +1288,7 @@ describe("matched-v4 sealed private authority", () => {
         999999,
       ),
     ).toBe(false);
-    expect(result.artifact.completedProviderDispatches).toBeLessThanOrEqual(
-      1584,
-    );
+    expect(result.artifact.completedProviderDispatches).toBeLessThanOrEqual(1440);
   });
   it("rejects irrelevant prose instead of treating a nonempty response as a pass", async () => {
     const a = await authority("semantic_irrelevant");
@@ -1420,12 +1536,12 @@ describe("matched-v4 sealed private authority", () => {
     const currentTurnIntents = testRuntime.intents.filter((intent) =>
       intent.assignmentId.endsWith(":mv4-screen-567-current"),
     );
-    // 32 direct cells issue an initial+continuation pair; the routed
-    // baseline has router+generation initial+generation continuation.
-    expect(currentTurnIntents).toHaveLength(67);
+    // 58 direct cells issue an initial+continuation pair; the two routed
+    // surface baselines have router+generation initial+generation continuation.
+    expect(currentTurnIntents).toHaveLength(122);
     expect(
       new Set(currentTurnIntents.map((intent) => intent.requestSha256)).size,
-    ).toBe(67);
+    ).toBe(122);
     const reused = await authority("prior_reuse_claim");
     await expect(reused.execute("screening")).resolves.toMatchObject({
       status: "refused",

@@ -5,13 +5,14 @@ import OpenAI from "openai";
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../../db/client.js";
 import {
-  ADDIE_MATCHED_V4_BASELINE_CELL_ID,
+  ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
   ADDIE_MATCHED_V4_EVALUATION_VERSION,
   ADDIE_MATCHED_V4_FULL_PACK,
   ADDIE_MATCHED_V4_SCREENING_CELLS,
   ADDIE_MATCHED_V4_SCREENING_PACK,
   ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_NUMBER,
   ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_URL,
+  addieMatchedV4ToolSurface,
   createAddieMatchedV4Plan,
   type AddieMatchedV4Cell,
   type AddieMatchedV4CellId,
@@ -591,24 +592,12 @@ function request(
       // evidence injected into the current user turn.
       { role: "user", content: [{ type: "text", text: a.trace.prompt }] },
     ],
+    // The surface is supplied to the provider as real current Addie tool
+    // definitions. It is never represented by explanatory prompt prose.
     tools:
-      a.trace.expectedReceipt === "current_turn_github_567" &&
-      d.role !== "router"
-        ? [
-            {
-              name: "create_github_issue",
-              description: "Synthetic evaluator attestation only.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  title: { type: "string" },
-                  body: { type: "string" },
-                },
-                required: ["title", "body"],
-              },
-            },
-          ]
-        : [],
+      d.role === "router"
+        ? []
+        : [...addieMatchedV4ToolSurface(a.cell.toolSurface).tools],
     ...(d.reasoningEffort === "provider_default"
       ? {}
       : { reasoning: { effort: d.reasoningEffort as never } }),
@@ -1153,7 +1142,11 @@ class AddieMatchedV4PrivateAuthority {
               .filter((metric) => metric.cell.arm === "direct")
               .map((candidate) => {
                 const baseline = metrics.find(
-                  (metric) => metric.cell.id === this.#plan.baselineCellId,
+                  (metric) =>
+                    metric.cell.id ===
+                    this.#plan.baselineCellIdsByToolSurface[
+                      candidate.cell.toolSurface
+                    ],
                 );
                 if (!baseline)
                   throw Error(
@@ -1628,6 +1621,18 @@ interface RecordedObservation {
 
 interface AddieMatchedV4CellMetric {
   readonly cell: AddieMatchedV4Cell;
+  /** Outcome slices preserve the complete sealed model/tool control identity. */
+  readonly outcomeSlice: Readonly<{
+    provider: ModelProviderId;
+    model: string;
+    reasoningEffort: AddieMatchedV4ReasoningEffort;
+    toolSurface: AddieMatchedV4Cell["toolSurface"];
+    sourceSha256: string;
+    promptSha256: string;
+    toolSchemaSha256: string;
+    pricingAdmission: AddieMatchedV4Cell["controls"]["pricingAdmission"];
+    maxProviderDispatchesPerTrace: 3;
+  }>;
   readonly outcomes: Readonly<Record<string, boolean>>;
   readonly passed: number;
   readonly total: number;
@@ -1689,6 +1694,8 @@ function expectedDispatches(
         provider: identity.provider,
         model: identity.model,
         reasoningEffort: identity.reasoningEffort,
+        toolSurface: cell.toolSurface,
+        controls: cell.controls,
       }),
     });
   return freeze(
@@ -1718,13 +1725,19 @@ function allowedCellsFor(
     );
   if (
     promotion.promotedCellIds.length === 0 ||
-    promotion.promotedCellIds.includes(ADDIE_MATCHED_V4_BASELINE_CELL_ID)
+    Object.values(ADDIE_MATCHED_V4_BASELINE_CELL_IDS).some((baseline) =>
+      (promotion.promotedCellIds as readonly AddieMatchedV4CellId[]).includes(
+        baseline,
+      ),
+    )
   ) {
     throw new Error("Matched v4 full stage promotion is invalid");
   }
   return ADDIE_MATCHED_V4_SCREENING_CELLS.filter(
     (cell) =>
-      cell.id === ADDIE_MATCHED_V4_BASELINE_CELL_ID ||
+      (Object.values(ADDIE_MATCHED_V4_BASELINE_CELL_IDS) as readonly string[]).includes(
+        cell.id,
+      ) ||
       promotion.promotedCellIds.includes(cell.id),
   );
 }
@@ -1825,6 +1838,7 @@ function recordExecution(
   if (typeof executed.passed !== "boolean")
     throw new Error("Matched v4 pass outcome must be boolean");
   if (
+    cellControlsAreNotCurrent(assignment.cell) ||
     executed.normalization !== "normalized" ||
     executed.terminalStatus !== "stop"
   )
@@ -2020,6 +2034,26 @@ function recordExecution(
   });
 }
 
+/** A cell cannot silently swap a source, prompt, tool schema, priced model, or cap. */
+function cellControlsAreNotCurrent(cell: AddieMatchedV4Cell): boolean {
+  const surface = addieMatchedV4ToolSurface(cell.toolSurface);
+  const basicMismatch =
+    cell.controls.maxProviderDispatchesPerTrace !== 3 ||
+    cell.controls.sourceSha256 !== surface.sourceSha256 ||
+    cell.controls.promptSha256.length !== 64 ||
+    cell.controls.toolSchemaSha256 !== surface.toolSchemaSha256 ||
+    cell.controls.pricingAdmission.provider !== cell.provider ||
+    cell.controls.pricingAdmission.model !== cell.model ||
+    cell.controls.pricingAdmission.serviceTier !== "standard";
+  if (basicMismatch) return true;
+  try {
+    const pricing = pricingFor(cell.controls.pricingAdmission);
+    return pricing.serviceTier !== cell.controls.pricingAdmission.serviceTier;
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Returns the immutable work list but never accepts a provider callback. The
  * sealed authority owns dispatch; this declaration module cannot be used as a
@@ -2200,6 +2234,18 @@ function validateAddieMatchedV4Observations(
       const middle = Math.floor(latencies.length / 2);
       return freeze({
         cell,
+        outcomeSlice: {
+          provider: cell.provider,
+          model: cell.model,
+          reasoningEffort: cell.reasoningEffort,
+          toolSurface: cell.toolSurface,
+          sourceSha256: cell.controls.sourceSha256,
+          promptSha256: cell.controls.promptSha256,
+          toolSchemaSha256: cell.controls.toolSchemaSha256,
+          pricingAdmission: cell.controls.pricingAdmission,
+          maxProviderDispatchesPerTrace:
+            cell.controls.maxProviderDispatchesPerTrace,
+        },
         outcomes,
         passed: rows.filter((row) => row.passed).length,
         total: rows.length,
@@ -2242,8 +2288,11 @@ function addieMatchedV4PairedOutcomeCi(
     !baselineArtifact ||
     baselineArtifact !== validatedMetrics.get(candidate) ||
     issuedArtifacts.get(baselineArtifact)?.stage !== "full" ||
-    baseline.cell.id !== ADDIE_MATCHED_V4_BASELINE_CELL_ID ||
-    candidate.cell.id === ADDIE_MATCHED_V4_BASELINE_CELL_ID
+    baseline.cell.id !==
+      ADDIE_MATCHED_V4_BASELINE_CELL_IDS[baseline.cell.toolSurface] ||
+    candidate.cell.id ===
+      ADDIE_MATCHED_V4_BASELINE_CELL_IDS[candidate.cell.toolSurface] ||
+    baseline.cell.toolSurface !== candidate.cell.toolSurface
   )
     throw new Error(
       "Matched v4 CI requires one validated full-stage artifact and declared baseline",

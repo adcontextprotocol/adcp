@@ -77,6 +77,20 @@ inherit only `addie_matched_v4_runtime`, must not be able to assume
 `addie_matched_v4_operator`, and receives only the evaluator's narrowly scoped
 SECURITY DEFINER functions—not table DML or admission creation.
 
+Before paid screening, review the sealed matrix rather than treating the
+evaluator as a capability-expansion path. OpenAI cells use only the ordinary
+Responses adapter's native controls (`provider_default`, `none`, `low`,
+`medium`, and `high`); evaluator-only `xhigh` and `max` are excluded. Anthropic
+has both its ordinary `provider_default` and native `medium` cells, while
+Gemini 3.7/3.8 retain `provider_default`, `low`, `medium`, and `high`.
+Every model/effort cell is duplicated across a broad current Addie tool
+definition surface and a cleaned tool-minimized surface. The actual current
+tool definitions and exact schemas—not explanatory prompt text—are supplied
+to the provider. Each sealed cell and outcome slice binds source, prompt, and
+tool-schema hashes, its standard-tier priced model admission, and its dispatch
+cap. Direct cells compare only with the routed Haiku→Sonnet baseline on the
+same tool surface, isolating router retirement from tool-surface changes.
+
 `ADDIE_MATCHED_V4_DISPATCH_TIMEOUT_MS` optionally sets a per-provider-call
 deadline. It is accepted only from 1,000 through 120,000 milliseconds (default
 30,000). A deadline aborts the provider request, records `unknown_exposure`,

@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import type {
   ModelProviderId,
   ModelReasoningEffort,
+  ModelToolDefinition,
 } from "../model-providers/model-provider.js";
+import { buildModelToolDefinitions } from "../tool-wire-shape.js";
+import { allFixedTraceToolDefinitions } from "./fixed-trace-tools.js";
 
 export const ADDIE_MATCHED_V4_EVALUATION_VERSION =
   "addie-matched-v4-evaluation-v1" as const;
@@ -279,15 +282,103 @@ function assertDisjointSyntheticPacks(): void {
 }
 assertDisjointSyntheticPacks();
 
-export type AddieMatchedV4CellId =
-  | `direct:openai:gpt-5.6-${"luna" | "terra" | "sol"}:${"provider_default" | "none" | "low" | "medium" | "high" | "xhigh" | "max"}`
-  | `direct:google:gemini-3.${"7" | "8"}-flash:${"provider_default" | "low" | "medium" | "high"}`
-  | `direct:anthropic:${"claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5"}:provider_default`
-  | "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default";
+export type AddieMatchedV4ToolSurface =
+  | "broad_current_tool_surface"
+  | "cleaned_tool_minimized_surface";
 
-/** xhigh/max are legal only on the sealed OpenAI evaluation adapter. */
-export type AddieMatchedV4ReasoningEffort =
-  ModelReasoningEffort | "xhigh" | "max";
+export type AddieMatchedV4CellId =
+  | `direct:openai:gpt-5.6-${"luna" | "terra" | "sol"}:${ModelReasoningEffort}:${AddieMatchedV4ToolSurface}`
+  | `direct:google:gemini-3.${"7" | "8"}-flash:${"provider_default" | "low" | "medium" | "high"}:${AddieMatchedV4ToolSurface}`
+  | `direct:anthropic:${"claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5"}:${"provider_default" | "medium"}:${AddieMatchedV4ToolSurface}`
+  | `routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:${AddieMatchedV4ToolSurface}`;
+
+/** Only controls actually exposed by the ordinary production adapters. */
+export type AddieMatchedV4ReasoningEffort = ModelReasoningEffort;
+
+export interface AddieMatchedV4ToolSurfaceManifest {
+  readonly id: AddieMatchedV4ToolSurface;
+  /** The definitions are imported from current Addie registries, never prompt prose. */
+  readonly source: "current_addie_registered_definitions";
+  readonly sourceSha256: string;
+  readonly toolSchemaSha256: string;
+  readonly toolNames: readonly string[];
+  readonly tools: readonly ModelToolDefinition[];
+}
+
+const BROAD_CURRENT_TOOL_DEFINITIONS = Object.freeze(
+  allFixedTraceToolDefinitions().map((tool) => Object.freeze(structuredClone(tool))),
+);
+const CLEANED_TOOL_MINIMIZED_NAMES = Object.freeze(["create_github_issue"] as const);
+
+function currentToolSurface(
+  id: AddieMatchedV4ToolSurface,
+): AddieMatchedV4ToolSurfaceManifest {
+  const definitions =
+    id === "broad_current_tool_surface"
+      ? BROAD_CURRENT_TOOL_DEFINITIONS
+      : BROAD_CURRENT_TOOL_DEFINITIONS.filter((tool) =>
+          CLEANED_TOOL_MINIMIZED_NAMES.includes(
+            tool.name as (typeof CLEANED_TOOL_MINIMIZED_NAMES)[number],
+          ),
+        );
+  if (
+    id === "cleaned_tool_minimized_surface" &&
+    (definitions.length !== CLEANED_TOOL_MINIMIZED_NAMES.length ||
+      definitions[0]?.name !== "create_github_issue")
+  )
+    throw new Error("Matched v4 cleaned tool surface is not a real current definition");
+  const tools = Object.freeze(
+    buildModelToolDefinitions(definitions).map((tool) =>
+      Object.freeze(structuredClone(tool)),
+    ),
+  );
+  return Object.freeze({
+    id,
+    source: "current_addie_registered_definitions" as const,
+    // This is a source-selection hash as well as a definition snapshot: a
+    // catalog edit or a different broad-source order changes the sealed cell.
+    sourceSha256: digest({
+      source: "server/src/addie/eval/fixed-trace-tools.ts#allFixedTraceToolDefinitions",
+      selected: BROAD_CURRENT_TOOL_DEFINITIONS.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.input_schema,
+      })),
+    }),
+    toolSchemaSha256: digest(tools),
+    toolNames: Object.freeze(tools.map((tool) => tool.name)),
+    tools,
+  });
+}
+
+export const ADDIE_MATCHED_V4_TOOL_SURFACES = Object.freeze([
+  currentToolSurface("broad_current_tool_surface"),
+  currentToolSurface("cleaned_tool_minimized_surface"),
+] as const);
+
+export function addieMatchedV4ToolSurface(
+  id: AddieMatchedV4ToolSurface,
+): AddieMatchedV4ToolSurfaceManifest {
+  const surface = ADDIE_MATCHED_V4_TOOL_SURFACES.find(
+    (candidate) => candidate.id === id,
+  );
+  if (!surface) throw new Error("Matched v4 tool surface is not sealed");
+  return surface;
+}
+
+const ADDIE_MATCHED_V4_PROMPT_CORE_SHA256 = digest({
+  version: ADDIE_MATCHED_V4_EVALUATION_VERSION,
+  screening: SCREENING_TRACES.map(({ id, prompt, expectedReceipt }) => ({
+    id,
+    prompt,
+    expectedReceipt,
+  })),
+  full: FULL_TRACES.map(({ id, prompt, expectedReceipt }) => ({
+    id,
+    prompt,
+    expectedReceipt,
+  })),
+});
 
 export interface AddieMatchedV4Cell {
   readonly id: AddieMatchedV4CellId;
@@ -296,6 +387,19 @@ export interface AddieMatchedV4Cell {
   readonly model: string;
   /** Explicit even when omitted from the provider request. */
   readonly reasoningEffort: AddieMatchedV4ReasoningEffort;
+  readonly toolSurface: AddieMatchedV4ToolSurface;
+  /** Sealed controls for source, prompt, schema, priced identity, and cap admission. */
+  readonly controls: Readonly<{
+    sourceSha256: string;
+    promptSha256: string;
+    toolSchemaSha256: string;
+    pricingAdmission: Readonly<{
+      provider: ModelProviderId;
+      model: string;
+      serviceTier: "standard";
+    }>;
+    maxProviderDispatchesPerTrace: 3;
+  }>;
   readonly router?: Readonly<{
     provider: "anthropic";
     model: "claude-haiku-4-5";
@@ -309,8 +413,6 @@ const OPENAI_EFFORTS = Object.freeze([
   "low",
   "medium",
   "high",
-  "xhigh",
-  "max",
 ] as const);
 const GOOGLE_EFFORTS = Object.freeze([
   "provider_default",
@@ -319,63 +421,98 @@ const GOOGLE_EFFORTS = Object.freeze([
   "high",
 ] as const);
 
+function sealedCell<T extends Omit<AddieMatchedV4Cell, "controls">>(
+  cell: T,
+): T & Pick<AddieMatchedV4Cell, "controls"> {
+  const surface = addieMatchedV4ToolSurface(cell.toolSurface);
+  return {
+    ...cell,
+    controls: {
+      sourceSha256: surface.sourceSha256,
+      promptSha256: ADDIE_MATCHED_V4_PROMPT_CORE_SHA256,
+      toolSchemaSha256: surface.toolSchemaSha256,
+      pricingAdmission: {
+        provider: cell.provider,
+        model: cell.model,
+        serviceTier: "standard",
+      },
+      maxProviderDispatchesPerTrace: 3,
+    },
+  };
+}
+
+const ANTHROPIC_EFFORTS = Object.freeze([
+  "provider_default",
+  "medium",
+] as const);
+
 export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
-  ...(["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"] as const).flatMap(
-    (model) =>
-      OPENAI_EFFORTS.map(
-        (reasoningEffort) =>
-          ({
-            id: `direct:openai:${model}:${reasoningEffort}`,
-            arm: "direct",
-            provider: "openai",
+  ...ADDIE_MATCHED_V4_TOOL_SURFACES.flatMap((surface) => [
+    ...(["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"] as const).flatMap(
+      (model) =>
+        OPENAI_EFFORTS.map((reasoningEffort) =>
+          sealedCell({
+            id: `direct:openai:${model}:${reasoningEffort}:${surface.id}` as const,
+            arm: "direct" as const,
+            provider: "openai" as const,
             model,
             reasoningEffort,
-          }) as const,
-      ),
-  ),
-  ...(["gemini-3.7-flash", "gemini-3.8-flash"] as const).flatMap((model) =>
-    GOOGLE_EFFORTS.map(
-      (reasoningEffort) =>
-        ({
-          id: `direct:google:${model}:${reasoningEffort}`,
-          arm: "direct",
-          provider: "google",
+            toolSurface: surface.id,
+          }),
+        ),
+    ),
+    ...(["gemini-3.7-flash", "gemini-3.8-flash"] as const).flatMap((model) =>
+      GOOGLE_EFFORTS.map((reasoningEffort) =>
+        sealedCell({
+          id: `direct:google:${model}:${reasoningEffort}:${surface.id}` as const,
+          arm: "direct" as const,
+          provider: "google" as const,
           model,
           reasoningEffort,
-        }) as const,
+          toolSurface: surface.id,
+        }),
+      ),
     ),
-  ),
-  ...(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const).map(
-    (model) =>
-      ({
-        id: `direct:anthropic:${model}:provider_default`,
-        arm: "direct",
-        provider: "anthropic",
-        model,
-        reasoningEffort: "provider_default",
-      }) as const,
-  ),
-  {
-    id: "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default",
-    arm: "routed_haiku_sonnet_baseline",
-    provider: "anthropic",
-    model: "claude-sonnet-5",
-    reasoningEffort: "provider_default",
-    router: {
-      provider: "anthropic",
-      model: "claude-haiku-4-5",
-      reasoningEffort: "provider_default",
-    },
-  },
+    ...(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const).flatMap(
+      (model) =>
+        ANTHROPIC_EFFORTS.map((reasoningEffort) =>
+          sealedCell({
+            id: `direct:anthropic:${model}:${reasoningEffort}:${surface.id}` as const,
+            arm: "direct" as const,
+            provider: "anthropic" as const,
+            model,
+            reasoningEffort,
+            toolSurface: surface.id,
+          }),
+        ),
+    ),
+    sealedCell({
+      id: `routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:${surface.id}` as const,
+      arm: "routed_haiku_sonnet_baseline" as const,
+      provider: "anthropic" as const,
+      model: "claude-sonnet-5",
+      reasoningEffort: "provider_default" as const,
+      toolSurface: surface.id,
+      router: {
+        provider: "anthropic" as const,
+        model: "claude-haiku-4-5" as const,
+        reasoningEffort: "provider_default" as const,
+      },
+    }),
+  ]),
 ] as const satisfies readonly AddieMatchedV4Cell[]);
 
-export const ADDIE_MATCHED_V4_BASELINE_CELL_ID =
-  "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default" as const;
+export const ADDIE_MATCHED_V4_BASELINE_CELL_IDS = Object.freeze({
+  broad_current_tool_surface:
+    "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:broad_current_tool_surface",
+  cleaned_tool_minimized_surface:
+    "routed:anthropic:claude-haiku-4-5_to_claude-sonnet-5:provider_default:cleaned_tool_minimized_surface",
+} as const satisfies Readonly<Record<AddieMatchedV4ToolSurface, AddieMatchedV4CellId>>);
 
 export interface AddieMatchedV4Plan {
   readonly version: typeof ADDIE_MATCHED_V4_EVALUATION_VERSION;
   readonly executionAuthority: "declarative_only_no_provider_calls_no_selector_consumption";
-  readonly baselineCellId: typeof ADDIE_MATCHED_V4_BASELINE_CELL_ID;
+  readonly baselineCellIdsByToolSurface: typeof ADDIE_MATCHED_V4_BASELINE_CELL_IDS;
   readonly screening: Readonly<{
     packSha256: string;
     traceIds: readonly string[];
@@ -422,7 +559,7 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
     version: ADDIE_MATCHED_V4_EVALUATION_VERSION,
     executionAuthority:
       "declarative_only_no_provider_calls_no_selector_consumption",
-    baselineCellId: ADDIE_MATCHED_V4_BASELINE_CELL_ID,
+    baselineCellIdsByToolSurface: ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
     screening: {
       packSha256: digest(SCREENING_TRACES),
       traceIds: SCREENING_TRACES.map((trace) => trace.id),
@@ -437,7 +574,9 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
     full: {
       packSha256: digest(FULL_TRACES),
       traceIds: FULL_TRACES.map((trace) => trace.id),
-      maxPromotedCells: ADDIE_MATCHED_V4_SCREENING_CELLS.length - 1,
+      maxPromotedCells:
+        ADDIE_MATCHED_V4_SCREENING_CELLS.length -
+        Object.keys(ADDIE_MATCHED_V4_BASELINE_CELL_IDS).length,
       maxProviderDispatchesPerTrace: 3,
       maxProviderDispatches: fullDispatches,
     },

@@ -9,13 +9,15 @@
  * screening/full artifact.
  */
 export {
-  ADDIE_MATCHED_V4_BASELINE_CELL_ID,
+  ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
   ADDIE_MATCHED_V4_EVALUATION_VERSION,
   ADDIE_MATCHED_V4_FULL_PACK,
   ADDIE_MATCHED_V4_SCREENING_CELLS,
   ADDIE_MATCHED_V4_SCREENING_PACK,
   ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_NUMBER,
   ADDIE_MATCHED_V4_SYNTHETIC_ISSUE_URL,
+  ADDIE_MATCHED_V4_TOOL_SURFACES,
+  addieMatchedV4ToolSurface,
   createAddieMatchedV4Plan,
 } from "./matched-v4-plan.js";
 export type {
@@ -24,4 +26,6 @@ export type {
   AddieMatchedV4Plan,
   AddieMatchedV4ReasoningEffort,
   AddieMatchedV4SyntheticTrace,
+  AddieMatchedV4ToolSurface,
+  AddieMatchedV4ToolSurfaceManifest,
 } from "./matched-v4-plan.js";
