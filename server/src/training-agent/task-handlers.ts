@@ -115,6 +115,7 @@ import {
   proposalCapabilitiesForProfile,
   type TrainingProposalPolicyContext,
 } from './proposal-negotiation-profiles.js';
+import { toolsForTenant } from './tenants/tool-catalog.js';
 
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
@@ -3007,6 +3008,13 @@ import {
   handleSyncAudiences,
   findAudienceInSession,
 } from './audience-handlers.js';
+import {
+  SI_TOOLS,
+  handleSiGetOffering,
+  handleSiInitiateSession,
+  handleSiSendMessage,
+  handleSiTerminateSession,
+} from './si-handlers.js';
 import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
@@ -9242,6 +9250,7 @@ const TOOLS = [
   ...COLLECTION_LIST_TOOLS,
   ...CONTENT_STANDARDS_TOOLS,
   ...BRAND_TOOLS,
+  ...SI_TOOLS,
   COMPLY_TEST_CONTROLLER_TOOL,
   {
     name: 'report_usage',
@@ -9329,6 +9338,13 @@ function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
 
 export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string[] {
   return visibleToolsForContext(ctx).map(tool => tool.name);
+}
+
+function trainingToolAvailableForContext(toolName: string, ctx: TrainingContext): boolean {
+  if (!visibleTrainingToolNamesForContext(ctx).includes(toolName)) return false;
+  if (!ctx.tenantId) return true;
+  if (toolName === 'get_adcp_capabilities' || toolName === 'comply_test_controller') return true;
+  return toolsForTenant(ctx.tenantId, { storyboardCompat: ctx.storyboardCompat }).includes(toolName);
 }
 
 function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
@@ -21423,6 +21439,10 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   get_rights: handleGetRights,
   acquire_rights: handleAcquireRights,
   update_rights: handleUpdateRights,
+  si_get_offering: handleSiGetOffering,
+  si_initiate_session: handleSiInitiateSession,
+  si_send_message: handleSiSendMessage,
+  si_terminate_session: handleSiTerminateSession,
   creative_approval: handleCreativeApproval,
   create_property_list: handleCreatePropertyList,
   list_property_lists: handleListPropertyLists,
@@ -21646,7 +21666,7 @@ async function executeTrainingAgentToolInContext(
     return { success: false, error: versionResolution.message };
   }
   if (
-    !visibleTrainingToolNamesForContext(ctx).includes(toolName)
+    !trainingToolAvailableForContext(toolName, ctx)
     || !toolAvailableForServedAdcpVersion(toolName, versionResolution.servedVersion)
   ) {
     return { success: false, error: `Unknown tool: ${toolName}` };

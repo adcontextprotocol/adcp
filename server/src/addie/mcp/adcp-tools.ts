@@ -30,6 +30,7 @@ import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 import {
   PROPOSAL_NEGOTIATION_PROFILES,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  type TrainingContext,
   type ProposalNegotiationProfile,
 } from '../../training-agent/types.js';
 import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
@@ -326,11 +327,29 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   validate_content_delivery: { area: 'governance', description: 'Validate delivered content against content standards' },
 
   // Sponsored Intelligence (SI)
-  si_initiate_session: { area: 'si', description: 'Start a conversational session with a brand agent' },
+  si_initiate_session: {
+    area: 'si',
+    description: 'Start a conversational session with a brand agent',
+    validate: (params) => {
+      const idempotencyError = validateIdempotencyKey(params);
+      if (idempotencyError) return idempotencyError;
+      if (typeof params.intent !== 'string' || !params.intent.trim()) return 'intent is required.';
+      if (
+        typeof params.identity !== 'object'
+        || params.identity === null
+        || typeof (params.identity as Record<string, unknown>).consent_granted !== 'boolean'
+      ) {
+        return 'identity.consent_granted must be a boolean.';
+      }
+      return null;
+    },
+  },
   si_send_message: {
     area: 'si',
     description: 'Send a message within an active SI session',
     validate: (params) => {
+      const idempotencyError = validateIdempotencyKey(params);
+      if (idempotencyError) return idempotencyError;
       if (!params.message && !params.action_response) return 'Either message or action_response must be provided.';
       return null;
     },
@@ -934,6 +953,24 @@ export function createAdcpToolHandlers(
     return candidate as ProposalNegotiationProfile;
   }
 
+  function trainingTenantFromUrl(url: URL): TrainingContext['tenantId'] {
+    const tenantIds = new Set<NonNullable<TrainingContext['tenantId']>>([
+      'sales',
+      'signals',
+      'governance',
+      'creative',
+      'creative-builder',
+      'brand',
+      'si',
+    ]);
+    return url.pathname
+      .split('/')
+      .filter(Boolean)
+      .find((segment): segment is NonNullable<TrainingContext['tenantId']> => (
+        tenantIds.has(segment as NonNullable<TrainingContext['tenantId']>)
+      ));
+  }
+
   // Helper to validate agent URL
   function validateAgentUrl(agentUrl: string): string | null {
     try {
@@ -999,6 +1036,7 @@ export function createAdcpToolHandlers(
       if (isTrainingAgentUrl(parsedUrl)) {
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const proposalNegotiationProfile = proposalNegotiationProfileFromUrl(parsedUrl);
+        const tenantId = trainingTenantFromUrl(parsedUrl);
         const userId = memberContext?.workos_user?.workos_user_id;
         const memberModuleId = memberContext?.certification?.status === 'in_progress'
           ? memberContext.certification.module_id ?? undefined
@@ -1008,6 +1046,7 @@ export function createAdcpToolHandlers(
           userId,
           ...(access.trainingPrincipal && { principal: access.trainingPrincipal }),
           moduleId: trainingModuleContext?.moduleId ?? memberModuleId,
+          ...(tenantId && { tenantId }),
           ...(proposalNegotiationProfile && { proposalNegotiationProfile }),
         };
         const trainingRequestParams = task === 'get_adcp_capabilities'
@@ -1028,6 +1067,15 @@ export function createAdcpToolHandlers(
             `**Recovery:** if the error mentions a field shape (oneOf / required / additionalProperties), ` +
             `read \`adcp_error.issues[].variants[]\` if present and patch the pointers. Reuse the same ` +
             `\`idempotency_key\` on retry — fresh UUIDs cause duplicates.`,
+          ].join('\n');
+        }
+        const protocolErrors = (result.data as { errors?: Array<{ code?: string; message?: string }> } | undefined)?.errors;
+        if (task.startsWith('si_') && Array.isArray(protocolErrors) && protocolErrors.length > 0) {
+          const firstError = protocolErrors[0];
+          return [
+            `**Task failed:** \`${task}\`\n`,
+            `**Error:** ${firstError?.code ?? 'SI_TASK_ERROR'}${firstError?.message ? ` — ${firstError.message}` : ''}\n`,
+            '**Recovery:** correct the request and retry. Reuse the same `idempotency_key` only when retrying the same logical request.',
           ].join('\n');
         }
         let output = `**Task:** \`${task}\`\n**Status:** Success (sandbox)\n\n`;

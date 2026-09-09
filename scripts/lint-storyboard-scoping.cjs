@@ -84,7 +84,8 @@ const TENANT_SCOPED_TASKS = new Set([
  *
  * (b) Global discovery / catalog reads. `get_adcp_capabilities`,
  *     `list_creative_formats`, `list_accounts`, `get_brand_identity`,
- *     `get_rights`, `update_rights`, `comply_test_controller`. `list_accounts`
+ *     `get_rights`, `update_rights`, `si_get_offering`,
+ *     `comply_test_controller`. `list_accounts`
  *     belongs here despite the per-tenant return shape — the request itself
  *     carries no scoping ID (it's the chicken-and-egg discovery call that
  *     produces the IDs other tasks consume), so envelope-identity routing
@@ -127,6 +128,12 @@ const EXEMPT_FROM_LINT = new Set([
   'get_adcp_capabilities',
   'list_creative_formats',
   'list_accounts',
+  'si_get_offering',
+  // (b) Sponsored Intelligence sessions are scoped to the authenticated
+  // principal; their lifecycle does not use brand/account envelope identity.
+  'si_initiate_session',
+  'si_send_message',
+  'si_terminate_session',
   // (b) Global brand/rights catalog reads
   'search_brands',
   'get_brand_identity',

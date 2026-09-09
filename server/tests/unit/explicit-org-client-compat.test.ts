@@ -37,4 +37,28 @@ describe('explicit organization client compatibility', () => {
       'organization_id: createdOrgId || undefined',
     );
   });
+
+  it('keeps a newly created personal workspace as the checkout organization', () => {
+    expect(onboardingSource).toContain(
+      "localStorage.setItem('selectedOrgId', personalOrgId)",
+    );
+    expect(onboardingSource).toContain(
+      "? destination + '?org=' + encodeURIComponent(personalOrgId)",
+    );
+    expect(onboardingSource).toContain(
+      "? '/dashboard/membership'",
+    );
+  });
+
+  it('opens an existing personal workspace directly in its membership context', () => {
+    expect(onboardingSource).toContain(
+      "data.organizations.find(org => org.is_personal)",
+    );
+    expect(onboardingSource).toContain(
+      "localStorage.setItem('selectedOrgId', personalWorkspace.id)",
+    );
+    expect(onboardingSource).toContain(
+      "'/dashboard/membership?org=' + encodeURIComponent(personalWorkspace.id)",
+    );
+  });
 });

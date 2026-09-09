@@ -944,9 +944,10 @@
         }
 
         // In personal mode, check if user already has a personal workspace
-        const hasPersonalWorkspace = data.organizations && data.organizations.some(org => org.is_personal);
-        if (personalMode && hasPersonalWorkspace) {
-          window.location.href = '/dashboard';
+        const personalWorkspace = data.organizations && data.organizations.find(org => org.is_personal);
+        if (personalMode && personalWorkspace) {
+          try { localStorage.setItem('selectedOrgId', personalWorkspace.id); } catch (e) { /* storage disabled */ }
+          window.location.href = '/dashboard/membership?org=' + encodeURIComponent(personalWorkspace.id);
           return;
         }
 
@@ -1611,7 +1612,20 @@
           throw new Error(data.message || 'Failed to create workspace');
         }
 
-        window.location.href = '/dashboard';
+        // Keep the new personal workspace as the explicit billing context.
+        // Without this, a user who arrived from a company workspace lands
+        // back on that company after creation and can reasonably think the
+        // next checkout would modify the company subscription.
+        var personalOrgId = data.organization?.id || data.id;
+        if (personalOrgId) {
+          try { localStorage.setItem('selectedOrgId', personalOrgId); } catch (e) { /* storage disabled */ }
+        }
+        var destination = membershipTier && membershipTier.value
+          ? '/dashboard/membership'
+          : '/dashboard';
+        window.location.href = personalOrgId
+          ? destination + '?org=' + encodeURIComponent(personalOrgId)
+          : destination;
       } catch (error) {
         showError(error.message);
         btn.disabled = false;

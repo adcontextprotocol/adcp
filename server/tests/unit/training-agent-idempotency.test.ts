@@ -27,6 +27,7 @@ import {
   getIdempotencyStore,
 } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+import { SI_TOOLS } from '../../src/training-agent/si-handlers.js';
 import {
   getScopedTrainingTaskStore,
   getTrainingTaskStore,
@@ -1298,6 +1299,97 @@ describe('training agent idempotency middleware', () => {
   });
 
   describe('in-process Addie dispatch', () => {
+    it('keeps legacy SI metadata aligned with the canonical mutation contract', () => {
+      const initiate = SI_TOOLS.find(tool => tool.name === 'si_initiate_session');
+      const send = SI_TOOLS.find(tool => tool.name === 'si_send_message');
+      const terminate = SI_TOOLS.find(tool => tool.name === 'si_terminate_session');
+
+      expect(initiate?.execution.taskSupport).toBe('forbidden');
+      expect(send?.execution.taskSupport).toBe('forbidden');
+      expect(initiate?.annotations.destructiveHint).toBe(false);
+      expect(send?.annotations.destructiveHint).toBe(false);
+      expect(initiate?.inputSchema.properties.idempotency_key).toMatchObject({
+        pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+      });
+      expect(terminate?.annotations.destructiveHint).toBe(true);
+      expect(terminate?.inputSchema.properties.reason).toMatchObject({
+        enum: [
+          'handoff_transaction',
+          'handoff_complete',
+          'user_exit',
+          'session_timeout',
+          'host_terminated',
+        ],
+      });
+    });
+
+    it('executes si_initiate_session through the shared training dispatcher', async () => {
+      const result = await executeTrainingAgentTool('si_initiate_session', {
+        idempotency_key: `addie-si-${randomUUID()}`,
+        intent: 'Compare electric vehicles for long-distance travel',
+        identity: {
+          consent_granted: false,
+          anonymous_session_id: 'certification-demo',
+        },
+      }, { mode: 'training', principal: 'addie-si-test', moduleId: 'C3', tenantId: 'si' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(expect.objectContaining({
+        session_status: 'active',
+        sandbox: true,
+        session_id: expect.stringMatching(/^si_sandbox_/),
+      }));
+    });
+
+    it('rejects SI tasks on the creative tenant', async () => {
+      const result = await executeTrainingAgentTool('si_initiate_session', {
+        idempotency_key: `addie-si-${randomUUID()}`,
+        intent: 'Compare electric vehicles',
+        identity: { consent_granted: false },
+      }, { mode: 'training', principal: 'addie-si-test', moduleId: 'C3', tenantId: 'creative' });
+
+      expect(result).toEqual({ success: false, error: 'Unknown tool: si_initiate_session' });
+    });
+
+    it('isolates SI sessions by training principal', async () => {
+      const owner = { mode: 'training' as const, principal: 'si-owner', tenantId: 'si' as const };
+      const other = { mode: 'training' as const, principal: 'si-other', tenantId: 'si' as const };
+      const initiated = await executeTrainingAgentTool('si_initiate_session', {
+        idempotency_key: `addie-si-${randomUUID()}`,
+        intent: 'Compare electric vehicles',
+        identity: { consent_granted: false },
+      }, owner);
+      expect(initiated.success).toBe(true);
+      const sessionId = (initiated.data as { session_id: string }).session_id;
+
+      const send = await executeTrainingAgentTool('si_send_message', {
+        idempotency_key: `addie-si-${randomUUID()}`,
+        session_id: sessionId,
+        message: 'Show me the range.',
+      }, other);
+      expect(send.data).toEqual(expect.objectContaining({
+        errors: [expect.objectContaining({ code: 'SESSION_NOT_FOUND' })],
+      }));
+
+      const terminate = await executeTrainingAgentTool('si_terminate_session', {
+        session_id: sessionId,
+        reason: 'user_exit',
+      }, other);
+      expect(terminate.data).toEqual(expect.objectContaining({
+        session_id: sessionId,
+        terminated: true,
+        session_status: 'terminated',
+        note: 'Session already terminated or not found.',
+      }));
+
+      const ownerSend = await executeTrainingAgentTool('si_send_message', {
+        idempotency_key: `addie-si-${randomUUID()}`,
+        session_id: sessionId,
+        message: 'Show me the charging options.',
+      }, owner);
+      expect(ownerSend.data).toEqual(expect.objectContaining({ session_status: 'active' }));
+    });
+
     it('honors optional get_products idempotency instead of bypassing the middleware', async () => {
       const ctx: TrainingContext = { mode: 'training', principal: 'addie-test' };
       const missing = await executeTrainingAgentTool('get_products', {
