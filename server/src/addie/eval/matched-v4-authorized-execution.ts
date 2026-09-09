@@ -30,7 +30,8 @@ export interface AddieMatchedV4AuthorizedStageReport {
     passed: number;
     total: number;
     passRate: number;
-    totalCostUsd: number;
+    /** Deterministic estimate from the signed pricing profile, not a bill. */
+    estimatedCostUsd: number;
     medianLatencyMs: number;
     totalInputTokens: number;
     totalOutputTokens: number;
@@ -68,7 +69,7 @@ function reportStage(result: any): AddieMatchedV4AuthorizedStageReport {
       passed: metric.passed,
       total: metric.total,
       passRate: metric.passRate,
-      totalCostUsd: metric.totalCostUsd,
+      estimatedCostUsd: metric.totalCostUsd,
       medianLatencyMs: metric.medianLatencyMs,
       totalInputTokens: metric.totalInputTokens,
       totalOutputTokens: metric.totalOutputTokens,
