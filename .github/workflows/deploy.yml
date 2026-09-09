@@ -211,25 +211,54 @@ jobs:
       # v2760 on 2026-05-19 was case 2: app served 200 throughout while
       # flyctl timed out polling the third machine because the machines API
       # was rate-limited from the earlier crashloop storm. The post-deploy
-      # gates never ran. To distinguish, on failure we hit /health directly
-      # — the same signal end users see — and only hard-fail if the app
-      # itself is unreachable. The convergence gate below always remains
-      # mandatory: a public health response cannot prove every machine
-      # received the intended image and config.
+      # gates never ran. To distinguish, record the current Fly release before
+      # deployment, then require a newer completed release as well as a healthy
+      # app before accepting a non-zero flyctl exit. A public health response
+      # alone can come from the previous release and must never turn an aborted
+      # release command into a green deployment. The convergence gate below
+      # remains mandatory to prove every machine received one image and config.
       - name: Deploy
         id: deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          set -euo pipefail
+          before_release_version=$(flyctl releases --json | jq -er 'map(.Version) | max // 0')
+          echo "Fly release before deployment: v${before_release_version}"
+
           set +e
           flyctl deploy --remote-only --wait-timeout 300
           deploy_exit=$?
-          set -e
+          set -euo pipefail
           if [ $deploy_exit -eq 0 ]; then
             echo "deploy_outcome=success" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "::warning::flyctl deploy exited ${deploy_exit} — probing /health to distinguish API timeout from real failure"
+          echo "::warning::flyctl deploy exited ${deploy_exit} — verifying that Fly completed a newer release"
+
+          latest_release=""
+          for attempt in 1 2 3 4; do
+            if releases=$(flyctl releases --json) && \
+              latest_release=$(echo "${releases}" | jq -ce 'max_by(.Version) | {version: .Version, status: .Status, image_ref: .ImageRef}'); then
+              break
+            fi
+            latest_release=""
+            echo "attempt ${attempt}: unable to read latest Fly release"
+            if [ "${attempt}" -lt 4 ]; then sleep 5; fi
+          done
+
+          completed_new_release=false
+          if [ -n "${latest_release}" ]; then
+            latest_release_version=$(echo "${latest_release}" | jq -r '.version')
+            latest_release_status=$(echo "${latest_release}" | jq -r '.status')
+            latest_release_image=$(echo "${latest_release}" | jq -r '.image_ref')
+            echo "Latest Fly release: v${latest_release_version} status=${latest_release_status} image=${latest_release_image}"
+            if [ "${latest_release_version}" -gt "${before_release_version}" ] && \
+              [ "${latest_release_status}" = "complete" ]; then
+              completed_new_release=true
+            fi
+          fi
+
           # Probe the Fly hostname directly, not the Cloudflare-fronted
           # public hostname. Cloudflare can cache /health responses and
           # a stale 200 would mask a real outage. The Fly hostname bypasses
@@ -249,12 +278,12 @@ jobs:
             head -c 500 /tmp/health.json
             echo
           fi
-          if [ "${health_code}" = "200" ]; then
-            echo "::warning::App is reachable on the Fly hostname (/health=200). Treating as fallback-success — the verification gate ran into a Fly API issue, not an app issue."
+          if [ "${health_code}" = "200" ] && [ "${completed_new_release}" = "true" ]; then
+            echo "::warning::A newer Fly release completed and /health=200. Treating the flyctl polling failure as fallback-success."
             echo "deploy_outcome=fallback-success" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "::error::flyctl deploy failed AND adcp-docs.fly.dev/health=${health_code} — real failure."
+          echo "::error::flyctl deploy failed without proof of a newer completed release (health=${health_code}, completed_new_release=${completed_new_release})."
           echo "deploy_outcome=hard-fail" >> "$GITHUB_OUTPUT"
           exit 1
 
