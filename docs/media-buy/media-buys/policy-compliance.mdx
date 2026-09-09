@@ -123,7 +123,7 @@ When policy checks pass, return the ordinary completed response. An empty `produ
 
 ### More information is needed
 
-Use `input-required` only when the buyer must supply information before the seller can continue. Include `task_id` and `context_id` so the buyer can continue the same task, plus the status-specific reason and optional suggestions.
+Use `input-required` only when the buyer must supply information before the seller can continue. Include `task_id` when the operation has durable task identity; the transport or SDK must separately supply a verified continuation descriptor. A response `context_id` alone never authorizes continuation.
 
 ```json
 {
@@ -229,7 +229,7 @@ Publishers typically implement restrictions for:
 
 Keep the two human-in-the-loop paths distinct:
 
-- **Buyer clarification:** Return `input-required` only when the buyer must answer a question. Include `task_id` and `context_id`, then continue that task context after the buyer responds.
+- **Buyer clarification:** Return `input-required` only when the buyer must answer a question. Include `task_id` for durable task identity, then resume only through a verified transport or SDK continuation descriptor.
 - **Seller-internal review:** Keep the review mechanism private. For `brief` or `refine`, return `submitted` when the task cannot finish within the current time budget and `working` while it remains active. Do not use `input-required` merely because a seller-side process is involved.
 
 After review, return the canonical completed, rejected, or failed outcome.

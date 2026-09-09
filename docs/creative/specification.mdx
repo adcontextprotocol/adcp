@@ -621,7 +621,7 @@ Transform, generate, or retrieve creative manifests. Supports three modes:
 - When `macro_values` is provided and occurrence declarations are present, creative agents bind only verified-universal `resolve_value` occurrences performed_by `creative_agent` and advertised by the selected `creative.supported_formats[]` route, after representation selection, using the declaration's exact encoding. They MUST NOT use a concrete value to bypass `translate_to_native` or its target-resolution capability. Without declarations, the 3.x legacy universal-macro translation behavior applies.
 - Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
 - Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
-- `build_creative` supports async responses (`status: "working"` with `context_id` polling) for generation and transformation tasks that take significant time. Library retrieval is typically synchronous.
+- `build_creative` supports async responses for generation and transformation tasks that take significant time; poll schema-declared `task_id` values when the operation becomes pollable. Library retrieval is typically synchronous.
 - When `account` is provided and the agent charges, the response MUST include `pricing_option_id`, `vendor_cost`, and `currency`. The `consumption` object SHOULD be included when relevant.
 - For async builds, pricing fields appear on the final completed response only, not on intermediate status responses.
 - When a paid creative agent receives a `build_creative` request without `account` and the agent requires an account, the agent MUST return an error.

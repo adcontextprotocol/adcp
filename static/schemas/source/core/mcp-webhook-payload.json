@@ -74,7 +74,7 @@
     },
     "context_id": {
       "type": "string",
-      "description": "Session/conversation correlation identifier. This value alone is not continuation authority and MUST NOT be used to resume input-required or auth-required work without the verified native transport identity required by that transport."
+      "description": "Compatibility metadata copied from the originating response when present. This value alone is not continuation authority and MUST NOT be used to resume input-required or auth-required work or to select session state."
     },
     "token": {
       "type": "string",

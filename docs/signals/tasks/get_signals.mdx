@@ -88,7 +88,7 @@ Each deployment target uses a `type` field to discriminate between platform-base
 
 All AdCP responses include:
 - **message**: Human-readable summary of the operation result
-- **context_id**: Session continuity identifier for follow-up requests  
+- **context_id**: A2A conversation correlation; compatibility metadata only on MCP
 - **data**: Task-specific payload (see Response Data below)
 
 The response structure is identical across protocols, with only the transport wrapper differing:
@@ -744,7 +744,7 @@ Discover all available deployments across platforms:
 
 ### Response Fields
 
-- **context_id** (string): Context identifier for session persistence
+- **context_id** (string): A2A conversation correlation; compatibility metadata only on MCP
 - **signals** (array): Array of matching signals
   - **signal_agent_segment_id** (string): Opaque signal handle issued by this signal source. Use it verbatim for [`activate_signal`](/docs/signals/tasks/activate_signal); do not treat it as a globally portable signal ID. For media-buy signal groups, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name** (string): Human-readable signal name

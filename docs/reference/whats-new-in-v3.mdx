@@ -573,7 +573,7 @@ Affects: `get_products`, `create_media_buy`, `build_creative`, and property list
 
 ### Proposal refinement via buying mode
 
-`proposal_id` is removed from the `get_products` request. Refinement now uses `buying_mode: "refine"` with a typed `refine` array of change-requests (see [typed refinement](#typed-refinement-with-seller-acknowledgment)). Session continuity (`context_id` in MCP, `contextId` in A2A) carries conversation history across calls.
+`proposal_id` is removed from the `get_products` request. Refinement now uses `buying_mode: "refine"` with a typed `refine` array of change-requests (see [typed refinement](#typed-refinement-with-seller-acknowledgment)). A2A conversation continuity uses native `contextId`; MCP continuity, when offered, belongs to the transport session rather than an AdCP request-body field.
 
 Proposal execution via `create_media_buy` with `proposal_id` is unchanged.
 
@@ -747,7 +747,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `promoted_offering` on creative-manifest | `catalogs` field |
 | `brand_manifest` (inline object) | `brand` ref (`{ domain, brand_id }`) |
 | `estimated_exposures` on Product | `forecast` (DeliveryForecast) |
-| `proposal_id` on `get_products` request | Session continuity (`context_id` / `contextId`) |
+| `proposal_id` on `get_products` request | Transport-native continuity (A2A `contextId`; MCP transport session) |
 | `refine` object with `overall`/`products`/`proposals` | `refine` array of typed change-requests |
 | `creative_brief` on `build_creative` request | `brief` asset type in manifest `assets` map |
 | `supports_brief` capability | `supports_compliance` |

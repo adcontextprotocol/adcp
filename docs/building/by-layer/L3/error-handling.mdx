@@ -791,20 +791,18 @@ app.post('/webhooks/adcp', async (req, res) => {
 
 ## Recovery Strategies
 
-### Context Recovery
+### Continuation Recovery
 
-If context expires, start a new conversation:
+If a verified continuation descriptor expires, reconcile durable state and start a new transport conversation. Do not retry by deleting or replacing a request-body `context_id`:
 
 ```javascript
-async function callWithContextRecovery(request) {
+async function callWithContinuationRecovery(continuation, request) {
   try {
-    return await adcp.call(request);
+    return await resumeContinuation(continuation, request);
   } catch (error) {
-    if (error.code === 'INVALID_REQUEST' &&
-        error.message?.includes('context not found')) {
-      // Clear stale context and retry
-      delete request.context_id;
-      return await adcp.call(request);
+    if (error.code === 'CONTINUATION_EXPIRED') {
+      await reconcileDurableTaskState(request.task_id);
+      return startNewTransportConversation(request);
     }
     throw error;
   }

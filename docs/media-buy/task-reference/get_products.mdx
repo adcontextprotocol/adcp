@@ -1778,17 +1778,16 @@ Response (200 OK):
 }
 ```
 
-Continue the conversation with the same `context_id`:
+Resume only with a verified continuation descriptor supplied by the transport or SDK. Do not send response `context_id` as an MCP tool argument:
 
-```json
-POST /api/mcp/continue
+```javascript
+const continuation = verifiedContinuationFor(response);
+if (!continuation) return requireReconciliation(response);
+await resumeContinuation(continuation, {
+  message: "Budget is $75K for a 3-week campaign in March"
+});
 
-{
-  "context_id": "ctx_123",
-  "message": "Budget is $75K for a 3-week campaign in March"
-}
-
-Response (200 OK):
+// Completed response:
 {
   "status": "completed",
   "message": "Perfect! Found 5 products within your budget",
