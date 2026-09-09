@@ -3538,7 +3538,7 @@ async function runTests() {
     },
     'Legacy get_products finalization accepts an idempotency key'
   );
-  await testSchemaRejection(
+  await testSchemaValidation(
     '/schemas/media-buy/get-products-request.json',
     {
       buying_mode: 'refine',
@@ -3550,7 +3550,7 @@ async function runTests() {
         }
       ]
     },
-    'Legacy get_products finalization rejects a missing idempotency key'
+    'Legacy get_products finalization remains valid without an idempotency key throughout 3.x'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-request.json',

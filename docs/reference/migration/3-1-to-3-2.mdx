@@ -169,12 +169,15 @@ key from the mutation whose state they are reading. Sellers that voluntarily
 cache keyed reads follow the complete replay, durability, rate-limit, and
 encryption rules and document the resulting freshness behavior.
 
-The 3.x `get_products` facade leaves the key optional only for a guaranteed
-side-effect-free synchronous read, where a seller may ignore a supplied key. An
-execution arm that allocates a task, finalizes a proposal, or otherwise changes
-observable state requires a key and applies replay protection before that
-effect. New callers should use the compact tasks so the read/mutation boundary
-is explicit.
+The 3.x `get_products` facade leaves the key optional on every arm for wire
+compatibility. A seller may ignore a supplied key on a guaranteed
+side-effect-free synchronous read. Buyers should supply a key whenever the
+request may allocate a task, finalize a proposal, or otherwise change observable
+state. When supplied and the seller declares `adcp.idempotency.supported: true`, the
+seller applies replay protection before that effect. If the key is omitted or
+the seller declares `adcp.idempotency.supported: false`, an ambiguous result has no portable
+at-most-once retry guarantee. New callers should use the compact tasks so the
+read/mutation boundary is explicit.
 
 ### Resolve product, proposal, and live action rights
 

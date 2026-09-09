@@ -682,13 +682,13 @@ Sales agents SHOULD target the following response times:
 
 ### Idempotency
 
-Every state-mutating AdCP task request MUST carry an `idempotency_key`. In AdCP 3.2, product discovery uses explicit contracts: `request_proposals`, `refine_proposals`, and `decline_proposals` require a key; `list_products` and the legacy 3.x `get_products` facade leave it optional. Pure reads MUST tolerate the field but MAY ignore it, so buyers MUST NOT rely on keyed reads returning a cached response. A seller that elects or is required to provide replay applies this contract:
+Every state-mutating AdCP task request MUST carry an `idempotency_key`, except the published 3.x `get_products` compatibility facade, whose request shape keeps the field optional. In AdCP 3.2, product discovery uses explicit contracts: `request_proposals`, `refine_proposals`, and `decline_proposals` require a key; `list_products` and the legacy facade leave it optional. Pure reads MUST tolerate the field but MAY ignore it, so buyers MUST NOT rely on keyed reads returning a cached response. A seller that elects or is required to provide replay applies this contract:
 
 - The same key and equivalent canonical payload within the replay window MUST return the original response without re-executing the request.
 - The same key with a different canonical payload MUST return `IDEMPOTENCY_CONFLICT`.
 - Keys are scoped to the authenticated caller and account so retries cannot cross tenant boundaries.
 
-The compact tasks use the same product-discovery authorization policy as the legacy facade, but each stateful task has a distinct idempotency identity. A retry MUST use the same tool name and payload; changing names is a different logical request. Sellers retain `get_products` through 3.x for compatibility. On that facade, a guaranteed side-effect-free synchronous read may omit the key, and the seller may ignore one when supplied. An execution arm that allocates a task or changes observable state MUST require a key and apply replay protection before that effect. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, and concurrency rules.
+The compact tasks use the same product-discovery authorization policy as the legacy facade, but each stateful task has a distinct idempotency identity. A retry MUST use the same tool name and payload; changing names is a different logical request. Sellers retain `get_products` through 3.x for compatibility. Its key remains optional on every arm. A seller may ignore a supplied key on a guaranteed side-effect-free synchronous read. Buyers SHOULD supply one whenever the request may allocate a task or change observable state. When supplied and the seller declares `adcp.idempotency.supported: true`, the seller MUST apply replay protection before that effect. If the key is omitted or the seller declares `adcp.idempotency.supported: false`, an ambiguous result cannot be retried with a portable at-most-once guarantee. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, and concurrency rules.
 
 ### Human-in-the-Loop
 
