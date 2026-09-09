@@ -156,6 +156,29 @@ Absence of the declaration means use the 3.x compatibility facades. Retry a
 stateful request with the same tool name, idempotency key, and payload; an
 idempotency key does not create replay identity across old and new task names.
 
+### Scope idempotency to mutations
+
+AdCP 3.2 requires durable replay for state-mutating requests, not guaranteed
+pure reads. Read-tool wrappers still accept an optional `idempotency_key`, but
+the handler may ignore it and execute normally. Buyers must not interpret
+`adcp.idempotency.supported: true` as a promise of byte-stable read replay.
+
+Buyer SDKs should omit keys on pure reads. Generic wrappers that attach one
+must treat every poll or state re-read as a fresh request and must not reuse the
+key from the mutation whose state they are reading. Sellers that voluntarily
+cache keyed reads follow the complete replay, durability, rate-limit, and
+encryption rules and document the resulting freshness behavior.
+
+The 3.x `get_products` facade leaves the key optional on every arm for wire
+compatibility. A seller may ignore a supplied key on a guaranteed
+side-effect-free synchronous read. Buyers should supply a key whenever the
+request may allocate a task, finalize a proposal, or otherwise change observable
+state. When supplied and the seller declares `adcp.idempotency.supported: true`, the
+seller applies replay protection before that effect. If the key is omitted or
+the seller declares `adcp.idempotency.supported: false`, an ambiguous result has no portable
+at-most-once retry guarantee. New callers should use the compact tasks so the
+read/mutation boundary is explicit.
+
 ### Resolve product, proposal, and live action rights
 
 Use product `allowed_actions[]` only to select offers. Binding rights live in

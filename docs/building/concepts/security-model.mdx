@@ -127,7 +127,7 @@ The seller fetches the governance agent's public keys via JWKS, verifies the sig
 
 ### Layer 5: Auditability — the trail survives the transaction
 
-Every protocol event produces structured, correlated records: the signed governance token, the `idempotency_key` and its `replayed` flag, the request ID chain, and — for governance-controlled events — a revocable audit log pointer. These are *queryable by auditors* via `get_plan_audit_logs`, not private to either buyer or seller.
+Every mutation and webhook event produces structured, correlated records: the signed governance token when applicable, the `idempotency_key` and its `replayed` flag, the request ID chain, and — for governance-controlled events — a revocable audit log pointer. These are *queryable by auditors* via `get_plan_audit_logs`, not private to either buyer or seller.
 
 Key properties:
 
@@ -192,7 +192,7 @@ If you are approving an AdCP deployment — as a brand CISO, a security architec
 ### Idempotency
 
 - [ ] Is `capabilities.idempotency.replay_ttl_seconds` declared, and does the declared value match the implementation's actual cache retention?
-- [ ] Does the implementation reject missing or malformed keys with `INVALID_REQUEST` before touching business logic?
+- [ ] Does the implementation reject missing or malformed keys on mutating requests with `INVALID_REQUEST` before touching business logic, while tolerating optional keys on pure reads?
 - [ ] Is the idempotency cache shared across instances (so a restart doesn't allow a silent double-execution)?
 - [ ] Are successful responses cached? (Errors must not be cached, or the system locks buyers out for their TTL.)
 
