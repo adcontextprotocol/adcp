@@ -259,9 +259,9 @@ A bundle of normative clarifications that codify deployed behavior and close amb
 
 The cache holds read responses too from 3.1 onward — sellers MUST encrypt the cache tier at rest with the same controls applied to the underlying resource store. Operators with read-heavy buyer mixes SHOULD raise the rule-8 insert ceiling (sized originally against write-heavy traffic). See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency) for the full contract.
 
-**MCP envelope serialization is now normative — flat on the wire (#2911).** `core/protocol-envelope.json` drops `required: [status, payload]`; envelope fields and body fields are siblings at the root of the MCP tool response (no nested `payload:` key). Matches shipping SDK behavior. `context` joins the envelope as a first-class field — caller-supplied opaque echo (`/schemas/core/context.json`) distinct from `context_id` (server-managed session). A2A and REST serializations are normative in the envelope's `notes` array.
+**MCP envelope serialization is now normative — flat on the wire (#2911).** `core/protocol-envelope.json` drops `required: [status, payload]`; envelope fields and body fields are siblings at the root of the MCP tool response (no nested `payload:` key). Matches shipping SDK behavior. `context` joins the envelope as a first-class caller-supplied opaque echo (`/schemas/core/context.json`). It is distinct from A2A's native `contextId`; a request-body `context_id` on MCP is compatibility-only where declared. A2A and REST serializations are normative in the envelope's `notes` array.
 
-**MCP tool wrappers MUST tolerate envelope fields (#4399).** Server-side counterpart to `additionalProperties: true` on request schemas. FastMCP/Pydantic strict signatures, Zod `.strict()`, and OpenAPI codegen with `additionalProperties: false` injected into input models are all non-conformant. See [mcp-guide.mdx § Server-side tool wrappers](/docs/building/by-layer/L0/mcp-guide#server-side-tool-wrappers-must-tolerate-envelope-fields).
+**MCP tool wrappers MUST tolerate schema-admitted envelope fields (#4399).** FastMCP/Pydantic strict signatures, Zod `.strict()`, and OpenAPI codegen with `additionalProperties: false` injected into otherwise-open input models are non-conformant. An admitted request-body `context_id` is accepted and ignored for compatibility. See [mcp-guide.mdx § Server-side tool wrappers](/docs/building/by-layer/L0/mcp-guide#server-side-tool-wrappers-must-tolerate-envelope-fields).
 
 **`error.code` decoding is forward-compatible by contract (#4227).** Receivers MUST treat unknown `error.code` values as valid, read `error.recovery` (the normative wire carrier from 3.1 onward) for the recovery class, default to `transient` when absent (bounded by §Retry Logic). Senders SHOULD populate `error.recovery` on every error from 3.1 onward — receivers across version skew can't rely on `enumMetadata.recovery` for codes they don't know. Sellers upgrading 3.0.x → 3.1 SHOULD audit error-emit paths before bumping the advertised `adcp_version`. See [error-handling.mdx § Forward-compatible decoding](/docs/building/by-layer/L3/error-handling#forward-compatible-decoding-normative).
 
@@ -281,7 +281,7 @@ The cache holds read responses too from 3.1 onward — sellers MUST encrypt the 
 |---|---|
 | A buyer using `@adcp/client` or `adcp-py` | Nothing. Both SDKs already send `idempotency_key` uniformly on every call. |
 | A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Prefer the AdCP 3.2 split product-discovery tools and include `idempotency_key` on recommendations, refinements, and finalization. Existing `get_products` calls remain valid throughout 3.x. |
-| A seller on FastMCP/Pydantic, Zod `.strict()`, or OpenAPI codegen | Audit input models — they MUST accept envelope fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) on every tool. Use `extra='allow'` (Pydantic), drop `.strict()` (Zod), or fix codegen config (OpenAPI). |
+| A seller on FastMCP/Pydantic, Zod `.strict()`, or OpenAPI codegen | Audit input models — they MUST accept every field admitted by the selected request schema. An admitted MCP `context_id` is accepted and ignored for compatibility. Use `extra='allow'` (Pydantic), drop `.strict()` (Zod), or fix codegen config (OpenAPI) for open input schemas. |
 | A seller emitting `create_media_buy` synchronous-success responses with embedded `status` | Nothing changes. Existing byte-stable replay already conforms; the rule was silent on this case before, now it's explicit. |
 | A buyer agent reading `status` from a mutation response | Add a `replayed: true` guard: if set, call the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before any state-dependent action. Without the guard, you'll hit `NOT_CANCELLABLE` and similar state-machine bugs against replayed responses. |
 | A seller emitting unsigned webhooks or claiming the deprecated `signed-requests` specialism | Read the new `notices` field on runner-output-contract — your conformance dashboards will start surfacing `request_signing_required_in_4_0` / `legacy_hmac_fallback_removed_in_4_0` / `signed_requests_specialism_deprecated`. Behavior is unchanged in 3.1; the advisories are forward-readiness for 4.0. |
@@ -980,7 +980,7 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 
 12. **Delivery Forecasts on Products** — `estimated_exposures` replaced with structured `forecast` field using the `DeliveryForecast` type. Products now return time periods, metric ranges, and methodology context during discovery.
 
-13. **Proposal Refinement via Buying Mode** — `proposal_id` removed from `get_products` request. Refinement now uses `buying_mode: "refine"` with a typed `refine` array (see item 21). Session continuity (`context_id` in MCP, `contextId` in A2A) carries conversation history across calls. Proposal execution via `create_media_buy` with `proposal_id` is unchanged.
+13. **Proposal Refinement via Buying Mode** — `proposal_id` removed from `get_products` request. Refinement now uses `buying_mode: "refine"` with a typed `refine` array (see item 21). A2A uses native `contextId` for conversation correlation; MCP continuity, if provided, belongs to its transport session. Proposal execution via `create_media_buy` with `proposal_id` is unchanged.
 
 14. **First-Class Catalogs** — `sync_catalogs` task with 13 catalog types (structural and industry-vertical). Formats declare `catalog_requirements`. Catalogs include `conversion_events` and `content_id_type` for attribution alignment.
 
@@ -1112,7 +1112,7 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 - `FormatCategory` enum and `type` field removed from Format objects (use `assets` array instead)
 - `format_id` optional in `preview_creative` (falls back to `creative_manifest.format_id`)
 - `selection_mode` on repeatable asset groups to distinguish sequential (carousel) from optimize (asset pool) behavior
-- Session ID fallback recommendation for MCP agent `context_id`
+- Transport-native conversation correlation (`contextId` on A2A; transport session on MCP)
 
 ---
 

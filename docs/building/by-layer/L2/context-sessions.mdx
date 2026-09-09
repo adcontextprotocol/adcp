@@ -1,6 +1,6 @@
 ---
 title: Context & Sessions
-description: "AdCP context_id vs task_id explained. How to manage conversation state, session continuity, and extension fields across MCP and A2A protocol requests."
+description: "AdCP context_id vs task_id explained. How A2A and MCP handle conversation state, task continuity, and application context."
 "og:title": "AdCP — Context & Sessions"
 ---
 
@@ -14,14 +14,14 @@ AdCP uses two distinct identifiers for different purposes:
 
 | Identifier | Purpose | Lifespan | Scope |
 |------------|---------|----------|-------|
-| **context_id** | Conversation/session continuity | ~1 hour | Across multiple task calls |
+| **context_id** | A2A conversation correlation | Transport-defined | Across A2A messages in one conversation |
 | **task_id** | Tracking specific operations | Until completion (hours to days) | Single operation |
 
 **context_id**:
-- Comes from the protocol layer (built into A2A, manual in MCP)
-- Provides conversation history and session continuity
-- Used for maintaining state across multiple task calls
-- Expires after conversation timeout (typically 1 hour)
+- Maps to A2A's native Message/Task `contextId`
+- Is managed in the A2A transport envelope, not inside the AdCP task body
+- Is not an MCP request-body session mechanism
+- Is correlation and routing metadata, not authorization
 
 **task_id**:
 - Specific to individual requests that could be asynchronous
@@ -30,114 +30,69 @@ AdCP uses two distinct identifiers for different purposes:
 - Persists until the task completes (may be days for complex media buys)
 - Can be referenced across different conversations or sessions
 
-### Usage Example
+### A2A usage example
 
 ```javascript
 // First call - establishes context and creates task
-const result = await call('create_media_buy', {
-  brief: "Launch summer campaign"
-});
+const first = await a2a.send({ message: { parts: [/* AdCP request */] } });
 
-const contextId = result.context_id;  // For conversation continuity
-const taskId = result.task_id;        // For tracking this specific media buy
-
-// Later in same conversation - uses context_id
-const update1 = await call('update_media_buy', {
-  context_id: contextId,    // Maintains conversation state
-  task_id: taskId,          // References the specific media buy
-  updates: {...}
-});
-
-// Days later in new conversation - only task_id needed
-const delivery = await call('get_media_buy_delivery', {
-  task_id: taskId          // No context_id - this is a new conversation
+// Later in the same A2A conversation, use the native envelope fields.
+const followUp = await a2a.send({
+  message: {
+    contextId: first.contextId,
+    taskId: first.taskId,
+    parts: [/* follow-up AdCP request */]
+  }
 });
 ```
 
 ## Protocol Differences
 
-- **A2A**: Context is handled automatically by the protocol
-- **MCP**: Requires manual context_id management
+- **A2A**: Conversation continuity uses native `contextId` in the A2A envelope.
+- **MCP**: Continuity, when offered, belongs to the transport session. Do not send an AdCP `context_id` tool argument to create or resume it.
 
-### A2A Context (Automatic)
+### A2A Context
 
-A2A handles sessions natively - you don't need to manage context:
+A2A carries conversation correlation in the native message envelope:
 
 ```javascript
-// A2A maintains context automatically
 const task = await a2a.send({ message: {...} });
-// contextId is managed by A2A protocol
 
-// Follow-ups automatically use the same context
+// Follow-ups explicitly carry the transport-native contextId.
 const followUp = await a2a.send({
-  contextId: task.contextId,  // Optional - A2A tracks this
-  message: {...}
+  message: {
+    contextId: task.contextId,
+    taskId: task.taskId,
+    ...
+  }
 });
 ```
 
-### MCP Context (Manual)
+### MCP context
 
-MCP requires explicit context management to maintain state:
+MCP callers send task arguments without an AdCP session identifier:
 
 ```javascript
 // First call - no context
-const result1 = await mcp.call('get_products', {
+await mcp.call('get_products', {
   idempotency_key: "550e8400-e29b-41d4-a716-446655442076",
   buying_mode: "brief",
   brief: "Video ads"
 });
-const contextId = result1.context_id;  // Save this!
 
-// Follow-up - must include context_id
-const result2 = await mcp.call('get_products', {
+// Follow-up in the same MCP transport session, if the host provides one.
+await mcp.call('get_products', {
   idempotency_key: "550e8400-e29b-41d4-a716-446655442077",
   buying_mode: "brief",
-  context_id: contextId,  // Required for continuity
   brief: "Focus on premium inventory"
 });
 ```
 
-### MCP Context Management Pattern
-
-```javascript
-class MCPSession {
-  constructor(mcp) {
-    this.mcp = mcp;
-    this.contextId = null;
-  }
-
-  async call(method, params) {
-    const result = await this.mcp.call(method, {
-      ...params,
-      context_id: this.contextId
-    });
-    this.contextId = result.context_id;  // Update for next call
-    return result;
-  }
-}
-```
-
-### MCP Agent-Side: Session ID Fallback
-
-Many MCP clients (ChatGPT, Claude) don't pass `context_id`. Agents should use the transport's session ID as a fallback to enable automatic session persistence:
-
-```typescript
-server.tool('get_products', schema, async (args, extra) => {
-  // Use explicit context_id if provided, fall back to MCP sessionId
-  const contextId = args.context_id ?? extra?.sessionId;
-
-  const products = await generateProducts(args.brief, contextId);
-  await productStore.save(contextId, products);
-
-  return products;
-});
-```
-
-This allows simple clients to get automatic session persistence while preserving explicit control for advanced buyers who need resumable sessions. For a working implementation, see the [Snap AdCP Agent](https://github.com/scope3data/snap-adcp).
+Where the selected request schema admits `context_id`, MCP servers MUST ignore it. It cannot select session state, identity, account, authorization, task continuation, or idempotency scope. Use the MCP transport session, if provided, for ephemeral continuity and schema-declared task or resource identifiers for durable state.
 
 ## What Context Maintains
 
-The `context_id` maintains conversation state, regardless of protocol:
+An A2A `contextId` can associate conversational state such as:
 - Current media buy and products being discussed
 - Search results and applied filters
 - Conversation history and user intent
@@ -265,7 +220,7 @@ Response echoes the context:
 
 | Field | Purpose | Agent Reads? | Agent Modifies? |
 |-------|---------|--------------|-----------------|
-| `context_id` | Session continuity | Yes | Yes (creates/updates) |
+| `context_id` | A2A conversation correlation; MCP compatibility no-op | A2A transport only | A2A transport only |
 | `task_id` | Operation tracking | Yes | Yes (creates) |
 | `ext` | Platform-specific config | MAY | MAY add response data |
 | `context` | Opaque correlation | NEVER | NEVER |
@@ -290,11 +245,10 @@ Response echoes the context:
 - Trust the session management
 
 ### For MCP
-- Always preserve context_id between calls
-- Implement a session wrapper (see pattern above)
-- Handle context expiration (1 hour timeout)
-- Start fresh context for new workflows
-- **Agents**: Use transport session ID as fallback when `context_id` is not provided (see [Session ID Fallback](#mcp-agent-side-session-id-fallback))
+- Do not copy response `context_id` values into later tool arguments
+- Use the MCP transport session, if provided, for ephemeral continuity
+- Use `task_id` or the task's resource identifiers for durable work
+- Ignore a request-body `context_id` where the selected schema admits it
 
 ### For Extensions
 - Always namespace under vendor keys

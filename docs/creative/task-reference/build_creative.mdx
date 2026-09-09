@@ -65,7 +65,7 @@ When the creative agent charges and `account` is provided, the response includes
 | `currency` | string | ISO 4217 currency code |
 | `consumption` | object | Structured consumption details — `tokens`, `images_generated`, `renders`, `duration_seconds`. See [`creative-consumption.json`](https://adcontextprotocol.org/schemas/v3/core/creative-consumption.json). Informational for cost verification; `vendor_cost` is the billing source of truth. |
 
-For async builds (`status: "working"` with `context_id` polling), pricing fields appear on the final completed response only.
+For async builds, poll the schema-declared `task_id` when the operation becomes pollable. Pricing fields appear on the final completed response only.
 
 ### Recipe identity
 

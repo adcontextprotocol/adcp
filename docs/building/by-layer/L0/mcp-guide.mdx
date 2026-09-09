@@ -1,6 +1,6 @@
 ---
 title: MCP Guide
-description: "AdCP MCP integration guide: tool call patterns, context_id management, response parsing, and wire format for Model Context Protocol implementations."
+description: "AdCP MCP integration guide: tool call patterns, transport-session continuity, response parsing, and wire format for Model Context Protocol implementations."
 "og:title": "AdCP — MCP Guide"
 ---
 
@@ -72,7 +72,7 @@ console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
 {
   "status": "completed",                  // envelope: unified task status
   "message": "Found 5 products",          // envelope: human-readable summary
-  "context_id": "ctx-abc123",             // envelope: session identifier (server-managed)
+  "context_id": "ctx-abc123",             // envelope: compatibility metadata; not MCP session state
   "context": { "ui": "buyer_dashboard" }, // envelope: per-request opaque echo (caller-owned)
   "timestamp": "2026-05-19T14:25:30Z",    // envelope: response generation time
   "products": [...],                      // body: task-specific data, sibling of envelope fields
@@ -85,7 +85,7 @@ console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
 **Receiver rule.** MCP tool consumers MUST parse envelope and body fields from the flat root of the tool response. Receivers MUST NOT require a nested `payload:` key; the schema's `payload` is documentation, not a wire requirement. When `status` is absent on the response (legacy or transport-native state carrier), receivers MUST default to `completed` for non-error responses and inspect `adcp_error` for error envelopes.
 
 **`context_id` vs `context` — semantically orthogonal.**
-- `context_id` is a **server-managed session identifier** for tracking related operations across multiple tool invocations. The server issues it; the caller MAY echo it on subsequent calls to thread a session. Distinct from MCP's transport-level session.
+- `context_id` maps to A2A's transport-native `contextId`. On MCP it is compatibility metadata only: callers MUST NOT rely on it for continuity, and servers ignore it where the selected request schema admits the field. It does not select or resume an MCP session.
 - `context` is a **caller-supplied opaque echo object** ([`core/context.json`](https://adcontextprotocol.org/schemas/v3/core/context.json)) — the agent preserves the same JSON value without interpreting it. Used for buyer-side correlation (UI session IDs, trace IDs, custom metadata).
 - Both MAY appear on the same response. They are NOT aliases.
 
@@ -335,74 +335,35 @@ The MCP Task tracks the transport wrapper within the session. The webhook tracks
 
 ## Context Management (MCP-Specific)
 
-**Critical**: MCP requires manual context management. You must pass `context_id` to maintain conversation state.
+MCP does not use an AdCP request-body `context_id` to maintain conversation state. When an MCP host provides session continuity, it comes from the MCP transport session and is managed by the host and server. Durable AdCP work is resumed with the task or resource identifiers declared by the task schema.
 
-### Context Session Pattern
+Where the selected request schema admits `context_id`, servers MUST ignore it for session lookup, identity, account selection, authorization, task continuation, and idempotency scope. Clients MUST NOT copy a response `context_id` into later MCP tool arguments expecting continuity.
 
 ```javascript
-class McpAdcpSession {
-  constructor(mcpClient) {
-    this.mcp = mcpClient;
-    this.contextId = null;
-  }
-
-  async call(tool, params, options = {}) {
-    const request = {
-      tool: tool,
-      arguments: { ...params }
-    };
-
-    // Include context from previous calls
-    if (this.contextId) {
-      request.arguments.context_id = this.contextId;
-    }
-
-    // Include webhook config in tool arguments
-    if (options.push_notification_config) {
-      request.arguments.push_notification_config = options.push_notification_config;
-    }
-
-    // Task augmentation for async operations
-    if (options.task) {
-      request.task = options.task;
-    }
-
-    const response = await this.mcp.callTool(request);
-
-    // Save context for next call
-    if (response.context_id) {
-      this.contextId = response.context_id;
-    }
-
-    return response;
-  }
-
-  reset() {
-    this.contextId = null;
-  }
-}
+// Follow-up in the same MCP transport session. Do not add context_id.
+const response = await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442077",
+  buying_mode: "brief",
+  brief: "Focus on premium inventory"
+});
 ```
 
 ### Usage Examples
 
-#### Basic Session with Context
+#### Calls on One Transport Session
 ```javascript
-const session = new McpAdcpSession(mcp);
-
-// First call - no context needed
-const products = await session.call('get_products', {
+const products = await mcp.call('get_products', {
   idempotency_key: "550e8400-e29b-41d4-a716-446655442074",
   buying_mode: "brief",
   brief: "Sports campaign"
 });
 
-// Follow-up - context automatically included
-const refined = await session.call('get_products', {
+// Follow-up on the same MCP transport session, if the host provides one.
+const refined = await mcp.call('get_products', {
   idempotency_key: "550e8400-e29b-41d4-a716-446655442075",
   buying_mode: "brief",
   brief: "Focus on premium CTV"
 });
-// Session remembers previous interaction
 ```
 
 #### Async Operations with MCP Tasks
@@ -410,22 +371,21 @@ const refined = await session.call('get_products', {
 For tools with `taskSupport: "optional"`, pass the `task` option to use MCP Tasks:
 
 ```javascript
-const session = new McpAdcpSession(mcp);
-
 // Synchronous call (no task augmentation)
-const products = await session.call('get_products', {
-  idempotency_key: '550e8400-e29b-41d4-a716-446655442006',
-  buying_mode: 'brief',
-  brief: "Sports campaign"
+const products = await mcp.callTool({
+  name: 'get_products',
+  arguments: {
+    idempotency_key: '550e8400-e29b-41d4-a716-446655442006',
+    buying_mode: 'brief',
+    brief: "Sports campaign"
+  }
 });
 
 // Task-augmented call for a long-running operation
-const result = await session.call('create_media_buy',
-  {
+const result = await mcp.callTool({
+  name: 'create_media_buy',
+  arguments: {
     packages: [...],
-  },
-  {
-    task: { ttl: 86400000 },  // 24-hour TTL
     push_notification_config: {  // Webhook backup for session-outliving ops
       url: "https://buyer.com/webhooks/adcp/create_media_buy/op_abc123",
       authentication: {
@@ -433,8 +393,9 @@ const result = await session.call('create_media_buy',
         credentials: "shared_secret_32_chars"
       }
     }
-  }
-);
+  },
+  task: { ttl: 86400000 }  // 24-hour TTL
+});
 
 // result is a CreateTaskResult for the MCP wrapper.
 // After tasks/result, inspect the AdCP payload; if it is still submitted,
@@ -473,7 +434,7 @@ The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/m
 **Optional fields:**
 - `notification_id` — Event-layer stable id for re-emission tracking (see schema)
 - `protocol` — AdCP protocol family (`media-buy` or `signals`)
-- `context_id` — Conversation/session identifier
+- `context_id` — Compatibility metadata; not an MCP session selector
 - `message` — Human-readable context about the status change
 
 **Data field:**
@@ -533,7 +494,6 @@ app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) =
       await notifyHuman({
         operation_id,
         message: webhook.message,
-        context_id: webhook.context_id,
         data: webhook.result
       });
       break;
@@ -588,7 +548,7 @@ function verifySignature(payload, signature, timestamp) {
 #### Task Management and Polling
 ```javascript
 // Check status of a specific AdCP task
-const taskStatus = await session.call('get_task_status', {
+const taskStatus = await mcp.call('get_task_status', {
   task_id: 'task_456',
   include_result: true
 });
@@ -597,7 +557,7 @@ if (taskStatus.status === 'completed') {
 }
 
 // State reconciliation
-const reconciliation = await session.call('list_tasks', {
+const reconciliation = await mcp.call('list_tasks', {
   filters: { statuses: ['submitted', 'working', 'input-required'] }
 });
 if (reconciliation.tasks.length > 0) {
@@ -605,29 +565,10 @@ if (reconciliation.tasks.length > 0) {
   // Start tracking these tasks
 }
 
-// List all pending operations
-const pending = await session.listPendingTasks();
-console.log(`${pending.tasks.length} operations in progress`);
+console.log(`${reconciliation.tasks.length} operations in progress`);
 ```
 
-### Context Expiration Handling
-
-```javascript
-async function handleContextExpiration(session, tool, params) {
-  try {
-    return await session.call(tool, params);
-  } catch (error) {
-    if (error.message?.includes('context not found')) {
-      // Context expired - start fresh
-      session.reset();
-      return session.call(tool, params);
-    }
-    throw error;
-  }
-}
-```
-
-**Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
+**Key difference**: A2A exposes native `contextId` conversation threading. MCP session continuity is transport-local and does not use an AdCP tool argument.
 
 ## Handling Async Operations
 
@@ -644,12 +585,9 @@ When an AdCP response returns `working` or `submitted` status, you need a way to
 Configure a webhook URL and the server will POST the result when the operation completes. This is the right approach for `submitted` operations that are blocked on external dependencies (publisher approval, human review).
 
 ```javascript
-const response = await session.call('create_media_buy',
-  {
+const response = await mcp.call('create_media_buy', {
     packages: [...],
-    budget: { total: 150000, currency: "USD" }
-  },
-  {
+    budget: { total: 150000, currency: "USD" },
     push_notification_config: {
       url: "https://buyer.com/webhooks/adcp/create_media_buy/op_abc123",
       authentication: {
@@ -657,8 +595,7 @@ const response = await session.call('create_media_buy',
         credentials: "shared_secret_32_chars"
       }
     }
-  }
-);
+});
 
 // If status is 'submitted', the server will POST the result to your webhook
 // No polling needed — just handle the webhook when it arrives
@@ -671,9 +608,9 @@ See [Push Notifications](/docs/building/by-layer/L3/webhooks) for payload format
 Use AdCP polling as a backup for `submitted` operations, or when you can't expose a webhook endpoint. In 3.x, prefer `get_task_status` when the seller advertises it; otherwise use legacy `tasks/get`:
 
 ```javascript
-async function pollForResult(session, taskId, pollInterval = 30000) {
+async function pollForResult(mcp, taskId, pollInterval = 30000) {
   while (true) {
-    const response = await session.call('get_task_status', {
+    const response = await mcp.call('get_task_status', {
       task_id: taskId,
       include_result: true
     });
@@ -684,10 +621,9 @@ async function pollForResult(session, taskId, pollInterval = 30000) {
 
     if (response.status === 'input-required') {
       const input = await promptUser(response.message);
-      return session.call('create_media_buy', {
-        context_id: response.context_id,
-        additional_info: input
-      });
+      const continuation = verifiedContinuationFor(response);
+      if (!continuation) return requireReconciliation(response);
+      return resumeContinuation(continuation, input);
     }
 
     await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -698,7 +634,7 @@ async function pollForResult(session, taskId, pollInterval = 30000) {
 ### Handling different statuses
 
 ```javascript
-const initial = await session.call('create_media_buy', {
+const initial = await mcp.call('create_media_buy', {
   packages: [...],
   budget: { total: 100000, currency: "USD" }
 });
@@ -730,18 +666,17 @@ switch (initial.status) {
 ## Integration Example
 
 ```javascript
-// Initialize MCP session with context management
-const session = new McpAdcpSession(mcp);
-
 // Use unified status handling (see Core Concepts)
-async function handleAdcpCall(tool, params, options = {}) {
-  const response = await session.call(tool, params, options);
+async function handleAdcpCall(tool, params) {
+  const response = await mcp.call(tool, params);
   
   switch (response.status) {
     case 'input-required':
       // Handle clarification (see Core Concepts for patterns)
       const input = await promptUser(response.message);
-      return session.call(tool, { ...params, additional_info: input });
+      const continuation = verifiedContinuationFor(response);
+      if (!continuation) return requireReconciliation(response);
+      return resumeContinuation(continuation, input);
       
     case 'working':
       // Server is actively processing — just wait, result will arrive
@@ -771,11 +706,11 @@ const products = await handleAdcpCall('get_products', {
 
 ### Server-side tool wrappers MUST tolerate envelope fields
 
-Buyer SDKs send envelope-level fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) uniformly across all AdCP tool calls — including read-only tools that don't consume them. MCP tool implementations MUST accept these fields and ignore the ones they don't use; they MUST NOT reject a call because an envelope field is present. Common traps:
+Buyer SDKs may send envelope-level fields admitted by the selected request schema, either as declared properties or through `additionalProperties: true`. MCP tool implementations MUST accept schema-admitted fields and ignore the ones they do not consume. An explicitly closed schema may reject undeclared fields. An admitted `context_id` is always a compatibility no-op; callers do not send it for continuity. Common traps:
 
-- **FastMCP / Pydantic strict signatures** — declare `idempotency_key: str | None = None` (and the other envelope fields) as accept-and-ignore optionals, or use `**kwargs` to swallow unknowns. `model_config = ConfigDict(extra='allow')` on input models if you control them.
+- **FastMCP / Pydantic strict signatures** — declare schema-admitted envelope fields as accept-and-ignore optionals, or use `**kwargs` for open input schemas. `model_config = ConfigDict(extra='allow')` on open input models if you control them.
 - **Zod / valibot with `.strict()`** on input schemas — drop `.strict()` or use a passthrough variant.
-- **OpenAPI codegen** that injects `additionalProperties: false` into input models — fix the generator config; the spec's request schemas declare `additionalProperties: true`.
+- **OpenAPI codegen** that injects `additionalProperties: false` into open input models — fix the generator config so it preserves the selected schema.
 
 A wrapper that raises `unexpected_keyword_argument` on `idempotency_key` will fail compliance against any buyer SDK that follows the envelope contract. See [security.mdx > Server-side tool wrapper conformance](/docs/building/by-layer/L1/security#server-side-tool-wrapper-conformance) for the normative rule.
 
@@ -864,7 +799,7 @@ AdCP errors are returned as tool-level responses with `isError: true` and the er
 
 ```javascript
 try {
-  const response = await session.call('get_products', params);
+  const response = await mcp.call('get_products', params);
 
   // Check for AdCP application errors (isError: true with structured data)
   if (response.isError) {
@@ -888,9 +823,9 @@ try {
 
 ## Best Practices
 
-1. **Use session wrapper** for automatic context management
+1. **Reuse the authenticated MCP transport session** when the host offers continuity
 2. **Check status field** before processing response data  
-3. **Handle context expiration** gracefully with retries
+3. **Use schema-declared task or resource IDs** for durable continuation
 4. **Reference Core Concepts** for status handling patterns
 5. **Validate parameters** using MCP tool schemas when available
 

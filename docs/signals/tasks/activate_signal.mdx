@@ -59,7 +59,7 @@ Each deployment target uses a `type` field to discriminate between platform-base
 
 All AdCP responses include:
 - **message**: Human-readable summary of the activation status
-- **context_id**: Session continuity identifier for tracking progress
+- **context_id**: A2A conversation correlation; compatibility metadata only on MCP
 - **data**: Task-specific payload (see Response Data below)
 
 The response structure is identical across protocols, with only the transport wrapper differing:

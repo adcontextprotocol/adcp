@@ -197,7 +197,7 @@ const response3 = await a2a.send({
 ```javascript
 // Initial calibration request
 const response1 = await mcp.call('calibrate_content', {
-  standards_id: "nike_brand_safety",
+  standards_id: "example_brand_safety",
   artifact: {
     property_rid: "01916f3a-a1d3-7000-8000-000000000040",
     artifact_id: "r_news_politics_123",
@@ -206,12 +206,10 @@ const response1 = await mcp.call('calibrate_content', {
     ]
   }
 });
-// Response includes context_id for conversation continuity
 
-// Continue dialogue with follow-up question
+// A later call on the same MCP transport session does not send context_id.
 const response2 = await mcp.call('calibrate_content', {
-  context_id: response1.context_id,
-  standards_id: "nike_brand_safety",
+  standards_id: "example_brand_safety",
   artifact: {
     property_rid: "01916f3a-a1d3-7000-8000-000000000040",
     artifact_id: "r_news_politics_123",
@@ -222,10 +220,9 @@ const response2 = await mcp.call('calibrate_content', {
 });
 // Include text message in the protocol envelope asking about balanced journalism
 
-// Try different artifact in same conversation
+// Try a different artifact on the same transport session.
 const response3 = await mcp.call('calibrate_content', {
-  context_id: response1.context_id,
-  standards_id: "nike_brand_safety",
+  standards_id: "example_brand_safety",
   artifact: {
     property_rid: "01916f3a-a1d3-7000-8000-000000000040",
     artifact_id: "r_running_tips_456",
@@ -236,7 +233,7 @@ const response3 = await mcp.call('calibrate_content', {
 });
 ```
 
-The key insight is that the dialogue happens at the **protocol layer**, not the task layer. The verification agent maintains conversation context and can respond to follow-up questions, disagreements, or requests for clarification - just like any agent-to-agent conversation.
+The key insight is that dialogue continuity belongs to the **transport layer**, not the task body. A2A uses native `contextId`; an MCP host may provide continuity through its transport session. Neither path uses an AdCP request-body `context_id` as session state.
 
 ## Calibration vs Runtime
 

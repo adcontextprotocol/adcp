@@ -41,7 +41,7 @@ Every AdCP response uses a **flat structure** where task-specific fields are at 
 {
   "status": "completed",           // Always present: what state we're in
   "message": "Found 5 products",   // Always present: human explanation
-  "context_id": "ctx-123",         // Session continuity
+  "context_id": "ctx-123",         // Transport metadata; not MCP continuation state
   "context": {                     // Application-level context echoed back
     "ui": "buyer_dashboard"
   },
@@ -308,7 +308,7 @@ for (const task of missingTasks) {
 
 1. **Always check status first** - Don't assume success
 2. **Handle all statuses** - Include a default case for unknown states
-3. **Preserve context_id** - Required for conversation correlation, but never sufficient to authorize continuation
+3. **Use transport-native context** - A2A uses native `contextId`; MCP request-body `context_id` is a compatibility no-op
 4. **Use task_id for tracking** - Especially for long-running operations
 5. **Implement timeouts** - Don't wait forever
 6. **Log status transitions** - Helps with debugging and auditing

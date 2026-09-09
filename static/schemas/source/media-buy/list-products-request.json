@@ -18,7 +18,11 @@
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
       "description": "Optional replay key accepted uniformly on read calls."
     },
-    "context_id": { "type": "string", "minLength": 1 },
+    "context_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "3.x compatibility field. On MCP, servers ignore this value; callers MUST NOT rely on it for session continuity. A2A conversation continuity uses the transport-native Message/Task contextId, not this request-body field."
+    },
     "context": {
       "allOf": [{ "$ref": "/schemas/core/context.json" }],
       "x-adcp-schema-uri": "/schemas/core/context.json"

@@ -11,7 +11,7 @@
     },
     "context_id": {
       "type": "string",
-      "description": "Session continuity identifier"
+      "description": "Transport-managed conversation identifier. Maps to native contextId on A2A; compatibility metadata only on MCP and not a continuation or authorization mechanism."
     },
     "data": {
       "description": "AdCP task-specific response data (see individual task response schemas)"

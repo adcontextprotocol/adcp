@@ -40,6 +40,50 @@ test('generic examples never fabricate continuation from context_id', () => {
   assert.match(webhookSchema.properties.context_id.description, /MUST NOT be used to resume/);
 });
 
+test('context_id continuity is transport-native rather than an MCP body contract', () => {
+  const envelope = readJson('static/schemas/source/core/protocol-envelope.json');
+  const description = envelope.properties.context_id.description;
+
+  assert.match(description, /native Message\/Task `contextId`/);
+  assert.match(description, /request-body `context_id`, where admitted by the selected request schema, is a compatibility-only field/);
+  assert.match(description, /MUST ignore it/);
+  assert.match(description, /MUST NOT select session state, identity, account, authorization, task continuation, or idempotency scope/);
+
+  for (const docPath of [
+    'docs/building/by-layer/L0/mcp-guide.mdx',
+    'docs/building/by-layer/L2/context-sessions.mdx',
+    'docs/building/concepts/protocol-comparison.mdx',
+  ]) {
+    const doc = read(docPath);
+    assert.doesNotMatch(doc, /MCP requires manual context management/);
+    assert.doesNotMatch(doc, /must include context_id/i);
+    assert.match(doc, /transport session/i);
+  }
+});
+
+test('the four 3.x request fields are documented compatibility no-ops', () => {
+  const requestDir = path.join(root, 'static/schemas/source/media-buy');
+  const declarations = fs.readdirSync(requestDir)
+    .filter((name) => name.endsWith('-request.json'))
+    .filter((name) => readJson(`static/schemas/source/media-buy/${name}`).properties?.context_id)
+    .sort();
+
+  assert.deepEqual(declarations, [
+    'decline-proposals-request.json',
+    'list-products-request.json',
+    'refine-proposals-request.json',
+    'request-proposals-request.json',
+  ]);
+
+  for (const name of declarations) {
+    const schema = readJson(`static/schemas/source/media-buy/${name}`);
+    assert.ok(!schema.required?.includes('context_id'));
+    assert.match(schema.properties.context_id.description, /compatibility field/);
+    assert.match(schema.properties.context_id.description, /servers ignore this value/);
+    assert.match(schema.properties.context_id.description, /transport-native Message\/Task contextId/);
+  }
+});
+
 test('webhook retry horizon is bounded, additive, and normative for 3.2 emitters', () => {
   const schema = readJson('static/schemas/source/protocol/get-adcp-capabilities-response.json');
   const signing = schema.properties.webhook_signing;
