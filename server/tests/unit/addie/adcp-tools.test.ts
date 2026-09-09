@@ -439,6 +439,52 @@ describe('call_adcp_task training module isolation', () => {
     );
   });
 
+  it('preserves the tenant selected by the training-agent URL', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { session_id: 'si_test' } });
+    const callAdcpTask = createAdcpToolHandlers(null).get('call_adcp_task');
+
+    await callAdcpTask?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/si/mcp',
+      task: 'si_initiate_session',
+      params: {
+        idempotency_key: 'si-tenant-routing-test-key',
+        intent: 'Compare electric vehicles',
+        identity: { consent_granted: false },
+      },
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenCalledWith(
+      'si_initiate_session',
+      expect.any(Object),
+      expect.objectContaining({ tenantId: 'si' }),
+    );
+  });
+
+  it('does not label an SI protocol error as a successful sandbox demo', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({
+      success: true,
+      data: { errors: [{ code: 'INVALID_OFFERING_TOKEN', message: 'Call si_get_offering first.' }] },
+    });
+    const callAdcpTask = createAdcpToolHandlers(null).get('call_adcp_task');
+
+    const output = await callAdcpTask?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/si/mcp',
+      task: 'si_initiate_session',
+      params: {
+        idempotency_key: 'si-error-rendering-test-key',
+        intent: 'Compare electric vehicles',
+        identity: { consent_granted: false },
+        offering_token: 'invalid-token',
+      },
+    });
+
+    expect(output).toContain('Task failed');
+    expect(output).toContain('INVALID_OFFERING_TOKEN');
+    expect(output).not.toContain('Success (sandbox)');
+  });
+
   it('uses the current prerelease when Addie discovers an unpinned proposal profile', async () => {
     executeTrainingAgentTool.mockReset();
     executeTrainingAgentTool.mockResolvedValue({ success: true, data: { media_buy: {} } });

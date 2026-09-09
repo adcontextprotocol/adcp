@@ -22,6 +22,121 @@
 import { randomUUID } from 'node:crypto';
 import type { ToolArgs, TrainingContext } from './types.js';
 
+// These definitions keep the legacy monolith and Addie's in-process training
+// shortcut aligned with the SDK-backed /si tenant. The tenant owns canonical
+// schema validation on the public HTTP path; the monolith still needs to
+// advertise the same tool names so certification demos can reach the shared
+// handlers without an HTTP round-trip.
+export const SI_TOOLS = [
+  {
+    name: 'si_get_offering',
+    description: 'Get offering details and availability before starting a Sponsored Intelligence session.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        offering_id: { type: 'string', description: 'Offering identifier from the catalog' },
+        intent: { type: 'string', description: 'Optional anonymous user intent for personalized results' },
+        include_products: { type: 'boolean' },
+        product_limit: { type: 'integer', minimum: 1, maximum: 50 },
+        context: { type: 'object' },
+        ext: { type: 'object' },
+      },
+      required: ['offering_id'] as const,
+    },
+  },
+  {
+    name: 'si_initiate_session',
+    description: 'Start a Sponsored Intelligence conversation with a brand agent.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        idempotency_key: {
+          type: 'string',
+          minLength: 16,
+          maxLength: 255,
+          pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+        },
+        intent: { type: 'string' },
+        identity: {
+          type: 'object',
+          properties: {
+            consent_granted: { type: 'boolean' },
+            consent_timestamp: { type: 'string', format: 'date-time' },
+            consent_scope: { type: 'array', items: { type: 'string' } },
+            privacy_policy_acknowledged: { type: 'object' },
+            user: { type: 'object' },
+            anonymous_session_id: { type: 'string' },
+          },
+          required: ['consent_granted'],
+        },
+        media_buy_id: { type: 'string' },
+        placement: { type: 'string' },
+        offering_id: { type: 'string' },
+        offering_token: { type: 'string' },
+        supported_capabilities: { type: 'object' },
+        sponsored_context_receipt: { type: 'object' },
+        context: { type: 'object' },
+        ext: { type: 'object' },
+      },
+      required: ['idempotency_key', 'intent', 'identity'] as const,
+    },
+  },
+  {
+    name: 'si_send_message',
+    description: 'Send a user message or action response within an active Sponsored Intelligence session.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        idempotency_key: {
+          type: 'string',
+          minLength: 16,
+          maxLength: 255,
+          pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+        },
+        session_id: { type: 'string' },
+        message: { type: 'string' },
+        action_response: { type: 'object' },
+        sponsored_context_receipt: { type: 'object' },
+        context: { type: 'object' },
+        ext: { type: 'object' },
+      },
+      required: ['idempotency_key', 'session_id'] as const,
+    },
+  },
+  {
+    name: 'si_terminate_session',
+    description: 'Terminate a Sponsored Intelligence session.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        session_id: { type: 'string' },
+        reason: {
+          type: 'string',
+          enum: [
+            'handoff_transaction',
+            'handoff_complete',
+            'user_exit',
+            'session_timeout',
+            'host_terminated',
+          ],
+        },
+        termination_context: { type: 'object' },
+        context: { type: 'object' },
+        ext: { type: 'object' },
+      },
+      required: ['session_id', 'reason'] as const,
+    },
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Session state
 // ---------------------------------------------------------------------------
@@ -316,7 +431,7 @@ export async function handleSiInitiateSession(args: ToolArgs, ctx: TrainingConte
     offering_id: resolvedOfferingId,
     turns: 0,
     status: 'active',
-    principal: ctx.principal ?? 'anonymous',
+    principal: ctx.principal ?? ctx.userId ?? 'anonymous',
     last_activity_at: Date.now(),
   });
 
@@ -403,7 +518,7 @@ const TURN_RESPONSES: Array<{ message: string; ui_elements: unknown[] }> = [
   },
 ];
 
-export async function handleSiSendMessage(args: ToolArgs, _ctx: TrainingContext): Promise<unknown> {
+export async function handleSiSendMessage(args: ToolArgs, ctx: TrainingContext): Promise<unknown> {
   const a = args as ToolArgs & Record<string, unknown>;
   const sessionId = a.session_id as string | undefined;
   const message = a.message as string | undefined;
@@ -456,8 +571,9 @@ export async function handleSiSendMessage(args: ToolArgs, _ctx: TrainingContext)
   }
 
   const session = sessions.get(sessionId);
-  if (!session) {
-    return { errors: [{ code: 'NOT_FOUND', message: `Session "${sessionId}" not found. Use si_initiate_session to start a session.`, field: 'session_id', recovery: 'correctable' }] };
+  const principal = ctx.principal ?? ctx.userId ?? 'anonymous';
+  if (!session || session.principal !== principal) {
+    return { errors: [{ code: 'SESSION_NOT_FOUND', message: `Session "${sessionId}" not found. Use si_initiate_session to start a session.`, field: 'session_id', recovery: 'correctable' }] };
   }
   if (session.status === 'terminated') {
     // Canonical si-send-message-response.json requires session_id + session_status
@@ -508,7 +624,7 @@ export async function handleSiSendMessage(args: ToolArgs, _ctx: TrainingContext)
 // si_terminate_session
 // ---------------------------------------------------------------------------
 
-export async function handleSiTerminateSession(args: ToolArgs, _ctx: TrainingContext): Promise<unknown> {
+export async function handleSiTerminateSession(args: ToolArgs, ctx: TrainingContext): Promise<unknown> {
   const a = args as ToolArgs & Record<string, unknown>;
   const sessionId = a.session_id as string | undefined;
   const reason = a.reason as string | undefined;
@@ -521,6 +637,17 @@ export async function handleSiTerminateSession(args: ToolArgs, _ctx: TrainingCon
   }
 
   const session = sessions.get(sessionId);
+  const principal = ctx.principal ?? ctx.userId ?? 'anonymous';
+  if (session && session.principal !== principal) {
+    return {
+      errors: [{
+        code: 'SESSION_NOT_FOUND',
+        message: `Session "${sessionId}" not found. Use si_initiate_session to start a session.`,
+        field: 'session_id',
+        recovery: 'correctable',
+      }],
+    };
+  }
   if (!session) {
     // Termination is idempotent — a not-found session_id is treated as already terminated.
     return {

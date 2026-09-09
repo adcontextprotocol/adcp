@@ -1636,7 +1636,11 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('buy_products');
     expect(toolNames).toContain('accept_proposal');
     expect(toolNames).toContain('control_media_buy');
-    expect(toolNames).toHaveLength(60);
+    expect(toolNames).toContain('si_get_offering');
+    expect(toolNames).toContain('si_initiate_session');
+    expect(toolNames).toContain('si_send_message');
+    expect(toolNames).toContain('si_terminate_session');
+    expect(toolNames).toHaveLength(64);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);

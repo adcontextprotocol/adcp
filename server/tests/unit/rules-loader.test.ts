@@ -239,6 +239,9 @@ describe('Rules Loader', () => {
     expect(roadmapRules).toContain('# Current AdCP Context');
     expect(roadmapRules).toContain('# Expert Panel');
     expect(billingRules).toContain('## Individual Practitioner Suitability');
+    expect(billingRules).toContain('onboarding?mode=personal');
+    expect(billingRules).toContain('Personal and company memberships can coexist');
+    expect(billingRules).toContain('bills only it');
     expect(billingRules).not.toContain('# Knowledge');
     expect(billingRules).not.toContain('# Current AdCP Context');
     expect(billingRules).toContain('# Canonical URL Reference');
