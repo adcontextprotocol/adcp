@@ -23,7 +23,7 @@ const SCHEMA_HOST = 'https://adcontextprotocol.org';
 // Keep schema selection aligned with the frozen releases exposed in docs.json.
 // Legacy aliases remain available for callers that already use them.
 export const DOCS_SCHEMA_RELEASES = Object.freeze({
-  '3.1': '3.1.20',
+  '3.1': '3.1.21',
   '3.2-rc': '3.2.0-rc.1',
   '3.2-beta': '3.2.0-beta.11',
   '3.0': '3.0.26',

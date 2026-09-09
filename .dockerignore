@@ -35,6 +35,8 @@ dist/docs/*
 !dist/docs/3.2.0-rc.0/**
 !dist/docs/3.2.0-rc.1
 !dist/docs/3.2.0-rc.1/**
+!dist/docs/3.1.21
+!dist/docs/3.1.21/**
 !dist/schemas
 dist/schemas/latest
 dist/schemas/v*
