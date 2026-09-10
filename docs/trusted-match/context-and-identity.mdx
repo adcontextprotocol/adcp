@@ -40,9 +40,9 @@ The publisher sends a Context Match request to the TMP Router, which fans out to
   ],
   "context_signals": {
     "topics": ["632"],
-    "keywords": ["cold brew", "iced coffee", "coffee beans"],
+    "keywords": ["coffee products", "non-alcoholic beverages", "product discovery"],
     "sentiment": "positive",
-    "summary": "Shopper searching for cold brew coffee products"
+    "summary": "Shopping context categorized as coffee products"
   },
   "geo": { "country": "US", "region": "US-CA" }
 }
@@ -110,8 +110,9 @@ The buyer returns an offer per matched package. Each offer carries a `package_id
 - Session tokens
 - IP addresses
 - Any data that could identify a specific user
+- Dense embeddings derived from non-public content authored by or attributable to a single user or session
 
-This is not a policy restriction. It is enforced by the router's context code path, which has no access to identity data — no shared memory, no shared state, no communication channel to the identity code path. [TEE attestation](/docs/trusted-match/privacy-architecture) can make this separation independently verifiable.
+Identity-path separation is enforced by the router's context code path, which has no access to identity data — no shared memory, no shared state, no communication channel to the identity code path. Publishers remain responsible for privacy-reducing user-derived context before it reaches that path. [TEE attestation](/docs/trusted-match/privacy-architecture) can make the router separation independently verifiable.
 
 ## Identity Match
 

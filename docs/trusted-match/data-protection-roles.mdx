@@ -224,7 +224,7 @@ The choice of identity provider is itself a controller-level decision. Selecting
 
 **2. Context Match with full artifacts.**
 
-When a publisher sends full content (`artifact` field) rather than classified signals (`context_signals`), the buyer agent receives the actual content. `context_signals` (pre-classified topics, sentiment, keywords) is the privacy-preserving baseline. Full artifacts exist for cases where the buyer needs to evaluate content directly (e.g., AI assistant conversations where classification alone is insufficient).
+When a publisher sends full content (`artifact` field) rather than classified signals (`context_signals`), the buyer agent receives the actual content. Bounded topics and policy-filtered, non-verbatim keywords or summaries are the privacy-reduced baseline for non-public content attributable to a single user or session; dense embeddings of that content are prohibited. Full artifacts exist for cases where the buyer is governed to evaluate content directly (e.g., AI assistant conversations where classification alone is insufficient).
 
 **3. Cache semantics.**
 
@@ -232,7 +232,7 @@ Identity Match responses include a `ttl_sec` caching contract. During the cache 
 
 **4. Variable pricing on context.**
 
-The Context Match offer can include an `OfferPrice`. Because Context Match carries no identity, this is contextual pricing — not per-user pricing. However, if a publisher's `context_signals` are specific enough to identify an individual (e.g., a unique AI conversation summary), the contextual path could carry de facto identity. Publishers should ensure `context_signals` do not contain PII or uniquely identifying content.
+The Context Match offer can include an `OfferPrice`. Because Context Match carries no identity, this is contextual pricing — not per-user pricing. However, if a publisher's `context_signals` are specific enough to identify an individual (e.g., a unique AI conversation summary), the contextual path could carry de facto identity. Publishers MUST apply the provenance and privacy-reduction requirements in the ContextSignals specification so `context_signals` do not contain PII, uniquely identifying content, or prohibited dense representations of single-user content.
 
 **5. Join delegation.**
 
