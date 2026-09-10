@@ -11,6 +11,8 @@ import { createAddieMatchedV4PaidAuthority } from "./matched-v4-private-authorit
 /** Serializable, non-authorizing evidence suitable for an immutable artifact. */
 export interface AddieMatchedV4AuthorizedStageReport {
   readonly stage: "screening" | "full";
+  /** Estimates are audit-only until a protected billing export reconciles. */
+  readonly costSettlement: "cost_settlement_pending";
   readonly reservationId: string;
   readonly selectorFingerprint: string;
   readonly requestSetSha256: string;
@@ -51,6 +53,7 @@ export interface AddieMatchedV4AuthorizedExecutionReport {
 function reportStage(result: any): AddieMatchedV4AuthorizedStageReport {
   return Object.freeze({
     stage: result.artifact.stage,
+    costSettlement: "cost_settlement_pending" as const,
     reservationId: result.reservationId,
     selectorFingerprint: result.artifact.selectorFingerprint,
     requestSetSha256: result.artifact.requestSetSha256,
