@@ -22,26 +22,30 @@ export interface AddieMatchedV4AuthorizedStageReport {
   readonly attemptedProviderDispatches: number;
   readonly completedProviderDispatches: number;
   readonly runtimeWireSurfacesSha256: string;
-  readonly cells: ReadonlyArray<Readonly<{
-    id: string;
-    arm: string;
-    provider: string;
-    model: string;
-    reasoningEffort: string;
-    toolSurface: string;
-    passed: number;
-    total: number;
-    passRate: number;
-    /** Deterministic estimate from the signed pricing profile, not a bill. */
-    estimatedCostUsd: number;
-    medianLatencyMs: number;
-    totalInputTokens: number;
-    totalOutputTokens: number;
-    totalCacheReadTokens: number;
-    totalCacheWriteTokens: number;
-    totalReasoningTokens: number | null;
-  }>>;
-  readonly pairedCiGate?: ReadonlyArray<Readonly<Record<string, number | string>>>;
+  readonly cells: ReadonlyArray<
+    Readonly<{
+      id: string;
+      arm: string;
+      provider: string;
+      model: string;
+      reasoningEffort: string;
+      toolSurface: string;
+      passed: number;
+      total: number;
+      passRate: number;
+      /** Deterministic estimate from the signed pricing profile, not a bill. */
+      estimatedCostUsd: number;
+      medianLatencyMs: number;
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCacheReadTokens: number;
+      totalCacheWriteTokens: number;
+      totalReasoningTokens: number | null;
+    }>
+  >;
+  readonly pairedCiGate?: ReadonlyArray<
+    Readonly<Record<string, number | string>>
+  >;
 }
 
 export interface AddieMatchedV4AuthorizedExecutionReport {
@@ -62,25 +66,35 @@ function reportStage(result: any): AddieMatchedV4AuthorizedStageReport {
     attemptedProviderDispatches: result.artifact.attemptedProviderDispatches,
     completedProviderDispatches: result.artifact.completedProviderDispatches,
     runtimeWireSurfacesSha256: result.artifact.runtimeWireSurfacesSha256,
-    cells: Object.freeze(result.metrics.map((metric: any) => Object.freeze({
-      id: metric.cell.id,
-      arm: metric.cell.arm,
-      provider: metric.cell.provider,
-      model: metric.cell.model,
-      reasoningEffort: metric.cell.reasoningEffort,
-      toolSurface: metric.cell.toolSurface,
-      passed: metric.passed,
-      total: metric.total,
-      passRate: metric.passRate,
-      estimatedCostUsd: metric.totalCostUsd,
-      medianLatencyMs: metric.medianLatencyMs,
-      totalInputTokens: metric.totalInputTokens,
-      totalOutputTokens: metric.totalOutputTokens,
-      totalCacheReadTokens: metric.totalCacheReadTokens,
-      totalCacheWriteTokens: metric.totalCacheWriteTokens,
-      totalReasoningTokens: metric.totalReasoningTokens,
-    }))),
-    ...(result.pairedCiGate ? { pairedCiGate: Object.freeze(result.pairedCiGate.map((ci: any) => Object.freeze({ ...ci }))) } : {}),
+    cells: Object.freeze(
+      result.metrics.map((metric: any) =>
+        Object.freeze({
+          id: metric.cell.id,
+          arm: metric.cell.arm,
+          provider: metric.cell.provider,
+          model: metric.cell.model,
+          reasoningEffort: metric.cell.reasoningEffort,
+          toolSurface: metric.cell.toolSurface,
+          passed: metric.passed,
+          total: metric.total,
+          passRate: metric.passRate,
+          estimatedCostUsd: metric.totalEstimatedCostUsd,
+          medianLatencyMs: metric.medianLatencyMs,
+          totalInputTokens: metric.totalInputTokens,
+          totalOutputTokens: metric.totalOutputTokens,
+          totalCacheReadTokens: metric.totalCacheReadTokens,
+          totalCacheWriteTokens: metric.totalCacheWriteTokens,
+          totalReasoningTokens: metric.totalReasoningTokens,
+        }),
+      ),
+    ),
+    ...(result.pairedCiGate
+      ? {
+          pairedCiGate: Object.freeze(
+            result.pairedCiGate.map((ci: any) => Object.freeze({ ...ci })),
+          ),
+        }
+      : {}),
   });
 }
 

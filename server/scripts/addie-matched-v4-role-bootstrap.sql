@@ -137,6 +137,17 @@ SELECT EXISTS (
         AND NOT edge.inherit_option AND edge.set_option AND NOT edge.admin_option
       )
   )
+  -- The static roles must be leaves too. A parent role can make an otherwise
+  -- unprivileged evaluator capability transitively SET or inherit an elevated
+  -- privilege without changing either reviewed direct bridge.
+  AND NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_auth_members edge
+    WHERE edge.member IN (
+      (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'addie_matched_v4_runtime'),
+      (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'addie_matched_v4_operator')
+    )
+  )
   AS matched_v4_completed_least_privilege_bridges \gset
 \if :matched_v4_completed_least_privilege_bridges
 \else

@@ -1,6 +1,5 @@
 import fs from "fs/promises";
 import path from "path";
-import { createHash } from "crypto";
 import { fileURLToPath } from "url";
 import type { PoolClient } from "pg";
 import { getPool, initializeDatabase } from "./client.js";
@@ -20,10 +19,14 @@ interface Migration {
  * Example: 001_initial.sql, 002_add_indexes.sql
  */
 const MIGRATION_FILENAME_PATTERN = /^(\d+)_(.+)\.sql$/;
-const MATCHED_V4_EXTERNAL_MIGRATION =
-  "584_addie_matched_v4_private_authority.sql";
+const MATCHED_V4_EXTERNAL_MIGRATIONS = new Set([
+  "584_addie_matched_v4_private_authority.sql",
+  "585_addie_matched_v4_record_estimated_cost.sql",
+]);
 const MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED_ENV =
   "ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED";
+/** Matches migration 585 and the protected evaluator workflow. */
+const MATCHED_V4_EVALUATOR_LOCK_KEY = 584585;
 
 /**
  * Evaluator DDL is intentionally opt-in for the protected release path. Local
@@ -42,364 +45,180 @@ function matchedV4EvaluatorSchemaRequired(): boolean {
 }
 
 /**
- * Migration 584 is intentionally applied by a separately administered
- * evaluator operator, not by the general application migrator.  The normal
- * migration ledger still owns its ordering: it records 584 only after this
- * verification proves that the external step completed the sealed schema.
+ * Migrations 584 and 585 are intentionally applied by a separately
+ * administered evaluator operator, not by the general application migrator.
+ * The normal ledger records either only after both external steps attest the
+ * transformed terminal-record schema. This makes 585 a hard prerequisite for
+ * an admission: the application cannot record a usable 584-only boundary.
  */
 async function validateMatchedV4ExternalSchema(
   client: PoolClient,
 ): Promise<void> {
-  // `pg_get_tabledef` does not exist in supported PostgreSQL versions.  Pin a
-  // canonical catalog projection instead: user columns (including order,
-  // types, nullability, and defaults), every constraint, and every physical
-  // index.  A count-only check would accept a hand-made lookalike table.
-  const expectedTableShapeDigests: Readonly<Record<string, string>> = {
-    addie_matched_v4_private_admissions:
-      "c8758926b069b97aeeffbe1572ae2564ae3890db612de08fbbfabf7885addc73",
-    addie_matched_v4_private_attempts:
-      "fb3a9baaa408ade459aa338930c244e1fd84877c3ade09a988cd946f735ba4d8",
-    addie_matched_v4_private_runs:
-      "a5a22e4cc5c1559b10986e447725f412e1c997a8ccdd70d7b90c104a526db60d",
-  };
-  const tableShapes = await client.query<{
-    name: string;
-    canonical_shape: string;
-  }>(`
-    SELECT c.relname AS name,
-      jsonb_build_object(
-        'table', c.relname, 'relkind', c.relkind,
-        'columns', (SELECT jsonb_agg(jsonb_build_object(
-          'name', a.attname, 'type', pg_catalog.format_type(a.atttypid, a.atttypmod),
-          'notNull', a.attnotnull,
-          'default', COALESCE(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '')
-        ) ORDER BY a.attnum)
-          FROM pg_catalog.pg_attribute a
-          LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
-          WHERE a.attrelid=c.oid AND a.attnum > 0 AND NOT a.attisdropped),
-        'constraints', (SELECT jsonb_agg(jsonb_build_object(
-          'name', x.conname, 'type', x.contype,
-          'definition', pg_catalog.pg_get_constraintdef(x.oid, true)
-        ) ORDER BY x.conname) FROM pg_catalog.pg_constraint x WHERE x.conrelid=c.oid),
-        'indexes', (SELECT jsonb_agg(jsonb_build_object(
-          'name', ci.relname,
-          'definition', pg_catalog.pg_get_indexdef(i.indexrelid, 0, true)
-        ) ORDER BY ci.relname) FROM pg_catalog.pg_index i
-          JOIN pg_catalog.pg_class ci ON ci.oid=i.indexrelid WHERE i.indrelid=c.oid)
-      )::text AS canonical_shape
-    FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname='public' AND c.relkind='r'
-      AND c.relname = ANY(ARRAY['addie_matched_v4_private_runs',
-        'addie_matched_v4_private_admissions', 'addie_matched_v4_private_attempts'])
-  `);
-  if (
-    tableShapes.rows.length !== Object.keys(expectedTableShapeDigests).length ||
-    tableShapes.rows.some(
-      ({ name, canonical_shape }) =>
-        createHash("sha256").update(canonical_shape, "utf8").digest("hex") !==
-        expectedTableShapeDigests[name],
-    )
-  ) {
-    throw new Error(
-      "Migration 584 evaluator tables do not match the reviewed full catalog shape.",
-    );
-  }
-
-  // Pin each complete callable definition, not only its PL/pgSQL body. The
-  // explicit security-definer and one-item configuration tests below are a
-  // second, easy-to-audit attestation of the exact safe search path.
-  const expectedRuntimeDefinitions: Readonly<Record<string, string>> = {
-    "public.addie_matched_v4_private_reserve(text,text,text,integer)":
-      "47cf83cedacdbbabd839b5c5d2780a19898dc94c2021ca15729cf1fc6cd7201e",
-    "public.addie_matched_v4_private_intent(text,text,text,integer,text,timestamp with time zone,text,text,text)":
-      "d0fc1859fa1237cfd9d1d8a8a6c785dfc99d8607b6b884727f4e880148dca8ad",
-    "public.addie_matched_v4_private_settle(text,text,text,text,bigint)":
-      "f0374cdaa332b06e3e7200d46d0c3bce261e76a232d6c0e2696746761c4c896e",
-    "public.addie_matched_v4_private_reconcile(text)":
-      "093b45e79b533fdcc79f152d4a2548a36b1e176736501606c62522899eb3bb28",
-    "public.addie_matched_v4_private_halt(text,text)":
-      "e7697ba0b1633e7e8f12e531ef6b2fc74813d8f7458bb60b9fade42a711a6151",
-    "public.addie_matched_v4_private_claim_admission(text,text,text)":
-      "2c4546366b8c677059039c458b8601435a44b64791223ccdbe21b93dbf172b0e",
-  };
-  const runtimeApi = await client.query<{
-    signature: string;
-    definition: string;
-    security_definer: boolean;
-    config: string[] | null;
-  }>(
-    `
-    SELECT n.nspname || '.' || p.proname || '('
-      || replace(pg_catalog.pg_get_function_identity_arguments(p.oid), ', ', ',')
-      || ')' AS signature,
-      pg_catalog.pg_get_functiondef(p.oid) AS definition,
-      p.prosecdef AS security_definer, p.proconfig AS config
-    FROM pg_catalog.pg_proc p
-    JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='public'
-      AND n.nspname || '.' || p.proname || '('
-        || replace(pg_catalog.pg_get_function_identity_arguments(p.oid), ', ', ',')
-        || ')' = ANY($1::text[])
-  `,
-    [Object.keys(expectedRuntimeDefinitions)],
-  );
-  if (
-    runtimeApi.rows.length !== Object.keys(expectedRuntimeDefinitions).length ||
-    runtimeApi.rows.some(
-      ({ signature, definition, security_definer, config }) =>
-        !security_definer ||
-        config?.length !== 1 ||
-        config[0] !== "search_path=pg_catalog" ||
-        createHash("sha256").update(definition, "utf8").digest("hex") !==
-          expectedRuntimeDefinitions[signature],
-    )
-  ) {
-    throw new Error(
-      "Migration 584 runtime API body or SECURITY DEFINER search_path is not canonical.",
-    );
-  }
-
-  const result = await client.query<{
-    valid: boolean;
-    attempt_guard_definition: string | null;
-    append_only_guard_definition: string | null;
-  }>(`
+  const transformed = await client.query<{ valid: boolean }>(`
     WITH required_tables(name) AS (
-      VALUES
-        ('addie_matched_v4_private_runs'),
+      VALUES ('addie_matched_v4_private_runs'),
         ('addie_matched_v4_private_admissions'),
         ('addie_matched_v4_private_attempts')
-    ), required_api(signature) AS (
-      VALUES
-        ('public.addie_matched_v4_private_reserve(text,text,text,integer)'),
-        ('public.addie_matched_v4_private_intent(text,text,text,integer,text,timestamp with time zone,text,text,text)'),
-        ('public.addie_matched_v4_private_settle(text,text,text,text,bigint)'),
-        ('public.addie_matched_v4_private_reconcile(text)'),
-        ('public.addie_matched_v4_private_halt(text,text)'),
-        ('public.addie_matched_v4_private_claim_admission(text,text,text)')
+    ), required_relations(name, relkind) AS (
+      VALUES ('addie_matched_v4_private_runs', 'r'::"char"),
+        ('addie_matched_v4_private_runs_pkey', 'i'::"char"),
+        ('addie_matched_v4_private_admissions', 'r'::"char"),
+        ('addie_matched_v4_private_admissions_pkey', 'i'::"char"),
+        ('addie_matched_v4_private_admi_merge_sha_authority_manifest__key', 'i'::"char"),
+        ('addie_matched_v4_private_attempts', 'r'::"char"),
+        ('addie_matched_v4_private_attempts_pkey', 'i'::"char"),
+        ('addie_matched_v4_private_attempts_reservation_id_ordinal_key', 'i'::"char")
+    ), required_api(signature, runtime_execute) AS (
+      VALUES ('public.addie_matched_v4_private_reserve(text,text,text,integer)', true),
+        ('public.addie_matched_v4_private_intent(text,text,text,integer,text,timestamp with time zone,text,text,text)', true),
+        ('public.addie_matched_v4_private_record_response_usage(text,text,text,text,bigint)', true),
+        ('public.addie_matched_v4_private_reconcile(text)', true),
+        ('public.addie_matched_v4_private_halt(text,text)', true),
+        ('public.addie_matched_v4_private_claim_admission(text,text,text)', true)
     ), protected_guards(signature) AS (
-      VALUES
-        ('public.addie_matched_v4_private_attempt_guard()'),
+      VALUES ('public.addie_matched_v4_private_attempt_guard()'),
         ('public.addie_matched_v4_private_append_only_guard()')
     ), canonical_triggers(table_name, trigger_name, procedure_signature, trigger_type) AS (
-      VALUES
-        ('addie_matched_v4_private_attempts',
-         'addie_matched_v4_private_attempt_guard',
-         'public.addie_matched_v4_private_attempt_guard()', 31),
-        ('addie_matched_v4_private_runs',
-         'addie_matched_v4_private_runs_append_only_guard',
-         'public.addie_matched_v4_private_append_only_guard()', 11),
-        ('addie_matched_v4_private_admissions',
-         'addie_matched_v4_private_admissions_append_only_guard',
-         'public.addie_matched_v4_private_append_only_guard()', 11),
-        ('addie_matched_v4_private_attempts',
-         'addie_matched_v4_private_attempts_append_only_guard',
-         'public.addie_matched_v4_private_append_only_guard()', 11)
+      VALUES ('addie_matched_v4_private_attempts', 'addie_matched_v4_private_attempt_guard', 'public.addie_matched_v4_private_attempt_guard()', 31),
+        ('addie_matched_v4_private_runs', 'addie_matched_v4_private_runs_append_only_guard', 'public.addie_matched_v4_private_append_only_guard()', 11),
+        ('addie_matched_v4_private_admissions', 'addie_matched_v4_private_admissions_append_only_guard', 'public.addie_matched_v4_private_append_only_guard()', 11),
+        ('addie_matched_v4_private_attempts', 'addie_matched_v4_private_attempts_append_only_guard', 'public.addie_matched_v4_private_append_only_guard()', 11)
     )
     SELECT
-      EXISTS (
-        SELECT 1 FROM pg_catalog.pg_roles
-        WHERE rolname = 'addie_matched_v4_operator'
-          AND NOT rolcanlogin AND NOT rolinherit
-          AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole
-          AND NOT rolreplication AND NOT rolbypassrls
-      )
-      AND EXISTS (
-        SELECT 1 FROM pg_catalog.pg_roles
-        WHERE rolname = 'addie_matched_v4_runtime'
-          AND NOT rolcanlogin AND NOT rolinherit
-          AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole
-          AND NOT rolreplication AND NOT rolbypassrls
-      )
-      AND NOT pg_catalog.pg_has_role(
-        'addie_matched_v4_runtime', 'addie_matched_v4_operator', 'member'
-      )
-      -- The ordinary migrator must itself be the deployed application
-      -- principal, never a privileged session that SET ROLE to that principal.
-      -- session_user is the authenticated identity and must equal the active
-      -- application role before this external schema can be recorded.
+      EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator' AND NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_runtime' AND NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
       AND session_user = current_user
-      AND pg_catalog.pg_has_role(
-        current_user, 'addie_matched_v4_runtime', 'member'
-      )
-      AND NOT pg_catalog.pg_has_role(
-        current_user, 'addie_matched_v4_operator', 'member'
-      )
+      -- The authenticated application login is itself a sealed bridge, not
+      -- merely a member of the static runtime capability.  Pin its complete
+      -- non-privileged shape before it can record the external boundary.
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=current_user AND rolcanlogin AND rolinherit AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
+      AND pg_catalog.pg_has_role(current_user, 'addie_matched_v4_runtime', 'member')
+      AND NOT pg_catalog.pg_has_role(current_user, 'addie_matched_v4_operator', 'member')
+      AND NOT pg_catalog.pg_has_role('addie_matched_v4_runtime', 'addie_matched_v4_operator', 'member')
+      -- Neither static custody capability may itself inherit or SET another
+      -- role. Otherwise its harmless-looking own flags conceal a transitive
+      -- privilege escalation outside the reviewed two-bridge graph.
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members edge WHERE edge.member IN ('addie_matched_v4_operator'::regrole,'addie_matched_v4_runtime'::regrole))
+      -- Both static evaluator capabilities have exactly one reviewed direct
+      -- bridge. A second hidden SET member is an admission bypass.
+      AND (SELECT count(*) FROM pg_catalog.pg_auth_members edge WHERE edge.roleid='addie_matched_v4_operator'::regrole) = 1
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members edge JOIN pg_catalog.pg_roles member_role ON member_role.oid=edge.member WHERE edge.roleid='addie_matched_v4_operator'::regrole AND NOT edge.inherit_option AND edge.set_option AND NOT edge.admin_option AND member_role.rolcanlogin AND NOT member_role.rolinherit AND NOT member_role.rolsuper AND NOT member_role.rolcreatedb AND NOT member_role.rolcreaterole AND NOT member_role.rolreplication AND NOT member_role.rolbypassrls AND edge.grantor NOT IN (edge.roleid,edge.member,'addie_matched_v4_runtime'::regrole,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user)))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members bridge JOIN pg_catalog.pg_auth_members edge ON edge.member=bridge.member WHERE bridge.roleid='addie_matched_v4_operator'::regrole AND edge.roleid<>'addie_matched_v4_operator'::regrole)
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members bridge JOIN pg_catalog.pg_auth_members edge ON edge.roleid=bridge.member WHERE bridge.roleid='addie_matched_v4_operator'::regrole)
+      AND (SELECT count(*) FROM pg_catalog.pg_auth_members edge WHERE edge.roleid='addie_matched_v4_runtime'::regrole) = 1
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members edge WHERE edge.roleid='addie_matched_v4_runtime'::regrole AND edge.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user) AND edge.inherit_option AND NOT edge.set_option AND NOT edge.admin_option AND edge.grantor NOT IN (edge.roleid,edge.member,'addie_matched_v4_operator'::regrole,(SELECT member FROM pg_catalog.pg_auth_members WHERE roleid='addie_matched_v4_operator'::regrole)))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members edge WHERE edge.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user) AND edge.roleid<>'addie_matched_v4_runtime'::regrole)
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members edge WHERE edge.roleid=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user))
+      AND current_setting('session_replication_role') = 'origin'
+      AND NOT pg_catalog.has_parameter_privilege('addie_matched_v4_runtime','session_replication_role','SET')
+      AND NOT pg_catalog.has_parameter_privilege(current_user,'session_replication_role','SET')
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting setting CROSS JOIN LATERAL unnest(setting.setconfig) config WHERE setting.setrole=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user) AND setting.setdatabase IN (0,(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database())) AND split_part(config,'=',1)='session_replication_role' AND split_part(config,'=',2)<>'origin')
+      AND pg_catalog.has_schema_privilege('addie_matched_v4_operator', 'public', 'USAGE')
+      AND pg_catalog.has_schema_privilege('addie_matched_v4_operator', 'public', 'CREATE')
+      AND pg_catalog.has_schema_privilege('addie_matched_v4_runtime', 'public', 'USAGE')
+      AND NOT pg_catalog.has_schema_privilege('addie_matched_v4_runtime', 'public', 'CREATE')
+      AND pg_catalog.has_schema_privilege(current_user, 'public', 'USAGE')
+      AND NOT pg_catalog.has_schema_privilege(current_user, 'public', 'CREATE')
+      AND NOT pg_catalog.has_schema_privilege('addie_matched_v4_runtime', 'pg_toast', 'USAGE,CREATE')
+      AND NOT pg_catalog.has_schema_privilege(current_user, 'pg_toast', 'USAGE,CREATE')
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(n.nspacl,pg_catalog.acldefault('n',n.nspowner))) acl WHERE n.nspname='public' AND acl.grantee=0 AND acl.privilege_type='CREATE')
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl WHERE c.oid IN (SELECT t.reltoastrelid FROM pg_catalog.pg_class t WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) UNION ALL SELECT i.indexrelid FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class t ON t.reltoastrelid=i.indrelid WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts'))) AND (acl.grantee<>c.relowner OR acl.grantor<>c.relowner OR acl.is_grantable))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid IN (SELECT t.reltoastrelid FROM pg_catalog.pg_class t WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) UNION ALL SELECT i.indexrelid FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class t ON t.reltoastrelid=i.indrelid WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts'))) AND (SELECT count(*) FROM pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner)))) <> 7)
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid IN (SELECT t.reltoastrelid FROM pg_catalog.pg_class t WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts'))) AND a.attnum>0 AND NOT a.attisdropped AND a.attacl IS NOT NULL)
+      -- Every prefixed relation, including physical indexes, is a reviewed
+      -- object. This rejects shadow views, sequences, and partitions too.
+      AND (SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname LIKE 'addie_matched_v4_private_%') = 8
+      AND (SELECT count(*) FROM pg_catalog.pg_class WHERE relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator')) = 14
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator') AND c.oid NOT IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_runs_pkey'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_admissions_pkey'),to_regclass('public.addie_matched_v4_private_admi_merge_sha_authority_manifest__key'),to_regclass('public.addie_matched_v4_private_attempts'),to_regclass('public.addie_matched_v4_private_attempts_pkey'),to_regclass('public.addie_matched_v4_private_attempts_reservation_id_ordinal_key')) AND c.oid NOT IN (SELECT t.reltoastrelid FROM pg_catalog.pg_class t WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) UNION ALL SELECT i.indexrelid FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class t ON t.reltoastrelid=i.indrelid WHERE t.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts'))))
+      AND NOT EXISTS (SELECT 1 FROM required_relations WHERE to_regclass('public.' || name) IS NULL
+        OR (SELECT c.relkind FROM pg_catalog.pg_class c WHERE c.oid=to_regclass('public.' || name)) <> required_relations.relkind
+        OR (SELECT c.relpersistence FROM pg_catalog.pg_class c WHERE c.oid=to_regclass('public.' || name)) <> 'p'
+        OR (required_relations.relkind='r'::"char" AND (SELECT c.relrowsecurity OR c.relforcerowsecurity OR c.relhasrules OR c.relispartition FROM pg_catalog.pg_class c WHERE c.oid=to_regclass('public.' || name)))
+        OR (SELECT pg_catalog.pg_get_userbyid(c.relowner) FROM pg_catalog.pg_class c WHERE c.oid=to_regclass('public.' || name)) <> 'addie_matched_v4_operator'
+        OR (required_relations.relkind='i'::"char" AND (SELECT c.relacl FROM pg_catalog.pg_class c WHERE c.oid=to_regclass('public.' || name)) IS NOT NULL))
+      AND NOT EXISTS (SELECT 1 FROM required_tables WHERE to_regclass('public.' || name) IS NULL
+        OR (SELECT pg_catalog.pg_get_userbyid(relowner) FROM pg_catalog.pg_class WHERE oid=to_regclass('public.' || name)) <> 'addie_matched_v4_operator'
+        OR pg_catalog.has_table_privilege(current_user, 'public.' || name, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl WHERE c.oid=to_regclass('public.' || name) AND (acl.grantee<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator') OR acl.grantor<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator') OR acl.is_grantable))
+        OR (SELECT count(*) FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl WHERE c.oid=to_regclass('public.' || name)) <> 7)
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite r WHERE r.ev_class IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) AND r.rulename <> '_RETURN')
+      -- A view can expose toasted values directly. Its rewrite dependencies
+      -- must not name either a custody table or its physical TOAST relation.
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_depend d ON d.classid='pg_rewrite'::regclass AND d.objid=r.oid WHERE r.ev_class NOT IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) AND d.refobjid IN (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) UNION ALL SELECT c.reltoastrelid FROM pg_catalog.pg_class c WHERE c.oid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) AND c.reltoastrelid <> 0))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) OR i.inhparent IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=ANY(ARRAY[to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')]) AND a.attnum>0 AND NOT a.attisdropped AND (a.attacl IS NOT NULL OR pg_catalog.has_column_privilege(current_user,a.attrelid,a.attnum,'SELECT') OR pg_catalog.has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT') OR pg_catalog.has_column_privilege(current_user,a.attrelid,a.attnum,'UPDATE') OR pg_catalog.has_column_privilege(current_user,a.attrelid,a.attnum,'REFERENCES')))
+      AND (SELECT count(*) FROM pg_catalog.pg_attribute WHERE attrelid=to_regclass('public.addie_matched_v4_private_attempts') AND attnum>0 AND NOT attisdropped) = 13
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=to_regclass('public.addie_matched_v4_private_attempts') AND attname='estimated_cost_microdollars' AND pg_catalog.format_type(atttypid,atttypmod)='bigint')
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=to_regclass('public.addie_matched_v4_private_attempts') AND attname='terminal_recorded_at' AND pg_catalog.format_type(atttypid,atttypmod)='timestamp with time zone')
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid=to_regclass('public.addie_matched_v4_private_attempts') AND attname IN ('cost_microdollars','settled_at'))
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass('public.addie_matched_v4_private_attempts') AND conname='addie_matched_v4_private_attempts_terminal_recording_check' AND pg_catalog.pg_get_constraintdef(oid,true) LIKE '%response_usage_recorded%')
+      AND to_regprocedure('public.addie_matched_v4_private_settle(text,text,text,text,bigint)') IS NULL
+      AND NOT EXISTS (SELECT 1 FROM required_api WHERE to_regprocedure(signature) IS NULL
+        OR NOT pg_catalog.has_function_privilege('addie_matched_v4_runtime', signature, 'EXECUTE')
+        OR NOT (SELECT prosecdef FROM pg_catalog.pg_proc WHERE oid=to_regprocedure(signature))
+        OR (SELECT proconfig FROM pg_catalog.pg_proc WHERE oid=to_regprocedure(signature)) IS DISTINCT FROM ARRAY['search_path=pg_catalog']
+        OR (SELECT pg_catalog.pg_get_userbyid(proowner) FROM pg_catalog.pg_proc WHERE oid=to_regprocedure(signature)) <> 'addie_matched_v4_operator'
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl WHERE p.oid=to_regprocedure(signature) AND acl.grantee=0 AND acl.privilege_type='EXECUTE'))
+      AND NOT EXISTS (SELECT 1 FROM protected_guards WHERE to_regprocedure(signature) IS NULL
+        OR (SELECT pg_catalog.pg_get_userbyid(proowner) FROM pg_catalog.pg_proc WHERE oid=to_regprocedure(signature)) <> 'addie_matched_v4_operator'
+        OR pg_catalog.has_function_privilege('addie_matched_v4_runtime', signature, 'EXECUTE')
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl WHERE p.oid=to_regprocedure(signature) AND acl.grantee=0 AND acl.privilege_type='EXECUTE'))
       AND NOT EXISTS (
-        SELECT 1 FROM required_tables
-        WHERE to_regclass('public.' || name) IS NULL
-          OR (SELECT pg_catalog.pg_get_userbyid(relowner)
-              FROM pg_catalog.pg_class
-              WHERE oid = to_regclass('public.' || name))
-             <> 'addie_matched_v4_operator'
-          OR NOT pg_catalog.has_table_privilege(
-            'addie_matched_v4_operator', 'public.' || name, 'SELECT,INSERT,UPDATE,DELETE'
-          )
-          OR pg_catalog.has_table_privilege(
-            'addie_matched_v4_runtime', 'public.' || name,
-            'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-          )
-          -- The deployed application login can have direct ACLs that are not
-          -- implied by its restricted runtime role. Check it separately.
-          OR pg_catalog.has_table_privilege(
-            current_user, 'public.' || name,
-            'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM pg_catalog.pg_class c
-            CROSS JOIN LATERAL pg_catalog.aclexplode(
-              COALESCE(c.relacl, pg_catalog.acldefault('r', c.relowner))
-            ) AS acl
-            WHERE c.oid = to_regclass('public.' || name)
-              AND acl.grantee = 0
-              AND acl.privilege_type IN ('SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER')
-          )
+        SELECT 1 FROM (
+          SELECT signature, runtime_execute FROM required_api
+          UNION ALL SELECT signature, false FROM protected_guards
+        ) AS expected
+        WHERE (SELECT count(*) FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl WHERE p.oid=to_regprocedure(expected.signature)) <> CASE WHEN expected.runtime_execute THEN 2 ELSE 1 END
+          OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl WHERE p.oid=to_regprocedure(expected.signature) AND (acl.grantee NOT IN ((SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator'),(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_runtime')) OR acl.grantor <> (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator') OR acl.is_grantable))
       )
-      AND NOT EXISTS (
-        SELECT 1 FROM required_api
-        WHERE to_regprocedure(signature) IS NULL
-          OR NOT pg_catalog.has_function_privilege(
-            'addie_matched_v4_runtime', signature, 'EXECUTE'
-          )
-          OR NOT (SELECT prosecdef FROM pg_catalog.pg_proc WHERE oid = to_regprocedure(signature))
-          OR (SELECT pg_catalog.pg_get_userbyid(proowner) FROM pg_catalog.pg_proc WHERE oid = to_regprocedure(signature))
-             <> 'addie_matched_v4_operator'
-          OR EXISTS (
-            SELECT 1
-            FROM pg_catalog.pg_proc p
-            CROSS JOIN LATERAL pg_catalog.aclexplode(
-              COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
-            ) AS acl
-            WHERE p.oid = to_regprocedure(signature)
-              AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
-          )
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM protected_guards
-        WHERE to_regprocedure(signature) IS NULL
-          OR (SELECT pg_catalog.pg_get_userbyid(proowner)
-              FROM pg_catalog.pg_proc
-              WHERE oid = to_regprocedure(signature))
-             <> 'addie_matched_v4_operator'
-          OR EXISTS (
-            SELECT 1
-            FROM pg_catalog.pg_proc p
-            CROSS JOIN LATERAL pg_catalog.aclexplode(
-              COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
-            ) AS acl
-            WHERE p.oid = to_regprocedure(signature)
-              AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
-          )
-      )
-      AND EXISTS (
-        SELECT 1 FROM pg_catalog.pg_trigger t
-        JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
-        JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
-        WHERE t.tgname = 'addie_matched_v4_private_attempt_guard'
-          AND t.tgrelid = to_regclass('public.addie_matched_v4_private_attempts')
-          AND p.oid = to_regprocedure('public.addie_matched_v4_private_attempt_guard()')
-          AND pn.nspname = 'public'
-          AND pg_catalog.pg_get_userbyid(p.proowner) = 'addie_matched_v4_operator'
-          -- PostgreSQL trigger type 31 is ROW | BEFORE | INSERT | UPDATE |
-          -- DELETE.  The exact value excludes statement, AFTER/INSTEAD and
-          -- TRUNCATE variants; disabled guards cannot attest a dispatch cap
-          -- or append-only intent custody.
-          AND t.tgtype = 31
-          AND t.tgenabled = 'O'
-          AND t.tgqual IS NULL
-          AND NOT t.tgisinternal
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM (VALUES
-          ('public.addie_matched_v4_private_runs'::text,
-           'addie_matched_v4_private_runs_append_only_guard'::text),
-          ('public.addie_matched_v4_private_admissions'::text,
-           'addie_matched_v4_private_admissions_append_only_guard'::text),
-          ('public.addie_matched_v4_private_attempts'::text,
-           'addie_matched_v4_private_attempts_append_only_guard'::text)
-        ) AS expected(table_name, trigger_name)
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM pg_catalog.pg_trigger t
-          JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
-          WHERE t.tgname = expected.trigger_name
-            AND t.tgrelid = to_regclass(expected.table_name)
-            AND p.oid = to_regprocedure('public.addie_matched_v4_private_append_only_guard()')
-            -- ROW | BEFORE | DELETE.  A disabled, conditional, statement,
-            -- or differently timed trigger is not append-only custody.
-            AND t.tgtype = 11 AND t.tgenabled = 'O' AND t.tgqual IS NULL
-            AND NOT t.tgisinternal
-        )
-      )
-      -- Do not merely find the four known guards. Any other user trigger on
-      -- a custody relation can rewrite NEW or bypass/augment the reviewed
-      -- cap path. The complete non-internal trigger set must be canonical.
-      AND NOT EXISTS (
-        SELECT 1
-        FROM pg_catalog.pg_trigger actual
-        WHERE NOT actual.tgisinternal
-          AND actual.tgrelid = ANY(ARRAY[
-            to_regclass('public.addie_matched_v4_private_runs'),
-            to_regclass('public.addie_matched_v4_private_admissions'),
-            to_regclass('public.addie_matched_v4_private_attempts')
-          ])
-          AND NOT EXISTS (
-            SELECT 1 FROM canonical_triggers expected
-            WHERE actual.tgrelid = to_regclass('public.' || expected.table_name)
-              AND actual.tgname = expected.trigger_name
-              AND actual.tgfoid = to_regprocedure(expected.procedure_signature)
-              AND actual.tgtype = expected.trigger_type
-              AND actual.tgenabled = 'O'
-              AND actual.tgqual IS NULL
-          )
-      )
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgname='addie_matched_v4_private_attempt_guard' AND t.tgrelid=to_regclass('public.addie_matched_v4_private_attempts') AND t.tgfoid=to_regprocedure('public.addie_matched_v4_private_attempt_guard()') AND t.tgtype=31 AND t.tgenabled='O' AND t.tgqual IS NULL AND t.tgattr=''::int2vector AND t.tgargs=''::bytea AND NOT t.tgisinternal)
+      AND NOT EXISTS (SELECT 1 FROM canonical_triggers expected WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid=to_regclass('public.' || expected.table_name) AND t.tgname=expected.trigger_name AND t.tgfoid=to_regprocedure(expected.procedure_signature) AND t.tgtype=expected.trigger_type AND t.tgenabled='O' AND t.tgqual IS NULL AND t.tgattr=''::int2vector AND t.tgargs=''::bytea AND NOT t.tgisinternal))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger actual WHERE NOT actual.tgisinternal AND actual.tgrelid=ANY(ARRAY[to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')]) AND NOT EXISTS (SELECT 1 FROM canonical_triggers expected WHERE actual.tgrelid=to_regclass('public.' || expected.table_name) AND actual.tgname=expected.trigger_name AND actual.tgfoid=to_regprocedure(expected.procedure_signature) AND actual.tgtype=expected.trigger_type AND actual.tgenabled='O' AND actual.tgqual IS NULL AND actual.tgattr=''::int2vector AND actual.tgargs=''::bytea))
+      -- The one reviewed foreign key has exactly four enabled internal RI
+      -- triggers. An incoming FK on another relation must not silently add
+      -- enforcement objects to this sealed namespace.
+      AND (SELECT count(*) FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_constraint c ON c.oid=t.tgconstraint WHERE t.tgisinternal AND t.tgconstraint <> 0 AND (c.conrelid=ANY(ARRAY[to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')]) OR c.confrelid=ANY(ARRAY[to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')]))) = 4
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_constraint c ON c.oid=t.tgconstraint JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid WHERE t.tgisinternal AND t.tgconstraint <> 0 AND (c.conrelid=ANY(ARRAY[to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')]) OR c.confrelid=ANY(ARRAY[to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')])) AND NOT EXISTS (SELECT 1 FROM (VALUES
+        ('addie_matched_v4_private_attempts_reservation_id_fkey','addie_matched_v4_private_attempts','addie_matched_v4_private_runs','addie_matched_v4_private_runs','RI_FKey_restrict_del',9),
+        ('addie_matched_v4_private_attempts_reservation_id_fkey','addie_matched_v4_private_attempts','addie_matched_v4_private_runs','addie_matched_v4_private_runs','RI_FKey_noaction_upd',17),
+        ('addie_matched_v4_private_attempts_reservation_id_fkey','addie_matched_v4_private_attempts','addie_matched_v4_private_runs','addie_matched_v4_private_attempts','RI_FKey_check_ins',5),
+        ('addie_matched_v4_private_attempts_reservation_id_fkey','addie_matched_v4_private_attempts','addie_matched_v4_private_runs','addie_matched_v4_private_attempts','RI_FKey_check_upd',17)
+      ) AS expected(constraint_name,source_table,target_table,trigger_table,procedure_name,trigger_type) WHERE c.conname=expected.constraint_name AND c.conrelid=to_regclass('public.' || expected.source_table) AND c.confrelid=to_regclass('public.' || expected.target_table) AND t.tgrelid=to_regclass('public.' || expected.trigger_table) AND p.pronamespace='pg_catalog'::regnamespace AND p.proname=expected.procedure_name AND t.tgtype=expected.trigger_type AND t.tgenabled='O' AND t.tgqual IS NULL))
+      -- A successful migration record needs a full 585 shape attestation,
+      -- not a same-name/status lookalike. These digests cover every ordered
+      -- column, constraint, and physical index, plus complete definitions of
+      -- both guards and all callable SECURITY DEFINER functions.
+      AND NOT EXISTS (SELECT 1 FROM (VALUES
+        ('addie_matched_v4_private_admissions','4ed0c46ae7eaee829b967b8c8eeb1996'),
+        ('addie_matched_v4_private_attempts','8dc693482e69a981110ffa1c547b1f69'),
+        ('addie_matched_v4_private_runs','16a018c611239801d31c7855ca8c1a28')
+      ) AS expected(name,shape_md5) WHERE expected.shape_md5 IS DISTINCT FROM (
+        SELECT md5((jsonb_build_object('table',c.relname,'relkind',c.relkind,
+          'columns',(SELECT jsonb_agg(jsonb_build_object('ordinal',a.attnum,'name',a.attname,'type',pg_catalog.format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'default',COALESCE(pg_catalog.pg_get_expr(d.adbin,d.adrelid),''),'collation',CASE WHEN a.attcollation=0 THEN NULL ELSE (SELECT n.nspname || '.' || co.collname FROM pg_catalog.pg_collation co JOIN pg_catalog.pg_namespace n ON n.oid=co.collnamespace WHERE co.oid=a.attcollation) END,'identity',a.attidentity,'generated',a.attgenerated) ORDER BY a.attnum) FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped),
+          'constraints',(SELECT jsonb_agg(jsonb_build_object('name',x.conname,'type',x.contype,'definition',pg_catalog.pg_get_constraintdef(x.oid,true)) ORDER BY x.conname) FROM pg_catalog.pg_constraint x WHERE x.conrelid=c.oid),
+          'indexes',(SELECT jsonb_agg(jsonb_build_object('name',ci.relname,'definition',pg_catalog.pg_get_indexdef(i.indexrelid,0,true)) ORDER BY ci.relname) FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class ci ON ci.oid=i.indexrelid WHERE i.indrelid=c.oid)
+        )::text)) FROM pg_catalog.pg_class c WHERE c.oid=to_regclass('public.' || expected.name)
+      ))
+      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid IN (to_regclass('public.addie_matched_v4_private_runs'),to_regclass('public.addie_matched_v4_private_admissions'),to_regclass('public.addie_matched_v4_private_attempts')) AND a.attnum>0 AND a.attisdropped)
+      AND (SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'addie_matched_v4_private_%')=8
+      AND (SELECT count(*) FROM pg_catalog.pg_proc WHERE proowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='addie_matched_v4_operator'))=8
+      AND NOT EXISTS (SELECT 1 FROM (VALUES
+        ('public.addie_matched_v4_private_attempt_guard()','ee4c62ffa52a33ee8144416274051bc6'),
+        ('public.addie_matched_v4_private_append_only_guard()','b66c0828506e4785edf27b41190c3ed9'),
+        ('public.addie_matched_v4_private_reserve(text,text,text,integer)','a246e0fa7b05238e52f384138ec99047'),
+        ('public.addie_matched_v4_private_intent(text,text,text,integer,text,timestamp with time zone,text,text,text)','85c35d25f690969ed336fe7a9e30115d'),
+        ('public.addie_matched_v4_private_record_response_usage(text,text,text,text,bigint)','0d8ab008dd3d5d3354c528324432dc40'),
+        ('public.addie_matched_v4_private_reconcile(text)','87d8997b5c7408461244e7bd740d044f'),
+        ('public.addie_matched_v4_private_halt(text,text)','2d35d780d2279dc302db1bc27967c8f9'),
+        ('public.addie_matched_v4_private_claim_admission(text,text,text)','4db729c5722fd978efebf52ace62bb6a')
+      ) AS expected(signature,definition_md5) WHERE to_regprocedure(expected.signature) IS NULL
+        OR expected.definition_md5 IS DISTINCT FROM (SELECT md5(pg_catalog.pg_get_functiondef(to_regprocedure(expected.signature)))))
       AS valid
-      , pg_catalog.pg_get_functiondef(
-          to_regprocedure('public.addie_matched_v4_private_attempt_guard()')
-        ) AS attempt_guard_definition
-      , pg_catalog.pg_get_functiondef(
-          to_regprocedure('public.addie_matched_v4_private_append_only_guard()')
-        ) AS append_only_guard_definition
   `);
-
-  const attestation = result.rows[0];
-  const expectedAttemptGuardSemantics = [
-    "OLD.status <> 'intent_recorded'",
-    "NEW.status NOT IN ('settled', 'unknown_exposure')",
-    "TG_OP = 'DELETE'",
-    "matched-v4 attempt custody is append-only",
-    "FOR UPDATE",
-    "already_count >= run_cap",
-  ];
-  const appendOnlySemantic =
-    attestation?.append_only_guard_definition?.includes(
-      "RAISE EXCEPTION 'matched-v4 evaluator custody is append-only'",
-    ) === true;
-  const attemptGuardSemantic = expectedAttemptGuardSemantics.every((fragment) =>
-    attestation?.attempt_guard_definition?.includes(fragment),
-  );
-  // The digest makes a same-name/function-signature replacement detectable;
-  // semantic fragments make the reviewed safety meaning explicit in review.
-  const attestationDigest = (definition: string | null | undefined) =>
-    definition && createHash("sha256").update(definition, "utf8").digest("hex");
-  const expectedAppendGuardDigest =
-    "1f3c9478583665d1a200112c163cc7f6d045bbc734811f7bd475aa746b94120a";
-  const expectedAttemptGuardDigest =
-    "69a81df2e9937247e56602a5a9d676243b279d12c32a097a788dbc9e2b91c86f";
-  if (
-    !attestation?.valid ||
-    !appendOnlySemantic ||
-    !attemptGuardSemantic ||
-    attestationDigest(attestation.append_only_guard_definition) !==
-      expectedAppendGuardDigest ||
-    attestationDigest(attestation.attempt_guard_definition) !==
-      expectedAttemptGuardDigest
-  ) {
+  if (!transformed.rows[0]?.valid) {
     throw new Error(
-      "Migration 584 requires the externally administered matched-v4 evaluator schema. " +
+      "Migrations 584 and 585 require the externally administered transformed matched-v4 evaluator schema. " +
         "Run the protected evaluator bootstrap/control-plane job before the ordinary application migration.",
     );
   }
@@ -486,13 +305,26 @@ async function loadMigrations(): Promise<Migration[]> {
 async function createMigrationsTable(): Promise<void> {
   const pool = getPool();
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      filename VARCHAR(255) NOT NULL,
-      applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.schema_migrations (
+        version INTEGER PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL,
+        applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+  } catch (error) {
+    // The matched-v4 runtime may resolve objects in public but must not create
+    // them. PostgreSQL checks schema CREATE even for CREATE TABLE IF NOT EXISTS
+    // when the relation already exists, so retain a DBA-created ledger without
+    // widening the runtime schema grant.
+    if ((error as { code?: string }).code !== "42501") throw error;
+    const existing = await pool.query<{ exists: boolean }>(
+      "SELECT to_regclass('public.schema_migrations') IS NOT NULL AS exists",
     );
-  `);
+    if (existing.rows?.[0]?.exists) return;
+    throw error;
+  }
 }
 
 /**
@@ -504,7 +336,7 @@ async function getAppliedMigrations(): Promise<
   const pool = getPool();
 
   const result = await pool.query<{ version: number; filename: string }>(
-    "SELECT version, filename FROM schema_migrations ORDER BY version",
+    "SELECT version, filename FROM public.schema_migrations ORDER BY version",
   );
 
   return result.rows;
@@ -521,7 +353,13 @@ async function applyMigration(migration: Migration): Promise<void> {
     await client.query("BEGIN");
     await client.query("SET LOCAL statement_timeout = 0");
 
-    if (migration.filename === MATCHED_V4_EXTERNAL_MIGRATION) {
+    if (MATCHED_V4_EXTERNAL_MIGRATIONS.has(migration.filename)) {
+      // Keep the exact catalog read and this migration's ledger record in the
+      // same cooperative serialization domain as protected evaluator
+      // DDL/admission.
+      await client.query("SELECT pg_advisory_xact_lock($1)", [
+        MATCHED_V4_EVALUATOR_LOCK_KEY,
+      ]);
       await validateMatchedV4ExternalSchema(client);
     } else {
       await client.query(migration.sql);
@@ -529,7 +367,7 @@ async function applyMigration(migration: Migration): Promise<void> {
 
     // Record migration
     await client.query(
-      "INSERT INTO schema_migrations (version, filename) VALUES ($1, $2)",
+      "INSERT INTO public.schema_migrations (version, filename) VALUES ($1, $2)",
       [migration.version, migration.filename],
     );
 
@@ -661,15 +499,13 @@ async function runMigrationsLocked(): Promise<void> {
   // Find pending migrations
   const pendingMigrations = migrations.filter((migration) => {
     if (appliedVersions.has(migration.version)) return false;
-    if (migration.filename !== MATCHED_V4_EXTERNAL_MIGRATION) return true;
+    if (!MATCHED_V4_EXTERNAL_MIGRATIONS.has(migration.filename)) return true;
     if (matchedV4EvaluatorSchemaRequired()) return true;
     // This is not an authorization control. It simply keeps evaluator-only
     // schema custody out of ordinary local/preview/application startup. The
     // protected release path sets the exact opt-in and performs the strict
     // full-catalog attestation in applyMigration before recording 584.
-    console.info(
-      `Skipping evaluator-only migration: ${MATCHED_V4_EXTERNAL_MIGRATION}`,
-    );
+    console.info(`Skipping evaluator-only migration: ${migration.filename}`);
     return false;
   });
 

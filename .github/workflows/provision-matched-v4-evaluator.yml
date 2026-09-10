@@ -88,7 +88,7 @@ jobs:
             exit 1
           }
           test "$(git rev-parse HEAD)" = "$APPROVED_MAIN_SHA"
-      - name: Provision schema and durable post-merge admission
+      - name: Provision transformed schema and durable post-merge admission
         env:
           PGHOST: ${{ secrets.MATCHED_V4_EVALUATOR_PGHOST }}
           PGPORT: ${{ secrets.MATCHED_V4_EVALUATOR_PGPORT }}
@@ -107,10 +107,36 @@ jobs:
           [[ "$MIGRATION_PRINCIPAL" =~ ^[a-z_][a-z0-9_]{0,62}$ ]]
           [[ "$AUTHORITY_MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]]
           psql --set ON_ERROR_STOP=1 --single-transaction -v runtime_principal="$RUNTIME_PRINCIPAL" -v migration_principal="$MIGRATION_PRINCIPAL" -f server/scripts/addie-matched-v4-role-bootstrap.sql
-          psql --set ON_ERROR_STOP=1 --single-transaction -c 'SET ROLE addie_matched_v4_operator' -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+          # First application is atomic: a 584-only state can never escape.
+          # A rerun detects 585's complete transformed API and invokes only
+          # its read-only attestation; 584 correctly rejects that API because
+          # its old `settle` function has intentionally been removed.
+          transformed=$(psql --set ON_ERROR_STOP=1 -Atqc "SELECT to_regprocedure('public.addie_matched_v4_private_settle(text,text,text,text,bigint)') IS NULL AND to_regprocedure('public.addie_matched_v4_private_record_response_usage(text,text,text,text,bigint)') IS NOT NULL")
+          if [ "$transformed" = t ]; then
+            psql --set ON_ERROR_STOP=1 --single-transaction \
+              -c 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED' \
+              -c 'SELECT pg_advisory_xact_lock(584585)' \
+              -c 'SET ROLE addie_matched_v4_operator' \
+              -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
+          else
+            psql --set ON_ERROR_STOP=1 --single-transaction \
+              -c 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED' \
+              -c 'SELECT pg_advisory_xact_lock(584585)' \
+              -c 'SET ROLE addie_matched_v4_operator' \
+              -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql \
+              -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
+          fi
+          # Re-run 585's read-only exact transformed-schema attestation in
+          # this transaction. A schema changed after bootstrap cannot receive
+          # an admission, and a failed attestation rolls back this INSERT.
+          # DO emits no empty tuple under -Atq; capture only the final
+          # admission boolean rather than the advisory-lock command tag.
           admission_valid=$(psql --set ON_ERROR_STOP=1 --single-transaction \
+            -c 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED' \
+            -c 'DO $$ BEGIN PERFORM pg_advisory_xact_lock(584585); END $$' \
             -c 'SET ROLE addie_matched_v4_operator' \
             -v merge_sha="$APPROVED_MAIN_SHA" -v manifest_sha="$AUTHORITY_MANIFEST_SHA256" \
+            -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql \
             -Atqc "WITH expected AS (SELECT 'mv4_admission_' || md5(:'merge_sha' || :'manifest_sha' || 'addie_matched_v4_post_merge_operator_v1') AS admission_id), inserted AS (INSERT INTO public.addie_matched_v4_private_admissions (admission_id, merge_sha, authority_manifest_sha256, operator_gate_id, status) SELECT admission_id, :'merge_sha', :'manifest_sha', 'addie_matched_v4_post_merge_operator_v1', 'operator_authorized' FROM expected ON CONFLICT (merge_sha, authority_manifest_sha256) DO NOTHING RETURNING admission_id), candidates AS (SELECT admission_id, :'merge_sha'::text AS merge_sha, :'manifest_sha'::text AS authority_manifest_sha256, 'addie_matched_v4_post_merge_operator_v1'::text AS operator_gate_id, 'operator_authorized'::text AS status, NULL::timestamptz AS claimed_at FROM inserted UNION ALL SELECT admission_id, merge_sha, authority_manifest_sha256, operator_gate_id, status, claimed_at FROM public.addie_matched_v4_private_admissions) SELECT EXISTS (SELECT 1 FROM candidates admission CROSS JOIN expected WHERE admission.admission_id = expected.admission_id AND admission.merge_sha = :'merge_sha' AND admission.authority_manifest_sha256 = :'manifest_sha' AND admission.operator_gate_id = 'addie_matched_v4_post_merge_operator_v1' AND admission.status = 'operator_authorized' AND admission.claimed_at IS NULL)")
           test "$admission_valid" = t || {
             echo 'Protected evaluator admission is missing, claimed, or differs from the exact reviewed SHA/manifest/gate.' >&2

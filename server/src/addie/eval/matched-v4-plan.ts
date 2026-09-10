@@ -242,11 +242,11 @@ const FULL_TRACES = Object.freeze([
     expectedReceipt: "none",
   },
   {
-    id: "mv4-full-settlement",
+    id: "mv4-full-response-usage-recording",
     threadId: "mv4-full-thread-16",
     slice: "general_support",
     prompt:
-      "Explain why a usage record with an unknown exposure cannot be counted as settled accounting.",
+      "Explain why a usage record with an unknown exposure cannot be counted as recorded estimated-cost accounting.",
     expectedReceipt: "none",
   },
 ] as const satisfies readonly AddieMatchedV4SyntheticTrace[]);
@@ -355,16 +355,19 @@ const BROAD_SCREENING_CELLS = [
         }) as const,
     ),
   ),
-  ...(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const).flatMap(
-    (model) => ANTHROPIC_EFFORTS.map((reasoningEffort) =>
-      ({
-        id: `direct:anthropic:${model}:${reasoningEffort}:broad`,
-        arm: "direct",
-        provider: "anthropic",
-        model,
-        toolSurface: "broad",
-        reasoningEffort,
-      }) as const,
+  ...(
+    ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const
+  ).flatMap((model) =>
+    ANTHROPIC_EFFORTS.map(
+      (reasoningEffort) =>
+        ({
+          id: `direct:anthropic:${model}:${reasoningEffort}:broad`,
+          arm: "direct",
+          provider: "anthropic",
+          model,
+          toolSurface: "broad",
+          reasoningEffort,
+        }) as const,
     ),
   ),
   {
@@ -400,13 +403,13 @@ const CLEAN_COMPARISON_BROAD_CELL_IDS = new Set<string>([
 
 export const ADDIE_MATCHED_V4_SCREENING_CELLS = Object.freeze([
   ...BROAD_SCREENING_CELLS,
-  ...BROAD_SCREENING_CELLS
-    .filter((cell) => CLEAN_COMPARISON_BROAD_CELL_IDS.has(cell.id))
-    .map((cell) => ({
-      ...cell,
-      id: cell.id.replace(/:broad$/, ":clean") as AddieMatchedV4CellId,
-      toolSurface: "clean" as const,
-    })),
+  ...BROAD_SCREENING_CELLS.filter((cell) =>
+    CLEAN_COMPARISON_BROAD_CELL_IDS.has(cell.id),
+  ).map((cell) => ({
+    ...cell,
+    id: cell.id.replace(/:broad$/, ":clean") as AddieMatchedV4CellId,
+    toolSurface: "clean" as const,
+  })),
 ] satisfies readonly AddieMatchedV4Cell[]);
 
 export const ADDIE_MATCHED_V4_BASELINE_CELL_ID =
@@ -425,7 +428,7 @@ export interface AddieMatchedV4Plan {
   }>;
   readonly promotion: Readonly<{
     rule: "pareto_non_dominated_then_preregistered_cap_order";
-    requiresCompleteSettledScreening: true;
+    requiresCompleteRecordedScreening: true;
   }>;
   readonly full: Readonly<{
     packSha256: string;
@@ -456,8 +459,7 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
   // Sonnet calls, so three is the closed upper bound per trace.
   const screeningDispatches =
     ADDIE_MATCHED_V4_SCREENING_CELLS.length * SCREENING_TRACES.length * 3;
-  const fullDispatches =
-    (FULL_MAX_PROMOTED_CELLS + 1) * FULL_TRACES.length * 3;
+  const fullDispatches = (FULL_MAX_PROMOTED_CELLS + 1) * FULL_TRACES.length * 3;
   const plan = freeze({
     version: ADDIE_MATCHED_V4_EVALUATION_VERSION,
     executionAuthority:
@@ -472,7 +474,7 @@ export function createAddieMatchedV4Plan(): AddieMatchedV4Plan {
     },
     promotion: {
       rule: "pareto_non_dominated_then_preregistered_cap_order",
-      requiresCompleteSettledScreening: true,
+      requiresCompleteRecordedScreening: true,
     },
     full: {
       packSha256: digest(FULL_TRACES),

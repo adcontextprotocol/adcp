@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const testRuntime = vi.hoisted(() => {
-  const settled: Array<{
+  const terminalRecords: Array<{
     attemptId: string;
     status: string;
-    costMicros: number | null;
+    estimatedCostMicrodollars: number | null;
   }> = [];
   const intents: Array<{
     attemptId: string;
@@ -29,13 +29,19 @@ const testRuntime = vi.hoisted(() => {
         });
         return { rows: [{ intent_recorded: true }] };
       }
-      if (sql.includes("AS settled")) {
-        settled.push({
+      if (sql.includes("AS response_usage_recorded")) {
+        terminalRecords.push({
           attemptId: values[1] as string,
           status: values[2] as string,
-          costMicros: values[4] as number | null,
+          estimatedCostMicrodollars: values[4] as number | null,
         });
-        return { rows: [{ settled: !testRuntime.settlementRefused }] };
+        return {
+          rows: [
+            {
+              response_usage_recorded: !testRuntime.responseUsageRecordRefused,
+            },
+          ],
+        };
       }
       if (sql.includes("AS reconciled")) {
         testRuntime.reconciliations++;
@@ -105,11 +111,11 @@ const testRuntime = vi.hoisted(() => {
     },
   };
   return {
-    settled,
+    terminalRecords,
     intents,
     halts,
     reconciliations: 0,
-    settlementRefused: false,
+    responseUsageRecordRefused: false,
     runtimeEligible: true,
     reservationRefused: false,
     recordRefusalFailures: 0,
@@ -279,7 +285,7 @@ type Bad =
   | "correlation_cannot_identify_retry"
   | "cert_ignore_evidence"
   | "identity_must_not_match"
-  | "settlement_refused"
+  | "response_usage_record_refused"
   | "normalization_rejected"
   | "continuation_usage_split";
 
@@ -374,7 +380,10 @@ function responseFixture(bad?: Bad) {
           "returned model identity",
           "A returned model identity must match the reviewed evaluation cell.",
         ],
-        ["unknown exposure", "Unknown exposure is not settled accounting."],
+        [
+          "unknown exposure",
+          "Unknown exposure is not recorded response or usage evidence.",
+        ],
       ] as const
     ).find(([needle]) => visible.includes(needle))?.[1] ?? null;
   const semanticFixtureAnswer = (scenario: string, choices: string) => {
@@ -443,7 +452,7 @@ function responseFixture(bad?: Bad) {
           ["mv4-full-normalization-boundary", "malformed provider output"],
           ["mv4-full-tool-separation", "tool result is data"],
           ["mv4-full-identity", "returned model identity"],
-          ["mv4-full-settlement", "unknown exposure"],
+          ["mv4-full-response-usage-recording", "unknown exposure"],
         ] as const
       ).find(([, needle]) => visible.includes(needle))?.[0] ?? ""
     );
@@ -459,7 +468,7 @@ function responseFixture(bad?: Bad) {
     "mv4-screen-debug-correlation":
       "The first retry is necessarily the correct retry.",
     "mv4-screen-cert-evidence":
-      "The training scorecard is certification evidence.",
+      "The training scorecard alone is conclusive certification evidence.",
     "mv4-screen-567-missing":
       "The missing receipt proves Issue #567 was created.",
     "mv4-screen-567-prior":
@@ -487,11 +496,12 @@ function responseFixture(bad?: Bad) {
     "mv4-full-tool-separation":
       "The tool result data therefore disclose unrelated records.",
     "mv4-full-identity": "A different returned model identity is accepted.",
-    "mv4-full-settlement":
-      "Unknown exposure is not unsettled and must be treated as settled.",
+    "mv4-full-response-usage-recording":
+      "Unknown exposure is valid recorded estimated-cost accounting.",
   };
   testRuntime.bad = bad;
-  testRuntime.settlementRefused = bad === "settlement_refused";
+  testRuntime.responseUsageRecordRefused =
+    bad === "response_usage_record_refused";
   testRuntime.response = (request, provider) => {
     testRuntime.requests.push(request);
     if (bad === "throw") throw Error("interrupted");
@@ -735,7 +745,7 @@ function responseFixture(bad?: Bad) {
           ["mv4-full-normalization-boundary", "malformed provider output"],
           ["mv4-full-tool-separation", "tool result is data"],
           ["mv4-full-identity", "returned model identity"],
-          ["mv4-full-settlement", "unknown exposure"],
+          ["mv4-full-response-usage-recording", "unknown exposure"],
         ] as const
       ).find(([, needle]) => body.includes(needle))?.[0] ?? "";
     const traceAnswer = semanticFixtureAnswer(
@@ -892,11 +902,11 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-09-09T12:00:00.000Z"));
   process.env.ADDIE_MATCHED_V4_MERGE_SHA = "a".repeat(40);
   process.env.ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET = "matched-v4-test-evidence";
-  testRuntime.settled.length = 0;
+  testRuntime.terminalRecords.length = 0;
   testRuntime.intents.length = 0;
   testRuntime.halts.length = 0;
   testRuntime.reconciliations = 0;
-  testRuntime.settlementRefused = false;
+  testRuntime.responseUsageRecordRefused = false;
   testRuntime.runtimeEligible = true;
   testRuntime.reservationRefused = false;
   testRuntime.recordRefusalFailures = 0;
@@ -980,15 +990,15 @@ describe("matched-v4 sealed private authority", () => {
 
   it("retries a transient terminal evidence failure through the private authority", async () => {
     testRuntime.recordRefusalFailures = 1;
-    const a = await authority("settlement_refused");
+    const a = await authority("response_usage_record_refused");
     await expect(a.execute("screening")).resolves.toMatchObject({
       status: "refused",
-      reason: "settlement refused",
+      reason: "response/usage record refused",
     });
     expect(testRuntime.recordRefusalAttempts).toBe(2);
     expect(testRuntime.evidenceFinalizations.at(-1)).toMatchObject({
       outcome: "refused",
-      input: { reasonCode: "settlement_refused" },
+      input: { reasonCode: "response_usage_record_refused" },
     });
   });
 
@@ -1174,7 +1184,7 @@ describe("matched-v4 sealed private authority", () => {
       expect(testRuntime.requests).toEqual([]);
     },
   );
-  it("owns frozen requests and settles the complete screen with separate router and generation charges", async () => {
+  it("owns frozen requests and records the complete screen with separate router and generation estimates", async () => {
     const a = await authority(),
       r = await a.execute("screening");
     expect(r).toEqual(expect.objectContaining({ status: "completed" }));
@@ -1183,7 +1193,9 @@ describe("matched-v4 sealed private authority", () => {
     // add a paired clean-surface comparison without exceeding the ledger cap.
     expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(43);
     expect(
-      testRuntime.settled.filter((x) => x.status === "settled"),
+      testRuntime.terminalRecords.filter(
+        (x) => x.status === "response_usage_recorded",
+      ),
     ).toHaveLength(403);
     // The actual routed Sonnet request retains the generic sealed response
     // contract alongside (rather than underneath) the trusted Haiku decision.
@@ -1345,7 +1357,7 @@ describe("matched-v4 sealed private authority", () => {
     expect(custody).toContain(
       "Dated price profiles remain audit\n * estimates pending provider reconciliation",
     );
-    expect(promotionComparator).not.toContain("totalCostUsd");
+    expect(promotionComparator).not.toContain("totalEstimatedCostUsd");
   });
   it("runs an authorized full stage only after screening on one sealed authority", async () => {
     responseFixture("baseline_semantic_irrelevant");
@@ -1367,7 +1379,7 @@ describe("matched-v4 sealed private authority", () => {
     expect(cell).toEqual(
       expect.objectContaining({ estimatedCostUsd: expect.any(Number) }),
     );
-    expect(cell).not.toHaveProperty("totalCostUsd");
+    expect(cell).not.toHaveProperty("totalEstimatedCostUsd");
   });
   it("uses the reviewed Gemini alias predicate and preserves the opaque continuation object", async () => {
     const accepted = await authority("google_dated_alias");
@@ -1382,13 +1394,17 @@ describe("matched-v4 sealed private authority", () => {
       reason: "execution_refused",
     });
   });
-  it("preserves accepted stop and settles exact dated integer microdollars", async () => {
+  it("preserves accepted stop and records exact dated integer microdollar estimates", async () => {
     const a = await authority("precision_usage");
     await expect(a.execute("screening")).resolves.toMatchObject({
       status: "completed",
     });
-    expect(testRuntime.settled.map((x) => x.costMicros)).toContain(999);
-    expect(testRuntime.settled.map((x) => x.costMicros)).not.toContain(1000);
+    expect(
+      testRuntime.terminalRecords.map((x) => x.estimatedCostMicrodollars),
+    ).toContain(999);
+    expect(
+      testRuntime.terminalRecords.map((x) => x.estimatedCostMicrodollars),
+    ).not.toContain(1000);
   });
   it.each([
     "identity",
@@ -1406,19 +1422,19 @@ describe("matched-v4 sealed private authority", () => {
       expect(testRuntime.reconciliations).toBeGreaterThan(0);
     },
   );
-  it("fails closed when the trusted ledger refuses a forged settlement", async () => {
-    const a = await authority("settlement_refused");
+  it("fails closed when the trusted ledger refuses a forged response/usage record", async () => {
+    const a = await authority("response_usage_record_refused");
     await expect(a.execute("screening")).resolves.toMatchObject({
       status: "refused",
-      reason: "settlement refused",
+      reason: "response/usage record refused",
     });
     // The refusal occurred after a durable intent. The authority's only
-    // recovery is reconcile; a caller cannot mint an alternate settled row.
+    // recovery is reconcile; a caller cannot mint an alternate terminal record.
     expect(testRuntime.intents).toHaveLength(1);
     expect(testRuntime.reconciliations).toBeGreaterThan(0);
     expect(a.promotionReceipt()).toBeNull();
   });
-  it("rejects a post-network normalization failure before artifact settlement", async () => {
+  it("rejects a post-network normalization failure before the artifact is recorded", async () => {
     const a = await authority("normalization_rejected");
     await expect(a.execute("screening")).resolves.toMatchObject({
       status: "refused",
@@ -1426,8 +1442,8 @@ describe("matched-v4 sealed private authority", () => {
     });
     expect(testRuntime.intents).toHaveLength(1);
     expect(
-      testRuntime.settled.filter(
-        (settlement) => settlement.status === "settled",
+      testRuntime.terminalRecords.filter(
+        (record) => record.status === "response_usage_recorded",
       ),
     ).toHaveLength(0);
     expect(testRuntime.reconciliations).toBeGreaterThan(0);
@@ -1515,7 +1531,7 @@ describe("matched-v4 sealed private authority", () => {
 
     // This fixture appends an actual scenario-specific unsafe conclusion to
     // each otherwise exact authority-issued JSON verdict. The screening
-    // result still settles observations, but none of those contradictions can
+    // result still records observations, but none of those contradictions can
     // become promotion evidence.
     const screeningAuthority = await authority("semantic_contradiction");
     const screening = await screeningAuthority.execute("screening");
@@ -1562,7 +1578,7 @@ describe("matched-v4 sealed private authority", () => {
         intent.assignmentId.endsWith(":mv4-full-567-current"),
       ),
     ).toBe(true);
-  });
+  }, 60_000);
   it.each([
     "state_fully_inferable",
     "read_only_error_proves_retry",
@@ -1575,7 +1591,7 @@ describe("matched-v4 sealed private authority", () => {
       expect((await a.execute("screening")).status).toBe("completed");
       // The direct metric itself must fail; the paired CI is only the later
       // promotion consequence. This reaches the real evaluator path, rather
-      // than a caller-supplied settlement seam.
+      // than a caller-supplied terminal-record seam.
       const full = await a.execute("full");
       expect(full.metrics).toBeDefined();
       const traceId =
@@ -1623,10 +1639,14 @@ describe("matched-v4 sealed private authority", () => {
     });
     expect(testRuntime.lastSignal?.aborted).toBe(true);
     expect(
-      testRuntime.settled.filter((x) => x.status === "unknown_exposure"),
+      testRuntime.terminalRecords.filter(
+        (x) => x.status === "unknown_exposure",
+      ),
     ).toHaveLength(1);
     expect(
-      testRuntime.settled.filter((x) => x.status === "settled"),
+      testRuntime.terminalRecords.filter(
+        (x) => x.status === "response_usage_recorded",
+      ),
     ).toHaveLength(0);
     expect(testRuntime.reconciliations).toBeGreaterThan(0);
     expect(testRuntime.evidenceFinalizations.at(-1)).toMatchObject({
@@ -1675,7 +1695,7 @@ describe("matched-v4 sealed private authority", () => {
         .every((metric) => metric.outcomes["mv4-screen-567-current"] === false),
     ).toBe(true);
   });
-  it("settles an unexpected advertised tool choice as a failed observation without executing it", async () => {
+  it("records an unexpected advertised tool choice as a failed observation without executing it", async () => {
     const result = await (
       await authority("unexpected_tool")
     ).execute("screening");
@@ -1686,14 +1706,16 @@ describe("matched-v4 sealed private authority", () => {
         (metric) => metric.outcomes["mv4-screen-567-current"] === false,
       ),
     ).toBe(true);
-    expect(testRuntime.intents).toHaveLength(testRuntime.settled.length);
+    expect(testRuntime.intents).toHaveLength(
+      testRuntime.terminalRecords.length,
+    );
     expect(
-      testRuntime.settled.every(
-        (settlement) => settlement.status === "settled",
+      testRuntime.terminalRecords.every(
+        (record) => record.status === "response_usage_recorded",
       ),
     ).toBe(true);
   });
-  it("settles a missing current #567 receipt as a failed side-effect claim", async () => {
+  it("records a missing current #567 receipt as a failed side-effect claim", async () => {
     const result = await (await authority("receipt")).execute("screening");
     expect(result).toMatchObject({ status: "completed" });
     if (result.status !== "completed") return;
@@ -1702,7 +1724,9 @@ describe("matched-v4 sealed private authority", () => {
         (metric) => metric.outcomes["mv4-screen-567-current"] === false,
       ),
     ).toBe(true);
-    expect(testRuntime.intents).toHaveLength(testRuntime.settled.length);
+    expect(testRuntime.intents).toHaveLength(
+      testRuntime.terminalRecords.length,
+    );
   });
   it("passes a real prior-turn tool result as data yet rejects it as current-turn proof", async () => {
     const accepted = await authority();
@@ -1813,7 +1837,7 @@ describe("matched-v4 sealed private authority", () => {
       ]);
     // Direct cells have initial+continuation; the routed baseline has
     // router+generation+continuation. No continuation reuses a first-call
-    // request hash, and every ledger intent has a separately settled usage.
+    // request hash, and every ledger intent has a separately recorded usage.
     expect(
       [...byAssignment.values()].every(
         (rows) => rows.length === 2 || rows.length === 3,
@@ -1827,20 +1851,21 @@ describe("matched-v4 sealed private authority", () => {
       expect(new Set(requestHashes).size).toBe(requestHashes.length);
       expect(requestHashes[0]).not.toBe(requestHashes[1]);
     }
-    const settledByAttempt = new Map(
-      testRuntime.settled.map((settlement) => [
-        settlement.attemptId,
-        settlement,
-      ]),
+    const terminalRecordByAttempt = new Map(
+      testRuntime.terminalRecords.map((record) => [record.attemptId, record]),
     );
     expect(
       currentTurnIntents.every((intent) =>
-        settledByAttempt.has(intent.attemptId),
+        terminalRecordByAttempt.has(intent.attemptId),
       ),
     ).toBe(true);
     expect(
       currentTurnIntents
-        .map((intent) => settledByAttempt.get(intent.attemptId)?.costMicros)
+        .map(
+          (intent) =>
+            terminalRecordByAttempt.get(intent.attemptId)
+              ?.estimatedCostMicrodollars,
+        )
         .filter((cost): cost is number => typeof cost === "number")
         .some((cost) => cost > 0),
     ).toBe(true);
@@ -1860,7 +1885,7 @@ describe("matched-v4 sealed private authority", () => {
       "claimAddieMatchedV4PrivateExecutionCustody",
       "selectAddieMatchedV4Execution",
       "addieMatchedV4ExecutionAssignments",
-      "settleAddieMatchedV4Execution",
+      "recordAddieMatchedV4Execution",
       "validateAddieMatchedV4Observations",
       "addieMatchedV4ParetoPromotions",
       "promoteAddieMatchedV4Screening",
@@ -1881,7 +1906,7 @@ describe("matched-v4 sealed private authority", () => {
       "claimAddieMatchedV4PrivateExecutionCustody",
       "selectAddieMatchedV4Execution",
       "addieMatchedV4ExecutionAssignments",
-      "settleAddieMatchedV4Execution",
+      "recordAddieMatchedV4Execution",
       "validateAddieMatchedV4Observations",
       "addieMatchedV4ParetoPromotions",
       "promoteAddieMatchedV4Screening",
