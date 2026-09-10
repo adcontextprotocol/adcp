@@ -31,14 +31,14 @@ export interface AddieMatchedV4DurableEvidenceReservation {
 export type AddieMatchedV4TerminalReasonCode =
   | "paired_ci_gate"
   | "dispatch_timeout"
-  | "settlement_refused"
+  | "response_usage_record_refused"
   | "intent_refused"
   | "provider_response_invalid"
   | "execution_refused";
 const terminalReasonCodes = new Set<AddieMatchedV4TerminalReasonCode>([
   "paired_ci_gate",
   "dispatch_timeout",
-  "settlement_refused",
+  "response_usage_record_refused",
   "intent_refused",
   "provider_response_invalid",
   "execution_refused",
@@ -306,8 +306,10 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
     if (
       !current ||
       (current.phase !== "issued" &&
-        !(current.phase === "uncertain" &&
-          current.terminalIdentity === terminalIdentity)) ||
+        !(
+          current.phase === "uncertain" &&
+          current.terminalIdentity === terminalIdentity
+        )) ||
       (current.terminalIdentity !== undefined &&
         current.terminalIdentity !== terminalIdentity)
     )

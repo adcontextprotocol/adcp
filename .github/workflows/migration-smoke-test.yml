@@ -121,10 +121,14 @@ jobs:
           CREATE ROLE addie_matched_v4_partial_runtime_ci NOLOGIN;
           CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
           GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
-          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci;
+          GRANT USAGE ON SCHEMA public TO addie_matched_v4_runtime;
           GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
           GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
           GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_operator;
+          -- The ordinary runtime can record migrations but has no public
+          -- CREATE; PostgreSQL checks CREATE even for IF NOT EXISTS.
+          CREATE TABLE public.schema_migrations (version INTEGER PRIMARY KEY, filename VARCHAR(255) NOT NULL, applied_at TIMESTAMPTZ DEFAULT now());
+          GRANT SELECT, INSERT ON public.schema_migrations TO addie_matched_v4_runtime_ci;
           SQL
           # Bootstrap is deliberately non-mutating. A malformed app principal
           # must fail without altering the DBA-created static role graph, and
@@ -153,6 +157,17 @@ jobs:
             -v runtime_principal=addie_matched_v4_runtime_ci \
             -v migration_principal=addie_matched_v4_provisioner_ci \
             -f server/scripts/addie-matched-v4-role-bootstrap.sql
+          # A pristine CI database needs ordinary migrations 1–583 before the
+          # evaluator boundary. Give the app only this temporary setup CREATE
+          # grant, then revoke it before 584/585 attestation and every
+          # adversarial ordinary-runtime validation below.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci'
+          DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${RUNTIME_PASSWORD}@127.0.0.1:5432/adcp_test" \
+            ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=false \
+            npx tsx server/src/db/migrate.ts
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE CREATE ON SCHEMA public FROM addie_matched_v4_runtime_ci'
 
       - name: Assert bootstrap leaves only the intended evaluator role bridges
         run: |
@@ -194,14 +209,188 @@ jobs:
       - name: Apply evaluator schema from the external operator boundary
         env:
           PGOPTIONS: -c role=addie_matched_v4_operator
-        run: >-
-          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1
-          -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+        run: |
+          set -euo pipefail
+          expect_retry_rejection() {
+            if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test \
+              --single-transaction -v ON_ERROR_STOP=1 \
+              -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+              echo "Evaluator migration 585 accepted malformed custody state: $1" >&2
+              exit 1
+            fi
+          }
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+          # A static custody role must not be a member of an elevated parent:
+          # that would preserve its own flags while opening a transitive SET
+          # ROLE path. Bootstrap and 585 both reject the tamper.
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE mv4_operator_escalation NOLOGIN CREATEROLE; GRANT mv4_operator_escalation TO addie_matched_v4_operator WITH INHERIT FALSE, SET TRUE, ADMIN FALSE'
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -v runtime_principal=addie_matched_v4_runtime_ci \
+            -v migration_principal=addie_matched_v4_provisioner_ci \
+            -f server/scripts/addie-matched-v4-role-bootstrap.sql; then
+            echo 'Bootstrap accepted a static operator parent-role escalation.' >&2
+            exit 1
+          fi
+          expect_retry_rejection 'static operator parent-role escalation'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE mv4_operator_escalation FROM addie_matched_v4_operator; DROP ROLE mv4_operator_escalation'
+          # 585 must reject an old guard with a substituted owner before its
+          # CREATE OR REPLACE can preserve that ownership drift.
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER FUNCTION public.addie_matched_v4_private_attempt_guard() OWNER TO addie_matched_v4_provisioner_ci'
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 repaired an old guard with a wrong owner.' >&2
+            exit 1
+          fi
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER FUNCTION public.addie_matched_v4_private_attempt_guard() OWNER TO addie_matched_v4_operator'
+          # Static role capabilities are part of the sealed boundary; an
+          # elevated runtime role cannot be transformed or attested.
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_runtime BYPASSRLS'
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 accepted an elevated runtime role.' >&2
+            exit 1
+          fi
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_runtime NOBYPASSRLS'
+          # A hidden SET ROLE bridge into operator is a custody capability,
+          # not harmless DBA metadata. The protected 585 retry must reject it.
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE mv4_hidden_operator_bridge LOGIN; GRANT addie_matched_v4_operator TO mv4_hidden_operator_bridge WITH INHERIT FALSE, SET TRUE, ADMIN FALSE'
+          expect_retry_rejection 'hidden operator SET ROLE bridge'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE addie_matched_v4_operator FROM mv4_hidden_operator_bridge; DROP ROLE mv4_hidden_operator_bridge'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE mv4_nested_operator_bridge LOGIN; GRANT addie_matched_v4_provisioner_ci TO mv4_nested_operator_bridge WITH INHERIT FALSE, SET TRUE, ADMIN FALSE'
+          expect_retry_rejection 'nested operator SET ROLE bridge'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE addie_matched_v4_provisioner_ci FROM mv4_nested_operator_bridge; DROP ROLE mv4_nested_operator_bridge'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_provisioner_ci CREATEROLE'
+          expect_retry_rejection 'elevated operator-bridge member role'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_provisioner_ci NOCREATEROLE'
+          # A replica-mode runtime default disables ordinary trigger/foreign
+          # key enforcement. It must invalidate both admission and ledger
+          # attestations before that login can invoke scoped APIs.
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE addie_matched_v4_runtime_ci SET session_replication_role = 'replica'"
+          expect_retry_rejection 'runtime replica-mode trigger bypass'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_runtime_ci RESET session_replication_role'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER DATABASE adcp_test SET session_replication_role = 'replica'"
+          expect_retry_rejection 'database replica-mode trigger bypass'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'ALTER DATABASE adcp_test RESET session_replication_role'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT SET ON PARAMETER session_replication_role TO addie_matched_v4_runtime'
+          expect_retry_rejection 'runtime SET session_replication_role privilege'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE SET ON PARAMETER session_replication_role FROM addie_matched_v4_runtime'
+          # A forward vocabulary migration must never rewrite a recorded
+          # intent. This deliberate fixture is rolled back with the failed
+          # migration, leaving the following real 585 application empty.
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+            -c "SET ROLE addie_matched_v4_operator" \
+            -c "SELECT public.addie_matched_v4_private_reserve('mv4_22222222222222222222222222222222','screening',repeat('a',64),1)" \
+            -c "SELECT public.addie_matched_v4_private_intent('mv4_22222222222222222222222222222222','mv4_attempt_22222222222222222222222222222222','ci-precondition',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64))" \
+            -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 rewrote a recorded attempt.' >&2
+            exit 1
+          fi
+          # A legacy runtime transaction may not commit evidence between 585's
+          # zero-evidence check and its ALTERs. The transform obtains ACCESS
+          # EXCLUSIVE before counting, waits for this transaction, then sees
+          # the row and rejects rather than translating it.
+          PGOPTIONS= createdb -h 127.0.0.1 -U postgres -T adcp_test mv4_585_legacy_race
+          writer_fifo=/tmp/mv4-legacy-evidence-writer.sql
+          mkfifo "$writer_fifo"
+          PGOPTIONS= PGAPPNAME=mv4_legacy_evidence_writer psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d mv4_585_legacy_race -v ON_ERROR_STOP=1 <"$writer_fifo" >/tmp/mv4-legacy-evidence-race.out 2>&1 &
+          legacy_writer_pid=$!
+          exec 3>"$writer_fifo"
+          printf '%s\n' 'BEGIN;' "SELECT public.addie_matched_v4_private_reserve('mv4_66666666666666666666666666666666','screening',repeat('a',64),1);" >&3
+          writer_ready=false
+          for _ in $(seq 1 100); do
+            if PGOPTIONS= psql -h 127.0.0.1 -U postgres -d mv4_585_legacy_race -Atqc "SELECT state = 'idle in transaction' FROM pg_catalog.pg_stat_activity WHERE application_name='mv4_legacy_evidence_writer'" | grep -qx t; then writer_ready=true; break; fi
+            sleep 0.1
+          done
+          test "$writer_ready" = true || { cat /tmp/mv4-legacy-evidence-race.out >&2; echo 'Legacy race writer did not become ready.' >&2; exit 1; }
+          PGOPTIONS='-c role=addie_matched_v4_operator' PGAPPNAME=mv4_legacy_evidence_transform psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d mv4_585_legacy_race --single-transaction -v ON_ERROR_STOP=1 \
+            -c 'SET ROLE addie_matched_v4_operator' \
+            -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql >/tmp/mv4-legacy-evidence-transform.out 2>&1 &
+          legacy_transform_pid=$!
+          transform_waiting=false
+          for _ in $(seq 1 100); do
+            if PGOPTIONS= psql -h 127.0.0.1 -U postgres -d mv4_585_legacy_race -Atqc "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks l JOIN pg_catalog.pg_stat_activity a ON a.pid=l.pid WHERE a.application_name='mv4_legacy_evidence_transform' AND l.relation='public.addie_matched_v4_private_runs'::regclass AND l.mode='AccessExclusiveLock' AND NOT l.granted)" | grep -qx t; then transform_waiting=true; break; fi
+            sleep 0.1
+          done
+          test "$transform_waiting" = true || { echo 'Legacy transform never waited for ACCESS EXCLUSIVE.' >&2; exit 1; }
+          printf '%s\n' 'COMMIT;' >&3
+          exec 3>&-
+          wait "$legacy_writer_pid"
+          if wait "$legacy_transform_pid"; then
+            echo 'Evaluator migration 585 transformed evidence committed during its old-shape precondition.' >&2
+            exit 1
+          fi
+          rm "$writer_fifo"
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d mv4_585_legacy_race -Atqc "SELECT count(*) = 1 AND to_regprocedure('public.addie_matched_v4_private_settle(text,text,text,text,bigint)') IS NOT NULL AND to_regprocedure('public.addie_matched_v4_private_record_response_usage(text,text,text,text,bigint)') IS NULL FROM public.addie_matched_v4_private_runs" | grep -qx t
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'DROP DATABASE mv4_585_legacy_race'
+          # Under REPEATABLE READ, the snapshot could predate the lock wait.
+          # 585 must reject before transformation, leaving the old API and
+          # committed legacy row untouched rather than relabelling either.
+          PGOPTIONS= createdb -h 127.0.0.1 -U postgres -T adcp_test mv4_585_legacy_repeatable_read_race
+          PGOPTIONS= PGAPPNAME=mv4_legacy_repeatable_read_race psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d mv4_585_legacy_repeatable_read_race -v ON_ERROR_STOP=1 \
+            -c 'BEGIN' \
+            -c "SELECT public.addie_matched_v4_private_reserve('mv4_77777777777777777777777777777777','screening',repeat('a',64),1)" \
+            -c 'SELECT pg_sleep(3)' \
+            -c 'COMMIT' >/tmp/mv4-legacy-repeatable-read-race.out 2>&1 &
+          repeatable_read_race_pid=$!
+          repeatable_read_writer_started=false
+          for _ in $(seq 1 100); do
+            if PGOPTIONS= psql -h 127.0.0.1 -U postgres -d mv4_585_legacy_repeatable_read_race -Atqc \
+              "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE application_name='mv4_legacy_repeatable_read_race' AND query LIKE 'SELECT pg_sleep%')" | grep -qx t; then repeatable_read_writer_started=true; break; fi
+            sleep 0.1
+          done
+          test "$repeatable_read_writer_started" = true || { echo 'Repeatable-read race writer did not start.' >&2; exit 1; }
+          if PGOPTIONS= psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d mv4_585_legacy_repeatable_read_race --single-transaction -v ON_ERROR_STOP=1 \
+            -c 'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ' \
+            -c 'SET ROLE addie_matched_v4_operator' \
+            -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 transformed a legacy schema under REPEATABLE READ.' >&2
+            exit 1
+          fi
+          wait "$repeatable_read_race_pid"
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d mv4_585_legacy_repeatable_read_race -Atqc "SELECT count(*) = 1 AND to_regprocedure('public.addie_matched_v4_private_settle(text,text,text,text,bigint)') IS NOT NULL AND to_regprocedure('public.addie_matched_v4_private_record_response_usage(text,text,text,text,bigint)') IS NULL FROM public.addie_matched_v4_private_runs" | grep -qx t
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'DROP DATABASE mv4_585_legacy_repeatable_read_race'
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
+
+      - name: Reject a partial or relabelled transformed terminal-record API
+        env:
+          PGOPTIONS: -c role=addie_matched_v4_operator
+        run: |
+          set -euo pipefail
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "CREATE FUNCTION public.addie_matched_v4_private_settle(TEXT,TEXT,TEXT,TEXT,BIGINT) RETURNS BOOLEAN LANGUAGE sql AS 'SELECT true'"
+          if psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 accepted a partial relabelled terminal-record API.' >&2
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP FUNCTION public.addie_matched_v4_private_settle(TEXT,TEXT,TEXT,TEXT,BIGINT)'
 
       - name: Reject every tampered runtime table privilege before recording evaluator schema
         env:
           DATABASE_URL: postgresql://addie_matched_v4_runtime_ci:${{ steps.runtime_password.outputs.value }}@127.0.0.1:5432/adcp_test
           ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED: "true"
+          PGPASSWORD: ${{ steps.runtime_password.outputs.value }}
         run: |
           set -euo pipefail
           expect_guard_rejection() {
@@ -214,10 +403,26 @@ jobs:
             if PGOPTIONS='-c role=addie_matched_v4_operator' \
               psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test \
                 --single-transaction -v ON_ERROR_STOP=1 \
-                -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql; then
-              echo "Evaluator migration retry accepted malformed custody ACL: $1" >&2
+                -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+              echo "Evaluator migration 585 retry accepted malformed custody ACL: $1" >&2
               exit 1
             fi
+          }
+          assert_attribute_shape_rejection() {
+            local database_name="$1"
+            local ddl="$2"
+            local description="$3"
+            PGOPTIONS= createdb -h 127.0.0.1 -U postgres -T adcp_test "$database_name"
+            PGOPTIONS= psql -h 127.0.0.1 -U postgres -d "$database_name" -v ON_ERROR_STOP=1 -c "$ddl"
+            if DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${PGPASSWORD}@127.0.0.1:5432/${database_name}" node dist/db/migrate.js; then
+              echo "Ordinary migrator accepted ${description}." >&2
+              exit 1
+            fi
+            if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d "$database_name" --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+              echo "Evaluator migration 585 accepted ${description}." >&2
+              exit 1
+            fi
+            PGOPTIONS= psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE ${database_name}"
           }
           restore_guard() {
             psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
@@ -225,6 +430,16 @@ jobs:
             psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
               'CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE OR DELETE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()'
           }
+          # The ordinary ledger is deliberately public-qualified. An app-owned
+          # schema earlier in search_path, pre-seeded to claim 584/585, must
+          # not suppress the public ledger's evaluator attestation.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            "CREATE SCHEMA mv4_shadow_ledger AUTHORIZATION addie_matched_v4_runtime_ci; CREATE TABLE mv4_shadow_ledger.schema_migrations (LIKE public.schema_migrations INCLUDING ALL); INSERT INTO mv4_shadow_ledger.schema_migrations SELECT * FROM public.schema_migrations; INSERT INTO mv4_shadow_ledger.schema_migrations (version, filename) VALUES (584, '584_addie_matched_v4_private_authority.sql'), (585, '585_addie_matched_v4_record_estimated_cost.sql'); GRANT SELECT ON public.addie_matched_v4_private_runs TO addie_matched_v4_runtime_ci"
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_runtime_ci SET search_path = mv4_shadow_ledger, public'
+          expect_guard_rejection 'search-path shadow migration ledger'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'ALTER ROLE addie_matched_v4_runtime_ci RESET search_path; REVOKE SELECT ON public.addie_matched_v4_private_runs FROM addie_matched_v4_runtime_ci; DROP SCHEMA mv4_shadow_ledger CASCADE'
           for privilege in TRUNCATE REFERENCES TRIGGER; do
             psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
               -c "GRANT ${privilege} ON public.addie_matched_v4_private_admissions TO addie_matched_v4_runtime"
@@ -235,6 +450,142 @@ jobs:
             psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
               -c "REVOKE ${privilege} ON public.addie_matched_v4_private_admissions FROM addie_matched_v4_runtime"
           done
+          # Per-column ACLs bypass has_table_privilege. Both attestors must
+          # reject them before an external migration record or admission.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT SELECT (reservation_id) ON public.addie_matched_v4_private_attempts TO addie_matched_v4_runtime'
+          expect_guard_rejection 'runtime column SELECT privilege'
+          expect_retry_rejection 'runtime column SELECT privilege'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE SELECT (reservation_id) ON public.addie_matched_v4_private_attempts FROM addie_matched_v4_runtime'
+          # Private table ACLs are insufficient if the runtime can reach its
+          # physical TOAST relation directly or through a non-prefixed view.
+          # Both attestors pin the no-TOAST-ACL/no-pg_toast-USAGE boundary and
+          # rewrite dependencies on the physical TOAST relation.
+          toast_relation=$(psql -h 127.0.0.1 -U postgres -d adcp_test -Atqc "SELECT reltoastrelid::regclass FROM pg_catalog.pg_class WHERE oid='public.addie_matched_v4_private_attempts'::regclass")
+          test -n "$toast_relation" || { echo 'Fixture missing evaluator attempts TOAST relation.' >&2; exit 1; }
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "GRANT USAGE ON SCHEMA pg_toast TO addie_matched_v4_runtime; GRANT SELECT ON TABLE ${toast_relation} TO addie_matched_v4_runtime"
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc \
+            "SELECT count(*) FROM ${toast_relation}" | grep -qx 0 || {
+              echo 'Fixture could not demonstrate direct evaluator TOAST exposure.' >&2
+              exit 1
+            }
+          expect_guard_rejection 'runtime TOAST table access'
+          expect_retry_rejection 'runtime TOAST table access'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "REVOKE SELECT ON TABLE ${toast_relation} FROM addie_matched_v4_runtime; REVOKE USAGE ON SCHEMA pg_toast FROM addie_matched_v4_runtime; GRANT USAGE ON SCHEMA pg_toast TO addie_matched_v4_runtime_ci; GRANT SELECT (chunk_id, chunk_seq, chunk_data) ON TABLE ${toast_relation} TO addie_matched_v4_runtime_ci"
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc \
+            "SELECT count(*) FROM ${toast_relation}" | grep -qx 0 || {
+              echo 'Fixture could not demonstrate direct app-principal TOAST-column exposure.' >&2
+              exit 1
+            }
+          expect_guard_rejection 'direct app-principal TOAST column access'
+          expect_retry_rejection 'direct app-principal TOAST column access'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "REVOKE SELECT (chunk_id, chunk_seq, chunk_data) ON TABLE ${toast_relation} FROM addie_matched_v4_runtime_ci; REVOKE USAGE ON SCHEMA pg_toast FROM addie_matched_v4_runtime_ci"
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "CREATE VIEW public.mv4_toast_runtime_leak AS SELECT chunk_id, chunk_seq, chunk_data FROM ${toast_relation}; GRANT SELECT ON public.mv4_toast_runtime_leak TO addie_matched_v4_runtime"
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc \
+            'SELECT count(*) FROM public.mv4_toast_runtime_leak' | grep -qx 0 || {
+              echo 'Fixture could not demonstrate evaluator TOAST-view exposure.' >&2
+              exit 1
+            }
+          expect_guard_rejection 'externally owned evaluator TOAST view'
+          expect_retry_rejection 'externally owned evaluator TOAST view'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP VIEW public.mv4_toast_runtime_leak'
+          # Durable custody evidence cannot live in an UNLOGGED relation.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_attempts SET UNLOGGED'
+          expect_guard_rejection 'unlogged evaluator attempts relation'
+          expect_retry_rejection 'unlogged evaluator attempts relation'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_attempts SET LOGGED'
+          # RLS can change what operator-owned SECURITY DEFINER APIs and
+          # guards see. No custody table may carry RLS flags or policies.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_attempts ENABLE ROW LEVEL SECURITY; ALTER TABLE public.addie_matched_v4_private_attempts FORCE ROW LEVEL SECURITY; CREATE POLICY mv4_tampered_attempt_policy ON public.addie_matched_v4_private_attempts USING (false) WITH CHECK (true)'
+          expect_guard_rejection 'RLS evaluator attempts relation'
+          expect_retry_rejection 'RLS evaluator attempts relation'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP POLICY mv4_tampered_attempt_policy ON public.addie_matched_v4_private_attempts; ALTER TABLE public.addie_matched_v4_private_attempts NO FORCE ROW LEVEL SECURITY; ALTER TABLE public.addie_matched_v4_private_attempts DISABLE ROW LEVEL SECURITY'
+          # Inheritance can route protected-table scans and DML across an
+          # unreviewed relation without changing the child table digest.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE TABLE public.mv4_untrusted_parent (reservation_id text NOT NULL); ALTER TABLE public.addie_matched_v4_private_runs INHERIT public.mv4_untrusted_parent'
+          expect_guard_rejection 'inherited evaluator runs relation'
+          expect_retry_rejection 'inherited evaluator runs relation'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_runs NO INHERIT public.mv4_untrusted_parent; DROP TABLE public.mv4_untrusted_parent'
+          # relhasrules remains sticky after DROP RULE, so exercise this
+          # adversarial shape in a disposable transformed clone.
+          PGOPTIONS= createdb -h 127.0.0.1 -U postgres -T adcp_test mv4_585_rewrite_rule
+          psql -h 127.0.0.1 -U postgres -d mv4_585_rewrite_rule -v ON_ERROR_STOP=1 \
+            -c "CREATE RULE mv4_tampered_attempt_rule AS ON INSERT TO public.addie_matched_v4_private_attempts DO ALSO UPDATE public.addie_matched_v4_private_runs SET dispatch_cap = 1584 WHERE reservation_id = NEW.reservation_id"
+          if DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${PGPASSWORD}@127.0.0.1:5432/mv4_585_rewrite_rule" node dist/db/migrate.js; then
+            echo 'Ordinary migrator accepted a rewrite-rule evaluator attempts relation.' >&2
+            exit 1
+          fi
+          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d mv4_585_rewrite_rule --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 accepted a rewrite-rule evaluator attempts relation.' >&2
+            exit 1
+          fi
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'DROP DATABASE mv4_585_rewrite_rule'
+          # The table digest pins column collation and identity/generated
+          # metadata. A dropped attribute keeps its attnum slot, so it must
+          # also fail rather than disappearing from the live-column digest.
+          assert_attribute_shape_rejection mv4_585_collation_shape \
+            'ALTER TABLE public.addie_matched_v4_private_attempts ALTER COLUMN assignment_id TYPE text COLLATE "C"' \
+            'evaluator column collation drift'
+          assert_attribute_shape_rejection mv4_585_identity_shape \
+            'ALTER TABLE public.addie_matched_v4_private_attempts ALTER COLUMN ordinal ADD GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME public.mv4_hidden_identity_seq)' \
+            'evaluator column identity drift'
+          assert_attribute_shape_rejection mv4_585_dropped_attribute_shape \
+            'ALTER TABLE public.addie_matched_v4_private_attempts ADD COLUMN discarded_probe text; ALTER TABLE public.addie_matched_v4_private_attempts DROP COLUMN discarded_probe' \
+            'dropped evaluator attribute slot'
+          # An arbitrary-name operator view can expose the table to runtime
+          # without granting that role direct table access. The dedicated
+          # operator object inventory and dependency check must reject it.
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE VIEW public.mv4_unprefixed_runtime_leak AS SELECT * FROM public.addie_matched_v4_private_attempts; GRANT SELECT ON public.mv4_unprefixed_runtime_leak TO addie_matched_v4_runtime'
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc \
+            'SELECT count(*) FROM public.mv4_unprefixed_runtime_leak' | grep -qx 0 || {
+              echo 'Fixture could not demonstrate unprefixed evaluator-view exposure.' >&2
+              exit 1
+            }
+          expect_guard_rejection 'unprefixed operator-owned evaluator view'
+          expect_retry_rejection 'unprefixed operator-owned evaluator view'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP VIEW public.mv4_unprefixed_runtime_leak'
+          # The dependency check covers an equally dangerous view owned by a
+          # different control-plane role, where the operator inventory alone
+          # remains canonical.
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE VIEW public.mv4_unprefixed_external_leak AS SELECT * FROM public.addie_matched_v4_private_attempts; GRANT SELECT ON public.mv4_unprefixed_external_leak TO addie_matched_v4_runtime'
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc \
+            'SELECT count(*) FROM public.mv4_unprefixed_external_leak' | grep -qx 0 || {
+              echo 'Fixture could not demonstrate externally-owned evaluator-view exposure.' >&2
+              exit 1
+            }
+          expect_guard_rejection 'externally owned evaluator-dependent view'
+          expect_retry_rejection 'externally owned evaluator-dependent view'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP VIEW public.mv4_unprefixed_external_leak'
+          # The same complete inventory closes arbitrary-name SECURITY
+          # DEFINER helper routes owned by the dedicated operator.
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "CREATE FUNCTION public.mv4_unprefixed_runtime_helper() RETURNS bigint LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog AS \$\$ SELECT count(*) FROM public.addie_matched_v4_private_attempts \$\$; GRANT EXECUTE ON FUNCTION public.mv4_unprefixed_runtime_helper() TO addie_matched_v4_runtime"
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc \
+            'SELECT public.mv4_unprefixed_runtime_helper()' | grep -qx 0 || {
+              echo 'Fixture could not demonstrate arbitrary helper exposure.' >&2
+              exit 1
+            }
+          expect_guard_rejection 'unprefixed operator-owned SECURITY DEFINER helper'
+          expect_retry_rejection 'unprefixed operator-owned SECURITY DEFINER helper'
+          PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'DROP FUNCTION public.mv4_unprefixed_runtime_helper()'
           # PUBLIC ACLs are independent of runtime-role ACLs and must not
           # become an alternate evaluator-table or SECURITY DEFINER route.
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
@@ -255,6 +606,79 @@ jobs:
           expect_retry_rejection 'PUBLIC evaluator function access'
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
             -c 'REVOKE EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) FROM PUBLIC'
+          # Schema CREATE provides a post-attestation path to inject public
+          # objects. Runtime needs only USAGE to resolve its scoped APIs.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT CREATE ON SCHEMA public TO addie_matched_v4_runtime'
+          expect_guard_rejection 'runtime schema CREATE privilege'
+          expect_retry_rejection 'runtime schema CREATE privilege'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE CREATE ON SCHEMA public FROM addie_matched_v4_runtime'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci'
+          expect_guard_rejection 'direct app-principal schema CREATE privilege'
+          # The protected admission workflow invokes transformed 585 directly
+          # before INSERT. Its common role attestation must reject the actual
+          # bridge login too, not only the static runtime role.
+          expect_retry_rejection 'direct app-principal schema CREATE privilege'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE CREATE ON SCHEMA public FROM addie_matched_v4_runtime_ci'
+          # The normal application migrator must pin the authenticated bridge
+          # flags, not just its membership in the sealed runtime role.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_runtime_ci CREATEDB'
+          expect_guard_rejection 'elevated direct app-principal role'
+          expect_retry_rejection 'elevated direct app-principal role'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE addie_matched_v4_runtime_ci NOCREATEDB'
+          # The ordinary migrator independently checks the same sealed static
+          # role graph before it can record the external migration ledger.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE mv4_operator_escalation_runtime NOLOGIN CREATEROLE; GRANT mv4_operator_escalation_runtime TO addie_matched_v4_operator WITH INHERIT FALSE, SET TRUE, ADMIN FALSE'
+          expect_guard_rejection 'static operator parent-role escalation'
+          expect_retry_rejection 'static operator parent-role escalation'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE mv4_operator_escalation_runtime FROM addie_matched_v4_operator; DROP ROLE mv4_operator_escalation_runtime'
+          # PostgreSQL treats a comma-separated privilege list as OR. The
+          # ordinary validator must independently require both operator
+          # schema capabilities, matching 585's exact retry attestation.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE CREATE ON SCHEMA public FROM addie_matched_v4_operator'
+          expect_guard_rejection 'missing operator schema CREATE privilege'
+          expect_retry_rejection 'missing operator schema CREATE privilege'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT CREATE ON SCHEMA public TO addie_matched_v4_operator'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT CREATE ON SCHEMA public TO PUBLIC'
+          expect_guard_rejection 'PUBLIC schema CREATE privilege'
+          expect_retry_rejection 'PUBLIC schema CREATE privilege'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE CREATE ON SCHEMA public FROM PUBLIC'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE USAGE ON SCHEMA public FROM PUBLIC, addie_matched_v4_runtime'
+          expect_guard_rejection 'missing runtime schema USAGE privilege'
+          expect_retry_rejection 'missing runtime schema USAGE privilege'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT USAGE ON SCHEMA public TO PUBLIC, addie_matched_v4_runtime'
+          # Trigger guards are not runtime APIs. A direct runtime grant to a
+          # guard must fail both ordinary runtime attestation and 585 retry.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT EXECUTE ON FUNCTION public.addie_matched_v4_private_attempt_guard() TO addie_matched_v4_runtime'
+          expect_guard_rejection 'runtime EXECUTE on attempt guard'
+          expect_retry_rejection 'runtime EXECUTE on attempt guard'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE EXECUTE ON FUNCTION public.addie_matched_v4_private_attempt_guard() FROM addie_matched_v4_runtime'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) TO addie_matched_v4_runtime WITH GRANT OPTION'
+          expect_retry_rejection 'runtime EXECUTE grant option'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE GRANT OPTION FOR EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) FROM addie_matched_v4_runtime'
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'GRANT EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) TO addie_matched_v4_operator WITH GRANT OPTION'
+          expect_guard_rejection 'operator EXECUTE grant option'
+          expect_retry_rejection 'operator EXECUTE grant option'
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'REVOKE GRANT OPTION FOR EXECUTE ON FUNCTION public.addie_matched_v4_private_halt(text,text) FROM addie_matched_v4_operator'
           # Function identity is more than name/signature: a configuration
           # change alters pg_get_functiondef and must fail its digest pin.
           PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
@@ -270,6 +694,30 @@ jobs:
           fi
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
             -c 'ALTER TABLE public.addie_matched_v4_private_attempts ENABLE TRIGGER addie_matched_v4_private_attempt_guard'
+          # The attempt foreign key is enforced by internal RI triggers. Its
+          # SQL definition remains unchanged when one is disabled, so both
+          # attestors must pin the enforcement state independently.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE enforcement_trigger name;
+          BEGIN
+            SELECT t.tgname INTO enforcement_trigger
+            FROM pg_catalog.pg_trigger t
+            JOIN pg_catalog.pg_constraint c ON c.oid=t.tgconstraint
+            WHERE t.tgisinternal AND c.contype='f'
+              AND t.tgrelid='public.addie_matched_v4_private_attempts'::regclass
+              AND c.conrelid='public.addie_matched_v4_private_attempts'::regclass
+            ORDER BY t.oid LIMIT 1;
+            IF enforcement_trigger IS NULL THEN
+              RAISE EXCEPTION 'matched-v4 fixture missing internal FK enforcement trigger';
+            END IF;
+            EXECUTE format('ALTER TABLE public.addie_matched_v4_private_attempts DISABLE TRIGGER %I', enforcement_trigger);
+          END $$;
+          SQL
+          expect_guard_rejection 'disabled internal foreign-key enforcement trigger'
+          expect_retry_rejection 'disabled internal foreign-key enforcement trigger'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
+            -c 'ALTER TABLE public.addie_matched_v4_private_attempts ENABLE TRIGGER ALL'
           # A same-named trigger on another table/schema cannot substitute for
           # the exact public attempts-table guard.
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
@@ -290,10 +738,17 @@ jobs:
           expect_guard_rejection 'WHEN false cap-guard bypass'
           # Retry preflight is independently fail-closed: it must not use its
           # CREATE/DROP statements to repair a malformed existing guard.
-          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql; then
-            echo 'Evaluator migration retry repaired an inert cap guard.' >&2
+          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 retry repaired an inert cap guard.' >&2
             exit 1
           fi
+          restore_guard
+          # tgtype omits UPDATE OF column filters. A cap guard that skips
+          # terminal-record updates is not the canonical all-column guard.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP TRIGGER addie_matched_v4_private_attempt_guard ON public.addie_matched_v4_private_attempts; CREATE TRIGGER addie_matched_v4_private_attempt_guard BEFORE INSERT OR UPDATE OF assignment_id OR DELETE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_attempt_guard()'
+          expect_guard_rejection 'column-filtered cap guard'
+          expect_retry_rejection 'column-filtered cap guard'
           restore_guard
           # Exact OID alone is insufficient: event/timing/row shape is part of
           # the cap guard contract, and each malformed shape must fail closed.
@@ -323,12 +778,111 @@ jobs:
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
             "CREATE FUNCTION public.mv4_extra_custody_trigger() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN NEW.status := NEW.status; RETURN NEW; END \$\$; CREATE TRIGGER mv4_extra_custody_trigger BEFORE INSERT ON public.addie_matched_v4_private_runs FOR EACH ROW EXECUTE FUNCTION public.mv4_extra_custody_trigger()"
           expect_guard_rejection 'unexpected custody-table trigger'
-          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql; then
-            echo 'Evaluator migration retry accepted an extra custody-table trigger.' >&2
+          if PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql; then
+            echo 'Evaluator migration 585 retry accepted an extra custody-table trigger.' >&2
             exit 1
           fi
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
             'DROP TRIGGER mv4_extra_custody_trigger ON public.addie_matched_v4_private_runs; DROP FUNCTION public.mv4_extra_custody_trigger()'
+          # A transformed retry is an attestation, not a repair path. In
+          # particular, CREATE OR REPLACE would preserve a malicious guard
+          # owner, so both the old preflight and transformed retry pin it.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'ALTER FUNCTION public.addie_matched_v4_private_attempt_guard() OWNER TO addie_matched_v4_provisioner_ci'
+          expect_retry_rejection 'wrong attempt-guard owner'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'ALTER FUNCTION public.addie_matched_v4_private_attempt_guard() OWNER TO addie_matched_v4_operator'
+          # Missing the shared append-only guard is not equivalent to an
+          # empty ACL. Remove its dependent canonical triggers as well, prove
+          # rejection, then restore the exact executable trigger topology.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP TRIGGER addie_matched_v4_private_runs_append_only_guard ON public.addie_matched_v4_private_runs; DROP TRIGGER addie_matched_v4_private_admissions_append_only_guard ON public.addie_matched_v4_private_admissions; DROP TRIGGER addie_matched_v4_private_attempts_append_only_guard ON public.addie_matched_v4_private_attempts; DROP FUNCTION public.addie_matched_v4_private_append_only_guard()'
+          expect_retry_rejection 'missing append-only guard function'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE OR REPLACE FUNCTION public.addie_matched_v4_private_append_only_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN
+            RAISE EXCEPTION 'matched-v4 evaluator custody is append-only';
+          END $$;
+          ALTER FUNCTION public.addie_matched_v4_private_append_only_guard() OWNER TO addie_matched_v4_operator;
+          REVOKE ALL ON FUNCTION public.addie_matched_v4_private_append_only_guard() FROM PUBLIC, addie_matched_v4_runtime;
+          CREATE TRIGGER addie_matched_v4_private_runs_append_only_guard BEFORE DELETE ON public.addie_matched_v4_private_runs FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_append_only_guard();
+          CREATE TRIGGER addie_matched_v4_private_admissions_append_only_guard BEFORE DELETE ON public.addie_matched_v4_private_admissions FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_append_only_guard();
+          CREATE TRIGGER addie_matched_v4_private_attempts_append_only_guard BEFORE DELETE ON public.addie_matched_v4_private_attempts FOR EACH ROW EXECUTE FUNCTION public.addie_matched_v4_private_append_only_guard();
+          SQL
+          # Restoration itself must satisfy 585's read-only exact attestation;
+          # later adversarial rejections may not rely on stale guard drift.
+          PGOPTIONS='-c role=addie_matched_v4_operator' \
+            psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test \
+              --single-transaction -v ON_ERROR_STOP=1 \
+              -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
+          # A similarly named extra function must make the exact public API
+          # set fail closed even though no trigger points to it.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            "CREATE FUNCTION public.addie_matched_v4_private_unexpected() RETURNS boolean LANGUAGE sql AS 'SELECT true'"
+          expect_retry_rejection 'extra private function'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP FUNCTION public.addie_matched_v4_private_unexpected()'
+          # A non-table prefixed relation must not hide outside the three
+          # custody-table digests. Both attestors inventory all relation kinds.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'CREATE VIEW public.addie_matched_v4_private_shadow_relation AS SELECT 1 AS id'
+          expect_guard_rejection 'unexpected prefixed view'
+          expect_retry_rejection 'unexpected prefixed view'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP VIEW public.addie_matched_v4_private_shadow_relation'
+          # Incoming foreign keys add internal RI triggers on the referenced
+          # custody table. The exact internal-trigger inventory must reject
+          # that otherwise external-looking schema mutation.
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'CREATE TABLE public.mv4_incoming_fk_probe (reservation_id text REFERENCES public.addie_matched_v4_private_runs(reservation_id))'
+          expect_guard_rejection 'incoming foreign-key internal trigger'
+          expect_retry_rejection 'incoming foreign-key internal trigger'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c \
+            'DROP TABLE public.mv4_incoming_fk_probe'
+          # Hold the exact 585 attestation window in one session. Direct table
+          # DDL is blocked by 585's relation lock. Protected evaluator function
+          # and ACL changes take the same documented transaction advisory key.
+          PGAPPNAME=mv4_attested_sleep PGOPTIONS='-c role=addie_matched_v4_operator' \
+            psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+              -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql -c 'SELECT pg_sleep(3)' \
+              >/tmp/mv4-attestation-lock.out 2>&1 &
+          attestation_pid=$!
+          attestation_started=false
+          for _ in $(seq 1 100); do
+            if PGOPTIONS= psql -h 127.0.0.1 -U postgres -d adcp_test -Atqc \
+              "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE application_name='mv4_attested_sleep' AND query LIKE 'SELECT pg_sleep%')" | grep -qx t; then attestation_started=true; break; fi
+            sleep 0.1
+          done
+          test "$attestation_started" = true || { echo 'Transformed attestation did not start.' >&2; exit 1; }
+          # Operator-held ACCESS SHARE excludes table-shape DDL without
+          # blocking ordinary runtime reserve/intent calls.
+          psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1 \
+            -c "SELECT public.addie_matched_v4_private_reserve('mv4_33333333333333333333333333333333','screening',repeat('a',64),1)" \
+            -c "SELECT public.addie_matched_v4_private_intent('mv4_33333333333333333333333333333333','mv4_attempt_33333333333333333333333333333333','ci-attestation-lock',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64))"
+          runtime_direct_access=$(psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -Atqc "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid IN ('public.addie_matched_v4_private_runs'::regclass,'public.addie_matched_v4_private_admissions'::regclass,'public.addie_matched_v4_private_attempts'::regclass) AND (has_table_privilege(current_user,c.oid,'SELECT') OR has_table_privilege(current_user,c.oid,'INSERT') OR has_table_privilege(current_user,c.oid,'UPDATE') OR has_table_privilege(current_user,c.oid,'DELETE') OR has_table_privilege(current_user,c.oid,'TRUNCATE') OR has_table_privilege(current_user,c.oid,'REFERENCES') OR has_table_privilege(current_user,c.oid,'TRIGGER'))) OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid IN ('public.addie_matched_v4_private_runs'::regclass,'public.addie_matched_v4_private_admissions'::regclass,'public.addie_matched_v4_private_attempts'::regclass) AND a.attnum > 0 AND NOT a.attisdropped AND (has_column_privilege(current_user,a.attrelid,a.attnum,'SELECT') OR has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT') OR has_column_privilege(current_user,a.attrelid,a.attnum,'UPDATE') OR has_column_privilege(current_user,a.attrelid,a.attnum,'REFERENCES')))")
+          test "$runtime_direct_access" = f || {
+            echo 'Runtime principal unexpectedly has direct evaluator table or column access.' >&2
+            exit 1
+          }
+          if PGOPTIONS='-c role=addie_matched_v4_operator' \
+            psql -h 127.0.0.1 -U postgres -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+              -c "SET LOCAL statement_timeout = '500ms'" \
+              -c 'ALTER TABLE public.addie_matched_v4_private_attempts ADD COLUMN concurrent_tamper boolean'; then
+            echo 'Concurrent evaluator table DDL bypassed the 585 attestation lock.' >&2
+            exit 1
+          fi
+          if PGOPTIONS='-c role=addie_matched_v4_operator' \
+            psql -h 127.0.0.1 -U postgres -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+              -c "SET LOCAL statement_timeout = '500ms'" \
+              -c 'SELECT pg_advisory_xact_lock(584585)' \
+              -c 'ALTER FUNCTION public.addie_matched_v4_private_halt(text,text) OWNER TO addie_matched_v4_operator'; then
+            echo 'Concurrent evaluator function DDL bypassed the shared attestation lock.' >&2
+            exit 1
+          fi
+          wait "$attestation_pid"
+          PGOPTIONS='-c role=addie_matched_v4_operator' \
+            psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 \
+              -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
           # A grant directly to the login is distinct from a grant to its
           # inherited evaluator runtime role and must be rejected pre-record.
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 \
@@ -369,11 +923,11 @@ jobs:
         run: |
           set -euo pipefail
           RUNTIME=(psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1)
-          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_33333333333333333333333333333333','screening',repeat('a',64),1) AS runtime_can_reserve"
-          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_33333333333333333333333333333333','mv4_attempt_33333333333333333333333333333333','ci-runtime',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64)) AS runtime_can_intent"
-          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_settle('mv4_33333333333333333333333333333333','mv4_attempt_33333333333333333333333333333333','settled',repeat('d',64),1) AS runtime_can_settle"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_55555555555555555555555555555555','screening',repeat('a',64),1) AS runtime_can_reserve"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_55555555555555555555555555555555','mv4_attempt_55555555555555555555555555555555','ci-runtime',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64)) AS runtime_can_intent"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_record_response_usage('mv4_55555555555555555555555555555555','mv4_attempt_55555555555555555555555555555555','response_usage_recorded',repeat('d',64),1) AS runtime_can_record_response_usage"
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reconcile('mv4_00000000000000000000000000000000') AS runtime_can_execute_scoped_function"
-          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_halt('mv4_33333333333333333333333333333333','ci') AS runtime_can_halt"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_halt('mv4_55555555555555555555555555555555','ci') AS runtime_can_halt"
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_claim_admission(repeat('0',40),repeat('0',64),'not-authorized') AS runtime_can_execute_claim_function"
           if "${RUNTIME[@]}" -c 'SET ROLE addie_matched_v4_operator'; then exit 1; fi
           if "${RUNTIME[@]}" -c "INSERT INTO public.addie_matched_v4_private_admissions (admission_id,merge_sha,authority_manifest_sha256,operator_gate_id,status) VALUES ('mv4_admission_00000000000000000000000000000000',repeat('0',40),repeat('0',64),'ci-denied','operator_authorized')"; then exit 1; fi
@@ -440,7 +994,7 @@ jobs:
           for migration in server/src/db/migrations/*.sql; do
             filename="${migration##*/}"
             version="${filename%%_*}"
-            if [ "$version" != '584' ]; then
+            if [ "$version" != '584' ] && [ "$version" != '585' ]; then
               psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (version, filename) VALUES (${version#0}, '${filename}')"
             fi
           done
@@ -460,7 +1014,7 @@ jobs:
           GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_provisioner_ci WITH GRANT OPTION;
           CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
           GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
-          GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_runtime_ci;
+          GRANT USAGE ON SCHEMA public TO addie_matched_v4_runtime;
           GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
           GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
           GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_operator;
@@ -469,11 +1023,13 @@ jobs:
           psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto' -v runtime_principal=addie_matched_v4_runtime_ci -v migration_principal=addie_matched_v4_provisioner_ci -f server/scripts/addie-matched-v4-role-bootstrap.sql
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) = 2 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_runtime'::regrole AND member = 'addie_matched_v4_runtime_ci'::regrole AND inherit_option AND NOT set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_operator'::regrole, 'addie_matched_v4_provisioner_ci'::regrole)) = 1 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_operator'::regrole AND member = 'addie_matched_v4_provisioner_ci'::regrole AND NOT inherit_option AND set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_runtime'::regrole, 'addie_matched_v4_runtime_ci'::regrole)) = 1 FROM pg_auth_members WHERE roleid IN ('addie_matched_v4_runtime'::regrole, 'addie_matched_v4_operator'::regrole)" | grep -qx t || { echo 'Upgrade bootstrap left an unintended evaluator runtime/operator membership bridge.' >&2; exit 1; }
           PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/584_addie_matched_v4_private_authority.sql
+          PGOPTIONS='-c role=addie_matched_v4_operator' psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -f server/src/db/migrations/585_addie_matched_v4_record_estimated_cost.sql
           npx tsc --project server/tsconfig.json
           mkdir -p dist/db
           cp -R server/src/db/migrations dist/db/migrations
           ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=true DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${RUNTIME_PASSWORD}@127.0.0.1:5432/adcp_test" node dist/db/migrate.js
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc "SELECT filename FROM schema_migrations WHERE version = 584" | grep -qx '584_addie_matched_v4_private_authority.sql'
+          psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc "SELECT filename FROM schema_migrations WHERE version = 585" | grep -qx '585_addie_matched_v4_record_estimated_cost.sql'
           DATABASE_URL="postgresql://addie_matched_v4_runtime_ci:${RUNTIME_PASSWORD}@127.0.0.1:5432/adcp_test" node dist/db/migrate.js
 
       - name: Assert upgrade runtime API and operator boundary
@@ -484,7 +1040,7 @@ jobs:
           RUNTIME=(psql -h 127.0.0.1 -U addie_matched_v4_runtime_ci -d adcp_test -v ON_ERROR_STOP=1)
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reserve('mv4_44444444444444444444444444444444','screening',repeat('a',64),1) AS upgrade_runtime_can_reserve"
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_intent('mv4_44444444444444444444444444444444','mv4_attempt_44444444444444444444444444444444','ci-runtime',1,repeat('b',64),clock_timestamp(),'standard','ci',repeat('c',64)) AS upgrade_runtime_can_intent"
-          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_settle('mv4_44444444444444444444444444444444','mv4_attempt_44444444444444444444444444444444','settled',repeat('d',64),1) AS upgrade_runtime_can_settle"
+          "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_record_response_usage('mv4_44444444444444444444444444444444','mv4_attempt_44444444444444444444444444444444','response_usage_recorded',repeat('d',64),1) AS upgrade_runtime_can_record_response_usage"
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_reconcile('mv4_00000000000000000000000000000000') AS upgrade_runtime_can_reconcile"
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_halt('mv4_44444444444444444444444444444444','ci') AS upgrade_runtime_can_halt"
           "${RUNTIME[@]}" -c "SELECT public.addie_matched_v4_private_claim_admission(repeat('0',40),repeat('0',64),'not-authorized') AS upgrade_runtime_can_claim"

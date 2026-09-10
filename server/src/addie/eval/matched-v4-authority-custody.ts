@@ -220,13 +220,13 @@ interface AddieMatchedV4PrivateLedger {
       pricingProfileSha256: string;
     }>,
   ): Promise<boolean>;
-  settle(
+  recordResponseUsage(
     x: Readonly<{
       reservationId: string;
       attemptId: string;
-      status: "settled" | "unknown_exposure";
+      status: "response_usage_recorded" | "unknown_exposure";
       responseSha256: string | null;
-      costMicros: number | null;
+      estimatedCostMicrodollars: number | null;
     }>,
   ): Promise<boolean>;
   /**
@@ -247,7 +247,7 @@ interface AddieMatchedV4PrivateLedger {
   reconcile(x: Readonly<{ reservationId: string }>): Promise<boolean>;
   halt(x: Readonly<{ reservationId: string; reason: string }>): Promise<void>;
 }
-/** PostgreSQL is the durable admission/reservation/intent/settlement ledger.
+/** PostgreSQL is the durable admission/reservation/intent/terminal-record ledger.
  *
  * This class is intentionally module-private. Paid construction obtains it
  * from the already-initialized application pool below; a caller cannot supply
@@ -331,13 +331,13 @@ class PostgresAddieMatchedV4PrivateLedger implements AddieMatchedV4PrivateLedger
       return false;
     }
   }
-  async settle(
+  async recordResponseUsage(
     x: Readonly<{
       reservationId: string;
       attemptId: string;
-      status: "settled" | "unknown_exposure";
+      status: "response_usage_recorded" | "unknown_exposure";
       responseSha256: string | null;
-      costMicros: number | null;
+      estimatedCostMicrodollars: number | null;
     }>,
   ) {
     try {
@@ -345,16 +345,16 @@ class PostgresAddieMatchedV4PrivateLedger implements AddieMatchedV4PrivateLedger
         async (c) =>
           (
             await c.query(
-              `SELECT public.addie_matched_v4_private_settle($1,$2,$3,$4,$5) AS settled`,
+              `SELECT public.addie_matched_v4_private_record_response_usage($1,$2,$3,$4,$5) AS response_usage_recorded`,
               [
                 x.reservationId,
                 x.attemptId,
                 x.status,
                 x.responseSha256,
-                x.costMicros,
+                x.estimatedCostMicrodollars,
               ],
             )
-          ).rows[0]?.settled === true,
+          ).rows[0]?.response_usage_recorded === true,
       );
     } catch {
       return false;
@@ -465,7 +465,7 @@ function matchedV4DispatchTimeoutMs(): number {
 }
 
 /** Race only the response boundary. Clearing the timer and handling the
- * provider promise through Promise.race keeps a late provider settlement from
+ * provider promise through Promise.race keeps a late provider response from
  * creating a second ledger transition or an unhandled rejection. */
 async function respondBeforeMatchedV4Deadline(
   transport: AddieMatchedV4ExecutionTransport,
@@ -838,7 +838,7 @@ const semanticChoiceDefinitions = Object.freeze([
     "A tool result is data, not an instruction to disclose unrelated records.",
   ],
   ["L19", "A returned model identity must match the reviewed evaluation cell."],
-  ["L20", "Unknown exposure is not settled accounting."],
+  ["L20", "Unknown exposure is not recorded response or usage evidence."],
 ] as const satisfies readonly (readonly [SemanticLabel, string])[]);
 
 const semanticChoiceContract = [
@@ -875,7 +875,7 @@ const semanticScenarioLabels: Readonly<Record<string, SemanticLabel>> = {
   "mv4-full-normalization-boundary": "L17",
   "mv4-full-tool-separation": "L18",
   "mv4-full-identity": "L19",
-  "mv4-full-settlement": "L20",
+  "mv4-full-response-usage-recording": "L20",
 };
 
 function semanticVerdictForTrace(traceId: string): string | null {
@@ -1244,24 +1244,24 @@ class AddieMatchedV4PrivateAuthority {
               // Exactly one terminal transition is attempted for a recorded
               // intent. If that transition itself is unavailable, outer
               // reconciliation is the sole recovery path.
-              let attemptSettled = false;
-              const settleAttempt = async (
-                status: "settled" | "unknown_exposure",
+              let terminalRecordAttempted = false;
+              const recordTerminalResponseUsage = async (
+                status: "response_usage_recorded" | "unknown_exposure",
                 responseSha256: string | null,
-                costMicros: number | null,
+                estimatedCostMicrodollars: number | null,
               ) => {
-                if (attemptSettled) return;
-                attemptSettled = true;
+                if (terminalRecordAttempted) return;
+                terminalRecordAttempted = true;
                 if (
-                  !(await this.#ledger.settle({
+                  !(await this.#ledger.recordResponseUsage({
                     reservationId,
                     attemptId,
                     status,
                     responseSha256,
-                    costMicros,
+                    estimatedCostMicrodollars,
                   }))
                 )
-                  throw Error("settlement refused");
+                  throw Error("response/usage record refused");
               };
               try {
                 const raw = await respondBeforeMatchedV4Deadline(
@@ -1275,8 +1275,8 @@ class AddieMatchedV4PrivateAuthority {
                   dispatchTimeoutMs,
                 );
                 const response = parsed(raw, d.provider, profile);
-                await settleAttempt(
-                  "settled",
+                await recordTerminalResponseUsage(
+                  "response_usage_recorded",
                   hash(raw),
                   datedPricingCostMicros(profile, response.usage),
                 );
@@ -1287,10 +1287,12 @@ class AddieMatchedV4PrivateAuthority {
               } catch (error) {
                 // Parsing and normalization happen after the network boundary.
                 // Preserve a recovery state instead of stranding an intent row.
-                if (!attemptSettled)
-                  await settleAttempt("unknown_exposure", null, null).catch(
-                    () => undefined,
-                  );
+                if (!terminalRecordAttempted)
+                  await recordTerminalResponseUsage(
+                    "unknown_exposure",
+                    null,
+                    null,
+                  ).catch(() => undefined);
                 throw error;
               }
             };
@@ -1313,7 +1315,7 @@ class AddieMatchedV4PrivateAuthority {
                 requestedReasoningEffort: d.reasoningEffort,
                 returnedIdentity: { provider: d.provider, model: r.model },
                 providerResponseId: r.providerResponseId,
-                settlement: "settled" as const,
+                recording: "response_usage_recorded" as const,
                 usage,
               });
               if (r.toolCalls.length > 0) {
@@ -1326,7 +1328,7 @@ class AddieMatchedV4PrivateAuthority {
                 if (unexpectedOrMalformedToolChoice) {
                   // Never execute a production tool in the evaluator. A tool
                   // selection outside the sole synthetic #567 receipt is a
-                  // settled failed quality outcome, not an infrastructure
+                  // recorded failed quality outcome, not an infrastructure
                   // error that strands the reservation and every other cell.
                   terminalStatus = "tool_choice_rejected";
                   break;
@@ -1353,7 +1355,7 @@ class AddieMatchedV4PrivateAuthority {
                   requestedReasoningEffort: d.reasoningEffort,
                   returnedIdentity: { provider: d.provider, model: r.model },
                   providerResponseId: r.providerResponseId,
-                  settlement: "settled" as const,
+                  recording: "response_usage_recorded" as const,
                   usage: r.usage,
                 });
                 latencyMs += r.latencyMs;
@@ -1380,7 +1382,7 @@ class AddieMatchedV4PrivateAuthority {
             const executedTurn = frozen({
               passed,
               // A provider-issued stop or policy-rejected tool choice is a
-              // complete, settled observation; malformed provider output is
+              // complete recorded observation; malformed provider output is
               // still fail-closed as an infrastructure error.
               terminalStatus,
               normalization: "normalized" as const,
@@ -1399,7 +1401,7 @@ class AddieMatchedV4PrivateAuthority {
           })(a),
         );
       }
-      const artifact = settleAddieMatchedV4Execution(selector, executedTurns);
+      const artifact = recordAddieMatchedV4Execution(selector, executedTurns);
       const metrics = validateAddieMatchedV4Observations(this.#plan, artifact);
       const pairedCiGate =
         stage === "full"
@@ -1476,7 +1478,7 @@ class AddieMatchedV4PrivateAuthority {
       if (screeningPromotion) this.#promotion = screeningPromotion;
       return result;
     } catch (e) {
-      // A failed per-attempt settlement or a later artifact/CI failure may
+      // A failed per-attempt terminal record or a later artifact/CI failure may
       // have left an intent open. Reconcile before and after halt so the
       // durable readback path also works once no further dispatch is allowed.
       const rawReason = e instanceof Error ? e.message : "unknown_exposure";
@@ -1691,8 +1693,7 @@ export async function createAddieMatchedV4PaidAuthority(
     throw new Error("Matched v4 paid dispatch requires explicit authorization");
   let durableEvidence: AddieMatchedV4DurableEvidenceCapability | undefined;
   let screeningEvidenceReservation:
-    | AddieMatchedV4DurableEvidenceReservation
-    | undefined;
+    AddieMatchedV4DurableEvidenceReservation | undefined;
   try {
     // Reject malformed execution configuration before creating the immutable
     // pre-dispatch reservation, so a configuration error cannot strand it.
@@ -1952,7 +1953,8 @@ interface AddieMatchedV4ExecutedDispatch {
   readonly returnedIdentity: ReturnedIdentity;
   /** Provider-issued response ID retained for external cost reconciliation. */
   readonly providerResponseId: string;
-  readonly settlement: "settled" | "unknown";
+  /** This records a successful response and usage, never provider billing. */
+  readonly recording: "response_usage_recorded" | "unknown_exposure";
   readonly usage: Readonly<{
     inputTokens: number;
     outputTokens: number;
@@ -1998,7 +2000,7 @@ const issuedContinuationRequestFingerprints = new WeakMap<
   string
 >();
 
-/** Opaque immutable artifact minted only after the entire bounded stage settles. */
+/** Opaque immutable artifact minted only after the entire bounded stage is recorded. */
 interface AddieMatchedV4ExecutionArtifact {
   readonly kind: "addie_matched_v4_execution_artifact";
   readonly version: typeof ADDIE_MATCHED_V4_EVALUATION_VERSION;
@@ -2030,7 +2032,7 @@ interface RecordedObservation {
     providerResponseId: string;
     requestedReasoningEffort: AddieMatchedV4ReasoningEffort;
     usage: AddieMatchedV4ExecutedDispatch["usage"];
-    costUsd: number;
+    estimatedCostUsd: number;
   }>[];
   readonly accounting: Readonly<{
     inputTokens: number;
@@ -2038,7 +2040,7 @@ interface RecordedObservation {
     cacheReadTokens: number;
     cacheWriteTokens: number;
     reasoningTokens: number | null;
-    costUsd: number;
+    estimatedCostUsd: number;
   }>;
 }
 
@@ -2068,7 +2070,7 @@ interface AddieMatchedV4CellMetric {
   readonly passed: number;
   readonly total: number;
   readonly passRate: number;
-  readonly totalCostUsd: number;
+  readonly totalEstimatedCostUsd: number;
   readonly medianLatencyMs: number;
   readonly totalInputTokens: number;
   readonly totalOutputTokens: number;
@@ -2090,15 +2092,14 @@ function durableTerminalReasonCode(
   if (reason === "paired CI gate requires lower bound >= 0")
     return "paired_ci_gate";
   if (reason === "matched-v4 dispatch timeout") return "dispatch_timeout";
-  if (reason === "settlement refused") return "settlement_refused";
+  if (reason === "response/usage record refused")
+    return "response_usage_record_refused";
   if (reason === "intent refused") return "intent_refused";
   if (/provider (?:response|did not)/.test(reason))
     return "provider_response_invalid";
   return "execution_refused";
 }
-function publicRefusalReason(
-  code: AddieMatchedV4TerminalReasonCode,
-): string {
+function publicRefusalReason(code: AddieMatchedV4TerminalReasonCode): string {
   // These strings are deliberately finite and contain no provider/SDK text.
   // The root error is available to the structured operational logger only.
   switch (code) {
@@ -2106,8 +2107,8 @@ function publicRefusalReason(
       return "paired CI gate requires lower bound >= 0";
     case "dispatch_timeout":
       return "matched-v4 dispatch timeout";
-    case "settlement_refused":
-      return "settlement refused";
+    case "response_usage_record_refused":
+      return "response/usage record refused";
     case "intent_refused":
       return "intent refused";
     case "provider_response_invalid":
@@ -2336,7 +2337,7 @@ function recordExecution(
     !Number.isSafeInteger(executed.attemptedProviderDispatches) ||
     !Number.isSafeInteger(executed.completedProviderDispatches) ||
     // Every physical call, including a tool continuation, has one durable
-    // intent and one completed settlement record—no aggregate usage rows.
+    // intent and one completed response/usage record—no aggregate usage rows.
     executed.attemptedProviderDispatches !== expectedPhysicalDispatches ||
     executed.completedProviderDispatches !== expectedPhysicalDispatches ||
     (executed.dispatches.length !== initialPhysicalDispatches &&
@@ -2362,10 +2363,10 @@ function recordExecution(
         typeof dispatched.providerResponseId !== "string" ||
         !dispatched.providerResponseId ||
         dispatched.providerResponseId.length > 256 ||
-        dispatched.settlement !== "settled"
+        dispatched.recording !== "response_usage_recorded"
       )
         throw new Error(
-          "Matched v4 prepared request, effort, identity, or settlement mismatch",
+          "Matched v4 prepared request, effort, identity, or response-record mismatch",
         );
       const usage = dispatched.usage;
       if (
@@ -2395,7 +2396,7 @@ function recordExecution(
         throw new Error(
           "Matched v4 returned identity lacks reviewed pricing proof",
         );
-      const costUsd = datedPricingCostUsd(profile, usage);
+      const estimatedCostUsd = datedPricingCostUsd(profile, usage);
       return freeze({
         role: expected.role,
         preparedRequestFingerprint: expected.preparedRequestFingerprint,
@@ -2407,7 +2408,7 @@ function recordExecution(
         providerResponseId: dispatched.providerResponseId,
         requestedReasoningEffort: dispatched.requestedReasoningEffort,
         usage,
-        costUsd,
+        estimatedCostUsd,
       });
     });
   if (
@@ -2430,7 +2431,7 @@ function recordExecution(
       typeof continuation.providerResponseId !== "string" ||
       !continuation.providerResponseId ||
       continuation.providerResponseId.length > 256 ||
-      continuation.settlement !== "settled"
+      continuation.recording !== "response_usage_recorded"
     )
       throw new Error(
         "Matched v4 continuation lacks its sealed request custody binding",
@@ -2476,7 +2477,7 @@ function recordExecution(
         providerResponseId: continuation.providerResponseId,
         requestedReasoningEffort: continuation.requestedReasoningEffort,
         usage,
-        costUsd: datedPricingCostUsd(profile, usage),
+        estimatedCostUsd: datedPricingCostUsd(profile, usage),
       }),
     );
   }
@@ -2529,8 +2530,8 @@ function recordExecution(
             0,
           )
         : null,
-      costUsd: recordedDispatches.reduce(
-        (sum, dispatch) => sum + dispatch.costUsd,
+      estimatedCostUsd: recordedDispatches.reduce(
+        (sum, dispatch) => sum + dispatch.estimatedCostUsd,
         0,
       ),
     },
@@ -2568,11 +2569,11 @@ function addieMatchedV4ExecutionAssignments(
 }
 
 /**
- * Settles results already obtained by the sealed authority. It intentionally
+ * Records response/usage results already obtained by the sealed authority. It intentionally
  * receives values, not a callback, so an ordinary import cannot inject a
  * provider dispatch path into the evaluator.
  */
-function settleAddieMatchedV4Execution(
+function recordAddieMatchedV4Execution(
   selector: AddieMatchedV4ExecutionSelector,
   executedTurns: readonly AddieMatchedV4ExecutedTurn[],
 ): AddieMatchedV4ExecutionArtifact {
@@ -2603,7 +2604,7 @@ function settleAddieMatchedV4Execution(
       ? state.plan.screening.maxProviderDispatches
       : state.plan.full.maxProviderDispatches;
   if (attempted !== completed || attempted > cap)
-    throw new Error("Matched v4 settled dispatch ledger exceeds declared cap");
+    throw new Error("Matched v4 recorded dispatch ledger exceeds declared cap");
   // The selector commits the permitted assignments; this binds each resulting
   // physical request (including an opaque continuation) back to that selector
   // and its observation position.  Individual hashes remain in the private
@@ -2705,10 +2706,12 @@ function validateAddieMatchedV4Observations(
         accounting.cacheReadTokens,
         accounting.cacheWriteTokens,
       ].every(validCount) ||
-      !Number.isFinite(accounting.costUsd) ||
-      accounting.costUsd < 0
+      !Number.isFinite(accounting.estimatedCostUsd) ||
+      accounting.estimatedCostUsd < 0
     ) {
-      throw new Error("Matched v4 requires complete settled accounting");
+      throw new Error(
+        "Matched v4 requires complete recorded response/usage evidence",
+      );
     }
     if (
       ((cell.provider === "openai" || cell.provider === "google") &&
@@ -2740,8 +2743,8 @@ function validateAddieMatchedV4Observations(
         passed: rows.filter((row) => row.passed).length,
         total: rows.length,
         passRate: rows.filter((row) => row.passed).length / rows.length,
-        totalCostUsd: rows.reduce(
-          (total, row) => total + row.accounting.costUsd,
+        totalEstimatedCostUsd: rows.reduce(
+          (total, row) => total + row.accounting.estimatedCostUsd,
           0,
         ),
         totalInputTokens: rows.reduce(

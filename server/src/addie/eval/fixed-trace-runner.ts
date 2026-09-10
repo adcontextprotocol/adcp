@@ -1784,7 +1784,7 @@ function fixedTraceFailureDiagnostic(
 /**
  * The older two-probe direct-screen diagnostic deliberately remains literal.
  * The full-suite comparison instead validates returned identities with the
- * same reviewed, fingerprinted pricing policy that settles their cost. Both
+ * same reviewed, fingerprinted pricing policy that estimates their cost. Both
  * retain a literal dispatch boundary, and the latter never admits arbitrary
  * provider model names.
  */
