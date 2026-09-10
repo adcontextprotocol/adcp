@@ -125,6 +125,10 @@ rm /repos/clone.sh
 # Only markdown/MDX files are indexed by search_repos at runtime. Keep this
 # in sync with EXTERNAL_REPOS indexPatterns if non-markdown sources are added.
 find /repos -type f ! \( -name "*.md" -o -name "*.mdx" \) -delete
+# AdCP's indexPatterns only include README.md, CHANGELOG.md and docs/**.
+# Its released dist/docs snapshots otherwise add nearly 1 GB of unindexed
+# duplicates to this cache. Public release artifacts remain in /app/dist.
+find /repos/adcp -type f ! \( -path "/repos/adcp/docs/*" -o -path "/repos/adcp/README.md" -o -path "/repos/adcp/CHANGELOG.md" \) -delete
 find /repos -type d -empty -delete
 CLONE
 
@@ -185,6 +189,13 @@ RUN npm run verify:training-agent-runtime
 
 # Copy pre-cloned repos (warm cache for Addie)
 COPY --from=repos /repos ./.addie-repos
+
+# Fly unpacks images onto an 8 GiB root filesystem. Reserve space for the
+# base image and runtime writes; fail the build before the release migration
+# if growing artifacts or dependencies consume that headroom again.
+RUN app_mib=$(du -sm /app | cut -f1) \
+ && echo "Runtime application size: ${app_mib} MiB (limit: 7168 MiB)" \
+ && test "$app_mib" -le 7168
 
 # Set environment variables
 ENV NODE_ENV=production
