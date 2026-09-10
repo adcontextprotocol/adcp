@@ -152,21 +152,60 @@ Before a human enables execution, provision and review all of the following.
    from the GCS identity and from ordinary Fly credentials. Do not use an
    `ALLOW_*` flag, local path, R2 upload, GitHub identity assertion, or caller
    input as an evidence substitute.
-6. Before and after an actual run, obtain provider-authoritative billing
+6. Run the protected, provider-credential-free `Verify matched-v4 runtime build attestation`
+   workflow from `main`. Its unprivileged build job builds one
+   deterministic evaluator bundle and emits a commit-and-SHA-256 manifest.
+   A clean protected job (with no checkout, package install, or build) verifies
+   that SHA-256, asserts that its OIDC token subject names the protected
+   `matched-v4-runtime-attestation` environment, and signs only that manifest
+   with GitHub OIDC/Sigstore. It verifies the signature against the fixed
+   repository/workflow identity and the Fulcio Deployment Environment extension
+   OID `1.3.6.1.4.1.57264.1.23` with the exact environment value, then retains
+   the bundle, manifest, and certificate bundle as **temporary staging**.
+   GitHub public-repository artifacts expire after at most 90 days: approve
+   promptly or dispatch a fresh current-main build, and do not treat an expired
+   artifact as evidence. Before paid execution, a separately provisioned
+   protected custody operation must transfer the bundle, manifest, and Sigstore
+   bundle into the already-approved immutable WORM evidence custody. The paid
+   runner must load only that retained copy, check its archive SHA-256 and exact
+   source/build commit against the protected deployment's admitted SHA, verify
+   the fixed workflow identity and OID/value again, and reject all caller-supplied
+   SHA or artifact selectors. Protect
+   the `matched-v4-runtime-attestation` environment with required reviewers,
+   `main`-only deployments, and no self-approval. A later paid runner must
+   download that exact artifact, verify its digest and Sigstore bundle again,
+   and execute from the verified bundle; it must not accept a SHA, source path,
+   provider, stage, or selector from a caller.
+7. Before and after an actual run, obtain provider-authoritative billing
    evidence: OpenAI organization costs for the dedicated project/time window,
    Google Cloud Billing detailed usage-cost export, and an Anthropic billing
    statement or account export for the dedicated credential/window. Retain
-   those reconciliations independently of the evaluator objects.
+   provider-native source files independently of the evaluator objects. A
+   protected reconciliation adapter may normalize a source only into the
+   checked-in `addie_matched_v4_provider_billing_export` shape: provider,
+   export/account-scope identity, coverage window, retained-native-source
+   SHA-256, USD microdollar lines, provider response IDs, and immutable
+   dispatch timestamps. The adapter must issue the reconciliation capability
+   only after authenticating the export source and binding it to the dedicated
+   account and complete dispatch window; raw normalized projections always
+   remain pending. Reconciliation is successful only when every
+   response ID in retained evaluator evidence has exactly one matching
+   provider line and there are no extras; missing, aggregate-only, duplicate,
+   stale, or unverifiable records are `cost_settlement_pending`. Do not infer a
+   line from tokens, a dated price profile, or a manually supplied total.
 
 Do not run `npm run eval:addie-matched-v4-authorized` from a local checkout:
 it deliberately refuses, because `ADDIE_MATCHED_V4_MERGE_SHA` alone cannot
-prove that the executing source is the admitted deployment. Before any paid
-execution, extend the protected deployment runner to verify a runtime-bound,
-cryptographically signed build attestation for the exact merged SHA, then
-provide the spend-capped provider credentials only to that runner. The runner
-must accept neither a provider, bucket, evidence capability, nor admission
-selector from a caller, and may emit only the non-authorizing report
-projection after retained evidence has been verified.
+prove that the executing source is the admitted deployment. The protected
+runtime-attestation workflow is now the prerequisite for a paid runner; no
+workflow in this change receives provider credentials or invokes a provider.
+When a separately reviewed paid runner is provisioned, it must verify the
+retained runtime bundle immediately before execution and expose spend-capped
+credentials only to that verified process. It must accept neither a provider,
+bucket, evidence capability, SHA, stage, nor admission selector from a caller,
+and may emit only the non-authorizing report projection after retained evidence
+has been verified. Cost-aware screening or promotion remains blocked until the
+provider-authoritative reconciliation above is `reconciled`.
 
 Run the GCS integration test only after the preceding approval and credentials
 exist: `ADDIE_MATCHED_V4_GCS_INTEGRATION=true` plus the runtime GCS credential

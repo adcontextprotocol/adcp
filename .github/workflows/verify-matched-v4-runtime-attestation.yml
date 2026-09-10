@@ -1,0 +1,228 @@
+name: Verify matched-v4 runtime build attestation
+
+# This is a protected, provider-credential-free prerequisite for paid
+# screening. It attests and verifies the exact runnable evaluator bundle, but
+# never loads a provider credential or invokes a provider/billing API.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-origin-main:
+    # Keep a dispatch-selected branch away from the protected environment. A
+    # skipped protected job can look successful, so an untrusted ref fails
+    # this ordinary preflight rather than being silently skipped.
+    runs-on: ubuntu-latest
+    outputs:
+      approved_main_sha: ${{ steps.verify.outputs.approved_main_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Refuse a stale or dispatch-selected checkout
+        id: verify
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/main"
+          git fetch origin main --depth=1
+          current_main_sha=$(git rev-parse origin/main)
+          test "$DISPATCH_SHA" = "$current_main_sha"
+          test "$(git rev-parse HEAD)" = "$current_main_sha"
+          echo "approved_main_sha=$current_main_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Build an untrusted runnable evaluator bundle
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          printf '%s\n' "${{ steps.verify.outputs.approved_main_sha }}" > /tmp/matched-v4-runtime-commit
+          # This job deliberately has no id-token permission. The protected
+          # job treats these bytes as untrusted until their digest is checked
+          # and its manifest is signed there.
+          tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf /tmp/matched-v4-runtime.tgz \
+            -C /tmp matched-v4-runtime-commit \
+            -C "$GITHUB_WORKSPACE" dist node_modules package.json package-lock.json
+          bundle_sha256=$(sha256sum /tmp/matched-v4-runtime.tgz | awk '{print $1}')
+          printf '{"kind":"addie_matched_v4_runtime_build_attestation","version":1,"commit_sha":"%s","bundle_sha256":"%s"}\n' \
+            "${{ steps.verify.outputs.approved_main_sha }}" "$bundle_sha256" \
+            > /tmp/matched-v4-runtime-attestation.json
+      - name: Transfer build output to the protected attestation job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: matched-v4-runtime-build-${{ steps.verify.outputs.approved_main_sha }}
+          path: |
+            /tmp/matched-v4-runtime.tgz
+            /tmp/matched-v4-runtime-attestation.json
+          # GitHub caps public-repository artifacts at 90 days. A delayed
+          # approval must dispatch a fresh current-main build after that.
+          retention-days: 90
+
+  attest-runtime-bundle:
+    needs: verify-origin-main
+    # Administrators must restrict this environment to main and require
+    # independent approval. OIDC exists only in this clean job; no repository
+    # build, dependency, or package script runs after it is granted.
+    permissions:
+      contents: read
+      id-token: write
+    environment: matched-v4-runtime-attestation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the untrusted build output without executing it
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: matched-v4-runtime-build-${{ needs.verify-origin-main.outputs.approved_main_sha }}
+          path: /tmp/matched-v4-runtime
+      - name: Assert the signing token is bound to the protected environment
+        env:
+          EXPECTED_OIDC_SUBJECT: repo:${{ github.repository }}:environment:matched-v4-runtime-attestation
+        run: |
+          set -euo pipefail
+          OIDC_TOKEN=$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=matched-v4-runtime-attestation" \
+            | jq -er .value)
+          export OIDC_TOKEN
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+
+          payload = os.environ["OIDC_TOKEN"].split(".")[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+          assert claims.get("sub") == os.environ["EXPECTED_OIDC_SUBJECT"]
+          PY
+      - name: Revalidate the untrusted build manifest after protected approval
+        env:
+          APPROVED_MAIN_SHA: ${{ needs.verify-origin-main.outputs.approved_main_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Do not sign an artifact if main moved while the environment waited
+          # for approval. This queries GitHub metadata only; it checks out and
+          # executes no repository content in the OIDC-bearing job.
+          current_main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          test "$APPROVED_MAIN_SHA" = "$current_main_sha"
+          test -s /tmp/matched-v4-runtime/matched-v4-runtime.tgz
+          test -s /tmp/matched-v4-runtime/matched-v4-runtime-attestation.json
+          jq -e --arg sha "$APPROVED_MAIN_SHA" '
+            .kind == "addie_matched_v4_runtime_build_attestation" and
+            .version == 1 and .commit_sha == $sha and
+            (.bundle_sha256 | type == "string" and test("^[a-f0-9]{64}$"))
+          ' /tmp/matched-v4-runtime/matched-v4-runtime-attestation.json >/dev/null
+          expected=$(jq -r .bundle_sha256 /tmp/matched-v4-runtime/matched-v4-runtime-attestation.json)
+          actual=$(sha256sum /tmp/matched-v4-runtime/matched-v4-runtime.tgz | awk '{print $1}')
+          test "$actual" = "$expected"
+      - name: Install Sigstore cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+        with:
+          cosign-release: v2.4.1
+      - name: Sign and verify the exact runnable bundle with GitHub OIDC
+        run: |
+          set -euo pipefail
+          COSIGN_YES=true cosign sign-blob \
+            --new-bundle-format \
+            --bundle /tmp/matched-v4-runtime/matched-v4-runtime.sigstore.json \
+            /tmp/matched-v4-runtime/matched-v4-runtime-attestation.json
+          cosign verify-blob \
+            --new-bundle-format \
+            --bundle /tmp/matched-v4-runtime/matched-v4-runtime.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/verify-matched-v4-runtime-attestation.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            /tmp/matched-v4-runtime/matched-v4-runtime-attestation.json
+      - name: Verify the Fulcio deployment-environment certificate extension
+        env:
+          EXPECTED_DEPLOYMENT_ENVIRONMENT: matched-v4-runtime-attestation
+        run: |
+          set -euo pipefail
+          jq -er '.verificationMaterial.certificate.rawBytes' \
+            /tmp/matched-v4-runtime/matched-v4-runtime.sigstore.json \
+            | base64 --decode > /tmp/matched-v4-runtime/matched-v4-runtime.certificate.der
+          # Decode Certificate/TBSCertificate/[3] Extensions directly: OpenSSL
+          # cannot select private OID 1.3.6.1.4.1.57264.1.23 with `x509 -ext`.
+          # The later protected consumer must repeat this exact structured
+          # OID/OCTET STRING/UTF8String check before execution.
+          export CERTIFICATE_DER=/tmp/matched-v4-runtime/matched-v4-runtime.certificate.der
+          python3 - <<'PY'
+          import os
+
+          OID = bytes.fromhex("2b0601040183bf300117")
+
+          def tlv(data, offset):
+              if offset + 2 > len(data):
+                  raise ValueError("truncated DER TLV")
+              tag = data[offset]
+              length_byte = data[offset + 1]
+              if length_byte & 0x80:
+                  width = length_byte & 0x7f
+                  if width == 0 or offset + 2 + width > len(data):
+                      raise ValueError("invalid DER length")
+                  length = int.from_bytes(data[offset + 2:offset + 2 + width], "big")
+                  start = offset + 2 + width
+              else:
+                  length = length_byte
+                  start = offset + 2
+              end = start + length
+              if end > len(data):
+                  raise ValueError("truncated DER TLV")
+              return tag, data[start:end], end
+
+          def children(data):
+              offset = 0
+              values = []
+              while offset < len(data):
+                  tag, value, offset = tlv(data, offset)
+                  values.append((tag, value))
+              return values
+
+          certificate = open(os.environ["CERTIFICATE_DER"], "rb").read()
+          tag, certificate_value, certificate_end = tlv(certificate, 0)
+          if tag != 0x30 or certificate_end != len(certificate):
+              raise ValueError("certificate is not one DER SEQUENCE")
+          certificate_fields = children(certificate_value)
+          if len(certificate_fields) < 1 or certificate_fields[0][0] != 0x30:
+              raise ValueError("certificate has no TBSCertificate")
+          extensions = [
+              value for tag, value in children(certificate_fields[0][1]) if tag == 0xa3
+          ]
+          if len(extensions) != 1:
+              raise ValueError("TBSCertificate must contain exactly one Extensions field")
+          extension_wrappers = children(extensions[0])
+          if len(extension_wrappers) != 1 or extension_wrappers[0][0] != 0x30:
+              raise ValueError("Extensions field is malformed")
+          matches = []
+          for tag, extension_value in children(extension_wrappers[0][1]):
+              if tag != 0x30:
+                  raise ValueError("Extension is not a SEQUENCE")
+              fields = children(extension_value)
+              if len(fields) not in (2, 3) or fields[0] != (0x06, OID):
+                  continue
+              value_field = fields[-1]
+              if value_field[0] != 0x04:
+                  raise ValueError("deployment-environment extension is not an OCTET STRING")
+              matches.append(value_field[1])
+          if len(matches) != 1:
+              raise ValueError("deployment-environment OID must occur exactly once")
+          utf8_fields = children(matches[0])
+          if len(utf8_fields) != 1 or utf8_fields[0][0] != 0x0c:
+              raise ValueError("deployment-environment extension is not one UTF8String")
+          if utf8_fields[0][1].decode("utf-8") != os.environ["EXPECTED_DEPLOYMENT_ENVIRONMENT"]:
+              raise ValueError("deployment-environment value mismatch")
+          PY
+      - name: Retain verification inputs for the later protected runner
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: matched-v4-runtime-attestation-${{ github.sha }}
+          path: |
+            /tmp/matched-v4-runtime/
+          # Public repositories cannot retain Actions artifacts beyond 90 days.
+          retention-days: 90
