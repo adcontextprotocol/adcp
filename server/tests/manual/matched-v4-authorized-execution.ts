@@ -1,12 +1,11 @@
 /**
- * Deliberately non-runnable matched-v4 operator entrypoint.
+ * Deliberately blocked local matched-v4 operator entrypoint.
  *
- * Local filesystem paths, GitHub Actions identity, and R2 upload-only
- * conventions cannot produce immutable, decision-grade evidence: each can be
- * replaced, deleted, or fail after dispatch. Paid authority construction
- * independently enforces the same invariant, but this manual command also
- * refuses before accessing any execution configuration.
+ * A checkout cannot prove that its source is the admitted deployment. The
+ * paid runner must instead be launched from a protected deployment with a
+ * runtime-bound build attestation; plain environment text is not evidence of
+ * the executing source revision.
  */
 throw new Error(
-  "Matched v4 paid execution is blocked: configure and implement a sanctioned immutable artifact sink before dispatch",
+  "Matched v4 paid execution is blocked locally: run only from a protected deployment with a runtime-bound build attestation",
 );

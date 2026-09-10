@@ -82,50 +82,99 @@ deadline. It is accepted only from 1,000 through 120,000 milliseconds (default
 30,000). A deadline aborts the provider request, records `unknown_exposure`,
 and reconciles the reservation; it never retries or counts a late response.
 
-The existing provision and deploy paths above establish only the PostgreSQL
-ledger boundary. They do not enable a matched-v4 paid evaluation. Although the
-deploy gate can stage a non-secret `ADDIE_MATCHED_V4_MERGE_SHA` for its verified
-SHA, do not invoke `runAuthorizedAddieMatchedV4Execution`: the explicit entry
-point is intentionally non-runnable until the separate evidence prerequisite
-below is implemented and reviewed. The normal public surface remains plan-only;
-the paid authority rejects before it opens the database or constructs a
-provider adapter.
+## GCS durable-evidence gate and human provisioning inventory
 
-## Evidence and settlement prerequisites for the 43-cell evaluation
+The paid constructor now obtains its evidence authority only from the sealed
+Google Cloud Storage adapter. It first writes and verifies a unique,
+create-only pre-dispatch reservation object; only then can it open the
+PostgreSQL admission path or construct a provider adapter. The reservation
+contains the exact selector fingerprint, stage cap, deployed merge SHA, sealed
+authority-manifest digest, and evaluation version. A separately retained final
+object includes the reservation object's bucket/name/generation/SHA-256 and
+the artifact digest/evidence. Every post-dispatch refusal also attempts a
+retained terminal-refusal object; it contains only one allowlisted reason code
+(`paired_ci_gate`, `dispatch_timeout`, `settlement_refused`, `intent_refused`,
+`provider_response_invalid`, or `execution_refused`) rather than raw SDK or
+provider exception text. Terminal writes bind the reservation to their first
+completion or refusal identity. The issued/finalizing/uncertain/consumed state
+machine rejects concurrent and cross-kind finalizers; a transient failed
+write/readback retries that same deterministic create-only name and verifies an
+existing 412 result, while an I/O deadline becomes `uncertain` and fails
+closed rather than creating a conflicting terminal record. Every bucket
+metadata lookup, object metadata lookup, generation-pinned readback, and save
+has a 30-second adapter wall-clock deadline; the sealed Storage client has the
+same finite HTTP timeout and retry total. Any malformed GCS response, digest
+mismatch, missing future object-retention expiration, conditional-write
+failure, deadline, or unlocked bucket refuses the run before dispatch or
+prevents a successful result from being reported.
 
-The 43-cell screening and its bounded full continuation remain blocked. The
-repository has an append-only PostgreSQL execution ledger, and its release
-workflows can produce keyless-cosign signatures and compare bytes before an
-R2 upload. Those are useful building blocks, but neither is a sanctioned
-immutable/WORM evidence sink for this evaluation: the R2 convention does not
-attest Object Lock or equivalent retention, and a signature made after a
-provider call cannot reserve durable evidence before that call.
+This relies specifically on [Cloud Storage Bucket Lock](https://cloud.google.com/storage/docs/bucket-lock): a locked positive retention policy prevents an object from being deleted or replaced before its retention age, and each protected object has retention-expiration metadata. The adapter checks `retentionPolicy.isLocked`, a positive period, a valid policy effective timestamp, and the written object's `retentionExpirationTime` is at least one year ahead. The one-year constant covers delayed provider billing reconciliation and a human audit window; it deliberately refuses a locked short-retention bucket. The protected verifier also requires a policy duration of at least `32,162,400` seconds (365.25 days plus a seven-day margin), so a policy that only exactly equals the runtime horizon cannot fail immediately after normal write/read latency; object readback remains the runtime authority. It writes with `ifGenerationMatch=0`; [GCS documents this as a conditional create that fails with 412 when a live object exists](https://cloud.google.com/storage/docs/request-preconditions). Object metadata alone is editable under a bucket retention policy, so the adapter verifies the returned object generation, MD5 of its bytes, and adapter-written SHA-256 metadata; a metadata assertion is never accepted as proof by itself.
 
-Do not configure a GitHub Actions or Fly environment to work around this
-gate. In particular, no `ALLOW_*` flag, caller-provided adapter, local path,
-content-addressed R2 upload, or OIDC identity assertion authorizes paid
-dispatch. The manual command itself intentionally refuses before it accesses
-execution configuration or dispatches a provider request.
+Before a human enables execution, provision and review all of the following.
 
-Before the gate may be replaced, a separate reviewed change must provide all
-of the following:
+1. A dedicated Google Cloud project and evidence bucket, distinct from app,
+   provider, and billing-export buckets. Set the retention period to the
+   approved legal/compliance duration, then lock it permanently with Bucket
+   Lock. This is irreversible; record the approval and exact bucket project
+   number before locking. Do not enable object lifecycle rules that imply a
+   shorter retention requirement.
+2. A dedicated runtime workload identity/service account with only
+   `storage.buckets.get`, `storage.objects.create`, and `storage.objects.get`
+   on this one bucket and the `addie-matched-v4/v1/` object prefix through an
+   IAM Condition. It must have no delete, update, list, bucket-policy, bucket
+   retention-policy, IAM, project-owner, or service-account-admin authority.
+   The narrow permissions mean a substituted bucket setting fails unless it is
+   independently administered with the same constrained identity; the adapter
+   still verifies its Bucket Lock and returned retained generation.
+3. A distinct read-only verifier service account for the protected GitHub
+   environment, with `storage.buckets.get` only. Configure GitHub OIDC/WIF for
+   exactly that repository and the protected environment
+   `matched-v4-durable-evidence`; restrict environment deployments to `main`,
+   set required reviewers, and disallow self-approval. The checked-in verifier
+   is triggered only by a `main` update to its own definition (then may be
+   re-run from that trusted workflow run), never a dispatch-selected branch.
+   Set its non-secret environment variables
+   `MATCHED_V4_GCS_WIF_PROVIDER`,
+   `MATCHED_V4_GCS_VERIFIER_SERVICE_ACCOUNT`, and
+   `MATCHED_V4_GCS_EVIDENCE_BUCKET`. The checked-in
+   `Verify matched-v4 durable evidence boundary` workflow only checks the
+   current `main` checkout and bucket lock; it creates nothing and never calls
+   a model provider.
+4. Configure the production evaluator runtime's dedicated GCP workload
+   identity credential outside the repository and set only the non-secret
+   `ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET` to the reviewed bucket name. Do not
+   pass a bucket, Storage client, evidence receipt, or adapter through the
+   execution caller. The sealed constructor has no such input key; test-only
+   adapter capabilities likewise cannot be supplied to it.
+5. Retain the existing separated PostgreSQL runtime/operator roles and the
+   protected evaluator schema workflow above. Configure dedicated,
+   spend-capped Anthropic, OpenAI, and Google model credentials separately
+   from the GCS identity and from ordinary Fly credentials. Do not use an
+   `ALLOW_*` flag, local path, R2 upload, GitHub identity assertion, or caller
+   input as an evidence substitute.
+6. Before and after an actual run, obtain provider-authoritative billing
+   evidence: OpenAI organization costs for the dedicated project/time window,
+   Google Cloud Billing detailed usage-cost export, and an Anthropic billing
+   statement or account export for the dedicated credential/window. Retain
+   those reconciliations independently of the evaluator objects.
 
-1. An independently administered WORM/append-only evidence capability, or an
-   independently signed durable receipt service, with a pre-dispatch
-   reservation bound to the ledger reservation ID and exact merge/manifest.
-2. A protected execution environment whose runtime database login inherits
-   only `addie_matched_v4_runtime`, cannot assume the operator role, and has
-   no direct evaluator-table DML.
-3. Dedicated, spend-capped provider credentials that are not Fly credentials.
-4. Provider-authoritative reconciliation retained independently from the
-   evaluator: OpenAI organization costs for the dedicated project/time bucket;
-   Google Cloud Billing detailed usage-cost export enabled before the run; and
-   an Anthropic billing statement or account export covering the dedicated
-   credential and window.
+Do not run `npm run eval:addie-matched-v4-authorized` from a local checkout:
+it deliberately refuses, because `ADDIE_MATCHED_V4_MERGE_SHA` alone cannot
+prove that the executing source is the admitted deployment. Before any paid
+execution, extend the protected deployment runner to verify a runtime-bound,
+cryptographically signed build attestation for the exact merged SHA, then
+provide the spend-capped provider credentials only to that runner. The runner
+must accept neither a provider, bucket, evidence capability, nor admission
+selector from a caller, and may emit only the non-authorizing report
+projection after retained evidence has been verified.
 
-The evaluator records provider-returned response IDs and usage so a future
-evidence service can join those records to the ledger. Its deterministic
-pricing-profile value is an **estimate**, not provider-authoritative
-settlement. Missing, late, aggregated, or non-reconcilable provider billing
-evidence leaves the result `cost_settlement_pending`; it must not drive
-promotion or rollout.
+Run the GCS integration test only after the preceding approval and credentials
+exist: `ADDIE_MATCHED_V4_GCS_INTEGRATION=true` plus the runtime GCS credential
+and bucket setting. It writes two deliberately retained test records and never
+deletes them; it does not open PostgreSQL or call a model provider. The normal
+unit suite is deterministic and makes no network call.
+
+The evaluator records provider response IDs and usage, but its dated pricing
+profile is an **estimate**, not provider-authoritative settlement. Missing,
+late, aggregated, or non-reconcilable provider billing evidence remains
+`cost_settlement_pending` and must not drive promotion or rollout.
