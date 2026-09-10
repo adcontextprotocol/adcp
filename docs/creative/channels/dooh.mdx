@@ -256,7 +256,60 @@ Proof-of-play reporting uses `plays` for the raw playout count and `impressions`
 }
 ```
 
-Exact structured coordinates and venue-coverage fields remain tracked in [#5538](https://github.com/adcontextprotocol/adcp/issues/5538); coordinates are metadata, not property or placement identity.
+## Structured location for planning and mapping
+
+Coordinates and street address are location metadata, not placement identity: a missing, imprecise, or later-corrected `location` MUST NOT change `placement_id` or `identifiers[]`. Two disclosure shapes cover the concrete and aggregate cases from [#5538](https://github.com/adcontextprotocol/adcp/issues/5538):
+
+For a concrete single-screen or single-venue placement, disclose `dooh_placement_attributes.location`:
+
+```json
+{
+  "kind": "seller_inline",
+  "placement_id": "screen_grand_central_01",
+  "name": "Grand Central concourse screen",
+  "mode": "targetable",
+  "identifiers": [
+    { "type": "screen_id", "value": "space:1234931339" },
+    { "type": "venue_id", "value": "publisher:grand_central" },
+    { "type": "openooh_venue_type", "value": "openooh-1.1:20501" }
+  ],
+  "dooh_placement_attributes": {
+    "location": {
+      "lat": 40.7527,
+      "lon": -73.9772,
+      "address": {
+        "line1": "89 E 42nd St",
+        "city": "New York",
+        "region": "US-NY",
+        "postal_code": "10017",
+        "country": "US"
+      }
+    }
+  }
+}
+```
+
+`location` uses `lat`/`lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general `lng` convention. All fields are optional; disclose what is actually known.
+
+For a network or regional product where per-screen location is not practical to disclose, use the product-level `dooh_inventory_summary.venue_counts[]` aggregate instead:
+
+```json
+{
+  "dooh_inventory_summary": {
+    "venue_counts": [
+      {
+        "geo_level": "metro",
+        "system": "nielsen_dma",
+        "geo_code": "501",
+        "venue_type": "openooh-1.1:20501",
+        "count": 87
+      }
+    ]
+  }
+}
+```
+
+`geo_level`/`system`/`geo_code` reuse the same vocabulary as `forecast-dimension-geo.json`. The two disclosure shapes are not mutually exclusive: a product may disclose concrete placement locations, an aggregate summary, or both. `coverage_polygon` remains deferred until sellers demonstrate reliable fill-rate; if added later, it will reuse the existing `catchment.json` GeoJSON geometry pattern rather than a new polygon primitive.
 
 If loop position, share of voice, or scheduling changes what the buyer can purchase, expose it as a distinct product or public placement with the applicable commercial terms. Put canonical slot and loop duration on `dooh_placement_attributes`. Existing fixed-allocation DOOH offers can also declare `pricing_options[].parameters` on a `flat_rate` option with `type: "dooh"`, plus `sov_percentage`, `min_plays_per_hour`, `venue_package`, `duration_hours`, and `daypart`. The deprecated pricing-layer copy of `loop_duration_seconds`, when present on a migrated offer, must agree with the placement declaration. Guaranteed-only offers use the `sales-guaranteed` profile.
 

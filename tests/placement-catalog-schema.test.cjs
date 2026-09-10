@@ -703,6 +703,111 @@ test('canonical list_products placements preserve DOOH inventory facts', async (
   assert.equal(validate(placement), true, JSON.stringify(validate.errors, null, 2));
 });
 
+test('placement dooh_placement_attributes.location accepts coordinates and address across all three placement schemas', async () => {
+  const location = {
+    lat: 40.7527,
+    lon: -73.9772,
+    address: {
+      line1: '89 E 42nd St',
+      city: 'New York',
+      region: 'US-NY',
+      postal_code: '10017',
+      country: 'US'
+    }
+  };
+
+  const validateProductPlacement = await compile('/schemas/core/placement.json');
+  assert.equal(
+    validateProductPlacement({
+      kind: 'seller_inline',
+      placement_id: 'screen_grand_central_01',
+      name: 'Grand Central concourse screen',
+      mode: 'targetable',
+      dooh_placement_attributes: { location }
+    }),
+    true,
+    JSON.stringify(validateProductPlacement.errors, null, 2)
+  );
+
+  const validatePublisherPlacement = await compile('/schemas/core/placement-definition.json');
+  assert.equal(
+    validatePublisherPlacement({
+      placement_id: 'screen_grand_central_01',
+      name: 'Grand Central concourse screen',
+      property_ids: ['grand_central_network'],
+      dooh_placement_attributes: { location }
+    }),
+    true,
+    JSON.stringify(validatePublisherPlacement.errors, null, 2)
+  );
+
+  const validateCanonicalPlacement = await compile('/schemas/core/canonical-placement.json');
+  assert.equal(
+    validateCanonicalPlacement({
+      kind: 'seller_inline',
+      placement_id: 'screen_grand_central_01',
+      name: 'Grand Central concourse screen',
+      mode: 'targetable',
+      dooh_placement_attributes: { location }
+    }),
+    true,
+    JSON.stringify(validateCanonicalPlacement.errors, null, 2)
+  );
+});
+
+test('placement dooh_placement_attributes.location rejects out-of-range coordinates', async () => {
+  const validate = await compile('/schemas/core/placement.json');
+
+  assert.equal(
+    validate({
+      kind: 'seller_inline',
+      placement_id: 'screen_bad_coords',
+      name: 'Bad coords screen',
+      mode: 'targetable',
+      dooh_placement_attributes: { location: { lat: 200, lon: 0 } }
+    }),
+    false
+  );
+});
+
+test('product dooh_inventory_summary accepts aggregate venue counts and requires system for metro rows', async () => {
+  const validateProduct = await compile('/schemas/core/product.json');
+  const product = validProduct({
+    dooh_inventory_summary: {
+      venue_counts: [
+        { geo_level: 'metro', system: 'nielsen_dma', geo_code: '501', venue_type: 'openooh-1.1:20501', count: 87 }
+      ]
+    }
+  });
+
+  assert.equal(validateProduct(product), true, JSON.stringify(validateProduct.errors, null, 2));
+
+  assert.equal(
+    validateProduct(
+      validProduct({
+        dooh_inventory_summary: {
+          venue_counts: [{ geo_level: 'metro', geo_code: '501', count: 87 }]
+        }
+      })
+    ),
+    false,
+    'metro rows must declare system'
+  );
+
+  const validateCanonicalProduct = await compile('/schemas/core/canonical-product.json');
+  assert.equal(
+    validateCanonicalProduct({
+      product_id: 'metro_network_screens',
+      name: 'Metro network screens',
+      dooh_inventory_summary: {
+        venue_counts: [{ geo_level: 'country', geo_code: 'US', count: 412 }]
+      }
+    }),
+    true,
+    JSON.stringify(validateCanonicalProduct.errors, null, 2)
+  );
+});
+
 test('dooh_placement_attributes rejects invalid motion type', async () => {
   const validate = await compile('/schemas/core/placement.json');
   const placement = {

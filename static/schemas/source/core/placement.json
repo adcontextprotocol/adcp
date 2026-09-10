@@ -16,6 +16,40 @@
       "required": ["width", "height"],
       "additionalProperties": false
     },
+    "ProductDoohAddress": {
+      "title": "Product DOOH Address",
+      "type": "object",
+      "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise.",
+      "properties": {
+        "line1": { "type": "string", "description": "Street address line (e.g., '89 E 42nd St')." },
+        "city": { "type": "string", "description": "City name." },
+        "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
+        "postal_code": { "type": "string", "description": "Postal or ZIP code." },
+        "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
+      },
+      "additionalProperties": false
+    },
+    "ProductDoohLocation": {
+      "title": "Product DOOH Location",
+      "type": "object",
+      "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows. Network products where per-screen location is not disclosed should use the product-level dooh_inventory_summary aggregate instead.",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees (WGS 84)."
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees (WGS 84). Uses `lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general targeting.json `lng` convention."
+        },
+        "address": { "$ref": "#/definitions/ProductDoohAddress" }
+      },
+      "additionalProperties": false
+    },
     "ProductDoohPlacementAttributes": {
       "title": "Product DOOH Placement Attributes",
       "type": "object",
@@ -35,7 +69,8 @@
         "motion": {
           "$ref": "/schemas/enums/dooh-motion-type.json",
           "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
-        }
+        },
+        "location": { "$ref": "#/definitions/ProductDoohLocation" }
       },
       "x-adcp-validation": {
         "verifier_constraints": {
