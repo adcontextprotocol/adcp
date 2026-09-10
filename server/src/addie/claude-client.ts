@@ -144,10 +144,7 @@ const SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS = 16_384;
 function addieModelOutputControls(
   model: string,
   maxOutputTokens?: number,
-): { maxOutputTokens: number; reasoning?: { effort: 'low' | 'medium' } } {
-  if (model === GOOGLE_ROUTER_MODEL) {
-    return { maxOutputTokens: maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, reasoning: { effort: 'low' } };
-  }
+): { maxOutputTokens: number; reasoning?: { effort: 'medium' } } {
   if (/^claude-sonnet-5(?:-|$)/.test(model)) {
     return {
       maxOutputTokens: Math.min(
@@ -1335,7 +1332,11 @@ export class AddieClaudeClient {
   }
 
   private executionPolicy(options: ProcessMessageOptions | undefined) {
+    // In isolated modes, absence of a policy must remain absence: the shared
+    // executor deliberately denies every handler until a caller opts in.
+    if (!options?.directToolSession) return options?.toolExecutionPolicy;
     return async (request: Parameters<NonNullable<ProcessMessageOptions['toolExecutionPolicy']>>[0]) => {
+      if (isIsolatedExecution(options) && !options.toolExecutionPolicy) return { allowed: false };
       if (options?.directToolSession && (!options.directToolSession.visibleToolNames().has(request.toolName)
         || isSideEffectTool(request.toolName))) return { allowed: false };
       return options?.toolExecutionPolicy ? options.toolExecutionPolicy(request) : { allowed: true };
@@ -1440,7 +1441,9 @@ export class AddieClaudeClient {
         maxOutputTokens ?? SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
       )
       : maxOutputTokens;
-    const controls = addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
+    const controls = this.productionGeminiDirect && effectiveModel === GOOGLE_ROUTER_MODEL
+      ? { maxOutputTokens: safeMaxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, reasoning: { effort: 'low' as const } }
+      : addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
     return {
       model: effectiveModel,
       system: systemBlocks.map((block) => ({

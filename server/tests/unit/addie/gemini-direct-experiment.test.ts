@@ -105,6 +105,7 @@ describe('Gemini Direct production integration', () => {
     expect(result.response?.model_execution).toMatchObject({ source: 'provider', provider: 'google', model: GOOGLE_ROUTER_MODEL });
     expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
     expect(f.dispatch).toHaveBeenCalledTimes(2);
+    expect(f.dispatch.mock.calls[0][0].config?.thinkingConfig?.thinkingLevel).toBe('LOW');
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
     expect(mocks.recordCost).toHaveBeenCalledExactlyOnceWith('user-test', expect.objectContaining({ provider: 'google', usage: { inputTokens: 40, outputTokens: 30, reasoningTokens: 10 } }));

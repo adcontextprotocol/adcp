@@ -36,7 +36,7 @@ describe('Rules Loader', () => {
     const style = loadResponseStyle();
     expect(style).toContain('# Response Style');
     expect(style).toContain('## Evidence Boundaries Override Style');
-    expect(style).toContain('Those style rules apply only when no lookup was attempted');
+    expect(style).toContain('That guidance applies only when this turn attempted no lookup');
     expect(style).toContain('## Concise and Helpful');
     expect(style).toContain('## Naming Conventions');
   });
@@ -107,9 +107,10 @@ describe('Rules Loader', () => {
     const style = loadResponseStyle();
 
     expect(rules).toContain('treat its returned content as the evidence boundary for the answer');
-    expect(style).toContain('returned facts are the complete evidence boundary');
-    expect(style).toContain('Do not use factual material from the Knowledge rules');
+    expect(style).toContain('use only its returned facts for claims that depend on it');
+    expect(style).toContain('Do not broaden the answer with Knowledge rules');
     expect(style).toContain('If the lookup is empty or fails, lead with the short limitation');
+    expect(style).toContain('mark missing values as unknown placeholders');
   });
 
   it('routes Prebid Sales Agent build questions to the owning project without guessing', () => {
