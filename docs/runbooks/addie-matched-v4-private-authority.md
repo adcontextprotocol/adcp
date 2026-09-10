@@ -4,6 +4,21 @@ description: "Deploy the sealed Addie matched-v4 evaluator authority with extern
 "og:title": "AdCP — Matched v4 evaluator authority deployment"
 ---
 
+Ordinary application releases follow a successful main `Build Check`. They set
+`ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=false` and overwrite
+`ADDIE_MATCHED_V4_MERGE_SHA=disabled`, so they neither apply evaluator migrations
+nor admit paid evaluation. This is the default when the repository variable
+`ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED` is unset or `false`.
+
+Set that repository variable to `true` only when enabling the evaluator release
+path described below. That path waits for protected provisioning; it cannot
+fall back to an ordinary deploy on provisioning failure. The protected operator
+job is skipped without this opt-in. Both paths retain current-main checks and
+the normal migration, health, and machine-convergence gates. Other variable
+values select neither deployment path.
+
+## Evaluator releases
+
 The matched-v4 evaluator ledger uses two externally administered PostgreSQL
 roles. Before deploying migrations 584 and 585, an administrator must run the protected
 provision workflow using the distinct, non-superuser `migration_principal`
@@ -87,7 +102,7 @@ the transformed schema attests; ordinary local, preview, and app migration
 boots skip evaluator-only migrations and never re-attest their catalog after
 they are recorded.
 
-The enforced order is: successful Build Check → no-secret coordinator →
+For evaluator-enabled releases, the enforced order is: successful Build Check → no-secret coordinator →
 protected provision workflow → application release migration → application
 rollout. The deploy workflow consumes the exact triggering protected workflow
 run, verifies its successful provision job, and rechecks the release SHA

@@ -69,6 +69,8 @@ jobs:
 
   provision:
     needs: verify-origin-main
+    # Ordinary app releases do not acquire the protected operator environment.
+    if: vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == 'true'
     environment: matched-v4-evaluator-operator
     runs-on: ubuntu-latest
     timeout-minutes: 10

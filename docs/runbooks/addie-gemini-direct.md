@@ -87,11 +87,14 @@ Investigate repeated quality/error regressions or p95 total time more than 20%
 worse than control. Expand into teaching or consequential actions only after
 their permission, progress, and receipt workflows are checked independently.
 
-## Release dependency found during implementation
+## Deployment
 
-As of 2026-09-10, main's existing Deploy workflow depends on successful protected
-matched-v4 evaluator provisioning. Run `34478760809` failed because its database,
-principal, and manifest inputs were empty; Deploy was skipped. The web experiment
-uses the ordinary application database and existing Gemini credential, but cannot
-activate until that release dependency is resolved. This change does not bypass
-the protected workflow or provision another evaluator service.
+The pilot uses the ordinary application database and existing Gemini credential.
+Leave the repository variable `ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED` unset or
+`false` to deploy after the successful main build with paid evaluation disabled.
+The ordinary release applies migration 586 and skips evaluator migrations 584
+and 585. It explicitly replaces any prior evaluator admission settings.
+
+The protected evaluator release path remains available with that variable set
+to `true`; it requires the separate operator configuration described in the
+[evaluator runbook](./addie-matched-v4-private-authority.md).

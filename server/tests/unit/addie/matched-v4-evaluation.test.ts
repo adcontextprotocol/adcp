@@ -1164,8 +1164,9 @@ describe("matched-v4 sealed private authority", () => {
       '.name == "provision" and .conclusion == "success"',
     );
     expect(deployWorkflow).toContain(
-      "workflows: [Provision matched-v4 evaluator schema]",
+      "workflows: [Build Check, Provision matched-v4 evaluator schema]",
     );
+    expect(workflow).toContain("if: vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == 'true'");
   });
   it("is plan-only by default", () => {
     expect(createAddieMatchedV4PrivateAuthorityPlanOnly()).toMatchObject({
@@ -1978,6 +1979,10 @@ describe("matched-v4 sealed private authority", () => {
       /plain inert configuration/,
     );
     expect(proxyTrap).not.toHaveBeenCalled();
+    process.env.ADDIE_MATCHED_V4_MERGE_SHA = "disabled";
+    await expect(
+      createAddieMatchedV4PaidAuthority(paidInput()),
+    ).rejects.toThrow(/paid authority construction refused/);
     delete process.env.ADDIE_MATCHED_V4_MERGE_SHA;
     await expect(
       createAddieMatchedV4PaidAuthority(paidInput()),
