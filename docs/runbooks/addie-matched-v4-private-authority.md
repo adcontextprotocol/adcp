@@ -82,10 +82,50 @@ deadline. It is accepted only from 1,000 through 120,000 milliseconds (default
 30,000). A deadline aborts the provider request, records `unknown_exposure`,
 and reconciles the reservation; it never retries or counts a late response.
 
-After that admission exists, the protected deploy gate stages the non-secret
-`ADDIE_MATCHED_V4_MERGE_SHA` value for the ordinary runtime from the same
-verified SHA (without passing it any evaluator connection). Invoke the
-explicit `runAuthorizedAddieMatchedV4Execution` entrypoint. The normal public
-surface remains plan-only; execution still refuses unless the runtime role,
-exact manifest, durable admission, and one-use claim all verify before any
-provider adapter is constructed.
+The existing provision and deploy paths above establish only the PostgreSQL
+ledger boundary. They do not enable a matched-v4 paid evaluation. Although the
+deploy gate can stage a non-secret `ADDIE_MATCHED_V4_MERGE_SHA` for its verified
+SHA, do not invoke `runAuthorizedAddieMatchedV4Execution`: the explicit entry
+point is intentionally non-runnable until the separate evidence prerequisite
+below is implemented and reviewed. The normal public surface remains plan-only;
+the paid authority rejects before it opens the database or constructs a
+provider adapter.
+
+## Evidence and settlement prerequisites for the 43-cell evaluation
+
+The 43-cell screening and its bounded full continuation remain blocked. The
+repository has an append-only PostgreSQL execution ledger, and its release
+workflows can produce keyless-cosign signatures and compare bytes before an
+R2 upload. Those are useful building blocks, but neither is a sanctioned
+immutable/WORM evidence sink for this evaluation: the R2 convention does not
+attest Object Lock or equivalent retention, and a signature made after a
+provider call cannot reserve durable evidence before that call.
+
+Do not configure a GitHub Actions or Fly environment to work around this
+gate. In particular, no `ALLOW_*` flag, caller-provided adapter, local path,
+content-addressed R2 upload, or OIDC identity assertion authorizes paid
+dispatch. The manual command itself intentionally refuses before it accesses
+execution configuration or dispatches a provider request.
+
+Before the gate may be replaced, a separate reviewed change must provide all
+of the following:
+
+1. An independently administered WORM/append-only evidence capability, or an
+   independently signed durable receipt service, with a pre-dispatch
+   reservation bound to the ledger reservation ID and exact merge/manifest.
+2. A protected execution environment whose runtime database login inherits
+   only `addie_matched_v4_runtime`, cannot assume the operator role, and has
+   no direct evaluator-table DML.
+3. Dedicated, spend-capped provider credentials that are not Fly credentials.
+4. Provider-authoritative reconciliation retained independently from the
+   evaluator: OpenAI organization costs for the dedicated project/time bucket;
+   Google Cloud Billing detailed usage-cost export enabled before the run; and
+   an Anthropic billing statement or account export covering the dedicated
+   credential and window.
+
+The evaluator records provider-returned response IDs and usage so a future
+evidence service can join those records to the ledger. Its deterministic
+pricing-profile value is an **estimate**, not provider-authoritative
+settlement. Missing, late, aggregated, or non-reconcilable provider billing
+evidence leaves the result `cost_settlement_pending`; it must not drive
+promotion or rollout.

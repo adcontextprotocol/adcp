@@ -1081,14 +1081,13 @@ describe("matched-v4 sealed private authority", () => {
   });
   it("runs an authorized full stage only after screening on one sealed authority", async () => {
     responseFixture("baseline_semantic_irrelevant");
-    await expect(
-      runAuthorizedAddieMatchedV4Execution({
-        anthropicApiKey: "fixture-anthropic",
-        openaiApiKey: "fixture-openai",
-        googleApiKey: "fixture-google",
-        stage: "full",
-      }),
-    ).resolves.toMatchObject({
+    const report = await runAuthorizedAddieMatchedV4Execution({
+      anthropicApiKey: "fixture-anthropic",
+      openaiApiKey: "fixture-openai",
+      googleApiKey: "fixture-google",
+      stage: "full",
+    });
+    expect(report).toMatchObject({
       kind: "addie_matched_v4_authorized_execution_report",
       requestedStage: "full",
       stages: [
@@ -1096,6 +1095,9 @@ describe("matched-v4 sealed private authority", () => {
         expect.objectContaining({ stage: "full" }),
       ],
     });
+    const cell = report.stages[0]?.cells[0];
+    expect(cell).toEqual(expect.objectContaining({ estimatedCostUsd: expect.any(Number) }));
+    expect(cell).not.toHaveProperty("totalCostUsd");
   });
   it("uses the reviewed Gemini alias predicate and preserves the opaque continuation object", async () => {
     const accepted = await authority("google_dated_alias");
@@ -1489,6 +1491,15 @@ describe("matched-v4 sealed private authority", () => {
     ).toBe(true);
     expect(result.artifact.requestSetSha256).toMatch(/^[a-f0-9]{64}$/);
     const evidence = result.artifactEvidence;
+    expect(
+      evidence.observations.every((observation) =>
+        observation.dispatches.every(
+          (dispatch) =>
+            typeof dispatch.providerResponseId === "string" &&
+            dispatch.providerResponseId.length > 0,
+        ),
+      ),
+    ).toBe(true);
     expect(
       evidence.observations.some((observation) =>
         observation.dispatches.some(

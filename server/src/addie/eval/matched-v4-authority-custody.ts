@@ -634,6 +634,9 @@ function parsed(raw: Raw, p: Provider, profile: DatedPricingProfile) {
   if (
     raw.provider !== p ||
     typeof raw.model !== "string" ||
+    typeof raw.response_id !== "string" ||
+    !raw.response_id ||
+    raw.response_id.length > 256 ||
     !cohortReturnedModelMatches(profile, raw.model) ||
     !Number.isFinite(raw.latency_ms) ||
     (raw.latency_ms as number) < 0 ||
@@ -655,6 +658,7 @@ function parsed(raw: Raw, p: Provider, profile: DatedPricingProfile) {
     throw Error("malformed provider usage");
   return {
     model: raw.model,
+    providerResponseId: raw.response_id,
     latencyMs: raw.latency_ms as number,
     finishReason: raw.finish_reason as "stop" | "tool_calls",
     text: typeof raw.text === "string" ? raw.text : "",
@@ -1091,6 +1095,7 @@ class AddieMatchedV4PrivateAuthority {
                 continuationOfPreparedRequestFingerprint: null,
                 requestedReasoningEffort: d.reasoningEffort,
                 returnedIdentity: { provider: d.provider, model: r.model },
+                providerResponseId: r.providerResponseId,
                 settlement: "settled" as const,
                 usage,
               });
@@ -1131,6 +1136,7 @@ class AddieMatchedV4PrivateAuthority {
                     d.preparedRequestFingerprint,
                   requestedReasoningEffort: d.reasoningEffort,
                   returnedIdentity: { provider: d.provider, model: r.model },
+                  providerResponseId: r.providerResponseId,
                   settlement: "settled" as const,
                   usage: r.usage,
                 });
@@ -1512,6 +1518,7 @@ export async function createAddieMatchedV4PaidAuthority(
       return Object.freeze({
         provider: response.provider,
         model: response.model,
+        response_id: response.id,
         finish_reason: response.finishReason,
         latency_ms: Date.now() - started,
         text: response.content
@@ -1594,6 +1601,8 @@ interface AddieMatchedV4ExecutedDispatch {
   readonly continuationOfPreparedRequestFingerprint: string | null;
   readonly requestedReasoningEffort: AddieMatchedV4ReasoningEffort;
   readonly returnedIdentity: ReturnedIdentity;
+  /** Provider-issued response ID retained for external cost reconciliation. */
+  readonly providerResponseId: string;
   readonly settlement: "settled" | "unknown";
   readonly usage: Readonly<{
     inputTokens: number;
@@ -1669,6 +1678,7 @@ interface RecordedObservation {
     pricingProfileId: string;
     pricingProfileSha256: string;
     returnedIdentity: ReturnedIdentity;
+    providerResponseId: string;
     requestedReasoningEffort: AddieMatchedV4ReasoningEffort;
     usage: AddieMatchedV4ExecutedDispatch["usage"];
     costUsd: number;
@@ -1966,6 +1976,9 @@ function recordExecution(
         dispatched.continuationOfPreparedRequestFingerprint !== null ||
         dispatched.requestedReasoningEffort !== expected.reasoningEffort ||
         dispatched.returnedIdentity.provider !== expected.provider ||
+        typeof dispatched.providerResponseId !== "string" ||
+        !dispatched.providerResponseId ||
+        dispatched.providerResponseId.length > 256 ||
         dispatched.settlement !== "settled"
       )
         throw new Error(
@@ -2008,6 +2021,7 @@ function recordExecution(
         pricingProfileId: profile.profileId,
         pricingProfileSha256: datedPricingProfileIdentity(profile).digest,
         returnedIdentity: dispatched.returnedIdentity,
+        providerResponseId: dispatched.providerResponseId,
         requestedReasoningEffort: dispatched.requestedReasoningEffort,
         usage,
         costUsd,
@@ -2027,6 +2041,9 @@ function recordExecution(
         expected.preparedRequestFingerprint ||
       continuation.requestedReasoningEffort !== expected.reasoningEffort ||
       continuation.returnedIdentity.provider !== expected.provider ||
+      typeof continuation.providerResponseId !== "string" ||
+      !continuation.providerResponseId ||
+      continuation.providerResponseId.length > 256 ||
       continuation.settlement !== "settled"
     )
       throw new Error(
@@ -2070,6 +2087,7 @@ function recordExecution(
         pricingProfileId: profile.profileId,
         pricingProfileSha256: datedPricingProfileIdentity(profile).digest,
         returnedIdentity: continuation.returnedIdentity,
+        providerResponseId: continuation.providerResponseId,
         requestedReasoningEffort: continuation.requestedReasoningEffort,
         usage,
         costUsd: datedPricingCostUsd(profile, usage),
