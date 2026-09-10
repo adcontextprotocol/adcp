@@ -190,6 +190,7 @@
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.3",
     "@google-cloud/kms": "^6.0.0",
+    "@google-cloud/storage": "8.1.0",
     "@google/genai": "^2.21.0",
     "@google/generative-ai": "^0.24.1",
     "@googleapis/calendar": "^16.0.0",

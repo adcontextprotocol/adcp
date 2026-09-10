@@ -49,6 +49,45 @@ const testRuntime = vi.hoisted(() => {
       return client;
     },
   };
+  const durableEvidence = {
+    async reserve(commitment: any) {
+      testRuntime.evidenceReservations.push({
+        databaseConnections: testRuntime.pool.connections,
+        providerRequests:
+          testRuntime.requests.length + testRuntime.openaiRequests.length,
+      });
+      return {
+        commitment,
+        object: {
+          bucket: "matched-v4-test-evidence",
+          name: `reservations/${commitment.reservationId}.json`,
+          generation: "1",
+          sha256: "d".repeat(64),
+          retentionExpirationTime: "2030-01-01T00:00:00.000Z",
+        },
+      };
+    },
+    async finalize(input: any) {
+      testRuntime.evidenceFinalizations.push({ outcome: "completed", input });
+      return {
+        bucket: input.reservation.object.bucket,
+        name: `final/${input.reservation.commitment.reservationId}.json`,
+        generation: "2",
+        sha256: "e".repeat(64),
+        retentionExpirationTime: "2030-01-01T00:00:00.000Z",
+      };
+    },
+    async recordRefusal(input: any) {
+      testRuntime.evidenceFinalizations.push({ outcome: "refused", input });
+      return {
+        bucket: input.reservation.object.bucket,
+        name: `final/${input.reservation.commitment.reservationId}-refused.json`,
+        generation: "2",
+        sha256: "e".repeat(64),
+        retentionExpirationTime: "2030-01-01T00:00:00.000Z",
+      };
+    },
+  };
   return {
     settled,
     intents,
@@ -59,9 +98,18 @@ const testRuntime = vi.hoisted(() => {
       undefined | ((request: any, provider: string) => any),
     requests: [] as any[],
     openaiRequests: [] as any[],
+    evidenceReservations: [] as Array<{
+      databaseConnections: number;
+      providerRequests: number;
+    }>,
+    evidenceFinalizations: [] as Array<{
+      outcome: "completed" | "refused";
+      input: any;
+    }>,
     openaiRaw: undefined as undefined | ((request: any) => any),
     lastSignal: undefined as AbortSignal | undefined,
     pool,
+    durableEvidence,
   };
 });
 
@@ -73,8 +121,19 @@ vi.mock("../../../src/db/client.js", () => ({
 // Production never has an implementation until a sanctioned immutable sink
 // exists. This test-only module replacement permits isolated custody tests;
 // it is neither a caller input nor an environment bypass in the shipped path.
-vi.mock("../../../src/addie/eval/matched-v4-immutable-artifact-sink.js", () => ({
-  assertMatchedV4SanctionedImmutableArtifactSink: () => undefined,
+vi.mock(
+  "../../../src/addie/eval/matched-v4-immutable-artifact-sink.js",
+  () => ({
+    createMatchedV4GcsDurableEvidenceCapabilityForTest: () =>
+      testRuntime.durableEvidence,
+  }),
+);
+vi.mock("@google-cloud/storage", () => ({
+  Storage: class {
+    bucket() {
+      return {};
+    }
+  },
 }));
 vi.mock(
   "../../../src/addie/model-providers/anthropic-provider.js",
@@ -750,7 +809,10 @@ function responseFixture(bad?: Bad) {
             {
               type: "function_call",
               call_id: "fixture-tool-call",
-              name: bad === "unexpected_tool" ? "search_docs" : "create_github_issue",
+              name:
+                bad === "unexpected_tool"
+                  ? "search_docs"
+                  : "create_github_issue",
               arguments: JSON.stringify({
                 title: bad === "tool_args" ? "" : "Synthetic escalation",
                 body: "Evaluator-only attestation",
@@ -802,6 +864,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-09T12:00:00.000Z"));
   process.env.ADDIE_MATCHED_V4_MERGE_SHA = "a".repeat(40);
+  process.env.ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET = "matched-v4-test-evidence";
   testRuntime.settled.length = 0;
   testRuntime.intents.length = 0;
   testRuntime.reconciliations = 0;
@@ -810,11 +873,37 @@ beforeEach(() => {
   testRuntime.lastSignal = undefined;
   testRuntime.requests.length = 0;
   testRuntime.openaiRequests.length = 0;
+  testRuntime.evidenceReservations.length = 0;
+  testRuntime.evidenceFinalizations.length = 0;
   delete process.env.ADDIE_MATCHED_V4_DISPATCH_TIMEOUT_MS;
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  delete process.env.ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET;
+});
 
 describe("matched-v4 sealed private authority", () => {
+  it("does not expose or permit reflective replacement of durable-evidence custody", async () => {
+    const a = await authority();
+    expect(Object.getOwnPropertyNames(a)).not.toContain("durableEvidence");
+    expect(Object.getOwnPropertyNames(a)).not.toContain(
+      "screeningEvidenceReservation",
+    );
+    const prototype = Object.getPrototypeOf(a);
+    expect(Object.isFrozen(prototype)).toBe(true);
+    expect(
+      Reflect.set(prototype, "durableEvidence", testRuntime.durableEvidence),
+    ).toBe(false);
+  });
+
+  it("writes the exact pre-dispatch evidence reservation before DB admission or provider construction", async () => {
+    await authority();
+    expect(testRuntime.evidenceReservations[0]).toEqual({
+      databaseConnections: 0,
+      providerRequests: 0,
+    });
+  });
+
   it("makes bootstrap precondition failures visible and non-successful to psql", () => {
     const bootstrap = readFileSync(
       new URL(
@@ -836,18 +925,16 @@ describe("matched-v4 sealed private authority", () => {
       /\\echo 'matched-v4 bootstrap session_user and current_user must equal migration_principal'\nDO \$\$ BEGIN RAISE EXCEPTION 'matched-v4 bootstrap session_user and current_user must equal migration_principal'; END \$\$;\n\\quit 1/,
     );
     expect(bootstrap).toContain(
-      'PostgreSQL 16 gives a CREATEROLE principal an implicit ADMIN membership',
+      "PostgreSQL 16 gives a CREATEROLE principal an implicit ADMIN membership",
     );
     expect(bootstrap).toContain(
-      'this file must never create, repair, or grant them.',
+      "this file must never create, repair, or grant them.",
     );
-    expect(bootstrap).toContain(
-      'matched_v4_completed_least_privilege_bridges',
-    );
+    expect(bootstrap).toContain("matched_v4_completed_least_privilege_bridges");
     expect(bootstrap).not.toMatch(/^CREATE ROLE /m);
     expect(bootstrap).not.toMatch(/^GRANT /m);
     expect(bootstrap).toContain(
-      'AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole',
+      "AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole",
     );
     expect(bootstrap).toContain("FROM pg_catalog.pg_auth_members edge");
     expect(bootstrap).toContain(
@@ -1051,6 +1138,15 @@ describe("matched-v4 sealed private authority", () => {
       status: "refused",
       reason: "paired CI gate requires lower bound >= 0",
     });
+    expect(testRuntime.evidenceFinalizations.at(-1)).toMatchObject({
+      outcome: "refused",
+      input: {
+        reasonCode: "paired_ci_gate",
+        artifactEvidence: expect.objectContaining({
+          kind: "addie_matched_v4_execution_artifact_evidence",
+        }),
+      },
+    });
   });
   it("keeps Pareto promotion and paired-CI provenance inside one sealed authority", async () => {
     const a = await authority("baseline_semantic_irrelevant");
@@ -1096,7 +1192,9 @@ describe("matched-v4 sealed private authority", () => {
       ],
     });
     const cell = report.stages[0]?.cells[0];
-    expect(cell).toEqual(expect.objectContaining({ estimatedCostUsd: expect.any(Number) }));
+    expect(cell).toEqual(
+      expect.objectContaining({ estimatedCostUsd: expect.any(Number) }),
+    );
     expect(cell).not.toHaveProperty("totalCostUsd");
   });
   it("uses the reviewed Gemini alias predicate and preserves the opaque continuation object", async () => {
@@ -1359,6 +1457,10 @@ describe("matched-v4 sealed private authority", () => {
       testRuntime.settled.filter((x) => x.status === "settled"),
     ).toHaveLength(0);
     expect(testRuntime.reconciliations).toBeGreaterThan(0);
+    expect(testRuntime.evidenceFinalizations.at(-1)).toMatchObject({
+      outcome: "refused",
+      input: { reasonCode: "dispatch_timeout" },
+    });
   });
   it.each(["0", "999", "120001", "not-a-number"])(
     "rejects an out-of-bounds dispatch timeout: %s",
@@ -1403,7 +1505,9 @@ describe("matched-v4 sealed private authority", () => {
     ).toBe(true);
   });
   it("settles an unexpected advertised tool choice as a failed observation without executing it", async () => {
-    const result = await (await authority("unexpected_tool")).execute("screening");
+    const result = await (
+      await authority("unexpected_tool")
+    ).execute("screening");
     expect(result).toMatchObject({ status: "completed" });
     if (result.status !== "completed") return;
     expect(
@@ -1412,7 +1516,11 @@ describe("matched-v4 sealed private authority", () => {
       ),
     ).toBe(true);
     expect(testRuntime.intents).toHaveLength(testRuntime.settled.length);
-    expect(testRuntime.settled.every((settlement) => settlement.status === "settled")).toBe(true);
+    expect(
+      testRuntime.settled.every(
+        (settlement) => settlement.status === "settled",
+      ),
+    ).toBe(true);
   });
   it("settles a missing current #567 receipt as a failed side-effect claim", async () => {
     const result = await (await authority("receipt")).execute("screening");
@@ -1447,13 +1555,14 @@ describe("matched-v4 sealed private authority", () => {
           content.text.includes("separate synthetic escalation"),
       ),
     );
-    const priorCompletionIndex = priorRequest?.messages.findIndex((message) =>
-      message.role === "assistant" &&
-      message.content.some(
-        (content) =>
-          content.type === "text" &&
-          content.text === "The prior synthetic escalation has completed.",
-      ),
+    const priorCompletionIndex = priorRequest?.messages.findIndex(
+      (message) =>
+        message.role === "assistant" &&
+        message.content.some(
+          (content) =>
+            content.type === "text" &&
+            content.text === "The prior synthetic escalation has completed.",
+        ),
     );
     expect(priorResultIndex).toBeGreaterThanOrEqual(0);
     expect(priorCompletionIndex).toBeGreaterThan(priorResultIndex!);

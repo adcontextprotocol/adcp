@@ -1,6 +1,7 @@
 /** Closed-by-default evaluator-only v4 authority. */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { types as nodeTypes } from "node:util";
+import { Storage } from "@google-cloud/storage";
 import OpenAI from "openai";
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../../db/client.js";
@@ -44,7 +45,13 @@ import {
   addieMatchedV4WireSurface,
   addieMatchedV4WireSurfaceProvenance,
 } from "./matched-v4-runtime-surface.js";
-import { assertMatchedV4SanctionedImmutableArtifactSink } from "./matched-v4-immutable-artifact-sink.js";
+import {
+  createMatchedV4GcsDurableEvidenceCapabilityForTest,
+  type AddieMatchedV4DurableEvidenceCapability,
+  type AddieMatchedV4DurableEvidenceReservation,
+  type AddieMatchedV4DurableObject,
+  type AddieMatchedV4TerminalReasonCode,
+} from "./matched-v4-immutable-artifact-sink.js";
 const ADDIE_MATCHED_V4_PRIVATE_AUTHORITY = Object.freeze({
   version: "addie-matched-v4-private-authority-v12",
   paidDispatchGate: "closed" as const,
@@ -60,6 +67,22 @@ const ADDIE_MATCHED_V4_PRIVATE_AUTHORITY = Object.freeze({
     issueNumber: 567,
   }),
 });
+const EVIDENCE_BUCKET_ENV = "ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET";
+/** Deliberately module-private: only the paid constructor can issue this. */
+function createMatchedV4SanctionedDurableEvidenceCapability(): AddieMatchedV4DurableEvidenceCapability {
+  const bucketName = process.env[EVIDENCE_BUCKET_ENV];
+  if (
+    typeof bucketName !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(bucketName)
+  )
+    throw new Error(
+      "Matched v4 paid dispatch requires a sealed GCS evidence bucket configuration",
+    );
+  return createMatchedV4GcsDurableEvidenceCapabilityForTest(
+    bucketName,
+    new Storage().bucket(bucketName),
+  );
+}
 type Stage = "screening" | "full";
 type Provider = "anthropic" | "openai" | "google";
 type Raw = Readonly<Record<string, unknown>>;
@@ -516,9 +539,10 @@ function request(
   // system-block assembly as the paired arm. The synthetic evaluator contract
   // follows it and is deliberately separate provenance, never a replacement
   // for the production prompt core.
-  const runtimeSurface = d.role === "router"
-    ? addieMatchedV4RouterWireSurface(d.provider)
-    : addieMatchedV4WireSurface(a.cell.toolSurface, d.provider);
+  const runtimeSurface =
+    d.role === "router"
+      ? addieMatchedV4RouterWireSurface(d.provider)
+      : addieMatchedV4WireSurface(a.cell.toolSurface, d.provider);
   const productionPrompt = runtimeSurface.system;
   const tools = runtimeSurface.tools;
   const system = [
@@ -897,6 +921,11 @@ interface AddieMatchedV4PrivateRunResult {
   /** Serializable preimage for independent artifact-hash verification. */
   readonly artifactEvidence: AddieMatchedV4ExecutionArtifactEvidence;
   readonly reservationId: string;
+  /** Independently retained reservation and final evidence generations. */
+  readonly durableEvidence: Readonly<{
+    reservation: AddieMatchedV4DurableEvidenceReservation;
+    final: AddieMatchedV4DurableObject;
+  }>;
   readonly metrics: ReturnType<typeof validateAddieMatchedV4Observations>;
   readonly pairedCiGate?: readonly ReturnType<
     typeof addieMatchedV4PairedOutcomeCi
@@ -913,20 +942,35 @@ interface AddieMatchedV4PrivateRefusedRunResult {
   readonly metrics?: ReturnType<typeof validateAddieMatchedV4Observations>;
 }
 class AddieMatchedV4PrivateAuthority {
-  #plan = frozen(createAddieMatchedV4Plan());
+  #plan: AddieMatchedV4Plan;
   #promotion: AddieMatchedV4Promotion | null = null;
   #ledger: AddieMatchedV4PrivateLedger;
   #transport: AddieMatchedV4ExecutionTransport | undefined;
+  #durableEvidence: AddieMatchedV4DurableEvidenceCapability | undefined;
+  #screeningEvidenceReservation:
+    AddieMatchedV4DurableEvidenceReservation | undefined;
+  #evidenceMergeSha: string | undefined;
+  #evidenceManifestSha256: string | undefined;
   constructor(
     ledger: AddieMatchedV4PrivateLedger,
     issuedTransport?: IssuedExecutionTransport,
+    plan = frozen(createAddieMatchedV4Plan()),
+    durableEvidence?: AddieMatchedV4DurableEvidenceCapability,
+    screeningEvidenceReservation?: AddieMatchedV4DurableEvidenceReservation,
+    evidenceMergeSha?: string,
+    evidenceManifestSha256?: string,
   ) {
     if (issuedTransport && !issuedExecutionTransports.has(issuedTransport)) {
       throw Error("matched-v4 execution transport was not issued by authority");
     }
+    this.#plan = plan;
     issuedPlans.add(this.#plan);
     this.#ledger = ledger;
     this.#transport = issuedTransport?.transport;
+    this.#durableEvidence = durableEvidence;
+    this.#screeningEvidenceReservation = screeningEvidenceReservation;
+    this.#evidenceMergeSha = evidenceMergeSha;
+    this.#evidenceManifestSha256 = evidenceManifestSha256;
   }
   async execute(
     stage: Stage,
@@ -951,7 +995,42 @@ class AddieMatchedV4PrivateAuthority {
         stage === "screening"
           ? this.#plan.screening.maxProviderDispatches
           : this.#plan.full.maxProviderDispatches,
-      reservationId = `mv4_${hash({ stage, selector: selector.selectorFingerprint }).slice(0, 32)}`;
+      provisionalReservationId = `mv4_${randomUUID().replaceAll("-", "")}`;
+    let durableReservation: AddieMatchedV4DurableEvidenceReservation;
+    try {
+      if (stage === "screening") {
+        durableReservation = this.#screeningEvidenceReservation!;
+        if (
+          !durableReservation ||
+          durableReservation.commitment.selectorFingerprint !==
+            selector.selectorFingerprint
+        )
+          throw new Error(
+            "screening durable evidence reservation does not match selector",
+          );
+      } else {
+        if (!this.#durableEvidence)
+          throw new Error("durable evidence capability is unavailable");
+        durableReservation = await this.#durableEvidence.reserve({
+          reservationId: provisionalReservationId,
+          stage,
+          selectorFingerprint: selector.selectorFingerprint,
+          dispatchCap: cap,
+          mergeSha: this.#evidenceMergeSha!,
+          authorityManifestSha256: this.#evidenceManifestSha256!,
+          evaluationVersion: ADDIE_MATCHED_V4_EVALUATION_VERSION,
+        });
+      }
+    } catch {
+      return {
+        status: "refused",
+        reason: "durable_evidence_reservation_refused",
+      };
+    }
+    const reservationId = durableReservation.commitment.reservationId;
+    let artifactEvidence: AddieMatchedV4ExecutionArtifactEvidence | undefined;
+    let artifactSha256: string | undefined;
+    let terminalEvidenceRecorded = false;
     let dispatchTimeoutMs: number;
     try {
       dispatchTimeoutMs = matchedV4DispatchTimeoutMs();
@@ -1120,9 +1199,8 @@ class AddieMatchedV4PrivateAuthority {
                   d.preparedRequestFingerprint,
                 );
                 const continuation = continuationRequest(q, tool);
-                continuationRequestFingerprint = this.#transport!.requestCommitment(
-                  continuation,
-                );
+                continuationRequestFingerprint =
+                  this.#transport!.requestCommitment(continuation);
                 r = await dispatch(d, continuation);
                 if (r.finishReason !== "stop" || r.toolCalls.length !== 0)
                   throw Error("synthetic tool continuation was not terminal");
@@ -1158,7 +1236,8 @@ class AddieMatchedV4PrivateAuthority {
             // evaluator-owned synthetic receipt above.
             passed =
               terminalStatus === "stop" &&
-              !!receipt === (a.trace.expectedReceipt === "current_turn_github_567") &&
+              !!receipt ===
+                (a.trace.expectedReceipt === "current_turn_github_567") &&
               semanticGrade(a, finalText, receipt);
             const executedTurn = frozen({
               passed,
@@ -1205,6 +1284,17 @@ class AddieMatchedV4PrivateAuthority {
       // it. Metrics are retained read-only for the audit record, never as a
       // promotion capability.
       if (pairedCiGate?.some((ci) => ci.lower < 0)) {
+        if (!this.#durableEvidence)
+          throw new Error("durable evidence capability is unavailable");
+        artifactEvidence = serializableArtifactEvidence(artifact);
+        artifactSha256 = artifact.artifactSha256;
+        await this.#durableEvidence.recordRefusal({
+          reservation: durableReservation,
+          reasonCode: "paired_ci_gate",
+          artifactSha256,
+          artifactEvidence,
+        });
+        terminalEvidenceRecorded = true;
         await this.#ledger.halt({
           reservationId,
           reason: "paired CI gate requires lower bound >= 0",
@@ -1216,11 +1306,24 @@ class AddieMatchedV4PrivateAuthority {
           metrics,
         };
       }
+      artifactEvidence = serializableArtifactEvidence(artifact);
+      artifactSha256 = artifact.artifactSha256;
+      if (!this.#durableEvidence)
+        throw new Error("durable evidence capability is unavailable");
+      const finalEvidence = await this.#durableEvidence.finalize({
+        reservation: durableReservation,
+        artifactSha256,
+        artifactEvidence,
+      });
       const result = {
         status: "completed" as const,
         artifact,
-        artifactEvidence: serializableArtifactEvidence(artifact),
+        artifactEvidence,
         reservationId,
+        durableEvidence: Object.freeze({
+          reservation: durableReservation,
+          final: finalEvidence,
+        }),
         metrics,
         ...(pairedCiGate ? { pairedCiGate } : {}),
       };
@@ -1233,6 +1336,20 @@ class AddieMatchedV4PrivateAuthority {
       // A failed per-attempt settlement or a later artifact/CI failure may
       // have left an intent open. Reconcile before and after halt so the
       // durable readback path also works once no further dispatch is allowed.
+      const reason = e instanceof Error ? e.message : "unknown_exposure";
+      if (!terminalEvidenceRecorded && this.#durableEvidence)
+        await this.#durableEvidence
+          .recordRefusal({
+            reservation: durableReservation,
+            reasonCode: durableTerminalReasonCode(reason),
+            ...(artifactSha256 && artifactEvidence
+              ? { artifactSha256, artifactEvidence }
+              : {}),
+          })
+          .then(() => {
+            terminalEvidenceRecorded = true;
+          })
+          .catch(() => undefined);
       await this.#ledger.reconcile({ reservationId }).catch(() => false);
       await this.#ledger.halt({
         reservationId,
@@ -1241,7 +1358,7 @@ class AddieMatchedV4PrivateAuthority {
       await this.#ledger.reconcile({ reservationId }).catch(() => false);
       return {
         status: "refused",
-        reason: e instanceof Error ? e.message : "unknown_exposure",
+        reason,
       };
     }
   }
@@ -1397,12 +1514,29 @@ export async function createAddieMatchedV4PaidAuthority(
     );
   if (authorizePaidDispatch !== true)
     throw new Error("Matched v4 paid dispatch requires explicit authorization");
-  // This assertion lives at the only paid-authority construction boundary,
-  // rather than in an operator CLI. No ordinary import, path, or environment
-  // value can create providers, claim admission, or dispatch until a reviewed
-  // immutable-sink adapter supplies this capability.
-  assertMatchedV4SanctionedImmutableArtifactSink();
+  // The sealed adapter is the only producer of this capability. A caller
+  // cannot supply a local path, a mock sink, an ALLOW flag, or a provider to
+  // the authority. Its first operation is intentionally before any DB
+  // admission claim or provider construction.
+  const durableEvidence = createMatchedV4SanctionedDurableEvidenceCapability();
   const mergeSha = deployedMergeSha();
+  const manifestSha256 = authorityManifestSha256();
+  const plan = frozen(createAddieMatchedV4Plan());
+  const screeningSelectorFingerprint = digest({
+    domain: "adcp:addie:matched-v4:selector:v1",
+    plan: planFingerprint(plan),
+    stage: "screening",
+    promoted: ADDIE_MATCHED_V4_SCREENING_CELLS.map((cell) => cell.id),
+  });
+  const screeningEvidenceReservation = await durableEvidence.reserve({
+    reservationId: `mv4_${randomUUID().replaceAll("-", "")}`,
+    stage: "screening",
+    selectorFingerprint: screeningSelectorFingerprint,
+    dispatchCap: plan.screening.maxProviderDispatches,
+    mergeSha,
+    authorityManifestSha256: manifestSha256,
+    evaluationVersion: ADDIE_MATCHED_V4_EVALUATION_VERSION,
+  });
   const issuedLedger = issuePaidLedger();
   if (!(await issuedLedger.ledger.isRuntimeEligible()))
     throw new Error(
@@ -1490,11 +1624,12 @@ export async function createAddieMatchedV4PaidAuthority(
       // Gemini keeps a tool-call thought signature in adapter-private custody.
       // Project it before intent recording so a continuation commitment covers
       // all provider-visible state, not merely enumerable canonical fields.
-      const wire = provider === "openai"
-        ? prepareOpenAIResponsesEvaluationRequest(request)
-        : provider === "google"
-          ? prepareGoogleGenerateContentEvaluationRequest(request)
-          : request;
+      const wire =
+        provider === "openai"
+          ? prepareOpenAIResponsesEvaluationRequest(request)
+          : provider === "google"
+            ? prepareGoogleGenerateContentEvaluationRequest(request)
+            : request;
       return hash({ provider, canonicalRequest: request, wireRequest: wire });
     },
     async respond(
@@ -1550,6 +1685,11 @@ export async function createAddieMatchedV4PaidAuthority(
     new AddieMatchedV4PrivateAuthority(
       issuedLedger.ledger,
       issueExecutionTransport(transport),
+      plan,
+      durableEvidence,
+      screeningEvidenceReservation,
+      mergeSha,
+      manifestSha256,
     ),
   ) as AddieMatchedV4PrivateAuthority;
 }
@@ -1698,7 +1838,9 @@ interface RecordedObservation {
  * normalized identities, token/cost accounting, and request hashes—never API
  * keys, raw provider bodies, or executable tool/ledger capabilities.
  */
-interface AddieMatchedV4ExecutionArtifactEvidence {
+interface AddieMatchedV4ExecutionArtifactEvidence extends Readonly<
+  Record<string, unknown>
+> {
   readonly kind: "addie_matched_v4_execution_artifact_evidence";
   readonly version: typeof ADDIE_MATCHED_V4_EVALUATION_VERSION;
   readonly stage: AddieMatchedV4Stage;
@@ -1732,6 +1874,18 @@ function validCount(value: number): boolean {
 }
 function validSha256(value: string): boolean {
   return /^[a-f0-9]{64}$/.test(value);
+}
+function durableTerminalReasonCode(
+  reason: string,
+): AddieMatchedV4TerminalReasonCode {
+  if (reason === "paired CI gate requires lower bound >= 0")
+    return "paired_ci_gate";
+  if (reason === "matched-v4 dispatch timeout") return "dispatch_timeout";
+  if (reason === "settlement refused") return "settlement_refused";
+  if (reason === "intent refused") return "intent_refused";
+  if (/provider (?:response|did not)/.test(reason))
+    return "provider_response_invalid";
+  return "execution_refused";
 }
 
 function cellById(id: string): AddieMatchedV4Cell | undefined {
@@ -1957,8 +2111,8 @@ function recordExecution(
     executed.attemptedProviderDispatches !== expectedPhysicalDispatches ||
     executed.completedProviderDispatches !== expectedPhysicalDispatches ||
     (executed.dispatches.length !== initialPhysicalDispatches &&
-      executed.dispatches.length !== initialPhysicalDispatches +
-        (expectsContinuation ? 1 : 0))
+      executed.dispatches.length !==
+        initialPhysicalDispatches + (expectsContinuation ? 1 : 0))
   )
     throw new Error(
       "Matched v4 dispatch receipt does not match bounded execution",
@@ -2027,7 +2181,10 @@ function recordExecution(
         costUsd,
       });
     });
-  if (expectsContinuation && executed.dispatches.length > initialPhysicalDispatches) {
+  if (
+    expectsContinuation &&
+    executed.dispatches.length > initialPhysicalDispatches
+  ) {
     const expected = assignment.dispatches.at(-1)!;
     const continuation = executed.dispatches.at(-1)!;
     const continuationFingerprint =
@@ -2106,7 +2263,9 @@ function recordExecution(
     executed.currentTurnToolReceipt?.preparedRequestFingerprint ===
       assignment.dispatches.at(-1)?.preparedRequestFingerprint;
   if (
-    (expectsContinuation && executed.currentTurnToolReceipt !== null && !exactReceipt) ||
+    (expectsContinuation &&
+      executed.currentTurnToolReceipt !== null &&
+      !exactReceipt) ||
     (!expectsContinuation && executed.currentTurnToolReceipt !== null)
   )
     throw new Error(
@@ -2137,8 +2296,7 @@ function recordExecution(
       cacheWriteTokens: usageTotal("cacheWriteTokens"),
       reasoningTokens: reasoningDispatches.length
         ? reasoningDispatches.reduce(
-            (sum, dispatch) =>
-              sum + (dispatch.usage.reasoningTokens ?? 0),
+            (sum, dispatch) => sum + (dispatch.usage.reasoningTokens ?? 0),
             0,
           )
         : null,
@@ -2486,9 +2644,7 @@ function addieMatchedV4ParetoPromotions(
   // bounded full stage must not turn a screen with many equivalent Pareto
   // points into an unbounded live run.
   return Object.freeze(
-    promoted
-      .map((metric) => metric.cell.id)
-      .slice(0, maxPromotedCells),
+    promoted.map((metric) => metric.cell.id).slice(0, maxPromotedCells),
   );
 }
 

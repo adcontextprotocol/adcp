@@ -1,0 +1,55 @@
+name: Verify matched-v4 durable evidence boundary
+
+# This is a protected, read-only provisioning gate. It never creates a
+# bucket, changes a retention policy, writes an object, or calls a model.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-gcs-bucket-lock:
+    # Administrators must configure this environment with required reviewers
+    # and its own WIF variables. A dispatch-selected ref is never trusted.
+    environment: matched-v4-durable-evidence
+    runs-on: ubuntu-latest
+    steps:
+      # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Refuse a non-current main checkout
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Authenticate only as the evidence verifier
+        # v2.1.8
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935
+        with:
+          workload_identity_provider: ${{ vars.MATCHED_V4_GCS_WIF_PROVIDER }}
+          service_account: ${{ vars.MATCHED_V4_GCS_VERIFIER_SERVICE_ACCOUNT }}
+      - name: Install reviewed Cloud SDK
+        # v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          version: "503.0.0"
+      - name: Verify immutable retention configuration without writing
+        env:
+          EVIDENCE_BUCKET: ${{ vars.MATCHED_V4_GCS_EVIDENCE_BUCKET }}
+        run: |
+          set -euo pipefail
+          # Runtime requires 365.25 days remaining on each object. Require the
+          # policy to exceed that by seven days so normal write/read latency
+          # cannot make an otherwise exact-duration bucket fail readback.
+          minimum_retention_policy_seconds=32162400
+          test -n "$EVIDENCE_BUCKET"
+          bucket_json=$(gcloud storage buckets describe "gs://$EVIDENCE_BUCKET" --format=json)
+          jq -e --argjson minimum_retention_policy_seconds "$minimum_retention_policy_seconds" '
+            .retentionPolicy.isLocked == true and
+            (.retentionPolicy.retentionPeriod | tonumber? >= $minimum_retention_policy_seconds) and
+            (.retentionPolicy.effectiveTime | type == "string")
+          ' <<<"$bucket_json" >/dev/null
