@@ -5,6 +5,7 @@ import { Storage } from "@google-cloud/storage";
 import OpenAI from "openai";
 import type { Pool, PoolClient } from "pg";
 import { getPool } from "../../db/client.js";
+import { createLogger } from "../../logger.js";
 import {
   ADDIE_MATCHED_V4_BASELINE_CELL_ID,
   ADDIE_MATCHED_V4_EVALUATION_VERSION,
@@ -68,6 +69,16 @@ const ADDIE_MATCHED_V4_PRIVATE_AUTHORITY = Object.freeze({
   }),
 });
 const EVIDENCE_BUCKET_ENV = "ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET";
+const logger = createLogger("addie-matched-v4-authority");
+// The Storage client's retry budget bounds metadata and generation-pinned
+// reads. The adapter separately sets this as the non-resumable write timeout.
+const ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_SECONDS = 30;
+const ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_MS =
+  ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_SECONDS * 1_000;
+// A terminal record is not best-effort. Retrying at the authority boundary
+// makes the adapter's issued -> finalizing -> issued recovery reachable from
+// paid execution, while keeping retries bounded and zero-network by itself.
+const ADDIE_MATCHED_V4_TERMINAL_EVIDENCE_ATTEMPTS = 3;
 /** Deliberately module-private: only the paid constructor can issue this. */
 function createMatchedV4SanctionedDurableEvidenceCapability(): AddieMatchedV4DurableEvidenceCapability {
   const bucketName = process.env[EVIDENCE_BUCKET_ENV];
@@ -80,8 +91,47 @@ function createMatchedV4SanctionedDurableEvidenceCapability(): AddieMatchedV4Dur
     );
   return createMatchedV4GcsDurableEvidenceCapabilityForTest(
     bucketName,
-    new Storage().bucket(bucketName),
+    new Storage({
+      // Storage passes ServiceOptions.timeout to metadata and download HTTP
+      // requests; save receives its matching explicit timeout in the adapter.
+      timeout: ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_MS,
+      retryOptions: {
+        autoRetry: true,
+        maxRetries: 2,
+        maxRetryDelay: 5,
+        retryDelayMultiplier: 2,
+        totalTimeout: ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_SECONDS,
+      },
+    }).bucket(bucketName),
   );
+}
+async function recordMatchedV4ConstructionRefusal(
+  durableEvidence: AddieMatchedV4DurableEvidenceCapability,
+  reservation: AddieMatchedV4DurableEvidenceReservation,
+): Promise<void> {
+  let lastError: unknown;
+  for (
+    let attempt = 0;
+    attempt < ADDIE_MATCHED_V4_TERMINAL_EVIDENCE_ATTEMPTS;
+    attempt++
+  ) {
+    try {
+      await durableEvidence.recordRefusal({
+        reservation,
+        reasonCode: "execution_refused",
+      });
+      return;
+    } catch (error) {
+      lastError ??= error;
+      // The sealed adapter resets an unsuccessful finalization to issued.
+      // Continue only within the bounded authority retry budget.
+    }
+  }
+  logger.error(
+    { err: lastError },
+    "Matched v4 durable construction refusal could not be retained",
+  );
+  throw new Error("Matched v4 durable terminal evidence could not be retained");
 }
 type Stage = "screening" | "full";
 type Provider = "anthropic" | "openai" | "google";
@@ -972,11 +1022,83 @@ class AddieMatchedV4PrivateAuthority {
     this.#evidenceMergeSha = evidenceMergeSha;
     this.#evidenceManifestSha256 = evidenceManifestSha256;
   }
+  async #recordTerminalEvidence(
+    input: Readonly<{
+      reservation: AddieMatchedV4DurableEvidenceReservation;
+      reasonCode: AddieMatchedV4TerminalReasonCode;
+      artifactSha256?: string;
+      artifactEvidence?: AddieMatchedV4ExecutionArtifactEvidence;
+    }>,
+  ): Promise<void> {
+    if (!this.#durableEvidence)
+      throw new Error("Matched v4 durable evidence capability is unavailable");
+    let lastError: unknown;
+    for (
+      let attempt = 0;
+      attempt < ADDIE_MATCHED_V4_TERMINAL_EVIDENCE_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        await this.#durableEvidence.recordRefusal(input);
+        return;
+      } catch (error) {
+        lastError ??= error;
+      }
+    }
+    // Do not expose a provider/SDK diagnostic in a durable record or return
+    // it to the paid caller. Structured logger error hooks deliver the root
+    // cause to operational telemetry while this refusal stays closed.
+    logger.error(
+      { err: lastError },
+      "Matched v4 durable terminal refusal could not be retained",
+    );
+    throw new Error(
+      "Matched v4 durable terminal evidence could not be retained",
+    );
+  }
+  async #finalizeTerminalEvidence(
+    input: Readonly<{
+      reservation: AddieMatchedV4DurableEvidenceReservation;
+      artifactSha256: string;
+      artifactEvidence: AddieMatchedV4ExecutionArtifactEvidence;
+    }>,
+  ): Promise<AddieMatchedV4DurableObject> {
+    if (!this.#durableEvidence)
+      throw new Error("Matched v4 durable evidence capability is unavailable");
+    let lastError: unknown;
+    for (
+      let attempt = 0;
+      attempt < ADDIE_MATCHED_V4_TERMINAL_EVIDENCE_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        return await this.#durableEvidence.finalize(input);
+      } catch (error) {
+        lastError ??= error;
+        // The adapter admits a retry only for this same terminal identity.
+      }
+    }
+    logger.error(
+      { err: lastError },
+      "Matched v4 durable completion evidence could not be retained",
+    );
+    throw new Error(
+      "Matched v4 durable completion evidence could not be retained",
+    );
+  }
   async execute(
     stage: Stage,
   ): Promise<
     AddieMatchedV4PrivateRunResult | AddieMatchedV4PrivateRefusedRunResult
   > {
+    // TypeScript callers are checked statically, but a paid boundary must not
+    // let a JavaScript caller turn an arbitrary string into a full-pack run.
+    // It is not an admitted execution and therefore must not consume the
+    // reserved screening disposition; a later valid screening call remains
+    // subject to its exact sealed reservation.
+    if (stage !== "screening" && stage !== "full") {
+      return { status: "refused", reason: "invalid_stage" };
+    }
     if (!this.#transport)
       return { status: "refused", reason: "paid_dispatch_gate_closed" };
     if (stage === "full" && !this.#promotion)
@@ -996,6 +1118,31 @@ class AddieMatchedV4PrivateAuthority {
           ? this.#plan.screening.maxProviderDispatches
           : this.#plan.full.maxProviderDispatches,
       provisionalReservationId = `mv4_${randomUUID().replaceAll("-", "")}`;
+    let dispatchTimeoutMs: number;
+    try {
+      dispatchTimeoutMs = matchedV4DispatchTimeoutMs();
+    } catch (error) {
+      // Screening owns a pre-dispatch reservation from construction. A later
+      // invalid environment value must close it rather than leave a WORM
+      // reservation with no terminal disposition. Full has no reservation yet.
+      if (stage === "screening" && this.#screeningEvidenceReservation) {
+        try {
+          await this.#recordTerminalEvidence({
+            reservation: this.#screeningEvidenceReservation,
+            reasonCode: "execution_refused",
+          });
+        } catch {
+          return {
+            status: "refused",
+            reason: "durable_terminal_evidence_unavailable",
+          };
+        }
+      }
+      return {
+        status: "refused",
+        reason: publicRefusalReason("execution_refused"),
+      };
+    }
     let durableReservation: AddieMatchedV4DurableEvidenceReservation;
     try {
       if (stage === "screening") {
@@ -1031,27 +1178,18 @@ class AddieMatchedV4PrivateAuthority {
     let artifactEvidence: AddieMatchedV4ExecutionArtifactEvidence | undefined;
     let artifactSha256: string | undefined;
     let terminalEvidenceRecorded = false;
-    let dispatchTimeoutMs: number;
-    try {
-      dispatchTimeoutMs = matchedV4DispatchTimeoutMs();
-    } catch (error) {
-      return {
-        status: "refused",
-        reason:
-          error instanceof Error ? error.message : "invalid dispatch timeout",
-      };
-    }
-    if (
-      (await this.#ledger.reserve({
-        reservationId,
-        stage,
-        selectorFingerprint: selector.selectorFingerprint,
-        dispatchCap: cap,
-      })) !== "reserved"
-    )
-      return { status: "refused", reason: "reservation_refused" };
+    let terminalOperationStarted = false;
     let count = 0;
     try {
+      if (
+        (await this.#ledger.reserve({
+          reservationId,
+          stage,
+          selectorFingerprint: selector.selectorFingerprint,
+          dispatchCap: cap,
+        })) !== "reserved"
+      )
+        throw new Error("reservation_refused");
       const executedTurns: AddieMatchedV4ExecutedTurn[] = [];
       for (const a of addieMatchedV4ExecutionAssignments(selector)) {
         executedTurns.push(
@@ -1288,7 +1426,7 @@ class AddieMatchedV4PrivateAuthority {
           throw new Error("durable evidence capability is unavailable");
         artifactEvidence = serializableArtifactEvidence(artifact);
         artifactSha256 = artifact.artifactSha256;
-        await this.#durableEvidence.recordRefusal({
+        await this.#recordTerminalEvidence({
           reservation: durableReservation,
           reasonCode: "paired_ci_gate",
           artifactSha256,
@@ -1308,9 +1446,17 @@ class AddieMatchedV4PrivateAuthority {
       }
       artifactEvidence = serializableArtifactEvidence(artifact);
       artifactSha256 = artifact.artifactSha256;
+      // Computing promotion can fail only before the completion record is
+      // committed. Assignment remains after verified final evidence so an
+      // incomplete terminal record can never unlock the full stage.
+      const screeningPromotion =
+        stage === "screening"
+          ? frozen(promoteAddieMatchedV4Screening(this.#plan, metrics))
+          : undefined;
       if (!this.#durableEvidence)
         throw new Error("durable evidence capability is unavailable");
-      const finalEvidence = await this.#durableEvidence.finalize({
+      terminalOperationStarted = true;
+      const finalEvidence = await this.#finalizeTerminalEvidence({
         reservation: durableReservation,
         artifactSha256,
         artifactEvidence,
@@ -1327,38 +1473,67 @@ class AddieMatchedV4PrivateAuthority {
         metrics,
         ...(pairedCiGate ? { pairedCiGate } : {}),
       };
-      if (stage === "screening")
-        this.#promotion = frozen(
-          promoteAddieMatchedV4Screening(this.#plan, metrics),
-        );
+      if (screeningPromotion) this.#promotion = screeningPromotion;
       return result;
     } catch (e) {
       // A failed per-attempt settlement or a later artifact/CI failure may
       // have left an intent open. Reconcile before and after halt so the
       // durable readback path also works once no further dispatch is allowed.
-      const reason = e instanceof Error ? e.message : "unknown_exposure";
-      if (!terminalEvidenceRecorded && this.#durableEvidence)
-        await this.#durableEvidence
-          .recordRefusal({
+      const rawReason = e instanceof Error ? e.message : "unknown_exposure";
+      const reasonCode = durableTerminalReasonCode(rawReason);
+      if (!terminalEvidenceRecorded && !terminalOperationStarted)
+        try {
+          await this.#recordTerminalEvidence({
             reservation: durableReservation,
-            reasonCode: durableTerminalReasonCode(reason),
+            reasonCode,
             ...(artifactSha256 && artifactEvidence
               ? { artifactSha256, artifactEvidence }
               : {}),
-          })
-          .then(() => {
-            terminalEvidenceRecorded = true;
-          })
-          .catch(() => undefined);
+          });
+        } catch {
+          await this.#ledger.reconcile({ reservationId }).catch(() => false);
+          await this.#ledger.halt({
+            reservationId,
+            reason: "durable terminal evidence unavailable",
+          });
+          await this.#ledger.reconcile({ reservationId }).catch(() => false);
+          return {
+            status: "refused",
+            reason: "durable_terminal_evidence_unavailable",
+          };
+        }
+      if (terminalOperationStarted) {
+        // Completion I/O can be ambiguous after a request reached GCS. The
+        // sealed sink allows only identical completion retries; never create
+        // a conflicting terminal refusal for this reservation.
+        await this.#ledger.reconcile({ reservationId }).catch(() => false);
+        await this.#ledger.halt({
+          reservationId,
+          reason: "durable completion evidence unavailable",
+        });
+        await this.#ledger.reconcile({ reservationId }).catch(() => false);
+        return {
+          status: "refused",
+          reason: "durable_terminal_evidence_unavailable",
+        };
+      }
+      logger.error(
+        {
+          err: e,
+          reservationId,
+          reasonCode,
+        },
+        "Matched v4 execution was refused after durable terminal evidence",
+      );
       await this.#ledger.reconcile({ reservationId }).catch(() => false);
       await this.#ledger.halt({
         reservationId,
-        reason: e instanceof Error ? e.message : "unknown",
+        reason: publicRefusalReason(reasonCode),
       });
       await this.#ledger.reconcile({ reservationId }).catch(() => false);
       return {
         status: "refused",
-        reason,
+        reason: publicRefusalReason(reasonCode),
       };
     }
   }
@@ -1514,184 +1689,218 @@ export async function createAddieMatchedV4PaidAuthority(
     );
   if (authorizePaidDispatch !== true)
     throw new Error("Matched v4 paid dispatch requires explicit authorization");
-  // The sealed adapter is the only producer of this capability. A caller
-  // cannot supply a local path, a mock sink, an ALLOW flag, or a provider to
-  // the authority. Its first operation is intentionally before any DB
-  // admission claim or provider construction.
-  const durableEvidence = createMatchedV4SanctionedDurableEvidenceCapability();
-  const mergeSha = deployedMergeSha();
-  const manifestSha256 = authorityManifestSha256();
-  const plan = frozen(createAddieMatchedV4Plan());
-  const screeningSelectorFingerprint = digest({
-    domain: "adcp:addie:matched-v4:selector:v1",
-    plan: planFingerprint(plan),
-    stage: "screening",
-    promoted: ADDIE_MATCHED_V4_SCREENING_CELLS.map((cell) => cell.id),
-  });
-  const screeningEvidenceReservation = await durableEvidence.reserve({
-    reservationId: `mv4_${randomUUID().replaceAll("-", "")}`,
-    stage: "screening",
-    selectorFingerprint: screeningSelectorFingerprint,
-    dispatchCap: plan.screening.maxProviderDispatches,
-    mergeSha,
-    authorityManifestSha256: manifestSha256,
-    evaluationVersion: ADDIE_MATCHED_V4_EVALUATION_VERSION,
-  });
-  const issuedLedger = issuePaidLedger();
-  if (!(await issuedLedger.ledger.isRuntimeEligible()))
-    throw new Error(
-      "Matched v4 paid dispatch requires the externally provisioned runtime DB role",
-    );
-  const selector = await postMergePaidDispatchSelector(mergeSha, issuedLedger);
-  if (!paidSelectors.has(selector) || spentPaidSelectors.has(selector))
-    throw new Error("Matched v4 paid selector is invalid or already consumed");
-  spentPaidSelectors.add(selector);
-  const [
-    { AnthropicModelProvider },
-    {
-      normalizeOpenAIResponse,
-      openaiReturnedModelIdentityMatches,
-      prepareOpenAIResponsesEvaluationRequest,
-    },
-    {
-      googleReturnedModelIdentityMatches,
-      normalizeGoogleResponse,
-      prepareGoogleGenerateContentEvaluationRequest,
-    },
-    { GoogleGenAI },
-    { collectModelResponse },
-  ] = await Promise.all([
-    import("../model-providers/anthropic-provider.js"),
-    import("../model-providers/openai-responses-provider.js"),
-    import("../model-providers/google-generate-content-provider.js"),
-    import("@google/genai"),
-    import("../model-providers/events.js"),
-  ]);
-  const openaiClient = new OpenAI({
-    apiKey: openaiApiKey,
-    maxRetries: 0,
-  });
-  // The Google SDK is instantiated only after the durable selector has been
-  // claimed. Unlike the ordinary router adapter, this sealed evaluator
-  // projection admits Gemini 3.8; no exported factory accepts a transport.
-  const googleClient = new GoogleGenAI({
-    apiKey: googleApiKey,
-    httpOptions: { retryOptions: { attempts: 1 } },
-  });
-  const providers: Record<Provider, any> = {
-    anthropic: new AnthropicModelProvider(anthropicApiKey, undefined, {
-      transportMaxRetries: 0,
-    }),
-    // This evaluator-only adapter lives here rather than in the exported
-    // provider module. Its request projection is pure; its sole network
-    // client is constructed after the durable admission is consumed above.
-    openai: {
-      id: "openai",
-      async respond(request: Readonly<ModelRequest>, signal: AbortSignal) {
-        const raw = await openaiClient.responses.create(
-          prepareOpenAIResponsesEvaluationRequest(request) as never,
-          { maxRetries: 0, signal },
-        );
-        const response = normalizeOpenAIResponse(raw);
-        if (!openaiReturnedModelIdentityMatches(request.model, response.model))
-          throw Error("OpenAI returned model identity is not approved");
-        return response;
-      },
-    },
-    google: {
-      id: "google",
-      async respond(request: Readonly<ModelRequest>, signal: AbortSignal) {
-        if (signal.aborted) throw signal.reason;
-        const prepared = prepareGoogleGenerateContentEvaluationRequest(request);
-        const raw = await googleClient.models.generateContent({
-          ...prepared,
-          config: {
-            ...prepared.config,
-            abortSignal: signal,
-          },
-        } as never);
-        const response = await normalizeGoogleResponse(raw);
-        if (!googleReturnedModelIdentityMatches(request.model, response.model))
-          throw Error("Google returned model identity is not approved");
-        return response;
-      },
-    },
-  };
-  const transport: AddieMatchedV4ExecutionTransport = Object.freeze({
-    kind: "provider_transport" as const,
-    requestCommitment(request: Readonly<ModelRequest>) {
-      const provider = providerForModel(request.model);
-      // Gemini keeps a tool-call thought signature in adapter-private custody.
-      // Project it before intent recording so a continuation commitment covers
-      // all provider-visible state, not merely enumerable canonical fields.
-      const wire =
-        provider === "openai"
-          ? prepareOpenAIResponsesEvaluationRequest(request)
-          : provider === "google"
-            ? prepareGoogleGenerateContentEvaluationRequest(request)
-            : request;
-      return hash({ provider, canonicalRequest: request, wireRequest: wire });
-    },
-    async respond(
-      request: Readonly<ModelRequest>,
-      context: Readonly<{
-        assignmentId: string;
-        dispatchOrdinal: number;
-        role: string;
-        signal: AbortSignal;
-      }>,
-    ) {
-      const provider = providers[providerForModel(request.model)];
-      const started = Date.now();
-      const response =
-        provider.id === "openai" || provider.id === "google"
-          ? await provider.respond(request, context.signal)
-          : await collectModelResponse(
-              provider.respond(request, { signal: context.signal }),
-              provider.id,
-            );
-      return Object.freeze({
-        provider: response.provider,
-        model: response.model,
-        response_id: response.id,
-        finish_reason: response.finishReason,
-        latency_ms: Date.now() - started,
-        text: response.content
-          .filter((part: any) => part.type === "text")
-          .map((part: any) => part.text)
-          .join(""),
-        usage: {
-          input_tokens: response.usage.inputTokens,
-          output_tokens: response.usage.outputTokens,
-          cache_read_tokens: response.usage.cacheReadTokens ?? 0,
-          cache_write_tokens: response.usage.cacheWriteTokens ?? 0,
-          ...(response.provider === "openai" || response.provider === "google"
-            ? { reasoning_tokens: response.usage.reasoningTokens ?? 0 }
-            : {}),
-        },
-        tool_calls: response.content
-          .filter((part: any) => part.type === "tool_call")
-          .map((part: any) => ({
-            name: part.name,
-            id: part.id,
-            input: part.input,
-            continuation: part,
-          })),
-        context,
-      });
-    },
-  });
-  return Object.freeze(
-    new AddieMatchedV4PrivateAuthority(
-      issuedLedger.ledger,
-      issueExecutionTransport(transport),
-      plan,
-      durableEvidence,
-      screeningEvidenceReservation,
+  let durableEvidence: AddieMatchedV4DurableEvidenceCapability | undefined;
+  let screeningEvidenceReservation:
+    | AddieMatchedV4DurableEvidenceReservation
+    | undefined;
+  try {
+    // Reject malformed execution configuration before creating the immutable
+    // pre-dispatch reservation, so a configuration error cannot strand it.
+    matchedV4DispatchTimeoutMs();
+    // The sealed adapter is the only producer of this capability. A caller
+    // cannot supply a local path, a mock sink, an ALLOW flag, or a provider to
+    // the authority. Its first operation is intentionally before any DB
+    // admission claim or provider construction.
+    durableEvidence = createMatchedV4SanctionedDurableEvidenceCapability();
+    const mergeSha = deployedMergeSha();
+    const manifestSha256 = authorityManifestSha256();
+    const plan = frozen(createAddieMatchedV4Plan());
+    const screeningSelectorFingerprint = digest({
+      domain: "adcp:addie:matched-v4:selector:v1",
+      plan: planFingerprint(plan),
+      stage: "screening",
+      promoted: ADDIE_MATCHED_V4_SCREENING_CELLS.map((cell) => cell.id),
+    });
+    screeningEvidenceReservation = await durableEvidence.reserve({
+      reservationId: `mv4_${randomUUID().replaceAll("-", "")}`,
+      stage: "screening",
+      selectorFingerprint: screeningSelectorFingerprint,
+      dispatchCap: plan.screening.maxProviderDispatches,
       mergeSha,
-      manifestSha256,
-    ),
-  ) as AddieMatchedV4PrivateAuthority;
+      authorityManifestSha256: manifestSha256,
+      evaluationVersion: ADDIE_MATCHED_V4_EVALUATION_VERSION,
+    });
+    const issuedLedger = issuePaidLedger();
+    if (!(await issuedLedger.ledger.isRuntimeEligible()))
+      throw new Error(
+        "Matched v4 paid dispatch requires the externally provisioned runtime DB role",
+      );
+    const selector = await postMergePaidDispatchSelector(
+      mergeSha,
+      issuedLedger,
+    );
+    if (!paidSelectors.has(selector) || spentPaidSelectors.has(selector))
+      throw new Error(
+        "Matched v4 paid selector is invalid or already consumed",
+      );
+    spentPaidSelectors.add(selector);
+    const [
+      { AnthropicModelProvider },
+      {
+        normalizeOpenAIResponse,
+        openaiReturnedModelIdentityMatches,
+        prepareOpenAIResponsesEvaluationRequest,
+      },
+      {
+        googleReturnedModelIdentityMatches,
+        normalizeGoogleResponse,
+        prepareGoogleGenerateContentEvaluationRequest,
+      },
+      { GoogleGenAI },
+      { collectModelResponse },
+    ] = await Promise.all([
+      import("../model-providers/anthropic-provider.js"),
+      import("../model-providers/openai-responses-provider.js"),
+      import("../model-providers/google-generate-content-provider.js"),
+      import("@google/genai"),
+      import("../model-providers/events.js"),
+    ]);
+    const openaiClient = new OpenAI({
+      apiKey: openaiApiKey,
+      maxRetries: 0,
+    });
+    // The Google SDK is instantiated only after the durable selector has been
+    // claimed. Unlike the ordinary router adapter, this sealed evaluator
+    // projection admits Gemini 3.8; no exported factory accepts a transport.
+    const googleClient = new GoogleGenAI({
+      apiKey: googleApiKey,
+      httpOptions: { retryOptions: { attempts: 1 } },
+    });
+    const providers: Record<Provider, any> = {
+      anthropic: new AnthropicModelProvider(anthropicApiKey, undefined, {
+        transportMaxRetries: 0,
+      }),
+      // This evaluator-only adapter lives here rather than in the exported
+      // provider module. Its request projection is pure; its sole network
+      // client is constructed after the durable admission is consumed above.
+      openai: {
+        id: "openai",
+        async respond(request: Readonly<ModelRequest>, signal: AbortSignal) {
+          const raw = await openaiClient.responses.create(
+            prepareOpenAIResponsesEvaluationRequest(request) as never,
+            { maxRetries: 0, signal },
+          );
+          const response = normalizeOpenAIResponse(raw);
+          if (
+            !openaiReturnedModelIdentityMatches(request.model, response.model)
+          )
+            throw Error("OpenAI returned model identity is not approved");
+          return response;
+        },
+      },
+      google: {
+        id: "google",
+        async respond(request: Readonly<ModelRequest>, signal: AbortSignal) {
+          if (signal.aborted) throw signal.reason;
+          const prepared =
+            prepareGoogleGenerateContentEvaluationRequest(request);
+          const raw = await googleClient.models.generateContent({
+            ...prepared,
+            config: {
+              ...prepared.config,
+              abortSignal: signal,
+            },
+          } as never);
+          const response = await normalizeGoogleResponse(raw);
+          if (
+            !googleReturnedModelIdentityMatches(request.model, response.model)
+          )
+            throw Error("Google returned model identity is not approved");
+          return response;
+        },
+      },
+    };
+    const transport: AddieMatchedV4ExecutionTransport = Object.freeze({
+      kind: "provider_transport" as const,
+      requestCommitment(request: Readonly<ModelRequest>) {
+        const provider = providerForModel(request.model);
+        // Gemini keeps a tool-call thought signature in adapter-private custody.
+        // Project it before intent recording so a continuation commitment covers
+        // all provider-visible state, not merely enumerable canonical fields.
+        const wire =
+          provider === "openai"
+            ? prepareOpenAIResponsesEvaluationRequest(request)
+            : provider === "google"
+              ? prepareGoogleGenerateContentEvaluationRequest(request)
+              : request;
+        return hash({ provider, canonicalRequest: request, wireRequest: wire });
+      },
+      async respond(
+        request: Readonly<ModelRequest>,
+        context: Readonly<{
+          assignmentId: string;
+          dispatchOrdinal: number;
+          role: string;
+          signal: AbortSignal;
+        }>,
+      ) {
+        const provider = providers[providerForModel(request.model)];
+        const started = Date.now();
+        const response =
+          provider.id === "openai" || provider.id === "google"
+            ? await provider.respond(request, context.signal)
+            : await collectModelResponse(
+                provider.respond(request, { signal: context.signal }),
+                provider.id,
+              );
+        return Object.freeze({
+          provider: response.provider,
+          model: response.model,
+          response_id: response.id,
+          finish_reason: response.finishReason,
+          latency_ms: Date.now() - started,
+          text: response.content
+            .filter((part: any) => part.type === "text")
+            .map((part: any) => part.text)
+            .join(""),
+          usage: {
+            input_tokens: response.usage.inputTokens,
+            output_tokens: response.usage.outputTokens,
+            cache_read_tokens: response.usage.cacheReadTokens ?? 0,
+            cache_write_tokens: response.usage.cacheWriteTokens ?? 0,
+            ...(response.provider === "openai" || response.provider === "google"
+              ? { reasoning_tokens: response.usage.reasoningTokens ?? 0 }
+              : {}),
+          },
+          tool_calls: response.content
+            .filter((part: any) => part.type === "tool_call")
+            .map((part: any) => ({
+              name: part.name,
+              id: part.id,
+              input: part.input,
+              continuation: part,
+            })),
+          context,
+        });
+      },
+    });
+    return Object.freeze(
+      new AddieMatchedV4PrivateAuthority(
+        issuedLedger.ledger,
+        issueExecutionTransport(transport),
+        plan,
+        durableEvidence,
+        screeningEvidenceReservation,
+        mergeSha,
+        manifestSha256,
+      ),
+    ) as AddieMatchedV4PrivateAuthority;
+  } catch (error) {
+    // Reservation creation is the irreversible first admission step. Every
+    // later constructor failure receives an allowlisted terminal disposition.
+    // Provider/SDK configuration diagnostics stay in structured telemetry and
+    // never cross this paid-authority API boundary.
+    logger.error(
+      { err: error },
+      "Matched v4 paid authority construction was refused",
+    );
+    if (durableEvidence && screeningEvidenceReservation)
+      await recordMatchedV4ConstructionRefusal(
+        durableEvidence,
+        screeningEvidenceReservation,
+      );
+    throw new Error("Matched v4 paid authority construction refused");
+  }
 }
 function providerForModel(model: string): Provider {
   return model.startsWith("claude-")
@@ -1886,6 +2095,26 @@ function durableTerminalReasonCode(
   if (/provider (?:response|did not)/.test(reason))
     return "provider_response_invalid";
   return "execution_refused";
+}
+function publicRefusalReason(
+  code: AddieMatchedV4TerminalReasonCode,
+): string {
+  // These strings are deliberately finite and contain no provider/SDK text.
+  // The root error is available to the structured operational logger only.
+  switch (code) {
+    case "paired_ci_gate":
+      return "paired CI gate requires lower bound >= 0";
+    case "dispatch_timeout":
+      return "matched-v4 dispatch timeout";
+    case "settlement_refused":
+      return "settlement refused";
+    case "intent_refused":
+      return "intent refused";
+    case "provider_response_invalid":
+      return "provider_response_invalid";
+    case "execution_refused":
+      return "execution_refused";
+  }
 }
 
 function cellById(id: string): AddieMatchedV4Cell | undefined {
@@ -2616,7 +2845,9 @@ function addieMatchedV4PairedOutcomeCi(
 /**
  * Returns promotable direct cells after comparing against every complete
  * screening cell. The routed baseline is not promotable itself, but it must
- * remain a real dominance competitor.
+ * remain a real dominance competitor. Dated price profiles remain audit
+ * estimates pending provider reconciliation, so they are deliberately not a
+ * promotion criterion.
  */
 function addieMatchedV4ParetoPromotions(
   metrics: readonly AddieMatchedV4CellMetric[],
@@ -2633,10 +2864,8 @@ function addieMatchedV4ParetoPromotions(
         (other) =>
           other !== candidate &&
           other.passRate >= candidate.passRate &&
-          other.totalCostUsd <= candidate.totalCostUsd &&
           other.medianLatencyMs <= candidate.medianLatencyMs &&
           (other.passRate > candidate.passRate ||
-            other.totalCostUsd < candidate.totalCostUsd ||
             other.medianLatencyMs < candidate.medianLatencyMs),
       ),
   );

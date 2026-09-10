@@ -3,7 +3,13 @@ name: Verify matched-v4 durable evidence boundary
 # This is a protected, read-only provisioning gate. It never creates a
 # bucket, changes a retention policy, writes an object, or calls a model.
 on:
-  workflow_dispatch:
+  # GitHub evaluates this definition only after it is merged to main. A
+  # dispatch-selected branch could otherwise replace the verification commands
+  # while still requesting the protected environment's OIDC identity.
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/verify-matched-v4-durable-evidence.yml
 
 permissions:
   contents: read
@@ -12,7 +18,9 @@ permissions:
 jobs:
   verify-gcs-bucket-lock:
     # Administrators must configure this environment with required reviewers
-    # and its own WIF variables. A dispatch-selected ref is never trusted.
+    # and restrict deployments to the main branch. The workflow itself also
+    # refuses any non-main ref before it can request the OIDC identity.
+    if: github.ref == 'refs/heads/main'
     environment: matched-v4-durable-evidence
     runs-on: ubuntu-latest
     steps:

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMatchedV4GcsDurableEvidenceCapabilityForTest } from "../../../src/addie/eval/matched-v4-immutable-artifact-sink.js";
 
 const commitment = Object.freeze({
@@ -74,6 +74,134 @@ function lockedBucket(
 }
 
 describe("matched-v4 GCS durable evidence adapter", () => {
+  it.each([
+    [
+      "Bucket Lock metadata",
+      (bucket: any) => {
+        bucket.getMetadata = () => new Promise(() => undefined);
+      },
+    ],
+    [
+      "immutable evidence save",
+      (bucket: any) => {
+        const file = bucket.file.bind(bucket);
+        bucket.file = (name: string, options?: unknown) => ({
+          ...file(name, options),
+          save: () => new Promise(() => undefined),
+        });
+      },
+    ],
+    [
+      "immutable evidence metadata",
+      (bucket: any) => {
+        const file = bucket.file.bind(bucket);
+        bucket.file = (name: string, options?: unknown) => ({
+          ...file(name, options),
+          getMetadata: () => new Promise(() => undefined),
+        });
+      },
+    ],
+    [
+      "generation-pinned readback",
+      (bucket: any) => {
+        const file = bucket.file.bind(bucket);
+        bucket.file = (name: string, options?: unknown) => ({
+          ...file(name, options),
+          download: () => new Promise(() => undefined),
+        });
+      },
+    ],
+  ])("fails closed when %s never settles", async (_operation, configure) => {
+    vi.useFakeTimers();
+    try {
+      const bucket = lockedBucket();
+      configure(bucket);
+      const capability = createMatchedV4GcsDurableEvidenceCapabilityForTest(
+        "matched-v4-test-evidence",
+        bucket,
+      );
+      const pending = capability.reserve(commitment).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(pending).resolves.toBeInstanceOf(Error);
+      await expect(pending).resolves.toMatchObject({
+        message: expect.stringMatching(
+          /Matched v4 durable evidence I\/O timed out while/,
+        ),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not allow a competing terminal record after finalization times out, but reconciles its original terminal identity", async () => {
+    vi.useFakeTimers();
+    try {
+      const bucket: any = lockedBucket();
+      const capability = createMatchedV4GcsDurableEvidenceCapabilityForTest(
+        "matched-v4-test-evidence",
+        bucket,
+      );
+      const reservation = await capability.reserve(commitment);
+      const file = bucket.file.bind(bucket);
+      bucket.file = (name: string, options?: unknown) =>
+        name.includes("/final/")
+          ? { ...file(name, options), save: () => new Promise(() => undefined) }
+          : file(name, options);
+      const pending = capability
+        .finalize({
+          reservation,
+          artifactSha256: "e".repeat(64),
+          artifactEvidence,
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(pending).resolves.toMatchObject({
+        message: expect.stringMatching(/I\/O timed out while saving/),
+      });
+      await expect(
+        capability.recordRefusal({
+          reservation,
+          reasonCode: "execution_refused",
+        }),
+      ).rejects.toThrow(/original terminal operation/);
+      // Simulate the original create committing after its caller deadline. A
+      // retry of the same deterministic completion is allowed to observe the
+      // conditional-create 412 and verify the already-written bytes.
+      let committed = false;
+      bucket.file = (name: string, options?: unknown) => {
+        const recovered = file(name, options);
+        if (!name.includes("/final/")) return recovered;
+        return {
+          ...recovered,
+          save: async (bytes: Buffer, saveOptions: unknown) => {
+            if (!committed) {
+              bucket.writes.push({ name, bytes, options: saveOptions });
+              committed = true;
+            }
+            throw Object.assign(new Error("precondition failed"), {
+              code: 412,
+            });
+          },
+        };
+      };
+      await expect(
+        capability.finalize({
+          reservation,
+          artifactSha256: "e".repeat(64),
+          artifactEvidence,
+        }),
+      ).resolves.toMatchObject({ generation: "2" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reserves before finalizing with Bucket Lock retention and create-only generations", async () => {
     const bucket = lockedBucket();
     const capability = createMatchedV4GcsDurableEvidenceCapabilityForTest(
@@ -98,7 +226,9 @@ describe("matched-v4 GCS durable evidence adapter", () => {
     expect(bucket.writes).toHaveLength(2);
     expect(
       bucket.writes.every(
-        (write) => write.options.preconditionOpts.ifGenerationMatch === 0,
+        (write) =>
+          write.options.preconditionOpts.ifGenerationMatch === 0 &&
+          write.options.timeout === 30_000,
       ),
     ).toBe(true);
     expect(bucket.fileCalls.filter((call) => call.options?.generation)).toEqual(
@@ -140,6 +270,18 @@ describe("matched-v4 GCS durable evidence adapter", () => {
       /Bucket Lock retention policy/,
     );
     expect(bucket.writes).toHaveLength(0);
+  });
+
+  it("refuses an invalid stage commitment before it writes", async () => {
+    const bucket = lockedBucket();
+    const capability = createMatchedV4GcsDurableEvidenceCapabilityForTest(
+      "matched-v4-test-evidence",
+      bucket,
+    );
+    await expect(
+      capability.reserve({ ...commitment, stage: "forged" as any }),
+    ).rejects.toThrow(/reservation commitment is malformed/);
+    expect(bucket.writes).toEqual([]);
   });
 
   it("fails closed when the written object lacks a future retention expiration", async () => {
@@ -221,7 +363,7 @@ describe("matched-v4 GCS durable evidence adapter", () => {
         artifactSha256: "e".repeat(64),
         artifactEvidence,
       }),
-    ).rejects.toThrow(/adapter-issued reservation/);
+    ).rejects.toThrow(/original terminal operation/);
     await expect(
       capability.finalize({
         reservation,

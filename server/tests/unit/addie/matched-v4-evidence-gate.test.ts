@@ -64,7 +64,7 @@ describe("matched-v4 paid evidence gate", () => {
         openaiApiKey: "fixture-openai",
         googleApiKey: "fixture-google",
       }),
-    ).rejects.toThrow(/sealed GCS evidence bucket configuration/);
+    ).rejects.toThrow(/paid authority construction refused/);
     expect(getPool).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });

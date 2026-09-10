@@ -2,6 +2,8 @@
 import { createHash } from "node:crypto";
 
 const EVIDENCE_PREFIX = "addie-matched-v4/v1";
+/** Bounds a single non-resumable GCS write; client retry totals bound reads. */
+const ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_MS = 30_000;
 /** One year covers delayed provider billing reconciliation and audit review. */
 export const ADDIE_MATCHED_V4_MIN_EVIDENCE_RETENTION_MS =
   365.25 * 24 * 60 * 60 * 1_000;
@@ -77,6 +79,44 @@ interface GcsBucket {
   getMetadata(): Promise<[object, ...unknown[]]>;
   file(name: string, options?: Readonly<{ generation: string }>): GcsFile;
 }
+class MatchedV4GcsIoDeadlineError extends Error {
+  constructor(operation: string) {
+    super(`Matched v4 durable evidence I/O timed out while ${operation}`);
+    this.name = "MatchedV4GcsIoDeadlineError";
+  }
+}
+/**
+ * ServiceOptions.timeout reaches the SDK's HTTP requests. This independent
+ * wall-clock guard also bounds credential or stream setup that occurs before
+ * the request layer, and gives the authority a deterministic fail-closed
+ * outcome if an SDK seam never settles.
+ */
+function withinGcsDeadline<T>(
+  operation: string,
+  invoke: () => Promise<T>,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new MatchedV4GcsIoDeadlineError(operation)),
+      ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_MS,
+    );
+    try {
+      void invoke().then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    } catch (error) {
+      clearTimeout(timer);
+      reject(error);
+    }
+  });
+}
 const sha256 = (bytes: Buffer | string) =>
   createHash("sha256").update(bytes).digest("hex");
 const md5 = (bytes: Buffer) => createHash("md5").update(bytes).digest("base64");
@@ -147,7 +187,10 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
   #bucketChecked = false;
   #reservationStates = new WeakMap<
     AddieMatchedV4DurableEvidenceReservation,
-    "issued" | "finalizing" | "consumed"
+    Readonly<{
+      phase: "issued" | "finalizing" | "uncertain" | "consumed";
+      terminalIdentity?: string;
+    }>
   >();
   #bucketName: string;
   #bucket: GcsBucket;
@@ -157,7 +200,10 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
   }
   async #assertBucketLock(): Promise<void> {
     if (this.#bucketChecked) return;
-    const [response] = await this.#bucket.getMetadata();
+    const [response] = await withinGcsDeadline(
+      "reading Bucket Lock metadata",
+      () => this.#bucket.getMetadata(),
+    );
     assertBucketLock(response as GcsObjectMetadata);
     this.#bucketChecked = true;
   }
@@ -171,22 +217,28 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
       contentSha256 = sha256(bytes),
       file = this.#bucket.file(name);
     try {
-      await file.save(bytes, {
-        resumable: false,
-        validation: "md5",
-        preconditionOpts: { ifGenerationMatch: 0 },
-        metadata: {
-          contentType: "application/json; charset=utf-8",
-          metadata: { evidence_kind: kind, evidence_sha256: contentSha256 },
-        },
-      });
+      await withinGcsDeadline("saving immutable evidence", () =>
+        file.save(bytes, {
+          resumable: false,
+          timeout: ADDIE_MATCHED_V4_GCS_IO_TIMEOUT_MS,
+          validation: "md5",
+          preconditionOpts: { ifGenerationMatch: 0 },
+          metadata: {
+            contentType: "application/json; charset=utf-8",
+            metadata: { evidence_kind: kind, evidence_sha256: contentSha256 },
+          },
+        }),
+      );
     } catch (error) {
       // A retry may follow a lost response after GCS committed the first
       // conditional create. Only a 412 can be recovered, and it must verify
       // the exact immutable bytes below; every other failure stays closed.
       if ((error as { code?: unknown }).code !== 412) throw error;
     }
-    const [response] = await file.getMetadata();
+    const [response] = await withinGcsDeadline(
+      "reading immutable evidence metadata",
+      () => file.getMetadata(),
+    );
     const metadata = response as GcsObjectMetadata;
     const verified = verifiedObject(
       this.#bucketName,
@@ -197,9 +249,13 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
     );
     // Metadata is mutable even under Bucket Lock. Re-read the exact returned
     // generation and verify its bytes with SHA-256, not metadata alone.
-    const [returnedBytes] = await this.#bucket
-      .file(name, { generation: verified.generation })
-      .download();
+    const generationScopedFile = this.#bucket.file(name, {
+      generation: verified.generation,
+    });
+    const [returnedBytes] = await withinGcsDeadline(
+      "reading immutable evidence generation",
+      () => generationScopedFile.download(),
+    );
     if (
       !Buffer.isBuffer(returnedBytes) ||
       sha256(returnedBytes) !== contentSha256
@@ -212,6 +268,7 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
   async reserve(commitment: AddieMatchedV4EvidenceCommitment) {
     if (
       !validReservationId(commitment.reservationId) ||
+      (commitment.stage !== "screening" && commitment.stage !== "full") ||
       !validSha256(commitment.selectorFingerprint) ||
       !validSha256(commitment.authorityManifestSha256) ||
       !/^[a-f0-9]{40}$/.test(commitment.mergeSha) ||
@@ -234,27 +291,57 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
       commitment: Object.freeze({ ...commitment }),
       object,
     });
-    this.#reservationStates.set(reservation, "issued");
+    this.#reservationStates.set(
+      reservation,
+      Object.freeze({ phase: "issued" }),
+    );
     return reservation;
   }
   async #finalizeReservation<T>(
     reservation: AddieMatchedV4DurableEvidenceReservation,
+    terminalIdentity: string,
     write: () => Promise<T>,
   ): Promise<T> {
-    if (this.#reservationStates.get(reservation) !== "issued")
+    const current = this.#reservationStates.get(reservation);
+    if (
+      !current ||
+      (current.phase !== "issued" &&
+        !(current.phase === "uncertain" &&
+          current.terminalIdentity === terminalIdentity)) ||
+      (current.terminalIdentity !== undefined &&
+        current.terminalIdentity !== terminalIdentity)
+    )
       throw new Error(
-        "Matched v4 durable final evidence requires an unconsumed adapter-issued reservation",
+        "Matched v4 durable final evidence requires the issued reservation's original terminal operation",
       );
-    this.#reservationStates.set(reservation, "finalizing");
+    this.#reservationStates.set(
+      reservation,
+      Object.freeze({ phase: "finalizing", terminalIdentity }),
+    );
     try {
       const finalized = await write();
-      this.#reservationStates.set(reservation, "consumed");
+      this.#reservationStates.set(
+        reservation,
+        Object.freeze({ phase: "consumed", terminalIdentity }),
+      );
       return finalized;
     } catch (error) {
-      // Do not strand a reservation after a transient write/readback error.
-      // The finalizing state blocks concurrent double-finalization; a retry
-      // either verifies the original create via its 412 path or fails closed.
-      this.#reservationStates.set(reservation, "issued");
+      // A normal transient failure returns to issued so a retry can verify a
+      // lost conditional-create response through its 412 exact-byte path. A
+      // wall-clock expiry is different: its late SDK operation might still
+      // commit, so block any competing terminal kind. The same deterministic
+      // terminal identity may retry: a late create is then safely reconciled
+      // by create-only 412 handling plus exact-byte generation readback.
+      this.#reservationStates.set(
+        reservation,
+        Object.freeze({
+          phase:
+            error instanceof MatchedV4GcsIoDeadlineError
+              ? "uncertain"
+              : "issued",
+          terminalIdentity,
+        }),
+      );
       throw error;
     }
   }
@@ -294,29 +381,32 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
       input.artifactSha256,
       input.artifactEvidence,
     );
-    return this.#finalizeReservation(reservation, () =>
-      this.#write(
-        "final",
-        `${EVIDENCE_PREFIX}/final/${reservation.commitment.reservationId}-${input.artifactSha256}.json`,
-        Object.freeze({
-          kind: "addie_matched_v4_final_evidence",
-          version: 1,
-          reservation: {
-            bucket: reservation.object.bucket,
-            name: reservation.object.name,
-            generation: reservation.object.generation,
-            sha256: reservation.object.sha256,
-          },
-          artifactSha256: input.artifactSha256,
-          artifactEvidence: input.artifactEvidence,
-          evidenceId: sha256(
-            canonicalJson({
-              reservation: reservation.object,
-              artifactSha256: input.artifactSha256,
-            }),
-          ),
-        }),
-      ),
+    return this.#finalizeReservation(
+      reservation,
+      `completed:${input.artifactSha256}`,
+      () =>
+        this.#write(
+          "final",
+          `${EVIDENCE_PREFIX}/final/${reservation.commitment.reservationId}-${input.artifactSha256}.json`,
+          Object.freeze({
+            kind: "addie_matched_v4_final_evidence",
+            version: 1,
+            reservation: {
+              bucket: reservation.object.bucket,
+              name: reservation.object.name,
+              generation: reservation.object.generation,
+              sha256: reservation.object.sha256,
+            },
+            artifactSha256: input.artifactSha256,
+            artifactEvidence: input.artifactEvidence,
+            evidenceId: sha256(
+              canonicalJson({
+                reservation: reservation.object,
+                artifactSha256: input.artifactSha256,
+              }),
+            ),
+          }),
+        ),
     );
   }
   async recordRefusal(
@@ -354,29 +444,32 @@ class GcsBucketLockDurableEvidenceCapability implements AddieMatchedV4DurableEvi
         artifactSha256: input.artifactSha256 ?? null,
       }),
     );
-    return this.#finalizeReservation(input.reservation, () =>
-      this.#write(
-        "final",
-        `${EVIDENCE_PREFIX}/final/${input.reservation.commitment.reservationId}-refused-${refusalDigest}.json`,
-        Object.freeze({
-          kind: "addie_matched_v4_terminal_refusal_evidence",
-          version: 1,
-          reservation: {
-            bucket: input.reservation.object.bucket,
-            name: input.reservation.object.name,
-            generation: input.reservation.object.generation,
-            sha256: input.reservation.object.sha256,
-          },
-          reasonCode: input.reasonCode,
-          ...(input.artifactSha256
-            ? {
-                artifactSha256: input.artifactSha256,
-                artifactEvidence: input.artifactEvidence,
-              }
-            : {}),
-          evidenceId: refusalDigest,
-        }),
-      ),
+    return this.#finalizeReservation(
+      input.reservation,
+      `refused:${refusalDigest}`,
+      () =>
+        this.#write(
+          "final",
+          `${EVIDENCE_PREFIX}/final/${input.reservation.commitment.reservationId}-refused-${refusalDigest}.json`,
+          Object.freeze({
+            kind: "addie_matched_v4_terminal_refusal_evidence",
+            version: 1,
+            reservation: {
+              bucket: input.reservation.object.bucket,
+              name: input.reservation.object.name,
+              generation: input.reservation.object.generation,
+              sha256: input.reservation.object.sha256,
+            },
+            reasonCode: input.reasonCode,
+            ...(input.artifactSha256
+              ? {
+                  artifactSha256: input.artifactSha256,
+                  artifactEvidence: input.artifactEvidence,
+                }
+              : {}),
+            evidenceId: refusalDigest,
+          }),
+        ),
     );
   }
 }

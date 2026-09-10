@@ -95,13 +95,18 @@ the artifact digest/evidence. Every post-dispatch refusal also attempts a
 retained terminal-refusal object; it contains only one allowlisted reason code
 (`paired_ci_gate`, `dispatch_timeout`, `settlement_refused`, `intent_refused`,
 `provider_response_invalid`, or `execution_refused`) rather than raw SDK or
-provider exception text. Terminal writes use an issued/finalizing/consumed
-state machine: concurrent finalizers are refused, while a transient failed
-write/readback resets to issued and can retry by verifying an existing 412
-conditional-create result. Any malformed GCS response, digest mismatch,
-missing future object-retention expiration, conditional-write failure, or
-unlocked bucket refuses the run before dispatch or prevents a successful
-result from being reported.
+provider exception text. Terminal writes bind the reservation to their first
+completion or refusal identity. The issued/finalizing/uncertain/consumed state
+machine rejects concurrent and cross-kind finalizers; a transient failed
+write/readback retries that same deterministic create-only name and verifies an
+existing 412 result, while an I/O deadline becomes `uncertain` and fails
+closed rather than creating a conflicting terminal record. Every bucket
+metadata lookup, object metadata lookup, generation-pinned readback, and save
+has a 30-second adapter wall-clock deadline; the sealed Storage client has the
+same finite HTTP timeout and retry total. Any malformed GCS response, digest
+mismatch, missing future object-retention expiration, conditional-write
+failure, deadline, or unlocked bucket refuses the run before dispatch or
+prevents a successful result from being reported.
 
 This relies specifically on [Cloud Storage Bucket Lock](https://cloud.google.com/storage/docs/bucket-lock): a locked positive retention policy prevents an object from being deleted or replaced before its retention age, and each protected object has retention-expiration metadata. The adapter checks `retentionPolicy.isLocked`, a positive period, a valid policy effective timestamp, and the written object's `retentionExpirationTime` is at least one year ahead. The one-year constant covers delayed provider billing reconciliation and a human audit window; it deliberately refuses a locked short-retention bucket. The protected verifier also requires a policy duration of at least `32,162,400` seconds (365.25 days plus a seven-day margin), so a policy that only exactly equals the runtime horizon cannot fail immediately after normal write/read latency; object readback remains the runtime authority. It writes with `ifGenerationMatch=0`; [GCS documents this as a conditional create that fails with 412 when a live object exists](https://cloud.google.com/storage/docs/request-preconditions). Object metadata alone is editable under a bucket retention policy, so the adapter verifies the returned object generation, MD5 of its bytes, and adapter-written SHA-256 metadata; a metadata assertion is never accepted as proof by itself.
 
@@ -124,8 +129,11 @@ Before a human enables execution, provision and review all of the following.
 3. A distinct read-only verifier service account for the protected GitHub
    environment, with `storage.buckets.get` only. Configure GitHub OIDC/WIF for
    exactly that repository and the protected environment
-   `matched-v4-durable-evidence`; set required reviewers and disallow
-   self-approval. Set its non-secret environment variables
+   `matched-v4-durable-evidence`; restrict environment deployments to `main`,
+   set required reviewers, and disallow self-approval. The checked-in verifier
+   is triggered only by a `main` update to its own definition (then may be
+   re-run from that trusted workflow run), never a dispatch-selected branch.
+   Set its non-secret environment variables
    `MATCHED_V4_GCS_WIF_PROVIDER`,
    `MATCHED_V4_GCS_VERIFIER_SERVICE_ACCOUNT`, and
    `MATCHED_V4_GCS_EVIDENCE_BUCKET`. The checked-in
@@ -149,6 +157,16 @@ Before a human enables execution, provision and review all of the following.
    Google Cloud Billing detailed usage-cost export, and an Anthropic billing
    statement or account export for the dedicated credential/window. Retain
    those reconciliations independently of the evaluator objects.
+
+Do not run `npm run eval:addie-matched-v4-authorized` from a local checkout:
+it deliberately refuses, because `ADDIE_MATCHED_V4_MERGE_SHA` alone cannot
+prove that the executing source is the admitted deployment. Before any paid
+execution, extend the protected deployment runner to verify a runtime-bound,
+cryptographically signed build attestation for the exact merged SHA, then
+provide the spend-capped provider credentials only to that runner. The runner
+must accept neither a provider, bucket, evidence capability, nor admission
+selector from a caller, and may emit only the non-authorizing report
+projection after retained evidence has been verified.
 
 Run the GCS integration test only after the preceding approval and credentials
 exist: `ADDIE_MATCHED_V4_GCS_INTEGRATION=true` plus the runtime GCS credential

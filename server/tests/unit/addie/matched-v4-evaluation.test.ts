@@ -13,11 +13,14 @@ const testRuntime = vi.hoisted(() => {
     assignmentId: string;
     requestSha256: string;
   }> = [];
+  const halts: Array<{ reservationId: string; reason: string }> = [];
   const client = {
     async query(sql: string, values: readonly unknown[] = []) {
-      if (sql.includes("AS eligible")) return { rows: [{ eligible: true }] };
+      if (sql.includes("AS eligible"))
+        return { rows: [{ eligible: testRuntime.runtimeEligible }] };
       if (sql.includes("AS claimed")) return { rows: [{ claimed: true }] };
-      if (sql.includes("AS reserved")) return { rows: [{ reserved: true }] };
+      if (sql.includes("AS reserved"))
+        return { rows: [{ reserved: !testRuntime.reservationRefused }] };
       if (sql.includes("AS intent_recorded")) {
         intents.push({
           attemptId: values[1] as string,
@@ -37,6 +40,13 @@ const testRuntime = vi.hoisted(() => {
       if (sql.includes("AS reconciled")) {
         testRuntime.reconciliations++;
         return { rows: [{ reconciled: true }] };
+      }
+      if (sql.includes("addie_matched_v4_private_halt")) {
+        halts.push({
+          reservationId: values[0] as string,
+          reason: values[1] as string,
+        });
+        return { rows: [] };
       }
       return { rows: [] };
     },
@@ -68,6 +78,9 @@ const testRuntime = vi.hoisted(() => {
       };
     },
     async finalize(input: any) {
+      testRuntime.finalizeAttempts++;
+      if (testRuntime.finalizeFailures-- > 0)
+        throw new Error("transient completion evidence write failure");
       testRuntime.evidenceFinalizations.push({ outcome: "completed", input });
       return {
         bucket: input.reservation.object.bucket,
@@ -78,6 +91,9 @@ const testRuntime = vi.hoisted(() => {
       };
     },
     async recordRefusal(input: any) {
+      testRuntime.recordRefusalAttempts++;
+      if (testRuntime.recordRefusalFailures-- > 0)
+        throw new Error("transient terminal evidence write failure");
       testRuntime.evidenceFinalizations.push({ outcome: "refused", input });
       return {
         bucket: input.reservation.object.bucket,
@@ -91,8 +107,16 @@ const testRuntime = vi.hoisted(() => {
   return {
     settled,
     intents,
+    halts,
     reconciliations: 0,
     settlementRefused: false,
+    runtimeEligible: true,
+    reservationRefused: false,
+    recordRefusalFailures: 0,
+    recordRefusalAttempts: 0,
+    finalizeFailures: 0,
+    finalizeAttempts: 0,
+    storageOptions: undefined as undefined | Record<string, unknown>,
     bad: undefined as Bad | undefined,
     response: undefined as
       undefined | ((request: any, provider: string) => any),
@@ -130,6 +154,9 @@ vi.mock(
 );
 vi.mock("@google-cloud/storage", () => ({
   Storage: class {
+    constructor(options: Record<string, unknown>) {
+      testRuntime.storageOptions = options;
+    }
     bucket() {
       return {};
     }
@@ -867,8 +894,16 @@ beforeEach(() => {
   process.env.ADDIE_MATCHED_V4_GCS_EVIDENCE_BUCKET = "matched-v4-test-evidence";
   testRuntime.settled.length = 0;
   testRuntime.intents.length = 0;
+  testRuntime.halts.length = 0;
   testRuntime.reconciliations = 0;
   testRuntime.settlementRefused = false;
+  testRuntime.runtimeEligible = true;
+  testRuntime.reservationRefused = false;
+  testRuntime.recordRefusalFailures = 0;
+  testRuntime.recordRefusalAttempts = 0;
+  testRuntime.finalizeFailures = 0;
+  testRuntime.finalizeAttempts = 0;
+  testRuntime.storageOptions = undefined;
   testRuntime.pool.connections = 0;
   testRuntime.lastSignal = undefined;
   testRuntime.requests.length = 0;
@@ -902,6 +937,97 @@ describe("matched-v4 sealed private authority", () => {
       databaseConnections: 0,
       providerRequests: 0,
     });
+    expect(testRuntime.storageOptions).toMatchObject({
+      timeout: 30_000,
+      retryOptions: {
+        autoRetry: true,
+        maxRetries: 2,
+        maxRetryDelay: 5,
+        retryDelayMultiplier: 2,
+        totalTimeout: 30,
+      },
+    });
+  });
+
+  it("closes the immutable screening reservation when post-reservation admission fails", async () => {
+    testRuntime.runtimeEligible = false;
+    await expect(authority()).rejects.toThrow(
+      /paid authority construction refused/,
+    );
+    expect(testRuntime.evidenceReservations).toHaveLength(1);
+    expect(testRuntime.evidenceFinalizations).toEqual([
+      expect.objectContaining({
+        outcome: "refused",
+        input: expect.objectContaining({ reasonCode: "execution_refused" }),
+      }),
+    ]);
+  });
+
+  it("closes a durable reservation when DB admission refuses execution", async () => {
+    testRuntime.reservationRefused = true;
+    const a = await authority();
+    await expect(a.execute("screening")).resolves.toMatchObject({
+      status: "refused",
+      reason: "execution_refused",
+    });
+    expect(testRuntime.requests).toEqual([]);
+    expect(testRuntime.openaiRequests).toEqual([]);
+    expect(testRuntime.evidenceFinalizations.at(-1)).toMatchObject({
+      outcome: "refused",
+      input: { reasonCode: "execution_refused" },
+    });
+  });
+
+  it("retries a transient terminal evidence failure through the private authority", async () => {
+    testRuntime.recordRefusalFailures = 1;
+    const a = await authority("settlement_refused");
+    await expect(a.execute("screening")).resolves.toMatchObject({
+      status: "refused",
+      reason: "settlement refused",
+    });
+    expect(testRuntime.recordRefusalAttempts).toBe(2);
+    expect(testRuntime.evidenceFinalizations.at(-1)).toMatchObject({
+      outcome: "refused",
+      input: { reasonCode: "settlement_refused" },
+    });
+  });
+
+  it("retries the original completion terminal operation without recording a conflicting refusal", async () => {
+    testRuntime.finalizeFailures = 1;
+    const a = await authority();
+    await expect(a.execute("screening")).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(testRuntime.finalizeAttempts).toBe(2);
+    expect(testRuntime.evidenceFinalizations).toHaveLength(1);
+    expect(testRuntime.evidenceFinalizations[0]).toMatchObject({
+      outcome: "completed",
+    });
+    expect(a.promotionReceipt()).not.toBeNull();
+  });
+
+  it("does not promote or switch to a refusal after completion evidence remains unavailable", async () => {
+    testRuntime.finalizeFailures = 3;
+    const a = await authority();
+    await expect(a.execute("screening")).resolves.toMatchObject({
+      status: "refused",
+      reason: "durable_terminal_evidence_unavailable",
+    });
+    expect(testRuntime.finalizeAttempts).toBe(3);
+    expect(testRuntime.evidenceFinalizations).toEqual([]);
+    expect(a.promotionReceipt()).toBeNull();
+  });
+
+  it("keeps the manual authorized entrypoint coupled to the sealed runtime API", () => {
+    const entrypoint = readFileSync(
+      new URL(
+        "../../../tests/manual/matched-v4-authorized-execution.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(entrypoint).toContain("runtime-bound build attestation");
+    expect(entrypoint).not.toContain("runAuthorizedAddieMatchedV4Execution");
   });
 
   it("makes bootstrap precondition failures visible and non-successful to psql", () => {
@@ -1175,6 +1301,52 @@ describe("matched-v4 sealed private authority", () => {
       ).toBe(false);
     }
   });
+  it("rejects an arbitrary runtime stage without opening a paid dispatch bypass", async () => {
+    const a = await authority();
+    const invalid = await a.execute("not-a-stage" as any);
+    expect(invalid).toEqual({ status: "refused", reason: "invalid_stage" });
+    expect(testRuntime.requests).toEqual([]);
+    expect(testRuntime.openaiRequests).toEqual([]);
+    await expect(a.execute("screening")).resolves.toMatchObject({
+      status: "completed",
+    });
+    const requestsAfterScreening = testRuntime.requests.length;
+    await expect(a.execute("not-a-stage" as any)).resolves.toEqual({
+      status: "refused",
+      reason: "invalid_stage",
+    });
+    expect(testRuntime.requests).toHaveLength(requestsAfterScreening);
+  });
+  it("does not return or ledger raw provider diagnostics", async () => {
+    const a = await authority("throw");
+    await expect(a.execute("screening")).resolves.toEqual({
+      status: "refused",
+      reason: "execution_refused",
+    });
+    expect(testRuntime.halts.at(-1)).toMatchObject({
+      reason: "execution_refused",
+    });
+    expect(JSON.stringify(testRuntime.halts)).not.toContain("interrupted");
+  });
+  it("excludes unreconciled price estimates from sealed promotion", () => {
+    const custody = readFileSync(
+      new URL(
+        "../../../src/addie/eval/matched-v4-authority-custody.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const promotionComparator = custody.slice(
+      custody.indexOf("function addieMatchedV4ParetoPromotions("),
+      custody.indexOf(
+        "/**\n * Issues the only full-stage authority accepted by this module.",
+      ),
+    );
+    expect(custody).toContain(
+      "Dated price profiles remain audit\n * estimates pending provider reconciliation",
+    );
+    expect(promotionComparator).not.toContain("totalCostUsd");
+  });
   it("runs an authorized full stage only after screening on one sealed authority", async () => {
     responseFixture("baseline_semantic_irrelevant");
     const report = await runAuthorizedAddieMatchedV4Execution({
@@ -1207,7 +1379,7 @@ describe("matched-v4 sealed private authority", () => {
     const rejected = await authority("google_unreviewed_alias");
     await expect(rejected.execute("screening")).resolves.toMatchObject({
       status: "refused",
-      reason: expect.stringMatching(/identity/),
+      reason: "execution_refused",
     });
   });
   it("preserves accepted stop and settles exact dated integer microdollars", async () => {
@@ -1250,7 +1422,7 @@ describe("matched-v4 sealed private authority", () => {
     const a = await authority("normalization_rejected");
     await expect(a.execute("screening")).resolves.toMatchObject({
       status: "refused",
-      reason: expect.stringMatching(/malformed.*usage/i),
+      reason: "execution_refused",
     });
     expect(testRuntime.intents).toHaveLength(1);
     expect(
@@ -1463,14 +1635,13 @@ describe("matched-v4 sealed private authority", () => {
     });
   });
   it.each(["0", "999", "120001", "not-a-number"])(
-    "rejects an out-of-bounds dispatch timeout: %s",
+    "rejects an invalid dispatch timeout before making a durable reservation: %s",
     async (timeout) => {
       process.env.ADDIE_MATCHED_V4_DISPATCH_TIMEOUT_MS = timeout;
-      const a = await authority();
-      await expect(a.execute("screening")).resolves.toMatchObject({
-        status: "refused",
-        reason: expect.stringMatching(/timeout/),
-      });
+      await expect(authority()).rejects.toThrow(
+        /paid authority construction refused/,
+      );
+      expect(testRuntime.evidenceReservations).toEqual([]);
     },
   );
   it.each([
@@ -1785,7 +1956,7 @@ describe("matched-v4 sealed private authority", () => {
     delete process.env.ADDIE_MATCHED_V4_MERGE_SHA;
     await expect(
       createAddieMatchedV4PaidAuthority(paidInput()),
-    ).rejects.toThrow(/deployment-injected merged SHA/);
+    ).rejects.toThrow(/paid authority construction refused/);
     await expect(
       createAddieMatchedV4PaidAuthority({
         ...paidInput(),
