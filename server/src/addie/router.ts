@@ -57,6 +57,8 @@ import {
  * Execution plan types
  */
 export type ExecutionPlanBase = {
+  /** Settled router usage for end-to-end architecture experiments. */
+  cost_event?: import('./claude-cost-tracker.js').CostEvent;
   /** How the decision was made: 'quick_match' (pattern) or 'llm' (model router) */
   decision_method: "quick_match" | "llm";
   /** Time spent making the routing decision (ms) */
@@ -1318,6 +1320,7 @@ export class AddieRouter {
 
       const plan: ExecutionPlan = {
         ...parsedPlan,
+        cost_event: { provider: response.provider, model: response.model, usage: response.usage },
         decision_method: "llm",
         latency_ms: latencyMs,
         tokens_input: response.usage.inputTokens,

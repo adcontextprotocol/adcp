@@ -26,6 +26,10 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
+  # First stage: new staff web conversations only. Set MODE=eligible for the
+  # 10% user A/B after reviewing staff outcomes; MODE=off rolls back all turns.
+  ADDIE_GEMINI_DIRECT_MODE = "staff"
+  ADDIE_GEMINI_DIRECT_PERCENT = "10"
   PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
   # Bounded, evaluation-only Luna router shadow. The runtime additionally
   # fails closed unless the channel is public and non-shared and the HMAC and

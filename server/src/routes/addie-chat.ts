@@ -22,6 +22,8 @@ import {
   type ExecutionPlan,
   type RoutingContext,
 } from "../addie/router.js";
+import { prepareGeminiDirectTurn, getGeminiDirectResults } from "../addie/gemini-direct-experiment.js";
+import type { CostEvent } from "../addie/claude-cost-tracker.js";
 import { createProductionRouter } from "../addie/router-runtime.js";
 import {
   classifyActiveCertificationProgress,
@@ -315,7 +317,7 @@ export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean, is
 
 type WebChatRouter = Pick<AddieRouter, 'quickMatch' | 'route'>;
 type WebChatClient = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
-  & Partial<Pick<AddieClaudeClient, 'getRegisteredTools'>>;
+  & Partial<Pick<AddieClaudeClient, 'getRegisteredTools' | 'forkForGeminiDirect'>>;
 export type WebChatRequestThreadService = Pick<ReturnType<typeof getThreadService>,
   | 'getOrCreateThread'
   | 'getThreadByExternalId'
@@ -329,6 +331,9 @@ export type WebChatRequestThreadService = Pick<ReturnType<typeof getThreadServic
 >;
 
 export interface RoutedWebTools {
+  routerMs?: number;
+  routerUsage?: CostEvent;
+  routerUsageComplete?: boolean;
   requestTools: RequestTools;
   selectedToolSets: string[];
   allowedToolNames: string[];
@@ -353,6 +358,7 @@ export async function selectRoutedWebTools(input: {
   sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
   threadMessages?: string[];
 }): Promise<RoutedWebTools> {
+  const routingStarted = Date.now();
   let plan: ExecutionPlan | null = null;
   const routerAvailable = input.router !== null;
 
@@ -399,6 +405,9 @@ export async function selectRoutedWebTools(input: {
     // custom handler. The client applies this list to global definitions too.
     allowedToolNames,
     unavailableHint: selection.unavailableHint,
+    routerMs: Date.now() - routingStarted,
+    routerUsage: plan?.cost_event,
+    routerUsageComplete: !routerAvailable || plan?.decision_method === 'quick_match' || !!plan?.cost_event,
   };
 }
 
@@ -1107,6 +1116,18 @@ export function createAddieChatRouter(options?: {
   // API ROUTES (mounted at /api/addie/chat)
   // =========================================================================
 
+  apiRouter.get('/experiment', optionalAuth, async (req, res) => {
+    if (!req.user || !await isWebUserAAOAdmin(req.user.id)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    try {
+      return res.json(await getGeminiDirectResults());
+    } catch (error) {
+      logger.error({ error }, 'Failed to load Addie experiment results');
+      return res.status(503).json({ error: 'Experiment results unavailable' });
+    }
+  });
+
   // POST /api/addie/chat - Send a message and get a response
   // optionalAuth runs first so rate limiters can check auth status
   apiRouter.post(
@@ -1319,25 +1340,42 @@ export function createAddieChatRouter(options?: {
           entry.addie_thread_id === externalId || entry.addie_thread_id === thread.thread_id,
         ),
       );
-      const routedWebTools = isAuth
-        ? await selectRoutedWebTools({
-            message: messageToProcess,
-            memberContext,
-            threadId: thread.thread_id,
-            isAAOAdmin,
-            requestTools: tieredAccess.requestTools,
-            router: resolveRouter(),
-            globalToolNames: activeChatClient.getRegisteredTools?.(),
-            activeCertificationKind,
-            sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
-              ? 'session'
-              : siAgents.length > 0
-                ? 'discovery'
-                : null,
+      const experimentTurn = await prepareGeminiDirectTurn({
+        client: activeChatClient,
+        userId: req.user?.id,
+        isAdmin: isAAOAdmin,
+        threadId: thread.thread_id,
+        hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
+        exclusionReason: attachments.length > 0 ? 'attachments'
+          : hasThreadCertificationContext || activeCertificationKind ? 'certification'
+          : hasCachedSiSession(externalId) || siAgents.length > 0 ? 'sponsored_intelligence'
+          : githubIssueCreationRequested ? 'github_mutation' : null,
+        startedAt: startTime,
+        requestTools: tieredAccess.requestTools,
+        baseRequestContext: requestContext,
+        evaluation: options?.evaluationMode,
+        getControlTools: async () => isAuth
+          ? await selectRoutedWebTools({
+              message: messageToProcess,
+              memberContext,
+              threadId: thread.thread_id,
+              isAAOAdmin,
+              requestTools: tieredAccess.requestTools,
+              router: resolveRouter(),
+              globalToolNames: activeChatClient.getRegisteredTools?.(),
+              activeCertificationKind,
+              sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+                ? 'session'
+                : siAgents.length > 0
+                  ? 'discovery'
+                  : null,
             threadMessages: contextMessages.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
           })
-        : null;
-      const { processOptions, effectiveModel } = tieredAccess;
+        : null,
+      });
+      const routedWebTools = experimentTurn.selection;
+      const { processOptions } = tieredAccess;
+      const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
       const requestTools = routedWebTools?.requestTools ?? tieredAccess.requestTools;
 
       // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
@@ -1356,7 +1394,7 @@ export function createAddieChatRouter(options?: {
       // Process with Claude
       let response: AddieResponse;
       try {
-        response = await activeChatClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
+        response = await experimentTurn.client.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
           ...processOptions,
           requestContext: [requestContext, routedWebTools?.unavailableHint].filter(Boolean).join('\n\n'),
           selectedToolSetNames: routedWebTools?.selectedToolSets,
@@ -1372,6 +1410,7 @@ export function createAddieChatRouter(options?: {
               toolName,
               parameters,
               requestedModel: effectiveModel,
+              requestedProvider: experimentTurn.model ? 'google' : 'anthropic',
             });
           },
           ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
@@ -1399,7 +1438,7 @@ export function createAddieChatRouter(options?: {
           flagged: true,
           flag_reason: `Error: ${error instanceof Error ? error.message : "Unknown"}`,
           model_execution: {
-            source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'provider_error',
+            source: 'local', requested_provider: experimentTurn.model ? 'google' : 'anthropic', requested_model: effectiveModel, reason: 'provider_error',
           },
         };
       }
@@ -1464,6 +1503,8 @@ export function createAddieChatRouter(options?: {
         config_version_id: response.config_version_id,
       });
 
+      await experimentTurn.experiment?.finish(response, assistantMessage.message_id);
+
       // Check for SI session started (from connect_to_si_agent tool)
       const siSession = withSiAnonymousCapability(
         extractSiSessionFromToolExecutions(response.tool_executions),
@@ -1522,6 +1563,7 @@ export function createAddieChatRouter(options?: {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
     let terminalResponse: AddieResponse | undefined;
+    let requestedProviderForAttempt: 'anthropic' | 'google' = 'anthropic';
     let requestedModelForAttempt = req.user ? AddieModelConfig.chat : AddieModelConfig.anonymousChat;
 
     // Handle client disconnect
@@ -1861,30 +1903,49 @@ export function createAddieChatRouter(options?: {
           entry.addie_thread_id === externalId || entry.addie_thread_id === thread.thread_id,
         ),
       );
-      const routedWebTools = isAuth
-        ? await selectRoutedWebTools({
-            message: messageToProcess,
-            memberContext,
-            threadId: thread.thread_id,
-            isAAOAdmin,
-            requestTools: tieredAccess.requestTools,
-            router: resolveRouter(),
-            globalToolNames: activeChatClient.getRegisteredTools?.(),
-            activeCertificationKind,
-            sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
-              ? 'session'
-              : siAgents.length > 0
-                ? 'discovery'
-                : null,
+      const experimentTurn = await prepareGeminiDirectTurn({
+        client: activeChatClient,
+        userId: req.user?.id,
+        isAdmin: isAAOAdmin,
+        threadId: thread.thread_id,
+        hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
+        exclusionReason: attachments.length > 0 ? 'attachments'
+          : hasThreadCertCtx || activeCertificationKind ? 'certification'
+          : hasCachedSiSession(externalId) || siAgents.length > 0 ? 'sponsored_intelligence'
+          : retryRequested ? 'interrupted_turn_retry'
+          : githubIssueCreationRequested ? 'github_mutation' : null,
+        startedAt: startTime,
+        requestTools: tieredAccess.requestTools,
+        baseRequestContext: requestContext,
+        evaluation: options?.evaluationMode,
+        getControlTools: async () => isAuth
+          ? await selectRoutedWebTools({
+              message: messageToProcess,
+              memberContext,
+              threadId: thread.thread_id,
+              isAAOAdmin,
+              requestTools: tieredAccess.requestTools,
+              router: resolveRouter(),
+              globalToolNames: activeChatClient.getRegisteredTools?.(),
+              activeCertificationKind,
+              sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+                ? 'session'
+                : siAgents.length > 0
+                  ? 'discovery'
+                  : null,
             threadMessages: contextMessages.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
           })
-        : null;
-      const { processOptions, effectiveModel } = tieredAccess;
+        : null,
+      });
+      const routedWebTools = experimentTurn.selection;
+      const { processOptions } = tieredAccess;
+      const effectiveModel = experimentTurn.model ?? tieredAccess.effectiveModel;
       const requestTools = routedWebTools?.requestTools ?? tieredAccess.requestTools;
       const replayPolicy = blockCheckpointedToolReplays(
         retryCheckpointToolCalls,
       );
       requestedModelForAttempt = effectiveModel;
+      requestedProviderForAttempt = experimentTurn.model ? 'google' : 'anthropic';
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
         : null;
@@ -1924,7 +1985,7 @@ export function createAddieChatRouter(options?: {
         ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
 
-      for await (const event of activeChatClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
+      for await (const event of experimentTurn.client.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
         ...(certificationCompletionTurn ? { maxIterations: 3, maxMessages: 12 } : {}),
         requestContext: [requestContext, routedWebTools?.unavailableHint].filter(Boolean).join('\n\n'),
@@ -1943,6 +2004,7 @@ export function createAddieChatRouter(options?: {
             toolName,
             parameters,
             requestedModel: effectiveModel,
+            requestedProvider: experimentTurn.model ? 'google' : 'anthropic',
             clientRequestId: clientRequestId || undefined,
           });
         },
@@ -1972,6 +2034,7 @@ export function createAddieChatRouter(options?: {
               threadId: thread.thread_id,
               execution: event.execution,
               requestedModel: effectiveModel,
+              requestedProvider: experimentTurn.model ? 'google' : 'anthropic',
               clientRequestId: clientRequestId || undefined,
             }));
           } catch (checkpointError) {
@@ -2029,7 +2092,7 @@ export function createAddieChatRouter(options?: {
             content: 'Reply interrupted before completion. The learner can safely retry this turn.',
             model: effectiveModel,
             model_execution: {
-              source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'stream_interrupted',
+              source: 'local', requested_provider: requestedProviderForAttempt, requested_model: effectiveModel, reason: 'stream_interrupted',
             },
             flagged: true,
             flag_reason: `stream_interrupted: ${event.reason}`,
@@ -2073,7 +2136,7 @@ export function createAddieChatRouter(options?: {
               flagged: true,
               flag_reason: `stream_interrupted: ${event.error}`,
               model_execution: {
-                source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'stream_interrupted',
+                source: 'local', requested_provider: requestedProviderForAttempt, requested_model: effectiveModel, reason: 'stream_interrupted',
               },
               client_request_id: claimedTurn.clientRequestId,
               delivery_status: 'interrupted',
@@ -2100,7 +2163,7 @@ export function createAddieChatRouter(options?: {
           tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
           model: effectiveModel,
           model_execution: {
-            source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'no_provider_response',
+            source: 'local', requested_provider: requestedProviderForAttempt, requested_model: effectiveModel, reason: 'no_provider_response',
           },
           flagged: true,
           flag_reason: 'stream_interrupted: ended_without_done',
@@ -2208,6 +2271,7 @@ export function createAddieChatRouter(options?: {
         client_turn_lease_id: claimedTurn?.leaseId,
         finalize_client_turn_status: claimedTurn ? 'completed' : undefined,
       });
+      await experimentTurn.experiment?.finish(response, assistantMessage.message_id);
       claimedTurn = null;
 
       const completionExecution = response?.tool_executions?.find(execution =>
@@ -2364,7 +2428,7 @@ export function createAddieChatRouter(options?: {
             flag_reason: 'stream_interrupted: route_error',
             model_execution: {
               source: 'local',
-              requested_provider: terminalResponse?.model_execution.requested_provider ?? 'anthropic',
+              requested_provider: terminalResponse?.model_execution.requested_provider ?? requestedProviderForAttempt,
               requested_model: terminalResponse?.model_execution.requested_model ?? requestedModelForAttempt,
               reason: 'stream_interrupted',
             },

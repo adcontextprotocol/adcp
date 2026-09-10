@@ -65,6 +65,10 @@ import type {
   PreparedModelInvocation,
 } from './model-providers/model-provider.js';
 import { attemptSiblingModelFallback } from './model-providers/model-fallback.js';
+import type { DirectToolSession } from './gemini-direct-tools.js';
+import { isSideEffectTool } from './side-effect-claims.js';
+import { GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
+import type { CostEvent } from './claude-cost-tracker.js';
 import {
   AnthropicModelProvider,
   type AnthropicMessagesTransport,
@@ -219,11 +223,20 @@ function boundedContentTypes(
 }
 
 /** Build the provider-neutral form of historical turns for live orchestration. */
-function toModelMessages(turns: MessageTurn[]): ModelMessage[] {
+function toModelMessages(turns: MessageTurn[], historicalToolsAsText = false): ModelMessage[] {
   const messages: ModelMessage[] = [];
   let toolIdCounter = 0;
 
   for (const turn of turns) {
+    if (historicalToolsAsText && turn.toolCalls?.length) {
+      // Persisted conversation history has no provider-owned thought signatures.
+      // Keep its evidence as text; only this invocation's adapter can issue live
+      // tool-call continuations. Original receipt records remain server-owned.
+      messages.push({ role: turn.role, content: [{ type: 'text',
+        text: `${turn.content}\n\nEarlier tool results (historical context):\n${JSON.stringify(turn.toolCalls)}`,
+      }] });
+      continue;
+    }
     if (turn.role === 'assistant' && turn.toolCalls && turn.toolCalls.length > 0) {
       const content: ModelMessageContent[] = [];
       if (turn.content.trim()) content.push({ type: 'text', text: turn.content });
@@ -601,6 +614,10 @@ export interface UserScopedToolsResult {
  * Options for message processing
  */
 export interface ProcessMessageOptions {
+  /** Server-created read-only capability session for the Gemini Direct pilot. */
+  directToolSession?: DirectToolSession;
+  /** Aggregate settled usage, including calls preceding a failed continuation. */
+  onUsageAccounted?: (event: CostEvent) => void;
   /** Request-local execution mode. Evaluation, replay, and shadow suppress operational side effects. */
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
@@ -1016,9 +1033,9 @@ interface PayloadDebugStats {
 }
 
 /**
- * Injectable provider seam for isolated full-response evaluation. Alternate
- * providers remain barred from production delivery until provider-specific
- * accounting and rollout gates are in place.
+ * Injectable provider seam for isolated full-response evaluation. Production
+ * Google delivery additionally requires the bounded Gemini Direct factory and
+ * a request-local read-only tool session.
  */
 export interface AddieModelProviderBinding {
   provider: ModelProvider;
@@ -1027,6 +1044,7 @@ export interface AddieModelProviderBinding {
 }
 
 export class AddieClaudeClient {
+  private productionGeminiDirect = false;
   private readonly modelProvider: ModelProvider;
   private readonly exactlyOnceModelProvider: ModelProvider;
   private model: string;
@@ -1297,6 +1315,41 @@ export class AddieClaudeClient {
     return fork;
   }
 
+  /** Narrow production entry point; the pilot cannot dispatch mutation tools. */
+  forkForGeminiDirect(provider: ModelProvider): AddieClaudeClient {
+    if (provider.id !== 'google') throw new Error('Gemini Direct requires the Google provider');
+    const fork = this.forkForIsolatedProvider(GOOGLE_ROUTER_MODEL, { provider });
+    fork.productionGeminiDirect = true;
+    return fork;
+  }
+
+  private assertProductionProvider(model: string, options?: ProcessMessageOptions): void {
+    if (isIsolatedExecution(options) || this.modelProvider.id === 'anthropic') return;
+    if (this.productionGeminiDirect && model === GOOGLE_ROUTER_MODEL
+      && options?.directToolSession && options.allowedToolNames && options.costScope
+      && !options.inputAttachments?.length) return;
+    throw new Error('Alternate Addie model providers are restricted to isolated execution');
+  }
+
+  private executionPolicy(options: ProcessMessageOptions | undefined) {
+    // In isolated modes, absence of a policy must remain absence: the shared
+    // executor deliberately denies every handler until a caller opts in.
+    if (!options?.directToolSession) return options?.toolExecutionPolicy;
+    return async (request: Parameters<NonNullable<ProcessMessageOptions['toolExecutionPolicy']>>[0]) => {
+      if (isIsolatedExecution(options) && !options.toolExecutionPolicy) return { allowed: false };
+      if (options?.directToolSession && (!options.directToolSession.visibleToolNames().has(request.toolName)
+        || isSideEffectTool(request.toolName))) return { allowed: false };
+      return options?.toolExecutionPolicy ? options.toolExecutionPolicy(request) : { allowed: true };
+    };
+  }
+
+  private invocationSystemBlocks(blocks: ModelSystemBlock[], tools: ModelToolDefinition[], options?: ProcessMessageOptions) {
+    if (!options?.directToolSession) return blocks;
+    const current = this.buildSystemBlocks(tools.map(tool => tool.name), options.directToolSession.selectedToolSetNames(), options.requestContext);
+    // Retain any history-trimming warning appended during initial assembly.
+    return [...current, ...blocks.slice(current.length)];
+  }
+
   /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
   private prepareFirstInvocation(
     userMessage: string,
@@ -1353,7 +1406,7 @@ export class AddieClaudeClient {
     }
 
     const modelMessages = appendModelInputAttachments(
-      toModelMessages(messageTurnsResult.messages),
+      toModelMessages(messageTurnsResult.messages, this.modelProvider.id === 'google'),
       options?.inputAttachments,
     );
     const modelTools = buildModelToolDefinitions(allTools);
@@ -1388,7 +1441,9 @@ export class AddieClaudeClient {
         maxOutputTokens ?? SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
       )
       : maxOutputTokens;
-    const controls = addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
+    const controls = this.productionGeminiDirect && effectiveModel === GOOGLE_ROUTER_MODEL
+      ? { maxOutputTokens: safeMaxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, reasoning: { effort: 'low' as const } }
+      : addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
     return {
       model: effectiveModel,
       system: systemBlocks.map((block) => ({
@@ -1467,9 +1522,7 @@ export class AddieClaudeClient {
     const requestedModel = options?.modelOverride ?? this.model;
     const githubIssueCreationRequested = options?.githubIssueCreationRequested
       ?? isGithubIssueCreationRequested(userMessage, threadContext);
-    if (operationalExecution && this.modelProvider.id !== 'anthropic') {
-      throw new Error('Alternate Addie model providers are restricted to isolated execution');
-    }
+    this.assertProductionProvider(requestedModel, options);
 
     // #2950: warn when a caller has neither `costScope` nor explicit
     // `uncapped: true`. Silent default meant a future user-facing
@@ -1571,7 +1624,7 @@ export class AddieClaudeClient {
         executionMode: options?.executionMode ?? 'production',
         policy: githubIssueCreationExecutionPolicy(
           githubIssueCreationRequested,
-          options?.toolExecutionPolicy,
+          this.executionPolicy(options),
         ),
         reserveSideEffect: options?.reserveSideEffect,
         notificationContext: {
@@ -1593,10 +1646,13 @@ export class AddieClaudeClient {
       : await getCurrentConfigVersionId();
 
     const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
+    let usageRecorded = false;
     const recordAccumulatedCost = async () => {
-      if (!operationalExecution || !options?.costScope) return;
+      if (usageRecorded || !operationalExecution) return;
+      usageRecorded = true;
       for (const event of modelLoop.accountedUsage) {
-        await recordCost(options.costScope.userId, event);
+        options?.onUsageAccounted?.(event);
+        if (options?.costScope) await recordCost(options.costScope.userId, event);
       }
     };
 
@@ -1622,6 +1678,10 @@ export class AddieClaudeClient {
     let modelFallbackReason: ModelFallbackReason | null = null;
 
     while (modelLoop.hasRemaining) {
+      if (options?.directToolSession?.handoffRequested()) {
+        await recordAccumulatedCost();
+        throw new Error('gemini_direct_handoff');
+      }
       const activeTurn = modelLoop.beginNext();
       iteration = activeTurn.iteration;
 
@@ -1630,14 +1690,16 @@ export class AddieClaudeClient {
       let response!: ModelResponse;
       let reusedEmptyResponse = false;
       const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
-      const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
+      const invocationTools = recoveryInvocation.toolsAllowed
+        ? modelTools.filter(tool => !options?.directToolSession
+          || options.directToolSession.visibleToolNames().has(tool.name)) : [];
       let invocationAttempt = 0;
       let lastModelRequest: ModelRequest | undefined;
       const invokeProvider = async (exactlyOnce: boolean, model = activeModel) => {
         invocationAttempt++;
         const modelRequest = this.buildModelRequest(
           model,
-          systemBlocks,
+          this.invocationSystemBlocks(systemBlocks, invocationTools, options),
           invocationTools,
           modelMessages,
           recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
@@ -1743,6 +1805,7 @@ export class AddieClaudeClient {
             response = fallbackResponse;
             reusedEmptyResponse = true;
           } else {
+            await recordAccumulatedCost();
             if (!lastModelRequest) {
               throw invocationError;
             }
@@ -2047,9 +2110,7 @@ export class AddieClaudeClient {
     const requestedModel = options?.modelOverride ?? this.model;
     const githubIssueCreationRequested = options?.githubIssueCreationRequested
       ?? isGithubIssueCreationRequested(userMessage, threadContext);
-    if (operationalExecution && this.modelProvider.id !== 'anthropic') {
-      throw new Error('Alternate Addie model providers are restricted to isolated execution');
-    }
+    this.assertProductionProvider(requestedModel, options);
 
     // #2950: matching fail-closed warn on the stream path.
     if (operationalExecution && !options?.costScope && !options?.uncapped) {
@@ -2138,6 +2199,17 @@ export class AddieClaudeClient {
     let totalReceivedDeltas = 0;
     let streamErrorEmitted = false;
 
+    const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
+    let usageRecorded = false;
+    const recordAccumulatedCost = async () => {
+      if (usageRecorded || !operationalExecution) return;
+      usageRecorded = true;
+      for (const event of modelLoop.accountedUsage) {
+        options?.onUsageAccounted?.(event);
+        if (options?.costScope) await recordCost(options.costScope.userId, event);
+      }
+    };
+
     try {
 
     // Timing metrics
@@ -2179,7 +2251,7 @@ export class AddieClaudeClient {
       executionMode: options?.executionMode ?? 'production',
       policy: githubIssueCreationExecutionPolicy(
         githubIssueCreationRequested,
-        options?.toolExecutionPolicy,
+        this.executionPolicy(options),
       ),
       reserveSideEffect: options?.reserveSideEffect,
       notificationContext: {
@@ -2200,19 +2272,13 @@ export class AddieClaudeClient {
         'Addie Stream: Trimmed conversation history to fit context limit'
       );
     }
-    const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
-    const recordAccumulatedCost = async () => {
-      if (!operationalExecution || !options?.costScope) return;
-      for (const event of modelLoop.accountedUsage) {
-        await recordCost(options.costScope.userId, event);
-      }
-    };
     let iteration = 0;
     let lastProviderModel: string | undefined;
     let activeModel = effectiveModel;
     let modelFallbackReason: ModelFallbackReason | null = null;
 
       while (modelLoop.hasRemaining) {
+        if (options?.directToolSession?.handoffRequested()) return;
         const activeTurn = modelLoop.beginNext();
         iteration = activeTurn.iteration;
 
@@ -2228,17 +2294,19 @@ export class AddieClaudeClient {
         // is complete.
         // A failed sample is therefore safe to discard even after provider
         // deltas arrive. This loop never restarts the surrounding logical turn.
-        const maxStreamRetries = isExactlyOnceExecution(options) ? 0 : 3;
+        const maxStreamRetries = isExactlyOnceExecution(options) || this.productionGeminiDirect ? 0 : 3;
         let streamRetryCount = 0;
         let streamSucceeded = false;
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
-          const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
+          const invocationTools = recoveryInvocation.toolsAllowed
+            ? modelTools.filter(tool => !options?.directToolSession
+              || options.directToolSession.visibleToolNames().has(tool.name)) : [];
           const modelRequest = this.buildModelRequest(
             activeModel,
-            systemBlocks,
+            this.invocationSystemBlocks(systemBlocks, invocationTools, options),
             invocationTools,
             modelMessages,
             false,
@@ -2333,7 +2401,9 @@ export class AddieClaudeClient {
                   error: streamError,
                 },
                 async (model) => {
-                  const fallbackTools = recoveryInvocation.toolsAllowed ? modelTools : [];
+                  const fallbackTools = recoveryInvocation.toolsAllowed
+                    ? modelTools.filter(tool => !options?.directToolSession
+                      || options.directToolSession.visibleToolNames().has(tool.name)) : [];
                   const fallbackRequest = this.buildModelRequest(
                     model,
                     systemBlocks,
@@ -2807,6 +2877,7 @@ export class AddieClaudeClient {
         };
       }
     } finally {
+      await recordAccumulatedCost();
       if (certificationLeaseHeartbeat) clearInterval(certificationLeaseHeartbeat);
       if (operationalExecution) {
         await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
