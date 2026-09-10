@@ -176,23 +176,54 @@ Before a human enables execution, provision and review all of the following.
    download that exact artifact, verify its digest and Sigstore bundle again,
    and execute from the verified bundle; it must not accept a SHA, source path,
    provider, stage, or selector from a caller.
-7. Before and after an actual run, obtain provider-authoritative billing
-   evidence: OpenAI organization costs for the dedicated project/time window,
-   Google Cloud Billing detailed usage-cost export, and an Anthropic billing
-   statement or account export for the dedicated credential/window. Retain
-   provider-native source files independently of the evaluator objects. A
-   protected reconciliation adapter may normalize a source only into the
-   checked-in `addie_matched_v4_provider_billing_export` shape: provider,
-   export/account-scope identity, coverage window, retained-native-source
-   SHA-256, USD microdollar lines, provider response IDs, and immutable
-   dispatch timestamps. The adapter must issue the reconciliation capability
-   only after authenticating the export source and binding it to the dedicated
-   account and complete dispatch window; raw normalized projections always
-   remain pending. Reconciliation is successful only when every
-   response ID in retained evaluator evidence has exactly one matching
-   provider line and there are no extras; missing, aggregate-only, duplicate,
-   stale, or unverifiable records are `cost_settlement_pending`. Do not infer a
-   line from tokens, a dated price profile, or a manually supplied total.
+7. Before and after an actual run, obtain and retain the provider-authoritative
+   native billing source independently of evaluator objects. These sources are
+   aggregate reports, not response-level bills:
+
+   - OpenAI organization costs are daily buckets grouped by `project_id` and
+     `line_item`.
+   - Anthropic usage/cost reports group by time, API key, workspace, and model.
+   - Google Cloud Billing exports group by billing account, project, service,
+     SKU, time, and resource metadata.
+
+   Provision one dedicated project/workspace/API key per provider for this
+   evaluation only. Before dispatch, record its reviewed identity and custody
+   owner; do not share it with app, development, test, or another evaluation
+   traffic source. After the run, a human must confirm from the scope's access,
+   credential, and activity records that it had no extra or shared traffic for
+   the entire UTC settlement window. If that isolation gate cannot be proved,
+   aggregate provider cost cannot be compared truthfully and remains
+   `cost_settlement_pending`.
+
+   A future protected reconciliation adapter may normalize an authenticated,
+   retained native source only into the checked-in
+   `addie_matched_v4_provider_billing_settlement_receipt` contract. It captures
+   the provider, provider-native granularity, native export identity and
+   SHA-256 digest, dedicated scope identity, inclusive UTC coverage window,
+   protected-custody settled-through determination, currency, and provider-reported
+   **aggregate** microdollars. It may include a complete model breakdown for
+   Anthropic or line-item breakdown for OpenAI only when that exact native
+   export supplies it. Google breakdowns must be omitted until a separately
+   reviewed SKU/resource-native breakdown contract exists. It must never
+   synthesize, apportion, or label a per-response billed cost.
+
+   Immutable evaluator response IDs and dispatch timestamps are
+   execution-completeness evidence only: they show the planned execution
+   completed inside the isolated scope/window, not a join to an aggregate bill.
+   The protected adapter must bind that evidence to the dedicated scope, require
+   coverage of the full run, and determine settlement finality at or after the
+   covered window under a provider-specific source-lag/stability policy. That
+   finality determination is protected-custody evidence, not a provider field
+   fabricated from a bucket end or export observation time. It must require
+   exactly one complete retained native export receipt per execution provider;
+   it must reject a duplicate provider receipt or native export and
+   non-USD/unsafe totals, and retain the authenticated source under independent
+   custody. There is
+   deliberately no production receipt-capability issuer yet; every
+   raw/caller-constructible receipt and every current execution report remains
+   `cost_settlement_pending`.
+   Do not infer cost from tokens, a dated price profile, or a manually supplied
+   total.
 
 Do not run `npm run eval:addie-matched-v4-authorized` from a local checkout:
 it deliberately refuses, because `ADDIE_MATCHED_V4_MERGE_SHA` alone cannot
@@ -204,8 +235,9 @@ retained runtime bundle immediately before execution and expose spend-capped
 credentials only to that verified process. It must accept neither a provider,
 bucket, evidence capability, SHA, stage, nor admission selector from a caller,
 and may emit only the non-authorizing report projection after retained evidence
-has been verified. Cost-aware screening or promotion remains blocked until the
-provider-authoritative reconciliation above is `reconciled`.
+has been verified. Cost-aware screening or promotion remains blocked unless a
+future, separately reviewed protected reconciliation system establishes its
+own authority; this checked-in contract cannot do so.
 
 Run the GCS integration test only after the preceding approval and credentials
 exist: `ADDIE_MATCHED_V4_GCS_INTEGRATION=true` plus the runtime GCS credential
@@ -214,6 +246,9 @@ deletes them; it does not open PostgreSQL or call a model provider. The normal
 unit suite is deterministic and makes no network call.
 
 The evaluator records provider response IDs and usage, but its dated pricing
-profile is an **estimate**, not provider-authoritative settlement. Missing,
-late, aggregated, or non-reconcilable provider billing evidence remains
-`cost_settlement_pending` and must not drive promotion or rollout.
+profile is an **estimate**, not provider-authoritative settlement. Aggregation
+does not make billing unusable; it requires the isolated dedicated scope and a
+complete settled UTC window described above. Missing, late, shared-scope,
+duplicate, non-USD, unsafe, or unverifiable billing evidence remains
+`cost_settlement_pending`. No estimate or receipt projection may unlock
+cost-aware screening, promotion, rollout, or an exact per-response cost claim.

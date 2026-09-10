@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   reconcileAddieMatchedV4ProviderBilling,
+  validateAddieMatchedV4ProviderBillingSettlementProjection,
   type AddieMatchedV4BillingReconciliationTarget,
-  type AddieMatchedV4ProviderBillingExport,
+  type AddieMatchedV4ProviderBillingSettlementReceipt,
 } from "../../../src/addie/eval/matched-v4-provider-billing-reconciliation.js";
 
 const dispatches = [
@@ -23,28 +24,41 @@ const dispatches = [
 ];
 const sealedTarget = {
   dispatches,
-  accountScopeByProvider: {
-    anthropic: "anthropic-dedicated-project",
+  dedicatedScopeByProvider: {
+    anthropic: "anthropic-dedicated-workspace-key",
     openai: "openai-dedicated-project",
   },
   runStartedAt: "2026-09-10T00:15:00.000Z",
   runEndedAt: "2026-09-10T00:45:00.000Z",
 } satisfies AddieMatchedV4BillingReconciliationTarget;
-const exported = (
+
+const receipt = (
   provider: "anthropic" | "openai" | "google",
-  lines: readonly { providerResponseId: string; billedCostMicros: number }[],
-): AddieMatchedV4ProviderBillingExport => ({
-  kind: "addie_matched_v4_provider_billing_export",
-  version: 1,
+): AddieMatchedV4ProviderBillingSettlementReceipt => ({
+  kind: "addie_matched_v4_provider_billing_settlement_receipt",
+  version: 2,
   provider,
-  exportId: `${provider}-export-1`,
-  accountScopeId: `${provider}-dedicated-project`,
+  nativeGranularity:
+    provider === "openai"
+      ? "openai_daily_project_line_item"
+      : provider === "anthropic"
+        ? "anthropic_time_api_key_workspace_model"
+        : "google_cloud_billing_account_project_service_sku_time_resource",
+  nativeExportIdentity: `${provider}-native-export-1`,
+  authenticatedNativeSourceSha256:
+    provider === "anthropic" ? "a".repeat(64) : "b".repeat(64),
+  dedicatedScopeId:
+    provider === "anthropic"
+      ? "anthropic-dedicated-workspace-key"
+      : `${provider}-dedicated-project`,
   coverageStartedAt: "2026-09-10T00:00:00.000Z",
   coverageEndedAt: "2026-09-10T01:00:00.000Z",
+  settledThroughAt: "2026-09-10T01:00:00.000Z",
   currency: "USD",
-  sourceSha256: "a".repeat(64),
-  lines,
+  providerReportedAggregateCostMicros: 78,
+  scopeIsolation: "exclusive_dedicated_scope",
 });
+const receipts = () => [receipt("anthropic"), receipt("openai")];
 const attestationWorkflow = () =>
   readFileSync(
     new URL(
@@ -54,71 +68,255 @@ const attestationWorkflow = () =>
     "utf8",
   );
 
-describe("matched-v4 provider-authoritative billing reconciliation", () => {
-  it("keeps even complete caller-constructed projections pending", () => {
+describe("matched-v4 provider-authoritative aggregate billing", () => {
+  it("uses immutable response IDs only as execution-completeness evidence", () => {
     expect(
-      reconcileAddieMatchedV4ProviderBilling(dispatches, [
-        exported("anthropic", [
-          { providerResponseId: "msg_1", billedCostMicros: 31 },
-        ]),
-        exported("openai", [
-          { providerResponseId: "resp_2", billedCostMicros: 47 },
-        ]),
-      ]),
+      validateAddieMatchedV4ProviderBillingSettlementProjection(
+        sealedTarget,
+        receipts(),
+      ),
+    ).toEqual({ valid: true, issues: [] });
+    expect(
+      reconcileAddieMatchedV4ProviderBilling(sealedTarget, receipts()),
     ).toEqual({
       status: "cost_settlement_pending",
-      reason: "untrusted_billing_export",
+      reason: "untrusted_billing_receipt",
     });
   });
 
-  it("fails closed instead of dereferencing malformed dispatch and export entries", () => {
-    const reconcileMalformed = () =>
-      reconcileAddieMatchedV4ProviderBilling(
-        [null as never, ...dispatches],
-        [
-          null as never,
-          exported("anthropic", [null as never]),
-          exported("openai", [
-            { providerResponseId: "resp_2", billedCostMicros: 47 },
-          ]),
-        ],
-      );
-    expect(reconcileMalformed).not.toThrow();
-    expect(reconcileMalformed()).toEqual({
-      status: "cost_settlement_pending",
-      reason: "untrusted_billing_export",
-    });
-  });
-
-  it("requires the eventual sealed adapter target to carry dispatch timestamps", () => {
-    expect(sealedTarget.dispatches).toEqual([
-      expect.objectContaining({ dispatchedAt: "2026-09-10T00:20:00.000Z" }),
-      expect.objectContaining({ dispatchedAt: "2026-09-10T00:40:00.000Z" }),
-    ]);
-    expect(sealedTarget.runStartedAt).toBe("2026-09-10T00:15:00.000Z");
-    expect(sealedTarget.runEndedAt).toBe("2026-09-10T00:45:00.000Z");
-  });
-
-  it("cannot settle a projection with an out-of-window dispatch timestamp", () => {
+  it("rejects an empty execution and receipt set", () => {
     expect(
-      reconcileAddieMatchedV4ProviderBilling(
-        [
-          dispatches[0]!,
-          { ...dispatches[1]!, dispatchedAt: "2026-09-10T02:00:00.000Z" },
-        ],
-        [
-          exported("anthropic", [
-            { providerResponseId: "msg_1", billedCostMicros: 31 },
-          ]),
-          exported("openai", [
-            { providerResponseId: "resp_2", billedCostMicros: 47 },
-          ]),
-        ],
+      validateAddieMatchedV4ProviderBillingSettlementProjection(
+        {
+          dispatches: [],
+          dedicatedScopeByProvider: {},
+          runStartedAt: "2026-09-10T00:15:00.000Z",
+          runEndedAt: "2026-09-10T00:45:00.000Z",
+        },
+        [],
       ),
     ).toEqual({
-      status: "cost_settlement_pending",
-      reason: "untrusted_billing_export",
+      valid: false,
+      issues: ["execution_completeness_failed"],
     });
+  });
+
+  it("requires exactly one complete retained native export receipt per provider", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        receipt("openai"),
+        {
+          ...receipt("openai"),
+          nativeExportIdentity: "openai-native-export-2",
+          authenticatedNativeSourceSha256: "c".repeat(64),
+        },
+      ]).issues,
+    ).toContain("duplicate_provider_receipt");
+  });
+
+  it("requires the receipt-provider set to equal the execution-provider set", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        receipt("openai"),
+        receipt("google"),
+      ]).issues,
+    ).toContain("unexpected_provider_receipt");
+  });
+
+  it("rejects a receipt for the wrong dedicated scope", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        { ...receipt("openai"), dedicatedScopeId: "ordinary-project" },
+      ]).issues,
+    ).toContain("wrong_dedicated_scope");
+  });
+
+  it("rejects incomplete coverage and a stale settlement watermark", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        {
+          ...receipt("openai"),
+          coverageEndedAt: "2026-09-10T00:30:00.000Z",
+          settledThroughAt: "2026-09-10T00:20:00.000Z",
+        },
+      ]).issues,
+    ).toEqual(
+      expect.arrayContaining(["coverage_not_complete", "settlement_not_final"]),
+    );
+  });
+
+  it("rejects extra traffic or a shared dedicated scope", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        { ...receipt("openai"), scopeIsolation: "extra_or_shared_traffic" },
+      ]).issues,
+    ).toContain("scope_isolation_failed");
+  });
+
+  it("rejects duplicate native exports", () => {
+    const duplicate = receipt("openai");
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        duplicate,
+        { ...duplicate },
+      ]).issues,
+    ).toContain("duplicate_native_export");
+  });
+
+  it("rejects duplicate native source digests despite hex case variation", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        {
+          ...receipt("openai"),
+          authenticatedNativeSourceSha256: "A".repeat(64),
+        },
+      ]).issues,
+    ).toContain("duplicate_native_export");
+  });
+
+  it("rejects non-USD, unsafe totals, and a partial claimed breakdown", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        {
+          ...receipt("openai"),
+          currency: "EUR",
+          providerReportedAggregateCostMicros: Number.MAX_SAFE_INTEGER + 1,
+          breakdown: [
+            {
+              dimension: "model",
+              id: "model-only-if-native-export-supplies-it",
+              providerReportedCostMicros: 1,
+            },
+          ],
+        },
+      ]).issues,
+    ).toEqual(
+      expect.arrayContaining([
+        "unsupported_currency",
+        "unsafe_aggregate_total",
+      ]),
+    );
+  });
+
+  it("requires an optional native breakdown to total its aggregate", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        {
+          ...receipt("openai"),
+          breakdown: [
+            {
+              dimension: "line_item",
+              id: "provider-native-line-item",
+              providerReportedCostMicros: 1,
+            },
+          ],
+        },
+      ]).issues,
+    ).toContain("unsafe_aggregate_total");
+  });
+
+  it("accepts only a uniform provider-native breakdown dimension", () => {
+    const breakdown = (
+      dimension: "model" | "line_item",
+      id: string,
+      providerReportedCostMicros = 78,
+    ) => ({ dimension, id, providerReportedCostMicros });
+
+    const invalidIssues = (provider: "anthropic" | "openai") =>
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        provider === "anthropic" ? receipt("openai") : receipt("anthropic"),
+        {
+          ...receipt(provider),
+          breakdown: [
+            breakdown(
+              provider === "anthropic" ? "line_item" : "model",
+              "wrong",
+            ),
+          ],
+        },
+      ]).issues;
+
+    expect(invalidIssues("openai")).toContain("malformed_receipt");
+    expect(invalidIssues("anthropic")).toContain("malformed_receipt");
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(sealedTarget, [
+        receipt("anthropic"),
+        {
+          ...receipt("openai"),
+          breakdown: [
+            breakdown("line_item", "native-line-item-a", 39),
+            breakdown("model", "not-a-native-line-item", 39),
+          ],
+        },
+      ]).issues,
+    ).toContain("malformed_receipt");
+
+    const googleTarget = {
+      ...sealedTarget,
+      dispatches: [
+        ...dispatches,
+        {
+          provider: "google" as const,
+          providerResponseId: "google-response-3",
+          dispatchedAt: "2026-09-10T00:30:00.000Z",
+        },
+      ],
+      dedicatedScopeByProvider: {
+        ...sealedTarget.dedicatedScopeByProvider,
+        google: "google-dedicated-project",
+      },
+    } satisfies AddieMatchedV4BillingReconciliationTarget;
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(googleTarget, [
+        receipt("anthropic"),
+        receipt("openai"),
+        {
+          ...receipt("google"),
+          breakdown: [breakdown("line_item", "sku", 78)],
+        },
+      ]).issues,
+    ).toContain("malformed_receipt");
+  });
+
+  it("fails closed without throwing on malformed raw input", () => {
+    expect(() =>
+      validateAddieMatchedV4ProviderBillingSettlementProjection(
+        { dispatches: [null] },
+        [
+          null,
+          {
+            get provider() {
+              throw new Error("hostile");
+            },
+          },
+        ],
+      ),
+    ).not.toThrow();
+    expect(reconcileAddieMatchedV4ProviderBilling(null, null)).toEqual({
+      status: "cost_settlement_pending",
+      reason: "untrusted_billing_receipt",
+    });
+  });
+
+  it("requires complete and unique immutable execution evidence", () => {
+    expect(
+      validateAddieMatchedV4ProviderBillingSettlementProjection(
+        {
+          ...sealedTarget,
+          dispatches: [dispatches[0], { ...dispatches[0] }],
+        },
+        receipts(),
+      ).issues,
+    ).toContain("execution_completeness_failed");
   });
 
   it("accepts only the exact deployment-environment UTF8String in DER", () => {
@@ -245,7 +443,14 @@ describe("matched-v4 provider-authoritative billing reconciliation", () => {
     expect(workflow).not.toContain("eval:addie-matched-v4-authorized");
   });
 
-  it("marks every authorized runtime report pending external billing reconciliation", () => {
+  it("has no production receipt capability issuer and leaves runtime reports pending", () => {
+    const billingContract = readFileSync(
+      new URL(
+        "../../../src/addie/eval/matched-v4-provider-billing-reconciliation.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
     const runner = readFileSync(
       new URL(
         "../../../src/addie/eval/matched-v4-authorized-execution.ts",
@@ -253,6 +458,10 @@ describe("matched-v4 provider-authoritative billing reconciliation", () => {
       ),
       "utf8",
     );
+    expect(billingContract).not.toContain(
+      "createAddieMatchedV4ProviderBilling",
+    );
+    expect(billingContract).not.toContain('status: "reconciled"');
     expect(runner).toContain('costSettlement: "cost_settlement_pending"');
     expect(runner).toContain("estimatedCostUsd");
   });
