@@ -1,4 +1,8 @@
-# Gemini 3.7 Direct web pilot
+---
+title: Gemini 3.7 Direct web pilot
+description: "Operate the Addie Gemini 3.7 Direct pilot, compare routing, latency, cost and outcomes, and roll back safely."
+"og:title": "AdCP — Gemini 3.7 Direct web pilot"
+---
 
 Experiment `gemini-3.7-direct-v1` compares the existing web routing and response
 stack (normally Haiku → Sonnet, with quick matches) against Gemini 3.7 without
