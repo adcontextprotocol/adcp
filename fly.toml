@@ -12,7 +12,8 @@ primary_region = 'iad'
 [deploy]
   # The external matched-v4 evaluator bootstrap is run from a protected
   # deployment control plane. App machines receive no operator credential;
-  # this ordinary migrator validates and records that completed schema.
+  # this migrator records that schema only on an evaluator-enabled release.
+  # Ordinary releases skip evaluator-only migrations.
   release_command = "node dist/db/migrate.js"
   release_command_timeout = "15m"
   strategy = "rolling"

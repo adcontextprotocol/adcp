@@ -2,10 +2,9 @@ name: Deploy
 
 on:
   workflow_run:
-    # Deploy is sequenced from the protected evaluator provision rather than
-    # polling it from Build Check. This prevents a protected-approval delay
-    # from losing the sole deploy trigger for an otherwise valid main SHA.
-    workflows: [Provision matched-v4 evaluator schema]
+    # Ordinary releases follow Build Check with paid evaluation disabled.
+    # Evaluator-enabled releases still wait for protected provisioning.
+    workflows: [Build Check, Provision matched-v4 evaluator schema]
     types: [completed]
     branches: [main]
 
@@ -24,17 +23,29 @@ jobs:
   # here instead of shipping a container that crashloops on boot.
   preflight:
     name: Preflight
-    # workflow_run has access to deployment secrets, so only trust a successful
-    # protected-provision continuation from this repository's main branch.
+    # Both secret-bearing paths require a trusted successful main run. The
+    # repository variable selects exactly one path; unknown values deploy neither.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'workflow_run' &&
       github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (
+        (
+          github.event.workflow_run.name == 'Build Check' &&
+          github.event.workflow_run.event == 'push' &&
+          (vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == '' || vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == 'false')
+        ) ||
+        (
+          github.event.workflow_run.name == 'Provision matched-v4 evaluator schema' &&
+          github.event.workflow_run.event == 'workflow_run' &&
+          vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == 'true'
+        )
+      )
     runs-on: ubuntu-latest
     outputs:
       deploy_current: ${{ steps.current-main.outputs.deploy_current }}
       evaluator_provisioned: ${{ steps.evaluator-provision.outputs.evaluator_provisioned }}
+      evaluator_required: ${{ vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -79,7 +90,7 @@ jobs:
 
       - name: Require the triggering protected evaluator provision
         id: evaluator-provision
-        if: steps.current-main.outputs.deploy_current == 'true'
+        if: steps.current-main.outputs.deploy_current == 'true' && vars.ADDIE_MATCHED_V4_EVALUATOR_DEPLOY_ENABLED == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PROVISION_RUN_ID: ${{ github.event.workflow_run.id }}
@@ -97,7 +108,7 @@ jobs:
   deploy:
     name: Deploy to Fly.io
     needs: preflight
-    if: needs.preflight.outputs.deploy_current == 'true' && needs.preflight.outputs.evaluator_provisioned == 'true'
+    if: needs.preflight.outputs.deploy_current == 'true' && (needs.preflight.outputs.evaluator_required == 'false' || needs.preflight.outputs.evaluator_provisioned == 'true')
     runs-on: ubuntu-latest
     steps:
       # This must precede every flyctl invocation. In particular, staging the
@@ -122,6 +133,7 @@ jobs:
           fi
 
       - name: Recheck triggering evaluator provision immediately before protected deploy use
+        if: needs.preflight.outputs.evaluator_required == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PROVISION_RUN_ID: ${{ github.event.workflow_run.id }}
@@ -140,6 +152,7 @@ jobs:
       # already-verified deploy is releasing; the app never receives the
       # operator/control-plane PostgreSQL connection.
       - name: Stage exact matched-v4 admission SHA for ordinary runtime
+        if: needs.preflight.outputs.evaluator_required == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -152,6 +165,18 @@ jobs:
           flyctl secrets set --stage \
             ADDIE_MATCHED_V4_MERGE_SHA="$TESTED_SHA" \
             ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=true
+
+      # Explicitly overwrite any prior evaluator opt-in secrets. "disabled"
+      # cannot satisfy the paid authority's required 40-character merged SHA.
+      - name: Disable evaluator admission for ordinary app release
+        if: needs.preflight.outputs.evaluator_required == 'false'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          flyctl secrets set --stage \
+            ADDIE_MATCHED_V4_EVALUATOR_SCHEMA_REQUIRED=false \
+            ADDIE_MATCHED_V4_MERGE_SHA=disabled
 
       - name: Reject publisher crawl queue secret override
         env:
