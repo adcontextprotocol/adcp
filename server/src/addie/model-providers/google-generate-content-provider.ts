@@ -58,11 +58,15 @@ export interface GoogleGenerateContentTransport {
       request: GenerateContentParameters,
       options?: { signal?: AbortSignal },
     ): Promise<GenerateContentResponse>;
+    generateContentStream?(
+      request: GenerateContentParameters,
+      options?: { signal?: AbortSignal },
+    ): Promise<AsyncIterable<GenerateContentResponse>>;
   };
 }
 
 export const GOOGLE_GENERATE_CONTENT_CAPABILITIES: ModelProviderCapabilities = Object.freeze({
-  streaming: false,
+  streaming: true,
   structuredOutput: true,
   reasoning: true,
   reasoningEfforts: Object.freeze(['provider_default', 'low', 'medium', 'high'] as const),
@@ -75,6 +79,48 @@ export const GOOGLE_GENERATE_CONTENT_CAPABILITIES: ModelProviderCapabilities = O
 const MAX_GOOGLE_RESPONSE_PARTS = 1_000;
 const MAX_GOOGLE_CONTINUATION_BYTES = 2 * 1024 * 1024;
 const googleContinuationParts = new WeakMap<object, Readonly<Part>>();
+
+/** Preserve original parts (including empty signed parts) across streamed chunks. */
+async function collectGoogleStream(
+  chunks: AsyncIterable<GenerateContentResponse>,
+  options: ModelRespondOptions,
+): Promise<GenerateContentResponse> {
+  const result = {} as GenerateContentResponse;
+  const parts: Part[] = [];
+  let bytes = 0;
+  for await (const chunk of chunks) {
+    if (options.signal?.aborted) throw options.signal.reason;
+    for (const key of ['responseId', 'modelVersion'] as const) {
+      if (chunk[key] !== undefined) {
+        if (result[key] && result[key] !== chunk[key]) throw new Error('Google stream identity changed');
+        result[key] = chunk[key];
+      }
+    }
+    if (chunk.usageMetadata) result.usageMetadata = chunk.usageMetadata;
+    if (chunk.promptFeedback) result.promptFeedback = chunk.promptFeedback;
+    if (chunk.candidates !== undefined) {
+      if (chunk.candidates.length !== 1) throw new Error('Google stream requires one candidate');
+      const candidate = chunk.candidates[0];
+      const previous = result.candidates?.[0];
+      if (previous?.finishReason && candidate.content?.parts?.length) {
+        throw new Error('Google stream continued after completion');
+      }
+      for (const part of candidate.content?.parts ?? []) {
+        bytes += Buffer.byteLength(JSON.stringify(part), 'utf8');
+        if (parts.length >= MAX_GOOGLE_RESPONSE_PARTS || bytes > MAX_GOOGLE_CONTINUATION_BYTES) {
+          throw new Error('Google stream exceeds content limit');
+        }
+        parts.push(part);
+        options.onStreamProgress?.({ type: 'content_delta' });
+      }
+      result.candidates = [{
+        ...previous, ...candidate,
+        ...(parts.length > 0 && { content: { role: candidate.content?.role ?? previous?.content?.role, parts } }),
+      }];
+    }
+  }
+  return result;
+}
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -448,7 +494,7 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     apiKey: string,
     transport?: GoogleGenerateContentTransport,
   ) {
-    // The ordinary adapter is permanently router-only. Gemini 3.8 request
+    // The ordinary adapter accepts the reviewed Gemini 3.7 model. Gemini 3.8 request
     // construction is a pure helper consumed inside the sealed authority;
     // no public constructor or factory can opt an injected transport into the
     // evaluator's paid model scope.
@@ -470,6 +516,10 @@ export class GoogleGenerateContentProvider implements ModelProvider {
               ...request.config,
               abortSignal: options?.signal,
             },
+          }),
+          generateContentStream: (request, options) => client.models.generateContentStream({
+            ...request,
+            config: { ...request.config, abortSignal: options?.signal },
           }),
         },
       };
@@ -505,15 +555,18 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     options: ModelRespondOptions = {},
   ): AsyncIterable<NormalizedModelEvent> {
     validateModelCapabilities(this.id, this.capabilities, request, { streaming: options.stream });
+    if (options.stream && !this.transport.models.generateContentStream) {
+      throw new Error('Google transport does not support streaming');
+    }
     const prepared = this.prepare(request);
     if (options.signal?.aborted) throw options.signal.reason;
     await options.beforeDispatch?.(prepared);
     let response: GenerateContentResponse;
     try {
-      response = await this.transport.models.generateContent(
-        prepared.providerRequest as unknown as GenerateContentParameters,
-        { signal: options.signal },
-      );
+      const payload = prepared.providerRequest as unknown as GenerateContentParameters;
+      response = options.stream
+        ? await collectGoogleStream(await this.transport.models.generateContentStream!(payload, { signal: options.signal }), options)
+        : await this.transport.models.generateContent(payload, { signal: options.signal });
     } catch (error) {
       // Do not expose provider error fields here. The runner receives a
       // constant-message adapter error plus the only safe receipt field.

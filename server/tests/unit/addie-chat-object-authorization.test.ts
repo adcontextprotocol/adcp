@@ -239,6 +239,7 @@ import {
   prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
+import * as geminiExperiment from '../../src/addie/gemini-direct-experiment.js';
 
 afterAll(() => {
   if (originalApiKey === undefined) {
@@ -562,6 +563,50 @@ describe('Addie chat conversation object authorization', () => {
         is_error: true,
       })],
     }));
+  });
+
+  it.each(['/', '/stream'])('delivers the selected Gemini turn through %s and persists its model and outcome', async endpoint => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489', user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([]);
+    const response = {
+      ...successfulModelResponse('Gemini response'),
+      model_execution: { source: 'provider' as const, requested_provider: 'google' as const,
+        requested_model: 'gemini-3.7-flash', provider: 'google' as const, model: 'gemini-3.7-flash',
+        model_resolution: 'exact' as const, fallback_reason: null },
+    };
+    const finish = vi.fn();
+    const candidate = {
+      processMessage: vi.fn().mockResolvedValue(response),
+      processMessageStream: vi.fn(async function* () {
+        yield { type: 'text' as const, text: response.text };
+        yield { type: 'done' as const, response };
+      }),
+    };
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn').mockResolvedValue({
+      client: candidate, model: 'gemini-3.7-flash',
+      selection: { requestTools: { tools: [], handlers: new Map() }, allowedToolNames: ['search_docs'],
+        selectedToolSets: ['knowledge'], unavailableHint: 'Available docs.' },
+      experiment: { finish },
+    } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
+    try {
+      const res = await request(mountChatRouter()).post(endpoint).send({
+        message: 'Explain AdCP', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('Gemini response');
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', exclusionReason: null, hasPriorAssistant: false }));
+      expect(mocks.processMessage).not.toHaveBeenCalled();
+      expect(mocks.processMessageStream).not.toHaveBeenCalled();
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
+      expect(finish).toHaveBeenCalledWith(expect.objectContaining({ text: 'Gemini response' }), 'message_assistant');
+    } finally { prepare.mockRestore(); }
+  });
+
+  it('restricts experiment outcomes to site admins', async () => {
+    expect((await request(mountChatRouter()).get('/experiment')).status).toBe(403);
   });
 
   it('denies a cross-user conversation UUID through the streaming path before side effects', async () => {

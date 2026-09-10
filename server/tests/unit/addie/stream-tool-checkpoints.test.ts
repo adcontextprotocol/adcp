@@ -16,6 +16,16 @@ const execution = {
 } as const;
 
 describe('stream tool checkpoints', () => {
+  it('retains the requested Google identity through read checkpoints and control-handoff reservations', () => {
+    const identity = { threadId: 'thread-1', requestedModel: 'gemini-3.7-flash', requestedProvider: 'google' as const };
+    for (const checkpoint of [
+      buildToolResultCheckpoint({ ...identity, execution }),
+      buildToolIntentCheckpoint({ ...identity, toolName: execution.tool_name, parameters: execution.parameters }),
+    ]) {
+      expect(checkpoint.model_execution).toMatchObject({ requested_provider: 'google', requested_model: 'gemini-3.7-flash' });
+    }
+  });
+
   it('stores one complete tool-use/result pair without partial assistant prose', () => {
     expect(buildToolResultCheckpoint({
       threadId: 'thread-1',

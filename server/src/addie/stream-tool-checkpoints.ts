@@ -1,3 +1,4 @@
+import type { ModelProviderId } from './model-providers/model-provider.js';
 import type { CreateMessageInput, ThreadService } from './thread-service.js';
 import type {
   ToolExecution,
@@ -50,6 +51,7 @@ export function buildToolResultCheckpoint(input: {
   threadId: string;
   execution: ToolExecution;
   requestedModel: string;
+  requestedProvider?: ModelProviderId;
   clientRequestId?: string;
 }): CreateMessageInput {
   return {
@@ -61,7 +63,7 @@ export function buildToolResultCheckpoint(input: {
     model: input.requestedModel,
     model_execution: {
       source: 'local',
-      requested_provider: 'anthropic',
+      requested_provider: input.requestedProvider ?? 'anthropic',
       requested_model: input.requestedModel,
       reason: 'stream_interrupted',
     },
@@ -79,6 +81,7 @@ export function buildToolIntentCheckpoint(input: {
   toolName: string;
   parameters: Record<string, unknown>;
   requestedModel: string;
+  requestedProvider?: ModelProviderId;
   clientRequestId?: string;
 }): CreateMessageInput {
   return {
@@ -95,7 +98,7 @@ export function buildToolIntentCheckpoint(input: {
     model: input.requestedModel,
     model_execution: {
       source: 'local',
-      requested_provider: 'anthropic',
+      requested_provider: input.requestedProvider ?? 'anthropic',
       requested_model: input.requestedModel,
       reason: 'stream_interrupted',
     },
@@ -117,6 +120,7 @@ export async function reserveToolIntentCheckpoint(
     toolName: string;
     parameters: Record<string, unknown>;
     requestedModel: string;
+    requestedProvider?: ModelProviderId;
     clientRequestId?: string;
   },
 ): Promise<void> {

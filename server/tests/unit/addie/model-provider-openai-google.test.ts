@@ -564,14 +564,13 @@ describe('GoogleGenerateContentProvider', () => {
     });
   });
 
-  it('fails closed when streaming transport is requested', async () => {
-    const provider = new GoogleGenerateContentProvider(
-      'unused',
-      {} as GoogleGenerateContentTransport,
-    );
+  it('fails before dispatch when an injected transport has no streaming implementation', async () => {
+    const generateContent = vi.fn();
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
     await expect(collectModelResponse(
       provider.respond(request(GOOGLE_ROUTER_MODEL), { stream: true }),
-    )).rejects.toBeInstanceOf(UnsupportedModelCapabilityError);
+    )).rejects.toThrow('does not support streaming');
+    expect(generateContent).not.toHaveBeenCalled();
   });
 
   it('builds the exact frozen generateContent request', () => {

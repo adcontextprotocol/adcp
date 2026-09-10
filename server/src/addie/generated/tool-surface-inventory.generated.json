@@ -58,7 +58,7 @@
     }
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "6a8cb276d92d377182a3c9d52216317f10c31753807b5d7c831a41931498d1ba",
+    "server/src/addie/claude-client.ts": "5a3ae29c06be856a2ac5d9565a18836db7e1cd5268ed98389cd0931bf1e5fe92",
     "server/src/addie/request-tool-assembly.ts": "cf4443d27ec69940f22aa9fcf46fdefd3f444762259c2700ac8fa01554ead4da",
     "server/src/addie/request-tool-replay-binding.ts": "3aed4c0bd18032e4418b8fff7e8deb263936b6c75b27941f9818a2a9a87287f2",
     "server/src/addie/prompts.ts": "3ec621f3e97eb9109fb561b94ff625a0639460c84506aa63aeebd57f683790f4",
@@ -66,7 +66,7 @@
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
     "server/src/addie/bolt-app.ts": "cb1b76808654a295064cbd8b7dc580e17b9c4a54f80e882543cff5c15086632f",
-    "server/src/routes/addie-chat.ts": "24ef3b25c51e18da8c6f2241e8110457cf3873245f2daafa1c05f0da72c8d4ef",
+    "server/src/routes/addie-chat.ts": "c9fab36425a8bc7f2b404ba7497d2b382552bcc8dbbf3452ca624905d17f96ab",
     "server/src/routes/tavus.ts": "17321c275f89de1ec3e4996c6d7271bf252f7ff1ab1494dad820b090065d0da4",
     "server/src/addie/email-conversation-handler.ts": "d6cf6d3c8621a85c69c6b22b86e6aa78f03b0d532ac8d5162fd40ec6c869f70c",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
@@ -92,9 +92,9 @@
     "rules_bytes": 154070,
     "tool_reference_bytes": 39435,
     "complete_offline_tool_reference_bytes": 42387,
-    "response_style_bytes": 9053,
-    "system_prompt_bytes": 202572,
-    "system_prompt_sha256": "362d2bd7294ea6bf1ce548e4d11455da709e20bb7e52b3433f5bb855008c45e4"
+    "response_style_bytes": 9056,
+    "system_prompt_bytes": 202575,
+    "system_prompt_sha256": "8496bc8bf0adba0e79c5c1b75af14c78a3cb50c0e7833b1c45c937ae9625e64e"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -38661,7 +38661,7 @@
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
       "tool_reference_bytes": -4358,
-      "system_prompt_bytes": 541,
+      "system_prompt_bytes": 544,
       "maximum_slack_member_tools": -115,
       "maximum_slack_admin_tools": -182,
       "maximum_slack_public_tools": -8,
