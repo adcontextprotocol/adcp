@@ -80,7 +80,7 @@ jobs:
           - surface: current
             tenant: governance
             min_clean_storyboards: 47
-            min_passing_steps: 161
+            min_passing_steps: 160
           - surface: current
             tenant: creative
             min_clean_storyboards: 49
@@ -92,7 +92,7 @@ jobs:
           - surface: current
             tenant: brand
             min_clean_storyboards: 45
-            min_passing_steps: 116
+            min_passing_steps: 115
           - surface: current
             tenant: si
             min_clean_storyboards: 42

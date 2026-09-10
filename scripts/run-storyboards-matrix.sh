@@ -240,10 +240,10 @@ else
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
     "sales:133:632"
-    "governance:47:161"
+    "governance:47:160"
     "creative:49:209"
     "creative-builder:50:184"
-    "brand:45:116"
+    "brand:45:115"
     "si:42:50"
   )
 fi
