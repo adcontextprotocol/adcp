@@ -6,7 +6,7 @@ export const ADMIN_ANALYTICS_TOOL_NAME = 'query_admin_analytics';
 export const ADMIN_ANALYTICS_TOOL: AddieTool = {
   name: 'query_admin_analytics',
   description:
-    'Query one read-only administrative analytics view: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement.',
+    'Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships, including individual and organization subscriptions. This counts memberships, not people. Use this live view for current totals; documentation and paginated member lists cannot provide an exact current count.',
   usage_hints:
     'Use platform_stats for platform-wide people/organization counts; member_search for search and introduction analytics; organizations_by_users for organization rankings; users_by_engagement for contributor and community-engagement rankings.',
   input_schema: {

@@ -180,7 +180,7 @@ export async function prepareGeminiDirectTurn(input: {
   }
 
   const treatment = assignment.arm === 'gemini' && !input.exclusionReason;
-  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? []) : null;
+  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin) : null;
   let candidate: AddieClaudeClient | undefined;
   if (direct) {
     candidate = clients.get(input.client);
