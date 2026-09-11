@@ -2846,7 +2846,7 @@
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
-  <div id="anonymous-banner" class="anonymous-banner">Free preview — <a href="/api/auth/login">sign in</a> to search Slack discussions, validate schemas, and get full-quality answers.</div>
+  <div id="anonymous-banner" class="anonymous-banner">Free preview — <a href="/auth/login?return_to=/chat">sign in</a> to search Slack discussions, validate schemas, and get full-quality answers.</div>
   <div id="adcp-nav"></div>
 
   <!-- SI (Sponsored Intelligence) Chat Modal -->
@@ -5257,7 +5257,7 @@
             const limit = parseInt(response.headers.get('RateLimit-Limit'));
             const limitEl = document.getElementById('messageLimit');
             if (!isNaN(remaining) && !isNaN(limit) && remaining <= 15) {
-              limitEl.innerHTML = `${limit - remaining} of ${limit} free messages used \u00b7 <a href="/api/auth/login">sign in</a> for unlimited`;
+              limitEl.innerHTML = `${limit - remaining} of ${limit} free messages used \u00b7 <a href="/auth/login?return_to=/chat">sign in</a> for unlimited`;
               limitEl.style.display = '';
             }
           }
@@ -6724,7 +6724,7 @@
       async function startVideoCall() {
         if (videoCallActive) return;
         if (!isAuthenticated) {
-          window.location.href = '/api/auth/login';
+          window.location.href = '/auth/login?return_to=/chat';
           return;
         }
 
