@@ -1860,7 +1860,7 @@ Query community analytics or review flagged conversations (admin only)
 
 ### `query_admin_analytics`
 
-Query one read-only administrative analytics view: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement.
+Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships, including individual and organization subscriptions. This counts memberships, not people. Use this live view for current totals; documentation and paginated member lists cannot provide an exact current count.
 
 *Source: `server/src/addie/mcp/admin-analytics.ts`*
 
