@@ -4542,6 +4542,7 @@ components:
               - sales-non-guaranteed
               - sales-proposal-mode
               - sales-retail-media
+              - sales-streaming-tv
               - sales-social
               - signal-marketplace
               - orchestrator-multi-agent

@@ -111,6 +111,7 @@ export type AdcpSpecialism =
   | 'sales-non-guaranteed'
   | 'sales-proposal-mode'
   | 'sales-retail-media'
+  | 'sales-streaming-tv'
   | 'sales-social'
   | 'signal-marketplace'
   | 'orchestrator-multi-agent'
@@ -143,6 +144,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'sales-non-guaranteed',
   'sales-proposal-mode',
   'sales-retail-media',
+  'sales-streaming-tv',
   'sales-social',
   'signal-marketplace',
   'orchestrator-multi-agent',
