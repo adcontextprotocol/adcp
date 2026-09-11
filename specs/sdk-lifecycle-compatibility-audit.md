@@ -240,6 +240,25 @@ These are SDK/documentation follow-ups. This audit does not propose new
 deprecations, a new compatibility consent model, or a change to the 3.x
 requirement to retain advertised legacy behavior.
 
+## SDK issue ownership
+
+The original continuation work already has issues in every official SDK.
+The new audit findings now have language-specific follow-ups as well. Status
+below was checked on September 11, 2026; an open implementation PR is not
+evidence that its behavior shipped in the audited release.
+
+| SDK | Existing continuation work | Audit follow-up |
+| --- | --- | --- |
+| TypeScript | [#2640](https://github.com/adcontextprotocol/adcp-client/issues/2640) is completed, with implementation in [#2641](https://github.com/adcontextprotocol/adcp-client/pull/2641) and settlement fixes in [#2642](https://github.com/adcontextprotocol/adcp-client/pull/2642). | [#2874](https://github.com/adcontextprotocol/adcp-client/issues/2874) covers equivalent listing filters, tokenless catalog purchase coordination, and legacy workflow regressions. It links the existing [#1069](https://github.com/adcontextprotocol/adcp-client/issues/1069) cross-version/served-version follow-up for the version-policy cases. |
+| Python | [#1057](https://github.com/adcontextprotocol/adcp-client-python/issues/1057) is completed via [#1059](https://github.com/adcontextprotocol/adcp-client-python/pull/1059). | [#1146](https://github.com/adcontextprotocol/adcp-client-python/issues/1146) covers an explicit negotiated catalog/purchase helper reusing that work, degraded capabilities, and version/legacy-handler regression cases. It does not request a second continuation implementation or automatic rewriting of native task calls. |
+| Go | [#466](https://github.com/adcontextprotocol/adcp-go/issues/466) remains open with implementation PR [#483](https://github.com/adcontextprotocol/adcp-go/pull/483). [#482](https://github.com/adcontextprotocol/adcp-go/issues/482) separately tracks persistent storage and the reverse seller facade. | [#527](https://github.com/adcontextprotocol/adcp-go/issues/527) covers exact release pins and server-dispatch regression cases. Reuse the existing [#351](https://github.com/adcontextprotocol/adcp-go/issues/351) testing work and [#352](https://github.com/adcontextprotocol/adcp-go/issues/352) SDK roadmap for broader orchestration support. |
+
+These issues link back to [the audit PR](https://github.com/adcontextprotocol/adcp/pull/7420)
+and distinguish new gaps from completed or ongoing SDK work. The broader
+seller field-preservation comparison remains in
+[#7403](https://github.com/adcontextprotocol/adcp/issues/7403); closing a buyer
+helper issue does not establish complete reverse-facade coverage.
+
 ## Validation and reproduction
 
 - TypeScript: 290 passing coordinator/release-gate tests, including actual

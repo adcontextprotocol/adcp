@@ -27,7 +27,7 @@ What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cro
 
 | SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.35` | Exact `3.2.0-rc.1` support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.33` | Exact `3.2.0-rc.1` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0b14` | Exact `3.2.0-rc.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Exact `3.2.0-rc.1` generated schemas and types; higher layers remain role-dependent | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
@@ -89,7 +89,7 @@ documents coordinator options, continuation storage, and supported projections.
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.35
+npm install @adcp/sdk@14.0.0-rc.33
 ```
 
 ```javascript
@@ -198,11 +198,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-rc.35 --help
-npx @adcp/sdk@14.0.0-rc.35 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-rc.35 my-agent list_products '{"adcp_version":"3.2-rc.1","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-rc.33 --help
+npx @adcp/sdk@14.0.0-rc.33 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-rc.33 my-agent list_products '{"adcp_version":"3.2-rc.1","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-rc.35 test-mcp list_products '{"adcp_version":"3.2-rc.1"}'
+npx @adcp/sdk@14.0.0-rc.33 test-mcp list_products '{"adcp_version":"3.2-rc.1"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
