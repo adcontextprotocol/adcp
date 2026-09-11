@@ -122,8 +122,8 @@ On both 3.0 and 3.1 lanes, `listProducts` with
 `requestProposals` reaches `get_products`. An empty/simple listing succeeds.
 
 The [listing branch](https://github.com/adcontextprotocol/adcp-client/blob/2b27442fbaf972f7a4236af227800feec268aeb0/src/lib/media-buy/compatibility.ts#L5142)
-rejects the entire criteria object. This is narrower than “every useful list
-filter is incompatible.” Reuse the existing field-specific offer-filter
+rejects the entire criteria object. This is narrower than "every useful list
+filter is incompatible." Reuse the existing field-specific offer-filter
 projection for criteria that have exact equivalents in the negotiated schema.
 Preserve unsupported-field errors for the rest. Country coverage stays a
 product filter and never becomes delivery targeting.
@@ -221,6 +221,14 @@ atomic mutation, or reinterpret omitted proposals as terminal decline. The
 existing [compatibility contract](legacy-compact-lifecycle-compatibility.md)
 already supplies the transaction-boundary rules; add scenario coverage rather
 than another lifecycle policy.
+
+Note on current reach: sub-country coverage predicates — `metros`, `regions`,
+`postal_areas`, and `geo_proximity` — have no compact home in
+`core/product-offer-filters.json`. For those predicates, this section's
+rule (do not drop eligibility predicates; do not convert coverage into
+targeting) is jointly unsatisfiable under current compact internals: refusal
+is the only currently compliant path. The schema gap is tracked in
+[#7403](https://github.com/adcontextprotocol/adcp/issues/7403).
 
 ## Making adoption smoother now
 
