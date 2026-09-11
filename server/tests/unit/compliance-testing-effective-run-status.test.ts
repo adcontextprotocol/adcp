@@ -55,6 +55,34 @@ function makeResult(tracks: ReturnType<typeof makeTrack>[], overallStatus = 'par
   };
 }
 
+describe('complianceResultToDbInput runner version', () => {
+  it.each([
+    ['pass', 'passing'],
+    ['partial', 'partial'],
+    ['fail', 'failing'],
+  ])('preserves the emitted version for %s results', (trackStatus, overallStatus) => {
+    const baseResult = makeResult([makeTrack(trackStatus)], overallStatus);
+    const result = {
+      ...baseResult,
+      adcp_version: '3.1.0',
+      summary: { ...baseResult.summary, runner_capability_version: '14.0.0-rc.12' },
+    };
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.runner_capability_version).toBe('14.0.0-rc.12');
+    expect(out.adcp_version).toBe('3.1.0');
+    expect(out.overall_status).toBe(overallStatus);
+  });
+
+  it.each([{}, { runner_capability_version: null }])('does not invent a missing runner version: %j', fields => {
+    const baseResult = makeResult([makeTrack('pass')], 'passing');
+    const result = { ...baseResult, summary: { ...baseResult.summary, ...fields } };
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.runner_capability_version).toBeNull();
+  });
+});
+
 describe('complianceResultToDbInput — effectiveRunStatus', () => {
   it('promotes all-silent to passing with zero partial/failed counters', () => {
     const result = makeResult([makeTrack('silent'), makeTrack('silent')], 'partial');

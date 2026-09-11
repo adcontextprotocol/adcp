@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LIBRARY_VERSION } from '@adcp/sdk';
 
 const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),
@@ -489,6 +490,26 @@ describe('runComplianceHeartbeatJob', () => {
       failed: 0,
       skipped: 0,
     });
+  });
+
+  it('records the invoking runner version when comply throws without a result', async () => {
+    mocks.comply.mockRejectedValueOnce(new Error('Timed out'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 1, passed: 0, failed: 1, skipped: 0 });
+    expect(mocks.complianceResultToDbInput).not.toHaveBeenCalled();
+    expect(mocks.recordComplianceRun).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        agent_url: 'https://agent.example.com/mcp',
+        adcp_version: target.version,
+        runner_capability_version: LIBRARY_VERSION,
+        overall_status: 'failing',
+        triggered_by: 'heartbeat',
+        dry_run: false,
+      }),
+    );
   });
 
   it('counts malformed saved Basic auth as a checked failure', async () => {

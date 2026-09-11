@@ -7024,6 +7024,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           id: run.id,
           requested_compliance_target: run.requested_compliance_target ?? null,
           adcp_version: run.adcp_version ?? null,
+          runner_capability_version: run.runner_capability_version ?? null,
           overall_status: run.overall_status,
           headline: run.headline,
           tracks_passed: run.tracks_passed,

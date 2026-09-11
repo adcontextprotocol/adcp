@@ -28,6 +28,7 @@ import type { Pool } from 'pg';
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
+import { ComplianceDatabase } from '../../src/db/compliance-db.js';
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY ||= 'sk_test_registry_debug';
@@ -251,6 +252,61 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
   });
 
   const endpoint = `/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance`;
+
+  it('returns null for a historical run without a recorded runner version', async () => {
+    const res = await request(app).get(`${endpoint}/history`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.runs).toEqual([
+      expect.objectContaining({ id: complianceRunId, runner_capability_version: null }),
+    ]);
+  });
+
+  it('persists each runner version through real writes and history reads, including partial runs', async () => {
+    const agentUrl = `https://runner-version-${RUN_SUFFIX}.example.com/mcp`;
+    const db = new ComplianceDatabase();
+    const expectedRuns = [];
+
+    try {
+      for (const [overallStatus, runnerVersion] of [
+        ['passing', '14.0.0-rc.12'],
+        ['partial', '14.0.0-rc.13'],
+        ['failing', null],
+      ] as const) {
+        const { run } = await db.recordComplianceRun({
+          agent_url: agentUrl,
+          requested_compliance_target: '3.1',
+          adcp_version: '3.1.0',
+          runner_capability_version: runnerVersion,
+          lifecycle_stage: 'testing',
+          overall_status: overallStatus,
+          tracks_json: [],
+          tracks_passed: 0,
+          tracks_failed: 0,
+          tracks_skipped: 0,
+          tracks_partial: 0,
+          triggered_by: 'manual',
+          dry_run: false,
+        });
+        expect(run.runner_capability_version).toBe(runnerVersion);
+        expectedRuns.push(expect.objectContaining({
+          id: run.id,
+          overall_status: overallStatus,
+          adcp_version: '3.1.0',
+          runner_capability_version: runnerVersion,
+        }));
+      }
+
+      const res = await request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/history`);
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBe(3);
+      expect(res.body.runs).toEqual(expect.arrayContaining(expectedRuns));
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_status WHERE agent_url = $1', [agentUrl]);
+      await pool.query('DELETE FROM agent_compliance_runs WHERE agent_url = $1', [agentUrl]);
+    }
+  });
 
   const OWNER_ONLY_KEYS = [
     'verdict_source',
