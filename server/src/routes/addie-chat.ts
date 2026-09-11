@@ -1531,7 +1531,10 @@ export function createAddieChatRouter(options?: {
       });
     } catch (error) {
       if (error instanceof WebChatModelPreferenceError) {
-        return res.status(error.statusCode).json({ error: 'Invalid model preference', message: error.message });
+        return res.status(error.statusCode).json({
+          error: 'Invalid model preference',
+          message: error.statusCode === 403 ? 'Sign in to choose a model.' : 'This model selection is unavailable for the request.',
+        });
       }
       if (error instanceof ChatAttachmentValidationError) {
         logger.warn({ reason: error.message }, "Addie Chat: Invalid attachment");
@@ -2444,7 +2447,10 @@ export function createAddieChatRouter(options?: {
       res.end();
     } catch (error) {
       if (error instanceof WebChatModelPreferenceError && !res.headersSent) {
-        return res.status(error.statusCode).json({ error: 'Invalid model preference', message: error.message });
+        return res.status(error.statusCode).json({
+          error: 'Invalid model preference',
+          message: error.statusCode === 403 ? 'Sign in to choose a model.' : 'This model selection is unavailable for the request.',
+        });
       }
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
       if (claimedTurn) {
