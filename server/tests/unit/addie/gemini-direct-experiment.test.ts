@@ -17,12 +17,13 @@ vi.mock('../../../src/addie/claude-cost-tracker.js', () => ({
   formatCapExceededMessage: () => 'Daily cap reached.',
 }));
 
-import { AddieClaudeClient, type AddieResponse, type ProcessMessageOptions, type StreamEvent } from '../../../src/addie/claude-client.js';
+import { AddieClaudeClient, type AddieResponse, type ProcessMessageOptions, type RequestTools, type StreamEvent } from '../../../src/addie/claude-client.js';
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import { collectModelResponse } from '../../../src/addie/model-providers/events.js';
 import { createGeminiDirectTools } from '../../../src/addie/gemini-direct-tools.js';
 import { geminiDirectAssignment, prepareGeminiDirectTurn } from '../../../src/addie/gemini-direct-experiment.js';
 import { AddieModelConfig } from '../../../src/config/models.js';
+import { ADMIN_ANALYTICS_TOOL } from '../../../src/addie/mcp/admin-analytics.js';
 
 function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse {
   return {
@@ -66,7 +67,7 @@ function fixture(responses: (GenerateContentResponse | GenerateContentResponse[]
   });
   const input = {
     client, userId: 'user-test', isAdmin: true, threadId: 'thread-test', hasPriorAssistant: false,
-    exclusionReason: null, startedAt: Date.now(), requestTools: { tools: [], handlers: new Map() },
+    exclusionReason: null, startedAt: Date.now(), requestTools: { tools: [], handlers: new Map() } as RequestTools,
     baseRequestContext: 'Trusted member context.', getControlTools,
   };
   return { client, fork, provider, dispatch, handlers, control, input, getControlTools };
@@ -156,6 +157,64 @@ describe('Gemini Direct production integration', () => {
     expect(names(1)).not.toContain('send_invoice');
     expect(f.handlers.get('get_recent_news')).toHaveBeenCalledOnce();
     expect(f.handlers.get('send_invoice')).not.toHaveBeenCalled();
+  });
+
+  it('gives an authorized admin live counts on the first Gemini invocation without a handoff', async () => {
+    const f = fixture([
+      receipt([call('query_admin_analytics', { view: 'platform_stats' })]),
+      receipt([{ text: 'There are 212 active paying memberships.' }], 'answer'),
+    ]);
+    const analytics = vi.fn().mockResolvedValue('{"memberships":{"active":212}}');
+    f.input.requestTools = {
+      tools: [ADMIN_ANALYTICS_TOOL],
+      handlers: new Map([[ADMIN_ANALYTICS_TOOL.name, analytics]]),
+    };
+    const result = await run(f.input);
+    const names = f.dispatch.mock.calls[0][0].config?.tools?.flatMap(tool => tool.functionDeclarations?.map(fn => fn.name) ?? []);
+    expect(names).toContain('query_admin_analytics');
+    expect(analytics).toHaveBeenCalledExactlyOnceWith({ view: 'platform_stats' });
+    expect(result.response?.text).toBe('There are 212 active paying memberships.');
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('keeps authorized analytics available after loading a different read-only group', async () => {
+    const f = fixture([
+      receipt([call('load_tool_group', { group: 'industry_research' })]),
+      receipt([call('query_admin_analytics', { view: 'platform_stats' })], 'counts'),
+      receipt([{ text: 'There are 212 active paying memberships.' }], 'answer'),
+    ]);
+    const analytics = vi.fn().mockResolvedValue('{"memberships":{"active":212}}');
+    f.input.requestTools = {
+      tools: [ADMIN_ANALYTICS_TOOL],
+      handlers: new Map([[ADMIN_ANALYTICS_TOOL.name, analytics]]),
+    };
+    await run(f.input);
+    expect(analytics).toHaveBeenCalledOnce();
+    const names = f.dispatch.mock.calls[1][0].config?.tools?.flatMap(tool => tool.functionDeclarations?.map(fn => fn.name) ?? []);
+    expect(names).toContain('query_admin_analytics');
+    expect(names).toContain('get_recent_news');
+    expect(names).not.toContain('send_invoice');
+  });
+
+  it('does not give an enrolled non-admin access to analytics even if supplied a handler', async () => {
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'eligible');
+    vi.stubEnv('ADDIE_GEMINI_DIRECT_PERCENT', '100');
+    const f = fixture([
+      receipt([call('query_admin_analytics', { view: 'platform_stats' })]),
+      receipt([{ text: 'This lookup needs administrator access.' }], 'answer'),
+    ]);
+    f.input.isAdmin = false;
+    const analytics = vi.fn().mockResolvedValue('Must not run.');
+    f.input.requestTools = {
+      tools: [ADMIN_ANALYTICS_TOOL],
+      handlers: new Map([[ADMIN_ANALYTICS_TOOL.name, analytics]]),
+    };
+    const result = await run(f.input);
+    expect(analytics).not.toHaveBeenCalled();
+    const names = f.dispatch.mock.calls[0][0].config?.tools?.flatMap(tool => tool.functionDeclarations?.map(fn => fn.name) ?? []);
+    expect(names).not.toContain('query_admin_analytics');
+    expect(result.response?.tool_executions[0]).toMatchObject({ tool_name: 'query_admin_analytics', is_error: true });
   });
 
   it('blocks a model calling an unloaded tool even when its handler exists', async () => {
@@ -281,6 +340,19 @@ describe('assignment and rollback', () => {
   it('does not expose groups whose user-scoped handlers are absent', () => {
     const direct = createGeminiDirectTools({ tools: [], handlers: new Map() }, ['search_docs']);
     expect(direct.allowedToolNames).toEqual(['search_docs', 'load_tool_group', 'handoff_to_addie']);
+  });
+
+  it.each([
+    { definition: false, handler: false },
+    { definition: true, handler: false },
+    { definition: false, handler: true },
+  ])('requires both an authorized request definition and handler for admin analytics: %j', ({ definition, handler }) => {
+    const direct = createGeminiDirectTools({
+      tools: definition ? [ADMIN_ANALYTICS_TOOL] : [],
+      handlers: new Map(handler ? [[ADMIN_ANALYTICS_TOOL.name, vi.fn()]] : []),
+    }, ['search_docs', ADMIN_ANALYTICS_TOOL.name], true);
+    expect(direct.allowedToolNames).not.toContain(ADMIN_ANALYTICS_TOOL.name);
+    expect(direct.session.visibleToolNames().has(ADMIN_ANALYTICS_TOOL.name)).toBe(false);
   });
 });
 

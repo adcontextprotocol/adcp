@@ -2,6 +2,7 @@ import type { RequestTools } from './claude-client.js';
 import type { ToolExecutionPolicy } from './model-providers/tool-orchestration.js';
 import { TOOL_SETS } from './tool-sets.js';
 import { isSideEffectTool } from './side-effect-claims.js';
+import { ADMIN_ANALYTICS_TOOL_NAME } from './mcp/admin-analytics.js';
 
 /** Pilot capability boundary. Domain membership alone never grants access. */
 export const GEMINI_DIRECT_GROUPS = [
@@ -15,7 +16,7 @@ export interface DirectToolSession {
   handoffRequested(): boolean;
 }
 
-export function createGeminiDirectTools(requestTools: RequestTools, globalToolNames: readonly string[]) {
+export function createGeminiDirectTools(requestTools: RequestTools, globalToolNames: readonly string[], isAdmin = false) {
   const globals = new Set(globalToolNames);
   const registered = new Set(requestTools.tools
     .filter(tool => requestTools.handlers.has(tool.name))
@@ -25,8 +26,18 @@ export function createGeminiDirectTools(requestTools: RequestTools, globalToolNa
     tools: TOOL_SETS[name].tools.filter(tool => !isSideEffectTool(tool)
       && (registered.has(tool) || globals.has(tool))),
   })).filter(group => group.tools.length > 0);
+  // Admin access requires both the trusted role and this request's definition
+  // and handler. Global registration must never grant administrative access.
+  if (isAdmin && registered.has(ADMIN_ANALYTICS_TOOL_NAME)) {
+    groups.push({
+      ...TOOL_SETS.admin_conversation_review,
+      description: 'Read-only administrative analytics: live membership and platform totals, search performance, and engagement rankings.',
+      tools: [ADMIN_ANALYTICS_TOOL_NAME],
+    });
+  }
+  const persistentGroups = new Set(['knowledge', 'schema_reference', 'admin_conversation_review']);
   const allowed = new Set(groups.flatMap(group => group.tools));
-  const visible = new Set(groups.filter(group => ['knowledge', 'schema_reference'].includes(group.name))
+  const visible = new Set(groups.filter(group => persistentGroups.has(group.name))
     .flatMap(group => group.tools));
   let handoff = false;
   const loadName = 'load_tool_group';
@@ -40,9 +51,9 @@ export function createGeminiDirectTools(requestTools: RequestTools, globalToolNa
     const selected = groups.find(candidate => candidate.name === group);
     if (!selected) return 'Error: Tool group is unavailable.';
     // Replace the optional domain to keep the active catalog bounded. Core
-    // documentation/schema tools remain available throughout the turn.
+    // documentation/schema and authorized analytics stay available throughout.
     for (const candidate of groups) {
-      if (!['knowledge', 'schema_reference'].includes(candidate.name)) {
+      if (!persistentGroups.has(candidate.name)) {
         for (const name of candidate.tools) visible.delete(name);
       }
     }
