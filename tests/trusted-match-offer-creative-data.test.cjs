@@ -100,6 +100,10 @@ test("Context Match caching partitions every result-affecting forwarded request"
     specification,
     /MUST set the returned response's `request_id` to the current request's `request_id`/
   );
+  assert.match(
+    specification,
+    /`context_hash` and any retained hash preimage MUST NOT appear in logs, metric labels, or traces/
+  );
   assert.match(routerArchitecture, /A placement-only key is unsafe/);
   assert.match(
     specification,
