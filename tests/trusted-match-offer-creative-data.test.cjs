@@ -90,6 +90,10 @@ test("ContextSignals keeps single-user derived data behind the publisher privacy
 
   assert.match(contextSignals.description, /classifier and privacy boundary/);
   assert.match(
+    contextSignals.description,
+    /Ephemeral content that many users encounter.*is shared content; one user's turn or query is not/
+  );
+  assert.match(
     contextSignals.properties.embedding.description,
     /MUST NOT be computed directly or indirectly from non-public content/
   );

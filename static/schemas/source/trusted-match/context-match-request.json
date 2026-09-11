@@ -136,7 +136,7 @@
     },
     "context_signals": {
       "type": "object",
-      "description": "Pre-computed classifier outputs for the content environment. Use when the publisher wants to provide privacy-reduced context without sharing content or public references. Can supplement artifact_refs or replace them entirely. For non-public content attributable to a single user or session, only the field-specific privacy-reduced outputs permitted below may be sent. Raw content MUST NOT be included. The publisher is the classifier and privacy boundary.",
+      "description": "Pre-computed classifier outputs for the content environment. Use when the publisher wants to provide privacy-reduced context without sharing content or public references. Can supplement artifact_refs or replace them entirely. Ephemeral content that many users encounter (a trending query, a syndicated segment) is shared content; one user's turn or query is not. For non-public content attributable to a single user or session, only the field-specific privacy-reduced outputs permitted below may be sent. Raw content MUST NOT be included. The publisher is the classifier and privacy boundary.",
       "properties": {
         "topics": {
           "type": "array",
