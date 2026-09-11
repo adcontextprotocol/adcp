@@ -100,6 +100,59 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('allows a non-admin to choose Gemini in staff mode without enrolling their thread', async () => {
+    const f = fixture([receipt([call('query_admin_analytics')]), receipt([{ text: 'Admin access required.' }])]);
+    const analytics = vi.fn();
+    const result = await run({ ...f.input, isAdmin: false, modelPreference: 'gemini',
+      requestTools: { tools: [ADMIN_ANALYTICS_TOOL], handlers: new Map([[ADMIN_ANALYTICS_TOOL.name, analytics]]) } });
+    expect(result.response?.model_execution.provider).toBe('google');
+    expect(analytics).not.toHaveBeenCalled();
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith('UPDATE addie_threads'))).toBe(false);
+    expect(mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))?.[1].slice(4, 7))
+      .toEqual(['gemini', 'manual', null]);
+  });
+
+  it('switches to Sonnet and back to Default without replacing the randomized assignment', async () => {
+    const f = fixture([receipt([{ text: 'First Gemini answer.' }]), receipt([{ text: 'Default Gemini answer.' }])]);
+    await run(f.input);
+    const sonnet = await run({ ...f.input, hasPriorAssistant: true, modelPreference: 'sonnet' });
+    expect(sonnet.response?.model_execution.provider).toBe('anthropic');
+    expect(f.control).toHaveBeenCalledOnce();
+    const restored = await run({ ...f.input, hasPriorAssistant: true, modelPreference: 'default' });
+    expect(restored.response?.model_execution.provider).toBe('google');
+    expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_threads'))).toHaveLength(2);
+    expect(mocks.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))
+      .map(([, args]) => args.slice(4, 6))).toEqual([['gemini', 'staff'], ['control', 'manual'], ['gemini', 'staff']]);
+  });
+
+  it.each(['off', 'missing_key'])('honors the Gemini kill switch for explicit choices: %s', async mode => {
+    if (mode === 'off') vi.stubEnv('ADDIE_GEMINI_DIRECT_MODE', 'off');
+    else vi.stubEnv('GEMINI_API_KEY', '');
+    const f = fixture([]);
+    const result = await run({ ...f.input, modelPreference: 'gemini' });
+    expect(result.response?.model_execution.provider).toBe('anthropic');
+    expect(f.dispatch).not.toHaveBeenCalled();
+    expect(f.client.forkForGeminiDirect).not.toHaveBeenCalled();
+    expect(mocks.query.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO addie_chat_experiment_turns'))?.[1].slice(4, 7))
+      .toEqual(['gemini', 'manual', 'gemini_unavailable']);
+  });
+
+  it.each([{ userId: undefined }, { evaluation: true }])('does not allow manual selection to enroll anonymous or evaluation traffic: %j', async override => {
+    const f = fixture([]);
+    await run({ ...f.input, ...override, modelPreference: 'gemini' });
+    expect(f.dispatch).not.toHaveBeenCalled();
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it('retains normal cost admission on explicit Gemini turns', async () => {
+    mocks.checkCostCap.mockResolvedValue({ ok: false, reason: 'cap_exceeded' });
+    const f = fixture([]);
+    const result = await run({ ...f.input, modelPreference: 'gemini' });
+    expect(f.dispatch).not.toHaveBeenCalled();
+    expect(result.response?.text).toBe('Daily cap reached.');
+  });
+
   it('preserves Markdown and version numbers across real shared-loop stream fragments', async () => {
     const text = 'In AdCP 3.2 (3.2.0-rc.1), **Reliable Reporting** has three tiers.\n\n'
       + '- **Core**: Poll `get_media_buy_delivery` and use `reporting_webhook`.\n'

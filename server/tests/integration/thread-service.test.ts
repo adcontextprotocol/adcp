@@ -11,6 +11,7 @@ import {
   type ThreadListFilters,
 } from '../../src/addie/thread-service.js';
 import { AddieDatabase } from '../../src/db/addie-db.js';
+import { getGeminiDirectResults, GEMINI_DIRECT_EXPERIMENT } from '../../src/addie/gemini-direct-experiment.js';
 import { getModelExecutionReadiness } from '../../src/addie/model-execution-readiness.js';
 
 // These tests require a running PostgreSQL instance. Lives in integration/
@@ -143,6 +144,41 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       // Clean up
       await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-impersonation-thread'`);
     });
+  });
+
+  it('persists model choices and separates manually switched conversations from randomized outcomes', async () => {
+    const thread = await threadService.getOrCreateThread({ channel: 'web',
+      external_id: 'test-model-selection', user_type: 'workos', user_id: 'test-selector' });
+    const untouched = await threadService.getOrCreateThread({ channel: 'web',
+      external_id: 'test-randomized', user_type: 'workos', user_id: 'test-control' });
+    const chosen = await threadService.addMessage({ thread_id: thread.thread_id, role: 'user',
+      content: 'Explain AdCP', model_preference: 'gemini', client_request_id: 'ad37b1cc-fcee-43ac-8e0f-159c4a27cab6' });
+    expect(chosen.model_preference).toBe('gemini');
+    expect((await threadService.getThreadMessages(thread.thread_id))[0].model_preference).toBe('gemini');
+    // The stored user choice excludes even earlier random turns when a manual
+    // telemetry insert failed. Subsequent Default turns stay in that same group.
+    for (const [threadId, arm, cohort] of [
+      [thread.thread_id, 'gemini', 'staff'], [thread.thread_id, 'control', 'manual'],
+      [thread.thread_id, 'gemini', 'staff'], [untouched.thread_id, 'control', 'eligible'],
+    ]) {
+      await pool.query(`INSERT INTO addie_chat_experiment_turns
+        (id, experiment, thread_id, user_id, arm, cohort, started_at)
+        VALUES (gen_random_uuid(), $1, $2, 'test-selector', $3, $4, now())`,
+      [GEMINI_DIRECT_EXPERIMENT, threadId, arm, cohort]);
+    }
+    const report = await getGeminiDirectResults();
+    expect(report.cohorts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ cohort: 'manual', arm: 'gemini', turns: 2 }),
+      expect.objectContaining({ cohort: 'manual', arm: 'control', turns: 1 }),
+      expect.objectContaining({ cohort: 'eligible', arm: 'control', turns: 1 }),
+    ]));
+    expect(report.cohorts.some(row => row.cohort === 'staff')).toBe(false);
+    await pool.query("DELETE FROM addie_chat_experiment_turns WHERE thread_id = $1 AND cohort = 'manual'", [thread.thread_id]);
+    expect((await getGeminiDirectResults()).cohorts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ cohort: 'manual', arm: 'gemini', turns: 2 }),
+    ]));
+    await expect(pool.query(`UPDATE addie_thread_messages SET model_preference = 'arbitrary-model' WHERE message_id = $1`,
+      [chosen.message_id])).rejects.toThrow('check constraint');
   });
 
   describe('addMessage', () => {

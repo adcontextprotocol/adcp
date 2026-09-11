@@ -6,6 +6,7 @@ import type { CostEvent } from './claude-cost-tracker.js';
 import { createGeminiDirectTools } from './gemini-direct-tools.js';
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import { resolveModelCostPricing } from './model-cost-pricing.js';
+import type { WebChatModelPreference } from './web-chat-model-selection.js';
 
 const logger = createLogger('addie-gemini-direct');
 export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v1';
@@ -21,8 +22,13 @@ export interface WebToolSelection {
   routerUsage?: CostEvent;
   routerUsageComplete?: boolean;
 }
-type Assignment = { arm: 'control' | 'gemini'; cohort: 'staff' | 'eligible' | 'existing'; bucket: number };
+type Assignment = { arm: 'control' | 'gemini'; cohort: 'staff' | 'eligible' | 'existing' | 'manual'; bucket: number };
 const clients = new WeakMap<Client, AddieClaudeClient>();
+
+export function geminiDirectAvailable(client: Client | null | undefined): boolean {
+  return ['staff', 'eligible'].includes(process.env.ADDIE_GEMINI_DIRECT_MODE ?? '')
+    && !!process.env.GEMINI_API_KEY && !!client?.forkForGeminiDirect;
+}
 
 /** Stable across workers/restarts. Raising the percentage only enrolls new threads. */
 export function geminiDirectAssignment(userId: string, staff: boolean, existing: boolean, env = process.env): Assignment | null {
@@ -145,41 +151,55 @@ export async function prepareGeminiDirectTurn(input: {
   getControlTools: () => Promise<WebToolSelection | null>;
   /** Evaluation routes must never enroll live experiment traffic. */
   evaluation?: boolean;
+  modelPreference?: WebChatModelPreference;
 }) {
   let controlTools: WebToolSelection | null | undefined;
   const getControl = async () => controlTools === undefined
     ? (controlTools = await input.getControlTools()) : controlTools;
   const ordinary = async () => ({ client: input.client, selection: await getControl(), experiment: undefined as ExperimentTurn | undefined, model: undefined as string | undefined });
-  const proposed = input.userId && !input.evaluation && process.env.GEMINI_API_KEY
-    && input.client.forkForGeminiDirect
-    ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
+  const manual = !!input.userId && !input.evaluation
+    && (input.modelPreference === 'gemini' || input.modelPreference === 'sonnet');
+  const available = geminiDirectAvailable(input.client);
+  const proposed: Assignment | null = manual
+    ? { arm: input.modelPreference === 'gemini' ? 'gemini' : 'control', cohort: 'manual', bucket: 0 }
+    : input.userId && !input.evaluation && available
+      ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
   if (!proposed) return ordinary();
+  const exclusionReason = input.exclusionReason
+    ?? (proposed.arm === 'gemini' && !available ? 'gemini_unavailable' : null);
 
   let assignment: Assignment;
   let experiment: ExperimentTurn;
   try {
-    // One atomic UPDATE elects the winner even when two requests start together.
-    const assigned = await query<{ assignment: unknown }>(`UPDATE addie_threads SET
-      context = CASE WHEN context ? $2 THEN context ELSE
-        COALESCE(context, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb) END
-      WHERE thread_id = $1 RETURNING context -> $2 AS assignment`,
-    [input.threadId, CONTEXT_KEY, JSON.stringify(proposed)]);
-    const stored = assigned.rows[0]?.assignment;
-    if (!validAssignment(stored)) return ordinary();
-    assignment = stored;
+    if (manual) {
+      // A voluntary choice applies to this turn only. Never replace the stored
+      // randomized assignment when a user switches models mid-conversation.
+      assignment = proposed;
+    } else {
+      // One atomic UPDATE elects the winner even when two requests start together.
+      const assigned = await query<{ assignment: unknown }>(`UPDATE addie_threads SET
+        context = CASE WHEN context ? $2 THEN context ELSE
+          COALESCE(context, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb) END
+        WHERE thread_id = $1 RETURNING context -> $2 AS assignment`,
+      [input.threadId, CONTEXT_KEY, JSON.stringify(proposed)]);
+      const stored = assigned.rows[0]?.assignment;
+      if (!validAssignment(stored)) return ordinary();
+      assignment = stored;
+    }
     experiment = new ExperimentTurn(input.startedAt, assignment);
+    if (assignment.arm === 'gemini' && exclusionReason) experiment.fallbackReason = exclusionReason;
     await query(`INSERT INTO addie_chat_experiment_turns
       (id, experiment, thread_id, user_id, arm, cohort, exclusion_reason, started_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
       experiment.id, GEMINI_DIRECT_EXPERIMENT, input.threadId, input.userId,
-      assignment.arm, assignment.cohort, input.exclusionReason, new Date(input.startedAt),
+      assignment.arm, assignment.cohort, exclusionReason, new Date(input.startedAt),
     ]);
   } catch (error) {
     logger.error({ error }, 'Gemini Direct assignment unavailable; retaining control');
     return ordinary();
   }
 
-  const treatment = assignment.arm === 'gemini' && !input.exclusionReason;
+  const treatment = assignment.arm === 'gemini' && !exclusionReason;
   const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin) : null;
   let candidate: AddieClaudeClient | undefined;
   if (direct) {
@@ -293,7 +313,20 @@ export async function prepareGeminiDirectTurn(input: {
 
 /** Read-only staff view; transcript content stays in the existing admin review UI. */
 export async function getGeminiDirectResults() {
-  const result = await query(`SELECT e.arm, e.cohort, e.exclusion_reason,
+  // Once a user chooses a model, that conversation's history can influence
+  // every later answer. Keep all its turns out of the randomized cohorts.
+  const result = await query(`WITH reported_turns AS (
+    SELECT e.*, CASE WHEN EXISTS (
+      SELECT 1 FROM addie_chat_experiment_turns manual
+      WHERE manual.experiment = e.experiment AND manual.thread_id = e.thread_id
+        AND manual.cohort = 'manual'
+    ) OR EXISTS (
+      SELECT 1 FROM addie_thread_messages chosen
+      WHERE chosen.thread_id = e.thread_id AND chosen.role = 'user'
+        AND chosen.model_preference IN ('gemini', 'sonnet')
+    ) THEN 'manual' ELSE e.cohort END AS reporting_cohort
+    FROM addie_chat_experiment_turns e WHERE e.experiment = $1
+  ) SELECT e.arm, e.reporting_cohort AS cohort, e.exclusion_reason,
     COUNT(*)::int AS turns, COUNT(DISTINCT e.user_id)::int AS users,
     COUNT(*) FILTER (WHERE completed_at IS NULL)::int AS incomplete,
     COUNT(*) FILTER (WHERE failed)::int AS failures,
@@ -309,9 +342,8 @@ export async function getGeminiDirectResults() {
     COUNT(*) FILTER (WHERE m.outcome = 'resolved')::int AS resolved_turns,
     SUM(estimated_cost_micros) / 1000000.0 /
       NULLIF(COUNT(*) FILTER (WHERE m.outcome = 'resolved'), 0) AS estimated_cost_per_marked_resolution_usd
-    FROM addie_chat_experiment_turns e
+    FROM reported_turns e
     LEFT JOIN addie_thread_messages m ON m.message_id = e.assistant_message_id
-    WHERE experiment = $1
-    GROUP BY e.arm, e.cohort, e.exclusion_reason ORDER BY e.cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
+    GROUP BY e.arm, e.reporting_cohort, e.exclusion_reason ORDER BY e.reporting_cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
   return { experiment: GEMINI_DIRECT_EXPERIMENT, mode: process.env.ADDIE_GEMINI_DIRECT_MODE ?? 'off', cohorts: result.rows };
 }
