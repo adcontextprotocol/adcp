@@ -41,11 +41,11 @@ const answer: AddieResponse = {
 };
 const options: ProcessMessageOptions = { costScope: { userId: 'user-test', tier: 'member_free' } };
 
-function fixture(responses: GenerateContentResponse[]) {
+function fixture(responses: (GenerateContentResponse | GenerateContentResponse[])[]) {
   const dispatch = vi.fn(async function* (_payload: GenerateContentParameters) {
     const next = responses.shift();
     if (!next) throw new Error('No response');
-    yield next;
+    yield* Array.isArray(next) ? next : [next];
   });
   const provider = new GoogleGenerateContentProvider('unused', {
     models: { generateContent: vi.fn(), generateContentStream: async (payload: GenerateContentParameters) => dispatch(payload) },
@@ -99,6 +99,36 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('preserves Markdown and version numbers across real shared-loop stream fragments', async () => {
+    const text = 'In AdCP 3.2 (3.2.0-rc.1), **Reliable Reporting** has three tiers.\n\n'
+      + '- **Core**: Poll `get_media_buy_delivery` and use `reporting_webhook`.\n'
+      + '- **Managed Delivery**: Adds file delivery.\n'
+      + '- **Reconciled Billing**: Adds receipts.\n\n'
+      + 'Enable `media_buy.reporting_delivery` with version `"1.0"`.';
+    const streamed = (parts: Part[], id: string) => parts.map((part, index) => {
+      const chunk = receipt([part], id);
+      if (index < parts.length - 1) {
+        delete chunk.candidates![0].finishReason;
+        delete chunk.usageMetadata;
+      }
+      return chunk;
+    });
+    const toolParts = [{ text: '', thoughtSignature: 'signed-empty' }, call('search_docs')];
+    // Single-character chunks include whitespace-only deltas and split every
+    // Markdown delimiter, API identifier, and decimal/version number.
+    const f = fixture([
+      streamed(toolParts, 'lookup'),
+      streamed(Array.from(text, text => ({ text })), 'answer'),
+    ]);
+    const result = await run(f.input);
+    expect(result.response?.text).toBe(text);
+    expect(result.events.filter(event => event.type === 'text').map(event => event.text).join('')).toBe(text);
+    expect(f.handlers.get('search_docs')).toHaveBeenCalledOnce();
+    expect(f.dispatch.mock.calls[1][0].contents).toEqual(expect.arrayContaining([
+      { role: 'model', parts: toolParts },
+    ]));
+  });
+
   it('executes real shared-loop tools with production accounting and skips the router', async () => {
     const f = fixture([receipt([call('search_docs')]), receipt([{ text: 'A verified fact.' }], 'answer')]);
     const result = await run(f.input);
@@ -255,19 +285,27 @@ describe('assignment and rollback', () => {
 });
 
 describe('native Google streaming', () => {
-  it('combines streamed text, preserves signed empty parts, and uses final usage', async () => {
+  it.each([false, true])('combines text and preserves signed empty continuation parts (stream=%s)', async stream => {
     const progress = vi.fn();
+    const tools = [{ name: 'search_docs', description: 'Search docs', inputSchema: { type: 'object' as const } }];
     const provider = new GoogleGenerateContentProvider('unused', { models: {
-      generateContent: vi.fn(),
+      generateContent: vi.fn().mockResolvedValue(receipt([{ text: 'Hello' }, { text: '', thoughtSignature: 'signed-empty' }], 'stream')),
       generateContentStream: async () => (async function* () {
         yield { responseId: 'stream', modelVersion: GOOGLE_ROUTER_MODEL, candidates: [{ content: { role: 'model', parts: [{ text: 'Hello' }] } }] } as GenerateContentResponse;
         yield receipt([{ text: '', thoughtSignature: 'signed-empty' }], 'stream');
       })(),
     } });
-    const response = await collectModelResponse(provider.respond({ model: GOOGLE_ROUTER_MODEL, system: [], tools: [], messages: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }], maxOutputTokens: 100 }, { stream: true, onStreamProgress: progress }));
-    expect(response.content).toEqual([{ type: 'text', text: 'Hello' }, { type: 'text', text: '' }]);
+    const response = await collectModelResponse(provider.respond({ model: GOOGLE_ROUTER_MODEL, system: [], tools, messages: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }], maxOutputTokens: 100 }, { stream, onStreamProgress: progress }));
+    expect(response.content).toEqual([{ type: 'text', text: 'Hello' }]);
+    for (const candidate of [response, provider.snapshotResponse(response)]) {
+      const continuation = provider.prepare({ model: GOOGLE_ROUTER_MODEL, system: [], tools,
+        messages: [{ role: 'assistant', content: candidate.content }], maxOutputTokens: 100 });
+      expect(continuation.providerRequest.contents).toEqual([
+        { role: 'model', parts: [{ text: 'Hello' }, { text: '', thoughtSignature: 'signed-empty' }] },
+      ]);
+    }
     expect(response.usage.outputTokens).toBe(15);
-    expect(progress).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenCalledTimes(stream ? 2 : 0);
   });
 
   it.each(['missing_finish', 'changed_identity', 'missing_usage'])('rejects %s before any partial tool request can execute', async fault => {

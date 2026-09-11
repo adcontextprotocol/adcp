@@ -194,7 +194,7 @@ export function rewritePersonaCollapse(text: string): string {
 
   for (let i = 0; i < parts.length; i += 2) {
     const sentences = splitProseIntoSentences(parts[i]);
-    parts[i] = sentences.filter((s) => !hasPersonaCollapse(s)).join(' ');
+    parts[i] = sentences.filter((s) => !hasPersonaCollapse(s)).join('');
   }
 
   // Collapse whitespace left where sentences were removed.
@@ -291,7 +291,7 @@ export function truncateLongResponseToShortQuestion(
 
     if (isCode) {
       const blockWords = countWords(part);
-      if (kept.length === 0 || cumulativeWords + blockWords <= TRUNCATION_TARGET_WORDS) {
+      if (cumulativeWords === 0 || cumulativeWords + blockWords <= TRUNCATION_TARGET_WORDS) {
         kept.push(part);
         cumulativeWords += blockWords;
       } else {
@@ -306,7 +306,7 @@ export function truncateLongResponseToShortQuestion(
     const proseKept: string[] = [];
     for (const sentence of sentences) {
       const w = countWords(sentence);
-      if (kept.length === 0 && proseKept.length === 0) {
+      if (cumulativeWords === 0) {
         // Always keep the first sentence even if it's already over budget —
         // a one-sentence answer beats no answer.
         proseKept.push(sentence);
@@ -321,7 +321,7 @@ export function truncateLongResponseToShortQuestion(
       cumulativeWords += w;
     }
     if (proseKept.length > 0) {
-      kept.push(proseKept.join(' '));
+      kept.push(proseKept.join(''));
     }
   }
 
@@ -330,22 +330,25 @@ export function truncateLongResponseToShortQuestion(
 }
 
 /**
- * Split prose into sentences, preserving original whitespace separators
- * so the rejoined output reads naturally.
- *
- * Splits on `[.!?]` followed by whitespace, but keeps the terminator with
- * the preceding sentence so reassembly is just `.join(' ')`.
+ * Keep sentence segments byte-for-byte, including their whitespace. Only
+ * punctuation followed by whitespace (or EOF) ends a segment, so decimal,
+ * version and identifier dots stay intact. Concatenation adds no formatting.
  */
 function splitProseIntoSentences(prose: string): string[] {
   if (!prose) return [];
-  // Match: text up to and including a sentence terminator + trailing whitespace.
-  // Final segment may not end in a terminator; capture it separately.
-  const matches = prose.match(/[^.!?]+[.!?]+\s*/g) || [];
-  const consumed = matches.join('');
-  const trailing = prose.slice(consumed.length).trim();
-  const out = matches.map(s => s.trim()).filter(Boolean);
-  if (trailing) out.push(trailing);
-  return out;
+  const segments: string[] = [];
+  let start = 0;
+  for (let index = 0; index < prose.length; index++) {
+    if (!'.!?'.includes(prose[index])) continue;
+    let end = index + 1;
+    if (end < prose.length && !/\s/.test(prose[end])) continue;
+    while (end < prose.length && /\s/.test(prose[end])) end++;
+    segments.push(prose.slice(start, end));
+    start = end;
+    index = end - 1;
+  }
+  if (start < prose.length) segments.push(prose.slice(start));
+  return segments;
 }
 
 /** Test-only exports for the unit test. */
