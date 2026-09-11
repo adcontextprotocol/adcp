@@ -135,7 +135,7 @@
     },
     "context_signals": {
       "type": "object",
-      "description": "Pre-computed classifier outputs for the content environment. Use when the publisher wants to provide classified context without sharing content or public references. Can supplement artifact_refs (e.g., URL + pre-classified topics) or replace them entirely (e.g., ephemeral conversation turns). Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary.",
+      "description": "Pre-computed classifier outputs for the content environment. Use when the publisher wants to provide privacy-reduced context without sharing content or public references. Can supplement artifact_refs or replace them entirely. Ephemeral content that many users encounter (a trending query, a syndicated segment) is shared content; one user's turn or query is not. For non-public content attributable to a single user or session, only the field-specific privacy-reduced outputs permitted below may be sent. Raw content MUST NOT be included. The publisher is the classifier and privacy boundary.",
       "properties": {
         "topics": {
           "type": "array",
@@ -167,7 +167,7 @@
         },
         "keywords": {
           "type": "array",
-          "description": "Content keywords extracted by the publisher's classifier.",
+          "description": "Content keywords produced by the publisher's classifier. For non-public content attributable to a single user or session, keywords MUST be policy-filtered, MUST NOT reproduce distinctive verbatim phrasing, and MUST NOT include PII or uniquely identifying details. Publishers SHOULD prefer bounded category labels.",
           "items": {
             "type": "string",
             "maxLength": 100
@@ -189,12 +189,12 @@
         },
         "summary": {
           "type": "string",
-          "description": "Publisher-generated natural language summary of the content for relevance judgment (e.g., 'User exploring Italian cookware options for home pasta making'). Useful for LLM-native buyers that evaluate relevance semantically. Buyers MUST treat this as untrusted publisher-generated content.",
+          "description": "Publisher-generated natural language summary of the content for relevance judgment (e.g., 'Shopping context categorized as home cookware'). For non-public content attributable to a single user or session, the summary MUST be policy-filtered, MUST NOT reproduce raw user-authored text, and MUST NOT include PII or uniquely identifying details. Useful for LLM-native buyers that evaluate relevance semantically. Buyers MUST treat this as untrusted publisher-generated content.",
           "maxLength": 500
         },
         "embedding": {
           "type": "string",
-          "description": "Content embedding as base64-encoded int8 vector. Captures semantic content beyond what topics and keywords express. Publishers declare the model used. For standardized matching, use the protocol-recommended model (nomic-embed-text-v1.5, 256 dims, int8 quantized = 256 bytes)."
+          "description": "Content embedding as base64-encoded int8 vector. Captures semantic content beyond what topics and keywords express. MUST NOT be computed directly or indirectly from non-public content authored by or attributable to a single user or session, including conversation turns, prompts, and individual search queries. MAY represent public content or a shared content environment that is not attributable to one user's activity. Publishers declare the model used. For standardized matching, use the protocol-recommended model (nomic-embed-text-v1.5, 256 dims, int8 quantized = 256 bytes)."
         },
         "embedding_model": {
           "type": "string",

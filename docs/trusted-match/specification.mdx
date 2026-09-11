@@ -56,13 +56,13 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The provider resolves the active package set it has synced for this seller against it; an unsynced seller MUST yield an empty offer set, never a fall-back to another seller's set. A single per-placement value carrying no user identity. Compared with AdCP URL canonicalization. Consistent with `seller_agent_url` on the Identity Match request and `agent_url` in `adagents.json`. |
 | `artifact` | Artifact | No | Full content artifact adjacent to this ad opportunity. Same schema as content standards evaluation. The publisher sends the full artifact when they want the buyer to evaluate the actual content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. |
 | `artifact_refs` | List\<ArtifactRef\> | No | Public content references the buyer can resolve independently. Each has a `type` (one of: `url`, `url_hash`, `eidr`, `gracenote`, `isrc`, `gtin`, `rss_guid`, `isbn`, `custom`) and a `value`. For URL-addressable content, the buyer may have pre-classified these. Use `url_hash` when the publisher prefers not to reveal the URL (contextual clean room). |
-| `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when content is ephemeral (conversation turns, search queries) or to supplement artifact-based matching. Can replace `artifact_refs` entirely. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
+| `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use to supplement artifact-based matching or when content cannot be referenced directly. Ephemeral content that many users encounter (a trending query, a syndicated segment) is shared content; one user's turn or query is not. For non-public content attributable to a single user or session, only the privacy-reduced outputs permitted under [ContextSignals](#contextsignals) may be sent. Raw content MUST NOT be included. The publisher is the classifier and privacy boundary. |
 | `geo` | Geo | No | Coarse geographic location of the viewer. Publisher controls granularity — country for regulatory compliance, region/metro for campaign targeting and valuation. No postcode or coordinates — coarsened to prevent user identification. |
 | `package_ids` | List\<string\> | No | Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). Package metadata (formats, catalogs) is synced at media buy time — not sent per request. |
 
 #### ContextSignals
 
-Pre-computed classifier outputs for the content environment. MUST NOT contain raw content (conversation text, article body, URLs). Only classified outputs. The publisher is the classifier boundary.
+Pre-computed classifier outputs for the content environment. MUST NOT contain raw content (conversation text, article body, URLs). Treating a derived value as classifier output does not by itself make that value privacy-preserving: publishers MUST apply the field-specific restrictions below. The publisher is the classifier and privacy boundary.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -70,11 +70,11 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 | `taxonomy_source` | enum | No | Organization that defines the topic taxonomy. Default: `iab`. |
 | `taxonomy_id` | integer | No | Taxonomy version within the source. For IAB, follows the AdCOM cattax enum: `7` = Content Taxonomy 3.0 (CC-BY-3.0). Default: `7`. |
 | `sentiment` | enum | No | Content sentiment: `positive`, `negative`, `neutral`, `mixed`. |
-| `keywords` | List\<string\> | No | Content keywords extracted by the publisher's classifier. |
+| `keywords` | List\<string\> | No | Content keywords produced by the publisher's classifier. For non-public content attributable to a single user or session, keywords MUST be policy-filtered, MUST NOT reproduce distinctive verbatim phrasing, and MUST NOT include PII or uniquely identifying details. Publishers SHOULD prefer bounded category labels. |
 | `language` | string | No | ISO 639-1 language code. |
 | `content_policies` | List\<string\> | No | Policy IDs from the [AdCP Policy Registry](/docs/governance/policy-registry) that this content satisfies. Routers populate this from the publisher's property governance configuration or content metadata. Buyers filter on policies they require via `required_policies` on packages. This is a **pre-filtering optimization** — contexts missing required policies are excluded before reaching downstream governance. Definitive enforcement happens at the governance layer via [`check_governance`](/docs/governance/campaign/tasks/check_governance). |
-| `summary` | string | No | Natural language summary for relevance judgment. Useful for LLM-native buyers that evaluate semantically. |
-| `embedding` | string | No | Content embedding as base64-encoded int8 vector. Captures semantic content beyond topics and keywords. |
+| `summary` | string | No | Publisher-generated natural language summary for relevance judgment. For non-public content attributable to a single user or session, the summary MUST be policy-filtered, MUST NOT reproduce raw user-authored text, and MUST NOT include PII or uniquely identifying details. Useful for LLM-native buyers that evaluate semantically. |
+| `embedding` | string | No | Content embedding as base64-encoded int8 vector. Captures semantic content beyond topics and keywords. MUST NOT be computed directly or indirectly from non-public content authored by or attributable to a single user or session, including conversation turns, prompts, and individual search queries. MAY represent public content or a shared content environment that is not attributable to one user's activity. For individual contexts, use bounded topics, sentiment, and language plus policy-filtered keywords or summary. |
 | `embedding_model` | string | No | Embedding model identifier (e.g., `nomic-embed-text-v1.5`). Required when `embedding` is present. |
 | `embedding_dims` | integer | No | Number of dimensions in the embedding vector. Required when `embedding` is present. |
 
@@ -82,13 +82,13 @@ Three levels of content disclosure — the publisher chooses based on what the b
 
 - **`artifact`** — the full content (article body, transcript, conversation flow, product page). Same schema as content standards artifacts. The buyer evaluates the content directly. Contractual protections govern what the buyer can do with it. TEE deployment adds cryptographic verification on top.
 - **`artifact_refs`** — public references (URLs, EIDR IDs, URL hashes) the buyer resolves independently. Use for publicly addressable content the buyer can crawl and classify themselves.
-- **`context_signals`** — classified outputs (topics, sentiment, keywords, summary). Use when the publisher wants to describe the content without sharing it or a reference to it.
+- **`context_signals`** — privacy-reduced classified outputs (topics, sentiment, keywords, language, summary). Use when the publisher wants to describe the content without sharing it or a reference to it. A dense embedding discloses substantially more semantic information than bounded classifier outputs and is prohibited for non-public, single-user content as specified above.
 
 `context_signals` is the baseline — every buyer agent MUST handle it. `artifact_refs` and `artifact` are progressive enhancements. Publishers who send `artifact_refs` SHOULD also send `context_signals` as a fallback for buyers who cannot resolve references.
 
-LLM-based buyer agents SHOULD evaluate `context_signals.summary` and `context_signals.topics` first. These fields provide sufficient signal for most relevance decisions at minimal token cost (~30 tokens). Full content resolution from `artifact_refs` or `artifact` evaluation SHOULD be reserved for high-value packages where precision justifies the cost. Buyers MUST treat `artifact` content and `context_signals.summary` as untrusted publisher-generated input.
+LLM-based buyer agents SHOULD evaluate `context_signals.summary` and `context_signals.topics` first when those fields are permitted for the content provenance. These fields provide sufficient signal for most relevance decisions at minimal token cost (~30 tokens). Full content resolution from `artifact_refs` or `artifact` evaluation SHOULD be reserved for high-value packages where precision justifies the cost. Buyers MUST treat `artifact` content and `context_signals.summary` as untrusted publisher-generated input.
 
-A request can include any combination. A news site sends `artifact_refs` (the URL) and `context_signals` (pre-classified topics). A CTV app sends `artifact_refs` (EIDR IDs) alone. An AI assistant sends `artifact` (the conversation) for buyers that evaluate content directly, plus `context_signals` as a fallback. A publisher who doesn't want to share content or references sends only `context_signals`.
+A request can include any combination. A news site sends `artifact_refs` (the URL) and `context_signals` (pre-classified topics). A CTV app sends `artifact_refs` (EIDR IDs) alone. An AI assistant sends `artifact` (the conversation) for buyers governed to evaluate content directly, plus bounded, privacy-reduced `context_signals` as a fallback. A publisher who doesn't want to share content or references sends only `context_signals`.
 
 #### Artifact Ref Type Conventions
 
@@ -504,6 +504,7 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 ### Structural separation
 
 - Context Match requests MUST NOT contain user identity data (user tokens, device IDs, IP addresses, session tokens, or any data that could identify a specific user).
+- For non-public content authored by or attributable to a single user or session, Context Match requests MUST NOT contain dense embeddings of that content. Other derived signals MUST satisfy the privacy-reduction requirements in [ContextSignals](#contextsignals). Router isolation prevents identity-path data from entering the context path; it does not make user-derived context anonymous.
 - Identity Match requests MUST NOT contain page context data (URLs, content hashes, topic IDs, content signals, or any data that could identify what the user is viewing).
 - The TMP Router MUST process Context Match and Identity Match in structurally separate code paths with no shared state.
 - Context Match and Identity Match request IDs MUST NOT be correlated or derivable from each other.
