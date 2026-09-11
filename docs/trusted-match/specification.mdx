@@ -784,7 +784,13 @@ This means a `200` with an empty `offers` array is a valid "no matches" response
 
 ## Caching
 
-Context Match responses are cacheable because the same packages are evaluated for every user on a given placement. The recommended cache key is `{property_rid, placement_id, provider_id}`.
+Context Match responses are cacheable only when the result-affecting context is the same. Placement alone is not sufficient: artifacts, classified signals, geo, an explicit package subset, seller, or protocol version can change a provider's response. Routers MUST partition each provider's Context Match response cache by `{provider_id, context_hash}`.
+
+To compute `context_hash`, start with the validated request body exactly as it will be forwarded to that provider. Remove `$schema`, which is ignored at runtime, and `request_id`, which is a per-call correlation value. Retain every other member, including version fields, seller, property, placement, `artifact`, `artifact_refs`, `context_signals`, `geo`, and `package_ids`. Serialize the resulting object using [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785), then SHA-256 the UTF-8 bytes. Array order is preserved; implementations MUST NOT sort or deduplicate arrays for this hash. Two semantically equivalent requests with differently ordered arrays may produce a safe cache miss. Implementations MUST NOT apply normalization outside JCS that collapses otherwise distinct hash inputs.
+
+On a cache hit, the router MUST set the returned response's `request_id` to the current request's `request_id`; it MUST NOT replay the cached request's correlation value. Raw request content MUST NOT appear directly in cache keys, logs, metric labels, or traces. `context_hash` and any retained hash preimage MUST NOT appear in logs, metric labels, or traces. The hash is a partitioning mechanism, not anonymization: routers MUST apply the same access controls and retention boundary to cached responses, `context_hash`, and hash preimages as to Context Match request data.
+
+Routers MAY prefix `context_hash` with `property_rid` for cache-store sharding, but that prefix does not replace any part of `{provider_id, context_hash}` or change the partitioning guarantee. Requests carrying viewer-variable fields such as geo or per-session context signals can produce many distinct hashes and therefore a low hit rate; `cache_ttl: 0` is appropriate for those placements. The 5-minute default is sized for context-invariant placements.
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
