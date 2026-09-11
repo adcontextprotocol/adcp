@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "protocols": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "media_buy",
+          "signals",
+          "governance",
+          "sponsored_intelligence",
+          "creative"
+        ]
+      }
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

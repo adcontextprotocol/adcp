@@ -1,0 +1,71 @@
+id: governance
+version: "1.0.0"
+title: "Cross-role governance conformance index"
+category: campaign_governance
+summary: "Non-executable index connecting the universal governance contract to capability-gated, role-specific proof storyboards."
+track: campaign_governance
+
+narrative: |
+  Cross-role governance has one normative contract and several role-specific
+  proofs. Governance providers return intent verdicts (approved, conditions,
+  denied). Services that execute consequential tasks advertise exact entries in
+  adcp.governance_enforcement.tasks[] and prove that they validate signed intent
+  before side effects. The provider role and enforcing-service role are distinct.
+
+  This file is a discoverability index, not a storyboard that every agent runs.
+  Each linked proof is selected only by its exact task capability gate. A denial
+  response alone—and especially an echoed governance_context—does not prove
+  enforcement; negative paths also assert that no governed side effect occurred.
+
+normative_requirements:
+  capability_claim: "Services claim only implemented task/mode pairs in adcp.governance_enforcement.tasks[]."
+  provider_verdicts: "Intent checks may return approved, conditions, or denied; execution checks are binary approved or denied."
+  authorization: "Only an approved signed governance_context authorizes a governed service action."
+  evidence: "Conformance requires role-specific side-effect evidence; response echoing is not evidence."
+
+roles:
+  governance_provider:
+    capability: "governance.campaign"
+    contract: "/docs/governance/campaign/specification"
+  enforcing_service:
+    capability: "adcp.governance_enforcement.tasks[]"
+    contract: "/docs/reference/migration/cross-role-governance-enforcement"
+
+task_slices:
+  - role: media_buy_service
+    tasks: [create_media_buy]
+    capability_mode: signed_context
+    storyboards:
+      - protocols/media-buy/scenarios/governance_approved.yaml
+  - role: signal_service
+    tasks: [activate_signal]
+    capability_mode: signed_context
+    storyboards:
+      - specialisms/signal-marketplace/scenarios/governance_approved.yaml
+      - specialisms/signal-marketplace/scenarios/governance_denied.yaml
+  - role: rights_service
+    tasks: [acquire_rights]
+    capability_mode: signed_context
+    storyboards:
+      - specialisms/brand-rights/scenarios/governance_approved.yaml
+      - specialisms/brand-rights/scenarios/governance_denied.yaml
+  - role: creative_service
+    tasks: [build_creative]
+    capability_mode: signed_context
+    storyboards:
+      - specialisms/creative-transformers/scenarios/governance_approved.yaml
+      - specialisms/creative-transformers/scenarios/governance_denied.yaml
+
+online_execution_proofs:
+  - role: media_buy_service
+    tasks: [create_media_buy]
+    capability_modes: [signed_context, online_execution_check]
+    storyboards:
+      - protocols/media-buy/scenarios/governance_conditions.yaml
+      - protocols/media-buy/scenarios/governance_denied.yaml
+
+references:
+  capability_schema: /schemas/protocol/get-adcp-capabilities-response.json
+  governance_response_schema: /schemas/governance/check-governance-response.json
+  specification: /docs/governance/campaign/specification
+  migration_guide: /docs/reference/migration/cross-role-governance-enforcement

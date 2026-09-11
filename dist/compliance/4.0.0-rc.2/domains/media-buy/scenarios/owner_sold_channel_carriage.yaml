@@ -1,0 +1,365 @@
+id: media_buy_seller/owner_sold_channel_carriage
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller declares owner-sold channel carriage and enforces collection selector boundaries"
+category: media_buy_seller
+summary: "Verifies an owner-sold channel product combines host property scope with the owner's canonical collection selector, that buyer collection selection requires explicit collection_ids, and that unknown or mismatched collection selectors are rejected rather than silently substituted."
+track: media_buy
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - comply_test_controller
+
+narrative: |
+  A continuously programmed audio or video stream is modeled as a `kind:
+  "channel"` collection declared by the channel owner, carried on a host CTV
+  app property. When the owner sells its allocated avails, a verified
+  owner-sold supply path requires the host's adagents.json to authorize the
+  owner's sales agent for the host property, narrowed to the owner's
+  canonical collection (docs/governance/property/adagents.mdx, "Owner-sold
+  channel carriage"; docs/media-buy/product-discovery/collections-and-installments.mdx,
+  "Programmed channels and owner-sold carriage").
+
+  Buyer agents distinguish three verification states: verified owner-sold
+  (host adagents.json authorizes the owner's agent, narrowed by an exact or
+  bulk-grant collection selector), host-delegated (only an ads.txt/app-ads.txt
+  `inventorypartnerdomain=` line corroborates the relationship), and
+  owner-attested (only the owner's own `distribution[]` entry asserts
+  carriage, with no host-side corroboration at all). Missing host
+  authorization, a host selector naming a different owner domain, a dangling
+  `distribution[].property_ids` value, and a typo'd collection_id are all
+  fail-closed conditions on that ladder.
+
+  adagents.json itself is fetched directly by buyer SDKs over HTTPS and is
+  not carried by any AdCP task — the verification ladder is buyer-side
+  classification logic over two independently-hosted JSON documents. This
+  storyboard exercises the portion of that model that *is* wire-visible: the
+  seller's product declarations that a buyer's verification depends on, and
+  the seller's obligation to reject collection selectors it cannot honor
+  rather than silently substituting a different collection. It does not
+  simulate adagents.json content itself; see the compliance report for what
+  remains uncovered.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "A channel owner's sales agent selling owner-sold avails on a host CTV app"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for product discovery and buy creation.
+    The controller seeds one owner-sold channel product that combines a host
+    property selector with the owner's canonical collection selector, per the
+    docs' worked example (hoststream.example / hoststream_ctv carrying
+    channel-owner.example's retro_news channel).
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "retro_news_owner_sold"
+      delivery_type: "non_guaranteed"
+      channels: ["ctv"]
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+      publisher_properties:
+        - publisher_domain: "hoststream.example"
+          selection_type: "by_id"
+          property_ids: ["hoststream_ctv"]
+      collections:
+        - publisher_domain: "channel-owner.example"
+          collection_ids: ["retro_news"]
+      collection_targeting_allowed: true
+      placements:
+        - kind: "seller_inline"
+          seller_agent:
+            agent_url: "https://sales.channel-owner.example"
+          publisher_domain: "channel-owner.example"
+          placement_id: "owner_avails"
+          name: "Channel-owner avails"
+          mode: "included"
+  pricing_options:
+    - product_id: "retro_news_owner_sold"
+      pricing_option_id: "retro_news_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 20.0
+
+phases:
+  - id: verified_owner_sold_discovery
+    title: "Discover the verified owner-sold channel product"
+    narrative: |
+      A verified owner-sold supply path requires the host property scope and
+      the owner's external collection selector to appear together on the
+      seller's product (collections-and-installments.mdx, "Programmed
+      channels and owner-sold carriage"). This phase confirms the seller
+      returns both halves of that combination on the same product.
+    steps:
+      - id: get_products_owner_sold_channel
+        title: "Discover the owner-sold channel product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/product-discovery/collections-and-installments"
+        stateful: true
+        sample_request:
+          buying_mode: "brief"
+          brief: "Pre-roll on Acme Retro News, the syndicated retro news channel carried on the HostStream CTV app"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["ctv"]
+          context:
+            correlation_id: "owner_sold_channel_carriage--discovery"
+        expected: |
+          Return the owner-sold channel product. The product combines the
+          host property scope (hoststream.example / hoststream_ctv) with the
+          owner's canonical collection selector (channel-owner.example /
+          retro_news) on the same product, and the collection selector names
+          explicit collection_ids rather than the domain-only bulk-grant
+          form.
+        context_outputs:
+          - key: "owner_sold_product_id"
+            path: "products[0].product_id"
+          - key: "owner_sold_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].publisher_properties[0].publisher_domain"
+            value: "hoststream.example"
+            description: "Product declares the host property scope a verified owner-sold supply path requires (collections-and-installments.mdx, Programmed channels and owner-sold carriage)"
+          - check: field_value
+            path: "products[0].collections[0].publisher_domain"
+            value: "channel-owner.example"
+            description: "Collection selector names the owner's adagents.json domain (core/collection-selector.json requires publisher_domain)"
+          - check: field_present
+            path: "products[0].collections[0].collection_ids"
+            description: "Product collection selectors MUST name explicit collection_ids; the domain-only bulk-grant form is authorization scoping only, not product composition (core/product.json collections[] requires collection_ids)"
+          - check: field_value
+            path: "products[0].collections[0].collection_ids[0]"
+            value: "retro_news"
+            description: "Product references the owner's canonical collection matching the verified-path worked example"
+          - check: field_value
+            path: "products[0].collection_targeting_allowed"
+            value: true
+            description: "Product advertises collection_targeting_allowed so buyers can exercise targeting_overlay.collection_selection (core/product.json collection_targeting_allowed)"
+
+  - id: verified_selection_accepted
+    title: "Accept the correct owner collection selection and echo it back"
+    narrative: |
+      Before probing the fail-closed legs, prove the affirmative path: the
+      exact selector the product declares is accepted, and the package
+      readback echoes the committed selection as concrete selectors
+      (core/package.json targeting_overlay; core/collection-selection.json).
+      Without this leg, a seller rejecting every create would pass the
+      rejection phases vacuously.
+    steps:
+      - id: create_media_buy_correct_selector
+        title: "Buy the owner-sold channel with the declared collection selector"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_accept"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.owner_sold_product_id"
+              pricing_option_id: "$context.owner_sold_pricing_option_id"
+              bid_price: 20.0
+              budget: 5000
+              targeting_overlay:
+                collection_selection:
+                  mode: "selected"
+                  collections:
+                    - publisher_domain: "channel-owner.example"
+                      collection_ids: ["retro_news"]
+        expected: |
+          Accept the buy. The committed collection selection is echoed in the
+          package's targeting_overlay.collection_selection as the same
+          concrete domain-qualified selector, unchanged and unwidened.
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "packages[0].targeting_overlay.collection_selection.mode"
+            value: "selected"
+            description: "Package readback MUST echo the committed collection selection as concrete selectors (core/package.json targeting_overlay)"
+          - check: field_value
+            path: "packages[0].targeting_overlay.collection_selection.collections[0].publisher_domain"
+            value: "channel-owner.example"
+            description: "Echo preserves the owner's publisher namespace (core/collection-selector.json)"
+          - check: field_value
+            path: "packages[0].targeting_overlay.collection_selection.collections[0].collection_ids[0]"
+            value: "retro_news"
+            description: "Echo names the committed collection exactly, not a substitute (core/collection-selection.json)"
+
+  - id: explicit_selection_required
+    title: "Buyer collection selection requires explicit collection_ids and known selectors"
+    narrative: |
+      mode: selected names the complete required set as domain-qualified
+      selectors with explicit collection_ids; the domain-only bulk-grant form
+      is authorization scoping, not selection (collections-and-installments.mdx,
+      "Collection targeting"). Sellers reject unknown, duplicate, or
+      partially applicable selectors rather than silently changing the
+      selection (core/collection-selection.json). This phase exercises both
+      rules: the bulk-grant selector shape used where authorization scoping
+      belongs, not buyer selection; and two fail-closed legs where a
+      schema-valid but unrecognized selector (a typo'd collection_id, or a
+      selector naming a different owner domain than the product declares)
+      must be rejected rather than silently mapped to the product's real
+      collection.
+    steps:
+      - id: reject_bulk_grant_form_selection
+        title: "Reject a domain-only (bulk-grant) collection selector in mode: selected"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: schema_invalid
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_bulk_form_reject"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.owner_sold_product_id"
+              pricing_option_id: "$context.owner_sold_pricing_option_id"
+              bid_price: 20.0
+              budget: 5000
+              targeting_overlay:
+                collection_selection:
+                  mode: "selected"
+                  collections:
+                    - publisher_domain: "channel-owner.example"
+        expected: |
+          Reject with INVALID_REQUEST. The domain-only bulk-grant selector
+          form is valid only for adagents.json authorization scoping; every
+          "selected" collection item MUST carry explicit collection_ids
+          (core/collection-selection.json: selected-mode items require
+          collection_ids). Buyer selection is never expressed with the
+          bulk-grant form (collections-and-installments.mdx, "Collection
+          targeting").
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "A selected-mode collection selector omitting collection_ids is schema-invalid (core/collection-selection.json requires collection_ids on every selected item)"
+
+      - id: reject_unknown_collection_id
+        title: "Reject a collection_id the product does not declare"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_unknown_id_reject"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.owner_sold_product_id"
+              pricing_option_id: "$context.owner_sold_pricing_option_id"
+              bid_price: 20.0
+              budget: 5000
+              targeting_overlay:
+                collection_selection:
+                  mode: "selected"
+                  collections:
+                    - publisher_domain: "channel-owner.example"
+                      collection_ids: ["$generate:uuid_v4#owner_sold_unknown_collection"]
+        expected: |
+          Reject with INVALID_REQUEST. A collection_id the product's owner
+          never declared — e.g. a typo of the real collection_id — must fail
+          closed rather than being silently mapped to the product's actual
+          collection (core/collection-selection.json: sellers reject unknown
+          selectors rather than silently changing the selection).
+        validations:
+          - check: error_code
+            allowed_values: ["REFERENCE_NOT_FOUND", "INVALID_REQUEST"]
+            description: "An unrecognized collection_id is an unknown selector the seller must reject, not silently substitute (core/collection-selection.json); REFERENCE_NOT_FOUND is the registry-preferred code for a schema-valid dangling reference (enums/error-code.json)"
+
+      - id: reject_mismatched_owner_domain
+        title: "Reject a collection selector naming a different owner domain"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#owner_sold_channel_carriage_mismatched_domain_reject"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.owner_sold_product_id"
+              pricing_option_id: "$context.owner_sold_pricing_option_id"
+              bid_price: 20.0
+              budget: 5000
+              targeting_overlay:
+                collection_selection:
+                  mode: "selected"
+                  collections:
+                    - publisher_domain: "unrelated-owner.example"
+                      collection_ids: ["retro_news"]
+        expected: |
+          Reject with INVALID_REQUEST. A verified owner-sold supply path
+          requires the host property scope and the owner's external
+          collection selector to match the seller's product
+          (collections-and-installments.mdx, "Programmed channels and
+          owner-sold carriage"); a selector naming a publisher_domain the
+          product does not declare is an unknown selector the seller must
+          reject rather than resolve against its real owner
+          (core/collection-selection.json).
+        validations:
+          - check: error_code
+            allowed_values: ["REFERENCE_NOT_FOUND", "INVALID_REQUEST"]
+            description: "A collection selector naming an owner domain the product does not declare is an unknown selector (core/collection-selection.json) and breaks the host-property/owner-collection match a verified supply path requires (collections-and-installments.mdx); REFERENCE_NOT_FOUND is the registry-preferred code for a schema-valid dangling reference (enums/error-code.json)"

@@ -1,0 +1,358 @@
+id: media_buy_seller/metric_container_subsumption
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Container-subsumption evaluation for metric set operations"
+category: media_buy_seller
+summary: "Verifies a container token (e.g. viewability) subsumes its leaf identities (e.g. viewable_rate) for required_metrics filtering and requested_metrics carrier selection, and that a leaf never subsumes a sibling leaf."
+track: reporting
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  `enums/available-metric.json` states a normative container-subsumption
+  rule: in every metric set operation over the enum — capability
+  declaration, `required_metrics` filtering, format `reported_metrics`
+  intersection, and `requested_metrics` selection — a container token
+  (`viewability`, `quartile_data`, `dooh_metrics`, `time_based_views`)
+  subsumes its leaf identities, and requesting a leaf identity selects its
+  canonical carrier object in the response rather than a flat duplicate. A
+  leaf declaration does not imply sibling leaves or the carrier's
+  non-numeric fields.
+
+  The rule is prose-only: nothing pins independent implementations to the
+  same evaluation, so a subsumption-aware seller and a literal
+  set-membership seller can both validate against the schema while
+  disagreeing on which products and response shapes a buyer receives. This
+  storyboard exercises the rule end to end:
+
+    1. A product declaring the `viewability` container satisfies
+       `filters.required_metrics: ["viewable_rate"]` on `get_products`
+       (product-filters.json `required_metrics`).
+    2. The matched product's declared metrics still show the container —
+       the leaf-shaped request did not collapse or drop it (format.json
+       `reported_metrics`: "mixed container/leaf declarations do not
+       produce an empty intersection").
+    3. `get_media_buy_delivery` with `requested_metrics: ["viewable_rate"]`
+       narrows the response to the resolved carrier set — the full
+       `viewability` object, plus the always-included `impressions` and
+       `spend` — and excludes metrics outside that set
+       (get-media-buy-delivery-request.json `requested_metrics`).
+    4. Negative: a product declaring only the `viewable_rate` leaf does not
+       satisfy a `required_metrics: ["viewed_seconds"]` filter (sibling
+       leaves are not implied) and is silently excluded (filter-not-fail).
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - delivery_reporting
+  examples:
+    - "Any media buy seller that declares viewability or its leaf identities on reporting_capabilities.available_metrics"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds a streaming_audio product declaring the
+    `viewability` container and a streaming_audio product declaring only
+    the `viewable_rate` leaf. The buyer creates a media buy against the
+    container product for delivery-side assertions.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "metric_subsumption_container_product"
+      delivery_type: "guaranteed"
+      channels: ["streaming_audio"]
+      format_options:
+        - format_option_id: "metric_subsumption_audio_spot"
+          format_kind: "audio_hosted"
+          params: {}
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - spend
+          - clicks
+          - viewability
+    - product_id: "metric_subsumption_leaf_product"
+      delivery_type: "non_guaranteed"
+      channels: ["streaming_audio"]
+      format_options:
+        - format_option_id: "metric_subsumption_audio_spot"
+          format_kind: "audio_hosted"
+          params: {}
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - spend
+          - clicks
+          - viewable_rate
+  pricing_options:
+    - product_id: "metric_subsumption_container_product"
+      pricing_option_id: "metric_subsumption_container_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 14.0
+    - product_id: "metric_subsumption_leaf_product"
+      pricing_option_id: "metric_subsumption_leaf_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 9.0
+
+phases:
+  - id: setup
+    title: "Establish the buyer account"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_metric_container_subsumption_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: required_metrics_container_subsumption
+    title: "A declared container satisfies a leaf required_metrics filter"
+    narrative: |
+      product-filters.json `required_metrics` states: "Superset evaluation
+      follows the container-subsumption rule in
+      `enums/available-metric.json` — a product declaring the `viewability`
+      container satisfies a requirement for the `viewable_rate` leaf."
+      `delivery_type: "guaranteed"` isolates the container-declaring
+      product from its non_guaranteed leaf-declaring sibling so the match
+      is deterministic.
+    steps:
+      - id: get_products_required_viewable_rate
+        title: "Filter by the viewable_rate leaf; match the viewability container"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_metric_container_subsumption_required_metrics_container_subsumption_get_products_required_viewable_rate"
+          buying_mode: "wholesale"
+          filters:
+            channels: ["streaming_audio"]
+            delivery_type: "guaranteed"
+            required_metrics: ["viewable_rate"]
+          account: &buyer_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "metric_container_subsumption--required_metrics"
+        expected: |
+          Return the product declaring the `viewability` container even
+          though the filter names the `viewable_rate` leaf — container
+          subsumption, not literal set membership. The non_guaranteed
+          leaf-declaring product is excluded by delivery_type, keeping the
+          match deterministic.
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "container_product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "container_pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "metric_subsumption_container_product"
+            description: "required_metrics: [viewable_rate] matches the container-declaring product (product-filters.json required_metrics container-subsumption rule)"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.available_metrics[*]"
+            value: "viewability"
+            description: "The matched product's declared metrics show the viewability container, not a synthesized viewable_rate leaf entry"
+          - check: array_length
+            path: "products[0].reporting_capabilities.available_metrics"
+            min: 1
+            description: "The leaf-shaped filter did not collapse the product's declared metrics to an empty set (format.json reported_metrics: mixed container/leaf declarations do not produce an empty intersection)"
+          - check: field_absent
+            path: "products[1]"
+            description: "The non_guaranteed leaf-declaring product is excluded by delivery_type, not by required_metrics"
+
+  - id: requested_metrics_leaf_to_carrier
+    title: "requested_metrics narrows delivery to the resolved carrier"
+    narrative: |
+      get-media-buy-delivery-request.json `requested_metrics` states:
+      "Requesting a leaf metric identity returns its canonical nested
+      carrier — e.g. requesting viewable_rate returns the viewability
+      object ... never a flat duplicate" and "impressions and spend are
+      always included regardless of this list." This phase creates a
+      media buy on the container product, injects viewability values via
+      the test controller, then asserts the delivery response narrows to
+      exactly that contract.
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy on the container product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account: *buyer_account
+          start_time: "asap"
+          end_time: "2099-05-31T23:59:59Z"
+          packages:
+            - product_id: "$context.container_product_id"
+              pricing_option_id: "$context.container_pricing_option_id"
+              budget: 6000
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_metric_container_subsumption_requested_metrics_leaf_to_carrier_create_media_buy"
+        expected: |
+          The buy succeeds on the container-declaring product.
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+
+      - id: simulate_delivery_with_viewability
+        title: "Inject simulated delivery with viewability values"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account: *buyer_account
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 50000
+            reported_spend:
+              amount: 600.00
+              currency: "USD"
+            measurement_window: "live"
+            viewability:
+              measurable_impressions: 45000
+              viewable_impressions: 36000
+              viewable_rate: 0.8
+              viewed_seconds: 3.5
+        expected: |
+          The test controller acknowledges the simulated delivery data
+          including the viewability object.
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_delivery_requested_viewable_rate
+        title: "Request the viewable_rate leaf; receive the viewability carrier"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        sample_request:
+          account: *buyer_account
+          media_buy_ids:
+            - "$context.media_buy_id"
+          requested_metrics: ["viewable_rate"]
+          context:
+            correlation_id: "metric_container_subsumption--requested_metrics"
+        expected: |
+          Every metrics-bearing object narrows to the viewability carrier
+          plus the always-included impressions and spend. clicks — neither
+          requested nor always-included — is excluded from both totals and
+          the package row.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].viewability.viewable_rate"
+            description: "Requesting the viewable_rate leaf returns its canonical carrier object, not a flat duplicate (requested_metrics description)"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].viewability.measurable_impressions"
+            description: "The full viewability carrier is returned, not a single narrowed scalar (requested_metrics description: leaf selection returns the whole carrier)"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].impressions"
+            description: "impressions is always included regardless of requested_metrics (requested_metrics description)"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].spend"
+            description: "spend is always included regardless of requested_metrics (requested_metrics description)"
+          - check: field_absent
+            path: "media_buy_deliveries[0].by_package[0].clicks"
+            description: "clicks is neither requested nor always-included, so requested_metrics narrows it out of the package row (requested_metrics description: applies to every metrics-bearing object)"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.viewability.viewable_rate"
+            description: "requested_metrics narrowing applies to totals as well as by_package (requested_metrics description: applies to totals, by_package, daily and window slices, and breakdown rows)"
+          - check: field_absent
+            path: "media_buy_deliveries[0].totals.clicks"
+            description: "Narrowing at the totals level also excludes an unrequested, non-always-included metric"
+
+  - id: required_metrics_leaf_does_not_satisfy_sibling
+    title: "A leaf declaration does not satisfy a sibling leaf requirement"
+    narrative: |
+      `enums/available-metric.json` states: "A leaf declaration does not
+      imply sibling leaves or the carrier's non-numeric fields." A product
+      declaring only `viewable_rate` must not match
+      `required_metrics: ["viewed_seconds"]` — a different leaf under the
+      same `viewability` container. product-filters.json `required_metrics`
+      requires silent exclusion (filter-not-fail), not an error.
+    steps:
+      - id: get_products_required_viewed_seconds
+        title: "Filter by viewed_seconds; the viewable_rate-only product is excluded"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_metric_container_subsumption_required_metrics_leaf_does_not_satisfy_sibling_get_products_required_viewed_seconds"
+          buying_mode: "wholesale"
+          filters:
+            channels: ["streaming_audio"]
+            required_metrics: ["viewed_seconds"]
+          account: *buyer_account
+          context:
+            correlation_id: "metric_container_subsumption--negative"
+        expected: |
+          Return only the container-declaring product — the viewability
+          container subsumes viewed_seconds too. The product declaring only
+          the viewable_rate leaf is silently excluded: that leaf does not
+          imply its sibling viewed_seconds, and there is no error for the
+          unmet filter.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "metric_subsumption_container_product"
+            description: "The viewability container still subsumes a different leaf (viewed_seconds) under the same container"
+          - check: field_absent
+            path: "products[1]"
+            description: "The viewable_rate-only product does not satisfy required_metrics: [viewed_seconds] — a leaf does not imply a sibling leaf — and is silently excluded (filter-not-fail)"

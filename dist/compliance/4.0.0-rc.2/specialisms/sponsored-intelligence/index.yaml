@@ -1,0 +1,59 @@
+id: sponsored_intelligence
+version: "0.1.0"
+title: "Sponsored intelligence"
+protocol: sponsored-intelligence
+status: preview
+category: sponsored_intelligence
+summary: "Specialism claim for agents that expose conversational sponsored experiences via the SI session lifecycle. Preview while the underlying SI tools remain `x-status: experimental`; SDK dispatch parity with other specialism IDs."
+track: si
+
+narrative: |
+  Sponsored intelligence (SI) is the conversational ad surface inside AI assistants,
+  AI search, and generative experiences. An SI agent exposes four lifecycle tools —
+  `si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session` —
+  that together drive a single sponsored conversation from discovery to handoff.
+
+  This specialism is the wire-level claim adopters make so SDKs can dispatch on a
+  specialism ID with parity to every other agent shape (`signal-marketplace`,
+  `creative-template`, `governance-spend-authority`, etc.). Without it, SI agents have
+  to be wired through escape-hatch handler bags rather than first-class platform
+  interfaces — purely because there was no enum value to key dispatch off of.
+
+  The storyboard for this specialism is a placeholder while the underlying SI tools
+  remain `x-status: experimental`. Conformance for SI agents is currently exercised by
+  the `sponsored-intelligence` protocol baseline (which already covers the full session
+  lifecycle); claiming this specialism today is graded as `{ status: "preview",
+  passed: null }` per the preview-status contract in
+  /docs/building/verification/compliance-catalog.
+
+  This specialism promotes to `stable` (with required_tools and a graded storyboard)
+  when the SI tools graduate from experimental. Sub-specialism splits may emerge as
+  the SI surface stabilizes — likely along axes like identity model (anonymous vs.
+  authenticated host-user), commerce capability (conversation-only vs. UI-component
+  vs. transactional handoff), or host surface (assistant vs. AI search vs. embedded).
+  The shape isn't committed; this narrative anticipates differentiation, it doesn't
+  specify it.
+
+agent:
+  interaction_model: si_platform
+  capabilities:
+    - sponsored_intelligence
+  examples:
+    - "AI assistants with ad support"
+    - "AI search products with sponsored experiences"
+    - "Conversational commerce agents reachable via SI handoff"
+
+caller:
+  role: buyer_agent
+  example: "Nova Motors (advertiser)"
+
+prerequisites:
+  description: |
+    No specialism-specific prerequisites today. The protocol baseline at
+    /compliance/{version}/protocols/sponsored-intelligence/ exercises the full
+    discover → initiate → message → terminate flow against the shared Nova Motors
+    test kit; preview claims of this specialism inherit those scenarios for
+    runner discoverability without producing a graded verdict.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases: []

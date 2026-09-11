@@ -1,0 +1,97 @@
+{
+  "profile_version": "3.2",
+  "spec_reference": "#signed-requests-transport-layer (protocol_methods_* namespace)",
+  "description": "Capability-declaration vectors for request_signing.protocol_methods_*. A2A 0.3 slash-path names and A2A 1.0 PascalCase names are both valid, while enforcement uses exact, case-sensitive membership with no cross-version normalization.",
+  "valid_declarations": [
+    {
+      "family": "a2a-0.3",
+      "methods": [
+        "message/send",
+        "message/stream",
+        "tasks/get",
+        "tasks/cancel",
+        "tasks/resubscribe",
+        "tasks/pushNotificationConfig/get",
+        "tasks/pushNotificationConfig/set",
+        "tasks/pushNotificationConfig/list",
+        "tasks/pushNotificationConfig/delete",
+        "agent/getAuthenticatedExtendedCard"
+      ]
+    },
+    {
+      "family": "a2a-1.0",
+      "methods": [
+        "SendMessage",
+        "SendStreamingMessage",
+        "GetTask",
+        "ListTasks",
+        "CancelTask",
+        "SubscribeToTask",
+        "CreateTaskPushNotificationConfig",
+        "GetTaskPushNotificationConfig",
+        "ListTaskPushNotificationConfigs",
+        "DeleteTaskPushNotificationConfig",
+        "GetExtendedAgentCard"
+      ]
+    }
+  ],
+  "invalid_declarations": [
+    "create_media_buy",
+    "tools/call",
+    "sendMessage",
+    "tasks",
+    "/tasks/cancel",
+    "tasks//cancel",
+    "tasks/pushNotificationConfig/"
+  ],
+  "exact_match_cases": [
+    {
+      "id": "a2a-0.3-exact-match",
+      "declared_methods": ["tasks/cancel"],
+      "wire_method": "tasks/cancel",
+      "matches": true
+    },
+    {
+      "id": "a2a-1.0-exact-match",
+      "declared_methods": ["CancelTask"],
+      "wire_method": "CancelTask",
+      "matches": true
+    },
+    {
+      "id": "push-config-exact-match",
+      "declared_methods": ["tasks/pushNotificationConfig/set"],
+      "wire_method": "tasks/pushNotificationConfig/set",
+      "matches": true
+    },
+    {
+      "id": "no-0.3-to-1.0-normalization",
+      "declared_methods": ["tasks/cancel"],
+      "wire_method": "CancelTask",
+      "matches": false
+    },
+    {
+      "id": "no-1.0-to-0.3-normalization",
+      "declared_methods": ["CancelTask"],
+      "wire_method": "tasks/cancel",
+      "matches": false
+    },
+    {
+      "id": "case-sensitive-membership",
+      "declared_methods": ["SendMessage"],
+      "wire_method": "sendMessage",
+      "matches": false
+    },
+    {
+      "id": "no-subscription-alias-normalization",
+      "declared_methods": ["SubscribeToTask"],
+      "wire_method": "TaskSubscription",
+      "matches": false
+    },
+    {
+      "id": "push-config-operation-is-exact",
+      "declared_methods": ["tasks/pushNotificationConfig/set"],
+      "wire_method": "tasks/pushNotificationConfig/get",
+      "matches": false
+    }
+  ]
+}
