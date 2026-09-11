@@ -102,6 +102,14 @@ test("Context Match caching partitions every result-affecting forwarded request"
   );
   assert.match(routerArchitecture, /A placement-only key is unsafe/);
   assert.match(
+    specification,
+    /MAY prefix `context_hash` with `property_rid` for cache-store sharding/
+  );
+  assert.match(
+    specification,
+    /`cache_ttl: 0` is appropriate for those placements/
+  );
+  assert.match(
     dataProtection,
     /one session's artifact, signals, geo, or package selection can determine the response served to another/
   );
