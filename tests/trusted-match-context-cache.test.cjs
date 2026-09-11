@@ -24,6 +24,10 @@ test("Context Match caching partitions every result-affecting request", () => {
   );
   assert.match(
     specification,
+    /`context_hash` and any retained hash preimage MUST NOT appear in logs, metric labels, or traces/
+  );
+  assert.match(
+    specification,
     /MAY prefix `context_hash` with `property_rid` for cache-store sharding/
   );
   assert.match(specification, /`cache_ttl: 0` is appropriate for those placements/);
