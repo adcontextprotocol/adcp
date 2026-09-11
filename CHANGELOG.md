@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.22
+
+### Patch Changes
+
+- 5739f1b: Align legacy format asset declarations with the canonical asset union and guard both individual and repeatable-group variants against future drift.
+
 ## 3.1.21
 
 ### Patch Changes
