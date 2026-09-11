@@ -355,6 +355,51 @@
             }
           },
           {
+            "title": "IndividualPublishedPostAsset",
+            "description": "Published post asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "published_post" }
+            }
+          },
+          {
+            "title": "IndividualCardAsset",
+            "description": "Card asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "card" }
+            }
+          },
+          {
+            "title": "IndividualPixelTrackerAsset",
+            "description": "Pixel tracker asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "pixel_tracker" }
+            }
+          },
+          {
+            "title": "IndividualVastTrackerAsset",
+            "description": "VAST tracker asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "vast_tracker" }
+            }
+          },
+          {
+            "title": "IndividualDaastTrackerAsset",
+            "description": "DAAST tracker asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "daast_tracker" }
+            }
+          },
+          {
             "title": "RepeatableGroupAsset",
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
             "type": "object",
@@ -525,6 +570,70 @@
                       "properties": {
                         "asset_type": { "const": "webhook" },
                         "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupBriefAsset",
+                      "description": "Brief asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "brief" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupCatalogAsset",
+                      "description": "Catalog asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "catalog" },
+                        "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupPublishedPostAsset",
+                      "description": "Published post asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "published_post" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupCardAsset",
+                      "description": "Card asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "card" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupPixelTrackerAsset",
+                      "description": "Pixel tracker asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "pixel_tracker" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupVastTrackerAsset",
+                      "description": "VAST tracker asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "vast_tracker" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupDaastTrackerAsset",
+                      "description": "DAAST tracker asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "daast_tracker" }
                       },
                       "required": ["asset_type"]
                     }
