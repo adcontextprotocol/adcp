@@ -236,7 +236,8 @@ the query. A seller retaining legacy coverage-filtering logic in its shared
 services can still honor the raw 3.1 request. An SDK coordinator alone cannot
 supply the missing compact vocabulary. Extending the existing coverage-filter
 family is tracked in [#7403](https://github.com/adcontextprotocol/adcp/issues/7403);
-the schema change is separate from this audit.
+this gap is expected to close in 3.2 rather than persist through the
+compatibility window. The schema change is separate from this audit.
 
 ## Making adoption smoother now
 
