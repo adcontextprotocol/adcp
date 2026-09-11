@@ -72,6 +72,7 @@ function createDom(options: {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     beforeParse(window) {
+      window.eval(readFileSync(join(process.cwd(), 'server/public/chat-model-selection.js'), 'utf8'));
       const chatWindow = window as unknown as ChatWindow;
       chatWindow.__ENABLE_SI_CHAT_TEST_HOOKS__ = true;
       chatWindow.fetch = (async (input: RequestInfo | URL) => {

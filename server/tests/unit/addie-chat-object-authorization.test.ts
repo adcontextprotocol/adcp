@@ -341,6 +341,12 @@ describe('Addie chat conversation object authorization', () => {
     }));
     mocks.addMessage.mockImplementation(async (message: { role: string }) => ({
       ...message,
+      ...((message as any).model_execution?.source === 'provider' ? {
+        model_execution_source: 'provider', model_provider: (message as any).model_execution.provider,
+        provider_model: (message as any).model_execution.model,
+        requested_model: (message as any).model_execution.requested_model,
+        provider_model_resolution: (message as any).model_execution.model_resolution,
+      } : {}),
       message_id: message.role === 'assistant' ? 'message_assistant' : 'message_user',
     }));
     mocks.processMessage.mockResolvedValue(successfulModelResponse());
@@ -351,6 +357,25 @@ describe('Addie chat conversation object authorization', () => {
       yield { type: 'text', text: 'Allowed response' };
       yield { type: 'done', response: successfulModelResponse() };
     });
+  });
+
+  it.each(['/', '/stream'])('rejects anonymous overrides and arbitrary model IDs before any effects on %s', async endpoint => {
+    mocks.authenticated = false;
+    const app = mountChatRouter();
+    expect((await request(app).post(endpoint).send({ message: 'Hello', model_preference: 'gemini' })).status).toBe(403);
+    expect((await request(app).post(endpoint).send({ message: 'Hello', model_preference: 'sonnet' })).status).toBe(403);
+    mocks.authenticated = true;
+    expect((await request(app).post(endpoint).send({ message: 'Hello', model_preference: 'arbitrary-model' })).status).toBe(400);
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('offers model selection to signed-in non-admins only', async () => {
+    const app = mountChatRouter();
+    expect((await request(app).get('/status')).body.model_selection.enabled).toBe(true);
+    mocks.authenticated = false;
+    expect((await request(app).get('/status')).body.model_selection.enabled).toBe(false);
   });
 
   it('denies a cross-user conversation UUID before reading history, writing, or invoking the model', async () => {
@@ -593,16 +618,37 @@ describe('Addie chat conversation object authorization', () => {
     } as unknown as Awaited<ReturnType<typeof geminiExperiment.prepareGeminiDirectTurn>>);
     try {
       const res = await request(mountChatRouter()).post(endpoint).send({
-        message: 'Explain AdCP', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        message: 'Explain AdCP', model_preference: 'gemini', conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
       });
       expect(res.status).toBe(200);
       expect(res.text).toContain('Gemini response');
-      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', exclusionReason: null, hasPriorAssistant: false }));
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'gemini', exclusionReason: null, hasPriorAssistant: false }));
       expect(mocks.processMessage).not.toHaveBeenCalled();
       expect(mocks.processMessageStream).not.toHaveBeenCalled();
-      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'gemini', model: 'gemini-3.7-flash', model_execution: response.model_execution }));
+      expect(res.text).toContain('\"selected\":\"gemini\"');
+      expect(res.text).toContain('\"model\":\"gemini-3.7-flash\"');
+      expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', model_preference: 'gemini' }));
       expect(finish).toHaveBeenCalledWith(expect.objectContaining({ text: 'Gemini response' }), 'message_assistant');
     } finally { prepare.mockRestore(); }
+  });
+
+  it('returns the saved choice and actual provider on history and recovery', async () => {
+    const id = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
+    mocks.getThreadByExternalId.mockResolvedValue({ thread_id: 'thread_attacker', channel: 'web',
+      external_id: id, user_type: 'workos', user_id: 'user_attacker' });
+    mocks.getThreadMessages.mockResolvedValue([
+      { role: 'user', content: 'Explain AdCP', model_preference: 'gemini' },
+      { role: 'assistant', content: 'Verified answer', model_preference: 'gemini', model_execution_source: 'provider',
+        model_provider: 'anthropic', provider_model: 'claude-sonnet-4-6', requested_model: 'gemini-3.7-flash',
+        provider_model_resolution: 'fallback', latency_ms: 1500 },
+    ]);
+    mocks.getRecoverableClientTurn.mockResolvedValue({ client_request_id: 'original-request', content: 'Follow up', model_preference: 'sonnet' });
+    const res = await request(mountChatRouter()).get('/' + id);
+    expect(res.status).toBe(200);
+    expect(res.body.model_preference).toBe('gemini');
+    expect(res.body.messages[1].model_info).toMatchObject({ selected: 'gemini', model: 'claude-sonnet-4-6', fallback: true, latency_ms: 1500 });
+    expect(res.body.recoverable_turn.model_preference).toBe('sonnet');
   });
 
   it('restricts experiment outcomes to site admins', async () => {
@@ -744,6 +790,8 @@ describe('Addie chat conversation object authorization', () => {
         message_id: 'message_assistant',
         role: 'assistant',
         content: 'Module complete and saved.',
+        model_preference: 'sonnet', model_execution_source: 'provider',
+        model_provider: 'anthropic', provider_model: 'claude-sonnet-4-6', provider_model_resolution: 'exact',
         delivery_status: 'completed',
       },
     ]);
@@ -751,7 +799,7 @@ describe('Addie chat conversation object authorization', () => {
     const response = await request(mountChatRouter())
       .post('/stream')
       .send({
-        message: 'Complete my module',
+        message: 'Complete my module', model_preference: 'gemini',
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
         client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
         retry: true,
@@ -760,6 +808,8 @@ describe('Addie chat conversation object authorization', () => {
     expect(response.status).toBe(200);
     expect(response.text).toContain('Module complete and saved.');
     expect(response.text).toContain('"replayed":true');
+    expect(response.text).toContain('"selected":"sonnet"');
+    expect(response.text).toContain('"model":"claude-sonnet-4-6"');
     expect(mocks.getThreadMessages).not.toHaveBeenCalled();
     expect(mocks.addMessage).not.toHaveBeenCalled();
     expect(mocks.processMessageStream).not.toHaveBeenCalled();
@@ -784,7 +834,7 @@ describe('Addie chat conversation object authorization', () => {
     const response = await request(mountChatRouter())
       .post('/stream')
       .send({
-        message: 'Complete my module',
+        message: 'Complete my module', model_preference: 'gemini',
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
         client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
         retry: true,
@@ -976,7 +1026,7 @@ describe('Addie chat conversation object authorization', () => {
       user_id: 'user_attacker',
     });
     mocks.getMessagesByClientRequestId.mockResolvedValue([{
-      message_id: 'message_user', role: 'user', content: 'Schedule a review', delivery_status: 'completed',
+      message_id: 'message_user', role: 'user', content: 'Schedule a review', model_preference: 'sonnet', delivery_status: 'completed',
     }]);
     mocks.getThreadMessages.mockResolvedValue([
       {
@@ -1000,7 +1050,7 @@ describe('Addie chat conversation object authorization', () => {
     const response = await request(mountChatRouter())
       .post('/stream')
       .send({
-        message: 'Schedule a review',
+        message: 'Schedule a review', model_preference: 'gemini',
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
         client_request_id: clientRequestId,
         retry: true,
@@ -1008,6 +1058,7 @@ describe('Addie chat conversation object authorization', () => {
 
     expect(response.status).toBe(200);
     expect(replayDecision).toEqual({ allowed: false });
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'sonnet' }));
   });
 
   it('gives every active certification learning thread the expanded reserve', async () => {
