@@ -23,11 +23,11 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-09-05.*
+*Last updated: 2026-09-11.*
 
 | SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.33` | Exact `3.2.0-rc.1` support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-rc.35` | Exact `3.2.0-rc.1` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0b14` | Exact `3.2.0-rc.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Exact `3.2.0-rc.1` generated schemas and types; higher layers remain role-dependent | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
@@ -54,12 +54,42 @@ direction. **Other languages** are not on the official roadmap;
 community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group)
 and the [Slack community](/docs/community/joining-slack).
 
+### Media-buy compatibility across 3.x
+
+Sharing a protocol schema bundle does not imply identical workflow automation.
+Keep the SDK package version, the served AdCP version, and the seller's
+advertised lifecycle tools separate.
+
+| SDK | Entry point for mixed-version buying | Current boundary |
+|---|---|---|
+| TypeScript | `agent.negotiateMediaBuyLifecycle()` selects native or established tools per operation. | Named `allowedLosses` permit supported legacy mutations; results expose the executed tools and losses. Direct `agent.listProducts()` / `agent.buyProducts()` calls use the native tools. |
+| Python | Established client methods remain available; `adcp.compat.purchase_continuation.LegacyPurchaseCoordinator` handles explicit legacy purchase continuations. | Compact methods such as `client.buy_products()` dispatch the same-named tool. The continuation coordinator requires a store and executor; it is not a general automatic lifecycle router. |
+| Go | Version helpers, generated request/response types, and typed server registration. | Buyer lifecycle selection and continuation orchestration remain application-owned. |
+
+The TypeScript coordinator already supports ordinary legacy purchase behavior
+with explicit loss opt-ins. Its current listing adapter rejects compact
+`criteria`, and its direct-buy adapter still requires a real `feed_version`,
+even when the caller accepts non-atomic fencing. Products-only brief purchase
+continuations provide a separate legacy path. A missing new guarantee does
+not make the seller's established creation API unusable.
+
+On the seller side, the frameworks keep registered legacy handlers available;
+implementing compact handlers alone does not generate every legacy behavior.
+Retain the established handlers when serving older buyers and choose an
+unversioned default appropriate to those integrations.
+
+See the [SDK lifecycle compatibility audit](https://github.com/adcontextprotocol/adcp/blob/main/specs/sdk-lifecycle-compatibility-audit.md)
+for the nine buyer–seller combinations, exact audited releases, current gaps,
+and reproducible probes. TypeScript's existing
+[compatibility guide](https://github.com/adcontextprotocol/adcp-client/blob/2b27442fbaf972f7a4236af227800feec268aeb0/docs/guides/MEDIA-BUY-3.2-COMPATIBILITY.md)
+documents coordinator options, continuation storage, and supported projections.
+
 ## JavaScript / TypeScript
 
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.33
+npm install @adcp/sdk@14.0.0-rc.35
 ```
 
 ```javascript
@@ -87,7 +117,7 @@ const products = await client.listProducts({
 
 **Package exports:**
 - `@adcp/sdk` — main entry: caller (`createSingleAgentClient`, `ADCPMultiAgentClient`) and shared types
-- `@adcp/sdk/server` — agent-side server primitives (`createAdcpServerFromPlatform`, `createAdcpServer`, decisioning-platform interfaces)
+- `@adcp/sdk/server` — agent-side server primitives (`createAdcpServerFromPlatform`, decisioning-platform interfaces); the lower-level `createAdcpServer` export is retained under `@adcp/sdk/server/legacy/v5`
 - `@adcp/sdk/signing` — RFC 9421 signing primitives
 - `@adcp/sdk/signing/server` — webhook + request verifiers (`createWebhookVerifier`, `verifyRequestSignature`, `createExpressVerifier`)
 - `@adcp/sdk/signing/client` — outbound signing (`signRequest`, `signWebhook`, `createSigningFetch`)
@@ -168,11 +198,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-rc.33 --help
-npx @adcp/sdk@14.0.0-rc.33 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-rc.33 my-agent list_products '{"adcp_version":"3.2-rc.1","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-rc.35 --help
+npx @adcp/sdk@14.0.0-rc.35 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-rc.35 my-agent list_products '{"adcp_version":"3.2-rc.1","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-rc.33 test-mcp list_products '{"adcp_version":"3.2-rc.1"}'
+npx @adcp/sdk@14.0.0-rc.35 test-mcp list_products '{"adcp_version":"3.2-rc.1"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
