@@ -32,7 +32,9 @@ async function routingMatrix() {
   const { createIdempotencyStore, memoryBackend } = sdkRequire('@adcp/sdk/server');
   const { Client } = sdkRequire('@modelcontextprotocol/sdk/client/index.js');
   const { InMemoryTransport } = sdkRequire('@modelcontextprotocol/sdk/inMemory.js');
-  const versions = ['3.0.25', '3.1.18', '3.2.0-rc.1'];
+  const latestSchemas = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'dist', 'schemas', 'latest.json'), 'utf8'));
+  const versions = ['3.0.25', latestSchemas.latest_stable, '3.2.0-rc.1'];
   const rows = [];
   for (const buyerVersion of versions) {
     for (const [index, sellerVersion] of versions.entries()) {
@@ -204,11 +206,10 @@ async function main() {
       await observe('3.1: observed feed, losses accepted', fixture,
         coordinator => coordinator.buyProducts(fenced), policy);
       const dispatched = fixture.calls.find(call => call.tool === 'create_media_buy');
-      if (dispatched) {
-        assert.equal(dispatched.params.idempotency_key, purchase.idempotency_key);
-        assert.equal(dispatched.params.feed_version, undefined);
-        assert.equal(dispatched.params.packages[0].budget, 1000);
-      }
+      assert.ok(dispatched, 'create_media_buy was not dispatched — regression in legacy purchase path');
+      assert.equal(dispatched.params.idempotency_key, purchase.idempotency_key);
+      assert.equal(dispatched.params.feed_version, undefined);
+      assert.equal(dispatched.params.packages[0].budget, 1000);
     }
   }
   await observe('v3 capabilities without release metadata', makeAgent('3.0', { versionMetadata: false }),

@@ -298,6 +298,11 @@ The script makes no external seller calls. Its first section replaces client
 transport methods with local boundary fixtures. Its routing section uses the
 official MCP in-memory transport and real SDK server/version dispatch. Empty
 catalog fixtures isolate routing; they do not prove filtering or fulfillment.
+Response validation is disabled on both peers (`validation: { responses: 'off' }`);
+the probe measures routing and SDK behavioral boundaries, not response-schema
+conformance. "The SDK ships this behavior" means the feature is wired and
+reachable under the audited fixtures, not that its responses conform to the
+current schema at every declared property.
 It prints observations rather than freezing current limitations as desired
 test outcomes. Native response conformance, signing, live partner behavior,
 and every possible legacy request shape are outside those probes' evidence.
