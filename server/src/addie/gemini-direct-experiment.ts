@@ -336,12 +336,16 @@ export async function getGeminiDirectResults() {
     percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS median_total_ms,
     percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total_ms,
     ROUND(AVG(router_ms)) AS mean_router_ms,
-    SUM(estimated_cost_micros) / 1000000.0 AS estimated_cost_usd,
+    SUM(estimated_cost_micros) / 1000000.0 AS recorded_cost_usd,
+    CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)
+      THEN SUM(estimated_cost_micros) / 1000000.0 END AS estimated_cost_usd,
     SUM(tool_errors)::int AS tool_errors,
     COUNT(m.rating)::int AS rated_turns, ROUND(AVG(m.rating), 2) AS mean_rating,
     COUNT(*) FILTER (WHERE m.outcome = 'resolved')::int AS resolved_turns,
-    SUM(estimated_cost_micros) / 1000000.0 /
-      NULLIF(COUNT(*) FILTER (WHERE m.outcome = 'resolved'), 0) AS estimated_cost_per_marked_resolution_usd
+    CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)
+      THEN SUM(estimated_cost_micros) / 1000000.0 /
+        NULLIF(COUNT(*) FILTER (WHERE m.outcome = 'resolved'), 0)
+      END AS estimated_cost_per_marked_resolution_usd
     FROM reported_turns e
     LEFT JOIN addie_thread_messages m ON m.message_id = e.assistant_message_id
     GROUP BY e.arm, e.reporting_cohort, e.exclusion_reason ORDER BY e.reporting_cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);

@@ -100,6 +100,25 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('includes the Luna router cost in a complete Sonnet comparison record', async () => {
+    const f = fixture([]);
+    f.getControlTools.mockResolvedValue({
+      requestTools: { tools: [], handlers: new Map() }, selectedToolSets: ['knowledge'],
+      allowedToolNames: ['search_docs'], routerMs: 123, routerUsageComplete: true,
+      routerUsage: { provider: 'openai', model: 'gpt-5.6-luna', usage: { inputTokens: 1000, outputTokens: 0 } },
+    });
+    await run({ ...f.input, modelPreference: 'sonnet' });
+    const update = mocks.query.mock.calls.find(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns'))!;
+    expect(update).toBeDefined();
+    expect(update[1][3]).toBe(123);
+    expect(update[1][5]).toBeGreaterThan(200); // $0.0002 router plus Sonnet
+    expect(update[1][6]).toBe(true);
+    expect(JSON.parse(String(update[1][12]))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'openai', model: 'gpt-5.6-luna' }),
+      expect.objectContaining({ provider: 'anthropic', model: AddieModelConfig.chat }),
+    ]));
+  });
+
   it('allows a non-admin to choose Gemini in staff mode without enrolling their thread', async () => {
     const f = fixture([receipt([call('query_admin_analytics')]), receipt([{ text: 'Admin access required.' }])]);
     const analytics = vi.fn();

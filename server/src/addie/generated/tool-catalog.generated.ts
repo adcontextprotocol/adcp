@@ -73,7 +73,7 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
 - **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member
 - **admin_organization_integrity** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains
-- **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
+- **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, query_admin_analytics, update_member_logo, update_member_profile
 - **admin_conversation_review** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation
 - **admin_followup_tasks** *(admin only)* — set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brand_registry_integrity** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands

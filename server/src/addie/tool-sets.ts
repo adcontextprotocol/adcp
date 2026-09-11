@@ -224,6 +224,7 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "update_org_member_role",
     "list_slack_users_by_org",
     "list_paying_members",
+    "query_admin_analytics",
     "update_member_logo",
     "update_member_profile",
   ],
@@ -1401,7 +1402,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   admin_organization_member_records: {
     name: "admin_organization_member_records",
     description:
-      "Manage organization-member roles, Slack rosters, paid-member records, and directory profiles (admin only)",
+      "Count or list paying memberships, inspect membership breakdowns, and manage organization-member roles, Slack rosters, and directory profiles (admin only)",
     tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_organization_member_records],
     adminOnly: true,
   },

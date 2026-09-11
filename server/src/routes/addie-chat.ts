@@ -578,10 +578,12 @@ async function initializeChatClient(): Promise<void> {
   }, "Addie Chat: Initialized with tiered access");
 }
 
-/**
- * Get the initialized chat Claude client.
- * Ensures initialization has run before returning the client.
- */
+/** Readiness probe: knowledge and tool registration must finish before traffic. */
+export function isWebChatReady(): boolean {
+  return initialized && claudeClient !== null && isKnowledgeReady();
+}
+
+/** Get the chat client, initializing it first if necessary. */
 export async function getChatClaudeClient(): Promise<AddieClaudeClient> {
   if (!initialized) {
     await initializeChatClient();
