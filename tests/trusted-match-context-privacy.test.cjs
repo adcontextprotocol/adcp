@@ -21,6 +21,10 @@ test("ContextSignals protects non-public single-user content", () => {
     /Ephemeral content that many users encounter.*is shared content; one user's turn or query is not/
   );
   assert.match(
+    contextSignals.properties.topics.description,
+    /MUST use standardized taxonomy identifiers or bounded custom category labels/
+  );
+  assert.match(
     contextSignals.properties.embedding.description,
     /MUST NOT be computed directly or indirectly from non-public content/
   );
@@ -35,4 +39,8 @@ test("ContextSignals protects non-public single-user content", () => {
     specification,
     /Router isolation prevents identity-path data from entering the context path; it does not make user-derived context anonymous\./
   );
+
+  const aiAssistantSurface = read("docs/trusted-match/surfaces/ai-assistants.mdx");
+  assert.match(aiAssistantSurface, /omits `artifact_refs`/);
+  assert.doesNotMatch(aiAssistantSurface, /"value": "turn:/);
 });

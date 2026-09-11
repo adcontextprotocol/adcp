@@ -66,7 +66,7 @@ Pre-computed classifier outputs for the content environment. MUST NOT contain ra
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `topics` | List\<string\> | No | Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs when `taxonomy_id` is 7 (default), or human-readable strings for custom taxonomies. |
+| `topics` | List\<string\> | No | Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs when `taxonomy_id` is 7 (default), or bounded human-readable category labels for custom taxonomies. For non-public content attributable to a single user or session, publishers MUST use standardized taxonomy identifiers or bounded custom category labels; custom topic strings MUST NOT reproduce distinctive verbatim phrasing and MUST NOT include PII or uniquely identifying details. |
 | `taxonomy_source` | enum | No | Organization that defines the topic taxonomy. Default: `iab`. |
 | `taxonomy_id` | integer | No | Taxonomy version within the source. For IAB, follows the AdCOM cattax enum: `7` = Content Taxonomy 3.0 (CC-BY-3.0). Default: `7`. |
 | `sentiment` | enum | No | Content sentiment: `positive`, `negative`, `neutral`, `mixed`. |

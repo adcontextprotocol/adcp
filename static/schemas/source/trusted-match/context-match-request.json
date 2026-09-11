@@ -139,7 +139,7 @@
       "properties": {
         "topics": {
           "type": "array",
-          "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when taxonomy_id is 7, or human-readable strings (e.g., 'cooking.pasta') for custom taxonomies.",
+          "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when taxonomy_id is 7, or bounded human-readable category labels (e.g., 'cooking.pasta') for custom taxonomies. For non-public content attributable to a single user or session, publishers MUST use standardized taxonomy identifiers or bounded custom category labels; custom topic strings MUST NOT reproduce distinctive verbatim phrasing and MUST NOT include PII or uniquely identifying details.",
           "items": {
             "type": "string"
           },
