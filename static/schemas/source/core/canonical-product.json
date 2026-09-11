@@ -30,6 +30,7 @@
     "pricing_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-pricing-option.json" }, "minItems": 1 },
     "forecast": { "$ref": "/schemas/core/canonical-delivery-forecast.json" },
     "reporting_capabilities": { "$ref": "/schemas/core/canonical-reporting-capabilities.json" },
+    "dooh_inventory_summary": { "$ref": "/schemas/core/dooh-inventory-summary.json" },
     "measurement_terms": {
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Default billing measurement and makegood terms inherited by a direct purchase unless a negotiated proposal replaces them."
