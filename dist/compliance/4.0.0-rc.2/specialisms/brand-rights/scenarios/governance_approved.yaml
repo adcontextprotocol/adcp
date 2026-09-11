@@ -1,0 +1,245 @@
+id: brand_rights/governance_approved
+version: "1.0.0"
+title: "Brand agent accepts a signed rights authorization"
+category: brand_rights
+summary: "Verifies that a valid task- and payload-bound governance token permits a paid rights grant and that the grant persists."
+track: brand
+requires: [multi_agent]
+default_agent: brand
+required_tools:
+  - sync_accounts
+  - sync_governance
+  - get_rights
+  - sync_plans
+  - check_governance
+  - acquire_rights
+  - update_rights
+
+requires_capability:
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: acquire_rights
+    modes: [signed_context]
+
+narrative: |
+  The runner discovers a priced rights offering, creates a permissive plan in
+  the offering currency, and obtains signed intent authorization for the exact
+  acquire_rights payload. The brand agent must accept that token, issue the
+  grant, and retain it for a later lifecycle update. This positive path prevents
+  an always-rejecting service from satisfying the enforcement claim.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+  brand_agent_url: "https://test-agent.adcontextprotocol.org/brand"
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities: [rights_licensing, governance_aware]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "A multi-agent runner with brand and governance agents. Override brand_agent_url with the exact brand endpoint under test."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discovery_and_service_setup
+    title: "Set up the rights service and discover a paid grant"
+    steps:
+      - id: sync_accounts
+        agent: brand
+        title: "Establish the buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#rights_governance_approved_sync_accounts"
+        validations:
+          - check: response_schema
+
+      - id: sync_governance
+        agent: brand
+        title: "Register the governance provider"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                brand: { domain: "acmeoutdoor.example" }
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#rights_governance_approved_sync_governance"
+        validations:
+          - check: response_schema
+
+      - id: get_rights_catalog
+        agent: brand
+        title: "Discover a priced rights offering"
+        task: get_rights
+        schema_ref: "brand/get-rights-request.json"
+        response_schema_ref: "brand/get-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/get_rights"
+        sample_request:
+          buyer: { domain: "pinnacle-agency.example" }
+          query: "Sofia Reyes commercial likeness rights"
+          uses: ["commercial", "likeness"]
+        context_outputs:
+          - { name: rights_id, path: "rights[0].rights_id" }
+          - { name: pricing_option_id, path: "rights[0].pricing_options[0].pricing_option_id" }
+          - { name: pricing_currency, path: "rights[0].pricing_options[0].currency" }
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "rights[0].pricing_options[0].pricing_option_id"
+          - check: field_present
+            path: "rights[0].pricing_options[0].currency"
+
+  - id: authorization
+    title: "Authorize the exact acquisition"
+    steps:
+      - id: sync_plans
+        agent: governance
+        title: "Create a permissive rights plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#rights_governance_approved_sync_plans"
+          plans:
+            - plan_id: "comply-rights-approved-plan"
+              brand: { domain: "acmeoutdoor.example" }
+              objectives: "Acquire commercial likeness rights"
+              budget:
+                total: 1000000000
+                currency: "$context.pricing_currency"
+                reallocation_threshold: 1000000000
+              flight:
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
+              countries: ["US"]
+        context_outputs:
+          - { name: plan_id, path: "plans[0].plan_id" }
+        validations:
+          - check: response_schema
+
+      - id: check_governance_intent
+        agent: governance
+        title: "Approve the exact rights payload"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "$context.brand_agent_url"
+          tool: "acquire_rights"
+          purchase_type: "rights_license"
+          proposed_commitment: { amount: 1000000000, currency: "$context.pricing_currency" }
+          payload:
+            account:
+              brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+            rights_id: "$context.rights_id"
+            pricing_option_id: "$context.pricing_option_id"
+            buyer: { domain: "pinnacle-agency.example" }
+            campaign:
+              description: "Approved commercial likeness campaign"
+              uses: ["likeness", "commercial"]
+              countries: ["US"]
+              estimated_impressions: 1000000
+              start_date: "2099-04-01"
+              end_date: "2099-06-30"
+            revocation_webhook:
+              url: "https://pinnacle-agency.example/webhooks/revocation"
+              authentication:
+                schemes: ["Bearer"]
+                credentials: "pinnacle-revocation-webhook-secret-token"
+            idempotency_key: "$generate:uuid_v4#rights_governance_approved_acquire"
+        context_outputs:
+          - { name: governance_context, path: "governance_context" }
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+          - check: field_present
+            path: "governance_context"
+
+  - id: authorized_grant
+    title: "Create and prove the durable rights grant"
+    steps:
+      - id: acquire_rights_approved
+        agent: brand
+        title: "Acquire rights with signed authorization"
+        task: acquire_rights
+        schema_ref: "brand/acquire-rights-request.json"
+        response_schema_ref: "brand/acquire-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/acquire_rights"
+        stateful: true
+        sample_request:
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          pricing_option_id: "$context.pricing_option_id"
+          buyer: { domain: "pinnacle-agency.example" }
+          campaign:
+            description: "Approved commercial likeness campaign"
+            uses: ["likeness", "commercial"]
+            countries: ["US"]
+            estimated_impressions: 1000000
+            start_date: "2099-04-01"
+            end_date: "2099-06-30"
+          revocation_webhook:
+            url: "https://pinnacle-agency.example/webhooks/revocation"
+            authentication:
+              schemes: ["Bearer"]
+              credentials: "pinnacle-revocation-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#rights_governance_approved_acquire"
+          governance_context: "$context.governance_context"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "rights_status"
+            value: "acquired"
+          - check: field_present
+            path: "rights_constraint"
+
+      - id: update_acquired_grant
+        agent: brand
+        title: "Pause the persisted grant"
+        task: update_rights
+        schema_ref: "brand/update-rights-request.json"
+        response_schema_ref: "brand/update-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/update_rights"
+        stateful: true
+        sample_request:
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_id"
+          paused: true
+          idempotency_key: "$generate:uuid_v4#rights_governance_approved_pause"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "paused"
+            value: true

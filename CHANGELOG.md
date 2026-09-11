@@ -1,5 +1,34 @@
 # Changelog
 
+## 4.0.0-rc.2
+
+### Major Changes
+
+- 84ea7b6: Require dotted domains in BrandRef and BrandKey wire schemas, define explicit reserved-domain development exceptions for SDKs, and reserve public registrability plus DNS/SSRF checks for production resolution.
+
+### Minor Changes
+
+- 609a3b0: Add buyer and orchestrator agent storyboards: 6 specialisms (buyer-discovery, buyer-activation, buyer-negotiation, buyer-monitoring, buyer-recovery, orchestrator-multi-agent), fixture publisher contract and reference implementation, buyer-orchestrator compliance track with three certification levels, and 10 buyer-specific check kinds.
+- ea5c643: Restore the normative constraints `canonical-forecast-point` dropped from its source twin: the `maximum: 1` bounds on `viewable_rate` and `metrics.coverage_rate` ranges, and the `anyOf` requiring `standard` whenever any viewability value is present. A shared forecast-rate range keeps generated SDK types unambiguous, while a parity contract test compares the twins' resolved viewability schemas and exceptional metric constraints so canonical-pair drift fails CI instead of shipping silently.
+- b8ab4fe: Add cursor pagination for truncated `get_media_buy_delivery` breakdowns on the bounded-enum dimensions: `device_type`, `device_platform`, `audience`, and `placement`. Previously `by_<dim>_truncated: true` was a retrieval dead end — there was no protocol-defined way to fetch the dropped rows. Requests can now set `reporting_dimensions.<dim>.cursor` (reusing the response's new `by_<dim>_pagination` field, itself the existing `pagination-response.json` shape already used by `get_products`) to page through the rest of a truncated breakdown. `geo` is deliberately excluded — at `postal_area` granularity it can reach tens of thousands of rows, closer to a bulk-export shape than per-package cursor pagination, and is deferred to the bulk-export/security work tracked in #5669/#5666. Closes #5671.
+
+### Patch Changes
+
+- afe8b67: Update the TypeScript SDK checkpoint and current RC.1 guidance to `@adcp/sdk@14.0.0-rc.33`.
+- 62d6a64: Clarify that A2A conversation continuity uses the transport-native contextId, while schema-declared MCP request-body context_id fields are compatibility-only and ignored.
+- 4eed58a: Align the AdCP 3.2 release story, SDK compatibility guidance, and Reliable Reporting reference docs with the published RC.1 checkpoint.
+- 58eddf8: Fix `VERSION_UNSUPPORTED` recovery value in `error-compliance.yaml` storyboard prose.
+  
+  Two occurrences of `fatal` (which is not in the `recovery` enum) have been corrected:
+  - `unsupported_major_version` step `expected:` block: `recovery: fatal` → `recovery: correctable`, matching `enumMetadata.VERSION_UNSUPPORTED.recovery` across all 3.x bundles.
+  - General error-shape narrative: `correctable, transient, or fatal` → `transient, correctable, or terminal`, matching the enum declaration order in `core/error.json`.
+  
+  The storyboard validations do not assert `recovery`, so no existing conformance test is affected. This corrects misleading prose that could cause hand-implementers to emit schema-invalid error envelopes.
+- fc52d81: Align legacy format asset declarations with the canonical asset union and guard both individual and repeatable-group variants against future drift.
+- e36e319: Update the 3.2 SDK guidance after the Go RC.1 regeneration merged and its package release entered review.
+- 830e306: Serve AdCP 3.2 RC.1 from the public training surface, including Reliable Reporting tools and revision digests, and align the release notes, migration guidance, training, and TypeScript, Python, and Go SDK instructions with the published RC.1 packages.
+- 245108f: Scope guaranteed idempotency replay to state-mutating requests while requiring read wrappers to tolerate optional keys.
+
 ## 3.2.0-rc.1
 
 ### Minor Changes

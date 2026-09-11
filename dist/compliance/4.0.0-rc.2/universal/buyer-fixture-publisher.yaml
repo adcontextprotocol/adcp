@@ -1,0 +1,217 @@
+# Buyer Fixture Publisher Contract
+#
+# Defines the runner-side fixture publisher that buyer-side storyboards
+# (interaction_model: media_buy_buyer) require. When the runner executes
+# a buyer storyboard, it stands up a fixture publisher — a reference
+# sell-side agent that replays canned responses keyed by scenario.
+#
+# The storyboard's `fixtures.fixture_publisher` block is the single
+# source of truth for the fixture data. The runner reads it and wires
+# up tool handlers that return the declared products, scenarios, and
+# error shapes. The buyer agent under test calls these tools; the
+# runner observes the calls and grades them against step validations.
+#
+# This contract is normative for runner implementors. Storyboard authors
+# declare data in `fixtures:`; runner authors implement this contract.
+
+id: buyer_fixture_publisher
+version: "0.1.0"
+title: "Buyer fixture publisher contract"
+summary: "Contract for the runner-side reference sell-side agent used by buyer storyboards."
+
+# The fixture publisher is NOT an AdCP agent. It is a runner-internal
+# component that exposes AdCP-shaped tool endpoints to the buyer agent
+# under test. It does not have its own capabilities advertisement
+# beyond what the storyboard declares in fixtures.fixture_publisher.
+
+architecture:
+  description: |
+    Buyer storyboard execution flow:
+
+    1. Runner reads `fixtures.fixture_publisher` from the storyboard YAML.
+    2. Runner boots a fixture publisher that serves the declared capabilities
+       and products over the AdCP tool protocol.
+    3. Runner connects the buyer agent under test to the fixture publisher
+       (via MCP transport, HTTP, or in-process injection).
+    4. Runner feeds the buyer agent the storyboard narrative and campaign
+       brief as the initial prompt or task.
+    5. Buyer agent calls tools on the fixture publisher. Runner intercepts
+       each call, records request/response pairs, and grades validations.
+    6. Runner reports results per the runner-output-contract.
+
+  components:
+    fixture_publisher:
+      role: "Reference sell-side agent (runner-internal)"
+      responsibilities:
+        - "Serve get_adcp_capabilities with declared capabilities"
+        - "Serve get_products / list_products with declared products"
+        - "Serve create_media_buy with scenario-driven responses"
+        - "Serve get_task_status for async task polling"
+        - "Serve sync_creatives for creative assignment"
+        - "Enforce idempotency_key semantics on mutating tools"
+        - "Return declared error shapes for failure scenarios"
+
+    buyer_agent:
+      role: "Agent under test"
+      responsibilities:
+        - "Discover capabilities before domain calls"
+        - "Call tools in the correct sequence per storyboard narrative"
+        - "Handle all response types (sync, async, error)"
+
+    runner:
+      role: "Test orchestrator"
+      responsibilities:
+        - "Boot fixture publisher from storyboard fixtures block"
+        - "Connect buyer agent to fixture publisher"
+        - "Record all tool calls and responses"
+        - "Grade validations from step definitions"
+        - "Emit results per runner-output-contract"
+
+# Tool handler specifications. Each handler describes how the fixture
+# publisher responds to a specific tool call, parameterized by the
+# storyboard's fixtures block.
+
+tool_handlers:
+  get_adcp_capabilities:
+    description: |
+      Returns the capabilities declared in fixtures.fixture_publisher.capabilities.
+      Always available. The response shape matches the AdCP get_adcp_capabilities
+      response schema exactly.
+    response_source: "fixtures.fixture_publisher.capabilities"
+    idempotent: true
+
+  get_products:
+    description: |
+      Returns the products declared in fixtures.fixture_publisher.products.
+      Accepts optional brief or filter parameters from the buyer; the fixture
+      publisher returns ALL declared products regardless of filter (the
+      storyboard tests the buyer's interpretation, not the publisher's filtering).
+    response_source: "fixtures.fixture_publisher.products"
+    idempotent: true
+
+  list_products:
+    description: |
+      Alias for get_products in the fixture publisher context. Returns the
+      same product set. Runners MUST support both tool names since buyer
+      agents may call either depending on version negotiation.
+    response_source: "fixtures.fixture_publisher.products"
+    idempotent: true
+
+  create_media_buy:
+    description: |
+      Scenario-driven handler. The fixture publisher inspects the request
+      and selects a response from fixtures.fixture_publisher.scenarios based
+      on the current phase. Runners implement scenario selection via:
+        1. Phase-level scenario hints in the storyboard step
+        2. Request payload matching (product_id, delivery_type)
+        3. Sequential dispatch (first call gets scenario A, second gets B)
+
+      The response type is determined by the scenario:
+        - response_type: "synchronous" — returns a media_buy object directly
+        - response_type: "submitted" — returns a task envelope with task_id
+        - error_code present — returns an error envelope with retry_after
+
+    response_source: "fixtures.fixture_publisher.scenarios"
+    idempotent: false
+    requires_idempotency_key: true
+
+  get_task_status:
+    description: |
+      Returns task completion status for async creates. The fixture publisher
+      tracks task_ids issued by create_media_buy "submitted" responses and
+      returns "completed" with the media_buy result after one poll (configurable
+      via scenario).
+    response_source: "runner-internal state from prior create_media_buy"
+    idempotent: true
+
+  sync_creatives:
+    description: |
+      Accepts creative assignment requests and returns success. The fixture
+      publisher validates that media_buy_id references a known buy and that
+      creative format_kind is compatible with the product's format_options
+      (if declared), but does not reject mismatches — the storyboard
+      validation layer handles grading.
+    response_source: "runner-internal state from prior create_media_buy"
+    idempotent: false
+    requires_idempotency_key: true
+
+# Idempotency enforcement. The fixture publisher MUST enforce idempotency
+# on mutating tools (create_media_buy, sync_creatives) per the same rules
+# as a production seller. This is tested by the buyer-activation storyboard.
+
+idempotency:
+  description: |
+    The fixture publisher maintains an in-memory idempotency store keyed by
+    (tool_name, idempotency_key). On a mutating call:
+    1. If the key is new, execute the handler and cache the response.
+    2. If the key exists and the payload is equivalent, return the cached response.
+    3. If the key exists and the payload differs, return IDEMPOTENCY_CONFLICT.
+    4. Error responses are NOT cached (per AdCP rule 3).
+
+# Runner check kinds introduced for buyer storyboards.
+# These are registered in runner-output-contract.yaml's authored_check_kinds.
+
+buyer_check_kinds:
+  request_field_present:
+    description: "Asserts a field exists in the buyer's request payload."
+    parameters:
+      path: "JSON path to the field (dot-notation or bracket)"
+    grading: "pass if field is present and not null/undefined; fail otherwise"
+
+  request_field_in:
+    description: "Asserts a request field's value is in an allowed set."
+    parameters:
+      path: "JSON path to the field"
+      allowed: "Array of allowed values"
+    grading: "pass if field value is in allowed; fail otherwise"
+
+  request_field_format:
+    description: "Asserts a request field matches a named format."
+    parameters:
+      path: "JSON path to the field"
+      format: "Format name (e.g. uuid_v4, iso8601, url)"
+    grading: "pass if field value matches format; fail otherwise"
+
+  request_field_value:
+    description: "Asserts a request field equals a specific value."
+    parameters:
+      path: "JSON path to the field"
+      value: "Expected value (exact match)"
+    grading: "pass if field value equals expected; fail otherwise"
+
+  retry_delay:
+    description: "Asserts minimum delay between a failed attempt and retry."
+    parameters:
+      min_seconds: "Minimum seconds between the two calls"
+    grading: "pass if elapsed time >= min_seconds; fail otherwise"
+
+  response_handled:
+    description: "Asserts the buyer correctly handled a response type."
+    parameters:
+      response_type: "Expected response type (submitted, error, sync)"
+    grading: "pass if buyer's next action is appropriate for the response type"
+
+  task_called:
+    description: "Asserts a specific tool was called during this step."
+    parameters:
+      task: "Tool name that must have been called"
+    grading: "pass if tool was called at least once; fail otherwise"
+
+  task_not_called_before:
+    description: "Asserts a tool was NOT called before another tool."
+    parameters:
+      task: "Tool name that must not have been called"
+      before: "Tool name that must be called first"
+    grading: "pass if task was never called before the before tool; fail otherwise"
+
+  output_contains:
+    description: "Asserts the buyer's output contains a named structure."
+    parameters:
+      field: "Name of the expected output field or structure"
+    grading: "pass if buyer output includes the named field; fail otherwise"
+
+  output_field_present:
+    description: "Asserts a field exists in the buyer's structured output."
+    parameters:
+      path: "JSON path with optional wildcards (e.g. candidates[*].delivery_type)"
+    grading: "pass if path resolves to at least one value; fail otherwise"

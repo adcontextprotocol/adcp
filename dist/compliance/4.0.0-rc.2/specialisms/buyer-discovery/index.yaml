@@ -1,0 +1,219 @@
+id: buyer_discovery
+version: "0.1.0"
+title: "Buyer agent product discovery and candidate selection"
+protocol: media-buy
+category: buyer_discovery
+summary: "Buyer agent that discovers seller inventory, interprets product capabilities, and assembles a candidate shortlist from a brief."
+track: media_buy_buyer
+status: preview
+required_tools:
+  - get_products
+
+narrative: |
+  You are a buyer agent. A human operator gives you a campaign brief — budget,
+  audience, channels, flight dates, KPIs. Your job is to discover relevant
+  seller inventory across one or more agents, interpret the returned products
+  and pricing, and assemble a candidate shortlist the operator can review.
+
+  This storyboard tests the outbound half of the protocol: your agent calls
+  a fixture publisher (a reference sell-side agent that replays canned
+  responses keyed by scenario). Assertions are about your agent's decisions —
+  did it discover correctly, did it interpret capabilities, did it filter
+  appropriately — not about the fixture publisher's responses.
+
+  The fixture publisher advertises two product types: a guaranteed CTV product
+  and a non-guaranteed display product. Your agent must discover both, read
+  pricing and format requirements, and present a shortlist that correctly
+  reflects the seller's declared capabilities.
+
+  Key behaviors under test:
+  - Version negotiation: agent sends adcp_version only after confirming the
+    seller advertises the exact pin in supported_versions
+  - Capability gating: agent does not attempt compact lifecycle tools unless
+    the seller declares lifecycle_tools support
+  - Product interpretation: agent correctly reads delivery_type, pricing_options,
+    format_options, and audience_activation methods
+  - Brief-to-filter translation: agent maps the human brief into structured
+    get_products filters or a brief string
+  - Candidate ranking: agent presents products sorted by relevance to the brief
+
+agent:
+  interaction_model: media_buy_buyer
+  capabilities:
+    - buys_media
+    - discovers_products
+  examples:
+    - "DSP buyer agent"
+    - "Agency orchestrator"
+    - "Commerce-media buying agent"
+
+caller:
+  role: fixture_publisher
+  example: "AdCP fixture publisher (reference sell-side)"
+
+prerequisites:
+  description: |
+    The fixture publisher must be running and reachable. The buyer agent must
+    be configured with the fixture publisher's endpoint. No account setup is
+    required — the fixture publisher accepts buyer-declared accounts.
+
+fixtures:
+  fixture_publisher:
+    capabilities:
+      supported_protocols: ["media_buy"]
+      specialisms: ["sales-guaranteed", "sales-non-guaranteed"]
+      media_buy:
+        reporting_delivery_methods: ["webhook"]
+        supports_proposals: true
+        lifecycle_tools: ["list_products", "request_proposals", "buy_products", "accept_proposal", "control_media_buy"]
+      adcp:
+        supported_versions: ["3.2-beta.11", "3.1"]
+    products:
+      - product_id: "ctv_premium_guaranteed"
+        name: "Premium CTV — Guaranteed"
+        delivery_type: "guaranteed"
+        channels: ["ctv"]
+        pricing_options:
+          - pricing_option_id: "cpm_guaranteed"
+            pricing_model: "cpm"
+            currency: "USD"
+            rate: 35.00
+        format_options:
+          - format_option_id: "video_30s_ctv"
+            format_kind: "video_hosted"
+            params:
+              duration_ms_exact: 30000
+              width: 1920
+              height: 1080
+        audience_activation:
+          methods:
+            - pattern: "sync_audiences"
+      - product_id: "display_ron_auction"
+        name: "Run of Network Display — Auction"
+        delivery_type: "non_guaranteed"
+        channels: ["display"]
+        pricing_options:
+          - pricing_option_id: "cpm_auction"
+            pricing_model: "cpm"
+            currency: "USD"
+            floor_price: 3.00
+            price_guidance:
+              p50: 4.50
+              p75: 6.00
+        format_options:
+          - format_option_id: "display_300x250"
+            format_kind: "image"
+            params:
+              width: 300
+              height: 250
+
+phases:
+  - id: version_negotiation
+    title: "Version negotiation"
+    narrative: |
+      The buyer agent must discover the seller's supported versions before
+      sending any domain-specific requests. This phase verifies the agent
+      calls get_adcp_capabilities and reads supported_versions correctly.
+
+    steps:
+      - id: discover_capabilities
+        title: "Discover seller capabilities"
+        narrative: |
+          The buyer agent calls get_adcp_capabilities on the fixture publisher.
+          The agent must read the response and extract supported_versions,
+          supported_protocols, and media_buy capabilities before proceeding.
+        task: get_adcp_capabilities
+        expected: |
+          The buyer agent:
+          1. Calls get_adcp_capabilities before any media-buy task
+          2. Reads supported_versions from the response
+          3. Selects an exact version pin that the seller advertises
+          4. Does not send a version pin the seller does not advertise
+        validations:
+          - check: task_called
+            task: get_adcp_capabilities
+            description: "Buyer calls get_adcp_capabilities before domain tasks"
+          - check: task_not_called_before
+            task: get_products
+            before: get_adcp_capabilities
+            description: "Buyer does not call get_products before capability discovery"
+          - check: task_not_called_before
+            task: list_products
+            before: get_adcp_capabilities
+            description: "Buyer does not call list_products before capability discovery"
+
+  - id: product_discovery
+    title: "Product discovery from brief"
+    narrative: |
+      The buyer agent translates the campaign brief into a get_products or
+      list_products call and interprets the returned products.
+
+    steps:
+      - id: discover_products
+        title: "Discover products matching brief"
+        narrative: |
+          The buyer agent sends a brief or structured filters to discover
+          inventory. The fixture publisher returns two products: one guaranteed
+          CTV and one non-guaranteed display.
+        task: get_products
+        expected: |
+          The buyer agent:
+          1. Sends adcp_version matching a value from supported_versions
+          2. Includes a brief string or structured filters derived from the campaign brief
+          3. Includes account identification (brand domain and operator)
+          4. Receives and parses the product response correctly
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#buyer_discovery_discover_products"
+          buying_mode: "brief"
+          brief: "CTV and display inventory for outdoor lifestyle brand. Q4 flight, $50K budget. Adults 25-54, US."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "buyer_discovery--discover_products"
+        validations:
+          - check: request_field_present
+            path: "adcp_version"
+            description: "Buyer includes adcp_version in the request"
+          - check: request_field_in
+            path: "adcp_version"
+            allowed: ["3.2-beta.11", "3.1"]
+            description: "Buyer uses a version the seller advertises"
+          - check: request_field_present
+            path: "account"
+            description: "Buyer includes account identification"
+
+  - id: candidate_selection
+    title: "Candidate shortlist assembly"
+    narrative: |
+      The buyer agent interprets the discovered products and assembles a
+      candidate shortlist. This phase verifies the agent correctly reads
+      delivery_type, pricing, format requirements, and activation methods.
+
+    steps:
+      - id: interpret_products
+        title: "Interpret product capabilities"
+        narrative: |
+          The buyer agent must distinguish guaranteed from non-guaranteed
+          products, read pricing (fixed rate vs auction with floor/guidance),
+          understand creative format requirements, and note audience activation
+          methods. The agent presents a shortlist to the operator.
+        expected: |
+          The buyer agent:
+          1. Distinguishes delivery_type: guaranteed from non_guaranteed
+          2. Reads pricing_model and rate/floor_price/price_guidance correctly
+          3. Notes format_options requirements (video 30s 1080p for CTV, 300x250 image for display)
+          4. Notes audience_activation methods (sync_audiences for CTV)
+          5. Does not present products as guaranteed when they are non_guaranteed or vice versa
+          6. Presents a candidate shortlist with pricing and format context
+        validations:
+          - check: output_contains
+            field: "candidates"
+            description: "Buyer agent produces a candidate shortlist"
+          - check: output_field_present
+            path: "candidates[*].delivery_type"
+            description: "Each candidate includes delivery_type"
+          - check: output_field_present
+            path: "candidates[*].pricing"
+            description: "Each candidate includes pricing information"

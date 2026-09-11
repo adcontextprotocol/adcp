@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "macro-processing.schema.json",
+  "title": "Creative macro processing vectors",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "source": { "type": "string" },
+          "value": { "type": "string" },
+          "declaration": { "$ref": "/schemas/core/macro-declaration.json" },
+          "seller_capabilities": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/macro-resolution-capability.json" }
+          },
+          "product_capabilities": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/macro-resolution-capability.json" }
+          },
+          "expected": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["resolvable", "preserved_for_downstream", "unsupported", "ambiguous"]
+              },
+              "reason": { "$ref": "/schemas/enums/macro-resolution-reason.json" },
+              "output": { "type": "string" },
+              "emitted_declaration": { "$ref": "/schemas/core/macro-declaration.json" },
+              "final_output": { "type": "string" }
+            },
+            "required": ["status", "reason", "output"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "source", "declaration", "seller_capabilities", "product_capabilities", "expected"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["vectors"],
+  "additionalProperties": false
+}

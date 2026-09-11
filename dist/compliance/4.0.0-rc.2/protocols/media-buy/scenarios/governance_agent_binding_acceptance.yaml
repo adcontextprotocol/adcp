@@ -1,0 +1,187 @@
+id: media_buy_seller/governance_agent_binding_acceptance
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller rejects an unacceptable governance-agent binding"
+category: media_buy_seller
+summary: "Verifies capability-gated governance-agent allowlisting, typed rejection, and successful recovery without persisting the rejected binding."
+track: media_buy
+
+required_tools:
+  - sync_accounts
+  - sync_governance
+  - comply_test_controller
+
+requires_capability:
+  path: adcp.governance_enforcement.accepted_governance_agents.any_of
+  present: true
+
+narrative: |
+  Governance-agent acceptance is a seller binding constraint, not seller
+  authority over the buyer's plan. The advertised matcher is advisory before
+  account setup; sync_governance is authoritative for the account. A rejected
+  replacement returns a typed, optionally opaque disposition and must not be
+  persisted or erase the last accepted binding.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org/"
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Seller accepting an allowlisted governance endpoint"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The test-kit governance_agent_url satisfies the seller's advertised acceptance criteria."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: create_account
+    title: "Create the sandbox account"
+    steps:
+      - id: sync_binding_account
+        title: "Establish an account relationship"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        context_outputs:
+          - name: governance_binding_account_id
+            path: "accounts[0].account_id"
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#governance_agent_binding_account"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The account exists before governance binding"
+
+      - id: sync_accepted_governance_agent
+        title: "Persist the allowlisted endpoint"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.governance_binding_account_id"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "test-governance-token-xxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#governance_agent_binding_accepted"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "The advertised endpoint is accepted"
+          - check: field_value
+            path: "accounts[0].governance_agents[0].url"
+            value: "$context.governance_agent_url"
+            description: "The response reflects the persisted accepted binding"
+
+      - id: sync_unaccepted_governance_agent
+        title: "Attempt an off-list replacement"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.governance_binding_account_id"
+              governance_agents:
+                - url: "https://untrusted-governance.example/mcp"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "test-untrusted-token-xxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#governance_agent_binding_rejected"
+        validations:
+          - check: response_schema
+            description: "Typed per-account rejection remains schema-valid"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "failed"
+            description: "The seller refuses the unaccepted binding"
+          - check: field_value
+            path: "accounts[0].errors[0].code"
+            value: "GOVERNANCE_AGENT_NOT_ACCEPTED"
+            description: "The buyer can distinguish policy rejection from authentication failure"
+          - check: field_absent
+            path: "accounts[0].governance_agents"
+            description: "A failed response never represents the rejected endpoint as persisted"
+
+      - id: verify_prior_binding_retained
+        title: "Read the binding after the rejected replacement"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: query_account_governance_binding
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          scenario: query_account_governance_binding
+          params:
+            account:
+              account_id: "$context.governance_binding_account_id"
+          account:
+            account_id: "$context.governance_binding_account_id"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Controller response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "simulated.governance_agents[0].url"
+            value: "$context.governance_agent_url"
+            description: "The rejected replacement did not erase or replace the accepted binding"
+
+      - id: resync_accepted_governance_agent
+        title: "Retry with the advertised endpoint"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.governance_binding_account_id"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "test-governance-token-xxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#governance_agent_binding_recovery"
+        validations:
+          - check: response_schema
+            description: "The recovery response remains schema-valid"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "The rejected endpoint did not poison later valid binding"
+          - check: field_value
+            path: "accounts[0].governance_agents[0].url"
+            value: "$context.governance_agent_url"
+            description: "Only the accepted endpoint is represented as persisted"

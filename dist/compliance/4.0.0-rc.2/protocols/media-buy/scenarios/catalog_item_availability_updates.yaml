@@ -1,0 +1,877 @@
+id: media_buy_seller/catalog_item_availability_updates
+version: "1.0.0"
+title: "Buyer-managed catalog items support immediate availability updates"
+category: media_buy_seller
+summary: "Verifies capability-gated, atomic, synchronous suppression and restoration of buyer-managed catalog items."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: media_buy.features.catalog_item_availability_updates
+  equals: true
+
+required_tools:
+  - sync_catalogs
+  - comply_test_controller
+
+narrative: |
+  A seller advertising catalog_item_availability_updates accepts buyer-authored
+  suppress and restore operations through sync_catalogs. Duplicate composite
+  keys and expired suppressions fail before mutation. Successful overlays are
+  synchronous, revision-guarded, and survive ordinary catalog refreshes.
+  Immutable catalog generations prevent delayed writes after delete/recreate.
+  Lenient mode returns explicitly indexed positional results while preserving
+  inaccessible-reference equivalence.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - catalog_item_availability_updates
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller advertises both catalog_management and
+    catalog_item_availability_updates. The scenario creates its own buyer-managed
+    inline catalog before exercising availability state. Its sandbox
+    comply_test_controller advertises `catalog_item_availability_probe`; that
+    extension seeds a known cross-principal item, observes actual selection and
+    rendering eligibility, advances availability time deterministically, and
+    deletes/recreates the probe catalog while preserving its item content.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: availability_lifecycle
+    title: "Suppress and restore a buyer-managed item"
+    steps:
+      - id: seed_catalog
+        title: "Create a buyer-managed catalog"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_seed"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          catalogs:
+            - catalog_id: "availability_probe_v1"
+              type: "product"
+              name: "Availability probe"
+              items:
+                - item_id: "probe_item_1"
+                  title: "Availability probe item"
+                  url: "https://acmeoutdoor.example/products/probe-item-1"
+                  image_url: "https://cdn.acmeoutdoor.example/probe-item-1.jpg"
+                  price: { amount: 10.00, currency: "USD" }
+          context:
+            correlation_id: "catalog_item_availability--seed"
+        validations:
+          - check: response_schema
+            description: "Catalog creation response matches the canonical schema"
+          - check: field_present
+            path: "catalogs[0].action"
+            description: "Seller acknowledges the seeded catalog"
+          - check: field_present
+            path: "catalogs[0].catalog_generation"
+            description: "Seller identifies the immutable catalog incarnation"
+        context_outputs:
+          - name: availability_catalog_generation
+            path: "catalogs[0].catalog_generation"
+
+      - id: read_initial_state
+        title: "Read initial availability state and revision"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_initial_read"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_queries:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+        validations:
+          - check: response_schema
+            description: "Current-state response matches the canonical schema"
+          - check: field_value
+            path: "item_availability_states[0].request_index"
+            value: 0
+            description: "State result explicitly correlates to query position zero"
+          - check: field_value
+            path: "item_availability_states[0].availability"
+            value: "active"
+            description: "A newly ingested item begins without a buyer suppression"
+          - check: field_value
+            path: "item_availability_states[0].overlay_revision"
+            value: 0
+            description: "Initial buyer overlay revision is zero"
+        context_outputs:
+          - name: availability_revision_0
+            path: "item_availability_states[0].overlay_revision"
+
+      - id: seed_inaccessible_item
+        title: "Seed a known item under a different principal"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/verification/compliance-testing"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "catalog_item_availability_probe"
+          params:
+            operation: "seed_inaccessible_item"
+            catalog_id: "availability_foreign_v1"
+            item_id: "foreign_probe_item_1"
+        expected: |
+          Create the named catalog and item under a distinct synthetic account
+          and auth principal, return its generation to the runner, and grant the
+          caller no access to that catalog or item.
+        validations:
+          - check: response_schema
+            description: "Sandbox probe response matches the controller schema"
+          - check: field_present
+            path: "simulated.catalog_generation"
+            description: "The runner receives the known foreign generation without receiving access"
+        context_outputs:
+          - name: inaccessible_catalog_generation
+            path: "simulated.catalog_generation"
+
+      - id: reject_inaccessible_item
+        title: "Make an inaccessible item indistinguishable from a missing item"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_inaccessible"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "lenient"
+          item_availability_queries:
+            - catalog_id: "availability_foreign_v1"
+              catalog_generation: "$context.inaccessible_catalog_generation"
+              item_id: "foreign_probe_item_1"
+        validations:
+          - check: response_schema
+            description: "Inaccessible-reference response matches the canonical schema"
+          - check: field_value
+            path: "item_availability_states[0].status"
+            value: "failed"
+            description: "The known cross-principal item is not readable"
+          - check: field_value
+            path: "item_availability_states[0].errors[0].code"
+            value: "REFERENCE_NOT_FOUND"
+            description: "Inaccessible and missing items share one code"
+          - check: field_value
+            path: "item_availability_states[0].errors[0].message"
+            value: "Catalog item not found"
+            description: "Inaccessible and missing items share one message"
+          - check: field_value
+            path: "item_availability_states[0].errors[0].recovery"
+            value: "correctable"
+            description: "Inaccessible and missing items share one recovery class"
+          - check: field_absent
+            path: "item_availability_states[0].errors[0].details"
+            description: "Inaccessible errors disclose no resource metadata"
+          - check: field_absent
+            path: "item_availability_states[0].errors[0].field"
+            description: "Inaccessible errors disclose no failing lookup component"
+          - check: field_absent
+            path: "item_availability_states[0].errors[0].suggestion"
+            description: "Inaccessible errors disclose no corrective resource hints"
+          - check: field_absent
+            path: "item_availability_states[0].errors[0].issues"
+            description: "Inaccessible errors disclose no structured lookup diagnostics"
+          - check: field_absent
+            path: "item_availability_states[0].errors[0].retry_after"
+            description: "Inaccessible errors disclose no retry timing hint"
+
+      - id: reject_duplicate_key
+        title: "Reject a duplicate catalog/item key atomically"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_duplicate"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_0"
+              action: "suppress"
+              reason: "out_of_stock"
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_0"
+              action: "suppress"
+              reason: "out_of_stock"
+        expected: |
+          Reject with INVALID_REQUEST before applying either transition.
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Duplicate composite key is an operation-level failure"
+
+      - id: suppress_after_rejection
+        title: "Apply suppression after the rejected operation"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_suppress"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "strict"
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_0"
+              action: "suppress"
+              reason: "out_of_stock"
+        expected: |
+          Return a synchronous applied acknowledgement. Applied rather than
+          unchanged proves the rejected duplicate request did not mutate state.
+        validations:
+          - check: response_schema
+            description: "Suppression response matches the canonical schema"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "Availability updates complete synchronously"
+          - check: field_value
+            path: "item_availability_updates[0].request_index"
+            value: 0
+            description: "Update result explicitly correlates to request position zero"
+          - check: field_value
+            path: "item_availability_updates[0].status"
+            value: "applied"
+            description: "Suppression was newly persisted"
+          - check: field_present
+            path: "item_availability_updates[0].applied_at"
+            description: "Applied transition carries its timestamp"
+          - check: field_value
+            path: "item_availability_updates[0].overlay_revision"
+            value: 1
+            description: "Applied suppression increments the revision once"
+        context_outputs:
+          - name: availability_revision_1
+            path: "item_availability_updates[0].overlay_revision"
+
+      - id: verify_suppression_enforcement
+        title: "Verify suppression reaches every eligibility gate"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/verification/compliance-testing"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "catalog_item_availability_probe"
+          params:
+            operation: "query_eligibility"
+            catalog_id: "availability_probe_v1"
+            catalog_generation: "$context.availability_catalog_generation"
+            item_id: "probe_item_1"
+        expected: |
+          Observe the seller's actual selection, dynamic-rendering, and
+          lineage-known derived-creative gates, not merely the persisted
+          overlay record.
+        validations:
+          - check: response_schema
+            description: "Eligibility observation matches the controller schema"
+          - check: field_value
+            path: "simulated.selection_eligible"
+            value: false
+            description: "Suppressed item cannot be selected"
+          - check: field_value
+            path: "simulated.dynamic_render_eligible"
+            value: false
+            description: "Suppressed item cannot be dynamically rendered"
+          - check: field_value
+            path: "simulated.known_derived_creatives_eligible"
+            value: false
+            description: "Cached or pre-generated derivatives with known lineage cannot serve"
+
+      - id: replay_suppression
+        title: "Replay returns the exact historical acknowledgement"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_suppress"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "strict"
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_0"
+              action: "suppress"
+              reason: "out_of_stock"
+        validations:
+          - check: response_schema
+            description: "Idempotent replay retains the original response shape"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Seller marks the cached response as historical"
+          - check: field_value
+            path: "item_availability_updates[0].overlay_revision"
+            value: 1
+            description: "Replay does not increment the overlay revision"
+
+      - id: refresh_catalog
+        title: "Refresh the catalog without clearing suppression"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_refresh"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          catalogs:
+            - catalog_id: "availability_probe_v1"
+              type: "product"
+              name: "Availability probe refreshed"
+              items:
+                - item_id: "probe_item_1"
+                  title: "Availability probe item refreshed"
+                  url: "https://acmeoutdoor.example/products/probe-item-1"
+                  image_url: "https://cdn.acmeoutdoor.example/probe-item-1.jpg"
+                  price: { amount: 11.00, currency: "USD" }
+        validations:
+          - check: response_schema
+            description: "Ordinary catalog refresh remains valid"
+
+      - id: suppression_survives_refresh
+        title: "Observe persisted suppression after catalog refresh"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_unchanged"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_queries:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+        validations:
+          - check: response_schema
+            description: "Post-refresh state query matches the schema"
+          - check: field_value
+            path: "item_availability_states[0].availability"
+            value: "suppressed"
+            description: "Feed refresh did not clear the buyer overlay"
+          - check: field_value
+            path: "item_availability_states[0].overlay_revision"
+            value: 1
+            description: "Feed refresh did not change the overlay revision"
+
+      - id: lenient_positional_failure
+        title: "Return positional results in lenient mode"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_lenient"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "lenient"
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_1"
+              action: "restore"
+              reason: "back_in_stock"
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "not_visible_or_missing"
+              expected_overlay_revision: 0
+              action: "restore"
+              reason: "back_in_stock"
+        validations:
+          - check: response_schema
+            description: "Lenient mixed response matches the canonical schema"
+          - check: field_value
+            path: "item_availability_updates[0].request_index"
+            value: 0
+            description: "Valid result retains request position zero"
+          - check: field_value
+            path: "item_availability_updates[0].status"
+            value: "applied"
+            description: "Valid restore is applied"
+          - check: field_value
+            path: "item_availability_updates[1].request_index"
+            value: 1
+            description: "Failed result retains request position one"
+          - check: field_value
+            path: "item_availability_updates[1].status"
+            value: "failed"
+            description: "Restore of an absent item without prior overlay state fails in its request position"
+          - check: field_value
+            path: "item_availability_updates[1].errors[0].code"
+            value: "REFERENCE_NOT_FOUND"
+            description: "Missing and inaccessible references use the same code"
+          - check: field_value
+            path: "item_availability_updates[1].errors[0].message"
+            value: "Catalog item not found"
+            description: "Reference failures use the normalized non-enumerating message"
+          - check: field_value
+            path: "item_availability_updates[1].errors[0].recovery"
+            value: "correctable"
+            description: "Reference failures use the normalized recovery class"
+          - check: field_absent
+            path: "item_availability_updates[1].errors[0].details"
+            description: "Reference failures disclose no resource metadata"
+          - check: field_absent
+            path: "item_availability_updates[1].errors[0].field"
+            description: "Reference failures do not disclose which lookup component failed"
+          - check: field_absent
+            path: "item_availability_updates[1].errors[0].suggestion"
+            description: "Reference failures do not disclose corrective resource hints"
+          - check: field_absent
+            path: "item_availability_updates[1].errors[0].issues"
+            description: "Reference failures do not disclose structured lookup diagnostics"
+          - check: field_absent
+            path: "item_availability_updates[1].errors[0].retry_after"
+            description: "Reference failures do not create a timing side channel through retry hints"
+        context_outputs:
+          - name: availability_revision_2
+            path: "item_availability_updates[0].overlay_revision"
+
+      - id: suppress_with_expiry
+        title: "Apply a suppression with automatic expiry"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_future_expiry"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_2"
+              action: "suppress"
+              reason: "time_window_expired"
+              expires_at: "2099-01-01T00:00:00Z"
+        validations:
+          - check: response_schema
+            description: "Expiring suppression response matches the schema"
+          - check: field_value
+            path: "item_availability_updates[0].status"
+            value: "applied"
+            description: "Future expiry is persisted"
+          - check: field_value
+            path: "item_availability_updates[0].overlay_revision"
+            value: 3
+            description: "Expiring suppression increments the revision once"
+        context_outputs:
+          - name: availability_revision_3
+            path: "item_availability_updates[0].overlay_revision"
+
+      - id: advance_past_expiry
+        title: "Advance the sandbox clock past automatic expiry"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/verification/compliance-testing"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "catalog_item_availability_probe"
+          params:
+            operation: "advance_time"
+            catalog_id: "availability_probe_v1"
+            catalog_generation: "$context.availability_catalog_generation"
+            item_id: "probe_item_1"
+            target_time: "2099-01-01T00:00:01Z"
+        validations:
+          - check: response_schema
+            description: "Clock advancement matches the controller schema"
+          - check: field_value
+            path: "simulated.expiry_processed"
+            value: true
+            description: "Seller processed the automatic expiry before returning"
+
+      - id: verify_automatic_restore
+        title: "Read automatically restored state"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_expiry_read"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_queries:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+        validations:
+          - check: field_value
+            path: "item_availability_states[0].availability"
+            value: "active"
+            description: "Expiry automatically removes the buyer suppression"
+          - check: field_value
+            path: "item_availability_states[0].overlay_revision"
+            value: 4
+            description: "Automatic expiry increments the revision exactly once"
+          - check: field_absent
+            path: "item_availability_states[0].expires_at"
+            description: "Restored state no longer carries an expiry"
+        context_outputs:
+          - name: availability_revision_4
+            path: "item_availability_states[0].overlay_revision"
+
+      - id: reject_stale_revision
+        title: "Reject a stale concurrent update"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_stale_revision"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "strict"
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_1"
+              action: "suppress"
+              reason: "buyer_request"
+        validations:
+          - check: error_code
+            value: "CONFLICT"
+            description: "A stale optimistic-concurrency token cannot overwrite current state"
+
+      - id: reject_past_expiry
+        title: "Reject an already-expired suppression"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_past_expiry"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_4"
+              action: "suppress"
+              reason: "buyer_request"
+              expires_at: "2020-01-01T00:00:00Z"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Past expiry is rejected before mutation"
+
+      - id: reject_mixed_request_atomically
+        title: "Reject an invalid mixed request before either mutation"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_mixed_atomic"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "strict"
+          catalogs:
+            - catalog_id: "availability_probe_v1"
+              type: "product"
+              name: "MUST NOT COMMIT"
+              items:
+                - item_id: "probe_item_1"
+                  title: "MUST NOT COMMIT"
+                  url: "https://acmeoutdoor.example/products/probe-item-1"
+                  image_url: "https://cdn.acmeoutdoor.example/probe-item-1.jpg"
+                  price: { amount: 99.00, currency: "USD" }
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "stale_generation_must_not_match"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_4"
+              action: "suppress"
+              reason: "buyer_request"
+        validations:
+          - check: error_code
+            value: "REFERENCE_NOT_FOUND"
+            description: "A stale generation rejects the complete strict mixed operation"
+
+      - id: verify_mixed_catalog_rollback
+        title: "Verify the mixed catalog change was not committed"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_verify_atomic"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          catalogs:
+            - catalog_id: "availability_probe_v1"
+              type: "product"
+              name: "Availability probe refreshed"
+              items:
+                - item_id: "probe_item_1"
+                  title: "Availability probe item refreshed"
+                  url: "https://acmeoutdoor.example/products/probe-item-1"
+                  image_url: "https://cdn.acmeoutdoor.example/probe-item-1.jpg"
+                  price: { amount: 11.00, currency: "USD" }
+        validations:
+          - check: response_schema
+            description: "Rollback verification response matches the schema"
+          - check: field_value
+            path: "catalogs[0].action"
+            value: "unchanged"
+            description: "Exact pre-error catalog state remains, proving no partial catalog commit"
+
+      - id: verify_state_after_rejections
+        title: "Verify rejected operations did not change availability"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_verify_state"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_queries:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+        validations:
+          - check: field_value
+            path: "item_availability_states[0].availability"
+            value: "active"
+            description: "Restore remains current after stale, expiry, and mixed-request failures"
+          - check: field_value
+            path: "item_availability_states[0].overlay_revision"
+            value: 4
+            description: "Rejected operations did not increment the revision"
+
+      - id: recreate_catalog_generation
+        title: "Delete and recreate the catalog with the same buyer ID"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/verification/compliance-testing"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "catalog_item_availability_probe"
+          params:
+            operation: "recreate_catalog"
+            catalog_id: "availability_probe_v1"
+            catalog_generation: "$context.availability_catalog_generation"
+            item_id: "probe_item_1"
+        expected: |
+          Delete the current catalog incarnation and recreate the same catalog_id
+          and item content. Return the new generation and initial overlay revision.
+        validations:
+          - check: response_schema
+            description: "Recreation response matches the controller schema"
+          - check: field_value
+            path: "simulated.generation_rotated"
+            value: true
+            description: "Delete/recreate changes the immutable generation"
+          - check: field_value
+            path: "simulated.overlay_revision"
+            value: 0
+            description: "The recreated item starts at revision zero"
+          - check: field_present
+            path: "simulated.catalog_generation"
+            description: "The recreated catalog exposes its new generation"
+        context_outputs:
+          - name: recreated_catalog_generation
+            path: "simulated.catalog_generation"
+
+      - id: reject_old_generation_after_recreate
+        title: "Reject a delayed write from the deleted incarnation"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_deleted_generation"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          validation_mode: "strict"
+          item_availability_updates:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.availability_catalog_generation"
+              item_id: "probe_item_1"
+              expected_overlay_revision: "$context.availability_revision_4"
+              action: "suppress"
+              reason: "buyer_request"
+        validations:
+          - check: error_code
+            value: "REFERENCE_NOT_FOUND"
+            description: "The old incarnation is observationally absent"
+          - check: field_value
+            path: "errors[0].message"
+            value: "Catalog item not found"
+            description: "Stale generation uses the normalized privacy-safe message"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "correctable"
+            description: "Stale generation uses the normalized recovery class"
+          - check: field_absent
+            path: "errors[0].details"
+            description: "Stale generation discloses no replacement-generation metadata"
+
+      - id: verify_recreated_state
+        title: "Verify the recreated incarnation remained unchanged"
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#catalog_item_availability_recreated_read"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          item_availability_queries:
+            - catalog_id: "availability_probe_v1"
+              catalog_generation: "$context.recreated_catalog_generation"
+              item_id: "probe_item_1"
+        validations:
+          - check: response_schema
+            description: "Recreated state response matches the canonical schema"
+          - check: field_value
+            path: "item_availability_states[0].availability"
+            value: "active"
+            description: "Delayed old-generation write did not suppress the recreated item"
+          - check: field_value
+            path: "item_availability_states[0].overlay_revision"
+            value: 0
+            description: "Delayed old-generation write did not increment the recreated revision"
