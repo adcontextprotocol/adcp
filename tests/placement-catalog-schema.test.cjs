@@ -794,6 +794,30 @@ test('product dooh_inventory_summary accepts aggregate venue counts and requires
     'metro rows must declare system'
   );
 
+  assert.equal(
+    validateProduct(
+      validProduct({
+        dooh_inventory_summary: {
+          venue_counts: [{ geo_level: 'metro', system: 'nielsen', geo_code: '501', count: 87 }]
+        }
+      })
+    ),
+    false,
+    'metro system must be a real metro-system.json enum value, not an arbitrary string'
+  );
+
+  assert.equal(
+    validateProduct(
+      validProduct({
+        dooh_inventory_summary: {
+          venue_counts: [{ geo_level: 'country', geo_code: 'USA', count: 412 }]
+        }
+      })
+    ),
+    false,
+    'country geo_code must be ISO 3166-1 alpha-2, not a 3-letter code'
+  );
+
   const validateCanonicalProduct = await compile('/schemas/core/canonical-product.json');
   assert.equal(
     validateCanonicalProduct({
