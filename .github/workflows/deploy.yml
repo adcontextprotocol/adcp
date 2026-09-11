@@ -12,10 +12,6 @@ permissions:
   actions: read
   contents: read
 
-concurrency:
-  group: fly-deploy
-  cancel-in-progress: false
-
 jobs:
   # Preflight: cheap sanity checks that must pass before we spend the
   # Fly build/deploy budget. If main has a broken state (e.g. two PRs
@@ -109,6 +105,11 @@ jobs:
     name: Deploy to Fly.io
     needs: preflight
     if: needs.preflight.outputs.deploy_current == 'true' && (needs.preflight.outputs.evaluator_required == 'false' || needs.preflight.outputs.evaluator_provisioned == 'true')
+    # Acquire the shared deploy slot only after preflight accepts this run.
+    # Ignored workflow completions must not replace a pending valid release.
+    concurrency:
+      group: fly-deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       # This must precede every flyctl invocation. In particular, staging the

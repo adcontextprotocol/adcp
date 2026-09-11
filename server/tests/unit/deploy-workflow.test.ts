@@ -5,7 +5,8 @@ import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 type Step = { name: string; if?: string; run?: string };
-type Workflow = { jobs: Record<string, { if: string; steps: Step[] }> };
+type Concurrency = { group: string; 'cancel-in-progress': boolean };
+type Workflow = { concurrency?: Concurrency; jobs: Record<string, { if: string; steps: Step[]; concurrency?: Concurrency }> };
 const readWorkflow = (name: string): Workflow => parse(readFileSync(
   new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), 'utf8',
 ));
@@ -26,6 +27,14 @@ function accepts(mode: string, name = 'Build Check', event = 'push', overrides =
 }
 
 describe('application and protected evaluator deployment', () => {
+  it('reserves the deploy slot only for jobs accepted by preflight', () => {
+    expect(deploy.concurrency).toBeUndefined();
+    expect(deploy.jobs.preflight.concurrency).toBeUndefined();
+    expect(deploy.jobs.deploy.concurrency).toEqual({
+      group: 'fly-deploy', 'cancel-in-progress': false,
+    });
+  });
+
   it.each(['', 'false'])('deploys successful main builds in ordinary mode %j', mode => {
     expect(accepts(mode)).toBe(true);
     expect(accepts(mode, 'Provision matched-v4 evaluator schema', 'workflow_run')).toBe(false);
