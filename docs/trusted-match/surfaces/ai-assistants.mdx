@@ -33,9 +33,6 @@ When a user sends a message in a conversation, the AI platform sends a Context M
   "property_type": "ai_assistant",
   "placement_id": "chat-inline-recommendation",
   "seller_agent_url": "https://chatplatform.example",
-  "artifact_refs": [
-    { "type": "custom", "value": "turn:b3c9e2" }
-  ],
   "context_signals": {
     "topics": ["479", "483", "592"],
     "taxonomy_source": "iab",
@@ -50,7 +47,7 @@ When a user sends a message in a conversation, the AI platform sends a Context M
 }
 ```
 
-Conversation turns are ephemeral — there's no public reference a buyer could independently resolve, so `artifact_refs` are typically limited to opaque turn identifiers (e.g., `turn:b3c9e2`). The platform sends bounded topics and policy-filtered, non-verbatim keywords or summaries so the buyer can evaluate relevance without seeing the raw conversation. It MUST NOT send an embedding derived from the turn. No user identity or uniquely identifying detail is present. Platforms can also send the full conversation as an `artifact` for buyers governed to evaluate content directly — the same artifact schema used for content standards evaluation.
+Conversation turns are ephemeral — there's no public reference a buyer could independently resolve, so the platform omits `artifact_refs` and sends only privacy-reduced `context_signals`. The platform sends bounded topics and policy-filtered, non-verbatim keywords or summaries so the buyer can evaluate relevance without seeing the raw conversation. It MUST NOT send an embedding derived from the turn. No user identity or uniquely identifying detail is present. Platforms can also send the full conversation as an `artifact` for buyers governed to evaluate content directly — the same artifact schema used for content standards evaluation.
 
 The buyer agent responds with an offer:
 
