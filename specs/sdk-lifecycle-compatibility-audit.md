@@ -43,8 +43,12 @@ from compact handlers. That is the remaining premise behind #7403.
 All three releases embed protocol `3.2.0-rc.1`. That is schema/checkpoint
 parity, not parity of workflow helpers. TypeScript's relevant coordinator and
 compatibility guide have no changes between the audited RC.33 and RC.35 tags.
-The TypeScript matrix fixtures use bundled `3.0.25`, `3.1.18`, and
+The original TypeScript matrix used bundled `3.0.25`, `3.1.18`, and
 `3.2.0-rc.1`; issue #7403's field comparison uses released `3.1.19`.
+The review follow-up reads the stable request pin from `dist/schemas/latest.json`.
+Rerunning with its `3.1.21` pin produced the same nine routing outcomes on both
+SDK releases. Accepting that request pin does not establish that the SDK embeds
+the newer patch's schemas.
 
 This audit uses local fixtures and release tests, not live partner accounts or
 archived old SDK binaries. The buyer versions below describe the API/wire
@@ -224,11 +228,15 @@ than another lifecycle policy.
 
 Note on current reach: sub-country coverage predicates — `metros`, `regions`,
 `postal_areas`, and `geo_proximity` — have no compact home in
-`core/product-offer-filters.json`. For those predicates, this section's
-rule (do not drop eligibility predicates; do not convert coverage into
-targeting) is jointly unsatisfiable under current compact internals: refusal
-is the only currently compliant path. The schema gap is tracked in
-[#7403](https://github.com/adcontextprotocol/adcp/issues/7403).
+`core/product-offer-filters.json`. An adapter restricted to those compact
+fields cannot preserve these predicates by field translation; delivery
+targeting is not an equivalent substitute. If it has no other way to evaluate
+the original coverage predicate, it must refuse rather than silently weaken
+the query. A seller retaining legacy coverage-filtering logic in its shared
+services can still honor the raw 3.1 request. An SDK coordinator alone cannot
+supply the missing compact vocabulary. Extending the existing coverage-filter
+family is tracked in [#7403](https://github.com/adcontextprotocol/adcp/issues/7403);
+the schema change is separate from this audit.
 
 ## Making adoption smoother now
 
