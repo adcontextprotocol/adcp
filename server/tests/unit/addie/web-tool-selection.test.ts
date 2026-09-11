@@ -60,6 +60,21 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
+  it('keeps exact analytics callable alongside member lists only for admins', async () => {
+    const names = getToolsForSets(['admin_organization_member_records'], true, false);
+    const selected = await select(routerFor(['admin_organization_member_records']), true, {
+      tools: [], handlers: new Map(),
+    }, names);
+    expect(selected.allowedToolNames).toContain('list_paying_members');
+    expect(selected.allowedToolNames).toContain('query_admin_analytics');
+
+    const member = await select(routerFor(['admin_organization_member_records']), false, {
+      tools: [], handlers: new Map(),
+    }, names);
+    expect(member.allowedToolNames).not.toContain('query_admin_analytics');
+    expect(member.allowedToolNames).not.toContain('list_paying_members');
+  });
+
   it('selects bounded member tools without an implicit knowledge overlay', async () => {
     const router = routerFor(['member_billing']);
     const selected = await select(router);

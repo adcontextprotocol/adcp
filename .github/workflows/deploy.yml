@@ -253,7 +253,15 @@ jobs:
           echo "Fly release before deployment: v${before_release_version}"
 
           set +e
-          flyctl deploy --remote-only --wait-timeout 300
+          # Keep the serving web fleet intact until every replacement passes
+          # /ready. Update the singleton worker separately to avoid overlapping
+          # scheduled jobs. Both deployments use the one image built here;
+          # the first runs migrations, the second explicitly skips them.
+          image_label="app-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          flyctl deploy --remote-only --process-groups web --strategy bluegreen \
+            --wait-timeout 600 --image-label "$image_label" && \
+          flyctl deploy --image "registry.fly.io/adcp-docs:${image_label}" \
+            --process-groups worker --strategy rolling --skip-release-command --wait-timeout 600
           deploy_exit=$?
           set -euo pipefail
           if [ $deploy_exit -eq 0 ]; then

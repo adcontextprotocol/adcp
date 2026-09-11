@@ -341,13 +341,13 @@ describe('getToolsForSets', () => {
         'merge_organizations', 'find_duplicate_orgs', 'check_domain_health', 'manage_organization_domains',
       ]);
       expect(ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS).toEqual([
-        'update_org_member_role', 'list_slack_users_by_org', 'list_paying_members', 'update_member_logo', 'update_member_profile',
+        'update_org_member_role', 'list_slack_users_by_org', 'list_paying_members', 'query_admin_analytics', 'update_member_logo', 'update_member_profile',
       ]);
       expect(ADMIN_ORGANIZATIONS_TOOLS).toEqual([
         ...ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
         ...ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
       ]);
-      expect(ADMIN_ORGANIZATIONS_TOOLS).toHaveLength(9);
+      expect(ADMIN_ORGANIZATIONS_TOOLS).toHaveLength(10);
       expect(TOOL_SETS.admin_organizations.tools).toEqual(ADMIN_ORGANIZATIONS_TOOLS);
       expect(TOOL_SETS.admin_organizations.routerVisible).toBe(false);
       expect(getValidToolSetNames(true).has('admin_organizations')).toBe(false);

@@ -181,6 +181,24 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       [chosen.message_id])).rejects.toThrow('check constraint');
   });
 
+  it('does not present partial or in-flight provider costs as a complete comparison total', async () => {
+    const thread = await threadService.getOrCreateThread({
+      channel: 'web', external_id: `${TEST_WEB_EXTERNAL_ID}-cost-completeness`, user_type: 'anonymous',
+    });
+    await pool.query(`INSERT INTO addie_chat_experiment_turns
+      (id, experiment, thread_id, user_id, arm, cohort, exclusion_reason, started_at, completed_at, usage_complete, estimated_cost_micros)
+      VALUES (gen_random_uuid(), $1, $2, 'test-pricing', 'control', 'manual', 'test-pricing', now(), now(), false, 1000000)`,
+    [GEMINI_DIRECT_EXPERIMENT, thread.thread_id]);
+    const costRow = async () => (await getGeminiDirectResults()).cohorts.find(row => row.exclusion_reason === 'test-pricing')!;
+    expect(await costRow()).toMatchObject({ estimated_cost_usd: null, estimated_cost_per_marked_resolution_usd: null });
+    expect(Number((await costRow()).recorded_cost_usd)).toBe(1);
+
+    await pool.query('UPDATE addie_chat_experiment_turns SET usage_complete = true WHERE thread_id = $1', [thread.thread_id]);
+    expect(Number((await costRow()).estimated_cost_usd)).toBe(1);
+    await pool.query('UPDATE addie_chat_experiment_turns SET completed_at = NULL WHERE thread_id = $1', [thread.thread_id]);
+    expect((await costRow()).estimated_cost_usd).toBeNull();
+  });
+
   describe('addMessage', () => {
     it('allows a later identical mutation after an exact successful receipt settles its reservation', async () => {
       const thread = await threadService.getOrCreateThread({

@@ -27,6 +27,40 @@ function accepts(mode: string, name = 'Build Check', event = 'push', overrides =
 }
 
 describe('application and protected evaluator deployment', () => {
+  it.each([
+    [0, 0, 2, 0],
+    [42, 0, 1, 42],
+    [0, 43, 2, 43],
+  ])('replaces web before updating the worker and stops on failure (%s, %s)', (webExit, workerExit, calls, expectedExit) => {
+    const script = deploy.jobs.deploy.steps.find(step => step.name === 'Deploy')!.run!;
+    const start = script.indexOf('          set +e'.trim());
+    const end = script.indexOf('deploy_exit=$?', start) + 'deploy_exit=$?'.length;
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const output = execFileSync('bash', ['-c', `
+      flyctl() {
+        printf '%s\\n' "$*"
+        case " $* " in
+          *" --process-groups web "*) return ${webExit} ;;
+          *" --process-groups worker "*) return ${workerExit} ;;
+          *) return 99 ;;
+        esac
+      }
+      ${script.slice(start, end)}
+      printf 'exit=%s\\n' "$deploy_exit"
+    `], { encoding: 'utf8', env: { ...process.env, GITHUB_SHA: 'abc123', GITHUB_RUN_ID: '17', GITHUB_RUN_ATTEMPT: '2' } });
+    const lines = output.trim().split('\n');
+    expect(lines).toHaveLength(calls + 1);
+    expect(lines[0]).toContain('--process-groups web --strategy bluegreen');
+    expect(lines[0]).toContain('--image-label app-abc123-17-2');
+    expect(lines[0]).not.toContain('--skip-release-command');
+    if (calls === 2) {
+      expect(lines[1]).toContain('--image registry.fly.io/adcp-docs:app-abc123-17-2');
+      expect(lines[1]).toContain('--process-groups worker --strategy rolling --skip-release-command');
+    }
+    expect(lines.at(-1)).toBe(`exit=${expectedExit}`);
+  });
+
   it('reserves the deploy slot only for jobs accepted by preflight', () => {
     expect(deploy.concurrency).toBeUndefined();
     expect(deploy.jobs.preflight.concurrency).toBeUndefined();

@@ -1811,7 +1811,7 @@ Add, remove, list, set primary, or reconcile verified domains for an organizatio
 
 ## admin_organization_member_records (admin only)
 
-Manage organization-member roles, Slack rosters, paid-member records, and directory profiles (admin only)
+Count or list paying memberships, inspect membership breakdowns, and manage organization-member roles, Slack rosters, and directory profiles (admin only)
 
 ### `update_org_member_role`
 
@@ -1834,9 +1834,15 @@ List Slack users from a specific organization.
 
 ### `list_paying_members`
 
-List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.
+List a limited page of paying memberships grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual), with names and primary contacts. The summary counts all matching memberships before the row limit. Includes individuals by default; include_individual: false selects organizations only. For a count or membership breakdown without contact details, use query_admin_analytics with view=platform_stats.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `query_admin_analytics`
+
+Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships. Use memberships.active_by_type for the individual/organization split and memberships.active_by_membership_tier for subscription tiers; these breakdowns use the same active population and each sums to memberships.active. This counts memberships, not people. organizations.by_type and organizations.by_membership_tier cover ALL records, including non-paying records; never use them to break down the paying total. Prefer this aggregate tool for counts and breakdowns; use list_paying_members for names and contacts.
+
+*Source: `server/src/addie/mcp/admin-analytics.ts`*
 
 ### `update_member_logo`
 
@@ -1860,7 +1866,7 @@ Query community analytics or review flagged conversations (admin only)
 
 ### `query_admin_analytics`
 
-Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships, including individual and organization subscriptions. This counts memberships, not people. Use this live view for current totals; documentation and paginated member lists cannot provide an exact current count.
+Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships. Use memberships.active_by_type for the individual/organization split and memberships.active_by_membership_tier for subscription tiers; these breakdowns use the same active population and each sums to memberships.active. This counts memberships, not people. organizations.by_type and organizations.by_membership_tier cover ALL records, including non-paying records; never use them to break down the paying total. Prefer this aggregate tool for counts and breakdowns; use list_paying_members for names and contacts.
 
 *Source: `server/src/addie/mcp/admin-analytics.ts`*
 

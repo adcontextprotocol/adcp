@@ -755,6 +755,7 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Outreach performance, history, or action items → ["outreach_reporting"]
 - Person/account lookup, contact creation, or sending outreach → ["outreach_contact_management"]
 - Requests needing reporting plus contact work may select both; never use the hidden legacy alias.
+- Current paying-member counts, active membership breakdowns, and platform totals → ["admin_conversation_review"] (query_admin_analytics; use the aggregate, not a member/contact list)
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_conversation_review"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]
 - Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge

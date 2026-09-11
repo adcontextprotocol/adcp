@@ -88,7 +88,7 @@ import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
-import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { createAddieChatRouter, isWebChatReady } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
@@ -3078,7 +3078,7 @@ export class HTTPServer {
     // Health check - verifies critical services are operational.
     // Returns 503 when the database is unreachable so Fly's load balancer
     // stops routing DB-dependent traffic to this machine.
-    this.app.get("/health", async (req, res) => {
+    this.app.get(["/health", "/ready"], async (req, res) => {
       const checks: Record<string, boolean> = {};
       let dbError: string | null = null;
 
@@ -3129,8 +3129,15 @@ export class HTTPServer {
 
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
+      checks.chat = isWebChatReady();
 
-      const status = checks.database ? "ok" : "unavailable";
+      // A listening socket and a reachable database do not mean a new web
+      // instance can answer chat. Hold deployment traffic until deferred
+      // indexing and tool registration finish. /health remains a DB/liveness
+      // probe for workers and operational diagnostics.
+      const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
+      const ready = checks.database && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
         checks,
@@ -3139,7 +3146,7 @@ export class HTTPServer {
           using_database: true,
         },
       };
-      res.status(checks.database ? 200 : 503).json(body);
+      res.status(ready ? 200 : 503).json(body);
     });
 
     // Build job status response for the local machine
@@ -10478,16 +10485,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     }
 
-    // Pre-warm caches for all agents in background
-    const allAgents = await this.agentService.listAgents();
-    logger.debug({ agentCount: allAgents.length }, 'Pre-warming caches');
-
-    // Don't await - let this run in background
-    this.prewarmCaches(allAgents).then(() => {
-      logger.debug('Cache pre-warming complete');
-    }).catch(err => {
-      logger.error({ err }, 'Cache pre-warming failed');
-    });
+    // Agent health, capabilities, and properties populate their caches on
+    // demand. Do not fan out to every agent during each machine's cold start:
+    // that overlaps large responses with Addie's indexing and live traffic.
 
     // Scheduled jobs and crawlers only run on the worker process.
     // processRole is resolved once in logger.ts from FLY_PROCESS_GROUP;
@@ -10662,25 +10662,4 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info('Graceful shutdown complete');
   }
 
-  private async prewarmCaches(agents: any[]): Promise<void> {
-    await Promise.all(
-      agents.map(async (agent) => {
-        try {
-          // Warm health and stats caches
-          await Promise.all([
-            this.healthChecker.checkHealth(agent),
-            this.healthChecker.getStats(agent),
-            this.capabilityDiscovery.discoverCapabilities(agent),
-          ]);
-
-          // Warm type-specific caches
-          if (agent.type === "sales") {
-            await this.propertiesService.getPropertiesForAgent(agent);
-          }
-        } catch (error) {
-          // Errors are expected for offline agents, just continue
-        }
-      })
-    );
-  }
 }
