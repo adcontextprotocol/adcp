@@ -7555,6 +7555,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           provenance: run.provenance_json ?? null,
           requested_compliance_target: run.requested_compliance_target ?? null,
           adcp_version: run.adcp_version ?? null,
+          runner_capability_version: run.runner_capability_version ?? null,
           overall_status: run.overall_status,
           headline: publicComplianceHeadline(run.overall_status, run.headline),
           tracks_passed: run.tracks_passed,
