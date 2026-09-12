@@ -81,13 +81,15 @@ const reconciledOffering = {
   },
 };
 
-// The complete Core capability block: no receipt task, no push
-// notification, no managed-delivery retention or revocation machinery.
+// The complete Core capability block: buyer status sync uses the existing
+// inbound task transport; there is no billing receipt task, reverse endpoint,
+// push notification, or managed-delivery retention/revocation machinery.
 const coreCapabilities = {
   supported: true,
   reliable_reporting_version: '1.0',
   configuration_task: 'sync_accounts',
   status_task: 'get_reporting_status',
+  consumer_status_task: 'sync_reporting_status',
   revision_content_task: 'get_media_buy_delivery',
   offerings: [coreOffering],
   automated_recovery_window_seconds: 21600,
@@ -208,8 +210,9 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     assert.equal(offering.definitions.ReportingDeliveryPattern.title, 'Reporting Delivery Pattern');
   });
 
-  it('accepts a Core capability block with no receipt, push, or managed-delivery fields', () => {
+  it('accepts Core consumer status with no receipt, push, or managed-delivery fields', () => {
     assert.equal(validateCapabilities(coreCapabilities), true, JSON.stringify(validateCapabilities.errors));
+    assert.equal(coreCapabilities.consumer_status_task, 'sync_reporting_status');
 
     for (const forbidden of ['receipt_task', 'readiness_notification', 'managed_delivery', 'reconciled_billing', 'resource_retention_days', 'authorization_revocation_seconds']) {
       assert.equal(forbidden in coreCapabilities, false, `${forbidden} must not be needed for Core`);

@@ -33,12 +33,11 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const { schemas } = loadRepresentativeMediaBuyRuntime();
   const report = analyzeInputSchemaWeights(schemas);
 
-  assert.equal(report.tool_count, 18);
-  // Main's shared reporting native-version reference adds one instance and
-  // one unique definition; exact Reliable Reporting reads add the shared
-  // pagination-request closure as a second transitive instance.
-  assert.equal(report.definition_instances, 615);
-  assert.equal(report.unique_definitions, 167);
+  assert.equal(report.tool_count, 19);
+  // Exact Reliable Reporting reads include the shared pagination closure;
+  // consumer-status sync adds one compact tool and its status definition.
+  assert.equal(report.definition_instances, 622);
+  assert.equal(report.unique_definitions, 168);
   assert.equal(report.repeated_definitions, 117);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -159,7 +158,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 167);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 168);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -218,7 +217,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   const variants = report.variants;
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
-  assert.equal(report.selection.tools.length, 18);
+  assert.equal(report.selection.tools.length, 19);
   // Tolerance band, not an exact pin: every schema-touching PR shifts this
   // number, and an exact equality forced each one to re-pin the constant —
   // guaranteeing merge conflicts between any two in-flight schema PRs (#6571).

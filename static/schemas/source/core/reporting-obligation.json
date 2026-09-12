@@ -133,6 +133,19 @@
       "minimum": 0,
       "description": "Number of revision records for this obligation in the consistent ledger snapshot."
     },
+    "consumer_status_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Complete number of immutable authenticated consumer status statements associated with this obligation in the ledger snapshot, whether originally joined by reporting_obligation_id or by the exact configuration-generation, report-definition, and period key before the obligation existed. Core status-sync history is counted independently from Reconciled Billing receipts."
+    },
+    "current_consumer_status_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-entity": "reporting_consumer_status",
+      "description": "Current unsuperseded consumer status statement associated with this obligation by seller ID or its exact logical period key. Omitted when consumer_status_count is zero."
+    },
     "adjustment_count": {
       "type": "integer",
       "minimum": 0,
@@ -196,6 +209,11 @@
     "issues"
   ],
   "allOf": [
+    {
+      "if": { "properties": { "consumer_status_count": { "minimum": 1 } }, "required": ["consumer_status_count"] },
+      "then": { "required": ["current_consumer_status_id"] },
+      "else": { "not": { "required": ["current_consumer_status_id"] } }
+    },
     {
       "if": {
         "properties": {
@@ -420,9 +438,10 @@
     "nested_identity": "Every materialization associated with this obligation MUST equal its delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method; its destination-independent revision MUST equal account_id, report_definition_id, reporting_profile, period, and applicable media_buy_ids.",
     "complete_finality": "complete requires a published revision at required_finality. For Core, that revision MUST remain readable through the exact revision-content binding declared by the seller for status_retention_days. Managed-delivery additionally requires at least one verified readable materialization for that revision through resource_retained_until. consumer_receipt additionally requires an accepted matching receipt for the current revision and an accepted receipt for every applicable adjustment; rejected adjustment evidence preserves a dispute and cannot be complete. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
     "revision_chain": "Supersession MUST be acyclic, remain within this logical slice, and every supersedes_reporting_revision_id MUST name the immediately prior retained snapshot revision. At most one official revision may exist for a logical slice; it is terminal, and every obligation using that slice shares the same close. Later corrections are reporting adjustments and never alter this chain.",
-    "record_counts": "revision_count is the number of distinct revision records for this obligation in ledger_snapshot_id. Reliable Reporting 1.0 requires adjustment_count; the field remains optional only so the schema can read the preceding experimental managed-reporting shape. adjustment_count counts distinct adjustments targeting an official revision used by this obligation; one destination-independent adjustment is counted once even when it fans out through multiple materializations. materialization_count, successful_materialization_count, receipt_count, accepted_receipt_count, adjustment_receipt_count, accepted_adjustment_receipt_count, and pending_adjustment_count, when present for their respective tiers, MUST equal the complete associated record totals in the same snapshot, even when records appear on different pages.",
+    "record_counts": "revision_count is the number of distinct revision records for this obligation in ledger_snapshot_id. Reliable Reporting 1.0 requires adjustment_count. A seller advertising consumer_status_task additionally requires consumer_status_count; both fields remain schema-optional so readers can accept the published RC.1 shape. adjustment_count counts distinct adjustments targeting an official revision used by this obligation; one destination-independent adjustment is counted once even when it fans out through multiple materializations. consumer_status_count counts the authenticated caller's immutable status history associated either by reporting_obligation_id or by the exact delivery_config_id, delivery_config_version, report_definition_id, and period logical key. If the seller creates an obligation after receiving obligation_missing, the existing chain attaches to the repaired obligation by that logical key; it MUST NOT be lost, forked, or reset. current_consumer_status_id names the chain's one unsuperseded leaf. materialization_count, successful_materialization_count, receipt_count, accepted_receipt_count, adjustment_receipt_count, accepted_adjustment_receipt_count, and pending_adjustment_count, when present for their respective tiers, MUST equal the complete associated record totals in the same snapshot, even when records appear on different pages.",
     "adjustment_reconciliation": "For reconciliation_mode consumer_receipt, every adjustment is pending until the authenticated consumer records an accepted adjustment receipt with the exact canonical digest. A rejected receipt preserves the dispute and MUST NOT be represented as accepted settlement.",
-    "core_readability": "For a Core (API-delivered) obligation — no destination_ref — healthy and complete assert an authoritative readable revision: production_status published, at least one immutable revision retained per status_retention_days, and readable through the existing get_media_buy_delivery and reporting_webhook transports. Managed-delivery obligations additionally require at least one successful retained materialization."
+    "core_readability": "For a Core (API-delivered) obligation — no destination_ref — healthy and complete assert an authoritative readable revision: production_status published, at least one immutable revision retained per status_retention_days, and readable through the existing get_media_buy_delivery and reporting_webhook transports. Managed-delivery obligations additionally require at least one successful retained materialization.",
+    "consumer_mismatch": "Consumer status is separately attributed and never satisfies production or billing reconciliation. A current statement that conflicts with the seller's otherwise healthy/complete projection makes only this authenticated caller/account view action_required with CONSUMER_STATUS_MISMATCH. Conflicts include obligation_missing, revision_missing, unreadable, and received naming a revision that is no longer the current required revision after a seller restatement. The seller assigns responsible_party from the diagnosed cause; an uncorroborated consumer statement never changes another caller's view or seller-advertised reliability_statistics."
   },
   "additionalProperties": false
 }

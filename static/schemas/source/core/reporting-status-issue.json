@@ -39,7 +39,8 @@
         "RECEIPT_REQUIRED",
         "RECEIPT_REJECTED",
         "ADJUSTMENT_RECEIPT_REQUIRED",
-        "ADJUSTMENT_RECEIPT_REJECTED"
+        "ADJUSTMENT_RECEIPT_REJECTED",
+        "CONSUMER_STATUS_MISMATCH"
       ]
     },
     "severity": {
@@ -77,6 +78,14 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
       "x-entity": "reporting_obligation"
+    },
+    "reporting_status_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-entity": "reporting_consumer_status",
+      "description": "Current authenticated consumer status statement that caused this mismatch."
     },
     "delivery_config_id": {
       "type": "string",
