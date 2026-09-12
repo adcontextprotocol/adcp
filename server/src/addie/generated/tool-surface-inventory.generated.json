@@ -76,7 +76,7 @@
     "server/src/addie/email-conversation-handler.ts": "d6cf6d3c8621a85c69c6b22b86e6aa78f03b0d532ac8d5162fd40ec6c869f70c",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
     "server/src/addie/jobs/shadow-replay-cohort.ts": "316d0764cd65e4c631d6efef7d090fd46a6a8fff22d4c917a40b44a7a69eee1f",
-    "server/src/addie/tool-sets.ts": "fc82703107ee810eda93ca1e5b5d3b7a364fe7142ae575d455c8f2bd833c9344"
+    "server/src/addie/tool-sets.ts": "9b8c87159d6a18021d0cb540732f82a6f6a16ff0d24c8536823948f3bc0e76e2"
   },
   "routed": {
     "tool_set_count": 69,
