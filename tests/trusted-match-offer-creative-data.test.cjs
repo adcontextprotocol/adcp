@@ -81,3 +81,47 @@ test("experimental TMP Offer cleanly publishes creative_data instead of macros",
     );
   }
 });
+
+test("ContextSignals keeps single-user derived data behind the publisher privacy boundary", () => {
+  const requestSchema = JSON.parse(
+    read("static/schemas/source/trusted-match/context-match-request.json")
+  );
+  const contextSignals = requestSchema.properties.context_signals;
+
+  assert.match(contextSignals.description, /classifier and privacy boundary/);
+  assert.match(
+    contextSignals.description,
+    /Ephemeral content that many users encounter.*is shared content; one user's turn or query is not/
+  );
+  assert.match(
+    contextSignals.properties.topics.description,
+    /MUST use standardized taxonomy identifiers or bounded custom category labels/
+  );
+  assert.match(
+    contextSignals.properties.embedding.description,
+    /MUST NOT be computed directly or indirectly from non-public content/
+  );
+  assert.match(
+    contextSignals.properties.keywords.description,
+    /MUST be policy-filtered/
+  );
+  assert.match(
+    contextSignals.properties.summary.description,
+    /MUST NOT reproduce raw user-authored text/
+  );
+
+  const specification = read("docs/trusted-match/specification.mdx");
+  assert.match(
+    specification,
+    /Router isolation prevents identity-path data from entering the context path; it does not make user-derived context anonymous\./
+  );
+
+  const aiAssistantSurface = read("docs/trusted-match/surfaces/ai-assistants.mdx");
+  assert.match(aiAssistantSurface, /omits `artifact_refs`/);
+  assert.doesNotMatch(aiAssistantSurface, /"value": "turn:/);
+  assert.match(aiAssistantSurface, /MUST NOT send an embedding derived from the turn/);
+  assert.match(
+    read("docs/trusted-match/ai-mediation.mdx"),
+    /MUST NOT carry an embedding derived from the turn/
+  );
+});
