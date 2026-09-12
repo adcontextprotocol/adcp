@@ -24,8 +24,7 @@ import { createGeminiDirectTools } from '../../../src/addie/gemini-direct-tools.
 import { geminiDirectAssignment, prepareGeminiDirectTurn } from '../../../src/addie/gemini-direct-experiment.js';
 import { AddieModelConfig } from '../../../src/config/models.js';
 import { ADMIN_ANALYTICS_TOOL } from '../../../src/addie/mcp/admin-analytics.js';
-import { getToolsForSets } from '../../../src/addie/tool-sets.js';
-import { selectRoutedWebTools } from '../../../src/routes/addie-chat.js';
+import { getToolsForSets, getValidToolSetNames, TOOL_SETS } from '../../../src/addie/tool-sets.js';
 
 function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse {
   return {
@@ -69,17 +68,17 @@ function fixture(responses: (GenerateContentResponse | GenerateContentResponse[]
   });
   const input = {
     client, userId: 'user-test', isAdmin: true, threadId: 'thread-test', hasPriorAssistant: false,
-    exclusionReason: null, startedAt: Date.now(), requestTools: { tools: [], handlers: new Map() } as RequestTools,
+    startedAt: Date.now(), requestTools: { tools: [], handlers: new Map() } as RequestTools,
     baseRequestContext: 'Trusted member context.', getControlTools,
   };
   return { client, fork, provider, dispatch, handlers, control, input, getControlTools };
 }
 
-async function run(input: Parameters<typeof prepareGeminiDirectTurn>[0]) {
+async function run(input: Parameters<typeof prepareGeminiDirectTurn>[0], overrides: ProcessMessageOptions = {}) {
   const turn = await prepareGeminiDirectTurn(input);
   const events: StreamEvent[] = [];
   for await (const event of turn.client.processMessageStream('Help with AdCP.', [], turn.selection?.requestTools, {
-    ...options, allowedToolNames: turn.selection?.allowedToolNames, selectedToolSetNames: turn.selection?.selectedToolSets,
+    ...options, allowedToolNames: turn.selection?.allowedToolNames, selectedToolSetNames: turn.selection?.selectedToolSets, ...overrides,
   })) events.push(event);
   return { turn, events, response: events.find(event => event.type === 'done')?.response };
 }
@@ -102,26 +101,30 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
-  it('preserves the authorized escalation tools through a Gemini capability handoff', async () => {
-    const f = fixture([receipt([call('handoff_to_addie')])]);
-    const names = ['list_escalations', 'resolve_escalation'];
+  it('lists and resolves an authorized escalation on Gemini without routing or Sonnet', async () => {
+    const f = fixture([
+      receipt([call('list_escalations', { status: 'open' })]),
+      receipt([call('resolve_escalation', { escalation_id: 583 })], 'resolve'),
+      receipt([{ text: 'Escalation 583 was resolved.' }], 'answer'),
+    ]);
+    const list = vi.fn().mockResolvedValue('{"escalations":[{"id":583,"status":"open"}]}');
+    const resolve = vi.fn().mockResolvedValue('{"status":"resolved","escalation_id":583}');
+    const reserve = vi.fn();
     const requestTools = {
-      tools: names.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
-      handlers: new Map(names.map(name => [name, vi.fn(async () => '{}')])),
+      tools: ['list_escalations', 'resolve_escalation'].map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
+      handlers: new Map([['list_escalations', list], ['resolve_escalation', resolve]]),
     };
-    f.getControlTools.mockResolvedValue(await selectRoutedWebTools({
-      message: 'Can you help sort out 583', memberContext: null, threadId: 'thread-test', isAAOAdmin: true,
-      requestTools, globalToolNames: getToolsForSets(['admin_escalations'], true).filter(name => !names.includes(name)),
-      router: { quickMatch: () => null, route: async () => ({
-        action: 'respond', tool_sets: ['admin_escalations'], confidence: 'high', reason: 'escalation follow-up', decision_method: 'llm',
-      }) },
-    }));
-
-    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' });
-    expect(result.response?.model_execution).toMatchObject({ provider: 'anthropic', fallback_reason: 'primary_capability_unsupported' });
-    expect(f.control.mock.calls[0][2]?.tools.map(tool => tool.name)).toEqual(names);
-    expect(f.control.mock.calls[0][3]?.allowedToolNames).toEqual(expect.arrayContaining(names));
-    expect(f.control.mock.calls[0][3]?.selectedToolSetNames).toEqual(['admin_escalations']);
+    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' }, { reserveSideEffect: reserve });
+    expect(result.response?.model_execution).toMatchObject({ provider: 'google', fallback_reason: null });
+    expect(list).toHaveBeenCalledExactlyOnceWith({ status: 'open' });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith({ escalation_id: 583 });
+    expect(reserve).toHaveBeenCalledExactlyOnceWith({ toolName: 'resolve_escalation', parameters: { escalation_id: 583 } });
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
+    expect(JSON.stringify(f.dispatch.mock.calls)).not.toContain('handoff_to_addie');
+    const outcome = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns')).at(-1)?.[1];
+    expect(outcome[3]).toBe(0);
+    expect(outcome[7]).toBeNull();
   });
 
   it('includes the Luna router cost in a complete Sonnet comparison record', async () => {
@@ -241,7 +244,7 @@ describe('Gemini Direct production integration', () => {
     expect(JSON.stringify(second.contents)).toContain('functionResponse');
   });
 
-  it('loads authorized domains on demand and keeps writes out of every invocation', async () => {
+  it('loads authorized domains on demand without admitting an unbound admin handler', async () => {
     const f = fixture([
       receipt([call('load_tool_group', { group: 'industry_research' })]),
       receipt([call('get_recent_news')], 'news'), receipt([{ text: 'A verified fact.' }], 'answer'),
@@ -274,7 +277,7 @@ describe('Gemini Direct production integration', () => {
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it('keeps authorized analytics available after loading a different read-only group', async () => {
+  it('keeps authorized analytics available after loading a different group', async () => {
     const f = fixture([
       receipt([call('load_tool_group', { group: 'industry_research' })]),
       receipt([call('query_admin_analytics', { view: 'platform_stats' })], 'counts'),
@@ -320,18 +323,17 @@ describe('Gemini Direct production integration', () => {
     expect(result.response?.tool_executions[0]).toMatchObject({ blocked_by_policy: true, is_error: true });
   });
 
-  it('hands unsupported work to control, charges the Gemini step, and retains treatment attribution', async () => {
-    const f = fixture([receipt([call('handoff_to_addie')])]);
+  it('falls back on provider failure and records both providers without a capability handoff', async () => {
+    const f = fixture([]);
     const result = await run(f.input);
     expect(f.dispatch).toHaveBeenCalledOnce();
     expect(f.getControlTools).toHaveBeenCalledOnce();
     expect(f.control).toHaveBeenCalledOnce();
-    expect(result.response?.model_execution).toMatchObject({ requested_provider: 'google', provider: 'anthropic', model_resolution: 'fallback', fallback_reason: 'primary_capability_unsupported' });
-    expect(mocks.recordCost).toHaveBeenCalledOnce();
+    expect(result.response?.model_execution).toMatchObject({ requested_provider: 'google', provider: 'anthropic', model_resolution: 'fallback', fallback_reason: 'primary_unavailable' });
     expect(f.control.mock.calls[0][3]).toMatchObject({ modelOverride: undefined, directToolSession: undefined, allowedToolNames: ['search_docs'] });
     const outcome = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns')).at(-1)?.[1];
-    expect(outcome[7]).toBe('capability_handoff');
-    expect(JSON.parse(outcome[12]).map((event: { provider: string }) => event.provider)).toEqual(['google', 'anthropic']);
+    expect(outcome[7]).toBe('provider_error');
+    expect(outcome[6]).toBe(false);
   });
 
   it('falls back after a failed continuation without losing settled usage or exposing a partial answer', async () => {
@@ -355,11 +357,102 @@ describe('Gemini Direct production integration', () => {
     expect(f.control).not.toHaveBeenCalled();
   });
 
-  it.each(['attachments', 'certification', 'interrupted_turn_retry', 'github_mutation'])('keeps excluded %s turns on control', async exclusionReason => {
-    const f = fixture([]);
-    await run({ ...f.input, exclusionReason });
-    expect(f.dispatch).not.toHaveBeenCalled();
-    expect(f.control).toHaveBeenCalledOnce();
+  it.each(['no_reservation', 'reservation_failed', 'policy_denied'] as const)('preserves the action guard: %s', async failure => {
+    const f = fixture([receipt([call('resolve_escalation')]), receipt([{ text: 'The action could not be completed.' }])]);
+    const handler = vi.fn();
+    const reserve = failure === 'reservation_failed' ? vi.fn().mockRejectedValue(new Error('Checkpoint unavailable')) : vi.fn();
+    const result = await run({ ...f.input, requestTools: {
+      tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
+      handlers: new Map([['resolve_escalation', handler]]),
+    } }, {
+      ...(failure !== 'no_reservation' && { reserveSideEffect: reserve }),
+      ...(failure === 'policy_denied' && { toolExecutionPolicy: async () => ({ allowed: false }) }),
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.response?.tool_executions[0]).toMatchObject({ blocked_by_policy: true, is_error: true });
+    if (failure === 'policy_denied') expect(reserve).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('never restarts on Sonnet after a reserved action (handler throws: %s)', async throws => {
+    const f = fixture([receipt([call('resolve_escalation', { escalation_id: 583 })])]);
+    const handler = throws ? vi.fn().mockRejectedValue(new Error('Outcome unknown')) : vi.fn().mockResolvedValue('{"status":"resolved"}');
+    const result = await run({ ...f.input, requestTools: {
+      tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
+      handlers: new Map([['resolve_escalation', handler]]),
+    } }, { reserveSideEffect: vi.fn() });
+    expect(handler).toHaveBeenCalledOnce();
+    expect(f.control).not.toHaveBeenCalled();
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(result.response).toBeUndefined();
+    expect(result.events.filter(event => event.type === 'tool_end')).toHaveLength(1);
+    expect(result.events.at(-1)).toMatchObject({ type: 'stream_error', tool_executions: [expect.objectContaining({ tool_name: 'resolve_escalation' })] });
+    expect(result.events.filter(event => event.type === 'text')).toHaveLength(0);
+    const outcome = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns')).at(-1)?.[1];
+    expect(outcome[7]).toBe('provider_error_after_action');
+    expect(outcome[10]).toBe(true);
+  });
+
+  it('keeps durable retry policy and within-turn duplicate suppression on Gemini', async () => {
+    const f = fixture([
+      receipt([call('resolve_escalation', { escalation_id: 583 })]),
+      receipt([call('resolve_escalation', { escalation_id: 583 })], 'duplicate'),
+      receipt([{ text: 'The recorded outcome was retained.' }], 'answer'),
+    ]);
+    const handler = vi.fn().mockResolvedValue('{"status":"resolved"}');
+    const reserve = vi.fn();
+    const result = await run({ ...f.input, requestTools: {
+      tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
+      handlers: new Map([['resolve_escalation', handler]]),
+    } }, { reserveSideEffect: reserve });
+    expect(handler).toHaveBeenCalledOnce();
+    expect(reserve).toHaveBeenCalledOnce();
+    expect(result.response?.tool_executions[1]).toMatchObject({ blocked_by_policy: true, is_error: true });
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it('stops before another provider call when the delivery checkpoint fails', async () => {
+    const f = fixture([
+      receipt([call('resolve_escalation', { escalation_id: 583 })]),
+      receipt([call('resolve_escalation', { escalation_id: 584 })], 'must-not-run'),
+    ]);
+    const handler = vi.fn().mockResolvedValue('{"status":"resolved"}');
+    const turn = await prepareGeminiDirectTurn({ ...f.input, requestTools: {
+      tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
+      handlers: new Map([['resolve_escalation', handler]]),
+    } });
+    await expect((async () => {
+      for await (const event of turn.client.processMessageStream('Resolve the duplicates.', [], turn.selection?.requestTools, {
+        ...options, allowedToolNames: turn.selection?.allowedToolNames, reserveSideEffect: vi.fn(),
+      })) {
+        if (event.type === 'tool_end') throw new Error('Delivery checkpoint failed');
+      }
+    })()).rejects.toThrow('Delivery checkpoint failed');
+    expect(handler).toHaveBeenCalledOnce();
+    expect(f.dispatch).toHaveBeenCalledOnce();
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { type: 'image' as const, media_type: 'image/png', data: 'cG5n', filename: 'diagram.png' },
+    { type: 'document' as const, media_type: 'application/pdf', data: 'cGRm', filename: 'deck.pdf' },
+  ])('keeps uploaded $type input on the selected Gemini model', async attachment => {
+    const f = fixture([receipt([{ text: 'I reviewed the attachment.' }])]);
+    const result = await run(f.input, { inputAttachments: [attachment] });
+    expect(result.response?.model_execution.provider).toBe('google');
+    expect(JSON.stringify(f.dispatch.mock.calls[0][0].contents)).toContain('inlineData');
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { activeCertificationKind: 'learning' as const },
+    { sponsoredIntelligenceContextKind: 'session' as const },
+  ])('keeps trusted active workflows on Gemini: %j', async context => {
+    const f = fixture([receipt([{ text: 'Continuing your workflow.' }])]);
+    const result = await run({ ...f.input, ...context });
+    expect(result.response?.model_execution.provider).toBe('google');
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
   });
 
   it('keeps the ordinary alternate-provider guard and requires a bounded production session', async () => {
@@ -396,6 +489,47 @@ describe('Gemini Direct production integration', () => {
 async function collect(events: AsyncIterable<StreamEvent>) { for await (const _event of events) { /* exhaust */ } }
 
 describe('assignment and rollback', () => {
+  it.each([false, true])('offers the same registered custom-tool domains as routed chat (admin: %s)', isAdmin => {
+    const allNames = getToolsForSets([...getValidToolSetNames(true)], true).filter(name => name !== 'web_search');
+    const direct = createGeminiDirectTools({
+      tools: allNames.map(name => ({ name, description: name, input_schema: { type: 'object' } })),
+      handlers: new Map(allNames.map(name => [name, vi.fn()])),
+    }, [], isAdmin);
+    const expected = getToolsForSets([...getValidToolSetNames(isAdmin)], isAdmin).filter(name => name !== 'web_search');
+    expect(direct.allowedToolNames.filter(name => name !== 'load_tool_group').sort()).toEqual(expected.sort());
+    expect(direct.session.visibleToolNames().has('resolve_escalation')).toBe(isAdmin);
+    const discovery = direct.tools.tools.find(tool => tool.name === 'load_tool_group')!;
+    expect(JSON.stringify(discovery.input_schema)).not.toContain('"admin_workflows"');
+    expect(direct.allowedToolNames).not.toContain('handoff_to_addie');
+  });
+
+  it('loads a member action on demand and replaces optional tools without losing baseline access', async () => {
+    const names = ['search_docs', 'set_outreach_preference', 'update_my_profile', 'get_recent_news'];
+    const direct = createGeminiDirectTools({
+      tools: names.map(name => ({ name, description: name, input_schema: { type: 'object' } })),
+      handlers: new Map(names.map(name => [name, vi.fn()])),
+    }, []);
+    expect(direct.session.visibleToolNames().has('update_my_profile')).toBe(false);
+    const profileGroup = [...getValidToolSetNames()].find(name => TOOL_SETS[name].tools.includes('update_my_profile'))!;
+    await direct.tools.handlers.get('load_tool_group')!({ group: profileGroup });
+    expect(direct.session.visibleToolNames().has('update_my_profile')).toBe(true);
+    await direct.tools.handlers.get('load_tool_group')!({ group: 'industry_research' });
+    expect(direct.session.visibleToolNames().has('update_my_profile')).toBe(false);
+    expect(direct.session.visibleToolNames().has('get_recent_news')).toBe(true);
+    expect(direct.session.visibleToolNames().has('set_outreach_preference')).toBe(true);
+  });
+
+  it('retains the trusted certification workflow without exposing unrelated action groups', () => {
+    const names = ['start_certification_module', 'checkpoint_teaching_progress', 'search_docs', 'get_schema', 'resolve_escalation', 'update_member_logo'];
+    const direct = createGeminiDirectTools({
+      tools: names.map(name => ({ name, description: name, input_schema: { type: 'object' } })),
+      handlers: new Map(names.map(name => [name, vi.fn()])),
+    }, [], true, { activeCertificationKind: 'learning' });
+    expect(direct.session.visibleToolNames().has('checkpoint_teaching_progress')).toBe(true);
+    expect(direct.allowedToolNames).not.toContain('update_member_logo');
+    expect(direct.session.visibleToolNames().has('resolve_escalation')).toBe(true);
+  });
+
   it('is stable per user with a roughly 10% cohort, including across threads', () => {
     const env = { ADDIE_GEMINI_DIRECT_MODE: 'eligible', ADDIE_GEMINI_DIRECT_PERCENT: '10' };
     const assignments = Array.from({ length: 1000 }, (_, index) => geminiDirectAssignment(`user-${index}`, false, false, env));
@@ -435,7 +569,7 @@ describe('assignment and rollback', () => {
 
   it('does not expose groups whose user-scoped handlers are absent', () => {
     const direct = createGeminiDirectTools({ tools: [], handlers: new Map() }, ['search_docs']);
-    expect(direct.allowedToolNames).toEqual(['search_docs', 'load_tool_group', 'handoff_to_addie']);
+    expect(direct.allowedToolNames).toEqual(['search_docs', 'load_tool_group']);
   });
 
   it.each([

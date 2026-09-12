@@ -22,6 +22,9 @@
     const actual = info.source === 'local' ? 'System response' : modelName(info.model);
     const requested = info.selected === 'gemini' ? 'Gemini 3.7' : modelName(info.requested_model);
     let label = info.fallback && requested !== actual ? `${requested} → ${actual}` : actual;
+    if (info.fallback && ['primary_unavailable', 'primary_rate_limited', 'primary_timeout'].includes(info.fallback_reason)) {
+      label += ' · provider fallback';
+    }
     if (Number.isFinite(info.latency_ms) && info.latency_ms >= 0) {
       label += ` · ${(info.latency_ms / 1000).toFixed(1)}s`;
     }

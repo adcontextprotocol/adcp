@@ -622,7 +622,7 @@ describe('Addie chat conversation object authorization', () => {
       });
       expect(res.status).toBe(200);
       expect(res.text).toContain('Gemini response');
-      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'gemini', exclusionReason: null, hasPriorAssistant: false }));
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_attacker', modelPreference: 'gemini', activeCertificationKind: null, sponsoredIntelligenceContextKind: null, hasPriorAssistant: false }));
       expect(mocks.processMessage).not.toHaveBeenCalled();
       expect(mocks.processMessageStream).not.toHaveBeenCalled();
       expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'assistant', model_preference: 'gemini', model: 'gemini-3.7-flash', model_execution: response.model_execution }));

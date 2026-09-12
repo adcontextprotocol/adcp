@@ -4,9 +4,12 @@ description: "Operate the Addie Gemini 3.7 Direct pilot, compare routing, latenc
 "og:title": "AdCP — Gemini 3.7 Direct web pilot"
 ---
 
-Experiment `gemini-3.7-direct-v1` compares the existing web routing and response
-stack (normally Haiku → Sonnet, with quick matches) against Gemini 3.7 without
-an up-front router call. This measures the model and architecture together.
+Experiment `gemini-3.7-direct-v2` compares the existing web routing and response
+stack (normally Luna → Sonnet, with quick matches) against Gemini 3.7 without
+an up-front router call. Both use the same authorized Addie custom-tool domains and
+shared action executor. This measures the model and tool-discovery architecture
+together. Version 2 reports separately from the earlier read-only pilot; the
+assignment key and user hash remain unchanged to preserve existing assignments.
 
 ## Rollout
 
@@ -41,22 +44,34 @@ new treatment conversations in eligible mode; use `MODE=off` for rollback.
 
 - Exact model: `gemini-3.7-flash`, low thinking, 8,192 output tokens, ordinary
   ten-step tool loop. Native Google streaming retains signed continuation parts.
-- Documentation and schema tools start active. `load_tool_group` can load one
-  additional authorized read-only group: industry research, community discussion,
-  group discovery, or agent/publisher directory. Definitions and handlers must
-  already be registered for the request. Loading a group grants no permissions.
-- `handoff_to_addie` transfers unsupported work to the existing routed workflow
-  without asking the user to repeat the request. Gemini cannot dispatch mutation
-  handlers. Its spent time and settled usage remain attributed to treatment.
-- Attachments, active certification, sponsored intelligence, interrupted-turn
-  retries, and explicit GitHub creation requests use control. These turns retain
-  their assigned arm and record an exclusion reason.
-- Provider failure can fall back to control before any Gemini answer is
-  delivered. Both providers use normal production accounting and cost caps.
-  Cap exhaustion does not trigger a fallback that bypasses the cap.
+- Documentation, schema, baseline tools, and authorized admin analytics start
+  active. `load_tool_group` selects another authorized Addie domain, including
+  member actions, escalation management, billing, and agent storyboards. Loading
+  a group grants no permissions: the existing role and request-bound handlers
+  determine access. Hidden compatibility aliases are not advertised.
+- Admin escalation tools remain available alongside other domains. Admin tools
+  require both the trusted role and an executable request-local registration;
+  a global tool name alone never grants admin access.
+- There is no capability handoff tool. Certification, sponsored intelligence,
+  interrupted-turn retries, and explicit GitHub creation stay on Gemini when
+  selected. Trusted active workflows retain the same scoped tools as Sonnet.
+- Both models use the shared action executor, confirmation and receipt checks,
+  durable mutation reservations, duplicate suppression, and retry policy. Each
+  completed tool result reaches the delivery checkpoint before another action.
+  A failed checkpoint stops continuation.
+- Images and PDFs are passed to Google natively, including media returned by
+  tools. Provider-managed Anthropic web search is not an Addie custom tool and
+  is not exposed through Google's adapter; registered research/fetch tools are
+  available through discovery.
+- Provider errors may fall back to Sonnet before any action reservation. After
+  an action is reserved, a provider error preserves the recorded receipts and
+  stops the turn without replaying it on Sonnet. These are reported separately
+  as `provider_error_fallbacks` and `post_action_provider_failures`.
+- Both providers use normal production accounting and cost caps. Cap exhaustion
+  never triggers a fallback that bypasses admission. The web response badge
+  identifies provider-error fallback separately from the selected model.
 - Saved tool results are historical text on later Gemini turns. Current-turn
-  function calls retain the adapter's opaque Google signatures. Server-owned
-  action receipts and mutation reservations stay on the existing control path.
+  function calls retain the adapter's opaque Google signatures.
 
 ## Results and review
 
@@ -68,8 +83,8 @@ ratings, and marked resolutions, grouped by arm, cohort, and exclusion reason.
 
 Timing starts at HTTP handler entry and includes context preparation, routing,
 tool discovery, tool execution, provider continuations, fallback, and reply
-persistence. Streaming answers remain buffered until the logical response is
-accepted, as required by the existing receipt/delivery boundary. Estimates use
+persistence. Answer text remains buffered until the logical response is
+accepted; tool receipts are checkpointed immediately. Estimates use
 the live pricing registry and include router cache usage. Failed dispatches can
 lack usage receipts: `incomplete_usage` exposes these cases; their cost is a
 lower bound, not zero-cost success. Cost per marked resolution depends on manual
@@ -84,8 +99,9 @@ delivery readiness, not a quality or latency win.
 
 Stop treatment for unauthorized actions or fabricated action confirmations.
 Investigate repeated quality/error regressions or p95 total time more than 20%
-worse than control. Expand into teaching or consequential actions only after
-their permission, progress, and receipt workflows are checked independently.
+worse than control. The regression suite covers native escalation actions, role boundaries, trusted
+teaching scope, reservation failures, duplicate suppression, checkpoint failures,
+and provider failure after an action.
 
 ## Deployment
 

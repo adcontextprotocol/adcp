@@ -3,14 +3,16 @@ import { query } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { AddieClaudeClient, AddieResponse, ProcessMessageOptions, RequestTools, StreamEvent } from './claude-client.js';
 import type { CostEvent } from './claude-cost-tracker.js';
-import { createGeminiDirectTools } from './gemini-direct-tools.js';
+import { createGeminiDirectTools, type DirectToolContext } from './gemini-direct-tools.js';
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import { resolveModelCostPricing } from './model-cost-pricing.js';
 import type { WebChatModelPreference } from './web-chat-model-selection.js';
 
 const logger = createLogger('addie-gemini-direct');
-export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v1';
+export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v2';
+// Preserve existing assignments while reporting the expanded tool surface separately.
 const CONTEXT_KEY = 'gemini_direct_v1';
+const ASSIGNMENT_SALT = 'gemini-3.7-direct-v1';
 type Client = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
   & Partial<Pick<AddieClaudeClient, 'getRegisteredTools' | 'forkForGeminiDirect'>>;
 export interface WebToolSelection {
@@ -37,7 +39,7 @@ export function geminiDirectAssignment(userId: string, staff: boolean, existing:
   if (mode === 'staff' && !staff) return null;
   const percent = Number(env.ADDIE_GEMINI_DIRECT_PERCENT ?? '10');
   if (!Number.isInteger(percent) || percent < 0 || percent > 100) return null;
-  const bucket = createHash('sha256').update(`${GEMINI_DIRECT_EXPERIMENT}:${userId}`).digest().readUInt32BE(0) % 10_000;
+  const bucket = createHash('sha256').update(`${ASSIGNMENT_SALT}:${userId}`).digest().readUInt32BE(0) % 10_000;
   return {
     arm: existing ? 'control' : mode === 'staff' || bucket < percent * 100 ? 'gemini' : 'control',
     cohort: existing ? 'existing' : mode,
@@ -123,14 +125,14 @@ class ExperimentTurn {
   }
 }
 
-function fallbackResponse(response: AddieResponse, handoff: boolean): AddieResponse {
+function fallbackResponse(response: AddieResponse): AddieResponse {
   return {
     ...response,
     model_execution: response.model_execution.source === 'provider' ? {
       ...response.model_execution,
       requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
       model_resolution: 'fallback',
-      fallback_reason: handoff ? 'primary_capability_unsupported' : 'primary_unavailable',
+      fallback_reason: 'primary_unavailable',
     } : {
       ...response.model_execution, requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
     },
@@ -138,13 +140,12 @@ function fallbackResponse(response: AddieResponse, handoff: boolean): AddieRespo
 }
 
 /** Select before routing: the treatment never pays for an up-front router call. */
-export async function prepareGeminiDirectTurn(input: {
+export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   client: Client;
   userId?: string;
   isAdmin: boolean;
   threadId: string;
   hasPriorAssistant: boolean;
-  exclusionReason: string | null;
   startedAt: number;
   requestTools: RequestTools;
   baseRequestContext: string;
@@ -165,8 +166,7 @@ export async function prepareGeminiDirectTurn(input: {
     : input.userId && !input.evaluation && available
       ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
   if (!proposed) return ordinary();
-  const exclusionReason = input.exclusionReason
-    ?? (proposed.arm === 'gemini' && !available ? 'gemini_unavailable' : null);
+  const exclusionReason = proposed.arm === 'gemini' && !available ? 'gemini_unavailable' : null;
 
   let assignment: Assignment;
   let experiment: ExperimentTurn;
@@ -200,7 +200,10 @@ export async function prepareGeminiDirectTurn(input: {
   }
 
   const treatment = assignment.arm === 'gemini' && !exclusionReason;
-  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin) : null;
+  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin, {
+    activeCertificationKind: input.activeCertificationKind,
+    sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
+  }) : null;
   let candidate: AddieClaudeClient | undefined;
   if (direct) {
     candidate = clients.get(input.client);
@@ -213,7 +216,7 @@ export async function prepareGeminiDirectTurn(input: {
     requestTools: direct.tools,
     selectedToolSets: direct.selectedToolSets,
     allowedToolNames: direct.allowedToolNames,
-    unavailableHint: 'You can load another read-only tool group when needed. For work outside these groups, call handoff_to_addie.',
+    unavailableHint: 'Use load_tool_group to discover the authorized tools for the next step. Loaded actions use the same account permissions, confirmations, durable reservations and receipt checks as every Addie request.',
   } : await getControl();
   if (!direct) experiment.routed(selection);
 
@@ -266,32 +269,59 @@ export async function prepareGeminiDirectTurn(input: {
         if (direct && candidate) {
           const buffered: StreamEvent[] = [];
           let failed = false;
+          let actionReserved = false;
           try {
-            for await (const event of candidate.processMessageStream(message, history, tools, directOptions(options))) {
+            for await (const event of candidate.processMessageStream(message, history, tools, {
+              ...directOptions(options),
+              ...(options?.reserveSideEffect && { reserveSideEffect: async request => {
+                // Mark before awaiting: even a failed reservation can have an
+                // uncertain durable outcome. Never restart this turn on Sonnet.
+                actionReserved = true;
+                await options.reserveSideEffect!(request);
+              } }),
+            })) {
               buffered.push(event);
+              // Let the delivery layer persist each tool receipt before the
+              // next action. A checkpoint failure must stop this generator.
+              if (event.type === 'tool_start' || event.type === 'tool_end') yield event;
               if (event.type === 'done') response = event.response;
               if (event.type === 'error' || event.type === 'stream_error') failed = true;
             }
           } catch { failed = true; }
-          const handoff = direct.session.handoffRequested();
           const localFailure = response?.model_execution.source === 'local'
             && ['provider_error', 'stream_interrupted'].includes(response.model_execution.reason);
-          if (!failed && !handoff && !localFailure && response) {
+          if (!failed && !localFailure && response) {
             for (const event of buffered) {
+              if (event.type === 'tool_start' || event.type === 'tool_end') continue;
               if (event.type === 'text') experiment.visible();
               yield event;
             }
             return;
           }
-          experiment.fallbackReason = handoff ? 'capability_handoff' : 'provider_error';
+          experiment.usageComplete = false;
+          if (actionReserved) {
+            experiment.fallbackReason = 'provider_error_after_action';
+            // Receipts were checkpointed as they completed. Retrying uses
+            // the existing durable replay policy.
+            const executions = buffered.flatMap(event => event.type === 'tool_end' ? [event.execution] : []);
+            experiment.fallbackToolErrors = executions.filter(tool => tool.is_error).length;
+            response = undefined;
+            yield {
+              type: 'stream_error',
+              reason: 'Gemini could not finish after an action was reserved. Its recorded outcome was preserved; the action was not automatically repeated.',
+              deltasBeforeError: 0, tool_executions: executions,
+              certification_reserve_used: buffered.some(event => event.type === 'stream_error' && event.certification_reserve_used),
+            };
+            return;
+          }
+          experiment.fallbackReason = 'provider_error';
           experiment.fallbackToolErrors = buffered.filter(event => event.type === 'tool_end' && event.is_error).length;
-          if (failed && !handoff) experiment.usageComplete = false;
           const fallback = await controlOptions(options);
           response = undefined;
           for await (const event of input.client.processMessageStream(message, history, fallback.tools, fallback.options)) {
             if (event.type === 'text') experiment.visible();
             if (event.type === 'done') {
-              response = fallbackResponse(event.response, handoff);
+              response = fallbackResponse(event.response);
               yield { ...event, response };
             } else yield event;
           }
@@ -330,7 +360,9 @@ export async function getGeminiDirectResults() {
     COUNT(*)::int AS turns, COUNT(DISTINCT e.user_id)::int AS users,
     COUNT(*) FILTER (WHERE completed_at IS NULL)::int AS incomplete,
     COUNT(*) FILTER (WHERE failed)::int AS failures,
-    COUNT(*) FILTER (WHERE fallback_reason IS NOT NULL)::int AS fallbacks,
+    COUNT(*) FILTER (WHERE arm = 'gemini' AND actual_provider = 'anthropic')::int AS fallbacks,
+    COUNT(*) FILTER (WHERE fallback_reason = 'provider_error' AND actual_provider = 'anthropic')::int AS provider_error_fallbacks,
+    COUNT(*) FILTER (WHERE fallback_reason = 'provider_error_after_action')::int AS post_action_provider_failures,
     COUNT(*) FILTER (WHERE NOT usage_complete)::int AS incomplete_usage,
     ROUND(AVG(first_visible_ms)) AS mean_first_visible_ms,
     percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS median_total_ms,

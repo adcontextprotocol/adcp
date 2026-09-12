@@ -536,6 +536,33 @@ describe('OpenAIResponsesProvider', () => {
 });
 
 describe('GoogleGenerateContentProvider', () => {
+  it('preserves image and PDF bytes in user input and named multimodal tool results', () => {
+    const provider = new GoogleGenerateContentProvider('unused', {} as GoogleGenerateContentTransport);
+    const signedParts = [{ functionCall: { id: 'call-file', name: 'read_slack_file', args: {} }, thoughtSignature: 'opaque' }];
+    const issued = normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: signedParts } }] }));
+    const prepared = provider.prepare(request(GOOGLE_ROUTER_MODEL, { messages: [{ role: 'user', content: [
+      { type: 'image', mediaType: 'image/png', data: 'cG5n' },
+      { type: 'document', mediaType: 'application/pdf', data: 'cGRm' },
+    ] }, { role: 'assistant', content: issued.content }, { role: 'user', content: [
+      { type: 'tool_result', toolCallId: 'call-file', toolName: 'read_slack_file', content: [
+        { type: 'text', text: 'Attached diagram.' },
+        { type: 'image', mediaType: 'image/png', data: 'cG5n' },
+        { type: 'document', mediaType: 'application/pdf', data: 'cGRm' },
+      ] },
+    ] }] }));
+    expect(prepared.providerRequest.contents).toEqual([{ role: 'user', parts: [
+      { inlineData: { mimeType: 'image/png', data: 'cG5n' } },
+      { inlineData: { mimeType: 'application/pdf', data: 'cGRm' } },
+    ] }, { role: 'model', parts: signedParts }, { role: 'user', parts: [
+      { functionResponse: { id: 'call-file', name: 'read_slack_file', response: {
+        output: 'Attached diagram.', media: [{ $ref: 'tool-result-1.png' }, { $ref: 'tool-result-2.pdf' }],
+      }, parts: [
+        { inlineData: { mimeType: 'image/png', data: 'cG5n', displayName: 'tool-result-1.png' } },
+        { inlineData: { mimeType: 'application/pdf', data: 'cGRm', displayName: 'tool-result-2.pdf' } },
+      ] } },
+    ] }]);
+  });
+
   it.each([
     [{ type: 'auto' as const }, 'VALIDATED', ['search_docs', 'get_doc']],
     [{ type: 'required' as const }, 'ANY', ['search_docs', 'get_doc']],

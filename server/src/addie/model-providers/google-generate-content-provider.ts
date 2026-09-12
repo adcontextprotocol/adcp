@@ -5,6 +5,7 @@ import {
   ThinkingLevel,
   type GenerateContentParameters,
   type GenerateContentResponse,
+  type FunctionResponsePart,
   type Part,
 } from '@google/genai';
 import type {
@@ -72,8 +73,8 @@ export const GOOGLE_GENERATE_CONTENT_CAPABILITIES: ModelProviderCapabilities = O
   reasoningEfforts: Object.freeze(['provider_default', 'low', 'medium', 'high'] as const),
   customTools: true,
   providerWebSearch: false,
-  imageInput: false,
-  documentInput: false,
+  imageInput: true,
+  documentInput: true,
 });
 
 const MAX_GOOGLE_RESPONSE_PARTS = 1_000;
@@ -181,19 +182,27 @@ function toGoogleParts(content: ModelMessageContent): Part[] {
     case 'tool_call':
       throw new Error('Google tool-call continuation was not issued by this adapter');
     case 'tool_result': {
-      if (typeof content.content !== 'string') {
-        throw new Error('Google tool results must be text-only');
-      }
       if (!content.toolName?.trim()) {
         throw new Error('Google tool results require the tool name');
       }
+      const media: FunctionResponsePart[] = [];
+      const references: Array<{ $ref: string }> = [];
+      const output = typeof content.content === 'string' ? content.content : content.content.map((part, index) => {
+        if (part.type === 'text') return part.text;
+        const displayName = `tool-result-${index}.${part.mediaType.split('/')[1]}`;
+        media.push({ inlineData: { mimeType: part.mediaType, data: part.data, displayName } });
+        references.push({ $ref: displayName });
+        return '';
+      }).filter(Boolean).join('\n');
       return [{
         functionResponse: {
           id: content.toolCallId,
           name: content.toolName,
-          response: content.isError
-            ? { error: content.content }
-            : { output: content.content },
+          response: {
+            ...(content.isError ? { error: output } : { output }),
+            ...(media.length > 0 && { media: references }),
+          },
+          ...(media.length > 0 && { parts: media }),
         },
       }];
     }
@@ -203,7 +212,7 @@ function toGoogleParts(content: ModelMessageContent): Part[] {
       throw new Error(`Cannot send ${content.provider} continuation state to Google`);
     case 'image':
     case 'document':
-      throw new Error('Google adapter does not support media input');
+      return [{ inlineData: { mimeType: content.mediaType, data: content.data } }];
     default: {
       const exhaustive: never = content;
       throw new Error(`Unsupported canonical content: ${String(exhaustive)}`);
@@ -266,7 +275,7 @@ function toGoogleRequest(
   }
   return {
     model: request.model,
-    contents: request.tools.length > 0
+    contents: request.tools.length > 0 || request.messages.some(message => message.content.some(part => part.type !== 'text'))
       ? toGoogleContents(request.messages)
       : request.messages.map((message) => ({
         role: message.role === 'assistant' ? 'model' : 'user',
