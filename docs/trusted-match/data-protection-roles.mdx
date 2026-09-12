@@ -230,6 +230,8 @@ When a publisher sends full content (`artifact` field) rather than classified si
 
 Identity Match responses include a `ttl_sec` caching contract. During the cache window, the router returns cached eligibility without re-querying the buyer. Cached eligibility is personal data (it's tied to a user token). The [specification](/docs/trusted-match/specification) allows TTLs up to 86,400 seconds (24 hours) with a recommended clamp at 3,600 seconds. Routers should enforce short TTLs, must not retain cached data beyond expiry, and must not use cached eligibility for any purpose other than responding to subsequent Identity Match requests for the same token.
 
+Context Match caches can also contain sensitive request-derived decisions. Routers must partition provider responses by the canonical hash of the complete result-affecting forwarded request, not by placement alone; otherwise one session's artifact, signals, geo, or package selection can determine the response served to another. Request content must not appear directly in cache keys or observability labels. A hash prevents raw-content disclosure in the key but is not anonymization, so cached responses and any retained hash preimages require the same access controls and retention boundary as Context Match data.
+
 **4. Variable pricing on context.**
 
 The Context Match offer can include an `OfferPrice`. Because Context Match carries no identity, this is contextual pricing — not per-user pricing. However, if a publisher's `context_signals` are specific enough to identify an individual (e.g., a unique AI conversation summary), the contextual path could carry de facto identity. Publishers should ensure `context_signals` do not contain PII or uniquely identifying content.

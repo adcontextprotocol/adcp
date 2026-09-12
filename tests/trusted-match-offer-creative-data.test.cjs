@@ -81,3 +81,40 @@ test("experimental TMP Offer cleanly publishes creative_data instead of macros",
     );
   }
 });
+
+test("Context Match caching partitions every result-affecting forwarded request", () => {
+  const specification = read("docs/trusted-match/specification.mdx");
+  const routerArchitecture = read("docs/trusted-match/router-architecture.mdx");
+  const dataProtection = read("docs/trusted-match/data-protection-roles.mdx");
+
+  assert.match(specification, /\{provider_id, context_hash\}/);
+  assert.doesNotMatch(
+    specification,
+    /recommended cache key is `\{property_rid, placement_id, provider_id\}`/
+  );
+  assert.match(specification, /Remove `\$schema`/);
+  assert.match(specification, /and `request_id`/);
+  assert.match(specification, /RFC 8785 JCS/);
+  assert.match(specification, /Array order is preserved/);
+  assert.match(
+    specification,
+    /MUST set the returned response's `request_id` to the current request's `request_id`/
+  );
+  assert.match(
+    specification,
+    /`context_hash` and any retained hash preimage MUST NOT appear in logs, metric labels, or traces/
+  );
+  assert.match(routerArchitecture, /A placement-only key is unsafe/);
+  assert.match(
+    specification,
+    /MAY prefix `context_hash` with `property_rid` for cache-store sharding/
+  );
+  assert.match(
+    specification,
+    /`cache_ttl: 0` is appropriate for those placements/
+  );
+  assert.match(
+    dataProtection,
+    /one session's artifact, signals, geo, or package selection can determine the response served to another/
+  );
+});
