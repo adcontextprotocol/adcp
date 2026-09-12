@@ -7,66 +7,49 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-09-07
+- Generated: 2026-09-12
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-### 3.2 Release Readiness and Remaining Open Issues
-
+### DOOH and Campaign Lifecycle 3.2 Release Progress
 - **Status:** active
-- **Summary:** The 3.2 milestone is described as feature-complete apart from a few stragglers, including DOOH audio support and a last open issue in the broadcast/syndication track. Experimental tooling for buyer agents as stateful principals is being introduced as a first for the protocol, alongside merged reporting pipeline work marked experimental. A release-candidate build cycle across the spec and SDKs is underway, with cross-version/cross-language checks causing delays; once ready, the training agent and the Interchange environment will be bumped to 3.2 to enable live traffic testing.
-- **Related:** #5878
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1788081427834219, https://agenticads.slack.com/archives/C09BK148CLU/p1788120684328569, https://agenticads.slack.com/archives/C09BK148CLU/p1788268365763459, https://agenticads.slack.com/archives/C09BK148CLU/p1788630892701959
+- **Summary:** The working group reports 3.2 is nearly feature-complete, with DOOH audio handling as one of the last stragglers. A DOOH-related pull request stemming from member feedback needs review, and a separate open issue is flagged as the last blocker before 3.2 can close. The release candidate build is in progress across the spec and SDKs, with cross-version/cross-language checks underway, and the training agent and Interchange service are being updated to run on 3.2 to generate live test traffic.
+- **Related:** #5878, #7177
+- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1788081427834219, https://agenticads.slack.com/archives/C09BK148CLU/p1788398512662769, https://agenticads.slack.com/archives/C09BK148CLU/p1788630892701959, https://agenticads.slack.com/archives/C09BK148CLU/p1788268365763459, https://agenticads.slack.com/archives/C09BK148CLU/p1788120684328569
 
-### DOOH Schema Support (Broadcast/Syndication and Campaign Lifecycle)
-
+### Experimental Buyer-Agent-as-Principal Tooling
 - **Status:** active
-- **Summary:** A pull request adding DOOH-related schema changes is seeking additional review, with outreach underway to bring in more DOOH-focused participants, including contacts at a major DOOH sell-side vendor, to weigh in before the current cycle closes. Separate feedback on DOOH from a working group member has spawned follow-up PRs, one of which is still awaiting review.
-- **Related:** #5623, #7177
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1787582147291599, https://agenticads.slack.com/archives/C0ACHCU5210/p1787687143020649, https://agenticads.slack.com/archives/C09BK148CLU/p1788398512662769
+- **Summary:** As part of the 3.2 cycle, the group is introducing experimental support for treating buyer agents as principals, described as the first formal recognition of stateful buyers within the protocol. Reporting pipeline merges are also being introduced as experimental. The working group intends to discuss these experimental additions alongside the 3.3 and evergreen backlog to ensure no high-priority items are missed.
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1788120684328569
 
-### Delta Sharing / RFC 6540 and Reporting Pipelines
-
+### Contextual Embedding Models for segment.ext.aa
 - **Status:** active
-- **Summary:** A contributor followed up on the delta-sharing component of RFC 6540, asking whether it remains a 3.2 milestone item and flagging that an associated PR appears unblocked with changes aligned to their recommended solution. Related work on reliable reporting pipelines, including support for delivery via Databricks, Snowflake, and cloud buckets, has an RFC and implementation PR open. A further PR proposes moving property reporting from the 3.3 milestone into 3.2, which is considered necessary and is awaiting working-group review.
-- **Related:** #6857, #6911, #6953, #6915
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1787750898081669, https://agenticads.slack.com/archives/C09BK148CLU/p1787886708854929, https://agenticads.slack.com/archives/C09BK148CLU/p1787828881454989
-
-### FAST Channel Modeling in adagents.json / Property Schema
-
-- **Status:** active
-- **Summary:** A detailed governance-channel proposal distinguishes "property" (the host CTV app), "collection" (the independently owned FAST channel), and "placement" (the ad position), suggesting FAST channel owners declare canonical collection identity (including Gracenote IDs and platform distributions) in their own adagents.json, while hosts attest sales rights by authorizing the owner's agent without declaring placements. A separate detailed question raises gaps in the current schema (3.1.15): there is no property_type value for channels carried inside third-party CTV apps, no way to express industry-standard channel identifiers (e.g., Gracenote/TMS IDs, platform EPG channel IDs), and no concept of carriage to represent this distribution model.
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787692753462379, https://agenticads.slack.com/archives/C09NUQS93DF/p1787665044852579
-
-### Seller Policy, Change-Right Contracts, and Governance Decision Ratification
-
-- **Status:** active
-- **Summary:** A governance working group PR adding seller policy and change-right contracts requires that decision memos tied to several linked issues be formally ratified and committed to the governance decisions directory per the RFC process, noting ratification is a human act on the WG memo. Whether linked issues should be marked "Closes" versus "Refs" is left to author discretion pending confirmation that the PR's scope fully resolves each issue. A related issue and implementation PR address giving full visibility into account changes across seller-managed state.
-- **Related:** #6794, #6749, #6750, #6757, #6758, #6810, #6811
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787582062993769
-
-### Contextual Embeddings in segment.ext.aa RTB Field
-
-- **Status:** active
-- **Summary:** A member raised a question about which models are used or recommended when sending contextual embeddings over the `segment.ext.aa` RTB field, noting prior groundwork but asking whether any consensus or broader interest has formed as they plan to build platform support for buying partners.
+- **Summary:** A member raised a discussion on which embedding models should be used when sending contextual embeddings via the `segment.ext.aa` RTB field, noting that groundwork already exists but seeking clarity on any consensus among implementers. The thread drew significant engagement (11 replies), indicating active interest in standardizing this for buying-partner integrations.
 - **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1788725186616889
 
-### AdCP SDK (adcp-go) CI and Review Backlog
-
+### brand.json Domain Validation Strictness
 - **Status:** active
-- **Summary:** A contributor reported a failing GitHub Action affecting all adcp-go pull requests and requested help diagnosing it, along with reviews on a backlog of pending SDK PRs.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788480742718759
+- **Summary:** A builder raised a schema question about the brand ref `domain` field, noting that single-label domains (e.g., "unknown", "localhost") currently pass validation despite being unrealistic for locating a `/.well-known/brand.json` resource. The member asked whether the schema should enforce at least two-label domains or whether rejection should be left to seller-side business logic.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788793711999949
 
-### llms.txt Documentation Structure Change
-
+### adcp-go SDK CI Failures and Review Backlog
 - **Status:** active
-- **Summary:** A structural change to docs.adcontextprotocol.org/llms.txt was flagged as likely to break tooling that assumes a flat, single-version index. The file is now a multi-version hub whose flat entries are archived 2.5.x docs, with current-release content behind per-version sub-indexes (3-1, 3-2-beta, 3-0) and no "latest" alias; the reliable way to find current docs is via stable paths that redirect to the active build. The message also notes the hub includes OpenAPI YAML links and cross-origin GitHub raw links that consumers should be aware of.
+- **Summary:** A builder reported a GitHub Actions failure affecting all pull requests in the adcp-go SDK repository and requested help diagnosing it, along with a request for reviewers on pending PRs. A related message confirmed the channel as the appropriate venue for adcp-go SDK discussion.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788480742718759, https://agenticads.slack.com/archives/C09J28K9K29/p1788480233312039
+
+### llms.txt Structure Change Breaking Tooling Assumptions
+- **Status:** active
+- **Summary:** A member flagged that the `llms.txt` index served from the docs site has changed shape multiple times and, as of early September, is now a multi-version hub whose flat entries point to archived 2.5.x docs while current release docs live behind per-version sub-indexes (e.g., 3-1, 3-2-beta, 3-0). There is no "latest" alias, and naively picking the highest version string leads tooling to the beta rather than the current stable release; a stable path with a redirect is suggested as the reliable way to find current docs. This affects any agent or skill tooling built to consume the docs index programmatically.
 - **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788451422017619
 
-### Docs Site Availability Issue
-
-- **Status:** parked
-- **Summary:** A member reported that the docs site (docs.adcontextprotocol.org) appeared to be down, redirecting to an unrelated auto-redirect landing page, though no resolution was recorded in the thread.
+### Docs Site Outage / Redirect Issue
+- **Status:** resolved
+- **Summary:** A member reported that the docs site was redirecting to an unexpected policy-redirect landing page instead of serving documentation content. The thread received follow-up replies suggesting the issue was addressed.
 - **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788159845297419
+
+### Domain Verification Blocking Seller Agent Declaration
+- **Status:** active
+- **Summary:** A builder reported being unable to add a secondary domain to their AAO company profile because the DNS TXT record verification was not being confirmed by the identity provider despite DNS propagation being confirmed independently. This is blocking completion of their seller agent declaration, and the member asked about alternative verification paths.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788957420629509
