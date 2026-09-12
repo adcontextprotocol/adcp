@@ -6,7 +6,9 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 
 <Warning>
 **Reliable Reporting 1.0 is published in RC.1 and remains experimental.**
-Sellers implementing it declare
+Current source adds opt-in consumer-status sync and readback. Sellers
+implementing that extension advertise `consumer_status_task`; it becomes
+required Core only in the next eligible minor after the notice window. Sellers declare
 `media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
 </Warning>
 
@@ -14,12 +16,6 @@ Sellers implementing it declare
 Reliable Reporting. It answers whether every report that should exist is present and
 usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 as the reporting-data API.
-
-<Note>
-The schema links below pin the published RC.1 contract. RC.0 does not support `changes_after`,
-`adjustment_receipts`, receipt replacement semantics, or any other RC.1-only
-addition.
-</Note>
 
 {/* The stable /schemas/v3 alias does not expose this RC.1-only task yet. */}
 **Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.1/media-buy/get-reporting-status-request.json)
@@ -32,6 +28,9 @@ its checkpoint, post-official `adjustments[]` and `adjustment_receipts[]`, and t
 correction/reconciliation semantics below are published in RC.1. RC.0 supports the
 `summary`, `periods`, and `revision` views, retained revisions, materializations,
 `receipts[]`, and cursor pagination; do not infer the RC.1 additions from that baseline.
+Current unreleased source adds `consumer_statuses[]` for sellers advertising
+`consumer_status_task` and includes those immutable records in flat pagination
+and `changes_after` checkpoints.
 </Note>
 
 ## Views
@@ -41,8 +40,8 @@ Every request explicitly selects one response shape:
 | View | Use |
 | --- | --- |
 | `summary` | Answer “where is my reporting?” for an account, media-buy, and time scope. |
-| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, **RC.1** post-official adjustments and adjustment receipts, materialization attempts, and consumer receipts. Use **RC.1** `changes_after` for incremental repair. |
-| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its **RC.1** adjustments and adjustment receipts, materializations, and receipts. |
+| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, post-official adjustments, consumer status statements, materialization attempts, and receipts. Use `changes_after` for incremental repair. |
+| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of its adjustments, consumer status statements naming that revision, materializations, and receipts. |
 
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
 explicit so adding a filter never silently changes the response type.
@@ -131,7 +130,7 @@ explicit so adding a filter never silently changes the response type.
 | `healthy` | Due obligations in this active scope are current and automatic delivery is working. |
 | `waiting` | No obligation in this active scope is due yet. |
 | `delayed` | At least one obligation is late but still inside automatic recovery. |
-| `action_required` | An SLA or retry boundary was crossed, **or** readable revision and verified materialization evidence crossed the immediate consumer-reconciliation boundary with a missing or rejected current receipt; `issues[]` supplies the human action. Reliable Reporting defines no separate receipt SLA. |
+| `action_required` | An SLA or retry boundary was crossed, a Reconciled Billing receipt is missing/rejected, **or** the authenticated buyer reports that seller-healthy reporting is omitted, missing, or unreadable; `issues[]` supplies the human action. |
 | `complete` | This scope is closed, fully covered by retained ledger history, and every obligation over its configured covered denominator has the required finality and an authoritative readable revision — for Core (API-delivered) obligations that means published and retained per `status_retention_days`; managed-delivery obligations additionally require a verified readable materialization. Obligations configured for consumer reconciliation also have an accepted receipt for the current revision. This delivery state does not replace the separate `coverage.status` claim. |
 
 Aggregate precedence is `action_required` before `delayed` before `healthy`.
@@ -155,7 +154,7 @@ This state is reachable after the caller intentionally sends
 
 ## Reliability model
 
-The periods view keeps five facts distinct:
+The periods view keeps six facts distinct:
 
 - An **obligation** records what report was expected and when, so a missing first
   webhook is detectable.
@@ -170,6 +169,10 @@ The periods view keeps five facts distinct:
 - A **materialization** is one attempt to expose that revision through a durable file
   transfer, dataset share, or warehouse for one obligation and destination. A retry
   gets a new materialization ID but keeps the same revision ID.
+- A **consumer status** is the authenticated buyer's immutable statement that an
+  expected period was received, omitted from the seller ledger, missing its
+  revision, or unreadable. It remains separately attributed and can identify a
+  missing seller obligation without a seller-issued obligation ID.
 - A **receipt** is one authenticated consumer's accepted or rejected reconciliation
   result for an exact materialization. Availability says the producer published it;
   an accepted receipt says that consumer independently observed matching evidence.
@@ -214,11 +217,35 @@ durable materialization in this first managed-ledger version; a short-period pac
 configuration plus the signed readiness doorbell is the reliable fast path here.
 
 Periods pagination applies to the flat union of `periods[]` obligation records,
-`revisions[]`, `adjustments[]`, `materializations[]`, `receipts[]`, and
+`revisions[]`, `adjustments[]`, `consumer_statuses[]`, `materializations[]`, `receipts[]`, and
 `adjustment_receipts[]`, so one
 heavily restated, corrected, retried, or reconciled period cannot create an
 unbounded nested response. Each obligation's record counts let the SDK prove it
 found the complete associated history across pages.
+
+## Consumer-status mismatch
+
+After reading or repairing reporting, a buyer calls
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+`get_reporting_status` returns that authenticated caller's append-only statements
+in `consumer_statuses[]`; no buyer can read another buyer's status.
+
+The seller compares only the current unsuperseded statement with its own current
+projection. If the seller says `healthy` or `complete` while that buyer's status
+conflicts, this caller/account view becomes `action_required` with a stable
+`CONSUMER_STATUS_MISMATCH` issue.
+The issue points at `reporting_status_id` and names the diagnosed
+`responsible_party`. Neither claim overwrites the other.
+
+A conflict includes `obligation_missing`, `revision_missing`, or `unreadable`,
+and also `received` naming an older revision after the seller publishes a newer
+required restatement. This is how the seller can see that reporting changed
+after the buyer already read it.
+
+A `received` status does not satisfy seller production health and is not a billing
+receipt. Missing buyer status stays unknown and never excuses an overdue seller
+obligation. Buyer-attributed status also stays out of seller-advertised
+`reliability_statistics` unless independently corroborated.
 
 ## Readiness and recovery
 
@@ -464,7 +491,7 @@ bound to that immutable snapshot, every page repeats its identity, and
 `pagination.total_count` is required. SDKs reject a changed snapshot identity, dedupe
 each record by its type-specific immutable ID, and finish only when the unique stored
 record count equals `total_count` and each obligation's
-revision/adjustment/materialization/receipt counts match. A periods response also
+revision/adjustment/consumer-status/materialization/receipt counts match. A periods response also
 returns `changes_checkpoint`. The buyer persists it only after `has_more: false`
 and supplies it as `changes_after` on the next read. The seller must return every
 later record and the current projection of affected obligations; it may safely

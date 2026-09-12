@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-reporting-status-request.json",
+  "title": "Sync Reporting Status Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Tell a seller whether expected reporting was received, omitted, missing, or unreadable.",
+  "description": "Submit the authenticated consumer's operational reporting status for expected configuration periods. This is a batched idempotent append-only sync over seller-hosted task transport, not a webhook registration, measurement-data feed, or billing receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or consumer principal.",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+    "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
+    "account": { "$ref": "/schemas/core/canonical-account-ref.json" },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Client-generated batch key. Exact retries reuse the key and body."
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/reporting-consumer-status.json" },
+          { "not": { "required": ["recorded_at"] } }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Immutable status updates. New state uses a new reporting_status_id and explicitly supersedes the current status for that expected period. A batch contains at most one update for each logical status chain."
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["account", "idempotency_key", "statuses"],
+  "x-adcp-validation": {
+    "batch_identity": "reporting_status_id values MUST be unique within the batch. A batch MUST contain at most one statement for each logical chain identified by authenticated consumer, account, configuration generation, report definition, and period; sellers reject every duplicate-chain entry in that batch without evaluating their supersession order. Every configuration generation, report definition, optional obligation, optional revision, superseded status, and seller ledger snapshot MUST resolve within the authenticated caller and account or fail with the same unavailable result used for unknown, unauthorized, cross-account, and cross-caller identifiers.",
+    "partial_results": "Each status is independent. One failed result does not roll back successfully recorded statuses; retries use the same status IDs and content.",
+    "buyer_duty": "When the seller advertises consumer_status_task, a buyer using that Reliable Reporting configuration MUST automate this task: report a failed consumption promptly after its bounded retry/give-up window expires, report each later state change, and ensure every elapsed expected period has a current status before closing that reporting scope. Until the field becomes required Core in the next eligible minor, its absence means the buyer retains status locally and does not infer a reverse endpoint. Seller production health never depends on receiving buyer status, and missing buyer feedback never excuses a seller obligation."
+  },
+  "additionalProperties": false
+}

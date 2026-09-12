@@ -59,9 +59,10 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // more shared input definition, holding the prompt view within 412 KiB.
 // Bounded delivery-breakdown pagination adds one small per-dimension cursor
 // input to get_media_buy_delivery (device_type, device_platform, audience,
-// placement); keep the resulting prompt view within 413 KiB.
+// placement). Core consumer-status sync adds one compact mutating input; keep
+// the resulting prompt view within 417 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 413,
+  'media-buy': 417,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

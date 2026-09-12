@@ -274,10 +274,14 @@ describe('managed reporting status contract', () => {
   let validateAdjustmentReceipt;
   let validateReliabilityStatistics;
   let validateLedgerWebhook;
+  let validateConsumerStatus;
+  let validateStatusSyncRequest;
+  let validateStatusSyncResponse;
+  let validateStatusIssue;
   let canonicalize;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook, validateConsumerStatus, validateStatusSyncRequest, validateStatusSyncResponse, validateStatusIssue] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -305,6 +309,10 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-adjustment-receipt.json'),
       compile('/schemas/core/reporting-reliability-statistics.json'),
       compile('/schemas/core/reporting-ledger-changed-webhook.json'),
+      compile('/schemas/core/reporting-consumer-status.json'),
+      compile('/schemas/media-buy/sync-reporting-status-request.json'),
+      compile('/schemas/media-buy/sync-reporting-status-response.json'),
+      compile('/schemas/core/reporting-status-issue.json'),
     ]);
     canonicalize = (await import('canonicalize')).default;
   });
@@ -869,6 +877,7 @@ describe('managed reporting status contract', () => {
       periods: [],
       revisions: [],
       adjustments: [],
+      consumer_statuses: [],
       materializations: [],
       receipts: [],
       pagination: { has_more: false, total_count: 0 },
@@ -889,10 +898,129 @@ describe('managed reporting status contract', () => {
       account_id: 'acc_123',
       revision,
       adjustments: [],
+      consumer_statuses: [],
       materializations: [materialization],
       receipts: [],
       pagination: { has_more: false, total_count: 1 },
     }), true, JSON.stringify(validateResponse.errors));
+  });
+
+  it('records buyer status without turning it into measurement or billing evidence', () => {
+    const base = {
+      reporting_status_id: 'status_20260826_daily_001',
+      delivery_config_id: 'daily-share',
+      delivery_config_version: 1,
+      report_definition_id: revision.report_definition_id,
+      period: revision.period,
+      status_as_of: '2026-08-27T04:05:00Z',
+    };
+    const received = {
+      ...base,
+      consumer_status: 'received',
+      reporting_obligation_id: 'robl_20260826_daily',
+      reporting_revision_id: revision.reporting_revision_id,
+      observed_revision_content_sha256: revision.revision_content_sha256,
+    };
+    assert.equal(validateConsumerStatus(received), true, JSON.stringify(validateConsumerStatus.errors));
+    assert.equal(validateConsumerStatus({ ...received, consumer_commit_ref: 'warehouse-load:20260827.0042' }), true);
+    assert.equal(validateConsumerStatus({ ...received, consumer_commit_ref: 'https://buyer.example/runbook' }), false);
+
+    const obligationMissing = {
+      ...base,
+      reporting_status_id: 'status_20260826_daily_002',
+      consumer_status: 'obligation_missing',
+      seller_ledger_snapshot_id: 'ledger_20260827_001',
+      seller_ledger_as_of: '2026-08-27T04:05:00Z',
+    };
+    assert.equal(validateConsumerStatus(obligationMissing), true, JSON.stringify(validateConsumerStatus.errors));
+    assert.equal(validateConsumerStatus({ ...obligationMissing, reporting_obligation_id: 'robl_20260826_daily' }), false);
+
+    const revisionMissing = {
+      ...base,
+      reporting_status_id: 'status_20260826_daily_003',
+      consumer_status: 'revision_missing',
+      reporting_obligation_id: 'robl_20260826_daily',
+    };
+    assert.equal(validateConsumerStatus(revisionMissing), true, JSON.stringify(validateConsumerStatus.errors));
+
+    const unreadable = {
+      ...base,
+      reporting_status_id: 'status_20260826_daily_004',
+      consumer_status: 'unreadable',
+      reporting_obligation_id: 'robl_20260826_daily',
+      reporting_revision_id: revision.reporting_revision_id,
+      failure_code: 'access_denied',
+    };
+    assert.equal(validateConsumerStatus(unreadable), true, JSON.stringify(validateConsumerStatus.errors));
+    assert.equal(validateConsumerStatus({ ...unreadable, observed_revision_content_sha256: revision.revision_content_sha256 }), false);
+
+    const request = {
+      adcp_version: '3.2',
+      adcp_major_version: 3,
+      account: { account_id: 'acc_123' },
+      idempotency_key: '019db314-4f2a-7c91-bf38-e0df4020bb0b',
+      statuses: [obligationMissing],
+    };
+    assert.equal(validateStatusSyncRequest(request), true, JSON.stringify(validateStatusSyncRequest.errors));
+    assert.equal(validateStatusSyncRequest({ ...request, statuses: [{ ...obligationMissing, recorded_at: '2026-08-27T04:05:01Z' }] }), false);
+
+    assert.equal(validateStatusSyncResponse({
+      status: 'completed',
+      adcp_version: '3.2',
+      adcp_major_version: 3,
+      context: { context_id: 'ctx_reporting_status_sync' },
+      results: [{
+        result: 'recorded',
+        consumer_status: { ...obligationMissing, recorded_at: '2026-08-27T04:05:01Z' },
+      }],
+    }), true, JSON.stringify(validateStatusSyncResponse.errors));
+
+    assert.equal(validateStatusIssue({
+      issue_id: 'issue_consumer_status_20260826',
+      code: 'CONSUMER_STATUS_MISMATCH',
+      severity: 'action_required',
+      responsible_party: 'seller',
+      recommended_action: 'contact_seller',
+      reporting_status_id: obligationMissing.reporting_status_id,
+      delivery_config_id: obligationMissing.delivery_config_id,
+      delivery_config_version: obligationMissing.delivery_config_version,
+      period_start: obligationMissing.period.start,
+      period_end: obligationMissing.period.end,
+    }), true, JSON.stringify(validateStatusIssue.errors));
+    assert.match(
+      readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].consumer_status_projection,
+      /only this caller\/account view action_required/,
+    );
+    assert.match(
+      readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].consumer_status_projection,
+      /no longer the current required revision after a seller restatement/,
+    );
+    const consumerStatusStoryboard = fs.readFileSync(
+      path.join(__dirname, '..', 'static', 'compliance', 'source', 'universal', 'reporting-consumer-status.yaml'),
+      'utf8',
+    );
+    assert.match(consumerStatusStoryboard, /operation: "restate_snapshot"/);
+    assert.match(consumerStatusStoryboard, /Changed-after-read is a typed caller-scoped disagreement/);
+    assert.match(
+      readSchema('/schemas/core/reporting-obligation.json')['x-adcp-validation'].record_counts,
+      /existing chain attaches to the repaired obligation by that logical key/,
+    );
+    const statusSchema = readSchema('/schemas/core/reporting-consumer-status.json');
+    assert.match(statusSchema['x-adcp-validation'].immutability, /MUST name that exact leaf/);
+    assert.match(statusSchema['x-adcp-validation'].immutability, /fails atomically with a conflict/);
+    assert.match(statusSchema['x-adcp-validation'].snapshot_provenance, /authenticated caller, account/);
+    assert.match(statusSchema['x-adcp-validation'].retention_and_limits, /status_retention_days/);
+    assert.match(
+      readSchema('/schemas/media-buy/sync-reporting-status-request.json')['x-adcp-validation'].batch_identity,
+      /seller ledger snapshot/,
+    );
+    assert.match(
+      readSchema('/schemas/media-buy/sync-reporting-status-request.json')['x-adcp-validation'].batch_identity,
+      /at most one statement for each logical chain/,
+    );
+    const syncRequestSchema = readSchema('/schemas/media-buy/sync-reporting-status-request.json');
+    assert.equal(syncRequestSchema.additionalProperties, false);
+    assert.equal(syncRequestSchema.allOf, undefined, 'closed request inlines version properties instead of composing a permissive envelope');
   });
 
   it('rejects unverified, mutable, and method-mismatched ready materializations while allowing native controls', () => {
@@ -1056,6 +1184,7 @@ describe('managed reporting status contract', () => {
       }],
       revisions: [revision, officialRevision],
       adjustments: [],
+      consumer_statuses: [],
       materializations: [materialization, officialMaterialization],
       receipts: [],
       pagination: { has_more: false, total_count: 5 },
@@ -1278,6 +1407,7 @@ describe('managed reporting status contract', () => {
           managed_delivery: true,
           configuration_task: 'sync_accounts',
           status_task: 'get_reporting_status',
+          consumer_status_task: 'sync_reporting_status',
           revision_content_task: 'get_media_buy_delivery',
           receipt_task: 'sync_reporting_receipts',
           readiness_notification: 'reporting.delivery_ready',
@@ -1329,6 +1459,21 @@ describe('managed reporting status contract', () => {
       experimental_features: ['media_buy.reporting_delivery'],
     };
     assert.equal(validateCapabilities(capabilities), true, JSON.stringify(validateCapabilities.errors));
+    const withoutConsumerStatus = structuredClone(capabilities);
+    delete withoutConsumerStatus.media_buy.reporting_delivery.consumer_status_task;
+    assert.equal(
+      validateCapabilities(withoutConsumerStatus),
+      true,
+      `consumer status remains opt-in during the notice window: ${JSON.stringify(validateCapabilities.errors)}`,
+    );
+    const consumerStatusWithoutReliableReporting = structuredClone(capabilities);
+    delete consumerStatusWithoutReliableReporting.media_buy.reporting_delivery.reliable_reporting_version;
+    delete consumerStatusWithoutReliableReporting.media_buy.reporting_delivery.revision_content_task;
+    assert.equal(
+      validateCapabilities(consumerStatusWithoutReliableReporting),
+      false,
+      'consumer status requires the Reliable Reporting 1.0 revision-binding contract',
+    );
     const ledgerOnly = structuredClone(capabilities);
     delete ledgerOnly.media_buy.reporting_delivery.readiness_notification;
     ledgerOnly.media_buy.reporting_delivery.ledger_notification = 'reporting.ledger_changed';

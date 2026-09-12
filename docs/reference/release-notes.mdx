@@ -13,6 +13,16 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 **Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed RC.1 exactly; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
+<Warning>
+**Reliable Reporting breaking-change notice — published September 12, 2026.**
+Current source adds opt-in `sync_reporting_status` so a buyer can report missing,
+unreadable, or exactly received reporting back to the seller; the seller can then
+detect when a received revision becomes stale after restatement. Sellers advertise
+`consumer_status_task` only when implemented; RC.1 remains unchanged. The next
+eligible minor makes this task required Core no earlier than October 24, 2026.
+See the [migration guide](/docs/reference/migration/reliable-reporting-status-loop).
+</Warning>
+
 ### Prerelease checkpoints
 
 | Release | Purpose | SDK posture |

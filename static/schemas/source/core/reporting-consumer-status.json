@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-consumer-status.json",
+  "title": "Reporting Consumer Status",
+  "x-status": "experimental",
+  "description": "One immutable, authenticated consumer statement about whether the required reporting for an expected configuration period could actually be consumed. It is operational status, not measurement data, delivery totals, a billing receipt, or authority to overwrite the seller's obligation/revision ledger. New statements supersede the current statement for the same consumer, configuration generation, report definition, and period while preserving append-only history.",
+  "type": "object",
+  "properties": {
+    "reporting_status_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-entity": "reporting_consumer_status",
+      "description": "Consumer-issued immutable identity for this status statement. Exact retries reuse the ID and content; changed status uses a new ID and supersedes_reporting_status_id."
+    },
+    "supersedes_reporting_status_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-entity": "reporting_consumer_status",
+      "description": "The authenticated consumer's current status leaf replaced by this statement. It must identify the same account, configuration generation, report definition, and period."
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config"
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "report_definition_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_definition",
+      "description": "Exact immutable report definition accepted with the configuration generation, preventing unlike reporting promises from sharing a status chain."
+    },
+    "period": {
+      "type": "object",
+      "description": "Expected half-open reporting period derived from the accepted configuration generation. This identity works even when the seller omitted the corresponding obligation.",
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "source_timezone": { "type": "string", "minLength": 1 }
+      },
+      "required": ["start", "end", "source_timezone"],
+      "additionalProperties": false
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation",
+      "description": "Seller-issued obligation identity when one was visible. Omitted when the consumer is reporting a missing obligation."
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Exact revision successfully consumed or found unreadable. Omitted when no required revision was available."
+    },
+    "observed_revision_content_sha256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "revision_content_sha256 independently recomputed from the exact consumed Core revision binding. Required only for received; unlike a Reconciled Billing receipt it carries no materialization evidence, row totals, canonical digest, or billing acceptance."
+    },
+    "consumer_status": {
+      "type": "string",
+      "enum": ["received", "obligation_missing", "revision_missing", "unreadable"],
+      "description": "received means the exact revision content was successfully consumed; obligation_missing means the independently expected period was absent from the seller ledger; revision_missing means the obligation existed but no required revision was available after expected_at; unreadable means a named revision was advertised but its exact content could not be consumed. None of these values reconciles billing evidence."
+    },
+    "status_as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the consumer established this status. For received, this is when the named revision first became consumable to this consumer; sellers use it as buyer-attributed arrival evidence rather than silently substituting publication time."
+    },
+    "failure_code": {
+      "type": "string",
+      "enum": ["access_denied", "resource_not_found", "integrity_mismatch", "reader_incompatible", "transport_failed"],
+      "description": "Typed reason a named revision was unreadable. Agents dispatch on this value, not prose or provider response bodies."
+    },
+    "consumer_commit_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9_.:-]{1,512}$",
+      "description": "Optional opaque, non-secret consumer checkpoint, transaction, or load reference. It is operational evidence, not authorization, a credential, a URL, or instructions; receivers compare or display it as inert text and never dereference or execute it."
+    },
+    "seller_ledger_snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Optional seller-issued get_reporting_status snapshot on which this statement was based. It is evidence context, not consumer authority over that snapshot."
+    },
+    "seller_ledger_as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ledger_as_of echoed from seller_ledger_snapshot_id. Present if and only if seller_ledger_snapshot_id is present."
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "When the seller durably recorded this immutable statement."
+    }
+  },
+  "required": [
+    "reporting_status_id",
+    "delivery_config_id",
+    "delivery_config_version",
+    "report_definition_id",
+    "period",
+    "consumer_status",
+    "status_as_of"
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "consumer_status": { "const": "received" } }, "required": ["consumer_status"] },
+      "then": {
+        "required": ["reporting_obligation_id", "reporting_revision_id", "observed_revision_content_sha256"],
+        "not": { "required": ["failure_code"] }
+      }
+    },
+    {
+      "if": { "properties": { "consumer_status": { "const": "obligation_missing" } }, "required": ["consumer_status"] },
+      "then": {
+        "not": { "anyOf": [{ "required": ["reporting_obligation_id"] }, { "required": ["reporting_revision_id"] }, { "required": ["observed_revision_content_sha256"] }, { "required": ["failure_code"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "consumer_status": { "const": "revision_missing" } }, "required": ["consumer_status"] },
+      "then": {
+        "required": ["reporting_obligation_id"],
+        "not": { "anyOf": [{ "required": ["reporting_revision_id"] }, { "required": ["observed_revision_content_sha256"] }, { "required": ["failure_code"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "consumer_status": { "const": "unreadable" } }, "required": ["consumer_status"] },
+      "then": {
+        "required": ["reporting_obligation_id", "reporting_revision_id", "failure_code"],
+        "not": { "required": ["observed_revision_content_sha256"] }
+      }
+    },
+    {
+      "if": { "required": ["seller_ledger_snapshot_id"] },
+      "then": { "required": ["seller_ledger_as_of"] },
+      "else": { "not": { "required": ["seller_ledger_as_of"] } }
+    }
+  ],
+  "x-adcp-validation": {
+    "attribution": "The consumer principal comes only from authenticated transport and is never asserted in the payload. Sellers disclose a status only to the same authenticated consumer that submitted it. A consumer status never overwrites or becomes authoritative seller obligation, revision, materialization, receipt, or adjustment evidence.",
+    "expected_period": "The configuration generation and report_definition_id MUST resolve for the authenticated caller/account, and period MUST be one exact eligible period derived from that immutable generation. obligation_missing and revision_missing are valid only when status_as_of is at or after the obligation's expected_at. The seller MUST accept obligation_missing without a seller-issued obligation or revision ID when this independently derivable identity is valid.",
+    "revision_binding": "For received or unreadable, reporting_revision_id and reporting_obligation_id MUST match the same configuration generation, report definition, and period. received requires the consumer to recompute the Core revision binding and submit the matching revision_content_sha256; it does not assert matching Managed materialization evidence, billing control totals, canonical billing evidence, invoice approval, or dispute waiver.",
+    "immutability": "reporting_status_id is immutable. Exact retries are unchanged; reuse with different content is an idempotency conflict. Each consumer has exactly one current leaf per account, configuration generation, report definition, and period. This logical key remains the chain identity when an obligation_missing statement predates a repaired seller obligation; the seller attaches that chain to the later obligation and never resets or forks it. If a leaf already exists, a new statement MUST name that exact leaf in supersedes_reporting_status_id; omission, a stale leaf, or any attempt to fork the chain fails atomically with a conflict. The new statement becomes current only after that comparison succeeds.",
+    "retention_and_limits": "Superseded statements remain readable as append-only history for at least the advertised status_retention_days. After that retention boundary, sellers MAY prune expired superseded statements while retaining enough chain metadata to reject ID reuse and stale supersession. Sellers apply ordinary authenticated task rate limits and per-caller/account resource limits to pathological status churn without allowing one caller to affect another.",
+    "snapshot_provenance": "When seller_ledger_snapshot_id is present, the seller MUST resolve it and require seller_ledger_as_of to exactly match the issued snapshot for this authenticated caller, account, and applicable filter scope. Unknown, unauthorized, cross-account, cross-caller, expired, or mismatched snapshot identities fail with the same unavailable result.",
+    "time": "status_as_of MUST be no earlier than the superseded statement's status_as_of and no later than recorded_at except for the seller's documented clock-skew tolerance. Sellers reject unreasonable future timestamps and retain the submitted value as consumer-attributed evidence rather than rewriting it."
+  },
+  "additionalProperties": false
+}
