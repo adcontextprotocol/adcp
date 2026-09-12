@@ -93,10 +93,9 @@ Specialisms are grouped below by parent protocol.
 | `buyer-monitoring` | preview | Buyer agent that monitors delivery via webhooks and polling, detects pacing variance, and flags under-delivery |
 | `buyer-recovery` | preview | Buyer agent that handles seller offline, auth expiry, idempotency collisions, and rate limiting with graceful degradation |
 | `orchestrator-multi-agent` | preview | Orchestrator agent that coordinates across multiple sellers, handles partial failures, and reconciles cross-agent budget and state |
-
-<Note>
-**Coming in 3.1.** `sales-streaming-tv` (CTV / streaming), `sales-exchange` (programmatic SSP / exchange), and `sales-retail-media` (retail media network) are scheduled for 3.1. Sellers in those categories should claim `sales-guaranteed` or `sales-non-guaranteed` at 3.0 GA.
-</Note>
+| `sales-retail-media` | preview | Retail media network seller — onsite sponsored search, sponsored display, and offsite extensions tied to SKU-level catalog feeds, keyword targeting, and deterministic purchase attribution |
+| `sales-streaming-tv` | preview | Connected TV and streaming seller — SSAI-delivered video inventory, audience-based buying, household-level frequency capping, and VAST creative delivery across CTV apps |
+| `sales-exchange` | preview | Programmatic exchange or SSP — multi-publisher auction inventory with floor prices, bid guidance, audience targeting, and auction-level delivery transparency |
 
 <Note>
 `audience-sync` moved from the `governance` protocol to `media-buy` to match its tool family. If your agent claims `audience-sync` but only declares `governance` in `supported_protocols`, add `media_buy` to `supported_protocols` — the runner now expects the media-buy baseline to run alongside the audience-sync storyboard.

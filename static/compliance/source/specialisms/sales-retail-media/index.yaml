@@ -1,0 +1,518 @@
+id: sales_retail_media
+version: "0.1.0"
+title: "Retail media network seller"
+protocol: media-buy
+category: sales_retail_media
+summary: "Retail media network seller — onsite sponsored search, sponsored display, and offsite extensions tied to SKU-level catalog feeds, keyword targeting, and deterministic purchase attribution."
+track: media_buy
+status: preview
+required_tools:
+  - sync_catalogs
+  - get_products
+  - create_media_buy
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy or
+# approved → pending on a catalog_item.
+invariants:
+  - status.monotonic
+  - impairment.coherence
+
+narrative: |
+  You run a retail media network. Buyers advertise products from their catalog
+  on your owned-and-operated surfaces (site search, browse pages, product detail
+  pages) and offsite extensions through DSP partnerships. Inventory is
+  catalog-driven: every sponsored listing resolves to a SKU in the buyer's
+  product feed. Measurement is closed-loop — deterministic purchase attribution
+  ties ad exposure to transaction data your platform owns.
+
+  This storyboard tests the retail-media-specific flow:
+  1. Catalog sync — buyer pushes a product feed, seller validates SKUs
+  2. Product discovery — buyer discovers keyword-targetable sponsored products
+     with sponsored_placement_types
+  3. Media buy with keyword targeting — buyer creates a buy with keyword_targets
+     and per-keyword bids
+  4. Delivery with deterministic attribution — seller reports conversions,
+     units_sold, and new_to_brand metrics from closed-loop transaction data
+
+  The fixture buyer (Daniel Park, ShopGrid) pushes a grocery catalog and buys
+  sponsored search + sponsored display on the seller's retail platform.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_catalogs
+    - keyword_targeting
+    - deterministic_attribution
+  examples:
+    - "Retail media network with onsite search"
+    - "Grocery delivery platform with sponsored listings"
+    - "Marketplace with sponsored products and offsite extensions"
+
+caller:
+  role: buyer_agent
+  example: "ShopGrid retail media buyer"
+
+prerequisites:
+  description: |
+    The caller has a product catalog (inline SKU items) ready for sync and
+    keyword targeting configured. The seller declares keyword_targeting and
+    catalog_item_availability_updates capabilities.
+  test_kit: "test-kits/summit-foods.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the seller supports
+      retail media features: catalog sync, keyword targeting, and
+      sponsored_placement_types.
+
+    steps:
+      - id: get_capabilities
+        title: "Check retail media capabilities"
+        narrative: |
+          Verify the seller declares media_buy protocol support with
+          keyword_targeting capability and sponsored placement types.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring:
+          - media_buy in supported_protocols
+          - sales-retail-media in specialisms
+          - keyword_targeting in media_buy features or targeting capabilities
+        sample_request:
+          context:
+            correlation_id: "sales_retail_media--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-retail-media"
+            description: "Agent declares sales-retail-media specialism"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      The buyer establishes an account relationship and registers their
+      governance agent before catalog sync.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        narrative: |
+          The buyer registers their brand and operator. Sandbox accounts
+          are provisioned instantly for testing retail media flows.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id, status (active for sandbox),
+          and billing terms.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "summitfoods.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_account_setup_sync_accounts"
+          context:
+            correlation_id: "sales_retail_media--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the account
+          before catalog sync and media-buy creation.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "summitfoods.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_account_setup_sync_governance"
+          context:
+            correlation_id: "sales_retail_media--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--sync_governance"
+            description: "Context correlation_id returned unchanged"
+
+  - id: catalog_sync
+    title: "Retail product catalog sync"
+    narrative: |
+      The buyer pushes a retail product feed with SKU-level items. Retail media
+      is fundamentally catalog-driven: onsite sponsored-product ads, offsite
+      DPAs, and closed-loop measurement all resolve to SKU-level catalog items.
+
+    steps:
+      - id: sync_catalogs
+        title: "Push retail product catalog"
+        narrative: |
+          The buyer pushes a small inline retail catalog with grocery SKUs.
+          The seller validates each item (images, pricing, required fields)
+          and returns per-item approval status.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Return per-catalog results with:
+          - catalog_id and action (created/updated)
+          - item_count, items_approved, items_pending, items_rejected
+          - item_issues for rejected items with specific reasons
+        sample_request:
+          account:
+            brand:
+              domain: "summitfoods.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "summit_pantry_2026"
+              type: "product"
+              content_id_type: "sku"
+              name: "Summit Foods — Pantry Staples 2026"
+              items:
+                - item_id: "SF-OAT-1000"
+                  title: "Organic Rolled Oats, 1kg"
+                  description: "Whole-grain rolled oats, single-origin, no additives."
+                  url: "https://summitfoods.example/shop/organic-oats-1kg"
+                  image_url: "https://cdn.summitfoods.example/products/organic-oats-1kg.jpg"
+                  price:
+                    amount: 8.99
+                    currency: "USD"
+                - item_id: "SF-HNY-500"
+                  title: "Wild Wildflower Honey, 500g"
+                  description: "Raw unfiltered honey from regional wildflower meadows."
+                  url: "https://summitfoods.example/shop/wild-honey-500g"
+                  image_url: "https://cdn.summitfoods.example/products/wild-honey-500g.jpg"
+                  price:
+                    amount: 14.50
+                    currency: "USD"
+                - item_id: "SF-GRN-250"
+                  title: "Stone-Ground Granola, 250g"
+                  description: "Maple-sweetened granola with toasted almonds and dried cranberries."
+                  url: "https://summitfoods.example/shop/granola-250g"
+                  image_url: "https://cdn.summitfoods.example/products/granola-250g.jpg"
+                  price:
+                    amount: 6.49
+                    currency: "USD"
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_catalog_sync_sync_catalogs"
+          context:
+            correlation_id: "sales_retail_media--sync_catalogs"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Catalog has an ID"
+          - check: field_present
+            path: "catalogs[0].item_count"
+            description: "Catalog reports item count"
+          - check: field_present
+            path: "catalogs[0].items_approved"
+            description: "Catalog reports approved item count"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--sync_catalogs"
+            description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: catalog_generation
+            path: "catalogs[0].catalog_generation"
+
+  - id: product_discovery
+    title: "Discover keyword-targetable products"
+    narrative: |
+      The buyer discovers sponsored products with keyword targeting. Retail
+      media products declare sponsored_placement_types (sponsored_search,
+      sponsored_display, sponsored_native) and support keyword_targets in
+      the targeting schema.
+
+    steps:
+      - id: get_products
+        title: "Discover sponsored search and display products"
+        narrative: |
+          The buyer queries for products, expecting sponsored placement types
+          and keyword targeting support. The seller returns products with
+          sponsored_placement_types and pricing options.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return products with:
+          - sponsored_placement_types declaring search, display, or native
+          - pricing_options with CPC or CPM models
+          - keyword targeting capability indicated
+        sample_request:
+          buying_mode: "brief"
+          account:
+            brand:
+              domain: "summitfoods.example"
+            operator: "pinnacle-agency.example"
+          brief: "Sponsored search and display for grocery brand, pantry staples category, $15K monthly budget"
+          context:
+            correlation_id: "sales_retail_media--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Products have product_id"
+          - check: field_present
+            path: "products[0].pricing_options"
+            description: "Products have pricing options"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--get_products"
+            description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: sponsored_search_product_id
+            path: "products[0].product_id"
+          - name: cpc_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+
+  - id: create_keyword_buy
+    title: "Create media buy with keyword targeting"
+    narrative: |
+      The buyer creates a sponsored-search media buy with keyword targets
+      and per-keyword bids. This is the core retail-media buy flow:
+      keywords drive sponsored product placement on the seller's search
+      results pages.
+
+    steps:
+      - id: create_media_buy
+        title: "Create sponsored search buy with keywords"
+        narrative: |
+          The buyer creates a media buy targeting grocery-related keywords.
+          Each keyword has a match type and optional per-keyword bid. The
+          buy references the catalog so the seller can render dynamic
+          sponsored listings from the product feed.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          The seller:
+          1. Validates keyword targets against the product's targeting support
+          2. Creates the buy with media_buy_status: pending_creatives or active
+          3. Returns media_buy_id for subsequent operations
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_create_keyword_buy_create_media_buy"
+          account:
+            brand:
+              domain: "summitfoods.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "summitfoods.example"
+          start_time: "2099-10-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "$context.sponsored_search_product_id"
+              budget: 10000
+              pricing_option_id: "$context.cpc_pricing_option_id"
+              targeting_overlay:
+                keyword_targets:
+                  - keyword: "organic oats"
+                    match_type: "broad"
+                    bid_price: 0.85
+                  - keyword: "granola"
+                    match_type: "exact"
+                    bid_price: 1.20
+                  - keyword: "honey"
+                    match_type: "phrase"
+                    bid_price: 0.65
+                negative_keywords:
+                  - keyword: "cheap"
+                    match_type: "broad"
+              catalogs:
+                - catalog_id: "summit_pantry_2026"
+                  type: "product"
+          context:
+            correlation_id: "sales_retail_media--create_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "media_buy_status"
+            description: "Response includes media_buy_status"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: item_availability
+    title: "Catalog item availability management"
+    narrative: |
+      After the buy is live, the buyer suppresses an out-of-stock item and
+      restores it when back in stock. Retail media requires fast item-level
+      availability control — an out-of-stock SKU must stop appearing in
+      sponsored listings immediately, not on the next feed refresh.
+
+    steps:
+      - id: suppress_item
+        title: "Suppress out-of-stock item"
+        narrative: |
+          The buyer sends an item_availability_update to suppress a SKU that
+          went out of stock. The seller must stop serving sponsored listings
+          for this item immediately.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          The seller:
+          1. Processes the suppress action synchronously
+          2. Returns per-item acknowledgement with the overlay state
+          3. Stops selecting or rendering the item in sponsored listings
+        sample_request:
+          account:
+            brand:
+              domain: "summitfoods.example"
+            operator: "pinnacle-agency.example"
+          item_availability_updates:
+            - catalog_id: "summit_pantry_2026"
+              catalog_generation: "$context.catalog_generation"
+              item_id: "SF-HNY-500"
+              expected_overlay_revision: 0
+              action: "suppress"
+              reason: "out_of_stock"
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_item_availability_suppress_item"
+          context:
+            correlation_id: "sales_retail_media--suppress_item"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--suppress_item"
+            description: "Context correlation_id returned unchanged"
+
+      - id: restore_item
+        title: "Restore back-in-stock item"
+        narrative: |
+          The buyer restores the previously suppressed item once it is back
+          in stock. The seller resumes serving sponsored listings for it.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          The seller:
+          1. Processes the restore action synchronously
+          2. Returns per-item acknowledgement
+          3. Resumes selecting the item for sponsored listings
+        sample_request:
+          account:
+            brand:
+              domain: "summitfoods.example"
+            operator: "pinnacle-agency.example"
+          item_availability_updates:
+            - catalog_id: "summit_pantry_2026"
+              catalog_generation: "$context.catalog_generation"
+              item_id: "SF-HNY-500"
+              expected_overlay_revision: 1
+              action: "restore"
+              reason: "back_in_stock"
+          idempotency_key: "$generate:uuid_v4#sales_retail_media_item_availability_restore_item"
+          context:
+            correlation_id: "sales_retail_media--restore_item"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_retail_media--restore_item"
+            description: "Context correlation_id returned unchanged"
