@@ -13,8 +13,8 @@
     "enforcement": "Inventory generation fails when any profile exceeds the maximum without matching a documented exception category.",
     "profile_annotation": "Profiles above the maximum carry target_exception_category; its absence means the profile is at or below the maximum.",
     "summary": {
-      "measured_profile_count": 849,
-      "within_target_profile_count": 701,
+      "measured_profile_count": 869,
+      "within_target_profile_count": 721,
       "documented_exception_profile_count": 138,
       "measurement_only_profile_count": 10,
       "unclassified_over_target_profile_count": 0
@@ -76,30 +76,30 @@
     "server/src/addie/email-conversation-handler.ts": "d6cf6d3c8621a85c69c6b22b86e6aa78f03b0d532ac8d5162fd40ec6c869f70c",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
     "server/src/addie/jobs/shadow-replay-cohort.ts": "316d0764cd65e4c631d6efef7d090fd46a6a8fff22d4c917a40b44a7a69eee1f",
-    "server/src/addie/tool-sets.ts": "1834fa15c23d89a94b875c32259a85dc782494f469034c543c020be989264ad5"
+    "server/src/addie/tool-sets.ts": "fc82703107ee810eda93ca1e5b5d3b7a364fe7142ae575d455c8f2bd833c9344"
   },
   "routed": {
-    "tool_set_count": 67,
+    "tool_set_count": 69,
     "compatibility_tool_set_count": 19,
-    "unique_tool_count": 218,
+    "unique_tool_count": 222,
     "always_available_tool_count": 6,
     "always_available_admin_tool_count": 2,
     "missing_runtime_definition_count": 0,
     "missing_runtime_definitions": []
   },
   "runtime": {
-    "unique_tool_count": 217,
+    "unique_tool_count": 221,
     "not_declared_to_router_count": 0,
     "not_declared_to_router": [],
     "not_declared_to_router_scope": "Modern routed Slack Bolt profiles only"
   },
   "prompt": {
     "rules_bytes": 154070,
-    "tool_reference_bytes": 39458,
-    "complete_offline_tool_reference_bytes": 42410,
+    "tool_reference_bytes": 40469,
+    "complete_offline_tool_reference_bytes": 42517,
     "response_style_bytes": 9056,
-    "system_prompt_bytes": 202598,
-    "system_prompt_sha256": "46198a0f2b34a26b37b27dab81cbf58b0bebc1a3eaa6f89f1706acb3938091cc"
+    "system_prompt_bytes": 203609,
+    "system_prompt_sha256": "cd4f3b9f6a72df2ed738d65a42130ed526e686863800de4851fa1d01cd95c8b0"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -1894,6 +1894,46 @@
       "wire_schema_sha256": "3635674d56f8f02f4f91a041f986d4f0971e30929c2b70cdd7968f4dcafef7f2"
     },
     {
+      "id": "slack_bolt:admin_dm:routed:admin_escalations",
+      "runtime": "slack_bolt",
+      "audience": "admin_dm",
+      "route": "admin_escalations",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 7,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 8718,
+      "tool_reference_bytes": 4845,
+      "tool_reference_sha256": "d806c707c6b3362666449584a4bec670d6d4a37cd352149bbce18efdd117a6f3",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "0c0c9de14003d5b7388bf293492982215686ae18d4146efe7b468be336ab83fc",
+      "wire_schema_sha256": "dfc71edc4fcf9837cacbe90e77828bdfea324ee6a0fe57b3cac394f612108963"
+    },
+    {
       "id": "slack_bolt:admin_dm:routed:admin_events",
       "runtime": "slack_bolt",
       "audience": "admin_dm",
@@ -2648,6 +2688,50 @@
       ],
       "ordered_tool_names_sha256": "829db1024e9ed7b56f80e74f08c79430219c661a9f7f1ca2f338268d981861c2",
       "wire_schema_sha256": "0b1af69d6704ce3c22d14b34ca20cbf5cc56fecae2ebc26ea8286f16edd6ca0e"
+    },
+    {
+      "id": "slack_bolt:admin_dm:routed:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "admin_dm",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 11,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 12296,
+      "tool_reference_bytes": 4875,
+      "tool_reference_sha256": "fb29689bce177518a1e5750ff2039182242b5b31fd2edb6ec226b91c2da62f37",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "c69fbb0a7e8b043c0dc67ab5ccee3ef54989aaf7b9c125d831f0b8886a6ed99f",
+      "wire_schema_sha256": "6ef70a10f0a89069e4c11e390008971ebfa8d24430991bb38c5451e4466a0d7f"
     },
     {
       "id": "slack_bolt:admin_dm:routed:brand_registry_identity",
@@ -4913,6 +4997,46 @@
       "wire_schema_sha256": "3635674d56f8f02f4f91a041f986d4f0971e30929c2b70cdd7968f4dcafef7f2"
     },
     {
+      "id": "slack_bolt:admin_working_group:admin_escalations",
+      "runtime": "slack_bolt",
+      "audience": "admin_working_group",
+      "route": "admin_escalations",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 7,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 8718,
+      "tool_reference_bytes": 4845,
+      "tool_reference_sha256": "d806c707c6b3362666449584a4bec670d6d4a37cd352149bbce18efdd117a6f3",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "0c0c9de14003d5b7388bf293492982215686ae18d4146efe7b468be336ab83fc",
+      "wire_schema_sha256": "dfc71edc4fcf9837cacbe90e77828bdfea324ee6a0fe57b3cac394f612108963"
+    },
+    {
       "id": "slack_bolt:admin_working_group:admin_events",
       "runtime": "slack_bolt",
       "audience": "admin_working_group",
@@ -5669,6 +5793,50 @@
       "wire_schema_sha256": "0b1af69d6704ce3c22d14b34ca20cbf5cc56fecae2ebc26ea8286f16edd6ca0e"
     },
     {
+      "id": "slack_bolt:admin_working_group:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "admin_working_group",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 11,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 12296,
+      "tool_reference_bytes": 4875,
+      "tool_reference_sha256": "fb29689bce177518a1e5750ff2039182242b5b31fd2edb6ec226b91c2da62f37",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "c69fbb0a7e8b043c0dc67ab5ccee3ef54989aaf7b9c125d831f0b8886a6ed99f",
+      "wire_schema_sha256": "6ef70a10f0a89069e4c11e390008971ebfa8d24430991bb38c5451e4466a0d7f"
+    },
+    {
       "id": "slack_bolt:admin_working_group:all_valid_sets_maximum",
       "runtime": "slack_bolt",
       "audience": "admin_working_group",
@@ -5696,6 +5864,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -5731,6 +5900,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -5749,16 +5919,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39296,
-      "tool_reference_sha256": "5d2aa7522c8d45b90064b3cc952506fc39e7a59c9a4324a18f1d0850f67321b1",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40307,
+      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -5818,6 +5988,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -5981,8 +6155,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -8636,6 +8810,48 @@
       "wire_schema_sha256": "19bfc0421c37c4f3a9d4840a31de433186c9fbed08527c767b8e959b88d88cab"
     },
     {
+      "id": "slack_bolt:member_dm:routed:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "member_dm",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 9,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 10002,
+      "tool_reference_bytes": 4807,
+      "tool_reference_sha256": "e5b7a9892d965bbf6348824c60b4e8e5ccdf41b0a7f786a62841b8eb992e9080",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "d88e4e8ce593613f4fe94c03b7f8a9b27cb2ff52e20d060877af7f46930f3ab6",
+      "wire_schema_sha256": "b6c3bcdf8c453f336e5593f5121a9ae13af0dd6d2a6b9661f2003f5e31f63e47"
+    },
+    {
       "id": "slack_bolt:member_dm:routed:brand_registry_identity",
       "runtime": "slack_bolt",
       "audience": "member_dm",
@@ -10732,6 +10948,46 @@
       "wire_schema_sha256": "3635674d56f8f02f4f91a041f986d4f0971e30929c2b70cdd7968f4dcafef7f2"
     },
     {
+      "id": "slack_bolt:private_channel_admin:admin_escalations",
+      "runtime": "slack_bolt",
+      "audience": "private_channel_admin",
+      "route": "admin_escalations",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 7,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 8718,
+      "tool_reference_bytes": 4845,
+      "tool_reference_sha256": "d806c707c6b3362666449584a4bec670d6d4a37cd352149bbce18efdd117a6f3",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "0c0c9de14003d5b7388bf293492982215686ae18d4146efe7b468be336ab83fc",
+      "wire_schema_sha256": "dfc71edc4fcf9837cacbe90e77828bdfea324ee6a0fe57b3cac394f612108963"
+    },
+    {
       "id": "slack_bolt:private_channel_admin:admin_events",
       "runtime": "slack_bolt",
       "audience": "private_channel_admin",
@@ -11488,6 +11744,50 @@
       "wire_schema_sha256": "0b1af69d6704ce3c22d14b34ca20cbf5cc56fecae2ebc26ea8286f16edd6ca0e"
     },
     {
+      "id": "slack_bolt:private_channel_admin:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "private_channel_admin",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 11,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 12296,
+      "tool_reference_bytes": 4875,
+      "tool_reference_sha256": "fb29689bce177518a1e5750ff2039182242b5b31fd2edb6ec226b91c2da62f37",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "c69fbb0a7e8b043c0dc67ab5ccee3ef54989aaf7b9c125d831f0b8886a6ed99f",
+      "wire_schema_sha256": "6ef70a10f0a89069e4c11e390008971ebfa8d24430991bb38c5451e4466a0d7f"
+    },
+    {
       "id": "slack_bolt:private_channel_admin:all_valid_sets_maximum",
       "runtime": "slack_bolt",
       "audience": "private_channel_admin",
@@ -11515,6 +11815,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -11550,6 +11851,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -11568,16 +11870,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39296,
-      "tool_reference_sha256": "5d2aa7522c8d45b90064b3cc952506fc39e7a59c9a4324a18f1d0850f67321b1",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40307,
+      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -11637,6 +11939,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -11800,8 +12106,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -14065,6 +14371,48 @@
       "wire_schema_sha256": "19bfc0421c37c4f3a9d4840a31de433186c9fbed08527c767b8e959b88d88cab"
     },
     {
+      "id": "slack_bolt:private_channel_member:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "private_channel_member",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 9,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 10002,
+      "tool_reference_bytes": 4807,
+      "tool_reference_sha256": "e5b7a9892d965bbf6348824c60b4e8e5ccdf41b0a7f786a62841b8eb992e9080",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "d88e4e8ce593613f4fe94c03b7f8a9b27cb2ff52e20d060877af7f46930f3ab6",
+      "wire_schema_sha256": "b6c3bcdf8c453f336e5593f5121a9ae13af0dd6d2a6b9661f2003f5e31f63e47"
+    },
+    {
       "id": "slack_bolt:private_channel_member:all_valid_sets_maximum",
       "runtime": "slack_bolt",
       "audience": "private_channel_member",
@@ -14092,6 +14440,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -14126,16 +14475,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 151,
+      "custom_tool_count": 155,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 129221,
-      "tool_reference_bytes": 34728,
-      "tool_reference_sha256": "1f0f5d10364550b671d8936d3f68c7745c5b31053ee6df30f2e88b75455363bb",
+      "wire_schema_bytes": 132799,
+      "tool_reference_bytes": 35659,
+      "tool_reference_sha256": "74717adf1dad240fa68a4bff04a7c1509ecf87374aaa1fac63ba7305bf6bf75e",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -14195,6 +14544,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -14292,8 +14645,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "c6682221c1906cd860a8f531bc24d25e520ac556a05f70976ca3d7b839740866",
-      "wire_schema_sha256": "7c21bbd5802e853ae93d933fd8461d4060faadf25977f3ab18de698df0cde873",
+      "ordered_tool_names_sha256": "4fc973c9b78d787ca4756ed97ae615fdb6e138f4928329a9bda312060d614af9",
+      "wire_schema_sha256": "e5e7559c057267b33840124668aa19ae54cc30c8c6a12a8eaa19e50da6180478",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -16597,6 +16950,46 @@
       "wire_schema_sha256": "3635674d56f8f02f4f91a041f986d4f0971e30929c2b70cdd7968f4dcafef7f2"
     },
     {
+      "id": "slack_bolt:private_mention_admin:routed:admin_escalations",
+      "runtime": "slack_bolt",
+      "audience": "private_mention_admin",
+      "route": "admin_escalations",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 7,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 8718,
+      "tool_reference_bytes": 4845,
+      "tool_reference_sha256": "d806c707c6b3362666449584a4bec670d6d4a37cd352149bbce18efdd117a6f3",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "0c0c9de14003d5b7388bf293492982215686ae18d4146efe7b468be336ab83fc",
+      "wire_schema_sha256": "dfc71edc4fcf9837cacbe90e77828bdfea324ee6a0fe57b3cac394f612108963"
+    },
+    {
       "id": "slack_bolt:private_mention_admin:routed:admin_events",
       "runtime": "slack_bolt",
       "audience": "private_mention_admin",
@@ -17351,6 +17744,50 @@
       ],
       "ordered_tool_names_sha256": "829db1024e9ed7b56f80e74f08c79430219c661a9f7f1ca2f338268d981861c2",
       "wire_schema_sha256": "0b1af69d6704ce3c22d14b34ca20cbf5cc56fecae2ebc26ea8286f16edd6ca0e"
+    },
+    {
+      "id": "slack_bolt:private_mention_admin:routed:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "private_mention_admin",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 11,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 12296,
+      "tool_reference_bytes": 4875,
+      "tool_reference_sha256": "fb29689bce177518a1e5750ff2039182242b5b31fd2edb6ec226b91c2da62f37",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "c69fbb0a7e8b043c0dc67ab5ccee3ef54989aaf7b9c125d831f0b8886a6ed99f",
+      "wire_schema_sha256": "6ef70a10f0a89069e4c11e390008971ebfa8d24430991bb38c5451e4466a0d7f"
     },
     {
       "id": "slack_bolt:private_mention_admin:routed:brand_registry_identity",
@@ -19797,6 +20234,48 @@
       "wire_schema_sha256": "19bfc0421c37c4f3a9d4840a31de433186c9fbed08527c767b8e959b88d88cab"
     },
     {
+      "id": "slack_bolt:private_mention_member:routed:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "private_mention_member",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 9,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 10002,
+      "tool_reference_bytes": 4807,
+      "tool_reference_sha256": "e5b7a9892d965bbf6348824c60b4e8e5ccdf41b0a7f786a62841b8eb992e9080",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "d88e4e8ce593613f4fe94c03b7f8a9b27cb2ff52e20d060877af7f46930f3ab6",
+      "wire_schema_sha256": "b6c3bcdf8c453f336e5593f5121a9ae13af0dd6d2a6b9661f2003f5e31f63e47"
+    },
+    {
       "id": "slack_bolt:private_mention_member:routed:brand_registry_identity",
       "runtime": "slack_bolt",
       "audience": "private_mention_member",
@@ -21858,6 +22337,43 @@
       "wire_schema_sha256": "ed6c2e618759f4dcc8801497c57155be4ab58762e83df1a7db146eb55d2314fc"
     },
     {
+      "id": "slack_bolt:public_channel_admin:admin_escalations",
+      "runtime": "slack_bolt",
+      "audience": "public_channel_admin",
+      "route": "admin_escalations",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 4,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 5951,
+      "tool_reference_bytes": 4679,
+      "tool_reference_sha256": "b0f49463d9985d1f9465047d3184b5dbd86baa6babd421a79c35f7271ab36fb7",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "fd9e458f0e7bbb1be3344ec8a83dda9390d33de4e1f08ecbb57625c0518a9d2b",
+      "wire_schema_sha256": "82ca1d7dfa887a93ae42006395543aa86d4d07147bf2b282b074ad57d1309e79"
+    },
+    {
       "id": "slack_bolt:public_channel_admin:admin_events",
       "runtime": "slack_bolt",
       "audience": "public_channel_admin",
@@ -22562,6 +23078,47 @@
       "wire_schema_sha256": "7bd4686e1ba7b389643c67b847bea3c3cc5dc6820910635e523691dae427b8f9"
     },
     {
+      "id": "slack_bolt:public_channel_admin:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "public_channel_admin",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 8,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 9529,
+      "tool_reference_bytes": 4789,
+      "tool_reference_sha256": "ac1bee3884e81f74378fe545a90fb872f17a108694986c51383f8f19aecb057a",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "bc14fcbbed83e613746c65649ebb6a63e815fba7fd5e15ba3169c709eb20d007",
+      "wire_schema_sha256": "47d9f8bee1cbbf27ae0c4f8a501f2554e2e050304693c0cafeb57e5bcb5f2d23"
+    },
+    {
       "id": "slack_bolt:public_channel_admin:all_valid_sets_maximum",
       "runtime": "slack_bolt",
       "audience": "public_channel_admin",
@@ -22589,6 +23146,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -22624,6 +23182,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -22642,16 +23201,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 200,
+      "custom_tool_count": 204,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 158988,
-      "tool_reference_bytes": 38034,
-      "tool_reference_sha256": "9ce8730475b9bcc711d4e10085b7364505592f7c8816b3937478dee46572f76b",
+      "wire_schema_bytes": 162566,
+      "tool_reference_bytes": 38965,
+      "tool_reference_sha256": "ad344a07b56eb179bdb20ad73e04026ba21b3d641a4d73d97b83b9c40260b757",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -22710,6 +23269,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -22857,8 +23420,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "a60d9e15a94a1f70f8fe7cab849a938a387c52e4f1253183f5ae640e40ccc4f5",
-      "wire_schema_sha256": "76cea7914e08283930099713098757c1ab272fc4a744381a3e722ad5b966bc28",
+      "ordered_tool_names_sha256": "994762fb69bac61435ef563bcc4ae6996f89006a6b897bae32b260896b12ec88",
+      "wire_schema_sha256": "c2ec0769efebd26fd0384206d8b70fd04e4fabe923407963a8c21072d5875a39",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -24980,6 +25543,47 @@
       "wire_schema_sha256": "7bd4686e1ba7b389643c67b847bea3c3cc5dc6820910635e523691dae427b8f9"
     },
     {
+      "id": "slack_bolt:public_channel_member:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "public_channel_member",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "event_and_meeting_permissions",
+        "member_content_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 8,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 9529,
+      "tool_reference_bytes": 4789,
+      "tool_reference_sha256": "ac1bee3884e81f74378fe545a90fb872f17a108694986c51383f8f19aecb057a",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "bc14fcbbed83e613746c65649ebb6a63e815fba7fd5e15ba3169c709eb20d007",
+      "wire_schema_sha256": "47d9f8bee1cbbf27ae0c4f8a501f2554e2e050304693c0cafeb57e5bcb5f2d23"
+    },
+    {
       "id": "slack_bolt:public_channel_member:all_valid_sets_maximum",
       "runtime": "slack_bolt",
       "audience": "public_channel_member",
@@ -25007,6 +25611,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -25041,16 +25646,16 @@
         "all_role_permissions",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 146,
+      "custom_tool_count": 150,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 125948,
-      "tool_reference_bytes": 33856,
-      "tool_reference_sha256": "280e917c7c6c2e988dd18e85716f6cad41416a99ad1bfc4c66a26a5d1c66f228",
+      "wire_schema_bytes": 129526,
+      "tool_reference_bytes": 34787,
+      "tool_reference_sha256": "2e53eb61045adf3313fdd1eadc58a4d31d8276151c91c531def8a5d6e742be34",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -25109,6 +25714,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -25202,8 +25811,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "b79441af450553b02c114d59697db1c4f78fae557e69dd4e0760f6927298607a",
-      "wire_schema_sha256": "c38ababeefd144d5618827c34c7a622a74cd37d0e3f841150c6836575d459c74",
+      "ordered_tool_names_sha256": "84cac510d8fc1d54538414851a13522cd600507fa95cde28520cd3e2a38ea2c7",
+      "wire_schema_sha256": "55ec5bdb0ec799ff39002a00a76a6fe0b4f1e5f535149a666947d0baa914bc8d",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -27291,6 +27900,38 @@
       "wire_schema_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     {
+      "id": "slack_bolt:public_mention_admin:routed:admin_escalations",
+      "runtime": "slack_bolt",
+      "audience": "public_mention_admin",
+      "route": "admin_escalations",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 0,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 2,
+      "tool_reference_bytes": 4572,
+      "tool_reference_sha256": "aa22810349a7b62797d7651ad3c6186c70cbbc8113c36ec437600441e063ebc1",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [],
+      "ordered_tool_names_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "wire_schema_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
       "id": "slack_bolt:public_mention_admin:routed:admin_events",
       "runtime": "slack_bolt",
       "audience": "public_mention_admin",
@@ -27842,6 +28483,38 @@
       ],
       "ordered_tool_names_sha256": "b04388e3c62b20243f1ee51f117b8fa965a4fc3f1b1081e33805284ba9db8570",
       "wire_schema_sha256": "ba54c4b769970c2a7ad49f7fd774ec7705d8e20b7e7ff9fee3b10909c567fbdb"
+    },
+    {
+      "id": "slack_bolt:public_mention_admin:routed:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "public_mention_admin",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 0,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 2,
+      "tool_reference_bytes": 4572,
+      "tool_reference_sha256": "aa22810349a7b62797d7651ad3c6186c70cbbc8113c36ec437600441e063ebc1",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [],
+      "ordered_tool_names_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "wire_schema_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     {
       "id": "slack_bolt:public_mention_admin:routed:brand_registry_identity",
@@ -29631,6 +30304,38 @@
       "wire_schema_sha256": "ba54c4b769970c2a7ad49f7fd774ec7705d8e20b7e7ff9fee3b10909c567fbdb"
     },
     {
+      "id": "slack_bolt:public_mention_member:routed:agent_storyboards",
+      "runtime": "slack_bolt",
+      "audience": "public_mention_member",
+      "route": "agent_storyboards",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_up_to_two_bounded_domains",
+        "google_docs_configured",
+        "conformance_socket_enabled",
+        "all_role_permissions",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 0,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 2,
+      "tool_reference_bytes": 4572,
+      "tool_reference_sha256": "aa22810349a7b62797d7651ad3c6186c70cbbc8113c36ec437600441e063ebc1",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [],
+      "ordered_tool_names_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "wire_schema_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
       "id": "slack_bolt:public_mention_member:routed:brand_registry_identity",
       "runtime": "slack_bolt",
       "audience": "public_mention_member",
@@ -30995,6 +31700,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -31030,6 +31736,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -31047,16 +31754,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39296,
-      "tool_reference_sha256": "5d2aa7522c8d45b90064b3cc952506fc39e7a59c9a4324a18f1d0850f67321b1",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40307,
+      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -31116,6 +31823,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -31279,8 +31990,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -31311,6 +32022,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -31346,6 +32058,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -31364,16 +32077,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39296,
-      "tool_reference_sha256": "5d2aa7522c8d45b90064b3cc952506fc39e7a59c9a4324a18f1d0850f67321b1",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40307,
+      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -31433,6 +32146,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -31596,8 +32313,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -31628,6 +32345,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -31663,6 +32381,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -31681,16 +32400,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39423,
-      "tool_reference_sha256": "b41d1626b61936d6bf0858399f53e1b7b4e638c298acf5de9100b8ee2630f50a",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40434,
+      "tool_reference_sha256": "982ac80a72ceec04be2ef36a6ebdd9a5bc4e1646ff8616b36d0bf017dedde9f7",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -31750,6 +32469,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -31913,8 +32636,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -31945,6 +32668,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -31980,6 +32704,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -31997,16 +32722,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39296,
-      "tool_reference_sha256": "5d2aa7522c8d45b90064b3cc952506fc39e7a59c9a4324a18f1d0850f67321b1",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40307,
+      "tool_reference_sha256": "de3bb91fc152a573a8ba16b230aa4fc0eeddf9753bf81b6f4a7ed7c0310b3e8f",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -32066,6 +32791,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -32229,8 +32958,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -32261,6 +32990,7 @@
         "property_registry_records",
         "property_list_enrichment",
         "property_identifier_catalog",
+        "agent_storyboards",
         "agent_conformance",
         "adcp_task_operations",
         "adcp_agent_management",
@@ -32296,6 +33026,7 @@
         "admin_group_membership",
         "admin_organization_integrity",
         "admin_organization_member_records",
+        "admin_escalations",
         "admin_conversation_review",
         "admin_followup_tasks",
         "admin_brand_registry_integrity",
@@ -32315,16 +33046,16 @@
         "google_docs_configured",
         "nonstreaming_web_search"
       ],
-      "custom_tool_count": 217,
+      "custom_tool_count": 221,
       "maximum_provider_tool_count": 1,
       "maximum_provider_tool_names": [
         "web_search"
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 171662,
-      "tool_reference_bytes": 39458,
-      "tool_reference_sha256": "fe189bfa403b2eac86749fa8f6230bddba8920dd300723980c2faa9e0b1a9bca",
+      "wire_schema_bytes": 175240,
+      "tool_reference_bytes": 40469,
+      "tool_reference_sha256": "7c28a9703f9524acc20bb873d0da506bd4b77375630a26e9cb4eb0c48c5f53de",
       "overridden_tool_count": 11,
       "conflicting_override_count": 0,
       "conflicting_override_names": [],
@@ -32384,6 +33115,10 @@
         "evaluate_agent_quality",
         "test_rfp_response",
         "test_io_execution",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
         "save_agent",
         "list_saved_agents",
         "remove_saved_agent",
@@ -32547,8 +33282,8 @@
         "get_build_phase_instructions",
         "save_learner_feedback"
       ],
-      "ordered_tool_names_sha256": "7afd4cb3399f9251b59c774c7ca86c61383fe5549cdd2e8a12e42da6e961785b",
-      "wire_schema_sha256": "e92da13865106d8c65b6bfc3fb9ab727909cafba0bfb2739a84aba86001c0286",
+      "ordered_tool_names_sha256": "3f29365376bb89b05f2ffe93da368202f0a56c62857541a7d9b8506e0ec8fee8",
+      "wire_schema_sha256": "cfd0b1d3f28f0c79d537379c8bfa1992c91a79ba43e47257ac4868c237500cc1",
       "target_exception_category": "synthetic_all_sets_maximum"
     },
     {
@@ -33906,6 +34641,42 @@
       "wire_schema_sha256": "3635674d56f8f02f4f91a041f986d4f0971e30929c2b70cdd7968f4dcafef7f2"
     },
     {
+      "id": "web_chat:authenticated_admin:routed:admin_escalations",
+      "runtime": "web_chat",
+      "audience": "authenticated_admin",
+      "selected_tool_sets": [
+        "admin_escalations"
+      ],
+      "conditional_maximums": [
+        "router_selected_bounded_domain",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 7,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 8718,
+      "tool_reference_bytes": 4845,
+      "tool_reference_sha256": "d806c707c6b3362666449584a4bec670d6d4a37cd352149bbce18efdd117a6f3",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "0c0c9de14003d5b7388bf293492982215686ae18d4146efe7b468be336ab83fc",
+      "wire_schema_sha256": "dfc71edc4fcf9837cacbe90e77828bdfea324ee6a0fe57b3cac394f612108963"
+    },
+    {
       "id": "web_chat:authenticated_admin:routed:admin_events",
       "runtime": "web_chat",
       "audience": "authenticated_admin",
@@ -34596,6 +35367,46 @@
       ],
       "ordered_tool_names_sha256": "daf3e6218a62213fc85ab2ab1851293c3fbd4477d1e99a45b9e3f0d80ab5c0b8",
       "wire_schema_sha256": "1b9a9db659fadd19af1ec2e1662fc8b51521ae5b85e2175005cfd25013f04256"
+    },
+    {
+      "id": "web_chat:authenticated_admin:routed:agent_storyboards",
+      "runtime": "web_chat",
+      "audience": "authenticated_admin",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_bounded_domain",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 11,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 12296,
+      "tool_reference_bytes": 4875,
+      "tool_reference_sha256": "fb29689bce177518a1e5750ff2039182242b5b31fd2edb6ec226b91c2da62f37",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning",
+        "list_escalations",
+        "resolve_escalation"
+      ],
+      "ordered_tool_names_sha256": "c69fbb0a7e8b043c0dc67ab5ccee3ef54989aaf7b9c125d831f0b8886a6ed99f",
+      "wire_schema_sha256": "6ef70a10f0a89069e4c11e390008971ebfa8d24430991bb38c5451e4466a0d7f"
     },
     {
       "id": "web_chat:authenticated_admin:routed:brand_registry_identity",
@@ -37034,6 +37845,44 @@
       "wire_schema_sha256": "1c80bf1ca6c69d999ba583837500e115fceafe7b2b4a633aae3fbd1006a49b40"
     },
     {
+      "id": "web_chat:authenticated_member:routed:agent_storyboards",
+      "runtime": "web_chat",
+      "audience": "authenticated_member",
+      "selected_tool_sets": [
+        "agent_storyboards"
+      ],
+      "conditional_maximums": [
+        "router_selected_bounded_domain",
+        "nonstreaming_web_search"
+      ],
+      "custom_tool_count": 9,
+      "maximum_provider_tool_count": 1,
+      "maximum_provider_tool_names": [
+        "web_search"
+      ],
+      "maximum_provider_tool_wire_bytes": 52,
+      "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
+      "wire_schema_bytes": 10002,
+      "tool_reference_bytes": 4807,
+      "tool_reference_sha256": "e5b7a9892d965bbf6348824c60b4e8e5ccdf41b0a7f786a62841b8eb992e9080",
+      "overridden_tool_count": 0,
+      "conflicting_override_count": 0,
+      "conflicting_override_names": [],
+      "ordered_tool_names": [
+        "get_account_link",
+        "recommend_storyboards",
+        "get_storyboard_detail",
+        "run_storyboard",
+        "run_storyboard_step",
+        "set_outreach_preference",
+        "escalate_to_admin",
+        "get_escalation_status",
+        "capture_learning"
+      ],
+      "ordered_tool_names_sha256": "d88e4e8ce593613f4fe94c03b7f8a9b27cb2ff52e20d060877af7f46930f3ab6",
+      "wire_schema_sha256": "b6c3bcdf8c453f336e5593f5121a9ae13af0dd6d2a6b9661f2003f5e31f63e47"
+    },
+    {
       "id": "web_chat:authenticated_member:routed:brand_registry_identity",
       "runtime": "web_chat",
       "audience": "authenticated_member",
@@ -38668,44 +39517,44 @@
       "web_authenticated_admin_tools": 235
     },
     "deltas": {
-      "routed_unique_tools": 18,
-      "runtime_unique_tools": -35,
+      "routed_unique_tools": 22,
+      "runtime_unique_tools": -31,
       "runtime_tools_not_declared_to_router": -18,
       "routed_tools_missing_runtime_definition": -1,
       "maximum_conflicting_tool_overrides": 0,
       "runtime_tools_missing_prompt_catalog": -8,
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": -13,
-      "tool_reference_bytes": -4335,
-      "system_prompt_bytes": 567,
+      "tool_reference_bytes": -3324,
+      "system_prompt_bytes": 1578,
       "maximum_slack_member_tools": -115,
       "maximum_slack_admin_tools": -182,
-      "maximum_slack_public_tools": -8,
+      "maximum_slack_public_tools": -4,
       "maximum_slack_member_schema_bytes": -92096,
       "maximum_slack_admin_schema_bytes": -131760,
-      "maximum_slack_public_schema_bytes": -1129,
+      "maximum_slack_public_schema_bytes": 2449,
       "web_anonymous_tools": 0,
       "web_authenticated_admin_tools": -203
     }
   },
   "budgets": {
     "maximums": {
-      "routed_unique_tools": 218,
-      "runtime_unique_tools": 217,
+      "routed_unique_tools": 222,
+      "runtime_unique_tools": 221,
       "runtime_tools_not_declared_to_router": 18,
       "routed_tools_missing_runtime_definition": 0,
       "maximum_conflicting_tool_overrides": 0,
       "runtime_tools_missing_prompt_catalog": 0,
       "prompt_catalog_tools_missing_runtime": 0,
       "always_available_tools": 6,
-      "tool_reference_bytes": 39487,
-      "system_prompt_bytes": 202598,
+      "tool_reference_bytes": 40469,
+      "system_prompt_bytes": 203609,
       "maximum_slack_member_tools": 33,
       "maximum_slack_admin_tools": 35,
-      "maximum_slack_public_tools": 200,
+      "maximum_slack_public_tools": 204,
       "maximum_slack_member_schema_bytes": 32732,
       "maximum_slack_admin_schema_bytes": 35026,
-      "maximum_slack_public_schema_bytes": 158988,
+      "maximum_slack_public_schema_bytes": 162566,
       "web_anonymous_tools": 13,
       "web_authenticated_admin_tools": 35
     },
@@ -38735,8 +39584,8 @@
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:admin_working_group": {
-        "custom_tool_count": 217,
-        "wire_schema_bytes": 171662,
+        "custom_tool_count": 221,
+        "wire_schema_bytes": 175240,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
@@ -38747,14 +39596,14 @@
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:private_channel_admin": {
-        "custom_tool_count": 217,
-        "wire_schema_bytes": 171662,
+        "custom_tool_count": 221,
+        "wire_schema_bytes": 175240,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:private_channel_member": {
-        "custom_tool_count": 151,
-        "wire_schema_bytes": 129890,
+        "custom_tool_count": 155,
+        "wire_schema_bytes": 132799,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
@@ -38771,14 +39620,14 @@
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:public_channel_admin": {
-        "custom_tool_count": 200,
-        "wire_schema_bytes": 158988,
+        "custom_tool_count": 204,
+        "wire_schema_bytes": 162566,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:public_channel_member": {
-        "custom_tool_count": 146,
-        "wire_schema_bytes": 126617,
+        "custom_tool_count": 150,
+        "wire_schema_bytes": 129526,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
@@ -38795,8 +39644,8 @@
         "maximum_provider_tool_wire_bytes": 52
       },
       "slack_bolt:system_channel_admin": {
-        "custom_tool_count": 217,
-        "wire_schema_bytes": 171662,
+        "custom_tool_count": 221,
+        "wire_schema_bytes": 175240,
         "maximum_provider_tool_count": 1,
         "maximum_provider_tool_wire_bytes": 52
       },
@@ -38867,12 +39716,12 @@
         "maximum_provider_tool_wire_bytes": 52
       }
     },
-    "profile_ids_sha256": "489a9fbc82dd87bf3109b7c5e164cdc99ed94224db56f13535bf1a12e6fd73de",
-    "profile_contract_sha256": "752c90347d6f9e916d75285b9f2611ee4a2a44c0c685199affb7faab44a6f9a2",
+    "profile_ids_sha256": "5c4b3378b3d01fbcf75aeb0a40a6b83f460060fbc3e7ec37dc8444647d804faa",
+    "profile_contract_sha256": "003c4845817f5d6d3063b26d43e8553fcc1712c510261bc9f8e4b553298b060b",
     "status": "within_budget"
   },
   "profile_contract": {
-    "profile_ids_sha256": "489a9fbc82dd87bf3109b7c5e164cdc99ed94224db56f13535bf1a12e6fd73de",
-    "profile_contract_sha256": "752c90347d6f9e916d75285b9f2611ee4a2a44c0c685199affb7faab44a6f9a2"
+    "profile_ids_sha256": "5c4b3378b3d01fbcf75aeb0a40a6b83f460060fbc3e7ec37dc8444647d804faa",
+    "profile_contract_sha256": "003c4845817f5d6d3063b26d43e8553fcc1712c510261bc9f8e4b553298b060b"
   }
 }

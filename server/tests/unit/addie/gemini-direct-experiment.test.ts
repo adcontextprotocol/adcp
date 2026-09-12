@@ -24,6 +24,8 @@ import { createGeminiDirectTools } from '../../../src/addie/gemini-direct-tools.
 import { geminiDirectAssignment, prepareGeminiDirectTurn } from '../../../src/addie/gemini-direct-experiment.js';
 import { AddieModelConfig } from '../../../src/config/models.js';
 import { ADMIN_ANALYTICS_TOOL } from '../../../src/addie/mcp/admin-analytics.js';
+import { getToolsForSets } from '../../../src/addie/tool-sets.js';
+import { selectRoutedWebTools } from '../../../src/routes/addie-chat.js';
 
 function receipt(parts: Part[], id = 'google-response'): GenerateContentResponse {
   return {
@@ -100,6 +102,28 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('preserves the authorized escalation tools through a Gemini capability handoff', async () => {
+    const f = fixture([receipt([call('handoff_to_addie')])]);
+    const names = ['list_escalations', 'resolve_escalation'];
+    const requestTools = {
+      tools: names.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
+      handlers: new Map(names.map(name => [name, vi.fn(async () => '{}')])),
+    };
+    f.getControlTools.mockResolvedValue(await selectRoutedWebTools({
+      message: 'Can you help sort out 583', memberContext: null, threadId: 'thread-test', isAAOAdmin: true,
+      requestTools, globalToolNames: getToolsForSets(['admin_escalations'], true).filter(name => !names.includes(name)),
+      router: { quickMatch: () => null, route: async () => ({
+        action: 'respond', tool_sets: ['admin_escalations'], confidence: 'high', reason: 'escalation follow-up', decision_method: 'llm',
+      }) },
+    }));
+
+    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' });
+    expect(result.response?.model_execution).toMatchObject({ provider: 'anthropic', fallback_reason: 'primary_capability_unsupported' });
+    expect(f.control.mock.calls[0][2]?.tools.map(tool => tool.name)).toEqual(names);
+    expect(f.control.mock.calls[0][3]?.allowedToolNames).toEqual(expect.arrayContaining(names));
+    expect(f.control.mock.calls[0][3]?.selectedToolSetNames).toEqual(['admin_escalations']);
+  });
+
   it('includes the Luna router cost in a complete Sonnet comparison record', async () => {
     const f = fixture([]);
     f.getControlTools.mockResolvedValue({

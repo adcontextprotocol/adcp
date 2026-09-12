@@ -60,6 +60,36 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
+  it.each([
+    ['admin_escalations', true, ['list_escalations', 'resolve_escalation']],
+    ['agent_storyboards', false, ['recommend_storyboards', 'get_storyboard_detail', 'run_storyboard', 'run_storyboard_step']],
+  ] as const)('retains the registered tools for a %s follow-up', async (domain, admin, required) => {
+    const names = getToolsForSets([domain], admin, false);
+    const selected = await select(routerFor([domain]), admin, {
+      tools: required.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
+      handlers: new Map(required.map(name => [name, vi.fn(async () => '{}')])),
+    }, names.filter(name => !(required as readonly string[]).includes(name)));
+
+    expect(selected.selectedToolSets).toEqual([domain]);
+    expect(selected.allowedToolNames).toEqual(expect.arrayContaining([...required]));
+    expect(selected.requestTools.tools.map(tool => tool.name)).toEqual([...required]);
+    expect([...selected.requestTools.handlers.keys()]).toEqual([...required]);
+  });
+
+  it('withholds escalation management from a non-admin even when definitions are registered', async () => {
+    const names = getToolsForSets(['admin_escalations'], true, false);
+    const selected = await select(routerFor(['admin_escalations']), false, { tools: [], handlers: new Map() }, names);
+    expect(selected.allowedToolNames).not.toContain('list_escalations');
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
+  it('does not bypass a missing escalation handler', async () => {
+    const names = getToolsForSets(['admin_escalations'], true, false).filter(name => name !== 'resolve_escalation');
+    const selected = await select(routerFor(['admin_escalations']), true, { tools: [], handlers: new Map() }, names);
+    expect(selected.selectedToolSets).toEqual(['knowledge', 'community_research', 'schema_reference']);
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
   it('keeps exact analytics callable alongside member lists only for admins', async () => {
     const names = getToolsForSets(['admin_organization_member_records'], true, false);
     const selected = await select(routerFor(['admin_organization_member_records']), true, {
