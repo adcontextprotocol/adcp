@@ -291,7 +291,7 @@ phases:
             description: "Context correlation_id returned unchanged"
         context_outputs:
           - name: catalog_generation
-            path: "catalogs[0].generation"
+            path: "catalogs[0].catalog_generation"
 
   - id: product_discovery
     title: "Discover keyword-targetable products"
