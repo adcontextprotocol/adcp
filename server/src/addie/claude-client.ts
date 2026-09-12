@@ -66,7 +66,6 @@ import type {
 } from './model-providers/model-provider.js';
 import { attemptSiblingModelFallback } from './model-providers/model-fallback.js';
 import type { DirectToolSession } from './gemini-direct-tools.js';
-import { isSideEffectTool } from './side-effect-claims.js';
 import { GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import type { CostEvent } from './claude-cost-tracker.js';
 import {
@@ -614,7 +613,7 @@ export interface UserScopedToolsResult {
  * Options for message processing
  */
 export interface ProcessMessageOptions {
-  /** Server-created read-only capability session for the Gemini Direct pilot. */
+  /** Server-created capability session for Gemini's authorized tool discovery. */
   directToolSession?: DirectToolSession;
   /** Aggregate settled usage, including calls preceding a failed continuation. */
   onUsageAccounted?: (event: CostEvent) => void;
@@ -1035,7 +1034,7 @@ interface PayloadDebugStats {
 /**
  * Injectable provider seam for isolated full-response evaluation. Production
  * Google delivery additionally requires the bounded Gemini Direct factory and
- * a request-local read-only tool session.
+ * a request-local authorized tool session.
  */
 export interface AddieModelProviderBinding {
   provider: ModelProvider;
@@ -1315,7 +1314,7 @@ export class AddieClaudeClient {
     return fork;
   }
 
-  /** Narrow production entry point; the pilot cannot dispatch mutation tools. */
+  /** Production entry point using the same executor and action guards as Sonnet. */
   forkForGeminiDirect(provider: ModelProvider): AddieClaudeClient {
     if (provider.id !== 'google') throw new Error('Gemini Direct requires the Google provider');
     const fork = this.forkForIsolatedProvider(GOOGLE_ROUTER_MODEL, { provider });
@@ -1326,8 +1325,7 @@ export class AddieClaudeClient {
   private assertProductionProvider(model: string, options?: ProcessMessageOptions): void {
     if (isIsolatedExecution(options) || this.modelProvider.id === 'anthropic') return;
     if (this.productionGeminiDirect && model === GOOGLE_ROUTER_MODEL
-      && options?.directToolSession && options.allowedToolNames && options.costScope
-      && !options.inputAttachments?.length) return;
+      && options?.directToolSession && options.allowedToolNames && options.costScope) return;
     throw new Error('Alternate Addie model providers are restricted to isolated execution');
   }
 
@@ -1337,8 +1335,7 @@ export class AddieClaudeClient {
     if (!options?.directToolSession) return options?.toolExecutionPolicy;
     return async (request: Parameters<NonNullable<ProcessMessageOptions['toolExecutionPolicy']>>[0]) => {
       if (isIsolatedExecution(options) && !options.toolExecutionPolicy) return { allowed: false };
-      if (options?.directToolSession && (!options.directToolSession.visibleToolNames().has(request.toolName)
-        || isSideEffectTool(request.toolName))) return { allowed: false };
+      if (!options.directToolSession?.visibleToolNames().has(request.toolName)) return { allowed: false };
       return options?.toolExecutionPolicy ? options.toolExecutionPolicy(request) : { allowed: true };
     };
   }
@@ -1678,10 +1675,6 @@ export class AddieClaudeClient {
     let modelFallbackReason: ModelFallbackReason | null = null;
 
     while (modelLoop.hasRemaining) {
-      if (options?.directToolSession?.handoffRequested()) {
-        await recordAccumulatedCost();
-        throw new Error('gemini_direct_handoff');
-      }
       const activeTurn = modelLoop.beginNext();
       iteration = activeTurn.iteration;
 
@@ -2278,7 +2271,6 @@ export class AddieClaudeClient {
     let modelFallbackReason: ModelFallbackReason | null = null;
 
       while (modelLoop.hasRemaining) {
-        if (options?.directToolSession?.handoffRequested()) return;
         const activeTurn = modelLoop.beginNext();
         iteration = activeTurn.iteration;
 

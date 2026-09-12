@@ -1353,10 +1353,9 @@ export function createAddieChatRouter(options?: {
         isAdmin: isAAOAdmin,
         threadId: thread.thread_id,
         hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
-        exclusionReason: attachments.length > 0 ? 'attachments'
-          : hasThreadCertificationContext || activeCertificationKind ? 'certification'
-          : hasCachedSiSession(externalId) || siAgents.length > 0 ? 'sponsored_intelligence'
-          : githubIssueCreationRequested ? 'github_mutation' : null,
+        activeCertificationKind,
+        sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+          ? 'session' : siAgents.length > 0 ? 'discovery' : null,
         startedAt: startTime,
         requestTools: tieredAccess.requestTools,
         baseRequestContext: requestContext,
@@ -1937,11 +1936,9 @@ export function createAddieChatRouter(options?: {
         isAdmin: isAAOAdmin,
         threadId: thread.thread_id,
         hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
-        exclusionReason: attachments.length > 0 ? 'attachments'
-          : hasThreadCertCtx || activeCertificationKind ? 'certification'
-          : hasCachedSiSession(externalId) || siAgents.length > 0 ? 'sponsored_intelligence'
-          : retryRequested ? 'interrupted_turn_retry'
-          : githubIssueCreationRequested ? 'github_mutation' : null,
+        activeCertificationKind,
+        sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+          ? 'session' : siAgents.length > 0 ? 'discovery' : null,
         startedAt: startTime,
         requestTools: tieredAccess.requestTools,
         baseRequestContext: requestContext,

@@ -5,6 +5,7 @@ const execution = {
   model_preference: 'gemini' as const, model_execution_source: 'provider' as const,
   model_provider: 'anthropic' as const, provider_model: 'claude-sonnet-4-6',
   requested_model: 'gemini-3.7-flash', provider_model_resolution: 'fallback' as const, latency_ms: 1250,
+  provider_fallback_reason: 'primary_unavailable' as const,
 };
 
 describe('Web chat model choice and evidence', () => {
@@ -21,7 +22,7 @@ describe('Web chat model choice and evidence', () => {
 
   it('uses actual provider evidence for a handoff instead of the requested model', () => {
     expect(webChatModelInfo(execution)).toEqual({ selected: 'gemini', source: 'provider',
-      model: 'claude-sonnet-4-6', requested_model: 'gemini-3.7-flash', fallback: true, latency_ms: 1250 });
+      model: 'claude-sonnet-4-6', requested_model: 'gemini-3.7-flash', fallback: true, fallback_reason: 'primary_unavailable', latency_ms: 1250 });
     expect(webChatModelInfo({ ...execution, provider_model_resolution: 'exact' }).fallback).toBe(true);
   });
 

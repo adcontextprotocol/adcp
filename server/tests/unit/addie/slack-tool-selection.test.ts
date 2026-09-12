@@ -30,6 +30,15 @@ import {
 const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
 
 describe('Slack tool-set selection policy', () => {
+  it.each(['mention', 'channel'] as const)('withholds escalation management in a public %s', source => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['admin_escalations'], confidence: 'high', reason: 'escalation request', decision_method: 'llm' },
+      routerAvailable: true, source, isAdmin: true, isPublicChannel: true, isToolAvailable: () => true,
+    });
+    expect(selection.allowedToolNames).not.toContain('list_escalations');
+    expect(selection.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
   it('distinguishes an active module from the no-module certification warning', () => {
     expect(hasActiveCertificationProgress([])).toBe(false);
     expect(hasActiveCertificationProgress([{ status: 'completed' }])).toBe(false);

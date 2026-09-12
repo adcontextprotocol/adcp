@@ -113,6 +113,17 @@ function fakeRouterProvider(
 }
 
 describe('Addie router prompt policy', () => {
+  it('routes beta escalation and public-endpoint storyboard requests to explicit domains', () => {
+    const adminPrompt = buildRoutingPrompt({ message: 'Can you help sort out 583', source: 'dm', isAAOAdmin: true });
+    expect(adminPrompt).toContain('Escalations and pending requests → ["admin_escalations"]');
+    expect(adminPrompt).not.toContain('Escalations and pending requests → []');
+    expect(getValidToolSetNames(false).has('admin_escalations')).toBe(false);
+
+    const memberPrompt = buildRoutingPrompt({ message: 'Run a storyboard against my agent URL', source: 'dm' });
+    expect(memberPrompt).toContain('→ ["agent_storyboards"]');
+    expect(memberPrompt).toContain('Use ["agent_conformance"] only');
+  });
+
   it('lists the exact eligible sets and resolves billing guidance by privilege', () => {
     const memberPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm' });
     const adminPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm', isAAOAdmin: true });

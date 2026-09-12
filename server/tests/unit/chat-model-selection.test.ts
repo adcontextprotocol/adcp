@@ -106,4 +106,14 @@ describe('Web chat model selector', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(container.textContent).toContain('<img src=x onerror=alert(1)>');
   });
+
+  it('labels a provider-error fallback separately from the selected model', () => {
+    const { window } = openChat();
+    const container = window.document.createElement('div');
+    (window as any).AddieChatModels.appendInfo(container, {
+      selected: 'gemini', source: 'provider', model: 'claude-sonnet-5', fallback: true,
+      fallback_reason: 'primary_unavailable', latency_ms: 3000,
+    });
+    expect(container.textContent).toBe('Gemini 3.7 → Sonnet · provider fallback · 3.0s');
+  });
 });
