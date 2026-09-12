@@ -1432,6 +1432,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  // Escalation-only requests need a nonempty route: the bounded selector's
+  // read-only fallback intentionally withholds the always-available admin tools.
   admin_escalations: {
     name: "admin_escalations",
     description:
