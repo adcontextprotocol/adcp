@@ -258,6 +258,15 @@ phases:
             path: "context.correlation_id"
             value: "sales_streaming_tv--get_products"
             description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: ctv_preroll_product_id
+            path: "products[0].product_id"
+          - name: cpm_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: ctv_midroll_product_id
+            path: "products[1].product_id"
+          - name: cpm_midroll_pricing_option_id
+            path: "products[1].pricing_options[0].pricing_option_id"
 
   - id: creative_sync
     title: "VAST creative sync"
@@ -373,7 +382,7 @@ phases:
             - product_id: "$context.ctv_preroll_product_id"
               budget: 150000
               pricing_option_id: "$context.cpm_pricing_option_id"
-              targeting:
+              targeting_overlay:
                 frequency_cap:
                   max_impressions: 4
                   per: "households"
@@ -385,7 +394,7 @@ phases:
             - product_id: "$context.ctv_midroll_product_id"
               budget: 50000
               pricing_option_id: "$context.cpm_midroll_pricing_option_id"
-              targeting:
+              targeting_overlay:
                 frequency_cap:
                   max_impressions: 4
                   per: "households"

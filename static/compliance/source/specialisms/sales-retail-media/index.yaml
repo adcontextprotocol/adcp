@@ -289,6 +289,9 @@ phases:
             path: "context.correlation_id"
             value: "sales_retail_media--sync_catalogs"
             description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: catalog_generation
+            path: "catalogs[0].generation"
 
   - id: product_discovery
     title: "Discover keyword-targetable products"
@@ -340,6 +343,11 @@ phases:
             path: "context.correlation_id"
             value: "sales_retail_media--get_products"
             description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: sponsored_search_product_id
+            path: "products[0].product_id"
+          - name: cpc_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
 
   - id: create_keyword_buy
     title: "Create media buy with keyword targeting"
@@ -381,7 +389,7 @@ phases:
             - product_id: "$context.sponsored_search_product_id"
               budget: 10000
               pricing_option_id: "$context.cpc_pricing_option_id"
-              targeting:
+              targeting_overlay:
                 keyword_targets:
                   - keyword: "organic oats"
                     match_type: "broad"
@@ -395,8 +403,9 @@ phases:
                 negative_keywords:
                   - keyword: "cheap"
                     match_type: "broad"
-              catalog_ids:
-                - "summit_pantry_2026"
+              catalogs:
+                - catalog_id: "summit_pantry_2026"
+                  type: "product"
           context:
             correlation_id: "sales_retail_media--create_media_buy"
         validations:

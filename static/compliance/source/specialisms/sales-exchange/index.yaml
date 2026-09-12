@@ -259,6 +259,15 @@ phases:
             path: "context.correlation_id"
             value: "sales_exchange--get_products"
             description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: display_product_id
+            path: "products[0].product_id"
+          - name: display_cpm_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: video_product_id
+            path: "products[1].product_id"
+          - name: video_cpm_pricing_option_id
+            path: "products[1].pricing_options[0].pricing_option_id"
 
   - id: create_auction_buy
     title: "Create media buy with auction bids"
