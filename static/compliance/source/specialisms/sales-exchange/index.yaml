@@ -1,0 +1,443 @@
+id: sales_exchange
+version: "0.1.0"
+title: "Programmatic exchange seller"
+protocol: media-buy
+category: sales_exchange
+summary: "Programmatic exchange or SSP — multi-publisher auction inventory with floor prices, bid guidance, audience targeting, and auction-level delivery transparency."
+track: media_buy
+status: preview
+required_tools:
+  - get_products
+  - create_media_buy
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+  - impairment.coherence
+
+narrative: |
+  You run a programmatic exchange or supply-side platform. You aggregate
+  inventory from many publishers and expose it through AdCP to buyer agents
+  that would otherwise integrate directly via OpenRTB. Unlike a single-seller
+  non-guaranteed platform, an exchange pools inventory from multiple supply
+  sources, surfaces auction floor prices with bid guidance, and provides
+  auction-level delivery transparency (win rates, clearing prices, bid
+  landscape).
+
+  This storyboard tests the exchange-specific flow:
+  1. Product discovery — buyer discovers multi-publisher auction inventory
+     with floor prices, bid guidance, and audience targeting
+  2. Account setup — establish account and governance
+  3. Media buy with bid prices — buyer creates a buy with explicit bid
+     amounts above declared floors
+  4. In-flight bid adjustment — buyer updates bids based on win-rate
+     feedback from delivery data
+  5. Delivery with auction transparency — seller reports impressions, win
+     rates, clearing prices, and spend
+
+  The fixture buyer (Pinnacle Agency for Acme Outdoor) buys display and
+  video inventory across the exchange's publisher network.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - auction_based
+    - multi_publisher
+  examples:
+    - "Programmatic SSP with multi-publisher inventory"
+    - "Ad exchange with real-time auction"
+    - "Supply-side platform aggregating publisher inventory"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency programmatic buyer"
+
+prerequisites:
+  description: |
+    The caller has an established account and a programmatic buying brief.
+    The exchange surfaces auction-priced products with floor prices and
+    bid guidance from its publisher network.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the exchange supports
+      programmatic auction inventory with multi-publisher supply.
+
+    steps:
+      - id: get_capabilities
+        title: "Check exchange capabilities"
+        narrative: |
+          Verify the seller declares media_buy protocol support with
+          non-guaranteed auction-based inventory.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring:
+          - media_buy in supported_protocols
+          - sales-exchange in specialisms
+          - non_guaranteed delivery support
+        sample_request:
+          context:
+            correlation_id: "sales_exchange--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-exchange"
+            description: "Agent declares sales-exchange specialism"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: account_setup
+    title: "Account setup"
+    narrative: |
+      The buyer establishes an account and registers their governance agent
+      before product discovery and buy creation.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        narrative: |
+          The buyer registers their brand and operator on the exchange.
+          Sandbox accounts are provisioned instantly.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id, status (active for sandbox),
+          and billing terms.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#sales_exchange_account_setup_sync_accounts"
+          context:
+            correlation_id: "sales_exchange--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the account
+          before creating media buys on the exchange.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#sales_exchange_account_setup_sync_governance"
+          context:
+            correlation_id: "sales_exchange--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--sync_governance"
+            description: "Context correlation_id returned unchanged"
+
+  - id: product_discovery
+    title: "Discover exchange auction inventory"
+    narrative: |
+      The buyer discovers multi-publisher auction inventory. Exchange products
+      differ from single-seller non-guaranteed in that they pool supply from
+      many publishers, surface floor prices with bid guidance (p50/p75), and
+      declare auction-priced CPM options.
+
+    steps:
+      - id: get_products
+        title: "Discover display and video auction products"
+        narrative: |
+          The buyer queries for exchange inventory. The seller returns
+          auction-based products with floor prices, bid guidance showing
+          competitive bid ranges, and multi-publisher audience reach.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return non-guaranteed products with:
+          - delivery_type: non_guaranteed
+          - pricing_options with auction CPM, floor_price, and price_guidance
+          - Audience targeting support
+          - Multiple publisher sources in the inventory pool
+        sample_request:
+          buying_mode: "brief"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "Display and video inventory across sports and lifestyle publishers, $50K monthly budget, adults 25-54, auction CPM"
+          context:
+            correlation_id: "sales_exchange--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Products have product_id"
+          - check: field_present
+            path: "products[0].pricing_options"
+            description: "Products have pricing options"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--get_products"
+            description: "Context correlation_id returned unchanged"
+
+  - id: create_auction_buy
+    title: "Create media buy with auction bids"
+    narrative: |
+      The buyer creates a media buy on the exchange with explicit bid amounts
+      above declared floor prices. Unlike guaranteed buys, no IO or human
+      approval is required — the exchange validates bids against floors and
+      activates delivery immediately.
+
+    steps:
+      - id: create_media_buy
+        title: "Create buy with bid prices"
+        narrative: |
+          The buyer commits to exchange inventory with CPM bid amounts per
+          package. Each bid must meet or exceed the product's floor_price.
+          The exchange validates bids and begins auction-based delivery.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          The seller:
+          1. Validates bid amounts against declared floor prices
+          2. Creates the buy with media_buy_status: pending_creatives or active
+          3. Returns media_buy_id for subsequent operations
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_exchange_create_auction_buy_create_media_buy"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2099-10-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "$context.display_product_id"
+              budget: 30000
+              pricing_option_id: "$context.display_cpm_pricing_option_id"
+              bidding:
+                bid_amount: 7.50
+            - product_id: "$context.video_product_id"
+              budget: 20000
+              pricing_option_id: "$context.video_cpm_pricing_option_id"
+              bidding:
+                bid_amount: 18.00
+          context:
+            correlation_id: "sales_exchange--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: display_package_id
+            path: "packages[0].package_id"
+          - name: video_package_id
+            path: "packages[1].package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "media_buy_status"
+            description: "Response includes media_buy_status"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: bid_adjustment
+    title: "In-flight bid adjustment"
+    depends_on: [create_auction_buy]
+    narrative: |
+      Exchange buying is iterative. The buyer reviews delivery data (win rates,
+      clearing prices, pacing), then adjusts bids to optimize performance.
+      Raising bids increases win rate and spend velocity; lowering bids
+      conserves budget at the cost of reduced delivery.
+
+    steps:
+      - id: update_media_buy
+        title: "Adjust bid prices based on performance"
+        narrative: |
+          The buyer raises the display bid to improve win rate after seeing
+          delivery data. The exchange validates the updated bid against
+          floor prices and applies the change to future auctions.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        expected: |
+          The seller:
+          1. Validates updated bid against floor price
+          2. Applies new bid to future auction participation
+          3. Returns updated buy with confirmed bid amounts
+        sample_request:
+          media_buy_id: "$context.media_buy_id"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          packages:
+            - package_id: "$context.display_package_id"
+              bidding:
+                bid_amount: 8.50
+          idempotency_key: "$generate:uuid_v4#sales_exchange_bid_adjustment_update_media_buy"
+          context:
+            correlation_id: "sales_exchange--update_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.display_package_id"
+              bid_amount: 8.50
+            description: "Updated display package reflects new bid amount"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--update_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: delivery_reporting
+    title: "Delivery with auction transparency"
+    depends_on: [create_auction_buy]
+    narrative: |
+      Exchange delivery reporting includes auction-level transparency beyond
+      standard impression and spend metrics. The buyer sees win rates,
+      clearing prices, and bid landscape data that informs bid optimization
+      decisions.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery with auction metrics"
+        narrative: |
+          The buyer requests delivery data for the active exchange buy.
+          The seller returns impressions, spend, and auction transparency
+          metrics (win rate, average clearing price) per package.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return delivery metrics for the exchange buy:
+          - Per-package: impressions, spend, eCPM
+          - Win rate and average clearing price per package
+          - Pacing information relative to budget and flight dates
+          - is_final: false for in-flight data
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+          context:
+            correlation_id: "sales_exchange--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_exchange--get_delivery"
+            description: "Context correlation_id returned unchanged"
