@@ -995,6 +995,12 @@ describe('managed reporting status contract', () => {
       readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].consumer_status_projection,
       /no longer the current required revision after a seller restatement/,
     );
+    const consumerStatusStoryboard = fs.readFileSync(
+      path.join(__dirname, '..', 'static', 'compliance', 'source', 'universal', 'reporting-consumer-status.yaml'),
+      'utf8',
+    );
+    assert.match(consumerStatusStoryboard, /operation: "restate_snapshot"/);
+    assert.match(consumerStatusStoryboard, /Changed-after-read is a typed caller-scoped disagreement/);
     assert.match(
       readSchema('/schemas/core/reporting-obligation.json')['x-adcp-validation'].record_counts,
       /existing chain attaches to the repaired obligation by that logical key/,
@@ -1008,6 +1014,13 @@ describe('managed reporting status contract', () => {
       readSchema('/schemas/media-buy/sync-reporting-status-request.json')['x-adcp-validation'].batch_identity,
       /seller ledger snapshot/,
     );
+    assert.match(
+      readSchema('/schemas/media-buy/sync-reporting-status-request.json')['x-adcp-validation'].batch_identity,
+      /at most one statement for each logical chain/,
+    );
+    const syncRequestSchema = readSchema('/schemas/media-buy/sync-reporting-status-request.json');
+    assert.equal(syncRequestSchema.additionalProperties, false);
+    assert.equal(syncRequestSchema.allOf, undefined, 'closed request inlines version properties instead of composing a permissive envelope');
   });
 
   it('rejects unverified, mutable, and method-mismatched ready materializations while allowing native controls', () => {
@@ -1452,6 +1465,14 @@ describe('managed reporting status contract', () => {
       validateCapabilities(withoutConsumerStatus),
       true,
       `consumer status remains opt-in during the notice window: ${JSON.stringify(validateCapabilities.errors)}`,
+    );
+    const consumerStatusWithoutReliableReporting = structuredClone(capabilities);
+    delete consumerStatusWithoutReliableReporting.media_buy.reporting_delivery.reliable_reporting_version;
+    delete consumerStatusWithoutReliableReporting.media_buy.reporting_delivery.revision_content_task;
+    assert.equal(
+      validateCapabilities(consumerStatusWithoutReliableReporting),
+      false,
+      'consumer status requires the Reliable Reporting 1.0 revision-binding contract',
     );
     const ledgerOnly = structuredClone(capabilities);
     delete ledgerOnly.media_buy.reporting_delivery.readiness_notification;

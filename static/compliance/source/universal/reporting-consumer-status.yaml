@@ -195,7 +195,9 @@ phases:
       records revision_missing; after the seller publishes, that stale negative
       status keeps this caller's view action_required. The buyer consumes the
       exact Core binding and appends received with exact-leaf supersession,
-      resolving the mismatch without deleting the outage history.
+      resolving the mismatch without deleting the outage history. The seller
+      then restates that provisional revision; the buyer's formerly positive
+      statement becomes a typed mismatch until the buyer consumes the new leaf.
 
     steps:
       - id: prepare_revision_fixture
@@ -299,6 +301,10 @@ phases:
         validations:
           - check: response_schema
             description: "Seller recovery publishes an immutable revision"
+          - check: field_value
+            path: "simulated.finality"
+            value: "snapshot"
+            description: "The consumer-status fixture uses a restatable provisional revision"
 
       - id: read_revision_mismatch
         title: "Keep the stale buyer status visible after seller recovery"
@@ -418,6 +424,61 @@ phases:
             path: "periods[0].current_consumer_status_id"
             value: "consumer-status.revision-received.0001"
             description: "The obligation points to the superseding received leaf"
+
+      - id: restate_received_revision
+        title: "Restate the revision after the buyer read it"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_restatement_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "restate_snapshot"
+        validations:
+          - check: response_schema
+            description: "The controller publishes a new immutable snapshot revision"
+          - check: field_equals_context
+            path: "simulated.supersedes_reporting_revision_id"
+            context_key: "consumer_revision_id"
+            description: "The new snapshot explicitly supersedes the revision the buyer received"
+
+      - id: read_restatement_mismatch
+        title: "Surface changed-after-read as a typed mismatch"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          view: "periods"
+          period:
+            start: "$context.consumer_revision_period_start"
+            end: "$context.consumer_revision_period_end"
+        validations:
+          - check: response_schema
+            description: "Restated periods readback is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "A positive status for the superseded revision no longer agrees with seller state"
+          - check: field_contains
+            path: "issues[*].code"
+            value: "CONSUMER_STATUS_MISMATCH"
+            description: "Changed-after-read is a typed caller-scoped disagreement"
+          - check: field_value
+            path: "periods[0].current_consumer_status_id"
+            value: "consumer-status.revision-received.0001"
+            description: "Restatement does not rewrite the buyer-attributed status chain"
 
       - id: reject_stale_status_fork
         title: "Reject a fork from the superseded leaf"

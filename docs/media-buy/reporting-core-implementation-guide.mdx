@@ -1,6 +1,6 @@
 ---
 title: "Reliable Reporting: implementing reporting.core"
-description: "The required Reliable Reporting tier: obligations, immutable closes, seller status, and buyer-to-seller status sync — over the transports you already have."
+description: "The required Reliable Reporting tier: obligations, immutable closes, seller status, and an optional buyer-to-seller status loop — over the transports you already have."
 "og:title": "AdCP — Reliable Reporting with reporting.core"
 ---
 
@@ -18,9 +18,10 @@ current public training seller remain unchanged.
 Every buyer eventually asks one question: **"do I have definitive reporting
 for this period — and if not, whose problem is it?"** `reporting.core` makes
 that question machine-answerable. Core is the required operational reporting
-baseline: a seller must retain immutable revision evidence, expose its exact
-binding over existing reporting transports, and record what the authenticated
-buyer could actually consume. Core requires no destination, manifest, external
+baseline: a seller must retain immutable revision evidence and expose its exact
+binding over existing reporting transports. A seller that advertises the
+consumer-status extension additionally records what the authenticated buyer
+could actually consume. Core requires no destination, manifest, external
 materialization, billing receipt, bespoke webhook, or outbound push code. It does require the
 fixed revision-binding digest over canonical rows; this is distinct from the
 Managed Delivery external-materialization canonicalization contract. Core carries
@@ -37,7 +38,7 @@ the immutable revision was published.
 
 ## What Core is
 
-Five ideas, two complementary status tasks:
+Four Core ideas, plus one opt-in status loop:
 
 1. **Obligations exist before reports.** For every active delivery
    configuration and period, the seller records what *should* exist — so a
@@ -51,10 +52,11 @@ Five ideas, two complementary status tasks:
 4. **[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)
    exposes seller state** — one authoritative read over the obligation ledger,
    summarized by five health states.
-5. **[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)
+5. **When `consumer_status_task` is advertised,
+   [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)
    closes the loop** — the buyer tells the seller whether an expected period
-   was received, omitted, missing, or unreadable. Both attributed histories stay
-   visible; neither overwrites the other.
+   was received, omitted, missing, or unreadable. Both attributed histories
+   stay visible; neither overwrites the other.
 
 | Health | Meaning |
 |---|---|
@@ -115,10 +117,12 @@ sequenceDiagram
     end
 
     Buyer->>Seller: get_reporting_status (authoritative repair)
-    Buyer->>Seller: sync_reporting_status (consumer status)
-    Seller->>Ledger: Record buyer statement; compare current states
-    opt Seller healthy but buyer cannot consume
-        Seller->>Ledger: Open caller-scoped CONSUMER_STATUS_MISMATCH
+    opt Seller advertises consumer_status_task
+        Buyer->>Seller: sync_reporting_status (consumer status)
+        Seller->>Ledger: Record buyer statement; compare current states
+        opt Seller healthy but buyer cannot consume
+            Seller->>Ledger: Open caller-scoped CONSUMER_STATUS_MISMATCH
+        end
     end
 ```
 
@@ -130,8 +134,9 @@ This gives each side a distinct responsibility:
   paginated record set.
 - **Buyer:** retain the accepted configuration generation, derive the same
   expected periods, and treat a missing obligation as a protocol failure rather
-  than evidence that no activity occurred. Sync the resulting consumer status
-  back to the seller, and update it whenever consumption state changes.
+  than evidence that no activity occurred. When the seller advertises
+  `consumer_status_task`, sync the resulting consumer status back and update it
+  whenever consumption state changes.
 - **Both:** calculate `expected_at` as `period.end + delivery_sla`. The
   obligation is committed at period close and appears in the first ledger
   snapshot strictly after it; the report becomes late only at
@@ -148,8 +153,8 @@ obligation appears in the first ledger snapshot strictly after `02:00Z`; with
 
 - **No push requirement.** Polling `get_reporting_status` is the
   authoritative recovery path; a seller with no outbound push is fully
-  conformant. `sync_reporting_status` is an ordinary inbound task call, not a
-  seller push or a buyer-hosted callback.
+  conformant. When advertised, `sync_reporting_status` is an ordinary inbound
+  task call, not a seller push or a buyer-hosted callback.
   If you do offer push, Core's doorbell is `reporting.status_changed` — an
   invalidation for health transitions in either direction, with stable
   `issue_ids`. `reporting.ledger_changed` is the separate optional invalidation
@@ -164,10 +169,10 @@ obligation appears in the first ledger snapshot strictly after `02:00Z`; with
 - **No Managed canonicalization or billing receipts.** `reconciliation_mode` is
   `delivery_only`, offering profiles omit the external-materialization
   `canonicalization_*` contract, and `sync_reporting_receipts` does not exist
-  for you. Core's lightweight `sync_reporting_status` instead echoes only the
+  for you. The opt-in `sync_reporting_status` extension instead echoes only the
   fixed revision-binding SHA-256 when reporting was received; it carries no row
-  totals, Managed evidence, or billing acceptance. Receipts and Managed external
-  materialization machinery belong to the `reconciled_billing` tier.
+  totals, Managed evidence, or billing acceptance. Receipts and Managed
+  external materialization machinery belong to the `reconciled_billing` tier.
 
 The boundary is executable: the `reporting-core` fixture test in the
 protocol repository implements a complete polling-only seller and asserts

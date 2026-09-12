@@ -103,6 +103,7 @@ import {
   publishReliableReportingCoreIntegrityCorrection,
   publishReportingCoreLifecycleProbeRows,
   publishZeroRowReportingCoreLifecycleProbe,
+  restateReportingCoreLifecycleProbeSnapshot,
   probeReportingSourceCalendarDst,
   resolveReportingAccountDurably,
   updateReliableReportingManagedDeliveryProbe,
@@ -1715,6 +1716,13 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Published a deterministic non-empty immutable Core revision for exact-read verification.',
       };
     }
+    if (operation === 'restate_snapshot') {
+      return {
+        success: true,
+        simulated: restateReportingCoreLifecycleProbeSnapshot(ctx.principal, accountId),
+        message: 'Published a new immutable snapshot revision superseding the current snapshot.',
+      };
+    }
     if (operation === 'omit_obligation') {
       return {
         success: true,
@@ -1732,7 +1740,7 @@ async function handleReportingCoreLifecycleProbe(
   return {
     success: false,
     error: 'INVALID_PARAMS',
-    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, or omit_obligation',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, or omit_obligation',
   };
   }, account);
 }

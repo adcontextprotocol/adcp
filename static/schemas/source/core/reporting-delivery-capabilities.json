@@ -112,6 +112,10 @@
   ],
   "allOf": [
     {
+      "if": { "required": ["consumer_status_task"] },
+      "then": { "required": ["reliable_reporting_version", "revision_content_task"] }
+    },
+    {
       "if": { "properties": { "reliable_reporting_version": { "const": "1.0" } }, "required": ["reliable_reporting_version"] },
       "then": { "required": ["revision_content_task"] }
     },

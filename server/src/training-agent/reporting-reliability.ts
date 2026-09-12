@@ -1165,17 +1165,22 @@ export function setReportingCoreLifecycleProbeClock(
 export function publishZeroRowReportingCoreLifecycleProbe(
   principal: string | undefined,
   accountId: string,
+  deliveryConfigId?: string,
 ): {
   account_id: string;
   delivery_config_id: string;
   delivery_config_version: number;
   reporting_obligation_id: string;
   reporting_revision_id: string;
+  revision_content_sha256: string;
+  finality: 'snapshot';
   row_count: 0;
   simulated_now: string;
 } {
   const ledger = ledgerFor(principal, accountId);
-  const first = [...ledger.configs.values()][0];
+  const first = deliveryConfigId
+    ? [...ledger.configs.values()].find(stored => stored.config.delivery_config_id === deliveryConfigId)
+    : [...ledger.configs.values()][0];
   if (!first) throw new Error('Prepare the reporting_core_lifecycle_probe before publishing a revision.');
   const end = '2026-08-01T01:00:00.000Z';
   const obligation = obligationId(accountId, first.config, end);
@@ -1192,8 +1197,78 @@ export function publishZeroRowReportingCoreLifecycleProbe(
     delivery_config_id: first.config.delivery_config_id,
     delivery_config_version: first.config.delivery_config_version,
     reporting_obligation_id: obligation,
-    reporting_revision_id: revisionId(obligation),
+    reporting_revision_id: revision.reporting_revision_id,
+    revision_content_sha256: revision.revision_content_sha256,
+    finality: 'snapshot',
     row_count: 0,
+    simulated_now: ledger.virtualNow ?? iso(Date.now()),
+  };
+}
+
+/** Restate the current provisional Core revision for changed-after-read tests. */
+export function restateReportingCoreLifecycleProbeSnapshot(
+  principal: string | undefined,
+  accountId: string,
+): {
+  account_id: string;
+  reporting_obligation_id: string;
+  reporting_revision_id: string;
+  supersedes_reporting_revision_id: string;
+  revision_content_sha256: string;
+  finality: 'snapshot';
+  row_count: number;
+  simulated_now: string;
+} {
+  const ledger = ledgerFor(principal, accountId);
+  const first = [...ledger.configs.values()][0];
+  if (!first) throw new Error('Prepare the reporting_core_lifecycle_probe before restating a revision.');
+  const obligation = obligationId(accountId, first.config, '2026-08-01T01:00:00.000Z');
+  const current = ledger.publishedRevisions.get(obligation);
+  if (!current) throw new Error('Publish a snapshot revision before restating it.');
+  const restatementId = stableId('reporting-revision', [obligation, 'snapshot-v2']);
+
+  // Controller operations are convergent: an exact retry returns the already
+  // committed restatement instead of attempting to restate it again.
+  if (current.reporting_revision_id === restatementId) {
+    if (current.finality !== 'snapshot') throw new Error('The current restatement is not a snapshot revision.');
+    if (!current.supersedes_reporting_revision_id) throw new Error('The current restatement has no superseded revision identity.');
+    return {
+      account_id: accountId,
+      reporting_obligation_id: obligation,
+      reporting_revision_id: current.reporting_revision_id,
+      supersedes_reporting_revision_id: current.supersedes_reporting_revision_id,
+      revision_content_sha256: current.revision_content_sha256,
+      finality: 'snapshot',
+      row_count: current.row_count,
+      simulated_now: ledger.virtualNow ?? iso(Date.now()),
+    };
+  }
+  if (current.finality !== 'snapshot') throw new Error('Only a snapshot revision can be restated; official revisions are terminal.');
+  const content = ledger.revisionContents.get(current.reporting_revision_id);
+  if (!content) throw new Error('The current snapshot has no retained exact content.');
+  const restatedAt = iso(Math.max(
+    parseInstant(current.created_at) + 1_000,
+    ledger.virtualNow ? parseInstant(ledger.virtualNow) + 1_000 : Date.now(),
+  ));
+  const { revision_content_sha256: _priorDigest, ...currentMetadata } = current;
+  const restated = commitRevisionContent(ledger, {
+    ...currentMetadata,
+    reporting_revision_id: restatementId,
+    supersedes_reporting_revision_id: current.reporting_revision_id,
+    observed_at: restatedAt,
+    created_at: restatedAt,
+  }, content.rows);
+  ledger.publishedRevisions.set(obligation, restated);
+  ledger.virtualNow = restatedAt;
+  ledger.version += 1;
+  return {
+    account_id: accountId,
+    reporting_obligation_id: obligation,
+    reporting_revision_id: restated.reporting_revision_id,
+    supersedes_reporting_revision_id: current.reporting_revision_id,
+    revision_content_sha256: restated.revision_content_sha256,
+    finality: 'snapshot',
+    row_count: restated.row_count,
     simulated_now: ledger.virtualNow ?? iso(Date.now()),
   };
 }
@@ -2112,6 +2187,23 @@ interface LedgerRecord {
   revision?: ReportingRevision;
 }
 
+function retainedRevisionChain(
+  ledger: ReportingLedger,
+  reportingObligationId: string,
+): ReportingRevision[] {
+  const newestFirst: ReportingRevision[] = [];
+  const visited = new Set<string>();
+  let revision = ledger.publishedRevisions.get(reportingObligationId);
+  while (revision && !visited.has(revision.reporting_revision_id)) {
+    newestFirst.push(revision);
+    visited.add(revision.reporting_revision_id);
+    revision = revision.supersedes_reporting_revision_id
+      ? ledger.revisionContents.get(revision.supersedes_reporting_revision_id)?.revision
+      : undefined;
+  }
+  return newestFirst.reverse();
+}
+
 function recordsFor(
   principal: string | undefined,
   accountId: string,
@@ -2163,6 +2255,7 @@ function recordsFor(
         const ids = coverage.media_buy_ids;
         const revision = ledger.publishedRevisions.get(id);
         const published = revision !== undefined;
+        const revisionCount = retainedRevisionChain(ledger, id).length;
         const incompleteFullCoverage = stored.config.coverage_requirement === 'full'
           && coverage.status !== 'full';
         const health = incompleteFullCoverage
@@ -2218,7 +2311,7 @@ function recordsFor(
         reconciliation_status: stored.config.reconciliation_mode === 'consumer_receipt' ? 'pending' : 'not_required',
         health,
         production_status: published ? 'published' : 'pending',
-        revision_count: published ? 1 : 0,
+        revision_count: revisionCount,
         adjustment_count: 0,
         issues,
       } as ReportingObligation;
@@ -2495,8 +2588,9 @@ export function getReportingStatusForAccount(
     if (Number(match[1]) === ledger.version) deltaRecords = [];
   }
   if (params.view === 'revision') {
-    const revision = recordsFor(principal, accountId, ledger.history, nowMs).map(record => record.revision)
-      .find((candidate): candidate is ReportingRevision => candidate?.reporting_revision_id === params.reporting_revision_id);
+    const revision = params.reporting_revision_id
+      ? ledger.revisionContents.get(params.reporting_revision_id)?.revision
+      : undefined;
     if (!revision) return unavailable(params.view);
     const revisionResources: PageResource[] = [
       ...[...ledger.adjustments.values()].filter(adjustment => adjustment.adjusts_reporting_revision_id === revision.reporting_revision_id)
@@ -2590,22 +2684,26 @@ export function getReportingStatusForAccount(
   const filtered = params.health
     ? deltaRecords.filter(record => params.health?.includes(record.obligation.health))
     : deltaRecords;
-  const currentResources: PageResource[] = filtered.flatMap(record => [
-    { kind: 'period' as const, record },
-    ...(record.revision ? [{ kind: 'revision' as const, record }] : []),
-    ...[...ledger.adjustments.values()]
-      .filter(adjustment => adjustment.adjusts_reporting_revision_id === record.revision?.reporting_revision_id)
-      .map(adjustment => ({ kind: 'adjustment' as const, adjustment })),
-    ...ledger.materializations
-      .filter(materialization => materialization.reporting_revision_id === record.revision?.reporting_revision_id)
-      .map(materialization => ({ kind: 'materialization' as const, materialization })),
-    ...ledger.receipts
-      .filter(receipt => receipt.reporting_revision_id === record.revision?.reporting_revision_id)
-      .map(receipt => ({ kind: 'receipt' as const, receipt })),
-    ...ledger.adjustmentReceipts
-      .filter(receipt => receipt.adjusts_reporting_revision_id === record.revision?.reporting_revision_id)
-      .map(adjustmentReceipt => ({ kind: 'adjustment_receipt' as const, adjustmentReceipt })),
-  ]);
+  const currentResources: PageResource[] = filtered.flatMap(record => {
+    const revisions = retainedRevisionChain(ledger, record.obligation.reporting_obligation_id);
+    const revisionIds = new Set(revisions.map(revision => revision.reporting_revision_id));
+    return [
+      { kind: 'period' as const, record },
+      ...revisions.map(revision => ({ kind: 'revision' as const, record: { obligation: record.obligation, revision } })),
+      ...[...ledger.adjustments.values()]
+        .filter(adjustment => revisionIds.has(adjustment.adjusts_reporting_revision_id))
+        .map(adjustment => ({ kind: 'adjustment' as const, adjustment })),
+      ...ledger.materializations
+        .filter(materialization => revisionIds.has(String(materialization.reporting_revision_id)))
+        .map(materialization => ({ kind: 'materialization' as const, materialization })),
+      ...ledger.receipts
+        .filter(receipt => revisionIds.has(String(receipt.reporting_revision_id)))
+        .map(receipt => ({ kind: 'receipt' as const, receipt })),
+      ...ledger.adjustmentReceipts
+        .filter(receipt => revisionIds.has(String(receipt.adjusts_reporting_revision_id)))
+        .map(adjustmentReceipt => ({ kind: 'adjustment_receipt' as const, adjustmentReceipt })),
+    ];
+  });
   const resources = snapshot?.resources ?? currentResources;
   const scopeFingerprint = createHash('sha256').update(checkpointScope).digest('hex').slice(0, 16);
   const currentChangesCheckpoint = `reporting_change_${ledger.version}_${scopeFingerprint}`;
