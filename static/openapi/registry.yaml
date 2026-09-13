@@ -8568,7 +8568,7 @@ paths:
                   - error
                   - retry_after
         "503":
-          description: Publisher crawl is temporarily busy
+          description: Publisher crawl is temporarily busy, or administrator authorization could not be checked
           headers:
             Retry-After:
               schema:
@@ -8579,21 +8579,33 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  code:
-                    type: string
-                    enum:
-                      - publisher_crawl_busy
-                  retry_after:
-                    type: integer
-                    description: Seconds to wait before retrying
-                required:
-                  - error
-                  - code
-                  - retry_after
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - publisher_crawl_busy
+                      retry_after:
+                        type: integer
+                        description: Seconds to wait before retrying
+                    required:
+                      - error
+                      - code
+                      - retry_after
   /api/registry/brand/{domain}/force-crawl:
     post:
       operationId: forceBrandCrawl
@@ -8736,6 +8748,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Administrator authorization could not be checked
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - admin_authorization_unavailable
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization
@@ -11540,7 +11573,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Crawl status is temporarily unavailable
+          description: Crawl status or administrator authorization is temporarily unavailable
           headers:
             Retry-After:
               schema:
@@ -11551,20 +11584,32 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  code:
-                    type: string
-                    enum:
-                      - crawl_status_unavailable
-                  retry_after:
-                    type: integer
-                required:
-                  - error
-                  - code
-                  - retry_after
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - crawl_status_unavailable
+                      retry_after:
+                        type: integer
+                    required:
+                      - error
+                      - code
+                      - retry_after
   /api/registry/manager-revalidation-request:
     post:
       operationId: requestManagerRevalidation
@@ -13307,11 +13352,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Durable refresh queue unavailable or at capacity
+          description: Refresh queue or authorization unavailable. Human administrator and linked-credential submissions are temporarily fenced with refresh_authorization_provenance_required.
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              required: true
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                      retry_after:
+                        type: integer
+                    required:
+                      - error
+                      - code
+                      - retry_after
   /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
     get:
       operationId: getAgentRefreshOperation
@@ -13452,11 +13525,23 @@ paths:
                 required:
                   - error
         "503":
-          description: Refresh status temporarily unavailable
+          description: Refresh status or administrator authorization temporarily unavailable
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum:
+                          - admin_authorization_unavailable
+                      message:
+                        type: string
+                    required:
+                      - error
+                      - message
+                  - $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/auth-status:
     get:
       operationId: getAgentAuthStatus

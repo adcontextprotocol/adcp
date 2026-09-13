@@ -106,7 +106,7 @@ import {
 import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./db/org-filters.js";
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
-import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
+import { isAuthenticatedUserAAOAdmin } from "./addie/admin-status-lookup.js";
 import { resolveWebUserAAOAdminAccess } from "./addie/admin-status-lookup.js";
 import { isBreakGlassAdminEmail } from "./auth/admin-access.js";
 import { createSlackRouter } from "./routes/slack.js";
@@ -3761,7 +3761,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to update this brand' });
         }
@@ -3776,6 +3776,7 @@ export class HTTPServer {
         const updated = await this.brandDb.updateHostedBrand(brand.id, { brand_json });
         return res.json(updated);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to update hosted brand');
         return res.status(500).json({ error: 'Failed to update brand' });
       }
@@ -3811,7 +3812,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
         }
@@ -3819,6 +3820,7 @@ export class HTTPServer {
         await this.brandDb.deleteHostedBrand(brand.id);
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to delete hosted brand');
         return res.status(500).json({ error: 'Failed to delete brand' });
       }
@@ -3936,7 +3938,7 @@ export class HTTPServer {
     // access for moderation and support.
     this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         await enrichUserWithMembership(req.user as any);
         if (!isAdmin && !(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to roll back brands' });
@@ -3989,6 +3991,7 @@ export class HTTPServer {
 
         return res.json({ brand, revision_number });
       } catch (error: any) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
@@ -4043,7 +4046,7 @@ export class HTTPServer {
     // GET /api/registry/requests - List unresolved registry requests (admin only)
     this.app.get('/api/registry/requests', requireAuth, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        const isAdmin = await isAuthenticatedUserAAOAdmin(req.user!);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4059,6 +4062,7 @@ export class HTTPServer {
         const requests = await this.registryRequestsDb.listUnresolved(entityType, { limit, offset });
         return res.json({ requests, limit, offset });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to list registry requests');
         return res.status(500).json({ error: 'Failed to list registry requests' });
       }
@@ -4067,7 +4071,7 @@ export class HTTPServer {
     // GET /api/registry/requests/stats - Registry request statistics (admin only)
     this.app.get('/api/registry/requests/stats', requireAuth, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        const isAdmin = await isAuthenticatedUserAAOAdmin(req.user!);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4080,6 +4084,7 @@ export class HTTPServer {
         const stats = await this.registryRequestsDb.getStats(entityType);
         return res.json(stats);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to get registry request stats');
         return res.status(500).json({ error: 'Failed to get registry request stats' });
       }
@@ -4285,7 +4290,7 @@ export class HTTPServer {
 
         // Check ownership
         const isCreator = property.created_by_user_id && property.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
         }
@@ -4293,6 +4298,7 @@ export class HTTPServer {
         await this.propertyDb.deleteHostedProperty(property.id);
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to delete hosted property');
         return res.status(500).json({ error: 'Failed to delete property' });
       }
@@ -4414,7 +4420,7 @@ export class HTTPServer {
     // POST /api/properties/hosted/:domain/rollback - Rollback property (admin only)
     this.app.post('/api/properties/hosted/:domain/rollback', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4441,6 +4447,7 @@ export class HTTPServer {
 
         return res.json({ property, revision_number });
       } catch (error: any) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Property not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
@@ -4494,7 +4501,7 @@ export class HTTPServer {
     // POST /api/registry/edit-bans - Create an edit ban
     this.app.post('/api/registry/edit-bans', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4530,6 +4537,7 @@ export class HTTPServer {
 
         return res.json(ban);
       } catch (error: any) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error?.constraint) {
           return res.status(409).json({ error: 'Ban already exists for this user/scope' });
         }
@@ -4541,7 +4549,7 @@ export class HTTPServer {
     // GET /api/registry/edit-bans - List active edit bans
     this.app.get('/api/registry/edit-bans', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4557,6 +4565,7 @@ export class HTTPServer {
         });
         return res.json({ bans });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to list edit bans');
         return res.status(500).json({ error: 'Failed to list bans' });
       }
@@ -4565,7 +4574,7 @@ export class HTTPServer {
     // DELETE /api/registry/edit-bans/:id - Remove an edit ban
     this.app.delete('/api/registry/edit-bans/:id', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isAuthenticatedUserAAOAdmin(req.user);
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4576,6 +4585,7 @@ export class HTTPServer {
         }
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to remove edit ban');
         return res.status(500).json({ error: 'Failed to remove ban' });
       }
@@ -4710,7 +4720,7 @@ export class HTTPServer {
         // Check if user can delete (admin or creator)
         const devUser = getDevUser(req);
         const isDevAdmin = devUser?.isAdmin === true;
-        const isDbAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isDbAdmin = !isDevAdmin && req.user && await isAuthenticatedUserAAOAdmin(req.user);
         const isAdmin = isDevAdmin || isDbAdmin;
         const isCreator = ref.contributed_by_email === req.user?.email;
 
@@ -4721,6 +4731,7 @@ export class HTTPServer {
         await manifestRefsDb.deleteReference(ref.id);
         return res.json({ success: true });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to delete manifest ref');
         return res.status(500).json({ error: 'Failed to delete reference' });
       }
@@ -6985,7 +6996,7 @@ export class HTTPServer {
         const { slug, filename } = req.params;
         const pool = getPool();
         const userId = req.user?.id ?? null;
-        const userIsAdmin = userId ? await isWebUserAAOAdmin(userId) : false;
+        const userIsAdmin = req.user ? await isAuthenticatedUserAAOAdmin(req.user) : false;
 
         const perspResult = await pool.query(
           `SELECT p.id,
@@ -7028,6 +7039,7 @@ export class HTTPServer {
         res.setHeader('Content-Length', asset.file_data.length);
         res.send(asset.file_data);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error, slug: req.params.slug }, 'Serve perspective asset error');
         res.status(500).send('Failed to serve asset');
       }
@@ -8637,7 +8649,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         // Match requireAdmin: working-group authority with an explicit,
         // environment-managed break-glass fallback.
-        const isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
+        const isAdmin = (await resolveWebUserAAOAdminAccess(user)).isAdmin;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;
@@ -8694,6 +8706,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         res.json(response);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
           error: 'Failed to get user info',
@@ -10381,6 +10394,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Global error handler - logger.error() automatically captures to PostHog via error hook
     this.app.use((err: Error & { status?: number; statusCode?: number; type?: string }, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      if (respondToAdminAuthorizationError(err, res)) return;
       const status = err.status || err.statusCode || 500;
 
       // Range Not Satisfiable (416) from static file serving is a client error, not a server issue
