@@ -23,10 +23,10 @@ reused. Frontmatter, then three short sections:
 id: DR-NNNN
 title: One-line statement of the ruling
 class: editorial | normative | breaking
-status: recorded | ratified | superseded
+status: proposed | recorded | ratified | superseded
 date: YYYY-MM-DD            # date the record was written
-decided: YYYY-MM-DD | ~YYYY-MM   # when the underlying decision was made
-decided_by: maintainer practice | WG ballot | lazy consensus | Board
+decided: YYYY-MM-DD | ~YYYY-MM   # omit while status is proposed
+decided_by: maintainer practice | WG ballot | lazy consensus | Board | pending WG ratification
 refs: ["#1234", "PR #5678"]
 supersedes: DR-NNNN          # optional
 dissent: none | summary of the surviving objection
@@ -44,6 +44,10 @@ What this settles for future proposals; what it deliberately does not settle.
 
 **Status values:**
 
+- `proposed` — a Normative or Breaking recommendation committed for human/WG
+  review but not yet operative. A proposal records no decision date or deciding
+  authority; approval updates it to `ratified` and adds that provenance before
+  merge.
 - `recorded` — backfilled documentation of a decision already operative in the
   spec or in maintainer practice. Honest provenance: written after the fact.
 - `ratified` — the record itself went through review (WG ballot, lazy
@@ -53,8 +57,10 @@ What this settles for future proposals; what it deliberately does not settle.
 ## Lifecycle
 
 - The Secretariat writes Normative-class recommendations *in this format* (as a
-  decision memo in the issue/PR thread). When ratified, the memo is committed
-  here verbatim — ratification is a copy, not a rewrite.
+  decision memo in the issue/PR thread). A proposal may be committed with
+  `status: proposed` when its implementation PR is the ratification vehicle.
+  Human approval changes only the status and decision provenance before merge;
+  it does not retroactively treat the draft as operative.
 - Records are amended only to fix errors or mark supersession. To change a
   ruling, write a new record that supersedes the old one.
 - Changes under `governance/` are human-review territory; the Secretariat never

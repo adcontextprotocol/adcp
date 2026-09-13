@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/package-control.json",
   "title": "Package Control",
-  "description": "Operational controls for an existing package that remain inside its accepted commercial envelope. targeting_overlay is a complete replacement; keyword add/remove arrays are incremental, and the same keyword MUST NOT appear in both directions. Creative mutation, flight changes, new products, pricing changes, and billing-term changes require their dedicated lifecycle or a refined proposal.",
+  "description": "Operational controls for an existing package that remain inside its accepted commercial envelope. targeting_overlay is a per-dimension patch; keyword add/remove arrays are incremental, and the same keyword MUST NOT appear in both directions. Creative mutation, flight changes, new products, pricing changes, and billing-term changes require their dedicated lifecycle or a refined proposal.",
   "type": "object",
   "properties": {
     "package_id": {
@@ -50,8 +50,8 @@
       "maxLength": 500
     },
     "targeting_overlay": {
-      "$ref": "/schemas/core/targeting.json",
-      "description": "Complete replacement for the package's prior targeting overlay, not a merge patch."
+      "$ref": "/schemas/core/targeting-input.json",
+      "description": "Per-dimension targeting patch. Omission preserves the current dimension, a non-null value replaces it, and null clears it. The resulting effective targeting must remain within the accepted commercial envelope and is read back without null dimensions."
     },
     "catalog_ids": {
       "type": "array",
