@@ -352,24 +352,43 @@ async function getUserInfo(userId: string): Promise<{ name: string } | null> {
  * User context for direct function calls (from Addie or other internal services)
  */
 export interface ContentUser {
-  id: string;
-  authWorkosUserId?: string;
-  email?: string;
-  /** Explicit null means a person-only context with no administrative or committee-leader authority. */
-  adminPrincipal?: AAOAdminPrincipal | null;
+  readonly id: string;
+  readonly email?: string;
+  /** Missing/null provenance grants no authenticated credential authority. */
+  readonly adminPrincipal?: Readonly<AAOAdminPrincipal> | null;
+}
+
+type AuthenticatedContentUser = Readonly<ContentUser> & {
+  readonly adminPrincipal: Readonly<AAOAdminPrincipal>;
+};
+
+/** Capture authenticated authority before asynchronous work can mutate req.user. */
+function captureAuthenticatedContentUser(user: AAOAdminPrincipal): AuthenticatedContentUser {
+  const principal = Object.freeze({
+    id: user.authWorkosUserId ?? user.id,
+    email: user.email,
+  });
+  return Object.freeze({
+    id: user.id,
+    email: user.email ?? undefined,
+    adminPrincipal: principal,
+  });
+}
+
+/** Only legacy in-process publishers may omit provenance for a system actor. */
+function isSystemContentUser(user: ContentUser): boolean {
+  return user.adminPrincipal === undefined && user.id.startsWith('system:');
 }
 
 /** Keep profile attribution separate from credential-scoped review authority. */
 function contentAuthorizationUserId(user: ContentUser): string | null {
-  if (user.adminPrincipal === null) return null;
   return user.adminPrincipal
     ? user.adminPrincipal.authWorkosUserId ?? user.adminPrincipal.id
-    : user.id; // Legacy internal/HTTP callers; migrated web callers supply provenance.
+    : isSystemContentUser(user) ? user.id : null;
 }
 
 async function isContentUserAAOAdmin(user: ContentUser): Promise<boolean> {
-  if (user.adminPrincipal === null) return false;
-  return isAuthenticatedUserAAOAdmin(user.adminPrincipal ?? user);
+  return user.adminPrincipal ? isAuthenticatedUserAAOAdmin(user.adminPrincipal) : false;
 }
 
 /**
@@ -426,8 +445,11 @@ export async function proposeContentForUser(
   // Membership tier gate — Professional+ required for content submission.
   // System users (system:* prefix) and site admins are exempt, matching the
   // rate-limiter carve-out and the existing admin bypass pattern below.
-  if (!user.id.startsWith('system:') && !(await isContentUserAAOAdmin(user))) {
-    const eligible = await checkContentSubmissionTier(user.id);
+  const authorizationUserId = contentAuthorizationUserId(user);
+  if (!isSystemContentUser(user) && !(await isContentUserAAOAdmin(user))) {
+    const eligible = authorizationUserId !== null
+      && !authorizationUserId.startsWith('system:')
+      && await checkContentSubmissionTier(authorizationUserId);
     if (!eligible) {
       logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
       return {
@@ -513,7 +535,7 @@ export async function proposeContentForUser(
     const membershipResult = await pool.query(
       `SELECT 1 FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'`,
-      [committeeId, user.id]
+      [committeeId, authorizationUserId]
     );
     if (membershipResult.rows.length === 0) {
       logger.warn({ committeeSlug, userId: user.id }, 'Content proposal failed: user not a member');
@@ -1169,7 +1191,7 @@ export function createContentRouter(): Router {
   // GET /api/content/collections - Get available collections for content submission
   router.get('/collections', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const pool = getPool();
 
       // Get public collections (anyone can submit)
@@ -1197,7 +1219,7 @@ export function createContentRouter(): Router {
            AND wg.accepts_public_submissions = FALSE
            AND wg.status = 'active'
          ORDER BY wg.name`,
-        [user.id]
+        [contentAuthorizationUserId(user)]
       );
 
       const collections = [
@@ -1229,9 +1251,9 @@ export function createContentRouter(): Router {
   // POST /api/content/propose - Submit content to any collection
   router.post('/propose', requireAuth, contentProposeRateLimiter, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const result = await proposeContentForUser(
-        { ...user, adminPrincipal: user },
+        user,
         req.body as ProposeContentRequest
       );
 
@@ -1267,10 +1289,10 @@ export function createContentRouter(): Router {
   // GET /api/content/pending - List pending content user can review
   router.get('/pending', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const committeeSlug = req.query.committee_slug as string | undefined;
       const result = await listPendingContentForUser(
-        { ...user, adminPrincipal: user },
+        user,
         { committeeSlug }
       );
       res.json(result);
@@ -1286,12 +1308,12 @@ export function createContentRouter(): Router {
   // POST /api/content/:id/approve - Approve pending content
   router.post('/:id/approve', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
       const { publish_immediately = true } = req.body;
 
       const result = await approveContentForUser(
-        { ...user, adminPrincipal: user },
+        user,
         id,
         { publishImmediately: publish_immediately }
       );
@@ -1412,12 +1434,12 @@ export function createContentRouter(): Router {
   // POST /api/content/:id/reject - Reject pending content
   router.post('/:id/reject', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
       const { reason } = req.body;
 
       const result = await rejectContentForUser(
-        { ...user, adminPrincipal: user },
+        user,
         id,
         reason
       );
@@ -1452,12 +1474,12 @@ export function createContentRouter(): Router {
   // POST /api/content/:id/request-revisions - Request revisions (non-terminal)
   router.post('/:id/request-revisions', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
       const { notes } = req.body;
 
       const result = await requestRevisionsForUser(
-        { ...user, adminPrincipal: user },
+        user,
         id,
         notes
       );
@@ -1486,11 +1508,11 @@ export function createContentRouter(): Router {
   // POST /api/content/:id/resubmit - Author resubmits after revisions
   router.post('/:id/resubmit', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
 
       const result = await resubmitContentForUser(
-        { ...user, adminPrincipal: user },
+        user,
         id
       );
 
@@ -1554,7 +1576,7 @@ export function createContentRouter(): Router {
   }, async (req: any, res: any) => {
     try {
       const { slug } = req.params;
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const file = req.file;
       const assetType = req.body.asset_type as string;
 
@@ -1675,14 +1697,14 @@ export function createMyContentRouter(): Router {
   // GET /api/me/content - Get all content where user has a relationship
   router.get('/', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const status = req.query.status as string | undefined;
       const collection = req.query.collection as string | undefined;
       const relationship = req.query.relationship as string | undefined;
       const limit = parseInt(req.query.limit as string);
       const result = await listMyContentService({
         userId: user.id,
-        adminPrincipal: user,
+        adminPrincipal: user.adminPrincipal,
         status,
         collection,
         relationship,
@@ -1705,7 +1727,7 @@ export function createMyContentRouter(): Router {
   // PUT /api/me/content/:id - Update content user owns
   router.put('/:id', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
       const {
         title,
@@ -1747,7 +1769,7 @@ export function createMyContentRouter(): Router {
         [id, user.id]
       ).then(r => r.rows.length > 0);
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, contentAuthorizationUserId(user))
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
@@ -1976,7 +1998,7 @@ export function createMyContentRouter(): Router {
   // pending-review items. Admins can delete anything (including published).
   router.delete('/:id', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
       const pool = getPool();
 
@@ -1999,7 +2021,7 @@ export function createMyContentRouter(): Router {
         [id, user.id]
       ).then(r => r.rows.length > 0);
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, contentAuthorizationUserId(user))
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
@@ -2032,7 +2054,7 @@ export function createMyContentRouter(): Router {
   // POST /api/me/content/:id/authors - Add co-author to content
   router.post('/:id/authors', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
       const { user_id, display_name, display_title } = req.body;
       const pool = getPool();
@@ -2065,7 +2087,7 @@ export function createMyContentRouter(): Router {
       // Check permission
       const isProposer = contentItem.proposer_user_id === user.id;
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, contentAuthorizationUserId(user))
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
@@ -2122,7 +2144,7 @@ export function createMyContentRouter(): Router {
   // DELETE /api/me/content/:id/authors/:authorId - Remove co-author from content
   router.delete('/:id/authors/:authorId', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = captureAuthenticatedContentUser(req.user!);
       const { id, authorId } = req.params;
       const pool = getPool();
 
@@ -2147,7 +2169,7 @@ export function createMyContentRouter(): Router {
       // Check permission
       const isProposer = contentItem.proposer_user_id === user.id;
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, contentAuthorizationUserId(user))
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 

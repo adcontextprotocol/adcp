@@ -169,7 +169,7 @@ export function getPublicFilePath(filename: string): string {
  * Resolve the admin flag for a user using the same rules as the requireAdmin
  * middleware: site-admin working-group membership, with `ADMIN_EMAILS` as an
  * environment-managed break-glass fallback. Only development fixtures may
- * retain a preset flag; real credentials recheck the bounded authority cache.
+ * retain a preset flag; real credentials perform a fresh credential authority lookup.
  */
 export async function enrichUserWithAdmin(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
   if (!user) return user;

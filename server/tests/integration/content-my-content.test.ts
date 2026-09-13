@@ -19,6 +19,7 @@ const authState = {
   userId: 'user_my_content',
   authWorkosUserId: undefined as string | undefined,
   email: 'mc@example.com',
+  requestUser: undefined as Record<string, unknown> | undefined,
 };
 
 vi.mock('../../src/middleware/auth.js', () => {
@@ -29,6 +30,7 @@ vi.mock('../../src/middleware/auth.js', () => {
       email: authState.email,
       firstName: 'Mary',
     };
+    authState.requestUser = req.user;
   };
   const passthrough = (_req: any, _res: any, next: any) => next();
   const requireAuthMock = (req: any, _res: any, next: any) => { setTestUser(req); next(); };
@@ -67,7 +69,13 @@ vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
-const adminState = { isAdmin: false, grantedUserId: undefined as string | undefined, unavailable: false };
+const adminState = {
+  isAdmin: false,
+  grantedUserId: undefined as string | undefined,
+  unavailable: false,
+  principals: [] as Array<{ id: string; authWorkosUserId?: string; email?: string | null }>,
+  onLookup: undefined as (() => void) | undefined,
+};
 // Mock the lookup module directly. `my-content-service.ts` imports
 // `isWebUserAAOAdmin` from `addie/admin-status-lookup.js` (the thin
 // module created in PR #3758), so the test must intercept there.
@@ -83,6 +91,8 @@ vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
   });
   const resolve = async (principal: any, email?: string | null) => {
     const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    if (typeof principal !== 'string') adminState.principals.push(principal);
+    adminState.onLookup?.();
     return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
   };
   return {
@@ -131,6 +141,10 @@ describe('My Content — body, admin scope, status, delete', () => {
   let app: any;
   let pool: Pool;
   let wgId: string;
+  let adminWgId: string;
+  let privateWgId: string;
+  const ADMIN_WG_SLUG = 'mc-test-platform-review-wg';
+  const PRIVATE_WG_SLUG = 'mc-test-private-wg';
   const WG_SLUG = 'mc-test-wg';
   const ARCHIVED_WG_SLUG = 'mc-test-archived-wg';
   const USER_ID = 'user_my_content';
@@ -184,6 +198,28 @@ describe('My Content — body, admin scope, status, delete', () => {
     // Ensure users exist
     await ensureContentSubmissionEligibleUser(USER_ID, 'mc@example.com');
     await ensureContentSubmissionEligibleUser(OTHER_USER_ID, 'mc-other@example.com');
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, first_name, last_name)
+       VALUES ($1, 'mc-ineligible@example.com', 'Sam', 'Adeyemi')
+       ON CONFLICT (workos_user_id) DO UPDATE SET primary_organization_id = NULL`,
+      [INELIGIBLE_USER_ID],
+    );
+    const extraGroups = await pool.query<{ id: string; slug: string }>(
+      `INSERT INTO working_groups (name, slug, accepts_public_submissions, is_private)
+       VALUES ('Platform review fixture', $1, true, false), ('Private committee fixture', $2, false, true)
+       ON CONFLICT (slug) DO UPDATE SET accepts_public_submissions = EXCLUDED.accepts_public_submissions,
+         is_private = EXCLUDED.is_private, status = 'active'
+       RETURNING id, slug`,
+      [ADMIN_WG_SLUG, PRIVATE_WG_SLUG],
+    );
+    adminWgId = extraGroups.rows.find(group => group.slug === ADMIN_WG_SLUG)!.id;
+    privateWgId = extraGroups.rows.find(group => group.slug === PRIVATE_WG_SLUG)!.id;
+    await pool.query(
+      `INSERT INTO working_group_memberships (working_group_id, workos_user_id, status)
+       VALUES ($1, $2, 'active')
+       ON CONFLICT (working_group_id, workos_user_id) DO UPDATE SET status = 'active'`,
+      [privateWgId, OTHER_USER_ID],
+    );
 
     const wgResult = await pool.query(
       `INSERT INTO working_groups (name, slug, description, accepts_public_submissions)
@@ -216,6 +252,8 @@ describe('My Content — body, admin scope, status, delete', () => {
       [ARCHIVED_WG_SLUG]
     );
     await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [ARCHIVED_WG_SLUG]);
+    await pool.query(`DELETE FROM working_group_memberships WHERE working_group_id = $1`, [privateWgId]);
+    await pool.query(`DELETE FROM working_groups WHERE id = ANY($1)`, [[adminWgId, privateWgId]]);
     await pool.query(`DELETE FROM working_group_leaders WHERE working_group_id = $1`, [wgId]);
     await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [WG_SLUG]);
     // Side tables the propose flow writes into. Clear everything referencing
@@ -235,6 +273,9 @@ describe('My Content — body, admin scope, status, delete', () => {
     adminState.isAdmin = false;
     adminState.grantedUserId = undefined;
     adminState.unavailable = false;
+    adminState.principals = [];
+    adminState.onLookup = undefined;
+    authState.requestUser = undefined;
     authState.authWorkosUserId = undefined;
     authState.userId = USER_ID;
     authState.email = 'mc@example.com';
@@ -242,6 +283,15 @@ describe('My Content — body, admin scope, status, delete', () => {
     await pool.query(`DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE slug LIKE 'mc-test-%')`);
     await pool.query(`DELETE FROM perspectives WHERE slug LIKE 'mc-test-%'`);
   });
+
+  function expectCapturedAuthority(credential: string) {
+    expect(adminState.principals.length).toBeGreaterThan(0);
+    for (const principal of adminState.principals) {
+      expect(Object.isFrozen(principal)).toBe(true);
+      expect(principal.authWorkosUserId ?? principal.id).toBe(credential);
+      expect(principal).not.toBe(authState.requestUser);
+    }
+  }
 
   async function insertPerspective(opts: {
     slug: string;
@@ -583,7 +633,11 @@ describe('My Content — body, admin scope, status, delete', () => {
       // directly, bypassing HTTP middleware. Fresh user id so we start
       // with an empty window.
       const { proposeContentForUser } = await import('../../src/routes/content.js');
-      const testUser = { id: RATE_LIMIT_USER_ID, email: 'ratelimit@test.local' };
+      const testUser = {
+        id: RATE_LIMIT_USER_ID,
+        email: 'ratelimit@test.local',
+        adminPrincipal: Object.freeze({ id: RATE_LIMIT_USER_ID, email: 'ratelimit@test.local' }),
+      };
       await ensureContentSubmissionEligibleUser(testUser.id, testUser.email);
 
       const results: Array<{ success: boolean; error?: string }> = [];
@@ -857,23 +911,42 @@ describe('My Content — body, admin scope, status, delete', () => {
   });
 
   describe.each([
-    { authenticated: 'user_my_content', canonical: 'user_my_content_other', allowed: true },
-    { authenticated: 'user_my_content_other', canonical: 'user_my_content', allowed: false },
-  ])('content leader credential $authenticated linked to $canonical', ({ authenticated, canonical, allowed }) => {
+    { authority: 'leader', authenticated: 'user_my_content', canonical: 'user_my_content_other', allowed: true },
+    { authority: 'platform administrator', authenticated: 'user_my_content', canonical: 'user_my_content_other', allowed: true },
+    { authority: 'leader', authenticated: 'user_my_content_other', canonical: 'user_my_content', allowed: false },
+    { authority: 'platform administrator', authenticated: 'user_my_content_other', canonical: 'user_my_content', allowed: false },
+  ])('content $authority credential $authenticated linked to $canonical', ({ authority, authenticated, canonical, allowed }) => {
+    let authorityGroupId: string;
+    let authorityGroupSlug: string;
     beforeEach(() => {
       authState.userId = canonical;
       authState.authWorkosUserId = authenticated;
+      adminState.grantedUserId = authority === 'platform administrator' ? USER_ID : undefined;
+      authorityGroupId = authority === 'platform administrator' ? adminWgId : wgId;
+      authorityGroupSlug = authority === 'platform administrator' ? ADMIN_WG_SLUG : WG_SLUG;
+    });
+
+    it('passes immutable exact authority through the my-content route', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-credential-my-content', title: 'Review-owned content',
+        status: 'pending_review', proposerUserId: null, workingGroupId: authorityGroupId,
+      });
+      const response = await request(app).get('/api/me/content').query({ collection: authorityGroupSlug }).expect(200);
+      expectCapturedAuthority(authenticated);
+      expect(response.body.items.some((item: { id: string }) => item.id === id)).toBe(allowed);
     });
 
     it('passes the authenticated credential through the proposal route', async () => {
       const response = await request(app).post('/api/content/propose').send({
         title: 'mc-test-credential-proposal',
+        adminPrincipal: { id: USER_ID }, authWorkosUserId: USER_ID,
         content: 'Credential-scoped publishing authority',
         content_type: 'article',
-        collection: { slug: WG_SLUG },
+        collection: { slug: authorityGroupSlug },
         status: 'published',
       }).expect(201);
 
+      expectCapturedAuthority(authenticated);
       const expectedStatus = allowed ? 'published' : 'pending_review';
       expect(response.body.status).toBe(expectedStatus);
       const stored = await pool.query(
@@ -885,11 +958,12 @@ describe('My Content — body, admin scope, status, delete', () => {
     it('passes the authenticated credential through the pending-review route', async () => {
       const id = await insertPerspective({
         slug: 'mc-test-credential-pending', title: 'Private pending submission',
-        status: 'pending_review', proposerUserId: null, workingGroupId: wgId,
+        status: 'pending_review', proposerUserId: null, workingGroupId: authorityGroupId,
       });
 
       const response = await request(app).get('/api/content/pending')
-        .query({ committee_slug: WG_SLUG }).expect(200);
+        .query({ committee_slug: authorityGroupSlug }).expect(200);
+      expectCapturedAuthority(authenticated);
       expect(response.body.items.some((item: { id: string }) => item.id === id)).toBe(allowed);
       if (!allowed) expect(response.body.items).toEqual([]);
     });
@@ -901,11 +975,12 @@ describe('My Content — body, admin scope, status, delete', () => {
     ])('passes the authenticated credential through the $action route', async ({ action, body, nextStatus }) => {
       const id = await insertPerspective({
         slug: `mc-test-credential-${action}`, title: 'Pending submission',
-        status: 'pending_review', proposerUserId: null, workingGroupId: wgId,
+        status: 'pending_review', proposerUserId: null, workingGroupId: authorityGroupId,
       });
 
-      const response = await request(app).post(`/api/content/${id}/${action}`).send(body)
+      const response = await request(app).post(`/api/content/${id}/${action}`).send({ ...body, adminPrincipal: { id: USER_ID }, authWorkosUserId: USER_ID })
         .expect(allowed ? 200 : 403);
+      expectCapturedAuthority(authenticated);
       if (allowed) expect(response.body.status).toBe(nextStatus);
       const stored = await pool.query(
         'SELECT status, reviewed_by_user_id, reviewed_at FROM perspectives WHERE id = $1', [id],
@@ -920,7 +995,7 @@ describe('My Content — body, admin scope, status, delete', () => {
     it.each(['update', 'delete', 'add-author', 'remove-author'] as const)('uses exact credential for %s authority', async (operation) => {
       const id = await insertPerspective({
         slug: `mc-test-credential-${operation}`, title: 'Original title',
-        status: 'draft', proposerUserId: null, workingGroupId: wgId,
+        status: 'draft', proposerUserId: null, workingGroupId: authorityGroupId,
       });
       if (operation === 'remove-author') {
         await pool.query(
@@ -937,6 +1012,7 @@ describe('My Content — body, admin scope, status, delete', () => {
           : operation === 'add-author'
             ? await request(app).post(`${path}/authors`).send({ user_id: OTHER_USER_ID, display_name: 'New author' })
             : await request(app).delete(`${path}/authors/${OTHER_USER_ID}`);
+      expectCapturedAuthority(authenticated);
       expect(response.status).toBe(allowed ? operation === 'add-author' ? 201 : 200 : 403);
 
       if (operation === 'update' || operation === 'delete') {
@@ -948,6 +1024,123 @@ describe('My Content — body, admin scope, status, delete', () => {
         expect(authors.rows).toHaveLength(expectedCount);
       }
     });
+  });
+
+  describe.each([
+    { authenticated: OTHER_USER_ID, canonical: INELIGIBLE_USER_ID, allowed: true },
+    { authenticated: INELIGIBLE_USER_ID, canonical: OTHER_USER_ID, allowed: false },
+  ])('paid submission credential $authenticated linked to $canonical', ({ authenticated, canonical, allowed }) => {
+    it('uses the exact organization grant for the Professional tier gate and keeps canonical attribution', async () => {
+      authState.userId = canonical;
+      authState.authWorkosUserId = authenticated;
+      const title = 'mc-test-linked-paid-tier';
+      const response = await request(app).post('/api/content/propose').send({
+        title, content: 'Tier-protected submission', content_type: 'article',
+        collection: { slug: ADMIN_WG_SLUG },
+        adminPrincipal: { id: OTHER_USER_ID }, authWorkosUserId: OTHER_USER_ID,
+      }).expect(allowed ? 201 : 403);
+
+      expectCapturedAuthority(authenticated);
+      const stored = await pool.query('SELECT proposer_user_id, status FROM perspectives WHERE title = $1', [title]);
+      expect(stored.rows).toEqual(allowed ? [{ proposer_user_id: canonical, status: 'pending_review' }] : []);
+      if (!allowed) expect(response.body.message).toContain('/dashboard/membership');
+    });
+  });
+
+  it('does not treat a paid primary organization pointer as an exact credential membership grant', async () => {
+    authState.userId = OTHER_USER_ID;
+    authState.authWorkosUserId = INELIGIBLE_USER_ID;
+    await pool.query('UPDATE users SET primary_organization_id = $1 WHERE workos_user_id = $2', [ELIGIBLE_ORG_ID, INELIGIBLE_USER_ID]);
+    try {
+      const response = await request(app).post('/api/content/propose').send({
+        title: 'mc-test-stale-paid-pointer', content: 'Must require an exact membership row',
+        content_type: 'article', collection: { slug: ADMIN_WG_SLUG },
+      }).expect(403);
+      expect(response.body.message).toContain('/dashboard/membership');
+      expectCapturedAuthority(INELIGIBLE_USER_ID);
+      const stored = await pool.query("SELECT id FROM perspectives WHERE title = 'mc-test-stale-paid-pointer'");
+      expect(stored.rows).toEqual([]);
+    } finally {
+      await pool.query('UPDATE users SET primary_organization_id = NULL WHERE workos_user_id = $1', [INELIGIBLE_USER_ID]);
+    }
+  });
+
+  describe.each([
+    { authenticated: OTHER_USER_ID, canonical: USER_ID, allowed: true },
+    { authenticated: USER_ID, canonical: OTHER_USER_ID, allowed: false },
+  ])('private committee member $authenticated linked to $canonical', ({ authenticated, canonical, allowed }) => {
+    beforeEach(() => {
+      authState.userId = canonical;
+      authState.authWorkosUserId = authenticated;
+    });
+
+    it('lists the private collection only through exact credential membership', async () => {
+      const response = await request(app).get('/api/content/collections').expect(200);
+      expect(response.body.collections.some((collection: { slug: string }) => collection.slug === PRIVATE_WG_SLUG)).toBe(allowed);
+    });
+
+    it('checks exact private committee membership before inserting content', async () => {
+      const title = 'mc-test-linked-private-committee';
+      const response = await request(app).post('/api/content/propose').send({
+        title, content: 'Private committee submission', content_type: 'article',
+        collection: { slug: PRIVATE_WG_SLUG },
+        adminPrincipal: { id: OTHER_USER_ID }, authWorkosUserId: OTHER_USER_ID,
+      }).expect(allowed ? 201 : 403);
+
+      expectCapturedAuthority(authenticated);
+      const stored = await pool.query('SELECT proposer_user_id, working_group_id FROM perspectives WHERE title = $1', [title]);
+      expect(stored.rows).toEqual(allowed ? [{ proposer_user_id: canonical, working_group_id: privateWgId }] : []);
+      if (!allowed) expect(response.body.message).toContain('must be a member of this committee');
+    });
+  });
+
+  it.each([
+    { authenticated: USER_ID, canonical: OTHER_USER_ID, allowed: true },
+    { authenticated: OTHER_USER_ID, canonical: USER_ID, allowed: false },
+  ])('captures immutable principal and attribution before an awaited lookup for $authenticated', async ({ authenticated, canonical, allowed }) => {
+    authState.userId = canonical;
+    authState.authWorkosUserId = authenticated;
+    adminState.grantedUserId = USER_ID;
+    let changed = false;
+    adminState.onLookup = () => {
+      if (changed) return;
+      changed = true;
+      // Model another middleware/service holding the original req.user object.
+      // The route must have captured its authority and attribution before I/O.
+      authState.requestUser!.id = authenticated;
+      authState.requestUser!.authWorkosUserId = canonical;
+      authState.requestUser!.email = 'changed@example.com';
+    };
+
+    const response = await request(app).post('/api/content/propose').send({
+      title: 'mc-test-immutable-request-principal', content: 'Snapshot principal through asynchronous work',
+      content_type: 'article', collection: { slug: ADMIN_WG_SLUG }, status: 'published',
+      adminPrincipal: { id: USER_ID }, authWorkosUserId: USER_ID,
+    }).expect(201);
+
+    expect(changed).toBe(true);
+    expectCapturedAuthority(authenticated);
+    const stored = await pool.query('SELECT proposer_user_id, status FROM perspectives WHERE id = $1', [response.body.id]);
+    expect(stored.rows).toEqual([{ proposer_user_id: canonical, status: allowed ? 'published' : 'pending_review' }]);
+  });
+
+  it.each([null, undefined])('my-content missing principal %s cannot recover canonical leadership or admin scope', async (principal) => {
+    const { listMyContent } = await import('../../src/services/my-content-service.js');
+    const owned = await insertPerspective({
+      slug: 'mc-test-principal-omitted-owned', title: 'Canonical attribution remains available',
+      status: 'draft', proposerUserId: USER_ID,
+    });
+    const reviewOnly = await insertPerspective({
+      slug: 'mc-test-principal-omitted-review', title: 'Committee review authority is separate',
+      status: 'pending_review', proposerUserId: null, workingGroupId: wgId,
+    });
+    adminState.grantedUserId = USER_ID;
+    // Exercise a runtime legacy caller omitting the now-required field.
+    const result = await listMyContent({ userId: USER_ID, adminPrincipal: principal as null });
+    expect(result.items.map(item => item.id)).toContain(owned);
+    expect(result.items.map(item => item.id)).not.toContain(reviewOnly);
+    expect(result.items.every(item => !item.relationships.includes('owner'))).toBe(true);
+    expect(adminState.principals).toEqual([]);
   });
 
   describe('DELETE /api/admin/content/:id', () => {
