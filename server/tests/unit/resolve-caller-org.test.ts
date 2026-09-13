@@ -7,7 +7,7 @@
  *   1. WorkOS OIDC access token (RS256 JWT, `org_id` claim) — JWKS is picked
  *      per-token from the `iss` claim, not from a server-wide env var.
  *   2. WorkOS API key (sk_* / wos_api_key_*)
- *   3. Sealed session (middleware sets `req.user`)
+ *   3. Sealed session (middleware supplies a fresh authorization snapshot)
  *
  * Regression guard for the issue where OIDC JWTs silently fell through to
  * public-only, leaving `agents: []` for authenticated callers.
@@ -367,40 +367,20 @@ describe('resolveCallerOrgId', () => {
 
   // ── Sealed-session path (existing behavior) ─────────────────────
 
-  it('falls back to users.primary_organization_id when only req.user is set', async () => {
-    validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    // resolvePrimaryOrganization: fast-path read returns the cached column
-    // alongside joins_valid, so a dangling pointer can fall through.
-    dbQueryMock.mockResolvedValueOnce({ rows: [{ primary_organization_id: 'org_from_session', joins_valid: true }] });
+  it('does not infer a primary or sole org from a bare authenticated user', async () => {
+    dbQueryMock.mockResolvedValue({ rows: [{ primary_organization_id: 'org_primary', joins_valid: true }] });
 
-    const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_session' }));
-
-    expect(orgId).toBe('org_from_session');
-    // Assert the fast-path SQL — joins_valid checks both organizations and
-    // organization_memberships so a dangling pointer falls through.
-    expect(dbQueryMock.mock.calls[0][0]).toMatch(/SELECT[\s\S]*primary_organization_id[\s\S]*EXISTS[\s\S]*organizations[\s\S]*EXISTS[\s\S]*organization_memberships[\s\S]*joins_valid[\s\S]*FROM users[\s\S]*workos_user_id\s*=\s*\$1/);
-    expect(dbQueryMock.mock.calls[0][1]).toEqual(['user_session']);
+    expect(await resolveCallerOrgId(reqWith(undefined, { id: 'user_session' }))).toBeNull();
+    expect(dbQueryMock).not.toHaveBeenCalled();
+    expect(validateWorkOSApiKeyMock).not.toHaveBeenCalled();
   });
 
-  it('returns null when session user has no primary org and no memberships', async () => {
-    validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    // Fast-path: no row (column was NULL or user row missing).
-    dbQueryMock.mockResolvedValueOnce({ rows: [] });
-    // Fallback: resolvePreferredOrganization finds no memberships.
-    dbQueryMock.mockResolvedValueOnce({ rows: [] });
+  it('does not substitute raw bearer authority for an authenticated user missing a snapshot', async () => {
+    jwtVerifyMock.mockResolvedValue({ payload: { org_id: 'org_other' } });
 
-    const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_no_org' }));
-
-    expect(orgId).toBeNull();
-  });
-
-  it('swallows DB errors and returns null rather than throwing', async () => {
-    validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    dbQueryMock.mockRejectedValueOnce(new Error('connection reset'));
-
-    const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_db_err' }));
-
-    expect(orgId).toBeNull();
+    expect(await resolveCallerOrgId(reqWith('Bearer eyJabc.def.ghi', { id: 'user_session' }))).toBeNull();
+    expect(jwtVerifyMock).not.toHaveBeenCalled();
+    expect(validateWorkOSApiKeyMock).not.toHaveBeenCalled();
   });
 
   // ── Unauthenticated / malformed ────────────────────────────────
