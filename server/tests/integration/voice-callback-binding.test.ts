@@ -2,11 +2,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { closeDatabase, initializeDatabase, query } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
+  deriveVoiceCallbackTurnId,
   issueVoiceCallbackBinding,
   persistVoiceCallbackBinding,
   resolveVoiceCallback,
   VoiceAuthorizationUnavailableError,
 } from '../../src/addie/voice-authorization.js';
+import { ThreadService } from '../../src/addie/thread-service.js';
 
 const THREAD_ID = '74500000-0000-4000-8000-000000000001';
 const EXTERNAL_ID = `addie-${THREAD_ID}`;
@@ -88,5 +90,84 @@ describe('primary-database voice callback binding writes', () => {
     await expect(persistVoiceCallbackBinding(THREAD_ID, EXTERNAL_ID, issued.binding, 'late-provider-conversation'))
       .rejects.toBeInstanceOf(VoiceAuthorizationUnavailableError);
     await expect(resolveVoiceCallback(issued.token)).resolves.toEqual({ status: 'invalid' });
+  });
+
+  it('serializes concurrent callback claims across independent service instances and persists one completion receipt', async () => {
+    const replicaA = new ThreadService();
+    const replicaB = new ThreadService();
+    const clientTurnId = deriveVoiceCallbackTurnId({ threadId: THREAD_ID, externalId: EXTERNAL_ID, providerConversationId: 'provider-conversation', messages: [
+      { role: 'system', content: '[conductor:voice_session]' },
+      { role: 'user', content: 'Perform this callback once.' },
+    ] });
+
+    const claims = await Promise.all([
+      replicaA.claimClientTurn(THREAD_ID, clientTurnId, false),
+      replicaB.claimClientTurn(THREAD_ID, clientTurnId, false),
+    ]);
+    expect(claims.map((claim) => claim.state).sort()).toEqual(['claimed', 'processing']);
+    const winner = claims.find((claim) => claim.state === 'claimed');
+    expect(winner?.leaseId).toBeTruthy();
+
+    await replicaA.addMessage({
+      thread_id: THREAD_ID,
+      role: 'user',
+      content: 'Perform this callback once.',
+      client_request_id: clientTurnId,
+      message_source: 'voice',
+    });
+    await replicaB.addMessage({
+      thread_id: THREAD_ID,
+      role: 'assistant',
+      content: 'Completed once.',
+      client_request_id: clientTurnId,
+      delivery_status: 'completed',
+      client_turn_lease_id: winner!.leaseId,
+      finalize_client_turn_status: 'completed',
+    });
+
+    await expect(new ThreadService().claimClientTurn(THREAD_ID, clientTurnId, false))
+      .resolves.toEqual({ state: 'completed' });
+    const receipt = await replicaA.getMessagesByClientRequestId(THREAD_ID, clientTurnId);
+    expect(receipt.filter((message) => message.role === 'assistant' && message.delivery_status === 'completed')).toHaveLength(1);
+  });
+
+  it('allows an independent service instance to reclaim a callback only after an interrupted attempt', async () => {
+    const replicaA = new ThreadService();
+    const replicaB = new ThreadService();
+    const clientTurnId = deriveVoiceCallbackTurnId({ threadId: THREAD_ID, externalId: EXTERNAL_ID, providerConversationId: 'provider-conversation', messages: [
+      { role: 'system', content: '[conductor:voice_session]' },
+      { role: 'user', content: 'Retry after failure.' },
+    ] });
+    const first = await replicaA.claimClientTurn(THREAD_ID, clientTurnId, false);
+    expect(first.state).toBe('claimed');
+    await replicaA.setClientTurnStatus(THREAD_ID, clientTurnId, first.leaseId!, 'interrupted');
+
+    await expect(replicaB.claimClientTurn(THREAD_ID, clientTurnId, false))
+      .resolves.toEqual({ state: 'not_retryable' });
+    await expect(replicaB.claimClientTurn(THREAD_ID, clientTurnId, true))
+      .resolves.toMatchObject({ state: 'claimed', leaseId: expect.any(String) });
+  });
+
+  it('lets an independent replica reclaim an expired processing lease without stealing a live lease', async () => {
+    const replicaA = new ThreadService();
+    const replicaB = new ThreadService();
+    const clientTurnId = deriveVoiceCallbackTurnId({ threadId: THREAD_ID, externalId: EXTERNAL_ID, providerConversationId: 'provider-conversation', messages: [
+      { role: 'system', content: '[conductor:voice_session]' },
+      { role: 'user', content: 'Recover the crashed callback.' },
+    ] });
+    const first = await replicaA.claimClientTurn(THREAD_ID, clientTurnId, false);
+    expect(first.state).toBe('claimed');
+    await expect(replicaB.claimClientTurn(THREAD_ID, clientTurnId, true))
+      .resolves.toEqual({ state: 'processing' });
+
+    await query(
+      `UPDATE addie_chat_turns SET lease_expires_at = NOW() - INTERVAL '1 second'
+       WHERE thread_id = $1 AND client_request_id = $2`,
+      [THREAD_ID, clientTurnId],
+    );
+    await expect(replicaB.claimClientTurn(THREAD_ID, clientTurnId, false))
+      .resolves.toEqual({ state: 'processing' });
+    await expect(replicaB.claimClientTurn(THREAD_ID, clientTurnId, true))
+      .resolves.toMatchObject({ state: 'claimed', leaseId: expect.any(String) });
   });
 });
