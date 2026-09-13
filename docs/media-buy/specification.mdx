@@ -432,7 +432,12 @@ Modify an existing media buy's budget, targeting, or settings.
 **Requirements:**
 - Orchestrators MUST include `media_buy_id`
 - Sales agents MUST accept any `media_buy_id` returned by `get_media_buys` for the authenticated account and MUST NOT refuse updates on the basis that the buy was originally created outside AdCP. Business constraints on specific operations are expressed by omitting them from `valid_actions`. See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
-- Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
+- Sales agents MUST apply PATCH semantics: only specified fields are updated;
+  omitted fields remain unchanged. Within a request-side package
+  `targeting_overlay`, this rule applies per dimension: omission preserves the
+  dimension, a non-null value replaces it, and `null` clears it. Successful
+  response and readback schemas contain only the resulting non-null targeting
+  state.
 - When a buyer attempts to cancel a media buy already in `canceled` (`canceled: true` on a `canceled` buy), sales agents MUST reject with `NOT_CANCELLABLE`
 - All other updates to media buys in terminal states (`completed`, `rejected`, `canceled`) — including `canceled: true` attempts against `completed` or `rejected` buys — MUST be rejected with `INVALID_STATE`
 - Orchestrators MAY cancel a media buy by setting `canceled: true` with optional `cancellation_reason`

@@ -30,12 +30,18 @@ transaction. There is no shared fence between control and assignment state.
 shared trafficking display label and increments MediaBuy revision, but does not
 change the accepted commercial terms or create an accepted-proposal successor.
 
-Consequently, a targeting replacement that removes a placement used by an
+Consequently, a targeting patch that removes a placement used by an
 existing creative assignment cannot be performed as control followed by sync
 without a race window. Use the [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) compatibility facade to send
-the complete targeting and assignment replacements in one transaction. The
+the targeting patch and complete assignment replacement in one transaction. The
 same facade is required for inline-only sellers, because they do not advertise
 `sync_creatives` as a later creative path.
+
+Within each package `targeting_overlay` is a request-only per-dimension patch.
+Omitting a dimension preserves its effective value, a non-null value replaces
+it, and `null` clears it. Sellers return the resulting targeting through strict
+readback schemas: cleared dimensions are absent and `null` never appears in
+package state or capability/discovery output.
 
 Commercial amendment followed by operational control is also a saga, not one
 transaction. If [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) applies the amendment and a subsequent

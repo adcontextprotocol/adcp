@@ -171,7 +171,11 @@
         },
         "targeting": {
           "$ref": "/schemas/core/targeting.json",
-          "description": "Audience targeting criteria"
+          "description": "Strict non-null targeting criteria and effective state"
+        },
+        "targeting-input": {
+          "$ref": "/schemas/core/targeting-input.json",
+          "description": "Request-only per-dimension targeting mutations with null-clear semantics"
         },
         "targeting-overlay-support": {
           "$ref": "/schemas/core/targeting-overlay-support.json",
@@ -1775,7 +1779,11 @@
         },
         "product-purchase": {
           "$ref": "/schemas/media-buy/product-purchase.json",
-          "description": "Canonical direct product selection without creatives or negotiated term overrides"
+          "description": "Resolved canonical product selection in proposal and accepted commercial snapshots"
+        },
+        "product-purchase-input": {
+          "$ref": "/schemas/media-buy/product-purchase-input.json",
+          "description": "Request-only canonical direct product selection with targeting inheritance and null-clear semantics"
         },
         "compatibility-purchase-coordinator-input": {
           "$ref": "/schemas/media-buy/legacy-purchase-continuation-input.json",

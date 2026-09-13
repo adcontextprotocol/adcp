@@ -47,7 +47,7 @@
     },
     "purchases": {
       "type": "array",
-      "items": { "$ref": "/schemas/media-buy/product-purchase.json" },
+      "items": { "$ref": "/schemas/media-buy/product-purchase-input.json" },
       "minItems": 1
     },
     "total_budget": {
