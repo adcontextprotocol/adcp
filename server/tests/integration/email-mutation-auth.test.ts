@@ -63,9 +63,11 @@ describe('member email mutation authorization across independent replicas', () =
     const jwt = await import('../../src/auth/workos-jwt.js');
     jwt.__setJWKSForTesting(async () => signingKeys.publicKey);
     const auth = await import('../../src/middleware/auth.js');
+    const { csrfProtection } = await import('../../src/middleware/csrf.js');
     auth.stopAuthTimers();
     const app = express();
     app.use(cookieParser());
+    app.use(csrfProtection);
     const respond = (req: Request, res: Response) => res.json({
       user_id: req.user?.id,
       authenticated_user_id: req.user?.authorizationSnapshot?.authenticatedUserId,
