@@ -146,6 +146,98 @@ describe('createAddieToolExecutor', () => {
     expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
   });
 
+  it('blocks a revoke-after-tool-assembly barrier before mutation reservation or dispatch', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn();
+    const reserveSideEffect = vi.fn();
+    // The executor and handler were assembled while this credential was an
+    // admin. Revocation advances the persisted epoch before the model's tool
+    // call reaches the shared mutation boundary.
+    const revalidateSideEffectAuthority = vi.fn().mockResolvedValue({
+      allowed: false,
+      status: 'access_denied',
+    });
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production',
+      policy: () => ({ allowed: true }),
+      reserveSideEffect,
+      revalidateSideEffectAuthority,
+    });
+
+    const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+
+    expect(revalidateSideEffectAuthority).toHaveBeenCalledOnce();
+    expect(reserveSideEffect).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      blocked_by_policy: true,
+      normalized_result: { status: 'access_denied' },
+    });
+  });
+
+  it('fails closed and retryably when mutation authority cannot be revalidated', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn();
+    const reserveSideEffect = vi.fn();
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production',
+      policy: () => ({ allowed: true }),
+      reserveSideEffect,
+      revalidateSideEffectAuthority: vi.fn().mockRejectedValue(new Error('epoch store unavailable')),
+    });
+
+    const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+
+    expect(reserveSideEffect).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      blocked_by_policy: true,
+      normalized_result: { status: 'recoverable_error' },
+    });
+    expect(result.execution.result).toContain('please try again');
+  });
+
+  it('blocks revocation committed while the durable reservation is paused', async () => {
+    const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
+    const handler = vi.fn();
+    let revoked = false;
+    let releaseReservation!: () => void;
+    let signalReservationStarted!: () => void;
+    const reservationStarted = new Promise<void>((resolve) => { signalReservationStarted = resolve; });
+    const reservationRelease = new Promise<void>((resolve) => { releaseReservation = resolve; });
+    const reserveSideEffect = vi.fn(async () => {
+      signalReservationStarted();
+      await reservationRelease;
+    });
+    const revalidateSideEffectAuthority = vi.fn(async () => revoked
+      ? { allowed: false as const, status: 'access_denied' as const }
+      : { allowed: true as const });
+    const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
+      executionMode: 'production',
+      policy: () => ({ allowed: true }),
+      reserveSideEffect,
+      revalidateSideEffectAuthority,
+    });
+
+    const pending = execute({ ...call(), name: 'create_github_issue' }, 1);
+    await reservationStarted;
+    revoked = true;
+    releaseReservation();
+    const result = await pending;
+
+    expect(revalidateSideEffectAuthority).toHaveBeenCalledTimes(2);
+    expect(reserveSideEffect).toHaveBeenCalledOnce();
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      blocked_by_policy: true,
+      dispatch_status: 'not_dispatched',
+      normalized_result: { status: 'access_denied' },
+    });
+  });
+
   it('rejects structurally malformed provider input before policy or handler dispatch', async () => {
     const handler = vi.fn();
     const policy = vi.fn().mockReturnValue({ allowed: true });

@@ -1,4 +1,5 @@
 import type { WorkOS } from "@workos-inc/node";
+import type { Pool, PoolClient } from "pg";
 import type { OrgAuthorizationPrincipal } from "../auth/organization-principal.js";
 import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 import { query } from "../db/client.js";
@@ -50,7 +51,8 @@ const ROLE_RANK: Record<MembershipRole, number> = {
 export async function resolveUserOrgAuthorization(
   workos: WorkOS | null,
   principal: OrgAuthorizationPrincipal,
-  organizationId: string
+  organizationId: string,
+  db?: Pick<Pool | PoolClient, "query">,
 ): Promise<UserOrgAuthorizationResolution> {
   const userId = getOrganizationAuthorizationUserId(principal);
   let directMembership: UserOrgAuthorizationMembership | null = null;
@@ -91,17 +93,29 @@ export async function resolveUserOrgAuthorization(
   let grantAvailable = false;
   let grantMembership: UserOrgAuthorizationMembership | null = null;
   try {
-    const grant = await query<{ workos_organization_id: string; role: string }>(
+    const grant = db
+      ? await db.query<{ workos_organization_id: string; role: string }>(
+        `SELECT workos_organization_id, role
+           FROM organization_credential_grants
+          WHERE workos_user_id = $1
+            AND workos_organization_id = $2
+            AND revoked_at IS NULL
+            AND effective_from <= clock_timestamp()
+            AND (effective_until IS NULL OR effective_until > clock_timestamp())
+          LIMIT 1`,
+        [userId, organizationId]
+      )
+      : await query<{ workos_organization_id: string; role: string }>(
       `SELECT workos_organization_id, role
          FROM organization_credential_grants
         WHERE workos_user_id = $1
           AND workos_organization_id = $2
           AND revoked_at IS NULL
-          AND effective_from <= NOW()
-          AND (effective_until IS NULL OR effective_until > NOW())
+          AND effective_from <= clock_timestamp()
+          AND (effective_until IS NULL OR effective_until > clock_timestamp())
         LIMIT 1`,
-      [userId, organizationId]
-    );
+        [userId, organizationId]
+      );
     grantAvailable = true;
     const row = grant.rows[0];
     if (row && VALID_ROLES.has(row.role)) {

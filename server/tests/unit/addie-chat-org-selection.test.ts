@@ -46,6 +46,12 @@ const threadMocks = vi.hoisted(() => ({
   addMessageFeedback: vi.fn(),
 }));
 
+const authEpochMocks = vi.hoisted(() => ({ getExact: vi.fn() }));
+
+vi.mock('../../src/db/authorization-epoch-db.js', () => ({
+  getExactCredentialAuthorizationEpoch: authEpochMocks.getExact,
+}));
+
 vi.mock('../../src/addie/member-context.js', () => ({
   getWebMemberContext: memberContextMocks.getWebMemberContext,
   formatMemberContextForPrompt: memberContextMocks.formatMemberContextForPrompt,
@@ -256,6 +262,7 @@ describe('mounted Addie web-thread ownership', () => {
 
   function app(router?: any, prepareRequest?: any) {
     const instance = express();
+    instance.set('trust proxy', 1);
     instance.use(express.json());
     instance.use((req, _res, next) => {
       const ownerCookie = req.get('cookie')
@@ -285,6 +292,7 @@ describe('mounted Addie web-thread ownership', () => {
       message_id: '33333333-3333-4333-8333-333333333333',
     });
     threadMocks.addMessageFeedback.mockReset().mockResolvedValue(true);
+    authEpochMocks.getExact.mockReset().mockResolvedValue('0');
   });
 
   it('returns retryable authorization guidance without executing chat on lookup outage', async () => {
@@ -294,6 +302,33 @@ describe('mounted Addie web-thread ownership', () => {
     expect(response.body).toMatchObject({ error: 'admin_authorization_unavailable', message: expect.stringContaining('try again') });
     expect(response.headers['retry-after']).toBeDefined();
     expect(chatClient.processMessage).not.toHaveBeenCalled();
+  });
+
+  it('preserves retryable 503 when post-assembly credential capture is unavailable', async () => {
+    authEpochMocks.getExact.mockRejectedValueOnce(new Error('epoch store unavailable'));
+    chatClient.processMessage.mockImplementationOnce(async (
+      _message: unknown,
+      _context: unknown,
+      _tools: unknown,
+      _system: unknown,
+      options: { captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<unknown> },
+    ) => {
+      await options.captureSideEffectAuthority({ mutationToolNames: ['schedule_meeting'] });
+      throw new Error('unreachable');
+    });
+
+    const response = await request(app())
+      .post('/api/addie/chat')
+      .set('x-test-user-id', 'credential_member')
+      .set('x-forwarded-for', '203.0.113.77')
+      .send({ message: 'Schedule a meeting' })
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      error: 'admin_authorization_unavailable',
+      message: expect.stringContaining('try again'),
+    });
+    expect(response.headers['retry-after']).toBeDefined();
   });
 
   it('emits a retryable stream error without executing chat on authorization outage', async () => {

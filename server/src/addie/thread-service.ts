@@ -119,7 +119,7 @@ interface CreateMessageInputBase {
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
-  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; github_issue_receipt?: unknown }>;
+  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; dispatch_status?: 'not_dispatched'; github_issue_receipt?: unknown }>;
   knowledge_ids?: number[];
   model?: string;
   model_preference?: WebChatModelPreference;
@@ -188,7 +188,7 @@ export interface ThreadMessage {
   content: string;
   content_sanitized: string | null;
   tools_used: string[] | null;
-  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; github_issue_receipt?: unknown }> | null;
+  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; dispatch_status?: 'not_dispatched'; github_issue_receipt?: unknown }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
   model_preference?: WebChatModelPreference | null;
@@ -536,8 +536,9 @@ export class ThreadService {
              AND COALESCE((reserved_call->>'is_error')::boolean, FALSE) = TRUE
              AND reserved_call->'input' = $3::jsonb
              -- Tool result checkpoints are interrupted audit rows too. An exact
-             -- later success settles this reservation; an error, empty result,
-             -- or missing result deliberately leaves it unknown and replay-safe.
+             -- later success or executor-proven non-dispatch settles this
+             -- reservation; an ambiguous error, empty result, or missing result
+             -- deliberately leaves it unknown and replay-safe.
              AND NOT EXISTS (
                SELECT 1
                FROM addie_thread_messages receipt,
@@ -546,37 +547,42 @@ export class ThreadService {
                  AND receipt.sequence_number > reservation.sequence_number
                  AND receipt_call->>'name' = reserved_call->>'name'
                  AND receipt_call->'input' = reserved_call->'input'
-                 -- An empty result is not an error but is also not a confirmed
-                 -- mutation. Only the executor's explicit ok receipt can
-                 -- retire an unknown-outcome reservation.
-                 AND receipt_call->>'result_status' = 'ok'
-                 AND receipt_call->>'is_error' = 'false'
-                 AND receipt_call->>'result' <> ''
-                 AND receipt_call->>'result' <> 'The tool returned no content.'
-                 AND receipt_call->>'result' <> 'External action dispatch reserved; outcome unknown.'
-                 -- GitHub creation has a stronger settlement contract than
-                 -- other mutations: a generic ok result is never evidence that
-                 -- GitHub created anything. The durable JSONB receipt must be
-                 -- canonical too, so a malformed persisted value leaves the
-                 -- reservation unknown and blocks automatic replay.
                  AND (
-                   receipt_call->>'name' <> 'create_github_issue'
+                   -- Only the executor can emit this marker, after a second
+                   -- authority check rejects before handler entry.
+                   receipt_call->>'dispatch_status' = 'not_dispatched'
                    OR (
-                     jsonb_typeof(receipt_call->'github_issue_receipt') = 'object'
-                     AND receipt_call->'github_issue_receipt'->>'toolName' = 'create_github_issue'
-                     AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueNumber') = 'number'
-                     AND receipt_call->'github_issue_receipt'->>'issueNumber' ~ '^[1-9][0-9]*$'
+                     -- An empty result is not an error but is also not a
+                     -- confirmed mutation. Only an explicit ok receipt retires
+                     -- an unknown external outcome.
+                     receipt_call->>'result_status' = 'ok'
+                     AND receipt_call->>'is_error' = 'false'
+                     AND receipt_call->>'result' <> ''
+                     AND receipt_call->>'result' <> 'The tool returned no content.'
+                     AND receipt_call->>'result' <> 'External action dispatch reserved; outcome unknown.'
+                     -- GitHub creation has a stronger settlement contract than
+                     -- other mutations: a generic ok result is never evidence
+                     -- that GitHub created anything.
                      AND (
-                       char_length(receipt_call->'github_issue_receipt'->>'issueNumber') < 16
+                       receipt_call->>'name' <> 'create_github_issue'
                        OR (
-                         char_length(receipt_call->'github_issue_receipt'->>'issueNumber') = 16
-                         AND receipt_call->'github_issue_receipt'->>'issueNumber' <= '9007199254740991'
+                         jsonb_typeof(receipt_call->'github_issue_receipt') = 'object'
+                         AND receipt_call->'github_issue_receipt'->>'toolName' = 'create_github_issue'
+                         AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueNumber') = 'number'
+                         AND receipt_call->'github_issue_receipt'->>'issueNumber' ~ '^[1-9][0-9]*$'
+                         AND (
+                           char_length(receipt_call->'github_issue_receipt'->>'issueNumber') < 16
+                           OR (
+                             char_length(receipt_call->'github_issue_receipt'->>'issueNumber') = 16
+                             AND receipt_call->'github_issue_receipt'->>'issueNumber' <= '9007199254740991'
+                           )
+                         )
+                         AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueUrl') = 'string'
+                         AND receipt_call->'github_issue_receipt'->>'issueUrl' = (
+                           'https://github.com/adcontextprotocol/adcp/issues/' ||
+                           (receipt_call->'github_issue_receipt'->>'issueNumber')
+                         )
                        )
-                     )
-                     AND jsonb_typeof(receipt_call->'github_issue_receipt'->'issueUrl') = 'string'
-                     AND receipt_call->'github_issue_receipt'->>'issueUrl' = (
-                       'https://github.com/adcontextprotocol/adcp/issues/' ||
-                       (receipt_call->'github_issue_receipt'->>'issueNumber')
                      )
                    )
                  )

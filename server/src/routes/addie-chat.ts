@@ -82,6 +82,10 @@ import {
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import {
+  captureAddieMutationAuthority,
+  revalidateAddieMutationAuthority,
+} from "../addie/mutation-authority.js";
+import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
@@ -276,6 +280,7 @@ function parseOptionalFeedbackText(
 let authenticatedOnlyTools: RequestTools | null = null;
 
 const ANONYMOUS_MAX_ITERATIONS = 5;
+const ADMIN_TOOL_NAMES = new Set(ADMIN_TOOLS.map((tool) => tool.name));
 
 // Sources the web client is permitted to assert. Voice / email / unknown are
 // set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
@@ -1425,12 +1430,25 @@ export function createAddieChatRouter(options?: {
               requestedProvider: experimentTurn.model ? 'google' : 'anthropic',
             });
           },
+          ...(!options?.evaluationMode && req.user && {
+            captureSideEffectAuthority: async ({ mutationToolNames }: { mutationToolNames: readonly string[] }) => {
+              const authority = await captureAddieMutationAuthority({
+                principal: req.user!,
+                platformAdminMutationTools: mutationToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
+              });
+              return ({ toolName }: { toolName: string }) =>
+                revalidateAddieMutationAuthority(authority, toolName);
+            },
+          }),
           ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
           costScope: authedScope
             ? authedScope
             : { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
+        // Preserve the shared retryable 503 contract for authority storage
+        // failures during post-assembly credential capture.
+        if (error instanceof AAOAdminLookupUnavailableError) throw error;
         // Provide user-friendly error message based on error type
         let errorMessage: string;
         if (error instanceof Error && error.message.includes('prompt is too long')) {
@@ -1493,6 +1511,7 @@ export function createAddieChatRouter(options?: {
               duration_ms: exec.duration_ms,
               is_error: exec.is_error,
               result_status: exec.normalized_result?.status,
+              ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
               ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
             }))
           : undefined,
@@ -2041,6 +2060,16 @@ export function createAddieChatRouter(options?: {
             clientRequestId: clientRequestId || undefined,
           });
         },
+        ...(!options?.evaluationMode && req.user && {
+          captureSideEffectAuthority: async ({ mutationToolNames }: { mutationToolNames: readonly string[] }) => {
+            const authority = await captureAddieMutationAuthority({
+              principal: req.user!,
+              platformAdminMutationTools: mutationToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
+            });
+            return ({ toolName }: { toolName: string }) =>
+              revalidateAddieMutationAuthority(authority, toolName);
+          },
+        }),
         ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
         ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
         ...(streamAuthedScope
@@ -2279,6 +2308,7 @@ export function createAddieChatRouter(options?: {
               duration_ms: exec.duration_ms,
               is_error: exec.is_error,
               result_status: exec.normalized_result?.status,
+              ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
               ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
             }))
           : undefined,
