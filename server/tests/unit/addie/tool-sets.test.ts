@@ -341,13 +341,13 @@ describe('getToolsForSets', () => {
         'merge_organizations', 'find_duplicate_orgs', 'check_domain_health', 'manage_organization_domains',
       ]);
       expect(ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS).toEqual([
-        'update_org_member_role', 'list_slack_users_by_org', 'list_paying_members', 'update_member_logo', 'update_member_profile',
+        'update_org_member_role', 'list_slack_users_by_org', 'list_paying_members', 'query_admin_analytics', 'update_member_logo', 'update_member_profile',
       ]);
       expect(ADMIN_ORGANIZATIONS_TOOLS).toEqual([
         ...ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
         ...ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
       ]);
-      expect(ADMIN_ORGANIZATIONS_TOOLS).toHaveLength(9);
+      expect(ADMIN_ORGANIZATIONS_TOOLS).toHaveLength(10);
       expect(TOOL_SETS.admin_organizations.tools).toEqual(ADMIN_ORGANIZATIONS_TOOLS);
       expect(TOOL_SETS.admin_organizations.routerVisible).toBe(false);
       expect(getValidToolSetNames(true).has('admin_organizations')).toBe(false);
@@ -1183,22 +1183,22 @@ describe('getToolsForSets', () => {
   });
 
   describe('ALWAYS_AVAILABLE overlap invariant', () => {
-    it('no always-available tool (regular or admin) appears in any set tools array', () => {
-      // If a guaranteed tool is also in a set's tools array, that set's
-      // description will (by construction) describe that capability. When the
-      // set appears in the unavailable-sets hint, Sonnet reads the description
-      // and hallucinates that the capability is off — even though the tool is
-      // loaded via ALWAYS_AVAILABLE_TOOLS or ALWAYS_AVAILABLE_ADMIN_TOOLS.
-      // Keeping these arrays disjoint is the only way to prevent that class of
-      // hallucination. See #2998.
+    it('only the explicit escalation route overlaps always-available tools', () => {
+      // Unavailable-set descriptions previously made Sonnet deny access to
+      // guaranteed tools (#2998). The hint now uses the callable catalog and
+      // does not enumerate omitted sets. Keep other domains disjoint, but
+      // escalation-only requests need an explicit route because the bounded
+      // selector rejects [] and its fallback withholds admin tools.
+      expect(TOOL_SETS.admin_escalations.adminOnly).toBe(true);
+      expect(TOOL_SETS.admin_escalations.tools).toEqual([...ALWAYS_AVAILABLE_ADMIN_TOOLS]);
       const always = new Set([...ALWAYS_AVAILABLE_TOOLS, ...ALWAYS_AVAILABLE_ADMIN_TOOLS]);
       for (const [setName, set] of Object.entries(TOOL_SETS)) {
+        if (setName === 'admin_escalations') continue;
         for (const tool of set.tools) {
           expect(
             always.has(tool),
             `${setName}.tools contains "${tool}" which is also in ALWAYS_AVAILABLE_TOOLS or ALWAYS_AVAILABLE_ADMIN_TOOLS. ` +
-            `Remove it from the set's tools array — it is already guaranteed and duplicating it ` +
-            `causes Sonnet to hallucinate unavailability from set descriptions.`,
+            `Only the explicit admin_escalations route may overlap guaranteed tools.`,
           ).toBe(false);
         }
       }
@@ -1218,9 +1218,12 @@ describe('buildUnavailableSetsHint', () => {
     expect(hint).toContain('authoritative custom-tool catalog');
   });
 
-  it('does not enumerate omitted domains or expose per-conversation unavailability', () => {
-    const hint = buildUnavailableSetsHint(['knowledge'], false);
+  it.each([false, true])('does not describe omitted domains as unavailable (admin: %s)', isAdmin => {
+    const hint = buildUnavailableSetsHint(['knowledge'], isAdmin);
     expect(hint).not.toContain('**github**');
+    expect(hint).not.toContain('admin_escalations');
+    expect(hint).not.toContain('list_escalations');
+    expect(hint).not.toContain('resolve_escalation');
     expect(hint).not.toContain('Capabilities Not Available in This Conversation');
     expect(hint).not.toContain('not available right now');
     expect(hint).not.toContain('I don\'t have access');

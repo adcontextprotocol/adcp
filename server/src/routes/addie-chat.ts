@@ -22,7 +22,8 @@ import {
   type ExecutionPlan,
   type RoutingContext,
 } from "../addie/router.js";
-import { prepareGeminiDirectTurn, getGeminiDirectResults } from "../addie/gemini-direct-experiment.js";
+import { prepareGeminiDirectTurn, getGeminiDirectResults, geminiDirectAvailable } from "../addie/gemini-direct-experiment.js";
+import { parseWebChatModelPreference, webChatModelInfo, WebChatModelPreferenceError, type WebChatModelInfo } from "../addie/web-chat-model-selection.js";
 import type { CostEvent } from "../addie/claude-cost-tracker.js";
 import { createProductionRouter } from "../addie/router-runtime.js";
 import {
@@ -577,10 +578,12 @@ async function initializeChatClient(): Promise<void> {
   }, "Addie Chat: Initialized with tiered access");
 }
 
-/**
- * Get the initialized chat Claude client.
- * Ensures initialization has run before returning the client.
- */
+/** Readiness probe: knowledge and tool registration must finish before traffic. */
+export function isWebChatReady(): boolean {
+  return initialized && claudeClient !== null && isKnowledgeReady();
+}
+
+/** Get the chat client, initializing it first if necessary. */
 export async function getChatClaudeClient(): Promise<AddieClaudeClient> {
   if (!initialized) {
     await initializeChatClient();
@@ -600,6 +603,7 @@ interface ConversationMessage {
   rating_notes?: string | null;
   feedback_tags?: string[] | null;
   improvement_suggestion?: string | null;
+  model_info?: WebChatModelInfo;
 }
 
 /**
@@ -1152,10 +1156,12 @@ export function createAddieChatRouter(options?: {
         conversation_id,
         user_name,
         message_source: rawMessageSource,
+        model_preference: rawModelPreference,
         attachments: rawAttachments,
         organization_id,
         github_issue_creation_requested: rawGithubIssueCreationRequested,
       } = req.body;
+      const modelPreference = parseWebChatModelPreference(rawModelPreference, !!req.user, options?.evaluationMode);
       // This is an explicit UI/API action signal, never a text classifier. A
       // model reply cannot set it, and it only controls whether a missing
       // same-turn issue receipt must yield the deterministic fallback.
@@ -1270,6 +1276,7 @@ export function createAddieChatRouter(options?: {
       await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
+        model_preference: modelPreference,
         content: messageForStorage,
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
@@ -1346,14 +1353,14 @@ export function createAddieChatRouter(options?: {
         isAdmin: isAAOAdmin,
         threadId: thread.thread_id,
         hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
-        exclusionReason: attachments.length > 0 ? 'attachments'
-          : hasThreadCertificationContext || activeCertificationKind ? 'certification'
-          : hasCachedSiSession(externalId) || siAgents.length > 0 ? 'sponsored_intelligence'
-          : githubIssueCreationRequested ? 'github_mutation' : null,
+        activeCertificationKind,
+        sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+          ? 'session' : siAgents.length > 0 ? 'discovery' : null,
         startedAt: startTime,
         requestTools: tieredAccess.requestTools,
         baseRequestContext: requestContext,
         evaluation: options?.evaluationMode,
+        modelPreference,
         getControlTools: async () => isAuth
           ? await selectRoutedWebTools({
               message: messageToProcess,
@@ -1486,6 +1493,7 @@ export function createAddieChatRouter(options?: {
           : undefined,
         model: effectiveModel,
         model_execution: response.model_execution,
+        model_preference: modelPreference,
         latency_ms: latencyMs,
         tokens_input: response.usage?.input_tokens,
         tokens_output: response.usage?.output_tokens,
@@ -1512,6 +1520,7 @@ export function createAddieChatRouter(options?: {
 
       res.json({
         response: outputValidation.sanitized,
+        model_info: webChatModelInfo(assistantMessage),
         conversation_id: externalId, // Return external_id as conversation_id for API compatibility
         message_id: assistantMessage.message_id, // Now returns UUID instead of integer
         tools_used: response.tools_used,
@@ -1522,6 +1531,12 @@ export function createAddieChatRouter(options?: {
         si_session: siSession,
       });
     } catch (error) {
+      if (error instanceof WebChatModelPreferenceError) {
+        return res.status(error.statusCode).json({
+          error: 'Invalid model preference',
+          message: error.statusCode === 403 ? 'Sign in to choose a model.' : 'This model selection is unavailable for the request.',
+        });
+      }
       if (error instanceof ChatAttachmentValidationError) {
         logger.warn({ reason: error.message }, "Addie Chat: Invalid attachment");
         return res.status(error.statusCode).json({
@@ -1540,10 +1555,14 @@ export function createAddieChatRouter(options?: {
 
   // GET /api/addie/chat/status - Check if Addie is ready
   // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
-  apiRouter.get("/status", (req, res) => {
+  apiRouter.get("/status", optionalAuth, (req, res) => {
     res.json({
       ready: (!!injectedChatClient || (initialized && claudeClient !== null)) && isKnowledgeReady(),
       knowledge_ready: isKnowledgeReady(),
+      model_selection: {
+        enabled: !!req.user && !options?.evaluationMode,
+        gemini_available: !options?.evaluationMode && geminiDirectAvailable(injectedChatClient ?? claudeClient),
+      },
     });
   });
 
@@ -1597,12 +1616,14 @@ export function createAddieChatRouter(options?: {
         conversation_id,
         user_name,
         message_source: rawMessageSourceStream,
+        model_preference: rawModelPreference,
         attachments: rawAttachmentsStream,
         organization_id,
         client_request_id,
         retry,
         github_issue_creation_requested: rawGithubIssueCreationRequested,
       } = req.body;
+      let modelPreference = parseWebChatModelPreference(rawModelPreference, !!req.user, options?.evaluationMode);
       const attachments = validateChatAttachments(rawAttachmentsStream);
       const clientRequestId = typeof client_request_id === 'string' ? client_request_id : null;
       const retryRequested = retry === true;
@@ -1710,6 +1731,10 @@ export function createAddieChatRouter(options?: {
         .reverse()
         .find(m => m.role === 'assistant' && m.delivery_status === 'completed');
 
+      // A retry continues the original turn, even if the selector has since
+      // changed. Stored tool checkpoints and execution policy still apply.
+      if (existingUserMessage) modelPreference = existingUserMessage.model_preference ?? 'default';
+
       if (existingUserMessage && existingUserMessage.content !== messageForStorage) {
         return res.status(409).json({
           error: 'client_request_id conflict',
@@ -1790,6 +1815,7 @@ export function createAddieChatRouter(options?: {
         sendEvent('done', {
           conversation_id: externalId,
           message_id: completedAssistantMessage.message_id,
+          model_info: webChatModelInfo(completedAssistantMessage),
           replayed: true,
           certification,
         });
@@ -1828,6 +1854,7 @@ export function createAddieChatRouter(options?: {
         await threadService.addMessage({
           thread_id: thread.thread_id,
           role: 'user',
+          model_preference: modelPreference,
           content: messageForStorage,
           content_sanitized: inputValidation.sanitized,
           flagged: inputValidation.flagged,
@@ -1909,15 +1936,14 @@ export function createAddieChatRouter(options?: {
         isAdmin: isAAOAdmin,
         threadId: thread.thread_id,
         hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
-        exclusionReason: attachments.length > 0 ? 'attachments'
-          : hasThreadCertCtx || activeCertificationKind ? 'certification'
-          : hasCachedSiSession(externalId) || siAgents.length > 0 ? 'sponsored_intelligence'
-          : retryRequested ? 'interrupted_turn_retry'
-          : githubIssueCreationRequested ? 'github_mutation' : null,
+        activeCertificationKind,
+        sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
+          ? 'session' : siAgents.length > 0 ? 'discovery' : null,
         startedAt: startTime,
         requestTools: tieredAccess.requestTools,
         baseRequestContext: requestContext,
         evaluation: options?.evaluationMode,
+        modelPreference,
         getControlTools: async () => isAuth
           ? await selectRoutedWebTools({
               message: messageToProcess,
@@ -2251,6 +2277,7 @@ export function createAddieChatRouter(options?: {
           : undefined,
         model: effectiveModel,
         model_execution: response.model_execution,
+        model_preference: modelPreference,
         latency_ms: latencyMs,
         tokens_input: response?.usage?.input_tokens,
         tokens_output: response?.usage?.output_tokens,
@@ -2402,6 +2429,7 @@ export function createAddieChatRouter(options?: {
       sendEvent("done", {
         conversation_id: externalId,
         message_id: assistantMessage.message_id,
+        model_info: webChatModelInfo(assistantMessage),
         tools_used: toolsUsed,
         timing: response?.timing,
         usage: response?.usage,
@@ -2417,6 +2445,12 @@ export function createAddieChatRouter(options?: {
 
       res.end();
     } catch (error) {
+      if (error instanceof WebChatModelPreferenceError && !res.headersSent) {
+        return res.status(error.statusCode).json({
+          error: 'Invalid model preference',
+          message: error.statusCode === 403 ? 'Sign in to choose a model.' : 'This model selection is unavailable for the request.',
+        });
+      }
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
       if (claimedTurn) {
         try {
@@ -2691,6 +2725,7 @@ export function createAddieChatRouter(options?: {
           rating_notes: m.rating_notes,
           feedback_tags: m.feedback_tags,
           improvement_suggestion: m.improvement_suggestion,
+          model_info: m.role === 'assistant' ? webChatModelInfo(m) : undefined,
         }));
 
       res.json({
@@ -2701,10 +2736,12 @@ export function createAddieChatRouter(options?: {
         limit,
         offset,
         messages,
+        model_preference: [...threadMessages].reverse().find(m => m.role === 'user')?.model_preference ?? 'default',
         recoverable_turn: recoverableTurn ? {
           client_request_id: recoverableTurn.client_request_id,
           message: recoverableTurn.content,
           message_source: recoverableTurn.message_source ?? 'typed',
+          model_preference: recoverableTurn.model_preference ?? 'default',
         } : null,
         read_only: channel === 'slack' || channel === 'video',
       });

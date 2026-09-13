@@ -5,6 +5,7 @@ import {
   ThinkingLevel,
   type GenerateContentParameters,
   type GenerateContentResponse,
+  type FunctionResponsePart,
   type Part,
 } from '@google/genai';
 import type {
@@ -72,13 +73,13 @@ export const GOOGLE_GENERATE_CONTENT_CAPABILITIES: ModelProviderCapabilities = O
   reasoningEfforts: Object.freeze(['provider_default', 'low', 'medium', 'high'] as const),
   customTools: true,
   providerWebSearch: false,
-  imageInput: false,
-  documentInput: false,
+  imageInput: true,
+  documentInput: true,
 });
 
 const MAX_GOOGLE_RESPONSE_PARTS = 1_000;
 const MAX_GOOGLE_CONTINUATION_BYTES = 2 * 1024 * 1024;
-const googleContinuationParts = new WeakMap<object, Readonly<Part>>();
+const googleContinuationParts = new WeakMap<object, ReadonlyArray<Readonly<Part>>>();
 
 /** Preserve original parts (including empty signed parts) across streamed chunks. */
 async function collectGoogleStream(
@@ -162,40 +163,48 @@ function textOnly(content: ModelMessageContent[], label: string): string {
   return content.map((block) => block.type === 'text' ? block.text : '').join('');
 }
 
-function rememberGoogleContinuation<T extends object>(content: T, part: Part): T {
-  const serialized = JSON.stringify(part);
+function rememberGoogleContinuation<T extends object>(content: T, parts: ReadonlyArray<Readonly<Part>>): T {
+  const serialized = JSON.stringify(parts);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_GOOGLE_CONTINUATION_BYTES) {
     throw new Error('Google continuation state exceeds size limit');
   }
   const frozen = deepFreeze(content);
-  googleContinuationParts.set(frozen, deepFreeze(structuredClone(part)));
+  googleContinuationParts.set(frozen, deepFreeze(structuredClone(parts)));
   return frozen;
 }
 
-function toGooglePart(content: ModelMessageContent): Part {
+function toGoogleParts(content: ModelMessageContent): Part[] {
   const continuation = googleContinuationParts.get(content);
-  if (continuation) return { ...continuation };
+  if (continuation) return continuation.map(part => ({ ...part }));
   switch (content.type) {
     case 'text':
-      return { text: content.text };
+      return [{ text: content.text }];
     case 'tool_call':
       throw new Error('Google tool-call continuation was not issued by this adapter');
     case 'tool_result': {
-      if (typeof content.content !== 'string') {
-        throw new Error('Google tool results must be text-only');
-      }
       if (!content.toolName?.trim()) {
         throw new Error('Google tool results require the tool name');
       }
-      return {
+      const media: FunctionResponsePart[] = [];
+      const references: Array<{ $ref: string }> = [];
+      const output = typeof content.content === 'string' ? content.content : content.content.map((part, index) => {
+        if (part.type === 'text') return part.text;
+        const displayName = `tool-result-${index}.${part.mediaType.split('/')[1]}`;
+        media.push({ inlineData: { mimeType: part.mediaType, data: part.data, displayName } });
+        references.push({ $ref: displayName });
+        return '';
+      }).filter(Boolean).join('\n');
+      return [{
         functionResponse: {
           id: content.toolCallId,
           name: content.toolName,
-          response: content.isError
-            ? { error: content.content }
-            : { output: content.content },
+          response: {
+            ...(content.isError ? { error: output } : { output }),
+            ...(media.length > 0 && { media: references }),
+          },
+          ...(media.length > 0 && { parts: media }),
         },
-      };
+      }];
     }
     case 'provider_state':
     case 'provider_tool_call':
@@ -203,7 +212,7 @@ function toGooglePart(content: ModelMessageContent): Part {
       throw new Error(`Cannot send ${content.provider} continuation state to Google`);
     case 'image':
     case 'document':
-      throw new Error('Google adapter does not support media input');
+      return [{ inlineData: { mimeType: content.mediaType, data: content.data } }];
     default: {
       const exhaustive: never = content;
       throw new Error(`Unsupported canonical content: ${String(exhaustive)}`);
@@ -232,7 +241,7 @@ function toGoogleContents(messages: ModelRequest['messages']): GenerateContentPa
     }
     return {
       role: message.role === 'assistant' ? 'model' : 'user',
-      parts: message.content.map(toGooglePart),
+      parts: message.content.flatMap(toGoogleParts),
     };
   });
   if (pendingCalls.size > 0) {
@@ -266,7 +275,7 @@ function toGoogleRequest(
   }
   return {
     model: request.model,
-    contents: request.tools.length > 0
+    contents: request.tools.length > 0 || request.messages.some(message => message.content.some(part => part.type !== 'text'))
       ? toGoogleContents(request.messages)
       : request.messages.map((message) => ({
         role: message.role === 'assistant' ? 'model' : 'user',
@@ -386,6 +395,17 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   }
   const outputTokens = response.usageMetadata.candidatesTokenCount ?? 0;
   const content: ModelMessageContent[] = [];
+  let textParts: Part[] = [];
+  const flushText = () => {
+    if (textParts.length === 0) return;
+    // Google's text parts are contiguous fragments, not paragraph blocks.
+    // Expose their exact concatenation while keeping every original signed
+    // part (including empty text) for a subsequent provider continuation.
+    content.push(rememberGoogleContinuation({
+      type: 'text', text: textParts.map(part => part.text).join(''),
+    } as const, textParts));
+    textParts = [];
+  };
   for (const part of parts ?? []) {
     const keys = Object.keys(part).filter((key) => part[key as keyof typeof part] !== undefined);
     if (keys.some((key) => !['text', 'functionCall', 'thoughtSignature', 'thought'].includes(key))) {
@@ -418,17 +438,19 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
         || call.willContinue !== undefined
       ) throw new Error('Malformed Google function call');
       assertPlainJson(call.args, 'Google function-call input');
+      flushText();
       content.push(rememberGoogleContinuation({
         type: 'tool_call',
         id: call.id,
         name: call.name,
         input: call.args,
-      } as const, part));
+      } as const, [part]));
     } else {
       if (typeof part.text !== 'string') throw new Error('Malformed Google text content');
-      content.push(rememberGoogleContinuation({ type: 'text', text: part.text } as const, part));
+      textParts.push(part);
     }
   }
+  flushText();
   if (candidate.content !== undefined && candidate.content.role !== 'model') {
     throw new Error('Malformed Google response role');
   }

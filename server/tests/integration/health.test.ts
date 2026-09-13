@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { HTTPServer } from "../../src/http.js";
 import { healthCheck } from "../../src/db/client.js";
 import { logger } from "../../src/logger.js";
 import { notifySystemError } from "../../src/addie/error-notifier.js";
 import request from "supertest";
+import { isWebChatReady } from '../../src/routes/addie-chat.js';
+
+vi.mock('../../src/routes/addie-chat.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/routes/addie-chat.js')>(),
+  isWebChatReady: vi.fn().mockReturnValue(false),
+}));
 
 // Mock config and database to prevent actual database connections.
 vi.mock("../../src/config.js", async () => {
@@ -51,6 +57,28 @@ describe("Health Endpoint Integration", () => {
 
   afterAll(async () => {
     await server.stop();
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('holds deployment traffic until configured web chat is ready, while keeping health available', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-only-key');
+    vi.mocked(isWebChatReady).mockReturnValue(false);
+    await request(app).get('/health').expect(200);
+    const warming = await request(app).get('/ready').expect(503);
+    expect(warming.body.checks.chat).toBe(false);
+
+    vi.mocked(isWebChatReady).mockReturnValue(true);
+    await request(app).get('/ready').expect(200);
+    vi.mocked(healthCheck).mockRejectedValueOnce(new Error('database unavailable'));
+    await request(app).get('/ready').expect(503);
+  });
+
+  it('allows deployments with Addie intentionally disabled', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('ADDIE_ANTHROPIC_API_KEY', '');
+    vi.mocked(isWebChatReady).mockReturnValue(false);
+    await request(app).get('/ready').expect(200);
   });
 
   describe("GET /health", () => {

@@ -1043,6 +1043,10 @@ describe("query_admin_analytics platform_stats handler", () => {
           orgs_registered: "1",
           orgs_prospect: "2",
           subscription_active: "2",
+          subscription_active_individual: "1",
+          subscription_active_organization: "1",
+          subscription_active_unclassified: "0",
+          active_membership_tiers: { company_standard: 1, individual_professional: 1 },
           subscription_trialing: "1",
           subscription_past_due: "1",
           subscription_canceled: "1",
@@ -1094,6 +1098,9 @@ describe("query_admin_analytics platform_stats handler", () => {
     });
     expect(snapshot.memberships).toEqual({
       active: 2,
+      active_definition: expect.stringContaining('counts memberships, not people'),
+      active_by_type: { individual: 1, organization: 1, unclassified: 0 },
+      active_by_membership_tier: { company_standard: 1, individual_professional: 1 },
       trialing: 1,
       past_due: 1,
       canceled: 1,

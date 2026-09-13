@@ -668,9 +668,37 @@ File a dispute against a catalog entry. For identifier link disputes on medium/w
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
 
+## agent_storyboards
+
+Discover and run compliance storyboards against a supplied or previously registered agent URL, including follow-up requests to test it. Uses the agent's HTTP/MCP endpoint; no Socket Mode connection is needed.
+
+### `recommend_storyboards`
+
+Probe an agent's `get_adcp_capabilities` and return the compliance bundles that will run. The agent's declared `supported_protocols` and `specialisms` drive the selection — no member configuration needed. If the agent declares nothing, explain what it needs to declare to get coverage.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_storyboard_detail`
+
+Show the full structure of a storyboard — phases, steps, what each step tests, and what passing looks like. Use this before running a storyboard so the developer understands what will be tested.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `run_storyboard`
+
+Run a complete storyboard against an agent and return step-by-step results. Each step shows pass/fail, validations, and what the agent returned. Use after recommend_storyboards and optionally get_storyboard_detail.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `run_storyboard_step`
+
+Run a single step of a storyboard. Returns the result plus a preview of the next step. Use this for step-by-step debugging — lets the developer see each request/response and decide whether to continue. Pass the context from the previous step result to maintain state.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
 ## agent_conformance
 
-Run AdCP compliance storyboards against the user's own dev/staging MCP server via Addie's Socket Mode channel — outbound WebSocket from the adopter to Addie, no public DNS or ngrok needed. Use when the user wants to test their own AdCP agent during development. Requires the user to be mapped to a WorkOS organization. Tools issue a session-bound token and then run a storyboard against the connected adopter agent.
+Run AdCP compliance storyboards over an explicitly requested Socket Mode connection: an outbound WebSocket from the user's private/local MCP server to Addie. Requires an organization and a connected conformance client. For testing a supplied or registered agent URL, use agent_storyboards instead.
 
 ### `issue_conformance_token`
 
@@ -1811,7 +1839,7 @@ Add, remove, list, set primary, or reconcile verified domains for an organizatio
 
 ## admin_organization_member_records (admin only)
 
-Manage organization-member roles, Slack rosters, paid-member records, and directory profiles (admin only)
+Count or list paying memberships, inspect membership breakdowns, and manage organization-member roles, Slack rosters, and directory profiles (admin only)
 
 ### `update_org_member_role`
 
@@ -1834,9 +1862,15 @@ List Slack users from a specific organization.
 
 ### `list_paying_members`
 
-List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.
+List a limited page of paying memberships grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual), with names and primary contacts. The summary counts all matching memberships before the row limit. Includes individuals by default; include_individual: false selects organizations only. For a count or membership breakdown without contact details, use query_admin_analytics with view=platform_stats.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `query_admin_analytics`
+
+Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships. Use memberships.active_by_type for the individual/organization split and memberships.active_by_membership_tier for subscription tiers; these breakdowns use the same active population and each sums to memberships.active. This counts memberships, not people. organizations.by_type and organizations.by_membership_tier cover ALL records, including non-paying records; never use them to break down the paying total. Prefer this aggregate tool for counts and breakdowns; use list_paying_members for names and contacts.
+
+*Source: `server/src/addie/mcp/admin-analytics.ts`*
 
 ### `update_member_logo`
 
@@ -1854,13 +1888,42 @@ For logo changes, use update_member_logo instead.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+## admin_escalations (admin only)
+
+Inspect, list, and resolve escalations or pending support requests, including follow-ups referring to an escalation number (admin only, private conversations).
+
+### `resolve_escalation`
+
+Mark an escalation as resolved and notify the user via Slack DM or email. Use this after you've handled a request that was previously escalated.
+
+IMPORTANT: Always notify the user unless there's a reason not to (e.g., test escalation, duplicate).
+Notification is sent via Slack DM when a Slack user ID is on record, or via email as fallback.
+This is how you notify users about escalation outcomes — use it whenever asked to "let someone know", "follow up", or "close the loop" on an escalation.
+
+Examples:
+- User needed admin role → used update_org_member_role → resolve and notify
+- User needed co-leader added → used add_committee_co_leader → resolve and notify
+- Admin says "this is fixed, let them know" → resolve and notify
+- Duplicate request → resolve with wont_do, no notification needed
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `list_escalations`
+
+List escalations that need admin attention, or look up a specific escalation by ID.
+
+Use escalation_id to get details on a specific escalation (any status).
+Use status filter to browse escalations (defaults to open).
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ## admin_conversation_review (admin only)
 
 Query community analytics or review flagged conversations (admin only)
 
 ### `query_admin_analytics`
 
-Query one read-only administrative analytics view: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement.
+Query live, read-only administrative analytics: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement. For current paying-member counts, use view="platform_stats" and report memberships.active: the exact, uncapped count of active, uncanceled AgenticAdvertising.org memberships. Use memberships.active_by_type for the individual/organization split and memberships.active_by_membership_tier for subscription tiers; these breakdowns use the same active population and each sums to memberships.active. This counts memberships, not people. organizations.by_type and organizations.by_membership_tier cover ALL records, including non-paying records; never use them to break down the paying total. Prefer this aggregate tool for counts and breakdowns; use list_paying_members for names and contacts.
 
 *Source: `server/src/addie/mcp/admin-analytics.ts`*
 
@@ -2431,30 +2494,6 @@ Deprecated — use evaluate_agent_quality instead. Runs evaluate_agent_quality a
 ### `compare_media_kit`
 
 [DEPRECATED — use test_rfp_response or test_io_execution instead] Compare a publisher's stated inventory against what their agent returns. Prefer test_rfp_response (tests against real RFPs) or test_io_execution (tests whether IOs can execute through the agent).
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `recommend_storyboards`
-
-Probe an agent's `get_adcp_capabilities` and return the compliance bundles that will run. The agent's declared `supported_protocols` and `specialisms` drive the selection — no member configuration needed. If the agent declares nothing, explain what it needs to declare to get coverage.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `get_storyboard_detail`
-
-Show the full structure of a storyboard — phases, steps, what each step tests, and what passing looks like. Use this before running a storyboard so the developer understands what will be tested.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `run_storyboard`
-
-Run a complete storyboard against an agent and return step-by-step results. Each step shows pass/fail, validations, and what the agent returned. Use after recommend_storyboards and optionally get_storyboard_detail.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `run_storyboard_step`
-
-Run a single step of a storyboard. Returns the result plus a preview of the next step. Use this for step-by-step debugging — lets the developer see each request/response and decide whether to continue. Pass the context from the previous step result to maintain state.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 

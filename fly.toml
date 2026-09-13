@@ -17,9 +17,13 @@ primary_region = 'iad'
   release_command = "node dist/db/migrate.js"
   release_command_timeout = "15m"
   strategy = "rolling"
+  wait_timeout = "10m"
+  # CI deploys web with bluegreen, then worker with rolling using the same
+  # image. Keep the default rolling for singleton worker/operator deployments.
 
 [processes]
-  web = "node dist/index.js"
+  # Leave room for native buffers and the OS within the 4 GB web allocation.
+  web = "node --max-old-space-size=2048 dist/index.js"
   worker = "node dist/index.js"
 
 [env]
@@ -67,7 +71,7 @@ primary_region = 'iad'
     timeout = "20s"
     grace_period = "60s"
     method = "GET"
-    path = "/health"
+    path = "/ready"
     protocol = "http"
     tls_skip_verify = false
 

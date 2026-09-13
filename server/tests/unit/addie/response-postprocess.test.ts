@@ -166,6 +166,11 @@ describe('rewritePersonaCollapse', () => {
     expect(twice).toBe(once);
   });
 
+  it('keeps version numbers and Markdown intact when removing a disclosure', () => {
+    const clean = 'AdCP 3.2 uses `media_buy.reporting_delivery`.\n\n- **Core**: Poll for results.';
+    expect(rewritePersonaCollapse("I'm Claude. " + clean)).toBe(clean);
+  });
+
   it('returns empty when every sentence is a persona-collapse disclosure', () => {
     const input =
       "I'm Claude, an AI assistant made by Anthropic. As a large language model, I have no real-world identity.";
@@ -256,6 +261,19 @@ describe('truncateLongResponseToShortQuestion', () => {
     expect(body).toMatch(/[.!?]$/);
   });
 
+  it('retains an exact Markdown prefix when shortening a versioned protocol explanation', () => {
+    const prefix = 'In AdCP 3.2 (snapshot 3.2.0-rc.1), reporting has three tiers.\n\n'
+      + '- **Core**: Use `get_media_buy_delivery` and `media_buy.reporting_delivery`.\n'
+      + '- **Managed Delivery**: Declares version `"1.0"`.\n\n'
+      + 'See https://example.com/schemas/3.2.0-rc.1/index.json for details.\n\n';
+    const input = prefix + makeProse(250);
+    const output = truncateLongResponseToShortQuestion('Explain reliable reporting.', input);
+    expect(output.endsWith(TRUNCATION_SUFFIX)).toBe(true);
+    const retained = output.slice(0, -TRUNCATION_SUFFIX.length);
+    expect(retained.startsWith(prefix)).toBe(true);
+    expect(input.startsWith(retained)).toBe(true);
+  });
+
   it('keeps the first sentence even if it alone exceeds the target', () => {
     const q = "What is X?";
     // One giant sentence of 200 words.
@@ -275,6 +293,13 @@ describe('truncateLongResponseToShortQuestion', () => {
       const fenceCount = (out.match(/```/g) || []).length;
       expect(fenceCount % 2).toBe(0); // matched pairs only
     }
+  });
+
+  it('preserves leading whitespace and a first fenced block even when it exceeds the target', () => {
+    const code = '```text\n' + makeProse(200) + '\n```';
+    const input = '\n\n' + code + '\n\n' + makeProse(80);
+    const output = truncateLongResponseToShortQuestion('Explain.', input);
+    expect(output).toBe('\n\n' + code + TRUNCATION_SUFFIX);
   });
 
   it('idempotent on already-truncated text', () => {

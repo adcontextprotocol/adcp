@@ -1681,9 +1681,9 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   {
     name: "list_paying_members",
     description:
-      "List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.",
+      "List a limited page of paying memberships grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual), with names and primary contacts. The summary counts all matching memberships before the row limit. Includes individuals by default; include_individual: false selects organizations only. For a count or membership breakdown without contact details, use query_admin_analytics with view=platform_stats.",
     usage_hints:
-      "Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, getting member contact lists, or checking for payment issues.",
+      "Use for member names and contacts, who pays what, outreach lists, or payment issues. For current totals and individual/organization or tier breakdowns, prefer query_admin_analytics with view=platform_stats.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -5514,6 +5514,10 @@ export function createAdminToolHandlers(
         orgs_registered: string;
         orgs_prospect: string;
         subscription_active: string;
+        subscription_active_individual: string;
+        subscription_active_organization: string;
+        subscription_active_unclassified: string;
+        active_membership_tiers: Record<string, number> | null;
         subscription_trialing: string;
         subscription_past_due: string;
         subscription_canceled: string;
@@ -5621,6 +5625,18 @@ export function createAdminToolHandlers(
             END AS platform_tier
           FROM organizations o
         ),
+        active_memberships AS (
+          SELECT * FROM org_rows
+          WHERE subscription_status = 'active' AND subscription_canceled_at IS NULL
+        ),
+        active_membership_tiers AS (
+          SELECT COALESCE(jsonb_object_agg(tier, count ORDER BY tier), '{}'::jsonb) AS by_tier
+          FROM (
+            SELECT COALESCE(membership_tier, 'none') AS tier, COUNT(*)::int AS count
+            FROM active_memberships
+            GROUP BY COALESCE(membership_tier, 'none')
+          ) tiers
+        ),
         membership_tiers AS (
           SELECT COALESCE(jsonb_object_agg(tier, count ORDER BY tier), '{}'::jsonb) AS by_tier
           FROM (
@@ -5645,7 +5661,11 @@ export function createAdminToolHandlers(
           (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'engaged')::text AS orgs_engaged,
           (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'registered')::text AS orgs_registered,
           (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'prospect')::text AS orgs_prospect,
-          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'active' AND subscription_canceled_at IS NULL)::text AS subscription_active,
+          (SELECT COUNT(*) FROM active_memberships)::text AS subscription_active,
+          (SELECT COUNT(*) FROM active_memberships WHERE is_personal IS TRUE)::text AS subscription_active_individual,
+          (SELECT COUNT(*) FROM active_memberships WHERE is_personal IS FALSE)::text AS subscription_active_organization,
+          (SELECT COUNT(*) FROM active_memberships WHERE is_personal IS NULL)::text AS subscription_active_unclassified,
+          (SELECT by_tier FROM active_membership_tiers) AS active_membership_tiers,
           (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'trialing' AND subscription_canceled_at IS NULL)::text AS subscription_trialing,
           (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'past_due' AND subscription_canceled_at IS NULL)::text AS subscription_past_due,
           (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'canceled' OR subscription_canceled_at IS NOT NULL)::text AS subscription_canceled,
@@ -5671,6 +5691,7 @@ export function createAdminToolHandlers(
           },
         },
         organizations: {
+          population: "All organization records, including individual, inactive, and non-paying records. Not the paying-membership population.",
           total: toInt(row.orgs_total),
           by_type: {
             corporate: toInt(row.orgs_corporate),
@@ -5686,6 +5707,13 @@ export function createAdminToolHandlers(
         },
         memberships: {
           active: toInt(row.subscription_active),
+          active_definition: "AgenticAdvertising.org memberships with subscription_status=active and no subscription_canceled_at; counts memberships, not people.",
+          active_by_type: {
+            individual: toInt(row.subscription_active_individual),
+            organization: toInt(row.subscription_active_organization),
+            unclassified: toInt(row.subscription_active_unclassified),
+          },
+          active_by_membership_tier: row.active_membership_tiers ?? {},
           trialing: toInt(row.subscription_trialing),
           past_due: toInt(row.subscription_past_due),
           canceled: toInt(row.subscription_canceled),
@@ -9472,6 +9500,10 @@ Use add_committee_leader to assign a leader.`;
 
       const result = await pool.query(
         `SELECT
+          COUNT(*) OVER () AS total_matching,
+          COUNT(*) FILTER (WHERE o.subscription_status = 'active') OVER () AS active_count,
+          COUNT(*) FILTER (WHERE o.subscription_status = 'past_due') OVER () AS past_due_count,
+          COUNT(*) FILTER (WHERE o.subscription_status = 'unpaid') OVER () AS unpaid_count,
           o.name,
           o.is_personal,
           o.subscription_amount,
@@ -9578,29 +9610,26 @@ Use add_committee_leader to assign a leader.`;
         return `- **${org.name}**${statusFlag}${contact} — ${amount}${interval} (since ${since})\n`;
       };
 
-      const pastDueCount = result.rows.filter(
-        (r: { subscription_status: string }) =>
-          r.subscription_status === "past_due",
-      ).length;
-      const unpaidCount = result.rows.filter(
-        (r: { subscription_status: string }) =>
-          r.subscription_status === "unpaid",
-      ).length;
-      const activeCount = result.rows.length - pastDueCount - unpaidCount;
+      // Window aggregates are evaluated before LIMIT, so these describe the
+      // complete filtered population even when only one page is returned.
+      const totalMatching = Number(result.rows[0].total_matching);
+      const activeCount = Number(result.rows[0].active_count);
+      const pastDueCount = Number(result.rows[0].past_due_count);
+      const unpaidCount = Number(result.rows[0].unpaid_count);
 
       let response = includePaymentIssues
         ? `## Members\n\n`
         : `## Active Members\n\n`;
-      response += `**${result.rows.length} member${
-        result.rows.length !== 1 ? "s" : ""
+      response += `**${totalMatching} matching membership${
+        totalMatching !== 1 ? "s" : ""
       }**`;
       if (!includeIndividual) response += ` (corporate only)`;
       if (includePaymentIssues) {
         response += ` — ${activeCount} active, ${pastDueCount} past due, ${unpaidCount} unpaid`;
       }
       response += `\n`;
-      if (result.rows.length >= limit) {
-        response += `> Results truncated at ${limit}. Increase limit for full list.\n`;
+      if (result.rows.length < totalMatching) {
+        response += `> Showing ${result.rows.length} of ${totalMatching} matching memberships. Names and contact rows below are truncated; the summary counts above are exact. Use query_admin_analytics (view=platform_stats) for active membership breakdowns.\n`;
       }
       response += `\n`;
 

@@ -16,6 +16,7 @@ import {
   isGoogleRouterModelRevision,
 } from './model-providers/google-generate-content-provider.js';
 import type { ModelProviderId, ModelUsage } from './model-providers/model-provider.js';
+import { OPENAI_ROUTER_MODEL } from './model-providers/openai-responses-provider.js';
 
 export const GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION =
   'google-gemini-3.7-flash-through-2026-12-31' as const;
@@ -66,6 +67,31 @@ export function resolveModelCostPricing(
         cache_read_input_tokens: usage.cacheReadTokens,
         cache_creation_input_tokens: usage.cacheWriteTokens,
       }),
+    };
+  }
+  // Exact identity matches the Responses adapter's allowlist. Do not guess a
+  // price for another OpenAI model or an unreviewed dated revision.
+  if (provider === 'openai' && model === OPENAI_ROUTER_MODEL) {
+    return {
+      provider: 'openai', model,
+      version: 'openai-gpt-5.6-luna-standard-2026-09-11',
+      validBefore: null,
+      // https://developers.openai.com/api/docs/models/gpt-5.6-luna
+      // Checked 2026-09-11: $0.20/M input, $0.02/M cached input,
+      // $1.20/M output; cache writes replace input at 1.25x its rate.
+      // Above 272K input tokens, input is 2x and output is 1.5x.
+      estimateCostMicros: (usage) => {
+        const reads = usage.cacheReadTokens ?? 0;
+        const writes = usage.cacheWriteTokens ?? 0;
+        const uncachedInput = reads + writes <= usage.inputTokens
+          ? usage.inputTokens - reads - writes : usage.inputTokens;
+        const longContext = usage.inputTokens > 272_000;
+        // Reasoning is already included in normalized outputTokens.
+        return Math.ceil(
+          (uncachedInput * 0.2 + reads * 0.02 + writes * 0.25) * (longContext ? 2 : 1)
+          + usage.outputTokens * 1.2 * (longContext ? 1.5 : 1),
+        );
+      },
     };
   }
   // Google Generate Content accepts this canonical router model and its

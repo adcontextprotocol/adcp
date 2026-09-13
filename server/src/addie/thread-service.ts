@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { query, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { LocalModelResponseReason, ModelExecution, ModelFallbackReason, ModelProviderId, ModelResolution } from './model-providers/model-provider.js';
+import type { WebChatModelPreference } from './web-chat-model-selection.js';
 
 const logger = createLogger('addie-thread-service');
 
@@ -121,6 +122,7 @@ interface CreateMessageInputBase {
   tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; github_issue_receipt?: unknown }>;
   knowledge_ids?: number[];
   model?: string;
+  model_preference?: WebChatModelPreference;
   latency_ms?: number;
   tokens_input?: number;
   tokens_output?: number;
@@ -189,6 +191,7 @@ export interface ThreadMessage {
   tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; github_issue_receipt?: unknown }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
+  model_preference?: WebChatModelPreference | null;
   model_execution_source: 'provider' | 'local' | 'legacy' | null;
   requested_model_provider: ModelProviderId | null;
   requested_model: string | null;
@@ -625,8 +628,8 @@ export class ThreadService {
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
           router_decision, config_version_id, email_message_id,
           user_id, user_display_name, message_source,
-          client_request_id, delivery_status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
+          client_request_id, delivery_status, model_preference
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
         RETURNING *`,
         [
           input.thread_id,
@@ -666,6 +669,7 @@ export class ThreadService {
           input.message_source ?? null,
           input.client_request_id ?? null,
           input.delivery_status ?? 'completed',
+          input.model_preference ?? null,
         ]
       );
 
@@ -812,13 +816,15 @@ export class ThreadService {
     client_request_id: string;
     content: string;
     message_source: CreateMessageInput['message_source'] | null;
+    model_preference?: WebChatModelPreference | null;
   } | null> {
     const result = await query<{
       client_request_id: string;
       content: string;
       message_source: CreateMessageInput['message_source'] | null;
+      model_preference?: WebChatModelPreference | null;
     }>(
-      `SELECT turn.client_request_id::text, message.content, message.message_source
+      `SELECT turn.client_request_id::text, message.content, message.message_source, message.model_preference
        FROM addie_chat_turns turn
        JOIN addie_thread_messages message
          ON message.thread_id = turn.thread_id

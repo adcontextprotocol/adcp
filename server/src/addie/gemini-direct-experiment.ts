@@ -3,13 +3,16 @@ import { query } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { AddieClaudeClient, AddieResponse, ProcessMessageOptions, RequestTools, StreamEvent } from './claude-client.js';
 import type { CostEvent } from './claude-cost-tracker.js';
-import { createGeminiDirectTools } from './gemini-direct-tools.js';
+import { createGeminiDirectTools, type DirectToolContext } from './gemini-direct-tools.js';
 import { GoogleGenerateContentProvider, GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import { resolveModelCostPricing } from './model-cost-pricing.js';
+import type { WebChatModelPreference } from './web-chat-model-selection.js';
 
 const logger = createLogger('addie-gemini-direct');
-export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v1';
+export const GEMINI_DIRECT_EXPERIMENT = 'gemini-3.7-direct-v2';
+// Preserve existing assignments while reporting the expanded tool surface separately.
 const CONTEXT_KEY = 'gemini_direct_v1';
+const ASSIGNMENT_SALT = 'gemini-3.7-direct-v1';
 type Client = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
   & Partial<Pick<AddieClaudeClient, 'getRegisteredTools' | 'forkForGeminiDirect'>>;
 export interface WebToolSelection {
@@ -21,8 +24,13 @@ export interface WebToolSelection {
   routerUsage?: CostEvent;
   routerUsageComplete?: boolean;
 }
-type Assignment = { arm: 'control' | 'gemini'; cohort: 'staff' | 'eligible' | 'existing'; bucket: number };
+type Assignment = { arm: 'control' | 'gemini'; cohort: 'staff' | 'eligible' | 'existing' | 'manual'; bucket: number };
 const clients = new WeakMap<Client, AddieClaudeClient>();
+
+export function geminiDirectAvailable(client: Client | null | undefined): boolean {
+  return ['staff', 'eligible'].includes(process.env.ADDIE_GEMINI_DIRECT_MODE ?? '')
+    && !!process.env.GEMINI_API_KEY && !!client?.forkForGeminiDirect;
+}
 
 /** Stable across workers/restarts. Raising the percentage only enrolls new threads. */
 export function geminiDirectAssignment(userId: string, staff: boolean, existing: boolean, env = process.env): Assignment | null {
@@ -31,7 +39,7 @@ export function geminiDirectAssignment(userId: string, staff: boolean, existing:
   if (mode === 'staff' && !staff) return null;
   const percent = Number(env.ADDIE_GEMINI_DIRECT_PERCENT ?? '10');
   if (!Number.isInteger(percent) || percent < 0 || percent > 100) return null;
-  const bucket = createHash('sha256').update(`${GEMINI_DIRECT_EXPERIMENT}:${userId}`).digest().readUInt32BE(0) % 10_000;
+  const bucket = createHash('sha256').update(`${ASSIGNMENT_SALT}:${userId}`).digest().readUInt32BE(0) % 10_000;
   return {
     arm: existing ? 'control' : mode === 'staff' || bucket < percent * 100 ? 'gemini' : 'control',
     cohort: existing ? 'existing' : mode,
@@ -117,14 +125,14 @@ class ExperimentTurn {
   }
 }
 
-function fallbackResponse(response: AddieResponse, handoff: boolean): AddieResponse {
+function fallbackResponse(response: AddieResponse): AddieResponse {
   return {
     ...response,
     model_execution: response.model_execution.source === 'provider' ? {
       ...response.model_execution,
       requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
       model_resolution: 'fallback',
-      fallback_reason: handoff ? 'primary_capability_unsupported' : 'primary_unavailable',
+      fallback_reason: 'primary_unavailable',
     } : {
       ...response.model_execution, requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
     },
@@ -132,55 +140,70 @@ function fallbackResponse(response: AddieResponse, handoff: boolean): AddieRespo
 }
 
 /** Select before routing: the treatment never pays for an up-front router call. */
-export async function prepareGeminiDirectTurn(input: {
+export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   client: Client;
   userId?: string;
   isAdmin: boolean;
   threadId: string;
   hasPriorAssistant: boolean;
-  exclusionReason: string | null;
   startedAt: number;
   requestTools: RequestTools;
   baseRequestContext: string;
   getControlTools: () => Promise<WebToolSelection | null>;
   /** Evaluation routes must never enroll live experiment traffic. */
   evaluation?: boolean;
+  modelPreference?: WebChatModelPreference;
 }) {
   let controlTools: WebToolSelection | null | undefined;
   const getControl = async () => controlTools === undefined
     ? (controlTools = await input.getControlTools()) : controlTools;
   const ordinary = async () => ({ client: input.client, selection: await getControl(), experiment: undefined as ExperimentTurn | undefined, model: undefined as string | undefined });
-  const proposed = input.userId && !input.evaluation && process.env.GEMINI_API_KEY
-    && input.client.forkForGeminiDirect
-    ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
+  const manual = !!input.userId && !input.evaluation
+    && (input.modelPreference === 'gemini' || input.modelPreference === 'sonnet');
+  const available = geminiDirectAvailable(input.client);
+  const proposed: Assignment | null = manual
+    ? { arm: input.modelPreference === 'gemini' ? 'gemini' : 'control', cohort: 'manual', bucket: 0 }
+    : input.userId && !input.evaluation && available
+      ? geminiDirectAssignment(input.userId, input.isAdmin, input.hasPriorAssistant) : null;
   if (!proposed) return ordinary();
+  const exclusionReason = proposed.arm === 'gemini' && !available ? 'gemini_unavailable' : null;
 
   let assignment: Assignment;
   let experiment: ExperimentTurn;
   try {
-    // One atomic UPDATE elects the winner even when two requests start together.
-    const assigned = await query<{ assignment: unknown }>(`UPDATE addie_threads SET
-      context = CASE WHEN context ? $2 THEN context ELSE
-        COALESCE(context, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb) END
-      WHERE thread_id = $1 RETURNING context -> $2 AS assignment`,
-    [input.threadId, CONTEXT_KEY, JSON.stringify(proposed)]);
-    const stored = assigned.rows[0]?.assignment;
-    if (!validAssignment(stored)) return ordinary();
-    assignment = stored;
+    if (manual) {
+      // A voluntary choice applies to this turn only. Never replace the stored
+      // randomized assignment when a user switches models mid-conversation.
+      assignment = proposed;
+    } else {
+      // One atomic UPDATE elects the winner even when two requests start together.
+      const assigned = await query<{ assignment: unknown }>(`UPDATE addie_threads SET
+        context = CASE WHEN context ? $2 THEN context ELSE
+          COALESCE(context, '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb) END
+        WHERE thread_id = $1 RETURNING context -> $2 AS assignment`,
+      [input.threadId, CONTEXT_KEY, JSON.stringify(proposed)]);
+      const stored = assigned.rows[0]?.assignment;
+      if (!validAssignment(stored)) return ordinary();
+      assignment = stored;
+    }
     experiment = new ExperimentTurn(input.startedAt, assignment);
+    if (assignment.arm === 'gemini' && exclusionReason) experiment.fallbackReason = exclusionReason;
     await query(`INSERT INTO addie_chat_experiment_turns
       (id, experiment, thread_id, user_id, arm, cohort, exclusion_reason, started_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
       experiment.id, GEMINI_DIRECT_EXPERIMENT, input.threadId, input.userId,
-      assignment.arm, assignment.cohort, input.exclusionReason, new Date(input.startedAt),
+      assignment.arm, assignment.cohort, exclusionReason, new Date(input.startedAt),
     ]);
   } catch (error) {
     logger.error({ error }, 'Gemini Direct assignment unavailable; retaining control');
     return ordinary();
   }
 
-  const treatment = assignment.arm === 'gemini' && !input.exclusionReason;
-  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? []) : null;
+  const treatment = assignment.arm === 'gemini' && !exclusionReason;
+  const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin, {
+    activeCertificationKind: input.activeCertificationKind,
+    sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
+  }) : null;
   let candidate: AddieClaudeClient | undefined;
   if (direct) {
     candidate = clients.get(input.client);
@@ -193,7 +216,7 @@ export async function prepareGeminiDirectTurn(input: {
     requestTools: direct.tools,
     selectedToolSets: direct.selectedToolSets,
     allowedToolNames: direct.allowedToolNames,
-    unavailableHint: 'You can load another read-only tool group when needed. For work outside these groups, call handoff_to_addie.',
+    unavailableHint: 'Use load_tool_group to discover the authorized tools for the next step. Loaded actions use the same account permissions, confirmations, durable reservations and receipt checks as every Addie request.',
   } : await getControl();
   if (!direct) experiment.routed(selection);
 
@@ -246,32 +269,59 @@ export async function prepareGeminiDirectTurn(input: {
         if (direct && candidate) {
           const buffered: StreamEvent[] = [];
           let failed = false;
+          let actionReserved = false;
           try {
-            for await (const event of candidate.processMessageStream(message, history, tools, directOptions(options))) {
+            for await (const event of candidate.processMessageStream(message, history, tools, {
+              ...directOptions(options),
+              ...(options?.reserveSideEffect && { reserveSideEffect: async request => {
+                // Mark before awaiting: even a failed reservation can have an
+                // uncertain durable outcome. Never restart this turn on Sonnet.
+                actionReserved = true;
+                await options.reserveSideEffect!(request);
+              } }),
+            })) {
               buffered.push(event);
+              // Let the delivery layer persist each tool receipt before the
+              // next action. A checkpoint failure must stop this generator.
+              if (event.type === 'tool_start' || event.type === 'tool_end') yield event;
               if (event.type === 'done') response = event.response;
               if (event.type === 'error' || event.type === 'stream_error') failed = true;
             }
           } catch { failed = true; }
-          const handoff = direct.session.handoffRequested();
           const localFailure = response?.model_execution.source === 'local'
             && ['provider_error', 'stream_interrupted'].includes(response.model_execution.reason);
-          if (!failed && !handoff && !localFailure && response) {
+          if (!failed && !localFailure && response) {
             for (const event of buffered) {
+              if (event.type === 'tool_start' || event.type === 'tool_end') continue;
               if (event.type === 'text') experiment.visible();
               yield event;
             }
             return;
           }
-          experiment.fallbackReason = handoff ? 'capability_handoff' : 'provider_error';
+          experiment.usageComplete = false;
+          if (actionReserved) {
+            experiment.fallbackReason = 'provider_error_after_action';
+            // Receipts were checkpointed as they completed. Retrying uses
+            // the existing durable replay policy.
+            const executions = buffered.flatMap(event => event.type === 'tool_end' ? [event.execution] : []);
+            experiment.fallbackToolErrors = executions.filter(tool => tool.is_error).length;
+            response = undefined;
+            yield {
+              type: 'stream_error',
+              reason: 'Gemini could not finish after an action was reserved. Its recorded outcome was preserved; the action was not automatically repeated.',
+              deltasBeforeError: 0, tool_executions: executions,
+              certification_reserve_used: buffered.some(event => event.type === 'stream_error' && event.certification_reserve_used),
+            };
+            return;
+          }
+          experiment.fallbackReason = 'provider_error';
           experiment.fallbackToolErrors = buffered.filter(event => event.type === 'tool_end' && event.is_error).length;
-          if (failed && !handoff) experiment.usageComplete = false;
           const fallback = await controlOptions(options);
           response = undefined;
           for await (const event of input.client.processMessageStream(message, history, fallback.tools, fallback.options)) {
             if (event.type === 'text') experiment.visible();
             if (event.type === 'done') {
-              response = fallbackResponse(event.response, handoff);
+              response = fallbackResponse(event.response);
               yield { ...event, response };
             } else yield event;
           }
@@ -293,25 +343,43 @@ export async function prepareGeminiDirectTurn(input: {
 
 /** Read-only staff view; transcript content stays in the existing admin review UI. */
 export async function getGeminiDirectResults() {
-  const result = await query(`SELECT e.arm, e.cohort, e.exclusion_reason,
+  // Once a user chooses a model, that conversation's history can influence
+  // every later answer. Keep all its turns out of the randomized cohorts.
+  const result = await query(`WITH reported_turns AS (
+    SELECT e.*, CASE WHEN EXISTS (
+      SELECT 1 FROM addie_chat_experiment_turns manual
+      WHERE manual.experiment = e.experiment AND manual.thread_id = e.thread_id
+        AND manual.cohort = 'manual'
+    ) OR EXISTS (
+      SELECT 1 FROM addie_thread_messages chosen
+      WHERE chosen.thread_id = e.thread_id AND chosen.role = 'user'
+        AND chosen.model_preference IN ('gemini', 'sonnet')
+    ) THEN 'manual' ELSE e.cohort END AS reporting_cohort
+    FROM addie_chat_experiment_turns e WHERE e.experiment = $1
+  ) SELECT e.arm, e.reporting_cohort AS cohort, e.exclusion_reason,
     COUNT(*)::int AS turns, COUNT(DISTINCT e.user_id)::int AS users,
     COUNT(*) FILTER (WHERE completed_at IS NULL)::int AS incomplete,
     COUNT(*) FILTER (WHERE failed)::int AS failures,
-    COUNT(*) FILTER (WHERE fallback_reason IS NOT NULL)::int AS fallbacks,
+    COUNT(*) FILTER (WHERE arm = 'gemini' AND actual_provider = 'anthropic')::int AS fallbacks,
+    COUNT(*) FILTER (WHERE fallback_reason = 'provider_error' AND actual_provider = 'anthropic')::int AS provider_error_fallbacks,
+    COUNT(*) FILTER (WHERE fallback_reason = 'provider_error_after_action')::int AS post_action_provider_failures,
     COUNT(*) FILTER (WHERE NOT usage_complete)::int AS incomplete_usage,
     ROUND(AVG(first_visible_ms)) AS mean_first_visible_ms,
     percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS median_total_ms,
     percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total_ms,
     ROUND(AVG(router_ms)) AS mean_router_ms,
-    SUM(estimated_cost_micros) / 1000000.0 AS estimated_cost_usd,
+    SUM(estimated_cost_micros) / 1000000.0 AS recorded_cost_usd,
+    CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)
+      THEN SUM(estimated_cost_micros) / 1000000.0 END AS estimated_cost_usd,
     SUM(tool_errors)::int AS tool_errors,
     COUNT(m.rating)::int AS rated_turns, ROUND(AVG(m.rating), 2) AS mean_rating,
     COUNT(*) FILTER (WHERE m.outcome = 'resolved')::int AS resolved_turns,
-    SUM(estimated_cost_micros) / 1000000.0 /
-      NULLIF(COUNT(*) FILTER (WHERE m.outcome = 'resolved'), 0) AS estimated_cost_per_marked_resolution_usd
-    FROM addie_chat_experiment_turns e
+    CASE WHEN bool_and(usage_complete AND completed_at IS NOT NULL)
+      THEN SUM(estimated_cost_micros) / 1000000.0 /
+        NULLIF(COUNT(*) FILTER (WHERE m.outcome = 'resolved'), 0)
+      END AS estimated_cost_per_marked_resolution_usd
+    FROM reported_turns e
     LEFT JOIN addie_thread_messages m ON m.message_id = e.assistant_message_id
-    WHERE experiment = $1
-    GROUP BY e.arm, e.cohort, e.exclusion_reason ORDER BY e.cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
+    GROUP BY e.arm, e.reporting_cohort, e.exclusion_reason ORDER BY e.reporting_cohort, e.arm`, [GEMINI_DIRECT_EXPERIMENT]);
   return { experiment: GEMINI_DIRECT_EXPERIMENT, mode: process.env.ADDIE_GEMINI_DIRECT_MODE ?? 'off', cohorts: result.rows };
 }

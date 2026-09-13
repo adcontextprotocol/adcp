@@ -61,7 +61,7 @@ export function initializeKnowledgeSearch(): Promise<void> {
   if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
-    logger.info('Addie: Initializing knowledge search');
+    logger.info({ memory: process.memoryUsage() }, 'Addie: Initializing knowledge search');
 
     // Index docs from filesystem. Preserve a ready index when retrying another
     // source so a transient external-repo failure does not re-read every
@@ -74,6 +74,7 @@ export function initializeKnowledgeSearch(): Promise<void> {
         logger.info(
           {
             docCount,
+            memory: process.memoryUsage(),
             categories: categories.map((c) => `${c.category}(${c.count})`).join(', '),
           },
           'Addie: Docs index ready'
@@ -93,6 +94,7 @@ export function initializeKnowledgeSearch(): Promise<void> {
           {
             repos: repoStats.map((r) => `${r.id}(${r.docCount} docs, ${r.headingCount} sections)`).join(', '),
             totalHeadings,
+            memory: process.memoryUsage(),
           },
           'Addie: External repos index ready'
         );
