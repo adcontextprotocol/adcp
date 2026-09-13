@@ -18,7 +18,7 @@
       "properties": {
         "task": { "const": "control_media_buy" },
         "action": {
-          "enum": ["pause", "resume", "cancel", "update_name", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "update_catalog_assignments", "update_keywords", "update_optimization_goals", "update_impression_goal", "update_spend_target", "update_reporting_webhook", "remove_packages"]
+          "enum": ["pause", "resume", "cancel", "update_name", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "update_media_buy_frequency_cap", "update_catalog_assignments", "update_keywords", "update_optimization_goals", "update_impression_goal", "update_spend_target", "update_reporting_webhook", "remove_packages"]
         }
       }
     },
@@ -28,7 +28,7 @@
       "properties": {
         "task": { "const": "refine_proposals" },
         "action": {
-          "enum": ["cancel", "extend_flight", "shorten_flight", "update_flight_dates", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "add_packages", "remove_packages"]
+          "enum": ["cancel", "extend_flight", "shorten_flight", "update_flight_dates", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "update_media_buy_frequency_cap", "add_packages", "remove_packages"]
         }
       }
     },

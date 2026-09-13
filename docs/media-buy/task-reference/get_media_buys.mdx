@@ -81,6 +81,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Hard aggregate lifetime budget (in `currency`) |
 | `daily_budget_cap` | Current hard aggregate spend ceiling per calendar day. It limits total buy spend without allocating package amounts. |
+| `frequency_cap` | Current shared MediaBuy-level frequency cap, echoed whenever set. Its counter aggregates exposures across every participating package; each `packages[].targeting_overlay.frequency_cap` remains an independent counter. |
 | `budget_cap_timezone` | Shared IANA calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set. |
 | `budget_allocation` | Fixed or seller-optimized cross-package allocation configuration. Omission means fixed for legacy buys. |
 | `pacing` | Aggregate media-buy pacing strategy |

@@ -40,6 +40,10 @@
       "$ref": "/schemas/enums/pacing.json",
       "description": "Recommended aggregate pacing for the executed media-buy budget. On a committed proposal this is part of the firm delivery terms."
     },
+    "frequency_cap": {
+      "$ref": "/schemas/core/media-buy-frequency-cap.json",
+      "description": "Aggregate cap bound into this legacy proposal. It is authoritative when the proposal is executed and uses one counter across its packages."
+    },
     "proposal_status": {
       "$ref": "/schemas/enums/proposal-status.json",
       "description": "Lifecycle status of this proposal and the per-proposal source of truth for whether finalization is required before create_media_buy. When absent, the proposal is ready to buy (backward compatible). 'draft' means indicative pricing — finalize via refine before purchasing. 'committed' means firm pricing with inventory reserved until expires_at and executable via create_media_buy."

@@ -34,7 +34,7 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
-`offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later; it does not request one product per metro or guarantee availability for every future value.
+`offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later. For aggregate frequency capping, use `criteria.required_media_buy_support` to require product participation and `criteria.media_buy_frequency_cap` to preflight an exact shared cap.
 
 Geographic coverage belongs in `offer_filters.countries`, `regions`, `metros`,
 `postal_areas`, or `geo_proximity`. For example, a metro entry

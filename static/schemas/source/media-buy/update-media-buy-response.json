@@ -54,6 +54,10 @@
           "description": "Post-update hard aggregate daily spend ceiling. Echoed when the update sets or changes the aggregate daily cap; omitted after the cap is removed.",
           "minimum": 0
         },
+        "frequency_cap": {
+          "$ref": "/schemas/core/media-buy-frequency-cap.json",
+          "description": "Post-update shared MediaBuy frequency cap. Echoed when the update sets or changes it; omitted after removal."
+        },
         "budget_cap_timezone": {
           "type": "string",
           "description": "Post-update IANA timezone shared by every aggregate and package daily cap. Echoed whenever the update affects daily caps or their timezone."

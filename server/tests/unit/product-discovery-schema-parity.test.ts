@@ -124,9 +124,11 @@ describe('product discovery MCP schema parity', () => {
     // deliberate increases, not headroom for incidental growth. Geographic
     // coverage offer filters share the proximity value shape, request-only
     // targeting adds nullable command wrappers, and structured package
-    // frequency-cap requirements add their shared SDK-safe enum definitions;
-    // the measured four-tool surface is 147.50 KiB, bounded at 148 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(148 * 1024);
+    // frequency-cap requirements add their shared SDK-safe enum definitions,
+    // and aggregate MediaBuy cap discovery adds its root value and support
+    // closure; the measured four-tool surface is 151.06 KiB, bounded at
+    // 152 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(152 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

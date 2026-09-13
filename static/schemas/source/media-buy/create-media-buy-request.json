@@ -124,6 +124,10 @@
       "minimum": 0,
       "description": "Optional hard aggregate daily spend ceiling in the media-buy currency. It limits total spend without allocating package amounts. Package caps are subordinate and need not sum to it. Requires advertised media_buy budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
     },
+    "frequency_cap": {
+      "$ref": "/schemas/core/media-buy-frequency-cap.json",
+      "description": "Optional max-impression cap using one counter across explicit packages. Requires advertised aggregate_frequency_capping and compatible media_buy_support on every product; otherwise sellers MUST reject with UNSUPPORTED_FEATURE before any mutation and MUST NOT silently drop, soften, or clamp the cap. Omit when executing proposal_id because accepted terms are authoritative."
+    },
     "budget_cap_timezone": {
       "type": "string",
       "minLength": 1,
@@ -406,6 +410,11 @@
           {
             "required": [
               "budget_allocation"
+            ]
+          },
+          {
+            "required": [
+              "frequency_cap"
             ]
           }
         ]

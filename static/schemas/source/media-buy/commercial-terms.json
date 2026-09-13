@@ -60,6 +60,10 @@
       "minimum": 0,
       "description": "Hard aggregate daily spend ceiling accepted as part of these terms. It bounds total spend without creating purchase allocations."
     },
+    "frequency_cap": {
+      "$ref": "/schemas/core/media-buy-frequency-cap.json",
+      "description": "Hard MediaBuy-level cap accepted as part of these terms. One counter aggregates exposures across every purchase; purchase targeting caps remain independently binding."
+    },
     "budget_cap_timezone": {
       "type": "string",
       "minLength": 1,

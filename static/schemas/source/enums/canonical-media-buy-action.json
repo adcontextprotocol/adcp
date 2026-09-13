@@ -19,6 +19,7 @@
     "update_pacing",
     "update_bidding",
     "update_frequency_caps",
+    "update_media_buy_frequency_cap",
     "update_catalog_assignments",
     "update_keywords",
     "update_optimization_goals",

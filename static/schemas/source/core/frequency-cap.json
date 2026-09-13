@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/frequency-cap.json",
   "title": "Frequency Cap",
-  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window. When both suppress and max_impressions are set, an impression is delivered only if both constraints permit it (AND semantics). At least one of suppress, suppress_minutes, or max_impressions must be set.",
+  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window. When both suppress and max_impressions are set, an impression is delivered only if both constraints permit it (AND semantics). At least one of suppress, suppress_minutes, or max_impressions must be set. Field location determines scope; this value has no scope discriminator. The MediaBuy root uses the narrower media-buy-frequency-cap schema, which permits maximum impressions only in 3.2.",
   "type": "object",
   "properties": {
     "suppress": {
@@ -17,7 +17,7 @@
     },
     "max_impressions": {
       "type": "integer",
-      "description": "Maximum number of impressions per entity per window. For duration windows, implementations typically use a rolling window; 'campaign' applies a fixed cap across the full flight.",
+      "description": "Maximum number of impressions per entity per window. For duration windows, implementations typically use a rolling window. campaign applies across the owning field's full flight: the package flight for a targeting overlay, or the MediaBuy flight for a root cap.",
       "minimum": 1
     },
     "per": {
