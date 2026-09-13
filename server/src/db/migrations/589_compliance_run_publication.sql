@@ -1,9 +1,15 @@
 -- Scheduling must not change the last authoritative card timestamp.
 ALTER TABLE agent_registry_metadata ADD COLUMN next_compliance_check_at TIMESTAMPTZ;
+-- Discovered agents can have a previous check without a registry metadata row.
+-- Seed their default cadence without changing any existing owner settings.
+INSERT INTO agent_registry_metadata (agent_url)
+SELECT agent_url FROM agent_compliance_status WHERE last_checked_at IS NOT NULL
+ON CONFLICT (agent_url) DO NOTHING;
 UPDATE agent_registry_metadata m
 SET next_compliance_check_at = s.last_checked_at + make_interval(hours => m.check_interval_hours)
 FROM agent_compliance_status s
-WHERE s.agent_url = m.agent_url AND s.last_checked_at IS NOT NULL;
+WHERE s.agent_url = m.agent_url AND s.last_checked_at IS NOT NULL
+  AND m.next_compliance_check_at IS NULL;
 
 -- Incomplete suites remain immutable audit evidence and never replace public grades.
 ALTER TABLE agent_compliance_runs

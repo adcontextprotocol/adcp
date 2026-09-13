@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
+import * as databaseClient from '../../src/db/client.js';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { ComplianceDatabase, type RecordComplianceRunInput } from '../../src/db/compliance-db.js';
@@ -36,6 +38,68 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
       await pool.query(`DELETE FROM ${table} WHERE agent_url = $1`, [agentUrl]);
     }
     await closeDatabase();
+  });
+
+  it('backfills discovered agents without rechecking recent runs or overwriting scheduled metadata', async () => {
+    const client = await pool.connect();
+    const schema = `publication_backfill_${randomUUID().replaceAll('-', '')}`;
+    const migration = readFileSync(new URL('../../src/db/migrations/589_compliance_run_publication.sql', import.meta.url), 'utf8');
+    const querySpy = vi.spyOn(databaseClient, 'query');
+    try {
+      await client.query('BEGIN');
+      await client.query(`CREATE SCHEMA ${schema}; SET LOCAL search_path TO ${schema}`);
+      await client.query(`
+        CREATE TABLE agent_registry_metadata (
+          agent_url TEXT PRIMARY KEY, lifecycle_stage TEXT DEFAULT 'production',
+          check_interval_hours INTEGER NOT NULL DEFAULT 12 CHECK (check_interval_hours BETWEEN 6 AND 168),
+          compliance_opt_out BOOLEAN DEFAULT FALSE, monitoring_paused BOOLEAN DEFAULT FALSE
+        );
+        CREATE TABLE agent_compliance_status (agent_url TEXT PRIMARY KEY, last_checked_at TIMESTAMPTZ);
+        CREATE TABLE agent_compliance_runs (
+          agent_url TEXT, triggered_org_id TEXT, tested_at TIMESTAMPTZ, overall_status TEXT,
+          tracks_json JSONB, headline TEXT, dry_run BOOLEAN NOT NULL DEFAULT FALSE
+        );
+        CREATE TABLE agent_contexts (
+          organization_id TEXT, agent_url TEXT, last_tested_at TIMESTAMPTZ,
+          last_test_passed BOOLEAN, last_test_scenario TEXT, last_test_summary TEXT, total_tests_run INTEGER
+        );
+        CREATE TABLE discovered_agents (agent_url TEXT);
+        CREATE TABLE member_profiles (agents JSONB);
+        INSERT INTO discovered_agents VALUES ('recent'), ('overdue'), ('never');
+        INSERT INTO agent_compliance_status VALUES
+          ('recent', NOW() - INTERVAL '1 hour'), ('overdue', NOW() - INTERVAL '13 hours'),
+          ('never', NULL), ('existing', NOW() - INTERVAL '1 hour');
+        INSERT INTO agent_registry_metadata
+          (agent_url, check_interval_hours, compliance_opt_out, monitoring_paused)
+          VALUES ('existing', 48, TRUE, TRUE);
+      `);
+      const before = await client.query('SELECT * FROM agent_compliance_status ORDER BY agent_url');
+      await client.query(migration);
+      const metadata = await client.query(`
+        SELECT m.agent_url, m.check_interval_hours, m.compliance_opt_out, m.monitoring_paused,
+          m.next_compliance_check_at = s.last_checked_at + make_interval(hours => m.check_interval_hours) AS cadence_preserved
+        FROM agent_registry_metadata m JOIN agent_compliance_status s USING (agent_url) ORDER BY agent_url
+      `);
+      expect(metadata.rows).toEqual([
+        { agent_url: 'existing', check_interval_hours: 48, compliance_opt_out: true, monitoring_paused: true, cadence_preserved: true },
+        { agent_url: 'overdue', check_interval_hours: 12, compliance_opt_out: false, monitoring_paused: false, cadence_preserved: true },
+        { agent_url: 'recent', check_interval_hours: 12, compliance_opt_out: false, monitoring_paused: false, cadence_preserved: true },
+      ]);
+      // Re-running the backfill must preserve a scheduler/owner's explicit next check.
+      await client.query("UPDATE agent_registry_metadata SET next_compliance_check_at = NOW() + INTERVAL '2 hours' WHERE agent_url = 'existing'");
+      const scheduled = await client.query('SELECT * FROM agent_registry_metadata ORDER BY agent_url');
+      const backfill = migration.slice(migration.indexOf('INSERT INTO agent_registry_metadata'), migration.indexOf('-- Incomplete suites'));
+      await client.query(backfill);
+      expect((await client.query('SELECT * FROM agent_registry_metadata ORDER BY agent_url')).rows).toEqual(scheduled.rows);
+      expect((await client.query('SELECT * FROM agent_compliance_status ORDER BY agent_url')).rows).toEqual(before.rows);
+      // Use the real heartbeat selection query on this transaction's migrated schema.
+      querySpy.mockImplementation((sql, values) => client.query(sql, values));
+      expect((await db.getAgentsDueForCheck()).map(agent => agent.agent_url)).toEqual(['never', 'overdue']);
+    } finally {
+      querySpy.mockRestore();
+      await client.query('ROLLBACK');
+      client.release();
+    }
   });
 
   it('persists timed-out audit evidence without changing the complete card, denominator, or badges', async () => {
