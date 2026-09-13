@@ -298,12 +298,15 @@ digest is intentionally retained).
   `get_reporting_status` and reconcile obligations against what they
   received.
 
-Reliable Reporting 1.0 is published in the RC.1 wire bundle. On a deployment
-that advertises `"3.2-rc.1"`, the public training sales agent serves the RC.1
-reporting contract. Put the same negotiated version on every `sync_accounts`,
-controller, and `get_reporting_status` request.
+Reliable Reporting 1.0 is published in the RC wire bundles; the consumer-status
+loop lands in `3.2.0-rc.2`. The public training sales agent serves whichever
+prerelease contract its deployment advertises, which may trail the newest
+published bundle. Read the advertised version from
+`get_adcp_capabilities` and put that exact negotiated value on every
+`sync_accounts`, controller, and `get_reporting_status` request rather than
+assuming the latest tag.
 
-First confirm the public sales sandbox advertises `"3.2-rc.1"`, then call
+First read the version the public sales sandbox advertises, then call
 `comply_test_controller` with
 `scenario: "reporting_core_lifecycle_probe"` and `operation: "prepare"`. Use
 the returned account and stable identifiers in a `get_reporting_status`

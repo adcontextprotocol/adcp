@@ -29,7 +29,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) | Retrieve media buy status, creative approvals, and delivery snapshots | ~1s | Monitoring |
 | [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
 | [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) | Check Reliable Reporting health and repair missed ledger changes | ~1s | Reporting |
-| [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status) | Tell a seller whether expected reporting was received, omitted, missing, or unreadable | ~1s | Reporting |
+| [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status) | Tell a seller whether expected reporting was received, omitted, missing, unreadable, or contradictory | ~1s | Reporting |
 | [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts) | Record Reliable Reporting revision and adjustment reconciliation | ~1s | Reporting |
 | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) | Submit performance signals for optimization | ~1s | Optimization |
 | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) | Configure event sources for conversion tracking | ~1s | Conversion Tracking |
@@ -114,7 +114,7 @@ Monitor and optimize campaign performance.
 - **[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys)** - Check campaign status, creative approvals, and near-real-time delivery snapshots
 - **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics for reporting
 - **[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)** - Check durable reporting obligations, revisions, and materializations
-- **[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)** - Close the loop with the buyer's received, missing, or unreadable status
+- **[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)** - Close the loop with the buyer's received, missing, unreadable, or contradictory status
 - **[`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)** - Record independently verified consumer totals and evidence
 - **[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)** - Submit performance signals for publisher optimization
 

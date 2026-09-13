@@ -8,7 +8,8 @@ description: "Breaking-change notice and migration guide for sync_reporting_stat
 **Experimental breaking-change notice published September 12, 2026.** Under
 AdCP's six-week experimental-surface notice policy, the Core requirement
 described here must not appear in an immutable release before October 24,
-2026. Published `3.2.0-rc.1` remains unchanged.
+2026. `3.2.0-rc.2` publishes the task as opt-in; making it *required* is what
+the notice window governs. Published `3.2.0-rc.1` remains unchanged.
 </Warning>
 
 Reliable Reporting RC.1 lets a seller publish its obligation/revision state and
@@ -17,7 +18,7 @@ not give the buyer a standard way to tell the seller that reporting was absent
 or unreadable. A seller can therefore project `healthy` while the buyer's
 webhook, exact revision read, or destination access is failing.
 
-Current source closes that loop additively with opt-in
+`3.2.0-rc.2` closes that loop additively with opt-in
 [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
 A seller advertises `consumer_status_task` only when the task and readback are
 implemented. The requirement itself lands only in the next eligible minor
