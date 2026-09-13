@@ -182,6 +182,14 @@ function isTransientAuthError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const name = err.name;
   const code = (err as { code?: unknown }).code;
+  const status = (err as { status?: unknown; statusCode?: unknown }).status
+    ?? (err as { statusCode?: unknown }).statusCode;
+  if (typeof status === 'number' && (status === 408 || status === 429 || (status >= 500 && status < 600))) return true;
+  // jose does not retain the HTTP status when the remote JWKS endpoint fails.
+  // This exact error denotes key-service failure, not token signature failure.
+  if (name === 'JOSEError' && code === 'ERR_JOSE_GENERIC'
+      && (err.message === 'Expected 200 OK from the JSON Web Key Set HTTP response'
+        || err.message === 'Failed to parse the JSON Web Key Set HTTP response as JSON')) return true;
   if (name === 'JWKSTimeout' || name === 'TimeoutError' || name === 'AbortError') return true;
   if (typeof code === 'string') {
     if (code === 'ERR_JWKS_TIMEOUT') return true;
@@ -364,6 +372,7 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
     try {
       verified = await verifyWorkOSJWT(token);
     } catch (err) {
+      if (isTransientAuthError(err)) throw err;
       logger.debug({ err }, 'Bearer JWT verification failed');
       return null;
     }
@@ -700,20 +709,22 @@ export function invalidateSessionsForUsers(workosUserIds: string[]): void {
 class InvalidAuthorizationCredentialError extends Error {}
 class ConflictingOrganizationSelectionError extends Error {}
 
-/** Request selectors must agree; authenticated provider selection is used only
- * when the request supplies none. Neither memberships nor caches pick an org. */
+/** Every explicit selector must agree with the authenticated provider selection.
+ * Request fields cannot switch an organization-bound credential to another org.
+ * Neither memberships nor caches pick an organization. */
 function selectedOrganizationForAuthentication(req: Request, providerOrg?: string): string | null {
   const selectors = [
+    providerOrg,
     req.headers['x-organization-id'], req.query?.org, req.query?.organization_id,
     req.body?.organization_id, req.body?.organizationId,
     req.params?.orgId, req.params?.organizationId,
-  ].filter((value) => value !== undefined && value !== null);
+  ].filter((value) => value !== undefined);
   if (selectors.some((value) => typeof value !== 'string' || !value.trim())) {
     throw new ConflictingOrganizationSelectionError();
   }
   const ids = new Set(selectors.map((value) => (value as string).trim()));
   if (ids.size > 1) throw new ConflictingOrganizationSelectionError();
-  return ids.values().next().value ?? providerOrg ?? null;
+  return ids.values().next().value ?? null;
 }
 
 /** Hydrate a new request object; never mutate the provider object in a cache. */
@@ -746,7 +757,12 @@ async function hydrateDevUser(user: WorkOSUser): Promise<WorkOSUser> {
   }
 }
 
-function sendAuthorizationStateError(error: unknown, res: Response): boolean {
+function sendAuthorizationStateError(error: unknown, res: Response, includeTransientErrors = false): boolean {
+  if (includeTransientErrors && isTransientAuthError(error)) {
+    logger.warn({ err: error }, 'Authentication service unavailable');
+    res.status(503).json({ error: 'Authentication service temporarily unavailable' });
+    return true;
+  }
   if (error instanceof AuthorizationSnapshotUnavailableError) {
     logger.warn({ err: error }, 'Primary authorization snapshot unavailable');
     res.status(503).json({ error: 'Authorization service temporarily unavailable' });
@@ -821,7 +837,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   try {
     jwtAuth = await validateWorkOSBearerJWT(req);
   } catch (error) {
-    if (sendAuthorizationStateError(error, res)) return;
+    if (sendAuthorizationStateError(error, res, true)) return;
     throw error;
   }
   if (jwtAuth) {
@@ -1764,29 +1780,26 @@ export function createRequireWorkingGroupMember(
  * Native apps send: Authorization: Bearer <sealed-session>
  */
 function extractSealedSession(req: Request): string | undefined {
-  // First check for cookie (web browsers)
-  const sessionCookie = req.cookies['wos-session'];
-  if (sessionCookie) {
-    return sessionCookie;
-  }
-
-  // Then check Authorization header (native apps like Tauri)
+  // An explicitly supplied bearer credential takes precedence over a cookie.
+  // A failed JWT must never be retried as a sealed session or replaced by a cookie.
   // Format: Authorization: Bearer <sealed-session>
-  // Note: We differentiate from WorkOS API keys by checking prefix
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith('Bearer ')) {
+  if (authHeader !== undefined) {
+    if (!authHeader.startsWith('Bearer ')) return undefined;
     const token = authHeader.slice(7);
-    // WorkOS API keys use known prefixes, sealed sessions don't
-    if (!isWorkOSApiKeyFormat(token)) {
+    if (token.trim() && !isWorkOSApiKeyFormat(token) && !looksLikeJWT(token)) {
       return token;
     }
+    return undefined;
   }
-
-  return undefined;
+  const sessionCookie = req.cookies?.['wos-session'];
+  return typeof sessionCookie === 'string' && sessionCookie ? sessionCookie : undefined;
 }
 
 /**
- * Optional auth middleware - loads user if authenticated, but doesn't require it
+ * Optional auth permits anonymous requests only when no credential is supplied.
+ * Invalid presented credentials return 401; verification or authorization
+ * outages return 503. Neither case falls back to anonymous or another credential.
  * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
  * Supports both cookie-based auth (web) and Authorization header (native apps)
@@ -1831,7 +1844,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   try {
     jwtAuth = await validateWorkOSBearerJWT(req);
   } catch (error) {
-    if (sendAuthorizationStateError(error, res)) return;
+    if (sendAuthorizationStateError(error, res, true)) return;
     throw error;
   }
   if (jwtAuth) {
@@ -1866,14 +1879,16 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
+      return next();
     }
-    // No dev session = not logged in (which is fine for optional auth)
-    return next();
   }
 
   const sessionCookie = extractSealedSession(req);
 
   if (!sessionCookie) {
+    if (req.headers.authorization !== undefined || req.cookies?.['wos-session'] !== undefined) {
+      return res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
+    }
     return next();
   }
 
@@ -1887,7 +1902,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     const deadAt = deadSessionCache.get(cacheKey);
     if (deadAt) {
       if (now - deadAt < DEAD_SESSION_TTL_MS) {
-        return next(); // optional auth: just proceed without user
+        return res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
       }
       deadSessionCache.delete(cacheKey);
     }
@@ -1928,6 +1943,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           cookiePassword: WORKOS_COOKIE_PASSWORD,
         });
 
+        if (!refreshResult.authenticated && 'retryable' in refreshResult && refreshResult.retryable) {
+          return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
+        }
         if (refreshResult.authenticated && refreshResult.sealedSession) {
           logger.debug('Session refreshed successfully (optional auth)');
           newSealedSession = refreshResult.sealedSession;
@@ -1945,6 +1963,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           refreshFailed = true;
         }
       } catch (refreshError) {
+        if (isTransientAuthError(refreshError)) throw refreshError;
         logger.debug({ err: refreshError }, 'Optional auth refresh failed');
         refreshFailed = true;
       }
@@ -1966,6 +1985,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
                 const sharedRefresh = await sharedSessionObj.refresh({
                   cookiePassword: WORKOS_COOKIE_PASSWORD,
                 });
+                if (!sharedRefresh.authenticated && 'retryable' in sharedRefresh && sharedRefresh.retryable) {
+                  return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
+                }
                 if (sharedRefresh.authenticated && sharedRefresh.sealedSession) {
                   newSealedSession = sharedRefresh.sealedSession;
                   setSessionCookie(res, sharedRefresh.sealedSession);
@@ -1979,6 +2001,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
                   result = await refreshedObj.authenticate();
                 }
               } catch (innerRefreshErr) {
+                if (isTransientAuthError(innerRefreshErr)) throw innerRefreshErr;
                 logger.debug({ err: innerRefreshErr }, 'Shared session refresh also failed (optional auth)');
               }
             } else {
@@ -1988,6 +2011,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           }
         } catch (dbError) {
           logger.debug({ err: dbError }, 'Failed to look up shared session (optional auth)');
+          return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
         }
       }
     }
@@ -2001,6 +2025,8 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         if (oldest) deadSessionCache.delete(oldest);
       }
       deadSessionCache.set(cacheKey, Date.now());
+      sessionCache.delete(cacheKey);
+      return res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
     }
 
     if (result.authenticated && 'user' in result && result.user) {
@@ -2045,9 +2071,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       req.accessToken = result.accessToken;
     }
   } catch (error) {
-    if (sendAuthorizationStateError(error, res)) return;
-    // Silently fail for optional auth
+    if (sendAuthorizationStateError(error, res, true)) return;
     logger.debug({ err: error }, 'Optional auth failed');
+    return res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
   }
 
   next();
