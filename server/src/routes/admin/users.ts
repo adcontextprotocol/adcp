@@ -22,6 +22,7 @@ import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDom
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { mergeUsers } from '../../db/user-merge-db.js';
+import { refuseIdentityConsolidation } from '../identity-mutation-containment.js';
 import { resolveMembershipTier, type MembershipTierRow } from '../../db/organization-db.js';
 import {
   buildCountryMembersCsv,
@@ -856,7 +857,7 @@ export function createAdminUsersRouter(): Router {
   //
   // Trust model: admin is asserting the email belongs to the person. No
   // verification email is sent to the new address. Phase 3 may add one.
-  router.post('/:userId/linked-emails', ...requireGlobalAdmin, async (req, res) => {
+  router.post('/:userId/linked-emails', ...requireGlobalAdmin, refuseIdentityConsolidation, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const existingUserId = req.params.userId;
@@ -1041,7 +1042,7 @@ export function createAdminUsersRouter(): Router {
   // its own app-state, mergeUsers moves that data to this user — admin is
   // asserting the two represent the same person. The trust model and
   // confirmation UX live on the admin frontend.
-  router.post('/:userId/credentials', ...requireGlobalAdmin, async (req, res) => {
+  router.post('/:userId/credentials', ...requireGlobalAdmin, refuseIdentityConsolidation, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
@@ -1375,7 +1376,7 @@ export function createAdminUsersRouter(): Router {
   // data — degraded but not broken. A failure of the follow-up UPDATE
   // would persist that degraded state; the audit row records the intent
   // and the recovery is a one-line UPDATE.
-  router.post('/:userId/credentials/:credentialId/promote', ...requireGlobalAdmin, async (req, res) => {
+  router.post('/:userId/credentials/:credentialId/promote', ...requireGlobalAdmin, refuseIdentityConsolidation, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const adminIdentityId = req.user!.identityId;
