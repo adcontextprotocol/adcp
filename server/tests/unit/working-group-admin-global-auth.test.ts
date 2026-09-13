@@ -56,6 +56,7 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+  queryWithTimeout: mocks.poolQuery,
 }));
 
 vi.mock('../../src/addie/mcp/admin-tools.js', async () => {

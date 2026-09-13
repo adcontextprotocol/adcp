@@ -1,4 +1,6 @@
-import { getPool } from './client.js';
+import { isTransientConnectionError, queryWithTimeout } from './client.js';
+
+const SNAPSHOT_TIMEOUT_MS = 2_000;
 
 /** The exact credential and its authority, observed in one primary-database statement. */
 export interface AuthorizationSnapshot {
@@ -48,11 +50,29 @@ interface SnapshotRow {
   grant_effective_until: string | null;
 }
 
+/** A retry may replace a broken connection, never renew the statement budget. */
+async function querySnapshot(statement: string, parameters: [string, string | null]) {
+  const deadlineMs = Date.now() + SNAPSHOT_TIMEOUT_MS;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remainingMs = deadlineMs - Date.now();
+    if (remainingMs <= 0) throw new AuthorizationSnapshotUnavailableError();
+    try {
+      const result = await queryWithTimeout<SnapshotRow>(statement, parameters, remainingMs);
+      if (Date.now() >= deadlineMs) throw new AuthorizationSnapshotUnavailableError();
+      return result;
+    } catch (error) {
+      if (attempt === 1 || !isTransientConnectionError(error) || Date.now() >= deadlineMs) throw error;
+    }
+  }
+  throw new AuthorizationSnapshotUnavailableError();
+}
+
 /**
  * Never hydrate identity and epoch separately: a binding change can commit
  * between the reads and stamp old attribution with the new epoch. One SELECT
- * gives every field the same PostgreSQL MVCC snapshot. The pool is the primary
- * database; a connection to a recovering replica fails closed in this statement.
+ * gives every field the same PostgreSQL MVCC snapshot. The bounded query wrapper
+ * uses the primary pool with transaction-local statement and lock timeouts;
+ * a recovering replica fails closed in this statement.
  *
  * Organization selection must be explicit. Neither linked credentials nor the
  * organization_memberships cache supplies authority on a cold start/cache miss.
@@ -63,7 +83,7 @@ export async function loadAuthorizationSnapshot(
 ): Promise<AuthorizationSnapshot | null> {
   const organizationId = selectedOrganizationId || null;
   try {
-    const result = await getPool().query<SnapshotRow>(
+    const result = await querySnapshot(
       `SELECT pg_catalog.pg_is_in_recovery() AS in_recovery,
               credential.workos_user_id AS authenticated_user_id,
               primary_binding.workos_user_id AS canonical_user_id,
