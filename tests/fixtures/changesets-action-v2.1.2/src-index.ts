@@ -10,7 +10,13 @@ import {
   validateChangesetsCliVersion,
 } from "./utils.ts";
 
-(async () => {
+try {
+  await main();
+} catch (err) {
+  core.setFailed((err as Error).message);
+}
+
+async function main() {
   const cwd = getOptionalInput("cwd") || process.cwd();
   await validateChangesetsCliVersion(cwd);
 
@@ -62,7 +68,7 @@ import {
   switch (true) {
     case !hasChangesets && !hasPublishScript:
       core.info(
-        "No changesets present or were removed by merging release PR. Not publishing because no publish script found.",
+        "No changesets present or were removed by merging version PR. Not publishing because publish-script is not set.",
       );
       return;
     case !hasChangesets && hasPublishScript: {
@@ -98,7 +104,7 @@ import {
       }
 
       if (result.exitCode !== 0) {
-        core.error(
+        throw new Error(
           `Publish command exited with code ${result.exitCode}${
             result.published
               ? `, but some packages were published: ${result.publishedPackages
@@ -107,12 +113,11 @@ import {
               : ""
           }`,
         );
-        process.exit(result.exitCode);
       }
       return;
     }
     case hasChangesets && !hasNonEmptyChangesets:
-      core.info("All changesets are empty; not creating PR");
+      core.info("All changesets are empty. Not creating PR");
       return;
     case hasChangesets: {
       const { pullRequestNumber } = await runVersion({
@@ -131,7 +136,4 @@ import {
       return;
     }
   }
-})().catch((err) => {
-  core.error(err);
-  core.setFailed(err.message);
-});
+}

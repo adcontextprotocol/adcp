@@ -7,10 +7,10 @@ const crypto = require('crypto');
 const YAML = require('yaml');
 
 const repoRoot = path.join(__dirname, '..');
-const changesetsActionSha = '8488615a623b1b9c987934bb89eae8af6a946ac1';
+const changesetsActionSha = 'ae32849d5ba541f9ae29e40e22a623bc13562f51';
 const changesetsActionFixtureDir = path.join(
   repoRoot,
-  'tests/fixtures/changesets-action-v2.1.1'
+  'tests/fixtures/changesets-action-v2.1.2'
 );
 const workflowPath = path.join(repoRoot, '.github/workflows/release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
@@ -149,13 +149,13 @@ assert(
 assert.strictEqual(
   crypto.createHash('sha256').update(changesetsActionContractSource).digest('hex'),
   'e3277ecb13148921adcfbc29971acb12b10ece79e7de24a200ba56dff1f6a1d7',
-  'Vendored action.yml must match changesets/action v2.1.1 at the pinned commit.'
+  'Vendored action.yml must match changesets/action v2.1.2 at the pinned commit.'
 );
 
 assert.strictEqual(
   crypto.createHash('sha256').update(changesetsActionImplementation).digest('hex'),
-  '54e11379e2c4d37af7c059daeaaf409e6a044dc068bd8eb56bc5180cd0424bb5',
-  'Vendored src/index.ts must match changesets/action v2.1.1 at the pinned commit.'
+  '4264a1dfe6d6a794dcb04aef04d18700707826071ce88b504567aa25b706b8f3',
+  'Vendored src/index.ts must match changesets/action v2.1.2 at the pinned commit.'
 );
 
 for (const branch of eolReleaseBranches) {
@@ -291,7 +291,7 @@ assert.deepStrictEqual(
       HUSKY: '0',
     },
   },
-  'Release automation must preserve the pinned Changesets v2.1.1 input contract and git-CLI push mode.'
+  'Release automation must preserve the pinned Changesets v2.1.2 input contract and git-CLI push mode.'
 );
 
 for (const inputName of Object.keys(changesetsStepConfig.with)) {
