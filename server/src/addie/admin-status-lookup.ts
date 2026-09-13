@@ -15,7 +15,6 @@
 
 import { createLogger } from '../logger.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import { getWebAdminStatusCache } from './admin-status-cache.js';
 import {
   decideAAOAdminAccess,
   isBreakGlassAdminEmail,
@@ -32,12 +31,6 @@ export {
 const logger = createLogger('admin-status-lookup');
 
 const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
-// This is deliberately short: invalidation only reaches the instance that
-// performed an admin grant/revoke. Other replicas must therefore re-check
-// membership quickly enough for an emergency revocation to take effect.
-export const AAO_ADMIN_POSITIVE_CACHE_TTL_MS = 60 * 1000;
-const AAO_ADMIN_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
-
 const wgDb = new WorkingGroupDatabase();
 
 /** A person principal as authenticated, before canonical identity routing. */
@@ -60,12 +53,6 @@ export class AAOAdminLookupUnavailableError extends Error {
 
 /** Typed membership lookup used by the authenticated-principal boundary. */
 async function lookupWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
-  const cache = getWebAdminStatusCache();
-  const cached = cache.get(workosUserId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.isAdmin;
-  }
-
   try {
     const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
     if (!adminGroup) {
@@ -73,15 +60,9 @@ async function lookupWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
     }
 
     const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-    cache.set(workosUserId, {
-      isAdmin,
-      expiresAt: Date.now() + (isAdmin ? AAO_ADMIN_POSITIVE_CACHE_TTL_MS : AAO_ADMIN_NEGATIVE_CACHE_TTL_MS),
-    });
     logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
     return isAdmin;
   } catch (error) {
-    // Never serve an expired positive decision or cache an outage as a denial.
-    cache.delete(workosUserId);
     logger.error({ error, workosUserId, code: 'admin_authorization_unavailable' }, 'Platform administrator authorization lookup unavailable');
     throw new AAOAdminLookupUnavailableError({ cause: error });
   }

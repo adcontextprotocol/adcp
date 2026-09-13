@@ -1,12 +1,12 @@
 import crypto from "crypto";
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
-import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
+import { AddieClaudeClient, type AddieResponse, type RequestTools, type StreamEvent } from "../addie/claude-client.js";
 import {
   type AddieRouter,
   type ExecutionPlan,
@@ -58,7 +58,7 @@ import {
   createAdminToolHandlers,
 } from "../addie/mcp/admin-tools.js";
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
-import { captureVoiceAuthorization, issueVoiceCallbackBinding, isVoiceSessionOwner, persistVoiceCallbackBinding, resolveVoiceCallback, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
+import { captureVoiceAuthorization, deriveVoiceCallbackTurnId, issueVoiceCallbackBinding, isVoiceSessionOwner, persistVoiceCallbackBinding, resolveVoiceCallback, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
 import {
   EVENT_READONLY_TOOLS,
@@ -96,10 +96,12 @@ import {
 import { AddieModelConfig } from "../config/models.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
-import { getThreadService } from "../addie/thread-service.js";
+import { getThreadService, type ThreadService } from "../addie/thread-service.js";
 import {
+  blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
   reserveToolIntentCheckpoint,
+  type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { optionalAuth } from "../middleware/auth.js";
 import {
@@ -429,6 +431,100 @@ const endRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+async function admitVoiceCallbackTurn(input: {
+  res: Response;
+  thread: { thread_id: string; external_id: string; context?: Record<string, unknown> | null };
+  messages: readonly TavusRawMessage[];
+}): Promise<
+  | { state: 'claimed'; threadService: ThreadService; clientRequestId: string; leaseId: string }
+  | { state: 'completed'; threadService: ThreadService; clientRequestId: string; content: string }
+  | null
+> {
+  const { res, thread, messages } = input;
+  const threadId = thread.thread_id;
+  const clientRequestId = deriveVoiceCallbackTurnId({
+    threadId,
+    externalId: thread.external_id,
+    providerConversationId: String(thread.context?.tavus_conversation_id),
+    messages,
+  });
+  const threadService = getThreadService();
+  let claim = await threadService.claimClientTurn(threadId, clientRequestId, false).catch((error) => {
+    logger.error({ error, threadId }, 'Tavus: Voice turn claim unavailable');
+    return null;
+  });
+  if (!claim) {
+    res.setHeader('Retry-After', '5');
+    res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice turn authorization is temporarily unavailable. Please try again.' } });
+    return null;
+  }
+  // The non-retry probe reports both live and expired processing rows as
+  // `processing`. The retry SQL reclaims only interrupted or expired rows, so
+  // this second atomic probe recovers a crashed worker without stealing a live
+  // lease.
+  if (claim.state === 'not_retryable' || claim.state === 'processing') {
+    claim = await threadService.claimClientTurn(threadId, clientRequestId, true).catch((error) => {
+      logger.error({ error, threadId }, 'Tavus: Voice turn retry claim unavailable');
+      return null;
+    });
+    if (!claim) {
+      res.setHeader('Retry-After', '5');
+      res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice turn authorization is temporarily unavailable. Please try again.' } });
+      return null;
+    }
+  }
+
+  if (claim.state === 'claimed') {
+    return { state: 'claimed', threadService, clientRequestId, leaseId: claim.leaseId! };
+  }
+  if (claim.state === 'completed') {
+    const completedMessages = await threadService.getMessagesByClientRequestId(threadId, clientRequestId).catch((error) => {
+      logger.error({ error, threadId }, 'Tavus: Completed voice turn receipt unavailable');
+      return null;
+    });
+    const completed = completedMessages && [...completedMessages].reverse().find(
+      (message) => message.role === 'assistant' && message.delivery_status === 'completed',
+    );
+    if (!completed) {
+      res.setHeader('Retry-After', '5');
+      res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice turn receipt is temporarily unavailable. Please try again.' } });
+      return null;
+    }
+    return { state: 'completed', threadService, clientRequestId, content: completed.content };
+  }
+
+  res.status(409).json({
+    error: {
+      code: 'voice_turn_in_progress',
+      message: 'This voice turn is already being processed. Please retry shortly.',
+    },
+  });
+  return null;
+}
+
+function replayCompletedVoiceTurn(res: Response, clientRequestId: string, content: string): void {
+  const replayId = `chatcmpl-${clientRequestId.replace(/-/g, '').slice(0, 28)}`;
+  const created = Math.floor(Date.now() / 1000);
+  const replayChunk = (delta: Record<string, unknown>, finishReason: string | null = null) => {
+    res.write(`data: ${JSON.stringify({
+      id: replayId,
+      object: 'chat.completion.chunk',
+      created,
+      model: 'addie',
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    })}\n\n`);
+  };
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Addie-Client-Turn-Id', clientRequestId);
+  replayChunk({ role: 'assistant', content: '' });
+  replayChunk({ content, replayed: true });
+  replayChunk({}, 'stop');
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
 
 export function createTavusRouter(options?: {
   /** Deterministic test seam; production uses the initialized voice client. */
@@ -765,6 +861,54 @@ export function createTavusRouter(options?: {
       text: sanitizeInput(m.text).sanitized,
     }));
 
+    const spokenMessage = currentMessage;
+    const admittedTurn = await admitVoiceCallbackTurn({ res, thread, messages });
+    if (!admittedTurn) return;
+    const { threadService, clientRequestId } = admittedTurn;
+    let claimedVoiceTurn: { leaseId: string } | null = admittedTurn.state === 'claimed'
+      ? { leaseId: admittedTurn.leaseId }
+      : null;
+    const releaseVoiceTurn = async (reason: string): Promise<void> => {
+      const claimed = claimedVoiceTurn;
+      if (!claimed) return;
+      claimedVoiceTurn = null;
+      try {
+        await threadService.setClientTurnStatus(
+          threadId,
+          clientRequestId,
+          claimed.leaseId,
+          'interrupted',
+        );
+      } catch (error) {
+        logger.error({ error, threadId, reason }, 'Tavus: Failed to release interrupted voice turn');
+      }
+    };
+    const persistInterruptedVoiceTurn = async (reason: string): Promise<void> => {
+      const claimed = claimedVoiceTurn;
+      if (!claimed) return;
+      try {
+        await threadService.addMessage({
+          thread_id: threadId,
+          role: 'assistant',
+          content: 'Voice reply interrupted before completion. The provider may safely retry this turn.',
+          model: AddieModelConfig.voice,
+          model_execution: {
+            source: 'local', requested_provider: 'anthropic', requested_model: AddieModelConfig.voice, reason: 'stream_interrupted',
+          },
+          flagged: true,
+          flag_reason: `stream_interrupted: ${reason}`,
+          client_request_id: clientRequestId,
+          delivery_status: 'interrupted',
+          client_turn_lease_id: claimed.leaseId,
+          finalize_client_turn_status: 'interrupted',
+        });
+        claimedVoiceTurn = null;
+      } catch (error) {
+        logger.error({ error, threadId, reason }, 'Tavus: Failed to persist interrupted voice turn');
+        await releaseVoiceTurn(reason);
+      }
+    };
+
     // Look up the thread to get user identity and build user-scoped tools.
     // This gives voice Addie the same capabilities as chat Addie.
     let voiceRequestTools: RequestTools | undefined;
@@ -781,20 +925,34 @@ export function createTavusRouter(options?: {
     let voiceUserId: string | null = null;
     let voiceFillersDisabled = false;
     let sessionGuidance = "";
+    let authorization: Awaited<ReturnType<typeof resolveVoiceAuthorization>>;
     try {
-      const authorization = await resolveVoiceAuthorization(thread.context?.voice_authorization);
-      if (authorization.status === 'unavailable') {
-        res.setHeader('Retry-After', '5');
-        return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
-      }
-      if (authorization.status === 'stale') {
-        logger.info({ threadId, reason: authorization.reason }, 'Voice session requires fresh authentication');
-        return res.status(409).json({ error: { code: 'voice_reauthentication_required', message: 'Your sign-in authorization changed. Please sign in again and start a new video call.' } });
-      }
-      userDisplayName = thread.user_display_name;
-      voiceUserId = thread.user_id;
-      voiceFillersDisabled = thread.context?.disable_fillers === true;
-      sessionGuidance = readTavusSessionGuidance(thread.context?.video_session_guidance);
+      authorization = await resolveVoiceAuthorization(thread.context?.voice_authorization);
+    } catch (error) {
+      logger.error({ error, threadId }, 'Tavus: Credential authorization failed unexpectedly');
+      await releaseVoiceTurn('credential_authorization_unavailable');
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
+    }
+    if (authorization.status === 'unavailable') {
+      await releaseVoiceTurn('credential_authorization_unavailable');
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
+    }
+    if (authorization.status === 'stale') {
+      logger.info({ threadId, reason: authorization.reason }, 'Voice session requires fresh authentication');
+      await releaseVoiceTurn('credential_authorization_stale');
+      return res.status(409).json({ error: { code: 'voice_reauthentication_required', message: 'Your sign-in authorization changed. Please sign in again and start a new video call.' } });
+    }
+    if (admittedTurn.state === 'completed') {
+      replayCompletedVoiceTurn(res, clientRequestId, admittedTurn.content);
+      return;
+    }
+    userDisplayName = thread.user_display_name;
+    voiceUserId = thread.user_id;
+    voiceFillersDisabled = thread.context?.disable_fillers === true;
+    sessionGuidance = readTavusSessionGuidance(thread.context?.video_session_guidance);
+    try {
       const result = await buildVoiceRequestTools(thread.user_id, threadId, authorization.principal);
       memberRequestContext = result.requestContext;
       try {
@@ -816,7 +974,10 @@ export function createTavusRouter(options?: {
         };
       }
     } catch (err) {
-      if (respondToAdminAuthorizationError(err, res)) return;
+      if (respondToAdminAuthorizationError(err, res)) {
+        await releaseVoiceTurn('admin_authorization_unavailable');
+        return;
+      }
       logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools; using safe read-only fallback");
       // A verified video thread still represents an authenticated direct
       // response even when its dynamic capability assembly fails. Never
@@ -859,22 +1020,44 @@ export function createTavusRouter(options?: {
       };
     }
 
-    // Keep the spoken transcript separate from prompt decoration. Logging and
-    // filler classification must reflect what the caller actually said.
-    const spokenMessage = currentMessage;
+    const requestMessages = await threadService.getMessagesByClientRequestId(threadId, clientRequestId).catch(async (error) => {
+      logger.error({ error, threadId }, 'Tavus: Voice turn checkpoints unavailable');
+      await releaseVoiceTurn('checkpoint_lookup_failed');
+      return null;
+    });
+    if (!requestMessages) {
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice turn state is temporarily unavailable. Please try again.' } });
+    }
+    const existingUserMessage = requestMessages.find((message) => message.role === 'user');
+    if (existingUserMessage && existingUserMessage.content !== spokenMessage) {
+      await releaseVoiceTurn('turn_id_conflict');
+      return res.status(409).json({ error: { code: 'voice_turn_conflict', message: 'The voice turn identifier belongs to different input.' } });
+    }
+    const retryCheckpointToolCalls: StoredToolCall[] = requestMessages
+      .filter((message) => message.role === 'assistant' && message.delivery_status === 'interrupted')
+      .flatMap((message) => message.tool_calls ?? []);
+    const replayPolicy = blockCheckpointedToolReplays(retryCheckpointToolCalls);
 
     // Log the user message (before voice prefix or guidance is applied)
     const voiceSpeakerName = sanitizeSpeakerName(userDisplayName);
-    if (threadId) {
-      const threadService = getThreadService();
-      threadService.addMessage({
-        thread_id: threadId,
-        role: "user",
-        content: spokenMessage,
-        user_id: voiceUserId ?? undefined,
-        user_display_name: voiceSpeakerName,
-        message_source: 'voice',
-      }).catch((err) => logger.error({ err }, "Tavus: Failed to log user message"));
+    if (!existingUserMessage) {
+      try {
+        await threadService.addMessage({
+          thread_id: threadId,
+          role: "user",
+          content: spokenMessage,
+          user_id: voiceUserId ?? undefined,
+          user_display_name: voiceSpeakerName,
+          message_source: 'voice',
+          client_request_id: clientRequestId,
+        });
+      } catch (error) {
+        logger.error({ error, threadId }, 'Tavus: Failed to persist voice user turn');
+        await releaseVoiceTurn('user_message_persistence_failed');
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice turn persistence is temporarily unavailable. Please try again.' } });
+      }
     }
 
     // Voice instructions and optional caller guidance stay adjacent to the
@@ -903,9 +1086,16 @@ export function createTavusRouter(options?: {
     // Complete provider-neutral admission and routing before opening the SSE
     // response. If routing is unavailable, Tavus must receive an explicit HTTP
     // error rather than a successful stream containing only a filler and DONE.
-    const voiceScope = voiceUserId
-      ? { userId: voiceUserId, tier: await resolveUserTierFromDb(voiceUserId) }
-      : null;
+    let voiceScope: { userId: string; tier: Awaited<ReturnType<typeof resolveUserTierFromDb>> } | null;
+    try {
+      voiceScope = voiceUserId
+        ? { userId: voiceUserId, tier: await resolveUserTierFromDb(voiceUserId) }
+        : null;
+    } catch (error) {
+      logger.error({ error, threadId }, 'Tavus: Voice cost scope unavailable');
+      await releaseVoiceTurn('cost_scope_unavailable');
+      return res.status(503).json({ error: { message: 'LLM routing temporarily unavailable' } });
+    }
     const costScope = voiceScope ?? {
       userId: `tavus:ip:${req.ip ?? 'unknown'}`,
       tier: 'anonymous' as const,
@@ -946,6 +1136,7 @@ export function createTavusRouter(options?: {
       ].filter(Boolean).join("\n\n");
     } catch (err) {
       logger.error({ err }, 'Tavus: Routing unavailable');
+      await releaseVoiceTurn('routing_unavailable');
       return res.status(503).json({
         error: { message: 'LLM routing temporarily unavailable' },
       });
@@ -955,9 +1146,68 @@ export function createTavusRouter(options?: {
     const created = Math.floor(Date.now() / 1000);
     const startTime = Date.now();
 
+    let leaseOwnershipLost = false;
+    let activeVoiceIterator: AsyncIterator<StreamEvent> | null = null;
+    const markLeaseOwnershipLost = (reason: string, error?: unknown): void => {
+      if (leaseOwnershipLost) return;
+      leaseOwnershipLost = true;
+      logger.error({ error, threadId, reason }, 'Tavus: Voice turn lease ownership lost; aborting stream');
+      if (activeVoiceIterator?.return) {
+        void activeVoiceIterator.return().catch((returnError) => {
+          logger.error({ error: returnError, threadId }, 'Tavus: Failed to stop stream after voice lease loss');
+        });
+      }
+    };
+    const proveVoiceTurnLease = async (reason: string): Promise<void> => {
+      const claimed = claimedVoiceTurn;
+      if (!claimed || leaseOwnershipLost) throw new Error('Voice turn lease is no longer owned');
+      let owned: boolean;
+      try {
+        owned = await threadService.renewClientTurnLease(
+          threadId,
+          clientRequestId,
+          claimed.leaseId,
+        );
+      } catch (error) {
+        markLeaseOwnershipLost(reason, error);
+        throw error;
+      }
+      if (!owned) {
+        markLeaseOwnershipLost(reason);
+        throw new Error('Voice turn lease ownership check failed');
+      }
+      // A concurrent renewal probe may have observed lease loss while this
+      // successful database call was in flight. Loss is sticky for this worker.
+      if (leaseOwnershipLost) throw new Error('Voice turn lease is no longer owned');
+    };
+
+    // Refresh immediately before provider work in case authorization/routing
+    // consumed most of the original claim lease. Do not open the stream after
+    // ownership has moved to a retry worker.
+    try {
+      await proveVoiceTurnLease('before_model_stream');
+    } catch {
+      await releaseVoiceTurn('lease_lost_before_model_stream');
+      return res.status(409).json({
+        error: { code: 'voice_turn_lease_lost', message: 'This voice turn moved to another worker. Please retry shortly.' },
+      });
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader('X-Addie-Client-Turn-Id', clientRequestId);
+
+    const leaseRenewal = setInterval(() => {
+      const claimed = claimedVoiceTurn;
+      if (!claimed || leaseOwnershipLost) return;
+      void threadService.renewClientTurnLease(threadId, clientRequestId, claimed.leaseId)
+        .then((owned) => {
+          if (!owned) markLeaseOwnershipLost('periodic_renewal_rejected');
+        })
+        .catch((error) => markLeaseOwnershipLost('periodic_renewal_unavailable', error));
+    }, 15_000);
+    leaseRenewal.unref();
 
     let connectionClosed = false;
     req.on("close", () => {
@@ -966,7 +1216,7 @@ export function createTavusRouter(options?: {
     });
 
     const sendChunk = (delta: Record<string, unknown>, finishReason: string | null = null) => {
-      if (connectionClosed) return;
+      if (connectionClosed || leaseOwnershipLost) return;
       const chunk = JSON.stringify({
         id: completionId,
         object: "chat.completion.chunk",
@@ -1009,7 +1259,7 @@ export function createTavusRouter(options?: {
     let streamError = false;
     let terminalResponse: AddieResponse | undefined;
     try {
-      for await (const event of activeVoiceClient.processMessageStream(
+      const voiceEvents = activeVoiceClient.processMessageStream(
         currentMessage,
         threadContext,
         voiceRequestTools,
@@ -1018,19 +1268,30 @@ export function createTavusRouter(options?: {
           currentSpeakerName: voiceSpeakerName,
           selectedToolSetNames: routedVoiceTools?.selectedToolSets,
           allowedToolNames: routedVoiceTools?.allowedToolNames,
+          clientRequestId,
+          ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
           costScope,
           reserveSideEffect: async ({ toolName, parameters }) => {
             if (!threadId) throw new Error('A durable conversation thread is required for an external action');
-            await reserveToolIntentCheckpoint(getThreadService(), {
+            // This inline ownership proof extends the exact lease immediately
+            // before the durable reservation and handler dispatch boundary.
+            await proveVoiceTurnLease(`before_side_effect:${toolName}`);
+            await reserveToolIntentCheckpoint(threadService, {
               threadId,
               toolName,
               parameters,
               requestedModel: AddieModelConfig.voice,
+              clientRequestId,
             });
           },
         }
-      )) {
-        if (connectionClosed) break;
+      );
+      activeVoiceIterator = voiceEvents[Symbol.asyncIterator]();
+      while (true) {
+        const next = await activeVoiceIterator.next();
+        if (next.done) break;
+        const event = next.value;
+        if (connectionClosed || leaseOwnershipLost) break;
         if (event.type === "text") {
           fullResponse += event.text;
           sendChunk({ content: event.text });
@@ -1056,10 +1317,12 @@ export function createTavusRouter(options?: {
             break;
           }
           try {
-            await getThreadService().addMessage(buildToolResultCheckpoint({
+            await proveVoiceTurnLease(`before_tool_checkpoint:${event.tool_name}`);
+            await threadService.addMessage(buildToolResultCheckpoint({
               threadId,
               execution: event.execution,
               requestedModel: AddieModelConfig.voice,
+              clientRequestId,
             }));
           } catch (checkpointError) {
             logger.error({ checkpointError, threadId, toolName: event.tool_name }, 'Tavus: Tool outcome checkpoint failed');
@@ -1073,25 +1336,46 @@ export function createTavusRouter(options?: {
     } catch (err) {
       logger.error({ err }, "Tavus: Streaming error");
       streamError = true;
+    } finally {
+      clearInterval(leaseRenewal);
+      activeVoiceIterator = null;
     }
 
-    // Log the assistant response
-    if (threadId && terminalResponse && !streamError) {
-      const threadService = getThreadService();
-      threadService.addMessage({
-        thread_id: threadId,
-        role: "assistant",
-        content: terminalResponse.text,
-        model: AddieModelConfig.voice,
-        model_execution: terminalResponse.model_execution,
-        latency_ms: Date.now() - startTime,
-      }).catch((err) => logger.error({ err }, "Tavus: Failed to log assistant message"));
+    // The completed assistant row and turn state commit atomically. Until this
+    // durable receipt exists, the session capability alone never suppresses a
+    // retry; persisted tool checkpoints still block repeated successful work.
+    if (threadId && terminalResponse && !streamError && !leaseOwnershipLost) {
+      const claimed = claimedVoiceTurn;
+      try {
+        if (!claimed) throw new Error('Voice turn lease was lost before completion');
+        await proveVoiceTurnLease('before_completed_receipt');
+        await threadService.addMessage({
+          thread_id: threadId,
+          role: "assistant",
+          content: terminalResponse.text,
+          model: AddieModelConfig.voice,
+          model_execution: terminalResponse.model_execution,
+          latency_ms: Date.now() - startTime,
+          client_request_id: clientRequestId,
+          delivery_status: 'completed',
+          client_turn_lease_id: claimed.leaseId,
+          finalize_client_turn_status: 'completed',
+        });
+        claimedVoiceTurn = null;
+      } catch (error) {
+        logger.error({ error, threadId }, 'Tavus: Failed to persist completed voice turn');
+        streamError = true;
+      }
     }
 
-    if (!streamError) {
+    if ((streamError || !terminalResponse) && !leaseOwnershipLost) {
+      await persistInterruptedVoiceTurn(streamError ? 'stream_error' : 'ended_without_done');
+    }
+
+    if (!streamError && !leaseOwnershipLost) {
       sendChunk({}, "stop");
     }
-    res.write("data: [DONE]\n\n");
+    if (!leaseOwnershipLost) res.write("data: [DONE]\n\n");
     res.end();
   });
 
