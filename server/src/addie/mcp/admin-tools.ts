@@ -220,9 +220,10 @@ export async function isSlackUserAAOAdmin(
 ): Promise<boolean> {
   // Check cache first
   const cached = adminStatusCache.get(slackUserId);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && !cached.isAdmin && cached.expiresAt > Date.now()) {
     return cached.isAdmin;
   }
+  if (cached?.isAdmin) adminStatusCache.delete(slackUserId);
 
   try {
     // Look up the Slack user mapping to get their WorkOS user ID
@@ -259,10 +260,12 @@ export async function isSlackUserAAOAdmin(
     const isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
 
     // Cache the result
-    adminStatusCache.set(slackUserId, {
-      isAdmin,
-      expiresAt: Date.now() + (isAdmin ? ADMIN_POSITIVE_CACHE_TTL_MS : ADMIN_NEGATIVE_CACHE_TTL_MS),
-    });
+    if (!isAdmin) {
+      adminStatusCache.set(slackUserId, {
+        isAdmin: false,
+        expiresAt: Date.now() + ADMIN_NEGATIVE_CACHE_TTL_MS,
+      });
+    }
 
     logger.info(
       {

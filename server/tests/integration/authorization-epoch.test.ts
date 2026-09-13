@@ -20,6 +20,7 @@ import {
 } from '../../src/db/authorization-epoch-db.js';
 import { mergeUsers } from '../../src/db/user-merge-db.js';
 import { promoteSecondaryIfPrimaryDeleted } from '../../src/db/identity-db.js';
+import { deleteIdentityCredential } from '../../src/services/identity-credential-deletion.js';
 
 const TEST_USER_PREFIX = 'user_authz_epoch_test_';
 
@@ -36,11 +37,13 @@ describe('Authorization epoch (migration 565)', () => {
 
   afterAll(async () => {
     await pool.query(`DELETE FROM users WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
     await closeDatabase();
   });
 
   beforeEach(async () => {
     await pool.query(`DELETE FROM users WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
   });
 
   async function insertUser(suffix: string): Promise<string> {
@@ -67,10 +70,10 @@ describe('Authorization epoch (migration 565)', () => {
     const userId = await insertUser('monotonic');
 
     await bumpAuthorizationEpochs(pool, [userId]);
-    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:1`);
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:epoch:1`);
 
     await bumpAuthorizationEpochs(pool, [userId]);
-    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:2`);
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:epoch:2`);
   });
 
   it('ignores credentials with no users row instead of failing the transaction', async () => {
@@ -78,7 +81,7 @@ describe('Authorization epoch (migration 565)', () => {
 
     await bumpAuthorizationEpochs(pool, [userId, `${TEST_USER_PREFIX}absent`]);
 
-    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:1`);
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:epoch:1`);
   });
 
   it('changes the fingerprint when a bumped credential is deleted', async () => {
@@ -91,6 +94,17 @@ describe('Authorization epoch (migration 565)', () => {
     const after = await getAuthorizationFingerprint([userId]);
     expect(after).not.toBe(before);
     expect(after).toBe('');
+  });
+
+  it('retains a deletion fingerprint for an epoch-0 credential after users-row cascade', async () => {
+    const userId = await insertUser('epoch_zero_confirmed_delete');
+    expect(await getAuthorizationFingerprint([userId])).toBe('');
+
+    await expect(deleteIdentityCredential(userId, 'workos_webhook'))
+      .resolves.toMatchObject({ deleted: true });
+
+    expect(await getAuthorizationFingerprint([userId]))
+      .toMatch(new RegExp(`^${userId}:deleted:[0-9a-f-]+$`));
   });
 
   it('preserves both fingerprints when generic merging is refused', async () => {

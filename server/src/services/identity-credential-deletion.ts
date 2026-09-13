@@ -30,6 +30,8 @@ export async function deleteIdentityCredential(
 ): Promise<IdentityCredentialDeletionResult> {
   const result = await deleteIdentityCredentialTransaction(workosUserId, deletionSource);
 
+  if (result.replay) return result;
+
   invalidateSessionsForUsers(result.affectedUserIds);
   invalidateUnifiedUsersCache();
   for (const workosUserId of result.affectedUserIds) {
@@ -48,12 +50,12 @@ export async function deleteIdentityCredential(
       deletedWorkosUserId: quarantine.deleted_workos_user_id,
       recoveryState: quarantine.recovery_state,
       auditId: quarantine.audit_id,
-    }, 'Primary credential deletion requires manual recovery');
+    }, 'Credential deletion left an identity without a primary');
     try {
       notifySystemError({
         source: `identity-primary-deletion-quarantine:${quarantine.identity_id}`,
         errorMessage: [
-          `Primary credential ${quarantine.deleted_workos_user_id} was deleted without promotion.`,
+          `Credential ${quarantine.deleted_workos_user_id} was deleted without promotion.`,
           `Identity ${quarantine.identity_id} is quarantined.`,
           `recovery_state=${quarantine.recovery_state}.`,
           `audit_id=${quarantine.audit_id}.`,

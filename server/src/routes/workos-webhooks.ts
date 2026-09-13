@@ -19,17 +19,23 @@
  */
 
 import { Router, Request, Response } from 'express';
+import type { PoolClient } from 'pg';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { deleteIdentityCredential } from '../services/identity-credential-deletion.js';
-import { upsertWorkosUserUnlessConfirmedDeleted } from '../db/identity-db.js';
+import {
+  upsertWorkosUserInCredentialEvent,
+  upsertWorkosUserUnlessConfirmedDeleted,
+  withActiveCredentialEventMutation,
+  withCredentialCreationEventMutation,
+} from '../db/identity-db.js';
 import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
   removeWorkosDomainAndReselectPrimary,
 } from '../db/organization-domains-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { getWorkos, getOwnerlessPromotionWorkos } from '../auth/workos-client.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
@@ -40,7 +46,6 @@ import { notifyBrandClaimOpportunity } from '../notifications/registry.js';
 import { getNudgeDismissal, recordNudgeDismissal } from '../db/user-nudges-db.js';
 import { getCompanyDomain } from '../utils/email-domain.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
-import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { canAddSeat, type SeatType, OrganizationDatabase } from '../db/organization-db.js';
 import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
@@ -48,10 +53,6 @@ import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
   consumeInvitationSeatType,
-  findSuccessorForPromotion,
-  setMembershipRole,
-  autoLinkByVerifiedDomain,
-  resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
 import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
 
@@ -79,6 +80,42 @@ interface UserData {
   email_verified: boolean;
   created_at: string;
   updated_at: string;
+}
+
+const PROVIDER_PREFETCH_TIMEOUT_MS = Number(
+  process.env.WORKOS_PROVIDER_PREFETCH_TIMEOUT_MS ?? 5_000,
+);
+
+async function boundedProviderPrefetch<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error('Provider prefetch timed out')),
+          PROVIDER_PREFETCH_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function fetchMembershipUser(membership: OrganizationMembershipData): Promise<UserData> {
+  const workosUser = await boundedProviderPrefetch(
+    getWorkos().userManagement.getUser(membership.user_id),
+  );
+  return {
+    id: workosUser.id,
+    email: workosUser.email,
+    first_name: workosUser.firstName,
+    last_name: workosUser.lastName,
+    email_verified: workosUser.emailVerified,
+    created_at: workosUser.createdAt,
+    updated_at: workosUser.updatedAt,
+  };
 }
 
 interface OrganizationDomainData {
@@ -195,34 +232,17 @@ async function notifyAdminsOfRefusedMembership(input: {
 
 async function upsertMembership(
   membership: OrganizationMembershipData,
-  user?: UserData
+  user: UserData,
+  client: PoolClient,
 ): Promise<void> {
-  // If we don't have user data, fetch it from WorkOS
-  let userData = user;
-  if (!userData) {
-    try {
-      const workosUser = await getWorkos().userManagement.getUser(membership.user_id);
-      userData = {
-        id: workosUser.id,
-        email: workosUser.email,
-        first_name: workosUser.firstName,
-        last_name: workosUser.lastName,
-        email_verified: workosUser.emailVerified,
-        created_at: workosUser.createdAt,
-        updated_at: workosUser.updatedAt,
-      };
-    } catch (error) {
-      logger.error({ error, userId: membership.user_id }, 'Failed to fetch user from WorkOS');
-      return;
-    }
-  }
+  const userData = user;
 
   if (membership.status !== 'active') {
     logger.info(
       { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
       'Removing non-active organization membership from local cache',
     );
-    await deleteInactiveMembershipCache(membership);
+    await deleteInactiveMembershipCache(membership, client);
     return;
   }
 
@@ -232,19 +252,24 @@ async function upsertMembership(
   // auto-promote this user (ownerless-org safety net), push the change to
   // WorkOS first and only then write the resolved role locally. WorkOS is
   // the source of truth — local must never get ahead of it.
-  const resolution = await resolveRoleWithWorkosFirstPromote({
-    workos: getOwnerlessPromotionWorkos(),
-    membershipId: membership.id,
-    userId: membership.user_id,
-    organizationId: membership.organization_id,
-    incomingRole,
-  });
+  // Provider-side owner promotion cannot be made exactly-once without a
+  // durable event/intent journal. Preserve the signed WorkOS role locally and
+  // defer ownerless reconciliation rather than perform an upstream authority
+  // write whose outcome could become unknown during deletion.
+  const resolution: { role: string; promoted: boolean; promotionError?: unknown } = {
+    role: incomingRole,
+    promoted: false,
+  };
 
   // Consume any pending seat_type + provisioning_source staged by the
   // endpoint that triggered this membership creation. Falls back to defaults
   // when no row was staged (e.g. someone added the membership directly in
   // WorkOS rather than through one of our endpoints).
-  const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
+  const consumed = await consumeInvitationSeatType(
+    membership.organization_id,
+    userData.email,
+    client,
+  );
   const hasExplicitSeatType = consumed !== null;
   const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor' : 'community_only';
   const provisioningSource = consumed?.source || 'webhook';
@@ -258,7 +283,7 @@ async function upsertMembership(
   // and notify so a multi-user company can't squeeze onto a 1-seat
   // individual sub by adding members in WorkOS directly.
   if (!hasExplicitSeatType) {
-    const availability = await canAddSeat(membership.organization_id, seatType);
+    const availability = await canAddSeat(membership.organization_id, seatType, client);
     if (!availability.allowed) {
       logger.warn({
         orgId: membership.organization_id,
@@ -288,7 +313,7 @@ async function upsertMembership(
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
     provisioning_source: provisioningSource,
-  });
+  }, client);
 
   // Audit-log both outcomes of the ownerless-org auto-promote path so future
   // role-drift questions have a paper trail in registry_audit_log (and we
@@ -340,17 +365,6 @@ async function upsertMembership(
     }
   }
 
-  // Set primary_organization_id if not already set (prefer paying orgs).
-  // Best-effort — same rationale as upsertUser: a transient backfill failure
-  // shouldn't fail the membership webhook. Integrity invariant catches drift.
-  try {
-    const preferredOrg = await resolvePreferredOrganization(membership.user_id);
-    if (preferredOrg) {
-      await backfillPrimaryOrganization(membership.user_id, preferredOrg);
-    }
-  } catch (err) {
-    logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
-  }
 }
 
 /**
@@ -360,8 +374,15 @@ async function upsertMembership(
  * remove local access immediately, but it must not run owner-succession logic:
  * promotion is reserved for explicit organization_membership.deleted events.
  */
-async function deleteInactiveMembershipCache(membership: OrganizationMembershipData): Promise<void> {
-  const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
+async function deleteInactiveMembershipCache(
+  membership: OrganizationMembershipData,
+  client: PoolClient,
+): Promise<void> {
+  const deletedRole = await deleteOrganizationMembership(
+    membership.user_id,
+    membership.organization_id,
+    client,
+  );
 
   logger.info({
     membershipId: membership.id,
@@ -385,51 +406,17 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
     role: deletedRole,
   }, 'Deleted organization membership');
 
-  // If an admin/owner was removed, check if the org still has one.
-  // Promote the longest-tenured remaining member to prevent ownerless orgs.
+  // Do not automatically promote a successor in WorkOS. Without a durable
+  // provider-intent journal, deletion can race the upstream call and leave an
+  // unknown authority outcome that is unsafe to replay. The signed deletion
+  // remains locally revoked; operators reconcile an ownerless organization
+  // through the explicit administration workflow.
   if (deletedRole === 'admin' || deletedRole === 'owner') {
-    try {
-      const target = await findSuccessorForPromotion(membership.organization_id);
-      if (!target) return;
-
-      // Promote in WorkOS first, then mirror locally
-      let promotedInWorkos = false;
-      if (target.workos_membership_id) {
-        await getWorkos().userManagement.updateOrganizationMembership(
-          target.workos_membership_id,
-          { roleSlug: 'owner' }
-        );
-        promotedInWorkos = true;
-      } else {
-        // No cached membership ID — look it up from WorkOS
-        const memberships = await getWorkos().userManagement.listOrganizationMemberships({
-          organizationId: membership.organization_id,
-          userId: target.workos_user_id,
-        });
-        if (memberships.data.length > 0) {
-          await getWorkos().userManagement.updateOrganizationMembership(
-            memberships.data[0].id,
-            { roleSlug: 'owner' }
-          );
-          promotedInWorkos = true;
-        } else {
-          logger.warn({
-            orgId: membership.organization_id,
-            userId: target.workos_user_id,
-          }, 'Successor has no WorkOS membership — cannot promote, org may be ownerless');
-        }
-      }
-      if (promotedInWorkos) {
-        await setMembershipRole(target.workos_user_id, membership.organization_id, 'owner');
-        logger.info({
-          orgId: membership.organization_id,
-          promotedUserId: target.workos_user_id,
-          previousOwnerId: membership.user_id,
-        }, 'Promoted longest-tenured member to owner after admin/owner removal');
-      }
-    } catch (err) {
-      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote successor after owner removal');
-    }
+    logger.warn({
+      orgId: membership.organization_id,
+      previousOwnerId: membership.user_id,
+      recoveryState: 'manual_owner_selection_required',
+    }, 'Automatic successor promotion deferred: no durable provider intent journal');
   }
 }
 
@@ -437,14 +424,14 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
  * Upsert user to local users table
  * Called on user.created and user.updated events
  */
-async function upsertUser(user: UserData): Promise<boolean> {
+async function upsertUser(user: UserData, credentialClient?: PoolClient): Promise<boolean> {
   const pool = getPool();
 
   const { firstName, lastName } = await resolveUserNameWithFallbacks(
-    pool, user.id, user.first_name, user.last_name,
+    credentialClient ?? pool, user.id, user.first_name, user.last_name,
   );
 
-  const upserted = await upsertWorkosUserUnlessConfirmedDeleted({
+  const normalizedUser = {
     id: user.id,
     email: user.email,
     firstName,
@@ -452,7 +439,14 @@ async function upsertUser(user: UserData): Promise<boolean> {
     emailVerified: user.email_verified,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
-  });
+  };
+  const upserted = credentialClient
+    ? (await upsertWorkosUserInCredentialEvent(
+        credentialClient,
+        normalizedUser,
+        'provider_authoritative',
+      ), true)
+    : await upsertWorkosUserUnlessConfirmedDeleted(normalizedUser);
   if (!upserted) {
     logger.warn({ userId: user.id }, 'Ignored stale WorkOS user event after confirmed deletion');
     return false;
@@ -467,15 +461,6 @@ async function upsertUser(user: UserData): Promise<boolean> {
   // Failures here don't fail the user upsert — the integrity invariant
   // surfaces any pointer that doesn't get set, and the next authenticated
   // request opportunistically backfills via resolvePrimaryOrganization.
-  try {
-    const preferredOrg = await resolvePreferredOrganization(user.id);
-    if (preferredOrg) {
-      await backfillPrimaryOrganization(user.id, preferredOrg);
-    }
-  } catch (err) {
-    logger.warn({ err, userId: user.id }, 'primary_organization_id backfill failed during user upsert');
-  }
-
   logger.info({ userId: user.id, email: user.email }, 'Upserted user');
   return true;
 }
@@ -485,10 +470,8 @@ async function upsertUser(user: UserData): Promise<boolean> {
  * Reads the resolved name from the users table (which may have been enriched
  * from Slack) rather than using raw WorkOS data that might be empty.
  */
-async function updateUserAcrossMemberships(user: UserData): Promise<void> {
-  const pool = getPool();
-
-  const result = await pool.query(
+async function updateUserAcrossMemberships(user: UserData, client: PoolClient): Promise<void> {
+  const result = await client.query(
     `UPDATE organization_memberships om
      SET email = $1,
          first_name = COALESCE(NULLIF(TRIM(u.first_name), ''), om.first_name),
@@ -504,7 +487,7 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
   // person_relationships denormalizes users.email too. Keep it in sync so
   // the admin person-detail header doesn't lag the canonical email after a
   // WorkOS-side update (dashboard edit, OIDC profile sync, primary swap).
-  await pool.query(
+  await client.query(
     `UPDATE person_relationships SET email = $1, updated_at = NOW()
       WHERE workos_user_id = $2
         AND email IS DISTINCT FROM $1`,
@@ -920,23 +903,18 @@ export function createWorkOSWebhooksRouter(): Router {
         switch (event.event) {
           case 'organization_membership.created': {
             const membership = event.data as unknown as OrganizationMembershipData;
-            await upsertMembership(membership);
+            const userData = await fetchMembershipUser(membership);
+            const guarded = await withActiveCredentialEventMutation(membership.user_id, async (client) => {
+              await upsertMembership(membership, userData, client);
+            });
             // Try to auto-link to Slack account by email (in case user.created didn't catch it)
-            if (membership.status === 'active') {
-              let workosUser: any;
-              try {
-                workosUser = await getWorkos().userManagement.getUser(membership.user_id);
-              } catch (error) {
-                logger.debug({ error, userId: membership.user_id }, 'Could not fetch user for auto-link on membership');
-              }
-
-              if (workosUser) {
+            if (guarded.applied && membership.status === 'active') {
                 // Slack auto-link
                 try {
-                  const linkResult = await tryAutoLinkWebsiteUserToSlack(membership.user_id, workosUser.email);
+                  const linkResult = await tryAutoLinkWebsiteUserToSlack(membership.user_id, userData.email);
                   if (linkResult.linked) {
                     logger.info(
-                      { userId: membership.user_id, email: workosUser.email, slackUserId: linkResult.slack_user_id },
+                      { userId: membership.user_id, email: userData.email, slackUserId: linkResult.slack_user_id },
                       'Auto-linked website user to Slack account on membership creation'
                     );
                   }
@@ -949,19 +927,22 @@ export function createWorkOSWebhooksRouter(): Router {
                   const { matchExpectationToUser } = await import('../db/certification-db.js');
                   const matched = await matchExpectationToUser(
                     membership.organization_id,
-                    workosUser.email,
+                    userData.email,
                     membership.user_id
                   );
                   if (matched) {
                     logger.info(
-                      { userId: membership.user_id, email: workosUser.email, orgId: membership.organization_id },
+                      { userId: membership.user_id, email: userData.email, orgId: membership.organization_id },
                       'Matched certification expectation to new org member'
                     );
                   }
                 } catch (certErr) {
                   logger.warn({ error: certErr, userId: membership.user_id }, 'Could not match cert expectation on membership');
                 }
-              }
+            }
+            if (!guarded.applied) {
+              logger.warn({ userId: membership.user_id },
+                'Ignored stale WorkOS membership.created event after confirmed deletion');
             }
             invalidateUnifiedUsersCache();
             break;
@@ -969,7 +950,14 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'organization_membership.updated': {
             const membership = event.data as unknown as OrganizationMembershipData;
-            await upsertMembership(membership);
+            const userData = await fetchMembershipUser(membership);
+            const guarded = await withActiveCredentialEventMutation(membership.user_id, async (client) => {
+              await upsertMembership(membership, userData, client);
+            });
+            if (!guarded.applied) {
+              logger.warn({ userId: membership.user_id },
+                'Ignored stale WorkOS membership.updated event after confirmed deletion');
+            }
             invalidateUnifiedUsersCache();
             break;
           }
@@ -983,10 +971,10 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.created': {
             const user = event.data as unknown as UserData;
-            if (!(await upsertUser(user))) {
-              invalidateUnifiedUsersCache();
-              break;
-            }
+            const guarded = await withCredentialCreationEventMutation(user.id, async (client) => {
+              await upsertUser(user, client);
+            });
+            if (guarded.applied) {
             // Try to auto-link to Slack account by email
             const linkResult = await tryAutoLinkWebsiteUserToSlack(user.id, user.email);
             if (linkResult.linked) {
@@ -999,18 +987,10 @@ export function createWorkOSWebhooksRouter(): Router {
             // Verified email is the trust gate: skip when WorkOS hasn't confirmed it yet
             // (the /api/me/* paths will retry after the user signs in and the email verifies).
             if (user.email_verified) {
-              try {
-                const linked = await autoLinkByVerifiedDomain(getWorkos(), user.id, user.email);
-                if (linked) {
-                  logger.info(
-                    { userId: user.id, email: user.email, orgId: linked.organizationId, role: linked.role },
-                    'Auto-provisioned new user into verified-domain organization'
-                  );
-                }
-              } catch (linkErr) {
-                logger.warn({ err: linkErr, userId: user.id, email: user.email },
-                  'Failed to auto-provision new user into verified-domain organization');
-              }
+              logger.warn(
+                { userId: user.id },
+                'Verified-domain upstream auto-provision deferred: no durable exactly-once provider intent journal',
+              );
             }
             // Fire-and-forget prospect triage + brand research for business emails.
             if (user.email) {
@@ -1096,17 +1076,23 @@ export function createWorkOSWebhooksRouter(): Router {
                 }
               }
             }
+            }
+            if (!guarded.applied) {
+              logger.warn({ userId: user.id }, 'Ignored stale WorkOS user.created event after confirmed deletion');
+            }
             invalidateUnifiedUsersCache();
             break;
           }
 
           case 'user.updated': {
             const user = event.data as unknown as UserData;
-            if (!(await upsertUser(user))) {
-              invalidateUnifiedUsersCache();
-              break;
+            const guarded = await withActiveCredentialEventMutation(user.id, async (client) => {
+              await upsertUser(user, client);
+              await updateUserAcrossMemberships(user, client);
+            });
+            if (!guarded.applied) {
+              logger.warn({ userId: user.id }, 'Ignored stale WorkOS user.updated event after confirmed deletion');
             }
-            await updateUserAcrossMemberships(user);
             invalidateUnifiedUsersCache();
             break;
           }
@@ -1263,18 +1249,25 @@ export async function backfillOrganizationMemberships(): Promise<{
                 if (membership && membership.status === 'active') {
                   seenMemberships.add(`${user.id}:${org.workos_organization_id}`);
                   const role = membership.role?.slug || 'member';
-                  await upsertOrganizationMembership({
-                    user_id: user.id,
-                    organization_id: org.workos_organization_id,
-                    membership_id: membership.id,
-                    email: user.email,
-                    first_name: user.firstName,
-                    last_name: user.lastName,
-                    role,
-                    seat_type: 'community_only',
-                    has_explicit_seat_type: false,
+                  const guarded = await withActiveCredentialEventMutation(user.id, async (client) => {
+                    await upsertOrganizationMembership({
+                      user_id: user.id,
+                      organization_id: org.workos_organization_id,
+                      membership_id: membership.id,
+                      email: user.email,
+                      first_name: user.firstName,
+                      last_name: user.lastName,
+                      role,
+                      seat_type: 'community_only',
+                      has_explicit_seat_type: false,
+                    }, client);
                   });
-                  result.membershipsCreated++;
+                  if (guarded.applied) {
+                    result.membershipsCreated++;
+                  } else {
+                    logger.warn({ userId: user.id, orgId: org.workos_organization_id },
+                      'Backfill: ignored stale membership after confirmed user deletion');
+                  }
                 }
               } catch (memberError) {
                 const msg = `Failed to process membership for user ${user.id}: ${memberError}`;
@@ -1345,6 +1338,17 @@ export async function backfillOrganizationMemberships(): Promise<{
  * any org), then lists users per org as a safety net. Removes local rows
  * for users confirmed deleted from WorkOS (verified via getUser).
  */
+export const BACKFILL_DELETION_MAX_ABSOLUTE = 100;
+export const BACKFILL_DELETION_MIN_RATIO_COUNT = 10;
+export const BACKFILL_DELETION_MAX_RATIO = 0.25;
+
+export function shouldAbortBackfillDeletion(localCount: number, candidateCount: number): boolean {
+  if (localCount <= 0 || candidateCount <= 0) return false;
+  return candidateCount > BACKFILL_DELETION_MAX_ABSOLUTE
+    || (candidateCount > BACKFILL_DELETION_MIN_RATIO_COUNT
+      && candidateCount / localCount > BACKFILL_DELETION_MAX_RATIO);
+}
+
 export async function backfillUsers(): Promise<{
   usersProcessed: number;
   usersCreated: number;
@@ -1468,36 +1472,46 @@ export async function backfillUsers(): Promise<{
 
       logger.info({ count: candidates.length }, 'Backfill: verifying deletion candidates against WorkOS');
 
-      // Process candidates sequentially to avoid pool connection deadlock.
-      // Each iteration may acquire a pool connection for the DELETE transaction,
-      // and the pool max is small (3). Using Promise.all with a batch size > pool
-      // max would cause all connections to be held simultaneously, blocking any
-      // new connect() calls and deadlocking.
-      for (const row of candidates) {
-        try {
-          // Confirm the user is actually gone from WorkOS before deleting
-          await getWorkos().userManagement.getUser(row.workos_user_id);
-          // User still exists in WorkOS — skip deletion
-          result.usersSkipped++;
-        } catch (getErr: any) {
-          if (getErr?.status === 404 || getErr?.code === 'entity_not_found') {
-            try {
-              const deletion = await deleteIdentityCredential(row.workos_user_id, 'sync_users_backfill');
-              if (deletion.deleted) {
-                result.usersRemoved++;
-                logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
-              } else {
-                result.usersSkipped++;
-              }
-            } catch (err) {
-              result.usersSkipped++;
-              logger.warn({ error: err, userId: row.workos_user_id }, 'Backfill: confirmed user deletion failed locally');
-            }
-          } else {
-            // WorkOS API error — don't delete, log full error server-side only
-            logger.warn({ error: getErr, userId: row.workos_user_id }, 'Backfill: WorkOS API error during user verification');
-            result.errors.push(`Could not verify user ${row.workos_user_id}: WorkOS API error (status ${getErr?.status || 'unknown'})`);
+      if (shouldAbortBackfillDeletion(localUsers.rows.length, candidates.length)) {
+        const message = `Deletion circuit breaker: refused ${candidates.length} candidates out of ${localUsers.rows.length} local users`;
+        result.errors.push(message);
+        result.usersSkipped += candidates.length;
+        logger.error({
+          localUsers: localUsers.rows.length,
+          deletionCandidates: candidates.length,
+        }, 'Backfill: deletion circuit breaker refused an unsafe batch');
+      } else {
+        // Process candidates sequentially to avoid pool connection deadlock.
+        // Each iteration may acquire a pool connection for the DELETE transaction,
+        // and the pool max is small (3). Using Promise.all with a batch size > pool
+        // max would cause all connections to be held simultaneously, blocking any
+        // new connect() calls and deadlocking.
+        for (const row of candidates) {
+          try {
+            // Confirm the user is actually gone from WorkOS before deleting
+            await getWorkos().userManagement.getUser(row.workos_user_id);
+            // User still exists in WorkOS — skip deletion
             result.usersSkipped++;
+          } catch (getErr: any) {
+            if (getErr?.status === 404 || getErr?.code === 'entity_not_found') {
+              try {
+                const deletion = await deleteIdentityCredential(row.workos_user_id, 'sync_users_backfill');
+                if (deletion.deleted) {
+                  result.usersRemoved++;
+                  logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
+                } else {
+                  result.usersSkipped++;
+                }
+              } catch (err) {
+                result.usersSkipped++;
+                logger.warn({ error: err, userId: row.workos_user_id }, 'Backfill: confirmed user deletion failed locally');
+              }
+            } else {
+              // WorkOS API error — don't delete, log full error server-side only
+              logger.warn({ error: getErr, userId: row.workos_user_id }, 'Backfill: WorkOS API error during user verification');
+              result.errors.push(`Could not verify user ${row.workos_user_id}: WorkOS API error (status ${getErr?.status || 'unknown'})`);
+              result.usersSkipped++;
+            }
           }
         }
       }
