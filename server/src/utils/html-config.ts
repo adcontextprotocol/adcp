@@ -37,6 +37,7 @@ const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
 interface AppUser {
   id?: string;
+  authWorkosUserId?: string;
   email: string;
   firstName?: string | null;
   lastName?: string | null;
@@ -167,18 +168,20 @@ export function getPublicFilePath(filename: string): string {
 /**
  * Resolve the admin flag for a user using the same rules as the requireAdmin
  * middleware: site-admin working-group membership, with `ADMIN_EMAILS` as an
- * environment-managed break-glass fallback. If the user already has isAdmin
- * set (e.g. a dev user), trust it.
+ * environment-managed break-glass fallback. Only development fixtures may
+ * retain a preset flag; real credentials recheck the bounded authority cache.
  */
 export async function enrichUserWithAdmin(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
   if (!user) return user;
-  if (typeof user.isAdmin === 'boolean') return user;
+  // Development fixtures have no WorkOS authority. Real sessions must recheck
+  // their exact credential; a previously enriched flag is presentation only.
+  if (process.env.NODE_ENV !== 'production' && user.id?.startsWith('user_dev_') && typeof user.isAdmin === 'boolean') return user;
 
   if (user.id) {
     try {
-      user.isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
+      user.isAdmin = (await resolveWebUserAAOAdminAccess({ ...user, id: user.id })).isAdmin;
     } catch (error) {
-      logger.warn({ error, userId: user.id }, 'Failed to resolve isAdmin via working group; defaulting to false');
+      logger.warn({ error, userId: user.authWorkosUserId ?? user.id }, 'Administrator visibility unavailable; privileged UI hidden');
       user.isAdmin = false;
     }
   } else {

@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 /**
  * Content routes module
  *
@@ -16,7 +17,6 @@ import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { contentProposeRateLimiter, contentFetchUrlRateLimiter, contentAssetUploadRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
-import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
 import { sendChannelMessage } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
@@ -353,6 +353,7 @@ async function getUserInfo(userId: string): Promise<{ name: string } | null> {
  */
 export interface ContentUser {
   id: string;
+  authWorkosUserId?: string;
   email?: string;
   /** Explicit null means a person-only context with no administrative or committee-leader authority. */
   adminPrincipal?: AAOAdminPrincipal | null;
@@ -368,9 +369,7 @@ function contentAuthorizationUserId(user: ContentUser): string | null {
 
 async function isContentUserAAOAdmin(user: ContentUser): Promise<boolean> {
   if (user.adminPrincipal === null) return false;
-  if (user.adminPrincipal) return isAuthenticatedUserAAOAdmin(user.adminPrincipal);
-  // Preserve existing HTTP callers until their separate authorization sweep.
-  return isWebUserAAOAdmin(user.id);
+  return isAuthenticatedUserAAOAdmin(user.adminPrincipal ?? user);
 }
 
 /**
@@ -1232,7 +1231,7 @@ export function createContentRouter(): Router {
     try {
       const user = req.user!;
       const result = await proposeContentForUser(
-        { id: user.id, email: user.email },
+        user,
         req.body as ProposeContentRequest
       );
 
@@ -1257,6 +1256,7 @@ export function createContentRouter(): Router {
         message: result.message,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'POST /api/content/propose error');
       res.status(500).json({
         error: 'Failed to propose content',
@@ -1270,11 +1270,12 @@ export function createContentRouter(): Router {
       const user = req.user!;
       const committeeSlug = req.query.committee_slug as string | undefined;
       const result = await listPendingContentForUser(
-        { id: user.id, email: user.email },
+        user,
         { committeeSlug }
       );
       res.json(result);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'GET /api/content/pending error');
       res.status(500).json({
         error: 'Failed to get pending content',
@@ -1290,7 +1291,7 @@ export function createContentRouter(): Router {
       const { publish_immediately = true } = req.body;
 
       const result = await approveContentForUser(
-        { id: user.id, email: user.email },
+        user,
         id,
         { publishImmediately: publish_immediately }
       );
@@ -1313,6 +1314,7 @@ export function createContentRouter(): Router {
         message: result.message,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'POST /api/content/:id/approve error');
       res.status(500).json({
         error: 'Failed to approve content',
@@ -1415,7 +1417,7 @@ export function createContentRouter(): Router {
       const { reason } = req.body;
 
       const result = await rejectContentForUser(
-        { id: user.id, email: user.email },
+        user,
         id,
         reason
       );
@@ -1439,6 +1441,7 @@ export function createContentRouter(): Router {
         message: result.message,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'POST /api/content/:id/reject error');
       res.status(500).json({
         error: 'Failed to reject content',
@@ -1454,7 +1457,7 @@ export function createContentRouter(): Router {
       const { notes } = req.body;
 
       const result = await requestRevisionsForUser(
-        { id: user.id, email: user.email },
+        user,
         id,
         notes
       );
@@ -1474,6 +1477,7 @@ export function createContentRouter(): Router {
 
       res.json({ success: true, status: result.status, message: result.message });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'POST /api/content/:id/request-revisions error');
       res.status(500).json({ error: 'Failed to request revisions' });
     }
@@ -1486,7 +1490,7 @@ export function createContentRouter(): Router {
       const { id } = req.params;
 
       const result = await resubmitContentForUser(
-        { id: user.id, email: user.email },
+        user,
         id
       );
 
@@ -1590,7 +1594,7 @@ export function createContentRouter(): Router {
       const perspectiveId = perspResult.rows[0].id;
 
       // Check permission: must be author, proposer, or admin
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isContentUserAAOAdmin(user);
       if (!userIsAdmin) {
         const authorCheck = await pool.query(
           `SELECT 1 FROM perspectives WHERE id = $1 AND (author_user_id = $2 OR proposer_user_id = $2)
@@ -1652,6 +1656,7 @@ export function createContentRouter(): Router {
 
       res.status(201).json({ asset: { ...asset, url: assetUrl } });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Upload perspective asset error');
       res.status(500).json({ error: 'Failed to upload asset' });
     }
@@ -1677,6 +1682,7 @@ export function createMyContentRouter(): Router {
       const limit = parseInt(req.query.limit as string);
       const result = await listMyContentService({
         userId: user.id,
+        adminPrincipal: user,
         status,
         collection,
         relationship,
@@ -1684,6 +1690,7 @@ export function createMyContentRouter(): Router {
       });
       res.json({ items: result.items });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       if (error instanceof MyContentError && error.is('invalid_status')) {
         return res.status(400).json({
           error: 'Invalid status',
@@ -1742,7 +1749,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isContentUserAAOAdmin(user);
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -1956,6 +1963,7 @@ export function createMyContentRouter(): Router {
 
       res.json(result.rows[0]);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'PUT /api/me/content/:id error');
       res.status(500).json({
         error: 'Failed to update content',
@@ -1993,7 +2001,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isContentUserAAOAdmin(user);
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -2015,6 +2023,7 @@ export function createMyContentRouter(): Router {
       logger.info({ contentId: id, userId: user.id, title: contentItem.title }, 'Content deleted by owner');
       res.json({ success: true });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'DELETE /api/me/content/:id error');
       res.status(500).json({ error: 'Failed to delete content' });
     }
@@ -2058,7 +2067,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isContentUserAAOAdmin(user);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -2102,6 +2111,7 @@ export function createMyContentRouter(): Router {
 
       res.status(201).json(result.rows[0]);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'POST /api/me/content/:id/authors error');
       res.status(500).json({
         error: 'Failed to add author',
@@ -2139,7 +2149,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isContentUserAAOAdmin(user);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -2165,6 +2175,7 @@ export function createMyContentRouter(): Router {
 
       res.json({ success: true, deleted: authorId });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'DELETE /api/me/content/:id/authors/:authorId error');
       res.status(500).json({
         error: 'Failed to remove author',

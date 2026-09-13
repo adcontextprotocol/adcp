@@ -17,6 +17,7 @@ vi.mock('../../src/auth/workos-client.js', () => ({
 // non-admin. The mock reads this at call time.
 const authState = {
   userId: 'user_my_content',
+  authWorkosUserId: undefined as string | undefined,
   email: 'mc@example.com',
 };
 
@@ -24,6 +25,7 @@ vi.mock('../../src/middleware/auth.js', () => {
   const setTestUser = (req: any) => {
     req.user = {
       id: authState.userId,
+      authWorkosUserId: authState.authWorkosUserId,
       email: authState.email,
       firstName: 'Mary',
     };
@@ -65,7 +67,7 @@ vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
 }));
 
-const adminState = { isAdmin: false };
+const adminState = { isAdmin: false, grantedUserId: undefined as string | undefined, unavailable: false };
 // Mock the lookup module directly. `my-content-service.ts` imports
 // `isWebUserAAOAdmin` from `addie/admin-status-lookup.js` (the thin
 // module created in PR #3758), so the test must intercept there.
@@ -73,9 +75,23 @@ const adminState = { isAdmin: false };
 // re-exports are not call-routed through the original module — once
 // the consumer points at `admin-status-lookup`, that's what gets
 // resolved.
-vi.mock('../../src/addie/admin-status-lookup.js', () => ({
-  isWebUserAAOAdmin: vi.fn(async () => adminState.isAdmin),
-}));
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = vi.fn(async (id: string) => {
+    if (adminState.unavailable) throw new actual.AAOAdminLookupUnavailableError();
+    return adminState.grantedUserId ? id === adminState.grantedUserId : adminState.isAdmin;
+  });
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
 vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
@@ -217,6 +233,9 @@ describe('My Content — body, admin scope, status, delete', () => {
 
   beforeEach(async () => {
     adminState.isAdmin = false;
+    adminState.grantedUserId = undefined;
+    adminState.unavailable = false;
+    authState.authWorkosUserId = undefined;
     authState.userId = USER_ID;
     authState.email = 'mc@example.com';
     await pool.query(`DELETE FROM addie_escalations WHERE summary LIKE $1`, [`${ESCALATION_SUMMARY_PREFIX}%`]);
@@ -283,6 +302,27 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app).get('/api/me/content').expect(200);
       const slugs = response.body.items.map((i: any) => i.slug);
       expect(slugs).not.toContain('mc-test-orphan');
+    });
+
+    it.each([
+      ['user_my_content', 'user_my_content_other', true],
+      ['user_my_content_other', 'user_my_content', false],
+    ] as const)('uses authenticated %s instead of canonical %s for platform scope', async (authenticated, canonical, allowed) => {
+      await insertPerspective({ slug: 'mc-test-orphan', title: 'Unrelated official content', proposerUserId: null, workingGroupId: null });
+      authState.userId = canonical;
+      authState.authWorkosUserId = authenticated;
+      adminState.grantedUserId = USER_ID;
+
+      const response = await request(app).get('/api/me/content').expect(200);
+      expect(response.body.items.some((item: { slug: string }) => item.slug === 'mc-test-orphan')).toBe(allowed);
+    });
+
+    it('reports an unavailable platform lookup separately from an empty personal list', async () => {
+      adminState.unavailable = true;
+      const response = await request(app).get('/api/me/content').expect(503);
+      expect(response.body.error).toBe('admin_authorization_unavailable');
+      expect(response.headers['retry-after']).toBe('5');
+      expect(response.headers['cache-control']).toBe('no-store');
     });
 
     it('admins see every perspective so they can edit anything', async () => {

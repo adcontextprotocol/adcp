@@ -6,10 +6,9 @@ import type { Request, Response, NextFunction } from 'express';
  * and member middleware factories (#7269).
  *
  * The bypass must recognize BOTH aao-admin working group membership (the
- * deployed primary authority, via isWebUserAAOAdmin) and the ADMIN_EMAILS
- * break-glass list — matching requireAdmin. A membership-lookup failure
- * degrades to non-admin (isWebUserAAOAdmin fails closed) without disabling a
- * valid break-glass grant.
+ * deployed primary authority) and the ADMIN_EMAILS break-glass list —
+ * matching requireAdmin. Lookup failures remain unavailable without disabling
+ * a valid independently configured break-glass grant.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -32,11 +31,17 @@ vi.mock('@workos-inc/node', () => ({
   },
 }));
 
-vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
-  isWebUserAAOAdmin: mocks.isWebUserAAOAdmin,
+vi.mock('../../src/db/working-group-db.js', () => ({
+  WorkingGroupDatabase: class {
+    getWorkingGroupBySlug = vi.fn().mockResolvedValue({ id: 'wg_aao_admin' });
+    isMember = mocks.isWebUserAAOAdmin;
+  },
 }));
 
+import { invalidateAllAdminStatusCaches } from '../../src/addie/admin-status-cache.js';
+
 const {
+  requireAdmin,
   createRequireWorkingGroupLeader,
   createRequireWorkingGroupMember,
   stopAuthTimers,
@@ -62,9 +67,16 @@ function createReqRes(email = 'user@example.test') {
   const req = {
     user: { id: 'user_web', email },
     params: { slug: 'signals' },
+    headers: { accept: 'application/json' },
+    accepts: () => false,
+    originalUrl: '/api/admin/test',
+    path: '/admin/test',
+    method: 'GET',
   } as unknown as Request;
 
   const res = {
+    headers: {} as Record<string, string>,
+    setHeader(name: string, value: string) { this.headers[name] = value; },
     statusCode: 200,
     body: undefined as unknown,
     status(code: number) {
@@ -83,6 +95,7 @@ function createReqRes(email = 'user@example.test') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  invalidateAllAdminStatusCaches();
   delete process.env.ADMIN_EMAILS;
   mocks.isWebUserAAOAdmin.mockResolvedValue(false);
 });
@@ -111,7 +124,7 @@ describe.each([
     await factory(db)(req, res, next);
 
     expect(next).toHaveBeenCalledOnce();
-    expect(mocks.isWebUserAAOAdmin).toHaveBeenCalledWith('user_web');
+    expect(mocks.isWebUserAAOAdmin).toHaveBeenCalledWith('wg_aao_admin', 'user_web');
     // Admin short-circuits before any group lookup.
     expect(db.getWorkingGroupBySlug).not.toHaveBeenCalled();
   });
@@ -147,16 +160,62 @@ describe.each([
     expect(next).toHaveBeenCalledOnce();
   });
 
-  it('denies when the admin membership lookup fails (fail closed)', async () => {
-    // isWebUserAAOAdmin fails closed to `false` on lookup error; a non-leader,
-    // non-break-glass user must then be denied rather than granted.
-    mocks.isWebUserAAOAdmin.mockResolvedValue(false);
+  it('never regains reserved platform authority through a canonical group grant', async () => {
+    const db = createWorkingGroupDb({ isLeader: true, isMember: true, group: { id: 'wg_aao_admin' } });
+    const { req, res, next } = createReqRes();
+    req.params.slug = 'aao-admin';
+    req.user!.id = 'user_canonical_admin';
+    req.user!.authWorkosUserId = 'user_authenticated_non_admin';
+
+    await factory(db)(req, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+    expect(db.getWorkingGroupBySlug).not.toHaveBeenCalled();
+    expect(db.isLeader).not.toHaveBeenCalled();
+    expect(db.isMember).not.toHaveBeenCalled();
+  });
+
+  it('returns a retryable 503 when the administrator lookup is unavailable', async () => {
+    mocks.isWebUserAAOAdmin.mockRejectedValue(new Error('database unavailable'));
     const db = createWorkingGroupDb({ isLeader: false, isMember: false });
     const { req, res, next } = createReqRes();
 
     await factory(db)(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect((res as unknown as { statusCode: number }).statusCode).toBe(403);
+    expect((res as unknown as { statusCode: number }).statusCode).toBe(503);
+    expect(res.body).toMatchObject({ error: 'admin_authorization_unavailable' });
+  });
+});
+
+
+describe.each([
+  { label: 'platform admin', middleware: requireAdmin },
+  { label: 'working-group leader', middleware: createRequireWorkingGroupLeader(createWorkingGroupDb()) },
+  { label: 'working-group member', middleware: createRequireWorkingGroupMember(createWorkingGroupDb()) },
+])('$label credential boundary', ({ middleware }) => {
+  it.each([
+    { authenticated: 'user_admin', canonical: 'user_member', allowed: true },
+    { authenticated: 'user_member', canonical: 'user_admin', allowed: false },
+  ])('authorizes $authenticated without inheriting $canonical', async ({ authenticated, canonical, allowed }) => {
+    mocks.isWebUserAAOAdmin.mockImplementation(async (_group: string, userId: string) => userId === 'user_admin');
+    const { req, res, next } = createReqRes();
+    req.user!.id = canonical;
+    req.user!.authWorkosUserId = authenticated;
+    await middleware(req, res, next);
+    expect(mocks.isWebUserAAOAdmin).toHaveBeenCalledWith('wg_aao_admin', authenticated);
+    expect(next).toHaveBeenCalledTimes(allowed ? 1 : 0);
+    expect(res.statusCode).toBe(allowed ? 200 : 403);
+  });
+
+  it('preserves independently configured break-glass authority during an outage', async () => {
+    process.env.ADMIN_EMAILS = 'ops@example.test';
+    mocks.isWebUserAAOAdmin.mockRejectedValue(new Error('database unavailable'));
+    const { req, res, next } = createReqRes('OPS@example.test');
+    req.user!.authWorkosUserId = 'user_authenticated';
+    await middleware(req, res, next);
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.statusCode).toBe(200);
   });
 });
