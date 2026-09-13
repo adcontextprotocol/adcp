@@ -1365,6 +1365,10 @@
           "$ref": "/schemas/enums/reach-unit.json",
           "description": "Unit of measurement for reach metrics (individuals, households, devices, accounts, cookies, custom)"
         },
+        "duration-unit": {
+          "$ref": "/schemas/enums/duration-unit.json",
+          "description": "Time unit for a Duration (seconds, minutes, hours, days, campaign); shared by duration.json and capability declarations"
+        },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
           "description": "Capabilities supported by creative agents (validation, assembly, generation, preview, delivery)"
