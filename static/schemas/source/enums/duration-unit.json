@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/duration-unit.json",
+  "title": "Duration Unit",
+  "description": "A duration unit, including the full campaign flight.",
+  "type": "string",
+  "enum": ["seconds", "minutes", "hours", "days", "campaign"]
+}

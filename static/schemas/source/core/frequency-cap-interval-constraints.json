@@ -6,7 +6,7 @@
   "description": "Exact supported intervals for one duration unit, declared as either an exhaustive preset list or an inclusive integer range. The two forms are mutually exclusive.",
   "type": "object",
   "properties": {
-    "unit": { "$ref": "/schemas/core/frequency-cap-duration-unit.json" },
+    "unit": { "$ref": "/schemas/enums/duration-unit.json" },
     "minimum_interval": { "type": "integer", "minimum": 1 },
     "maximum_interval": { "type": "integer", "minimum": 1 },
     "allowed_intervals": {

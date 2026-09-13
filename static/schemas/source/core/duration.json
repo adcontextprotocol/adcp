@@ -11,8 +11,7 @@
       "description": "Number of time units. Must be 1 when unit is 'campaign'."
     },
     "unit": {
-      "type": "string",
-      "enum": ["seconds", "minutes", "hours", "days", "campaign"],
+      "allOf": [{ "$ref": "/schemas/enums/duration-unit.json" }],
       "description": "Time unit. 'seconds' for sub-minute precision. 'campaign' spans the full campaign flight."
     }
   },

@@ -42,8 +42,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Structured package frequency-cap constraints and requirements add a small
   // shared closure (constraint, interval, and enum schemas). Aggregate
   // MediaBuy frequency capping adds a root value, product support, and
-  // requirements closure to the representative media-buy graph.
-  assert.equal(report.definition_instances, 671);
+  // requirements closure to the representative media-buy graph. The shared
+  // duration-unit enum is referenced by four paths in that closure.
+  assert.equal(report.definition_instances, 675);
   assert.equal(report.unique_definitions, 182);
   assert.equal(report.repeated_definitions, 130);
   assert.ok(report.repeated_definition_bytes > 180_000);
