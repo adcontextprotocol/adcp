@@ -72,10 +72,6 @@ import {
   createCollaborationToolHandlers,
 } from "../addie/mcp/collaboration-tools.js";
 import {
-  COMMITTEE_LEADER_TOOLS,
-  createCommitteeLeaderToolHandlers,
-} from "../addie/mcp/committee-leader-tools.js";
-import {
   MOLTBOOK_TOOLS,
   createMoltbookToolHandlers,
 } from "../addie/mcp/moltbook-tools.js";
@@ -200,9 +196,16 @@ function validateLlmSecret(req: Request): boolean {
  * Build user-scoped tools for a voice call, matching the web chat tool set.
  * This gives voice Addie the same capabilities as chat Addie.
  */
-async function buildVoiceRequestTools(
+export interface TavusVoiceRequestToolDependencies {
+  getMemberContext?: (userId: string) => Promise<MemberContext | null>;
+  isAdmin?: (userId: string) => Promise<boolean>;
+  getCommitteesLedByUser?: (userId: string) => Promise<Array<{ id: string }>>;
+}
+
+export async function buildVoiceRequestTools(
   userId: string,
   threadId: string,
+  dependencies: TavusVoiceRequestToolDependencies = {},
 ): Promise<{
   requestTools: RequestTools;
   requestContext: string;
@@ -211,7 +214,7 @@ async function buildVoiceRequestTools(
 }> {
   let memberContext: MemberContext | null = null;
   try {
-    memberContext = await getWebMemberContext(userId);
+    memberContext = await (dependencies.getMemberContext ?? getWebMemberContext)(userId);
   } catch (error) {
     logger.warn({ error, userId }, "Tavus: Failed to get member context");
   }
@@ -259,10 +262,11 @@ async function buildVoiceRequestTools(
   }
 
   // Permission-gated tools
-  const workingGroupDb = new WorkingGroupDatabase();
   const [userIsAdmin, ledGroups] = await Promise.all([
-    isWebUserAAOAdmin(userId),
-    workingGroupDb.getCommitteesLedByUser(userId),
+    (dependencies.isAdmin ?? isWebUserAAOAdmin)(userId),
+    dependencies.getCommitteesLedByUser
+      ? dependencies.getCommitteesLedByUser(userId)
+      : new WorkingGroupDatabase().getCommitteesLedByUser(userId),
   ]);
 
   // Event tools: readonly for all users, admin tools for admins only
@@ -297,10 +301,10 @@ async function buildVoiceRequestTools(
     combinedHandlers.set(name, handler);
   }
 
-  allTools.push(...COMMITTEE_LEADER_TOOLS);
-  for (const [name, handler] of createCommitteeLeaderToolHandlers(memberContext, linkedSlackUserId)) {
-    combinedHandlers.set(name, handler);
-  }
+  // #7450 continuation: Tavus currently persists only the canonical thread
+  // owner and cannot prove the immutable authenticated WorkOS credential for
+  // this voice turn. Do not register committee mutation definitions or
+  // handlers until the exact voice principal is carried end-to-end.
 
   if (process.env.MOLTBOOK_API_KEY) {
     allTools.push(...MOLTBOOK_TOOLS);

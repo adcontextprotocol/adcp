@@ -1409,7 +1409,11 @@ async function createUserScopedTools(
   }
 
   // Add committee leader tools (co-leader management, self-enforcing permissions)
-  const committeeLeaderHandlers = createCommitteeLeaderToolHandlers(memberContext, slackUserId);
+  const committeeLeaderHandlers = createCommitteeLeaderToolHandlers(
+    memberContext,
+    slackUserId,
+    { surface: 'slack' },
+  );
   allTools.push(...COMMITTEE_LEADER_TOOLS);
   for (const [name, handler] of committeeLeaderHandlers) {
     allHandlers.set(name, handler);

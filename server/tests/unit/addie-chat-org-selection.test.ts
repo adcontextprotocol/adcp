@@ -46,6 +46,11 @@ const threadMocks = vi.hoisted(() => ({
   addMessageFeedback: vi.fn(),
 }));
 
+const committeeMutationMocks = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  resolvePrincipal: vi.fn(),
+}));
+
 vi.mock('../../src/addie/member-context.js', () => ({
   getWebMemberContext: memberContextMocks.getWebMemberContext,
   formatMemberContextForPrompt: memberContextMocks.formatMemberContextForPrompt,
@@ -89,6 +94,11 @@ vi.mock('../../src/db/certification-db.js', () => ({
   getProgress: vi.fn(),
 }));
 
+vi.mock('../../src/services/committee-leader-mutation.js', () => ({
+  mutateCommitteeLeader: committeeMutationMocks.mutate,
+  resolveCommitteeLeaderPrincipal: committeeMutationMocks.resolvePrincipal,
+}));
+
 vi.mock('../../src/addie/admin-status-lookup.js', () => ({
   isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
 }));
@@ -102,7 +112,26 @@ vi.mock('../../src/db/working-group-db.js', () => ({
 vi.mock('../../src/middleware/auth.js', () => ({
   optionalAuth: (req: any, _res: any, next: any) => {
     const id = req.get('x-test-user-id');
-    if (id) req.user = { id, email: `${id}@example.com` };
+    const authenticatedId = req.get('x-test-authenticated-user-id') || id;
+    if (id) {
+      req.user = {
+        id,
+        authWorkosUserId: authenticatedId === id ? undefined : authenticatedId,
+        email: `${authenticatedId}@example.com`,
+        authorizationSnapshot: Object.freeze({
+          authenticatedUserId: authenticatedId,
+          canonicalUserId: id,
+          identityId: `identity_${id}`,
+          selectedOrganizationId: req.body?.organization_id ?? null,
+          authorizationEpoch: '7',
+          credential: Object.freeze({
+            email: `${authenticatedId}@example.com`, emailVerified: true,
+            firstName: null, lastName: null,
+          }),
+          credentialGrant: null,
+        }),
+      };
+    }
     next();
   },
 }));
@@ -137,6 +166,8 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     siHostMocks.hasCachedSiSession.mockReset();
     siHostMocks.hasCachedSiSession.mockReturnValue(false);
     directoryMocks.createHandlers.mockClear();
+    committeeMutationMocks.mutate.mockReset();
+    committeeMutationMocks.resolvePrincipal.mockReset();
   });
 
   it('passes the selected organization id into web member context resolution', async () => {
@@ -223,6 +254,20 @@ describe('mounted Addie web-thread ownership', () => {
   }
 
   beforeEach(() => {
+    memberContextMocks.getWebMemberContext.mockReset().mockResolvedValue({
+      is_mapped: false, is_member: false, slack_linked: false,
+    });
+    memberContextMocks.formatMemberContextForPrompt.mockReset().mockReturnValue(null);
+    siMocks.retrieve.mockReset().mockResolvedValue({ agents: [], retrieval_time_ms: 0 });
+    siMocks.formatContext.mockReset();
+    siHostMocks.hasCachedSiSession.mockReset().mockReturnValue(false);
+    chatClient.processMessage.mockReset().mockResolvedValue({
+      text: 'Hello', tools_used: [], tool_executions: [],
+    });
+    chatClient.processMessageStream.mockReset().mockImplementation(() => (async function* () {
+      yield { type: 'text', text: 'Hello' };
+      yield { type: 'done', response: { text: 'Hello', tools_used: [], tool_executions: [] } };
+    })());
     threadMocks.getThreadByExternalId.mockReset();
     threadMocks.getOrCreateThread.mockReset().mockResolvedValue({
       thread_id: 'thread-anonymous-created',
@@ -236,6 +281,77 @@ describe('mounted Addie web-thread ownership', () => {
       message_id: '33333333-3333-4333-8333-333333333333',
     });
     threadMocks.addMessageFeedback.mockReset().mockResolvedValue(true);
+    committeeMutationMocks.mutate.mockReset();
+    committeeMutationMocks.resolvePrincipal.mockReset();
+  });
+
+  it('binds the mounted web mutation handler to authWorkosUserId in both linked directions', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockResolvedValue({
+        action: 'respond', tool_sets: ['committee_co_leaders'], confidence: 'high',
+        reason: 'committee leadership mutation', decision_method: 'llm',
+      }),
+    };
+    threadMocks.getOrCreateThread.mockResolvedValue({
+      thread_id: 'thread-web-exact-principal',
+      user_type: 'workos',
+      user_id: 'canonical_profile',
+      message_count: 0,
+    });
+    committeeMutationMocks.mutate.mockImplementation(async (input: any) =>
+      input.principal.authenticatedUserId === 'credential_leader'
+        ? {
+            status: 'mutated', action: 'added', committeeId: 'committee-id',
+            committeeName: 'Creative working group', committeeType: 'working_group',
+            slackChannelId: null, targetWorkosUserId: 'target-user',
+          }
+        : { status: 'forbidden', reason: 'not_committee_leader' }
+    );
+    chatClient.processMessage.mockImplementation(async (_message, _history, requestTools) => {
+      const result = await requestTools.handlers.get('add_committee_co_leader')({
+        organization_id: 'org_selected',
+        committee_slug: 'creative-working-group',
+        user_id: 'target-user',
+      });
+      return { text: result, tools_used: [], tool_executions: [] };
+    });
+
+    const denied = await request(app(router))
+      .post('/api/addie/chat')
+      .set('x-test-user-id', 'credential_leader')
+      .set('x-test-authenticated-user-id', 'credential_unprivileged')
+      .send({ message: 'Add the co-leader', organization_id: 'org_selected' });
+    expect(denied.status).toBe(200);
+    expect(denied.body.response).toContain('not authorized');
+    expect(committeeMutationMocks.mutate.mock.calls[0][0].principal).toMatchObject({
+      authenticatedUserId: 'credential_unprivileged',
+      canonicalUserId: 'credential_leader',
+      identityId: 'identity_credential_leader',
+    });
+
+    threadMocks.getOrCreateThread.mockResolvedValue({
+      thread_id: 'thread-web-exact-principal-2',
+      user_type: 'workos',
+      user_id: 'credential_unprivileged',
+      message_count: 0,
+    });
+    const allowed = await request(app(router))
+      .post('/api/addie/chat')
+      .set('x-test-user-id', 'credential_unprivileged')
+      .set('x-test-authenticated-user-id', 'credential_leader')
+      .send({ message: 'Add the co-leader', organization_id: 'org_selected' });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.response).toContain('Successfully added');
+    expect(committeeMutationMocks.mutate.mock.calls[1][0]).toMatchObject({
+      selectedOrganizationId: 'org_selected',
+      surface: 'web',
+      principal: {
+        authenticatedUserId: 'credential_leader',
+        canonicalUserId: 'credential_unprivileged',
+        identityId: 'identity_credential_unprivileged',
+      },
+    });
   });
 
   it('hides another user\'s thread on the mounted GET route', async () => {

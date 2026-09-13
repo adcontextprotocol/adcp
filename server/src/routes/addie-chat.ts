@@ -15,6 +15,7 @@ import cors from "cors";
 import { createLogger } from "../logger.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
+import type { WorkOSUser } from "../types.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
 import {
@@ -791,6 +792,7 @@ export async function prepareRequestWithMemberTools(
   isAuthenticated: boolean,
   threadId?: string,
   selectedOrganizationId?: string | null,
+  authorizationPrincipal?: WorkOSUser,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -1017,10 +1019,19 @@ export async function prepareRequestWithMemberTools(
       combinedHandlers.set(name, handler);
     }
 
-    // Committee leader tools (uses memberContext.workos_user for identity, Slack ID for fallback)
-    allTools.push(...COMMITTEE_LEADER_TOOLS);
-    for (const [name, handler] of createCommitteeLeaderToolHandlers(memberContext, linkedSlackUserId)) {
-      combinedHandlers.set(name, handler);
+    // Committee authority is bound to the exact immutable request principal;
+    // canonical member context remains attribution/person state only. A
+    // caller without immutable authentication provenance gets no mutation
+    // definition or handler at all.
+    if (authorizationPrincipal) {
+      allTools.push(...COMMITTEE_LEADER_TOOLS);
+      for (const [name, handler] of createCommitteeLeaderToolHandlers(
+        memberContext,
+        linkedSlackUserId,
+        { principal: authorizationPrincipal, surface: 'web' },
+      )) {
+        combinedHandlers.set(name, handler);
+      }
     }
   }
 
@@ -1335,7 +1346,8 @@ export function createAddieChatRouter(options?: {
         externalId,
         isAuth,
         thread.thread_id,
-        typeof organization_id === 'string' ? organization_id : null
+        typeof organization_id === 'string' ? organization_id : null,
+        req.user,
       );
       const tieredAccess = buildTieredAccess(
         memberTools,
@@ -1922,7 +1934,8 @@ export function createAddieChatRouter(options?: {
         externalId,
         isAuth,
         thread.thread_id,
-        typeof organization_id === 'string' ? organization_id : null
+        typeof organization_id === 'string' ? organization_id : null,
+        req.user,
       );
       const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
       const activeCertificationKind = classifyActiveCertificationProgress(
