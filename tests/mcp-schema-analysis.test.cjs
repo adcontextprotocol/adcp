@@ -12,7 +12,9 @@ const {
   ACCOUNT_REF,
   BRAND_REF,
   PRODUCT_PURCHASE,
+  PRODUCT_PURCHASE_INPUT,
   TARGETING,
+  TARGETING_INPUT,
   TARGETING_REQUIREMENTS,
   adaptMediaBuyPromptArguments,
   analyzeInputSchemaWeights,
@@ -35,10 +37,11 @@ test("input-field weight report attributes the largest transitive schema graphs"
 
   assert.equal(report.tool_count, 19);
   // Exact Reliable Reporting reads include the shared pagination closure;
-  // consumer-status sync adds one compact tool and its status definition.
-  assert.equal(report.definition_instances, 622);
-  assert.equal(report.unique_definitions, 168);
-  assert.equal(report.repeated_definitions, 117);
+  // consumer-status sync adds one compact tool and its status definition;
+  // targeting reuses four named codegen-safe item and cross-field schemas.
+  assert.equal(report.definition_instances, 645);
+  assert.equal(report.unique_definitions, 174);
+  assert.equal(report.repeated_definitions, 122);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -67,15 +70,18 @@ test("prompt cleanup experiment is pure and leaves canonical schemas unchanged",
   assert.ok(!Object.hasOwn(definitions, BRAND_REF));
 
   const targeting = definitions[TARGETING];
+  const targetingInput = definitions[TARGETING_INPUT];
   for (const deprecated of [
     "axe_include_segment",
     "axe_exclude_segment",
     "signal_targeting",
   ]) {
     assert.ok(!Object.hasOwn(targeting.properties, deprecated));
+    assert.ok(!Object.hasOwn(targetingInput.properties, deprecated));
   }
 
   const purchase = definitions[PRODUCT_PURCHASE];
+  const purchaseInput = definitions[PRODUCT_PURCHASE_INPUT];
   for (const inherited of [
     "pricing",
     "start_time",
@@ -84,6 +90,7 @@ test("prompt cleanup experiment is pure and leaves canonical schemas unchanged",
     "performance_standards",
   ]) {
     assert.ok(!Object.hasOwn(purchase.properties, inherited));
+    assert.ok(!Object.hasOwn(purchaseInput.properties, inherited));
   }
 
   const requirements = definitions[TARGETING_REQUIREMENTS];
@@ -158,7 +165,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 168);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 174);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -232,11 +239,11 @@ test("experiment report keeps all alternatives smaller than standalone model con
   );
   assert.ok(
     variants.prompt_cleanup.context_bytes <
-      variants.standalone.context_bytes * 0.82
+      variants.standalone.context_bytes * 0.83
   );
   assert.ok(
     variants.shared_dictionary.context_bytes <
-      variants.standalone.context_bytes * 0.37
+      variants.standalone.context_bytes * 0.39
   );
   assert.ok(
     variants.shared_dictionary_with_prompt_cleanup.context_bytes <

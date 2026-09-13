@@ -86,7 +86,7 @@ jobs:
           cmp "${RUNNER_TEMP}/first.tgz.provenance.json" dist/protocol/latest.tgz.provenance.json
 
       - name: Upload protocol PR bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
           path: |
