@@ -23,6 +23,17 @@ describe('hosted compliance publication policy', () => {
     expect(input.storyboard_statuses?.map(s => s.storyboard_id)).toEqual(['first', 'second', 'third']);
   });
 
+  it.each(['complete', 'timed_out'] as const)('normalizes and prepares %s runs for persistence with observations omitted', completeness => {
+    const run = result([{ passed: true }], completeness);
+    delete (run as Partial<ComplianceResult>).observations;
+    run.tracks[0].status = 'fail';
+    const input = complianceResultToDbInput(run, agentUrl, 'production');
+    expect(input).toMatchObject({ completeness, is_authoritative: completeness === 'complete',
+      overall_status: 'passing', tracks_passed: 1, tracks_failed: 0, observations_json: undefined });
+    expect(input.tracks_json[0].status).toBe('pass');
+    expect(input.storyboard_statuses?.[0]).toMatchObject({ status: 'passing', steps_total: 1 });
+  });
+
   it('keeps a fixed selected storyboard denominator across rotated execution slices', () => {
     const first = result([{ passed: true }]);
     const second = result([{ passed: true }]);

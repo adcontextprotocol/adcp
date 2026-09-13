@@ -817,7 +817,7 @@ function normalizeGradedTracks(result: ComplianceResult): ComplianceResult {
     const gradedSteps = phases.flatMap(phase => phase.dispositions);
     const hasPassed = gradedSteps.includes('passed');
     const hasFailed = gradedSteps.some(d => d === 'failed' || d === 'dependency_failed') ||
-      [...(track.observations ?? []), ...result.observations.filter(observation => observation.track === track.track)]
+      [...(track.observations ?? []), ...(result.observations ?? []).filter(observation => observation.track === track.track)]
         .some(observation => observation.source?.code === 'storyboard-assertion-failed');
     const status: TrackResult['status'] = hasFailed ? hasPassed ? 'partial' : 'fail'
       : !hasPassed ? 'skip' : track.status === 'silent' ? 'silent' : 'pass';
