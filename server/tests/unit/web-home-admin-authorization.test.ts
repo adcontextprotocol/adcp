@@ -36,7 +36,7 @@ describe('Addie home administrator authorization', () => {
     const principal = { id: canonical, authWorkosUserId: credential, email: `${credential}@example.com` };
     const home = await getWebHomeContent(principal, 'org_selected');
     expect(mocks.authorize).toHaveBeenCalledWith(principal);
-    expect(mocks.context).toHaveBeenCalledWith(canonical, 'org_selected', principal);
+    expect(mocks.context).toHaveBeenCalledWith(credential, 'org_selected', principal);
     expect(home.adminPanel !== null).toBe(allowed);
     expect(mocks.panel).toHaveBeenCalledTimes(allowed ? 1 : 0);
   });

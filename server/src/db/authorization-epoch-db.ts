@@ -13,10 +13,30 @@
  */
 
 import type { Pool, PoolClient } from 'pg';
-import { query } from './client.js';
+import { getClient, query } from './client.js';
 
 /** Anything that can run a parameterized statement — pool or in-transaction client. */
 type Queryable = Pick<Pool | PoolClient, 'query'>;
+
+/** Run one local authority mutation and its exact-credential bump atomically. */
+export async function withAuthorizationEpochBump<T>(
+  workosUserIds: string[],
+  mutation: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const result = await mutation(client);
+    await bumpAuthorizationEpochs(client, workosUserIds);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 /**
  * Bump the authorization epoch for each credential, in the caller's

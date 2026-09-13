@@ -47,6 +47,10 @@ const threadMocks = vi.hoisted(() => ({
 }));
 
 const authEpochMocks = vi.hoisted(() => ({ getExact: vi.fn() }));
+const certificationMocks = vi.hoisted(() => ({
+  getProgress: vi.fn(),
+  getActiveAttemptForModule: vi.fn(),
+}));
 
 vi.mock('../../src/db/authorization-epoch-db.js', () => ({
   getExactCredentialAuthorizationEpoch: authEpochMocks.getExact,
@@ -91,8 +95,10 @@ vi.mock('../../src/addie/mcp/si-host-tools.js', () => ({
   hasCachedSiSession: siHostMocks.hasCachedSiSession,
 }));
 
-vi.mock('../../src/db/certification-db.js', () => ({
-  getProgress: vi.fn(),
+vi.mock('../../src/db/certification-db.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/db/certification-db.js')>(),
+  getProgress: certificationMocks.getProgress,
+  getActiveAttemptForModule: certificationMocks.getActiveAttemptForModule,
 }));
 
 const adminMocks = vi.hoisted(() => ({ check: vi.fn().mockResolvedValue(false), ledGroups: vi.fn().mockResolvedValue([]) }));
@@ -135,11 +141,25 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     adminMocks.check.mockReset().mockResolvedValue(false);
     adminMocks.ledGroups.mockReset().mockResolvedValue([]);
     memberContextMocks.getWebMemberContext.mockReset();
-    memberContextMocks.getWebMemberContext.mockResolvedValue({
-      is_mapped: false,
+    memberContextMocks.getWebMemberContext.mockImplementation(async (credentialId, selectedOrgId) => ({
+      is_mapped: true,
       is_member: false,
       slack_linked: false,
-    });
+      workos_user: {
+        workos_user_id: credentialId,
+        email: `${credentialId}@example.test`,
+      },
+      ...(selectedOrgId ? {
+        organization: {
+          workos_organization_id: selectedOrgId,
+          name: 'Selected organization',
+          subscription_status: null,
+          is_personal: false,
+          membership_tier: null,
+        },
+        org_membership: { role: 'member', member_count: 1, joined_at: null },
+      } : {}),
+    }));
     memberContextMocks.formatMemberContextForPrompt.mockReset();
     memberContextMocks.formatMemberContextForPrompt.mockReturnValue(null);
     siMocks.retrieve.mockReset();
@@ -148,6 +168,8 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     siHostMocks.hasCachedSiSession.mockReset();
     siHostMocks.hasCachedSiSession.mockReturnValue(false);
     directoryMocks.createHandlers.mockClear();
+    certificationMocks.getProgress.mockReset().mockResolvedValue([]);
+    certificationMocks.getActiveAttemptForModule.mockReset().mockResolvedValue(null);
   });
 
   it('passes the selected organization id into web member context resolution', async () => {
@@ -173,7 +195,7 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     adminMocks.check.mockImplementation(async (user) => (user.authWorkosUserId ?? user.id) === 'credential_admin');
     const prepared = await prepareRequestWithMemberTools('Resolve escalation 12', canonical, 'thread-1', true, undefined, null, principal);
     expect(adminMocks.check).toHaveBeenCalledWith(principal);
-    expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith(canonical, null, principal);
+    expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith(credential, null, principal);
     expect(prepared.isAAOAdmin).toBe(allowed);
     for (const tool of ['list_escalations', 'resolve_escalation']) {
       expect(prepared.requestTools.tools.some((entry) => entry.name === tool)).toBe(allowed);
@@ -186,6 +208,61 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     adminMocks.check.mockRejectedValue(new AAOAdminLookupUnavailableError());
     await expect(prepareRequestWithMemberTools('Resolve escalation 12', 'user_123', 'thread-1', true, undefined, null, { id: 'user_123' }))
       .rejects.toMatchObject({ code: 'admin_authorization_unavailable', statusCode: 503 });
+  });
+
+  it('binds a linked B credential and explicit organization into the assembled mutation handlers', async () => {
+    const principal = {
+      id: 'canonical_a',
+      authWorkosUserId: 'credential_b',
+      email: 'credential-b@example.test',
+    };
+    const prepared = await prepareRequestWithMemberTools(
+      'Create a payment link',
+      principal.id,
+      'thread-linked-ab',
+      true,
+      undefined,
+      'org_b',
+      principal,
+    );
+
+    expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith(
+      'credential_b',
+      'org_b',
+      principal,
+    );
+    expect(prepared.memberContext).toMatchObject({
+      workos_user: { workos_user_id: 'credential_b' },
+      organization: { workos_organization_id: 'org_b' },
+    });
+    expect(prepared.memberContext?.workos_user?.workos_user_id).not.toBe('canonical_a');
+  });
+
+  it('rejects a selected-organization context mismatch before exposing handlers', async () => {
+    memberContextMocks.getWebMemberContext.mockResolvedValueOnce({
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: { workos_user_id: 'credential_b', email: 'b@example.test' },
+      organization: {
+        workos_organization_id: 'org_a',
+        name: 'Wrong organization',
+        subscription_status: 'active',
+        is_personal: false,
+        membership_tier: 'company_standard',
+      },
+      org_membership: { role: 'owner', member_count: 1, joined_at: null },
+    });
+
+    await expect(prepareRequestWithMemberTools(
+      'Update the organization',
+      'canonical_a',
+      'thread-mismatch',
+      true,
+      undefined,
+      'org_b',
+      { id: 'canonical_a', authWorkosUserId: 'credential_b' },
+    )).rejects.toBeInstanceOf(AAOAdminLookupUnavailableError);
   });
 
   it.each([
@@ -213,6 +290,11 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     const paidContext = {
       is_mapped: true,
       is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_123',
+        email: 'user_123@example.test',
+      },
       organization: {
         workos_organization_id: 'org_paid',
         name: 'Paid Org',
@@ -293,6 +375,27 @@ describe('mounted Addie web-thread ownership', () => {
     });
     threadMocks.addMessageFeedback.mockReset().mockResolvedValue(true);
     authEpochMocks.getExact.mockReset().mockResolvedValue('0');
+    certificationMocks.getProgress.mockReset().mockResolvedValue([]);
+    certificationMocks.getActiveAttemptForModule.mockReset().mockResolvedValue(null);
+    memberContextMocks.getWebMemberContext.mockReset().mockImplementation(async (credentialId, selectedOrgId) => ({
+      is_mapped: true,
+      is_member: false,
+      slack_linked: false,
+      workos_user: { workos_user_id: credentialId, email: `${credentialId}@example.test` },
+      ...(selectedOrgId ? {
+        organization: {
+          workos_organization_id: selectedOrgId,
+          name: 'Selected organization',
+          subscription_status: null,
+          is_personal: false,
+          membership_tier: null,
+        },
+        org_membership: { role: 'member', member_count: 1, joined_at: null },
+      } : {}),
+    }));
+    memberContextMocks.formatMemberContextForPrompt.mockReset().mockReturnValue(null);
+    adminMocks.check.mockReset().mockResolvedValue(false);
+    adminMocks.ledGroups.mockReset().mockResolvedValue([]);
   });
 
   it('returns retryable authorization guidance without executing chat on lookup outage', async () => {
@@ -306,13 +409,11 @@ describe('mounted Addie web-thread ownership', () => {
 
   it('preserves retryable 503 when post-assembly credential capture is unavailable', async () => {
     authEpochMocks.getExact.mockRejectedValueOnce(new Error('epoch store unavailable'));
-    chatClient.processMessage.mockImplementationOnce(async (
-      _message: unknown,
-      _context: unknown,
-      _tools: unknown,
-      _system: unknown,
-      options: { captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<unknown> },
-    ) => {
+    chatClient.processMessage.mockImplementationOnce(async (...args: unknown[]) => {
+      const options = args.find((value) => value && typeof value === 'object'
+        && 'captureSideEffectAuthority' in value) as {
+          captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<unknown>;
+        };
       await options.captureSideEffectAuthority({ mutationToolNames: ['schedule_meeting'] });
       throw new Error('unreachable');
     });

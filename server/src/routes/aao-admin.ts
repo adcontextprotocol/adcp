@@ -15,6 +15,7 @@ import {
 } from '../db/working-group-db.js';
 import { createLogger } from '../logger.js';
 import { requireGlobalAdmin } from '../middleware/auth.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 
 const logger = createLogger('aao-admin-routes');
 const MAX_REASON_LENGTH = 1_000;
@@ -64,7 +65,8 @@ export function createAAOAdminRouter(): Router {
     try {
       const membership = await workingGroupDb.grantAAOAdminMembership({
         targetUserId: input.targetUserId,
-        actorUserId: req.user!.id,
+        actorUserId: getOrganizationAuthorizationUserId(req.user!),
+        actorCanonicalUserId: req.user!.id,
         actorAuthorizationMechanism,
         reason: input.reason,
       });
@@ -86,7 +88,8 @@ export function createAAOAdminRouter(): Router {
     try {
       const revokedUserId = await workingGroupDb.revokeAAOAdminMembership({
         targetUserId: input.targetUserId,
-        actorUserId: req.user!.id,
+        actorUserId: getOrganizationAuthorizationUserId(req.user!),
+        actorCanonicalUserId: req.user!.id,
         actorAuthorizationMechanism,
         reason: input.reason,
       });

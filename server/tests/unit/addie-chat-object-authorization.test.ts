@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     is_mapped: false,
     is_member: false,
     slack_linked: false,
+    workos_user: { workos_user_id: 'user_attacker' },
   } as Record<string, unknown>,
   createSlackKnowledgeRequestTools: vi.fn(() => ({ tools: [], handlers: new Map() })),
 }));
@@ -314,6 +315,7 @@ describe('Addie chat conversation object authorization', () => {
       is_mapped: false,
       is_member: false,
       slack_linked: false,
+      workos_user: { workos_user_id: 'user_attacker' },
     };
     mocks.getThreadByExternalId.mockResolvedValue({
       thread_id: 'thread_victim',
@@ -440,6 +442,7 @@ describe('Addie chat conversation object authorization', () => {
       is_mapped: true,
       is_member: true,
       slack_linked: true,
+      workos_user: { workos_user_id: 'user_attacker' },
       slack_user: { slack_user_id: 'U_LINKED' },
     };
 

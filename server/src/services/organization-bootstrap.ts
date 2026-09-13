@@ -29,6 +29,7 @@ import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
 import { validateOrganizationName } from '../middleware/validation.js';
 import { getCompanyDomain } from '../utils/email-domain.js';
 import { emailPrefsDb } from '../db/email-preferences-db.js';
+import { bumpAuthorizationEpochs, withAuthorizationEpochBump } from '../db/authorization-epoch-db.js';
 
 const logger = createLogger('organization-bootstrap');
 
@@ -227,6 +228,7 @@ export async function performCreateOrganization(
           details: { user_email: user.email, domain: verifiedDomain, role: roleSlug },
         });
 
+        await bumpAuthorizationEpochs(client, [user.id]);
         await client.query('COMMIT');
 
         await recordMarketingOptIn(user, marketing_opt_in);
@@ -273,12 +275,12 @@ export async function performCreateOrganization(
 
     logger.info({ userId: user.id, orgId: workosOrgId }, 'User added as organization owner');
 
-    await pool.query(
+    await withAuthorizationEpochBump([user.id], (client) => client.query(
       `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type, created_at, updated_at, synced_at)
        VALUES ($1, $2, $3, $4, 'owner', 'contributor', NOW(), NOW(), NOW())
        ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = 'owner', workos_membership_id = $3, updated_at = NOW()`,
       [user.id, workosOrgId, ownerMembership.id, user.email],
-    );
+    ));
   }
 
   // Tier is intentionally not set here — Stripe webhook is the sole writer.

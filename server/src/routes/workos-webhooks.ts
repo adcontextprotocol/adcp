@@ -54,6 +54,7 @@ import {
   resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
 import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
+import { bumpAuthorizationEpochs, withAuthorizationEpochBump } from '../db/authorization-epoch-db.js';
 
 const orgDb = new OrganizationDatabase();
 
@@ -551,12 +552,10 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
  * Delete all memberships for a user
  */
 async function deleteUserMemberships(userId: string): Promise<void> {
-  const pool = getPool();
-
-  const result = await pool.query(
+  const result = await withAuthorizationEpochBump([userId], (client) => client.query(
     `DELETE FROM organization_memberships WHERE workos_user_id = $1`,
     [userId]
-  );
+  ));
 
   logger.info({
     userId,
@@ -1549,6 +1548,7 @@ export async function backfillUsers(): Promise<{
             try {
               await client.query('BEGIN');
               await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
+              await bumpAuthorizationEpochs(client, [row.workos_user_id]);
               await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
               await client.query('COMMIT');
               result.usersRemoved++;

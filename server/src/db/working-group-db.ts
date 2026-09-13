@@ -38,9 +38,24 @@ export type AAOAdminMembershipAuditMechanism =
 
 interface AAOAdminMembershipMutationInput {
   targetUserId: string;
+  /** Exact credential that authenticated the actor. */
   actorUserId: string;
+  /** Canonical linked identity retained separately for forensic attribution. */
+  actorCanonicalUserId: string;
   actorAuthorizationMechanism: AAOAdminMembershipAuditMechanism;
   reason: string;
+}
+
+function serializeAAOAdminAuditReason(input: AAOAdminMembershipMutationInput, identityId: string | null): string {
+  // The existing append-only audit schema has no structured-details column.
+  // Preserve credential/canonical duality in its required reason field without
+  // adding a migration in this narrowly stacked continuation.
+  return JSON.stringify({
+    reason: input.reason,
+    authenticated_credential_id: input.actorUserId,
+    canonical_user_id: input.actorCanonicalUserId,
+    resolved_identity_id: identityId,
+  });
 }
 
 /**
@@ -1032,13 +1047,29 @@ export class WorkingGroupDatabase {
         RETURNING *`,
         [group.id, targetUserId, input.actorUserId],
       );
-      await client.query(
+      if (membershipResult.rowCount !== 1 || !membershipResult.rows[0]) {
+        throw new Error('AAO admin membership grant did not persist exactly one row');
+      }
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1',
+        [input.actorUserId],
+      );
+      const audit = await client.query<{ id: string }>(
         `INSERT INTO aao_admin_access_events (
           event_type, actor_user_id, target_user_id, mechanism,
           actor_authorization_mechanism, reason
-        ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4)`,
-        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
+        ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4)
+        RETURNING id`,
+        [
+          input.actorUserId,
+          targetUserId,
+          input.actorAuthorizationMechanism,
+          serializeAAOAdminAuditReason(input, actorIdentity.rows[0]?.identity_id ?? null),
+        ],
       );
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) {
+        throw new Error('AAO admin grant audit did not persist exactly one row');
+      }
       await bumpAuthorizationEpochs(client, [targetUserId]);
       await client.query('COMMIT');
       return membershipResult.rows[0];
@@ -1079,13 +1110,26 @@ export class WorkingGroupDatabase {
         return null;
       }
 
-      await client.query(
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1',
+        [input.actorUserId],
+      );
+      const audit = await client.query<{ id: string }>(
         `INSERT INTO aao_admin_access_events (
           event_type, actor_user_id, target_user_id, mechanism,
           actor_authorization_mechanism, reason
-        ) VALUES ('revoked', $1, $2, 'aao_admin_working_group', $3, $4)`,
-        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
+        ) VALUES ('revoked', $1, $2, 'aao_admin_working_group', $3, $4)
+        RETURNING id`,
+        [
+          input.actorUserId,
+          targetUserId,
+          input.actorAuthorizationMechanism,
+          serializeAAOAdminAuditReason(input, actorIdentity.rows[0]?.identity_id ?? null),
+        ],
       );
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) {
+        throw new Error('AAO admin revoke audit did not persist exactly one row');
+      }
       await bumpAuthorizationEpochs(client, [targetUserId]);
       await client.query('COMMIT');
       return targetUserId;

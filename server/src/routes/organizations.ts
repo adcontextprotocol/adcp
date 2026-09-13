@@ -23,7 +23,7 @@ import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, ge
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
-import { deleteOrganizationMembership } from "../db/membership-db.js";
+import { deleteOrganizationMembership, setMembershipRole } from "../db/membership-db.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -3211,12 +3211,7 @@ export function createOrganizationsRouter(
 
       await workos!.userManagement.updateOrganizationMembership(membershipId, { roleSlug: role });
 
-      await pool.query(
-        `UPDATE organization_memberships
-         SET role = $1, updated_at = NOW()
-         WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-        [role, orgId, targetUserId],
-      );
+      await setMembershipRole(targetUserId, orgId, role);
 
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
@@ -3373,6 +3368,10 @@ export function createOrganizationsRouter(
           { roleSlug: role }
         );
         updatedRole = updatedMembership.role?.slug || 'member';
+        // Mirror the provider-authoritative role through the transactional
+        // local writer so this exact credential's persisted authorization
+        // epoch moves before the successful response is observable.
+        await setMembershipRole(membership.userId, orgId, updatedRole);
       }
 
       // Update seat_type in local DB if requested
@@ -4292,15 +4291,19 @@ export function createOrganizationsRouter(
          RETURNING id`,
         [orgId, targetCredentialId, role, actorCredentialId, reason, effectiveUntilDate],
       );
+      if (grant.rowCount !== 1 || !grant.rows[0]?.id) {
+        throw new Error('Credential grant did not persist exactly one row');
+      }
       await bumpAuthorizationEpochs(client, [targetCredentialId]);
       const actorIdentity = await client.query<{ identity_id: string }>(
         'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1',
         [actorCredentialId],
       );
-      await client.query(
+      const audit = await client.query<{ id: string }>(
         `INSERT INTO registry_audit_log (
            workos_organization_id, workos_user_id, action, resource_type, resource_id, details
-         ) VALUES ($1, $2, 'credential_grant_created', 'credential_grant', $3, $4)`,
+         ) VALUES ($1, $2, 'credential_grant_created', 'credential_grant', $3, $4)
+         RETURNING id`,
         [orgId, actorCredentialId, grant.rows[0].id, JSON.stringify({
           authenticated_credential_id: actorCredentialId,
           resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
@@ -4310,6 +4313,9 @@ export function createOrganizationsRouter(
           effective_until: effectiveUntilDate?.toISOString() ?? null,
         })],
       );
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) {
+        throw new Error('Credential grant audit did not persist exactly one row');
+      }
       await client.query('COMMIT');
       return res.status(201).json({
         grant_id: grant.rows[0].id,
@@ -4384,10 +4390,11 @@ export function createOrganizationsRouter(
         'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1',
         [actorCredentialId],
       );
-      await client.query(
+      const audit = await client.query<{ id: string }>(
         `INSERT INTO registry_audit_log (
            workos_organization_id, workos_user_id, action, resource_type, resource_id, details
-         ) VALUES ($1, $2, 'credential_grant_revoked', 'credential_grant', $3, $4)`,
+         ) VALUES ($1, $2, 'credential_grant_revoked', 'credential_grant', $3, $4)
+         RETURNING id`,
         [orgId, actorCredentialId, grantId, JSON.stringify({
           authenticated_credential_id: actorCredentialId,
           resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
@@ -4395,6 +4402,9 @@ export function createOrganizationsRouter(
           target_credential_id: targetCredentialId,
         })],
       );
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) {
+        throw new Error('Credential grant revocation audit did not persist exactly one row');
+      }
       await client.query('COMMIT');
       return res.json({ revoked: true, grant_id: grantId });
     } catch (error) {

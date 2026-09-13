@@ -10,6 +10,7 @@ import type { PoolClient } from 'pg';
 import { getPool, getClient } from './client.js';
 import { findPayingOrgForDomain } from './org-filters.js';
 import { createLogger } from '../logger.js';
+import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 
 const logger = createLogger('membership-db');
 const OWNERLESS_PROMOTION_LOCK_TIMEOUT_MS = 5_000;
@@ -119,64 +120,74 @@ async function withOwnerlessOrgPromotionLock<T>(
 export async function upsertOrganizationMembership(
   params: MembershipUpsertParams,
 ): Promise<MembershipUpsertResult> {
-  const pool = getPool();
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<{ role: string }>(
+      `INSERT INTO organization_memberships (
+        workos_user_id,
+        workos_organization_id,
+        workos_membership_id,
+        email,
+        first_name,
+        last_name,
+        role,
+        seat_type,
+        provisioning_source,
+        synced_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $10, NOW()
+      )
+      ON CONFLICT (workos_user_id, workos_organization_id)
+      DO UPDATE SET
+        workos_membership_id = EXCLUDED.workos_membership_id,
+        email = EXCLUDED.email,
+        first_name = COALESCE(NULLIF(TRIM(organization_memberships.first_name), ''), EXCLUDED.first_name),
+        last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name),
+        role = EXCLUDED.role,
+        seat_type = CASE
+          WHEN $9::boolean THEN EXCLUDED.seat_type
+          ELSE organization_memberships.seat_type
+        END,
+        -- Don't overwrite an existing attribution; later webhooks would be the
+        -- 'webhook' source and would otherwise wipe a more specific origin.
+        provisioning_source = COALESCE(organization_memberships.provisioning_source, EXCLUDED.provisioning_source),
+        synced_at = NOW(),
+        updated_at = NOW()
+      RETURNING role`,
+      [
+        params.user_id,
+        params.organization_id,
+        params.membership_id,
+        params.email,
+        params.first_name,
+        params.last_name,
+        params.role,
+        params.seat_type,
+        params.has_explicit_seat_type,
+        params.provisioning_source ?? null,
+      ],
+    );
 
-  const result = await pool.query<{ role: string }>(
-    `INSERT INTO organization_memberships (
-      workos_user_id,
-      workos_organization_id,
-      workos_membership_id,
-      email,
-      first_name,
-      last_name,
-      role,
-      seat_type,
-      provisioning_source,
-      synced_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $10, NOW()
-    )
-    ON CONFLICT (workos_user_id, workos_organization_id)
-    DO UPDATE SET
-      workos_membership_id = EXCLUDED.workos_membership_id,
-      email = EXCLUDED.email,
-      first_name = COALESCE(NULLIF(TRIM(organization_memberships.first_name), ''), EXCLUDED.first_name),
-      last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name),
-      role = EXCLUDED.role,
-      seat_type = CASE
-        WHEN $9::boolean THEN EXCLUDED.seat_type
-        ELSE organization_memberships.seat_type
-      END,
-      -- Don't overwrite an existing attribution; later webhooks would be the
-      -- 'webhook' source and would otherwise wipe a more specific origin.
-      provisioning_source = COALESCE(organization_memberships.provisioning_source, EXCLUDED.provisioning_source),
-      synced_at = NOW(),
-      updated_at = NOW()
-    RETURNING role`,
-    [
-      params.user_id,
-      params.organization_id,
-      params.membership_id,
-      params.email,
-      params.first_name,
-      params.last_name,
-      params.role,
-      params.seat_type,
-      params.has_explicit_seat_type,
-      params.provisioning_source ?? null,
-    ],
-  );
+    await bumpAuthorizationEpochs(client, [params.user_id]);
+    await client.query('COMMIT');
 
-  const assigned_role = result.rows[0]?.role || params.role;
+    const assigned_role = result.rows[0]?.role || params.role;
 
-  logger.info({
-    membershipId: params.membership_id,
-    userId: params.user_id,
-    orgId: params.organization_id,
-    role: assigned_role,
-  }, 'Upserted organization membership');
+    logger.info({
+      membershipId: params.membership_id,
+      userId: params.user_id,
+      orgId: params.organization_id,
+      role: assigned_role,
+    }, 'Upserted organization membership');
 
-  return { assigned_role };
+    return { assigned_role };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -317,6 +328,7 @@ export async function deleteOrganizationMembership(
        WHERE workos_user_id = $1 AND primary_organization_id = $2`,
       [userId, organizationId],
     );
+    await bumpAuthorizationEpochs(client, [userId]);
     if (ownsTransaction) await client.query('COMMIT');
     return result.rows[0]?.role ?? null;
   } catch (err) {
@@ -390,13 +402,22 @@ export async function setMembershipRole(
   organizationId: string,
   role: string,
 ): Promise<void> {
-  const pool = getPool();
-
-  await pool.query(
-    `UPDATE organization_memberships SET role = $3, updated_at = NOW()
-     WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-    [userId, organizationId, role],
-  );
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE organization_memberships SET role = $3, updated_at = NOW()
+       WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+      [userId, organizationId, role],
+    );
+    await bumpAuthorizationEpochs(client, [userId]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // ── Auto-link by verified domain ────────────────────────────────────

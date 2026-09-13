@@ -29,6 +29,7 @@ describe('Slack exact-credential mutation authority', () => {
       credentialId: mappedCredential,
     }));
     const revalidate = await captureSlackMutationAuthority({
+      assembledCredentialId: 'credential_a',
       platformAdminMutationTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
@@ -61,6 +62,7 @@ describe('Slack exact-credential mutation authority', () => {
 
   it('denies an unmapped mutation without reserving or dispatching', async () => {
     const revalidate = await captureSlackMutationAuthority({
+      assembledCredentialId: 'credential_a',
       platformAdminMutationTools: [],
       lookupCredential: vi.fn().mockResolvedValue({ status: 'forbidden' }),
       revalidatePlatformAdmin: vi.fn(),
@@ -91,6 +93,7 @@ describe('Slack exact-credential mutation authority', () => {
       .mockResolvedValueOnce({ status: 'authorized', credentialId: 'credential_a' })
       .mockResolvedValueOnce({ status: 'unavailable' });
     const revalidate = await captureSlackMutationAuthority({
+      assembledCredentialId: 'credential_a',
       platformAdminMutationTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
@@ -98,5 +101,22 @@ describe('Slack exact-credential mutation authority', () => {
 
     await expect(revalidate({ toolName: mutationTool.name }))
       .resolves.toEqual({ allowed: false, status: 'recoverable_error' });
+  });
+
+  it('rejects a fresh live mapping when handlers were assembled for a different credential', async () => {
+    const lookupCredential = vi.fn().mockResolvedValue({
+      status: 'authorized',
+      credentialId: 'credential_b',
+    });
+    const revalidate = await captureSlackMutationAuthority({
+      assembledCredentialId: 'credential_a',
+      platformAdminMutationTools: [],
+      lookupCredential,
+      revalidatePlatformAdmin: vi.fn(),
+    });
+
+    await expect(revalidate({ toolName: mutationTool.name }))
+      .resolves.toEqual({ allowed: false, status: 'access_denied' });
+    expect(mocks.epoch).not.toHaveBeenCalled();
   });
 });

@@ -17,7 +17,7 @@ import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase, resolveMembershipTier, type MembershipTier } from "../../db/organization-db.js";
 import { formatCompanyTypes } from "../../config/company-types.js";
-import { deleteOrganizationMembership } from "../../db/membership-db.js";
+import { deleteOrganizationMembership, setMembershipRole } from "../../db/membership-db.js";
 import { invalidateMembershipCache } from "../../db/org-filters.js";
 import {
   getPendingInvoices,
@@ -2695,16 +2695,15 @@ export function setupAccountRoutes(
                 after,
               });
             for (const syncedMembership of syncedMemberships.data) {
+              await setMembershipRole(
+                syncedMembership.userId,
+                orgId,
+                syncedMembership.role?.slug || 'member',
+              );
               await pool.query(
-                `UPDATE organization_memberships
-                 SET role = $1, workos_membership_id = $2, updated_at = NOW()
-                 WHERE workos_organization_id = $3 AND workos_user_id = $4`,
-                [
-                  syncedMembership.role?.slug || "member",
-                  syncedMembership.id,
-                  orgId,
-                  syncedMembership.userId,
-                ]
+                `UPDATE organization_memberships SET workos_membership_id = $1
+                 WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+                [syncedMembership.id, orgId, syncedMembership.userId],
               );
             }
             after = syncedMemberships.listMetadata?.after ?? undefined;
@@ -2714,12 +2713,7 @@ export function setupAccountRoutes(
             { err: syncError, orgId, userId, role },
             "Failed to sync WorkOS membership roles after role update; updating target local row only"
           );
-          await pool.query(
-            `UPDATE organization_memberships
-             SET role = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-            [role, orgId, userId]
-          );
+          await setMembershipRole(userId, orgId, role);
         }
 
         logger.info(
