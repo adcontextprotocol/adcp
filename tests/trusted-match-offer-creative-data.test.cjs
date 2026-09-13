@@ -130,10 +130,21 @@ test("Context Match caching partitions request and provider evaluation contexts"
   const specification = read("docs/trusted-match/specification.mdx");
   const routerArchitecture = read("docs/trusted-match/router-architecture.mdx");
   const dataProtection = read("docs/trusted-match/data-protection-roles.mdx");
+  const migration = read(
+    "docs/reference/migration/trusted-match-context-cache.mdx"
+  );
 
   assert.match(
     specification,
     /\{provider_id, cache_namespace, context_hash\}/
+  );
+  assert.match(
+    specification,
+    /prospective\s+AdCP 3\.2 requirements effective October 25, 2026/
+  );
+  assert.match(
+    specification,
+    /MUST bypass cache lookup, in-flight\s+coalescing, and insertion for affected Context Match traffic/
   );
   assert.doesNotMatch(
     specification,
@@ -232,6 +243,22 @@ test("Context Match caching partitions request and provider evaluation contexts"
   assert.match(
     specification,
     /`cache_ttl: 0` is appropriate for those placements/
+  );
+  assert.match(
+    migration,
+    /breaking\/security notice published September 13, 2026/i
+  );
+  assert.match(
+    migration,
+    /Version 3\.1\.22 already shipped two emergency privacy\/security corrections/
+  );
+  assert.match(
+    migration,
+    /MUST bypass or disable cache lookup,\s+in-flight request coalescing, and insertion until both of these controls are\s+implemented/
+  );
+  assert.match(
+    migration,
+    /The\s+October 25 effective date applies only to the added AdCP 3\.2\s+`cache_namespace` conformance requirements/
   );
   assert.match(
     dataProtection,
