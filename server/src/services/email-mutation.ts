@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { PoolClient } from 'pg';
 import { getDedicatedClient, getPool } from '../db/client.js';
@@ -27,6 +27,13 @@ interface EmailMutation {
 }
 type QueryClient = Pick<PoolClient, 'query'>;
 class CommitUnknown extends Error {}
+
+/** Stable request identity, not password storage. The domain key is public and
+ * fixed so retries on different replicas/deployments compare the same payload. */
+function emailMutationRequestFingerprint(userId: string, normalizedEmail: string): string {
+  return createHmac('sha256', 'adcp:member-primary-email:idempotency:v1')
+    .update(JSON.stringify([userId, normalizedEmail])).digest('hex');
+}
 
 export class EmailMutationError extends Error {
   constructor(public status: number, public body: ResultBody) { super(body.message ?? body.error); }
@@ -289,25 +296,26 @@ export async function setPrimaryEmail(input: { userId: string; email: unknown; o
   const at = email.indexOf('@'); const dot = email.lastIndexOf('.');
   if (email.length > 255 || /\s/.test(email) || at < 1 || at !== email.lastIndexOf('@') || dot <= at+1 || dot === email.length-1) throw new EmailMutationError(400, { error: 'Invalid email address' });
   const operationId = input.operationId.toLowerCase();
-  const payloadHash = createHash('sha256').update(JSON.stringify([input.userId, email])).digest('hex');
   return withCredentialLock(input.userId, async client => {
     const previous = await readOperation(client, operationId);
     if (previous) {
-      if (previous.workos_user_id !== input.userId || previous.payload_hash !== payloadHash) throw new EmailMutationError(409, { error: 'operation_id_reused', message: 'This request identifier belongs to a different email change.' });
+      if (previous.workos_user_id !== input.userId || previous.payload_hash !== emailMutationRequestFingerprint(previous.workos_user_id, email)) throw new EmailMutationError(409, { error: 'operation_id_reused', message: 'This request identifier belongs to a different email change.' });
       if (previous.state === 'pending') await recordFailure(client, previous, 'interrupted_request');
       return outcome(previous);
     }
     const unresolved = await getEmailMutationStatus(input.userId, client);
     if (unresolved.reconciliation_required) throw reconciliationError(unresolved.operation_id!);
-    const local = await client.query<{ email: string; email_verified: boolean; email_mutation_version: string }>('SELECT email, email_verified, email_mutation_version FROM users WHERE workos_user_id=$1', [input.userId]);
+    const local = await client.query<{ workos_user_id: string; email: string; email_verified: boolean; email_mutation_version: string }>('SELECT workos_user_id, email, email_verified, email_mutation_version FROM users WHERE workos_user_id=$1', [input.userId]);
     if (!local.rows[0]) throw new EmailMutationError(404, { error: 'User not found' });
     exactOne(local);
+    if (local.rows[0].workos_user_id !== input.userId) throw new Error('Credential row does not match requested user');
+    const payloadHash = emailMutationRequestFingerprint(local.rows[0].workos_user_id, email);
     if (local.rows[0].email.toLowerCase() === email) throw new EmailMutationError(400, { error: 'This is already your primary email' });
     const alias = await client.query<{ email: string }>('SELECT email FROM user_email_aliases WHERE workos_user_id=$1 AND LOWER(email)=$2 AND verified_at IS NOT NULL', [input.userId, email]);
     if (!alias.rows[0]) throw new EmailMutationError(404, { error: 'Email is not linked to your account' });
     exactOne(alias);
     const operation: EmailMutation = {
-      id: operationId, workos_user_id: input.userId, actor_user_id: input.actorUserId ?? input.userId, payload_hash: payloadHash,
+      id: operationId, workos_user_id: local.rows[0].workos_user_id, actor_user_id: input.actorUserId ?? input.userId, payload_hash: payloadHash,
       old_email: local.rows[0].email, old_email_verified: local.rows[0].email_verified, new_email: alias.rows[0].email,
       expected_email_version: local.rows[0].email_mutation_version, applied_email_version: null, epoch_after: null,
       state: 'pending', failure_code: null, result_status: 409, result_body: reconciliationError(operationId).body,
@@ -328,8 +336,10 @@ export async function setPrimaryEmail(input: { userId: string; email: unknown; o
     }
     let original;
     try { original = await getEmailMutationWorkos().userManagement.getUser(input.userId); } catch {
-      try { return outcome(await terminal(client, operation, true, 503, { error: 'Sign-in provider unavailable', message: 'Your email was not changed. Please start a new request to try again later.', operation_id: operation.id, reconciliation_required: false }, 'provider_read_failed')); }
-      catch (error) { if (error instanceof EmailMutationError) throw error; await recordFailure(client, operation, 'local_write_failed'); throw reconciliationError(operation.id); }
+      // An unavailable baseline cannot prove agreement with the provider. Keep
+      // the credential unresolved instead of clearing the authority fence.
+      await recordFailure(client, operation, 'provider_read_failed');
+      throw reconciliationError(operation.id);
     }
     if (original.id !== input.userId || original.email.toLowerCase() !== operation.old_email.toLowerCase() || original.emailVerified !== operation.old_email_verified) {
       await recordFailure(client, operation, 'preexisting_provider_mismatch'); throw reconciliationError(operation.id);

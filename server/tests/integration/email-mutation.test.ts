@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Client, type Pool } from 'pg';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
@@ -73,6 +73,7 @@ describe('durable exact-credential email mutation', () => {
     expect(await epoch()).toBe(1);
     expect(invalidate).toHaveBeenCalledExactlyOnceWith([userId]);
     expect((await journal())[0]).toMatchObject({ state: 'succeeded', epoch_after: '1', applied_email_version: '1', result_status: 200 });
+    expect((await journal())[0].payload_hash).toBe('01e362c4211926d68027f1a1124c941eead66480c7accd5e53126cc9dc31c3da');
   });
   it('replays the same normalized payload and original result after a later different operation without provider retry', async () => {
     const id = randomUUID();
@@ -83,6 +84,20 @@ describe('durable exact-credential email mutation', () => {
     expect(getUser).toHaveBeenCalledTimes(2);
     expect(updateUser).toHaveBeenCalledTimes(2);
     expect(provider.email).toBe(thirdEmail);
+    await mutate(randomUUID(), newEmail);
+    const records = await journal();
+    expect(records[0].payload_hash).toBe(records[2].payload_hash);
+    expect(records[0].payload_hash).not.toBe(records[1].payload_hash);
+  });
+  it('uses a different durable request fingerprint for the same email on another credential', async () => {
+    await mutate();
+    await pool.query('INSERT INTO users(workos_user_id,email,email_verified,workos_created_at,workos_updated_at) VALUES($1,$2,true,NOW(),NOW())', [otherUserId, thirdEmail]);
+    await pool.query('INSERT INTO user_email_aliases(workos_user_id,email) VALUES($1,$2)', [otherUserId, newEmail]);
+    getUser.mockRejectedValueOnce(new Error('provider unavailable'));
+    await expect(setPrimaryEmail({ userId: otherUserId, email: newEmail, operationId: randomUUID() })).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    const other = await pool.query('SELECT payload_hash FROM email_mutations WHERE workos_user_id=$1', [otherUserId]);
+    expect(other.rows[0].payload_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(other.rows[0].payload_hash).not.toBe((await journal())[0].payload_hash);
   });
   it('rejects reuse with different payload or credential without replaying private results', async () => {
     const id = randomUUID(); await mutate(id);
@@ -135,17 +150,28 @@ describe('durable exact-credential email mutation', () => {
     await expect(mutate(randomUUID(), oldEmail)).rejects.toMatchObject({ status: 400 });
     expect(getUser).not.toHaveBeenCalled(); expect(updateUser).not.toHaveBeenCalled(); expect(await journal()).toEqual([]);
   });
-  it.each(['read', 'reject'])('stores and replays provider %s failure with explicit retryable terminal state and no secret leakage', async kind => {
+  it('stores and replays a provider rejection with explicit retryable terminal state and no secret leakage', async () => {
     const before = await state(); const id = randomUUID();
-    if (kind === 'read') getUser.mockRejectedValueOnce(new Error('secret provider diagnostic'));
-    else updateUser.mockRejectedValueOnce(Object.assign(new Error('secret provider diagnostic'), { status: 422 }));
+    updateUser.mockRejectedValueOnce(Object.assign(new Error('secret provider diagnostic'), { status: 422 }));
     const first = await mutate(id).catch(error => error);
     const second = await mutate(id).catch(error => error);
     expect(second.body).toEqual(first.body); expect(second.status).toBe(first.status);
     expect(first.body.reconciliation_required).toBe(false);
     expect(JSON.stringify(first.body)).not.toContain('secret');
     expect(await state()).toEqual(before); expect(await epoch()).toBe(1);
-    expect(getUser).toHaveBeenCalledOnce(); expect(updateUser).toHaveBeenCalledTimes(kind === 'read' ? 0 : 1);
+    expect(getUser).toHaveBeenCalledOnce(); expect(updateUser).toHaveBeenCalledOnce();
+  });
+  it('keeps an unreadable provider baseline unresolved on every retry without claiming compensation', async () => {
+    const before = await state(); const id = randomUUID();
+    getUser.mockRejectedValueOnce(new Error('secret provider diagnostic'));
+    const first = await mutate(id).catch(error => error);
+    const second = await mutate(id).catch(error => error);
+    expect(first).toMatchObject({ status: 409, body: { reconciliation_required: true, operation_id: id } });
+    expect(second.body).toEqual(first.body); expect(second.status).toBe(first.status);
+    expect(JSON.stringify(first.body)).not.toContain('secret');
+    expect(await state()).toEqual(before); expect(await epoch()).toBe(1);
+    expect((await journal())[0]).toMatchObject({ state: 'reconciliation_required', failure_code: 'provider_read_failed', applied_email_version: null, epoch_after: '1' });
+    expect(getUser).toHaveBeenCalledOnce(); expect(updateUser).not.toHaveBeenCalled();
   });
   it('rolls back writes and compensates provider state, while bumping epochs for reconciliation and compensation', async () => {
     await pool.query('INSERT INTO person_relationships(workos_user_id,email) VALUES($1,$2)', [otherUserId, newEmail]);
@@ -178,7 +204,7 @@ describe('durable exact-credential email mutation', () => {
     const id = randomUUID();
     const body = { operation_id: id, error: 'Email reconciliation required', message: 'Support required', reconciliation_required: true };
     await pool.query(`INSERT INTO email_mutations(id,workos_user_id,actor_user_id,payload_hash,old_email,old_email_verified,new_email,expected_email_version,state,result_status,result_body)
-      VALUES($1,$2,$2,$3,$4,false,$5,0,'pending',409,$6)`, [id,userId,createHash('sha256').update(JSON.stringify([userId,newEmail])).digest('hex'),oldEmail,newEmail,body]);
+      VALUES($1,$2,$2,$3,$4,false,$5,0,'pending',409,$6)`, [id,userId,createHmac('sha256', 'adcp:member-primary-email:idempotency:v1').update(JSON.stringify([userId,newEmail])).digest('hex'),oldEmail,newEmail,body]);
     await expect(mutate(id)).rejects.toMatchObject({ status: 409, body });
     await expect(mutate(id)).rejects.toMatchObject({ status: 409, body });
     expect(getUser).not.toHaveBeenCalled(); expect(updateUser).not.toHaveBeenCalled(); expect(await epoch()).toBe(1);

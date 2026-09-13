@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Pool, PoolClient } from 'pg';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
@@ -18,6 +19,14 @@ const PERSONAL_ORG = 'org_authorization_snapshot_personal';
 const CORPORATE_ORG = 'org_authorization_snapshot_corporate';
 const USER_IDS = [PERSONAL_ID, CORPORATE_ID];
 const ORG_IDS = [PERSONAL_ORG, CORPORATE_ORG];
+const NEW_EMAIL = 'sam.updated@example.test';
+interface EmailIntent {
+  id: string;
+  workos_user_id: string;
+  old_email: string;
+  old_email_verified: boolean;
+  new_email: string;
+}
 
 describe('primary database authorization snapshots', () => {
   let pool: Pool;
@@ -31,6 +40,7 @@ describe('primary database authorization snapshots', () => {
   }, 60000);
 
   async function cleanup() {
+    await pool.query('DELETE FROM email_mutations WHERE workos_user_id = ANY($1)', [USER_IDS]);
     await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)', [ORG_IDS]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [ORG_IDS]);
     const identities = await pool.query<{ identity_id: string }>(
@@ -86,6 +96,52 @@ describe('primary database authorization snapshots', () => {
     );
   }
 
+  async function emailIntent(userId = PERSONAL_ID, db: Pool | PoolClient = pool): Promise<EmailIntent> {
+    const id = randomUUID();
+    const result = await db.query<EmailIntent>(
+      `INSERT INTO email_mutations
+         (id, workos_user_id, actor_user_id, payload_hash, old_email, old_email_verified,
+          new_email, expected_email_version, state, result_status, result_body)
+       SELECT $1, workos_user_id, workos_user_id, $3, email, email_verified,
+              $4, email_mutation_version, 'pending', 409, $5
+         FROM users WHERE workos_user_id = $2 RETURNING *`,
+      [id, userId, createHash('sha256').update(JSON.stringify([userId, NEW_EMAIL])).digest('hex'),
+        NEW_EMAIL, { operation_id: id, reconciliation_required: true }],
+    );
+    expect(result.rowCount).toBe(1);
+    return result.rows[0];
+  }
+
+  async function transitionEmailIntent(
+    db: PoolClient, operation: EmailIntent, state: 'reconciliation_required' | 'succeeded' | 'compensated',
+  ) {
+    let version: string | null = null;
+    if (state !== 'reconciliation_required') {
+      await db.query("SELECT set_config('adcp.email_mutation_id', $1, true)", [operation.id]);
+      const changed = await db.query<{ email_mutation_version: string }>(
+        'UPDATE users SET email = $2, email_verified = $3 WHERE workos_user_id = $1 RETURNING email_mutation_version',
+        [operation.workos_user_id, state === 'succeeded' ? operation.new_email : operation.old_email,
+          state === 'succeeded' ? true : operation.old_email_verified],
+      );
+      expect(changed.rowCount).toBe(1);
+      version = changed.rows[0].email_mutation_version;
+    }
+    await bumpAuthorizationEpochs(db, [operation.workos_user_id]);
+    const body = state === 'succeeded'
+      ? { operation_id: operation.id, primary_email: operation.new_email }
+      : state === 'compensated'
+        ? { operation_id: operation.id, error: 'Email change failed' }
+        : { operation_id: operation.id, reconciliation_required: true };
+    const changed = await db.query(
+      `UPDATE email_mutations SET state = $2, applied_email_version = $3,
+         epoch_after = (SELECT epoch FROM authorization_epochs WHERE workos_user_id = $4),
+         failure_code = $5, result_status = $6, result_body = $7 WHERE id = $1`,
+      [operation.id, state, version, operation.workos_user_id, state === 'succeeded' ? null : 'provider_failed',
+        state === 'succeeded' ? 200 : state === 'compensated' ? 503 : 409, body],
+    );
+    expect(changed.rowCount).toBe(1);
+  }
+
   async function grant(
     userId: string,
     organizationId: string,
@@ -120,7 +176,7 @@ describe('primary database authorization snapshots', () => {
       authorizationEpoch: '0',
       selectedOrganizationId: null,
       credentialGrant: null,
-      credential: { email: 'sam.personal@example.test', firstName: 'Sam', lastName: 'Adeyemi' },
+      credential: { email: 'sam.personal@example.test', firstName: 'Sam', lastName: 'Adeyemi', emailMutationPending: false },
     });
     expect(cold.identityId).toBeTruthy();
     expect(Object.isFrozen(cold)).toBe(true);
@@ -128,6 +184,74 @@ describe('primary database authorization snapshots', () => {
     expect(await snapshot(PERSONAL_ID, '')).toEqual(cold);
     expect((await snapshot(PERSONAL_ID, CORPORATE_ORG)).credentialGrant).toBeNull();
   });
+
+  it.each([
+    { direction: 'personal primary', primaryId: PERSONAL_ID, secondaryId: CORPORATE_ID },
+    { direction: 'corporate primary', primaryId: CORPORATE_ID, secondaryId: PERSONAL_ID },
+  ])('reads pending intent only for the exact credential with $direction', async ({ primaryId, secondaryId }) => {
+    await link(primaryId, secondaryId);
+    const before = await snapshot(secondaryId);
+    await emailIntent(secondaryId);
+    const after = await snapshot(secondaryId);
+    expect(after.authorizationEpoch).toBe(before.authorizationEpoch);
+    expect(after.credential.emailMutationPending).toBe(true);
+    expect((await snapshot(primaryId)).credential.emailMutationPending).toBe(false);
+    expect(sameAuthorizationIdentity(before, after)).toBe(false);
+    expect(sameAuthorizationIdentity(after, before)).toBe(false);
+  });
+
+  it.each(['pending', 'reconciliation_required', 'succeeded', 'compensated'] as const)(
+    'observes the %s transition atomically with credential fields and epoch', async state => {
+      const operation = state === 'pending' ? null : await emailIntent();
+      const before = await snapshot();
+      const writer = await pool.connect();
+      let releaseRead!: () => void;
+      let readCompleted!: () => void;
+      const readBarrier = new Promise<void>(resolve => { readCompleted = resolve; });
+      const deliveryBarrier = new Promise<void>(resolve => { releaseRead = resolve; });
+      let pendingRead: Promise<AuthorizationSnapshot | null> | undefined;
+      const actualQuery = database.queryWithTimeout;
+      try {
+        await writer.query('BEGIN');
+        if (state === 'pending') await emailIntent(PERSONAL_ID, writer);
+        else await transitionEmailIntent(writer, operation!, state);
+        expect(await snapshot()).toEqual(before);
+
+        // Hold the real SELECT result across the commit. A separate pending
+        // read would combine old credential/epoch with new journal state.
+        const readSpy = vi.spyOn(database, 'queryWithTimeout').mockImplementationOnce(async (...args) => {
+          const result = await actualQuery(...args);
+          readCompleted();
+          await deliveryBarrier;
+          return result;
+        });
+        pendingRead = loadAuthorizationSnapshot(PERSONAL_ID, null);
+        await Promise.race([readBarrier, pendingRead.then(() => {
+          throw new Error('Snapshot returned without waiting for the database read');
+        })]);
+        await writer.query('COMMIT');
+        releaseRead();
+        expect(await pendingRead).toEqual(before);
+        expect(readSpy).toHaveBeenCalledTimes(1);
+        readSpy.mockRestore();
+
+        const after = await snapshot();
+        expect(after.credential.emailMutationPending).toBe(state === 'pending' || state === 'reconciliation_required');
+        expect(after.credential.email).toBe(state === 'succeeded' ? NEW_EMAIL : before.credential.email);
+        expect(after.credential.emailVerified).toBe(true);
+        expect(after.authorizationEpoch).toBe(state === 'pending' ? before.authorizationEpoch : '1');
+        expect(sameAuthorizationIdentity(before, after)).toBe(false);
+        expect(sameAuthorizationSnapshot(before, after)).toBe(false);
+        expect(sameAuthorizationSnapshot(after, before)).toBe(false);
+      } finally {
+        releaseRead();
+        await writer.query('ROLLBACK');
+        await pendingRead?.catch(() => undefined);
+        vi.restoreAllMocks();
+        writer.release();
+      }
+    },
+  );
 
   it.each([
     { direction: 'personal primary', primaryId: PERSONAL_ID, secondaryId: CORPORATE_ID },
@@ -219,6 +343,7 @@ describe('primary database authorization snapshots', () => {
       { identityId: null },
       { authorizationEpoch: '1' },
       { credential: { ...current.credential, email: 'changed@example.test' } },
+      { credential: { ...current.credential, emailMutationPending: true } },
     ];
     for (const change of identityChanges) {
       expect(sameAuthorizationIdentity(current, { ...current, ...change })).toBe(false);
@@ -335,6 +460,8 @@ describe('primary database authorization snapshots', () => {
         identity_id: hasUser ? primary.identityId : null,
         authorization_epoch: '0',
         email: hasUser ? primary.credential.email : null,
+        email_verified: hasUser ? primary.credential.emailVerified : null,
+        email_mutation_pending: false,
         first_name: hasUser ? primary.credential.firstName : null,
         last_name: hasUser ? primary.credential.lastName : null,
         grant_id: null,

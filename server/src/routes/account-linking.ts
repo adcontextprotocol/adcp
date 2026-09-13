@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type ValidatedApiKey } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
@@ -239,8 +239,15 @@ export function createAccountLinkingRouter(): Router {
   // Email ownership and the provider mutation are scoped to the credential
   // that authenticated, even when the session also carries a canonical person.
   router.put('/primary', requireAuth, verifyExecuteLimiter, async (req: Request, res: Response) => {
+    // Only a real member credential hydrated from the primary database can
+    // change email. Synthetic/API-key principals are not email credentials.
+    const snapshot = req.user?.authorizationSnapshot;
+    if ((req as Request & { apiKey?: ValidatedApiKey }).apiKey || !snapshot
+        || snapshot.authenticatedUserId !== (req.user!.authWorkosUserId ?? req.user!.id)) {
+      return res.status(403).json({ error: 'A member login is required to change primary email' });
+    }
+    const userId = snapshot.authenticatedUserId;
     try {
-      const userId = req.user!.authWorkosUserId ?? req.user!.id;
       const result = await setPrimaryEmail({
         userId, email: req.body?.email, actorUserId: userId, operationId: req.body?.operation_id,
       });
@@ -249,7 +256,7 @@ export function createAccountLinkingRouter(): Router {
       if (error instanceof EmailMutationError) return res.status(error.status).json(error.body);
       // Provider exceptions may contain request headers, tokens, or bodies.
       logger.error('Failed to set primary email');
-      return sendEmailMutationFailure(res, req.user!.authWorkosUserId ?? req.user!.id, error);
+      return sendEmailMutationFailure(res, userId, error);
     }
   });
 

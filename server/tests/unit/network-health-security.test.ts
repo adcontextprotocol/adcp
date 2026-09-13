@@ -195,7 +195,7 @@ describe('network-health global authorization boundary', () => {
             identity_id: `identity_${userId}`,
             authorization_epoch: '0',
             email: isAdmin ? 'platform-admin@example.test' : 'user@example.test',
-            email_verified: true,
+            email_verified: true, email_mutation_pending: false,
             first_name: isAdmin ? 'Platform' : 'Regular',
             last_name: isAdmin ? 'Admin' : 'User',
             grant_id: null,

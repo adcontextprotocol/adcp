@@ -9,12 +9,15 @@ const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   clientQuery: vi.fn(),
   release: vi.fn(),
+  principal: null as any,
+  apiKey: false,
 }));
 const client = { query: mocks.clientQuery, release: mocks.release };
 vi.mock('../../src/db/client.js', () => ({ query: mocks.query, getPool: () => ({ connect: async () => client }) }));
 vi.mock('../../src/middleware/auth.js', () => ({
   requireAuth: (req: any, _res: any, next: any) => {
-    req.user = { id: 'user_canonical', authWorkosUserId: 'user_credential', email: 'canonical@example.test' };
+    req.user = mocks.principal ?? { id: 'user_canonical', authWorkosUserId: 'user_credential', email: 'canonical@example.test', authorizationSnapshot: { authenticatedUserId: 'user_credential' } };
+    if (mocks.apiKey) req.apiKey = { id: 'test-api-key', scopes: ['admin:*'] };
     next();
   },
 }));
@@ -39,12 +42,32 @@ const operationId = '7bc02bce-fb04-47ac-8104-c3bb4b93a1e7';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.principal = null;
+  mocks.apiKey = false;
   mocks.status.mockResolvedValue({ reconciliation_required: false });
   mocks.query.mockResolvedValue({ rows: [] });
   mocks.clientQuery.mockResolvedValue({ rows: [] });
 });
 
 describe('Primary email credential boundary', () => {
+  it.each(['missing snapshot', 'API key'])('rejects %s before mutation or journal lookup', async (kind) => {
+    if (kind === 'API key') mocks.apiKey = true;
+    else mocks.principal = { id: 'user_credential', email: 'credential@example.test' };
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(403);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it('rejects a snapshot belonging to a different authenticated credential', async () => {
+    mocks.principal = { id: 'other_canonical', authWorkosUserId: 'provider_claim', authorizationSnapshot: { authenticatedUserId: 'user_credential' } };
+    mocks.mutate.mockResolvedValue({ status: 'primary_updated' });
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(403);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  });
+
   it('mutates the credential that authenticated, regardless of canonical identity direction', async () => {
     mocks.mutate.mockResolvedValue({ status: 'primary_updated', primary_email: 'new@example.test', operation_id: operationId });
     const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });

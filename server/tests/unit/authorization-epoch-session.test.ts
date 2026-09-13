@@ -58,7 +58,7 @@ function snapshot(overrides: Partial<AuthorizationSnapshot> = {}): Authorization
   return {
     authenticatedUserId: AUTHENTICATED_ID, canonicalUserId: AUTHENTICATED_ID,
     identityId: 'identity_epoch', authorizationEpoch: '1', selectedOrganizationId: null,
-    credential: { email: PROVIDER_USER.email, firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true },
+    credential: { email: PROVIDER_USER.email, firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true, emailMutationPending: false },
     credentialGrant: null, ...overrides,
   };
 }
@@ -442,7 +442,7 @@ describe.each([
     const token = credential();
     await middleware(request(token, bearer), response(), vi.fn());
     mocks.loadAuthorizationSnapshot.mockResolvedValue(snapshot({
-      credential: { email: 'sam-current@example.test', firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true },
+      credential: { email: 'sam-current@example.test', firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true, emailMutationPending: false },
     }));
     const req = request(token, bearer);
     await middleware(req, response(), vi.fn());

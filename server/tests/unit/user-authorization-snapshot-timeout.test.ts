@@ -3,6 +3,9 @@ import { queryWithTimeout } from '../../src/db/client.js';
 import {
   AuthorizationSnapshotUnavailableError,
   loadAuthorizationSnapshot,
+  sameAuthorizationIdentity,
+  sameAuthorizationSnapshot,
+  type AuthorizationSnapshot,
 } from '../../src/db/user-authorization-snapshot-db.js';
 
 vi.mock('../../src/db/client.js', async importOriginal => ({
@@ -24,6 +27,7 @@ function queryResult(overrides: Record<string, unknown> = {}) {
       authorization_epoch: '7',
       email: 'sam@pinnacle.example',
       email_verified: true,
+      email_mutation_pending: false,
       first_name: 'Sam',
       last_name: 'Adeyemi',
       grant_id: null,
@@ -116,11 +120,42 @@ describe('authorization snapshot query deadline and connection retry', () => {
 
   it.each([
     { state: 'replica', row: { in_recovery: true } },
+    { state: 'missing primary confirmation', row: { in_recovery: undefined } },
+    { state: 'malformed primary confirmation', row: { in_recovery: 0 } },
     { state: 'missing primary identity', row: { canonical_user_id: null } },
   ])('does not retry an unavailable $state snapshot', async ({ row }) => {
     boundedQuery.mockResolvedValue(queryResult(row));
     await expect(loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID))
       .rejects.toBeInstanceOf(AuthorizationSnapshotUnavailableError);
     expect(boundedQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, null, 'false', 'true', 0, 1, {}, []])(
+    'fails closed for a missing or malformed email mutation flag (%j)', async value => {
+      boundedQuery.mockResolvedValue(queryResult({ email_mutation_pending: value }));
+      await expect(loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID))
+        .rejects.toBeInstanceOf(AuthorizationSnapshotUnavailableError);
+      expect(boundedQuery).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([false, true])('preserves an explicit email mutation flag %s', async pending => {
+    boundedQuery.mockResolvedValue(queryResult({ email_mutation_pending: pending }));
+    await expect(loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID)).resolves.toMatchObject({
+      credential: { emailMutationPending: pending },
+    });
+  });
+
+  it('rejects old or malformed snapshot replay even when both flags are missing', async () => {
+    boundedQuery.mockResolvedValue(queryResult());
+    const current = (await loadAuthorizationSnapshot(USER_ID, ORGANIZATION_ID))!;
+    for (const value of [undefined, null, 'false', 0]) {
+      const malformed = {
+        ...current, credential: { ...current.credential, emailMutationPending: value },
+      } as unknown as AuthorizationSnapshot;
+      expect(sameAuthorizationIdentity(malformed, current)).toBe(false);
+      expect(sameAuthorizationIdentity(current, malformed)).toBe(false);
+      expect(sameAuthorizationSnapshot(malformed, malformed)).toBe(false);
+    }
   });
 });

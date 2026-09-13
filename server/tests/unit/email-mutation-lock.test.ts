@@ -7,7 +7,7 @@ import { setPrimaryEmail } from '../../src/services/email-mutation.js';
 const operationId = '9f49dcb7-c1d6-48b9-9a55-c14339f7e63e';
 const attempt = () => setPrimaryEmail({ userId: 'user_test', operationId, email: 'old@test.example' }).catch(error => error);
 const noRows = { rowCount: 0, rows: [] };
-const userRow = { rowCount: 1, rows: [{ email: 'old@test.example', email_verified: false, email_mutation_version: '0' }] };
+const userRow = { rowCount: 1, rows: [{ workos_user_id: 'user_test', email: 'old@test.example', email_verified: false, email_mutation_version: '0' }] };
 
 describe('email mutation lock and request validation', () => {
   beforeEach(() => {
@@ -24,6 +24,16 @@ describe('email mutation lock and request validation', () => {
   it('releases the connection only after positively acknowledging unlock and never nests pool checkout', async () => {
     expect(await attempt()).toMatchObject({ status: 400 });
     expect(mocks.release).toHaveBeenCalledExactlyOnceWith(false); expect(mocks.poolQuery).not.toHaveBeenCalled();
+  });
+  it('rejects a database row for a different credential before recording an intent', async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }] };
+      if (sql.includes('pg_advisory_unlock')) return { rows: [{ unlocked: true }] };
+      if (sql.includes('FROM users')) return { rowCount: 1, rows: [{ ...userRow.rows[0], workos_user_id: 'user_other' }] };
+      return noRows;
+    });
+    expect(await attempt()).toMatchObject({ message: 'Credential row does not match requested user' });
+    expect(mocks.query.mock.calls.some(([sql]) => /INSERT|UPDATE/.test(sql))).toBe(false);
   });
   it.each([false, undefined])('destroys the connection for unlock result %s', async unlocked => {
     mocks.query.mockImplementation(async (sql: string) => {

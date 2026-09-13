@@ -17,7 +17,7 @@ import { createLogger } from "../logger.js";
 import {
   resolveWebUserAAOAdminAccess,
 } from "../addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
+import { isBreakGlassAdmin } from "../auth/admin-access.js";
 
 const logger = createLogger('html-config');
 
@@ -36,6 +36,7 @@ const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY || null;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
 interface AppUser {
+  readonly authorizationSnapshot?: import("../db/user-authorization-snapshot-db.js").AuthorizationSnapshot;
   id?: string;
   email: string;
   firstName?: string | null;
@@ -54,14 +55,13 @@ export function buildAppConfig(user?: AppUser | null): {
   posthog: { apiKey: string; host: string } | null;
 } {
   // Trust a pre-resolved isAdmin (set by enrichUserWithAdmin / dev-user flag).
-  // Fall back to ADMIN_EMAILS for callers that haven't enriched yet so we don't
-  // regress from prior behavior.
+  // The fallback requires authoritative credential and mutation state.
   let isAdmin = false;
   if (user) {
     if (typeof user.isAdmin === 'boolean') {
       isAdmin = user.isAdmin;
     } else {
-      isAdmin = isBreakGlassAdminEmail(user.email);
+      isAdmin = isBreakGlassAdmin(user.authorizationSnapshot);
     }
   }
 
@@ -176,7 +176,7 @@ export async function enrichUserWithAdmin(user: AppUser | null | undefined): Pro
 
   if (user.id) {
     try {
-      user.isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
+      user.isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.authorizationSnapshot)).isAdmin;
     } catch (error) {
       logger.warn({ error, userId: user.id }, 'Failed to resolve isAdmin via working group; defaulting to false');
       user.isAdmin = false;
