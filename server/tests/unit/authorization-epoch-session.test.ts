@@ -1,7 +1,6 @@
 /** Provider caches must never become identity, organization, or epoch authority. */
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import supertest from 'supertest';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
@@ -569,11 +568,16 @@ describe.each([['required', requireAuth], ['optional', optionalAuth]] as const)(
 });
 
 describe('optional authentication HTTP route boundary', () => {
-  function route() {
+  function route(parsedCookies: Record<string, string> = {}) {
     const app = express();
-    // Exercise the real HTTP cookie parser, including an explicitly empty cookie.
-    // This read-only route has the same middleware chain for anonymous and authenticated callers.
-    app.use(cookieParser());
+    // Match network-health-security.test.ts: authentication is under test, not
+    // cookie-parser. Inject its parsed output from a fixture owned by this app;
+    // the HTTP requests below send the corresponding Cookie header. An absent
+    // cookie remains {}, while a presented empty cookie retains its empty value.
+    app.use((req, _res, next) => {
+      req.cookies = { ...parsedCookies };
+      next();
+    });
     app.use(csrfProtection);
     const handler = vi.fn((req: Request, res: Response) => {
       res.json({ authenticated: Boolean(req.user) });
@@ -594,10 +598,11 @@ describe('optional authentication HTTP route boundary', () => {
 
   it.each(['', 'Basic invalid', 'Bearer header.invalid.signature'])('rejects supplied Authorization %j without using an otherwise valid cookie', async (authorization) => {
     mocks.verifyWorkOSJWT.mockRejectedValue(new Error('Invalid JWT signature'));
-    const { app, handler } = route();
+    const cookie = `otherwise-valid-${++sequence}`;
+    const { app, handler } = route({ 'wos-session': cookie });
     const result = await supertest(app).get('/optional-auth-test')
       .set('Authorization', authorization)
-      .set('Cookie', `wos-session=otherwise-valid-${++sequence}`);
+      .set('Cookie', `wos-session=${cookie}`);
     expect(result.status).toBe(401);
     expect(handler).not.toHaveBeenCalled();
     expect(mocks.loadSealedSession).not.toHaveBeenCalled();
@@ -607,7 +612,7 @@ describe('optional authentication HTTP route boundary', () => {
   it('rejects an opaque invalid bearer after validating that bearer rather than its companion cookie', async () => {
     mocks.authenticate.mockResolvedValue({ authenticated: false });
     const token = `invalid-native-route-${++sequence}`;
-    const { app, handler } = route();
+    const { app, handler } = route({ 'wos-session': 'otherwise-valid' });
     const result = await supertest(app).get('/optional-auth-test')
       .set('Authorization', `Bearer ${token}`)
       .set('Cookie', 'wos-session=otherwise-valid');
@@ -619,7 +624,7 @@ describe('optional authentication HTTP route boundary', () => {
   it.each(['empty', 'invalid'] as const)('rejects an %s presented wos-session cookie before the handler', async (kind) => {
     mocks.authenticate.mockResolvedValue({ authenticated: false });
     const token = kind === 'empty' ? '' : `invalid-cookie-route-${++sequence}`;
-    const { app, handler } = route();
+    const { app, handler } = route({ 'wos-session': token });
     const result = await supertest(app).get('/optional-auth-test').set('Cookie', `wos-session=${token}`);
     expect(result.status).toBe(401);
     expect(handler).not.toHaveBeenCalled();
@@ -629,10 +634,11 @@ describe('optional authentication HTTP route boundary', () => {
 
   it.each(['bearer', 'cookie'] as const)('returns 503 for unavailable authorization on a presented %s without running the handler', async (kind) => {
     mocks.loadAuthorizationSnapshot.mockRejectedValue(new AuthorizationSnapshotUnavailableError());
-    const { app, handler } = route();
+    const cookie = `unavailable-route-${++sequence}`;
+    const { app, handler } = route(kind === 'cookie' ? { 'wos-session': cookie } : {});
     const httpRequest = supertest(app).get('/optional-auth-test');
     if (kind === 'bearer') httpRequest.set('Authorization', `Bearer header.route${++sequence}.signature`);
-    else httpRequest.set('Cookie', `wos-session=unavailable-route-${++sequence}`);
+    else httpRequest.set('Cookie', `wos-session=${cookie}`);
     const result = await httpRequest;
     expect(result.status).toBe(503);
     expect(handler).not.toHaveBeenCalled();
