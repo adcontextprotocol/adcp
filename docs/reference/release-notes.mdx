@@ -9,6 +9,29 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Version 3.1.22
+
+**Status:** Published September 13, 2026 at 12:56 UTC — emergency privacy/security correction for the experimental Trusted Match Protocol (`trusted_match.core`). The stable wire negotiation value remains `"3.1"`.
+
+Version 3.1.22 corrected two public Context Match privacy/security issues:
+
+- [#7396](https://github.com/adcontextprotocol/adcp/pull/7396) prohibits dense embeddings derived from non-public content attributable to a single user or session and requires privacy reduction for other free-form context signals.
+- [#7397](https://github.com/adcontextprotocol/adcp/pull/7397) replaces placement-only response caching with request-aware partitioning by `{provider_id, context_hash}`, rewrites `request_id` on cache hits, and keeps request-derived cache material out of observability surfaces.
+
+The generated v3.1.22 changelog included #7396 but omitted #7397 because the 3.1.x backport did not carry its own changeset. The independent patch changeset following this note supplies that missing release coverage in v3.1.23. The published [v3.1.22 release](https://github.com/adcontextprotocol/adcp/releases/tag/v3.1.22), tag, package, and versioned `dist` artifacts remain immutable.
+
+### Immediate Context Match cache action
+
+Context Match router operators affected by unsafe response caching MUST bypass or disable that caching until the router implements both request-aware partitioning and a trusted namespace for every result-affecting security and provider-configuration context. This includes authenticated principal or tenant, authorization and entitlement revision, active-package generation, provider endpoint and configuration, deployed model, and targeting or rules generation.
+
+The request-aware `{provider_id, context_hash}` rule is the v3.1.22 correction. The additional `cache_namespace` conformance contract in main [#7446](https://github.com/adcontextprotocol/adcp/pull/7446) is 3.2-only and effective October 25, 2026; it is not retroactive 3.1 conformance. Until a router can establish both dimensions safely, bypassing cache lookup, coalescing, and insertion is the safe operational posture.
+
+### Emergency notice exception
+
+The v3.1.22 corrections shipped immediately as an emergency security exception to the normal six-week notice process for breaking changes to experimental surfaces. This records the exception; it does not change the general [experimental notice contract](/docs/reference/experimental-status#contract-for-experimental-surfaces). Corrections to the release record are carried forward in current-source documentation and the next patch rather than by rewriting published v3.1.22 artifacts.
+
+---
+
 ## Version 3.1.0
 
 **Status:** General availability — minor release. The stable wire negotiation value is `"3.1"`. The published 3.0.x line remains supported for existing integrations; new 3.1 integrations should pin to `"3.1"` and read `supported_versions` before sending 3.1-only fields.
