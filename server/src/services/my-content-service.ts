@@ -14,7 +14,7 @@
  */
 
 import { getPool } from '../db/client.js';
-import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
+import { isWebUserAAOAdmin, isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
 import { fetchPathPageviewCounts } from './posthog-query.js';
 
 export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected' | 'needs_revisions';
@@ -75,6 +75,8 @@ export class MyContentError<C extends MyContentErrorCode = MyContentErrorCode> e
 
 export interface ListMyContentInput {
   userId: string;
+  /** Null forbids platform scope; omitted retains legacy web compatibility. */
+  adminPrincipal?: AAOAdminPrincipal | null;
   /** One of MyContentStatus, the literal 'all', or undefined (returns all). */
   status?: string;
   /** Committee slug, or 'personal' (no committee), or undefined. */
@@ -91,6 +93,7 @@ export interface ListMyContentResult {
 
 export async function listMyContent({
   userId,
+  adminPrincipal,
   status,
   collection,
   relationship,
@@ -121,7 +124,11 @@ export async function listMyContent({
   // pre-existing content with no proposer or content from committees
   // they don't lead). Relationships are still computed so the UI/chat
   // can distinguish their own contributions.
-  const userIsAdmin = await isWebUserAAOAdmin(userId);
+  const userIsAdmin = adminPrincipal === null
+    ? false
+    : adminPrincipal
+      ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
+      : await isWebUserAAOAdmin(userId);
 
   let queryText = `
     SELECT DISTINCT ON (p.id)

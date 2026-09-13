@@ -78,8 +78,9 @@ import {
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
-  isWebUserAAOAdmin,
 } from "../addie/mcp/admin-tools.js";
+import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
+import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -791,6 +792,7 @@ export async function prepareRequestWithMemberTools(
   isAuthenticated: boolean,
   threadId?: string,
   selectedOrganizationId?: string | null,
+  adminPrincipal?: AAOAdminPrincipal,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -802,10 +804,11 @@ export async function prepareRequestWithMemberTools(
     (async () => {
       try {
         if (userId) {
-          return await getWebMemberContext(userId, selectedOrganizationId);
+          return await getWebMemberContext(userId, selectedOrganizationId, adminPrincipal);
         }
         return null;
       } catch (error) {
+        if (error instanceof AAOAdminLookupUnavailableError) throw error;
         logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
         return null;
       }
@@ -924,7 +927,7 @@ export async function prepareRequestWithMemberTools(
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
   const allTools = [...MEMBER_TOOLS, ...DIRECTORY_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
-    ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext),
+    ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext, undefined, adminPrincipal),
     ...createDirectoryToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext, trainingModuleContext),
@@ -972,8 +975,8 @@ export async function prepareRequestWithMemberTools(
   if (userId) {
     const workingGroupDb = new WorkingGroupDatabase();
     const [userIsAdmin, ledGroups] = await Promise.all([
-      isWebUserAAOAdmin(userId),
-      workingGroupDb.getCommitteesLedByUser(userId),
+      adminPrincipal ? isAuthenticatedUserAAOAdmin(adminPrincipal) : Promise.resolve(false),
+      workingGroupDb.getCommitteesLedByUser(adminPrincipal?.authWorkosUserId ?? adminPrincipal?.id ?? userId),
     ]);
 
     if (userIsAdmin) {
@@ -1006,7 +1009,7 @@ export async function prepareRequestWithMemberTools(
     // Meeting scheduling: admin or committee leader
     if (userIsAdmin || ledGroups.length > 0) {
       allTools.push(...MEETING_TOOLS);
-      for (const [name, handler] of createMeetingToolHandlers(memberContext)) {
+      for (const [name, handler] of createMeetingToolHandlers(memberContext, undefined, undefined, adminPrincipal)) {
         combinedHandlers.set(name, handler);
       }
     }
@@ -1039,7 +1042,7 @@ export async function prepareRequestWithMemberTools(
 
   return {
     messageToProcess,
-    requestContext,
+    requestContext: `${requestContext}\n\n**Platform administrator access**: ${isAAOAdmin ? 'Authorized for this authenticated credential.' : 'Not authorized. Platform-wide escalation listing and resolution require AgenticAdvertising.org platform administrator access; organization ownership does not grant it.'}`,
     memberContext,
     requestTools,
     siRetrievalTimeMs,
@@ -1121,12 +1124,13 @@ export function createAddieChatRouter(options?: {
   // =========================================================================
 
   apiRouter.get('/experiment', optionalAuth, async (req, res) => {
-    if (!req.user || !await isWebUserAAOAdmin(req.user.id)) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
     try {
+      if (!req.user || !await isAuthenticatedUserAAOAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
       return res.json(await getGeminiDirectResults());
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ error }, 'Failed to load Addie experiment results');
       return res.status(503).json({ error: 'Experiment results unavailable' });
     }
@@ -1335,7 +1339,8 @@ export function createAddieChatRouter(options?: {
         externalId,
         isAuth,
         thread.thread_id,
-        typeof organization_id === 'string' ? organization_id : null
+        typeof organization_id === 'string' ? organization_id : null,
+        req.user,
       );
       const tieredAccess = buildTieredAccess(
         memberTools,
@@ -1531,6 +1536,7 @@ export function createAddieChatRouter(options?: {
         si_session: siSession,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       if (error instanceof WebChatModelPreferenceError) {
         return res.status(error.statusCode).json({
           error: 'Invalid model preference',
@@ -1922,7 +1928,8 @@ export function createAddieChatRouter(options?: {
         externalId,
         isAuth,
         thread.thread_id,
-        typeof organization_id === 'string' ? organization_id : null
+        typeof organization_id === 'string' ? organization_id : null,
+        req.user,
       );
       const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
       const activeCertificationKind = classifyActiveCertificationProgress(
@@ -2477,12 +2484,15 @@ export function createAddieChatRouter(options?: {
         }
       }
       if (!res.headersSent) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         if (error instanceof ChatAttachmentValidationError) {
           return res.status(error.statusCode).json({ error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
         }
         return res.status(500).json({ error: "Internal server error" });
       }
-      if (error instanceof ChatAttachmentValidationError) {
+      if (error instanceof AAOAdminLookupUnavailableError) {
+        sendEvent('stream_error', { error: error.message, code: error.code, recoverable: true });
+      } else if (error instanceof ChatAttachmentValidationError) {
         logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
         sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
       } else {
