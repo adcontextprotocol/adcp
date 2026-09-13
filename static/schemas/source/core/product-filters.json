@@ -115,7 +115,7 @@
     },
     "countries": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_countries so returned pricing and forecasts are scoped to the concrete delivery constraint.",
+      "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.countries. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
         "type": "string",
@@ -125,7 +125,7 @@
     },
     "regions": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_regions. Sellers resolve the requested outcome through inherent product scope or selectable targeting.",
+      "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.regions. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
         "type": "string",
@@ -135,7 +135,7 @@
     },
     "metros": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_metros for known values or required_overlay_support.geo_metros when values will be supplied on packages later.",
+      "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.metros. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
         "type": "object",
@@ -454,7 +454,7 @@
     },
     "signal_targeting": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.signal_targeting_groups for known selections or required_overlay_support.signal_targeting_groups when selection will happen later. Legacy entries remain accepted during migration.",
+      "description": "DEPRECATED legacy signal-option eligibility filter. Retained get_products handlers MUST preserve the signal identity, value predicate, and requested include/exclude capability. This does not activate delivery targeting. Native buyers use criteria.targeting_overlay.signal_targeting_groups only for concrete delivery selections, preserving exclusion through group operators; copying targeting_mode into targeting_overlay.signal_targeting does not preserve it.",
       "deprecated": true,
       "items": {
         "type": "object",
@@ -476,7 +476,7 @@
     },
     "postal_areas": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_postal_areas for known values or required_overlay_support.geo_postal_areas when values will be supplied later.",
+      "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.postal_areas. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
         "$ref": "/schemas/core/postal-area.json"
@@ -485,7 +485,7 @@
     },
     "geo_proximity": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_proximity. Sellers resolve the requested outcome through inherent product scope or selectable targeting and forecast the resulting inventory.",
+      "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.geo_proximity. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
         "type": "object",
@@ -651,7 +651,7 @@
     },
     "keywords": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.keyword_targets for concrete terms or required_overlay_support.keyword_targets when terms will be supplied later. Broad thematic intent remains in brief.",
+      "description": "DEPRECATED legacy product eligibility filter. Retained get_products handlers MUST preserve the requested keyword eligibility and match_type (default broad). This is not an instruction to add package keyword targeting. Native buyers use criteria.targeting_overlay.keyword_targets only when they intend a delivery constraint, or criteria.required_overlay_support.keyword_targets for future selectability.",
       "deprecated": true,
       "items": {
         "type": "object",

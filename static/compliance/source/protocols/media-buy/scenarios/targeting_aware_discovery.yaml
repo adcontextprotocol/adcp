@@ -1,5 +1,5 @@
 id: media_buy_seller/targeting_aware_discovery
-version: "1.0.0"
+version: "1.1.0"
 title: "Seller resolves targeting during discovery and persists inventory selection"
 category: media_buy_seller
 summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
@@ -51,7 +51,7 @@ caller:
 
 prerequisites:
   description: |
-    The controller seeds a non-guaranteed video product with US inventory,
+    The controller seeds a non-guaranteed video product with US and Canadian inventory,
     one-country package targeting, one-entry radius proximity targeting,
     Nielsen DMA support, two targetable publisher-scoped placements, list
     targeting support, enumerated age intervals, and deterministic browser
@@ -69,6 +69,10 @@ prerequisites:
 fixtures:
   products:
     - product_id: "targeting_aware_video_catalog"
+      ext:
+        training:
+          coverage:
+            countries: ["US", "CA"]
       delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_ids:
@@ -127,6 +131,10 @@ fixtures:
         platform_compatibility:
           safari: ["ios", "macos"]
     - product_id: "targeting_aware_fixed_placement"
+      ext:
+        training:
+          coverage:
+            countries: ["US", "CA"]
       delivery_type: "non_guaranteed"
       channels: ["ctv"]
       format_ids:
@@ -144,6 +152,10 @@ fixtures:
         - action: "update_targeting"
           modes: ["self_serve"]
     - product_id: "targeting_aware_expired_configured"
+      ext:
+        training:
+          coverage:
+            countries: ["US", "CA"]
       is_custom: true
       expires_at: "2020-01-01T00:00:00Z"
       delivery_type: "non_guaranteed"
@@ -174,10 +186,10 @@ fixtures:
 
 phases:
   - id: compatibility_window
-    title: "Preserve legacy targeting while rejecting ambiguous dual input"
+    title: "Apply coverage and delivery targeting independently"
     steps:
-      - id: accept_equivalent_legacy_and_overlay_targeting
-        title: "Accept equivalent legacy and structured geography"
+      - id: accept_same_country_coverage_and_targeting
+        title: "Accept coverage and delivery targeting for the same country"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -199,28 +211,26 @@ phases:
           context:
             correlation_id: "targeting_aware_discovery--equivalent_legacy"
         expected: |
-          Accept the request because the deprecated countries filter and the
-          structured overlay express the same delivery constraint. Return a
-          configured product whose forecast is scoped to US inventory.
+          Apply US inventory coverage and US delivery targeting independently.
+          Return a configured product whose forecast is scoped by the explicit
+          delivery overlay, not by the coverage filter.
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json"
           - check: field_present
             path: "products[0]"
-            description: "Equivalent legacy and structured targeting remains buyable"
+            description: "Coverage and explicit delivery targeting are both satisfied"
           - check: field_absent
             path: "products[0].targeting_resolution"
-            description: "Equivalent dual input does not manufacture a targeting modification"
+            description: "Exact delivery targeting does not manufacture a modification"
 
-      - id: reject_conflicting_legacy_and_overlay_targeting
-        title: "Reject conflicting legacy and structured geography"
+      - id: accept_distinct_coverage_and_targeting
+        title: "Accept Canadian coverage with US delivery targeting"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
-        expect_error: true
-        negative_path: payload_well_formed
         sample_request:
           buying_mode: "brief"
           brief: "Premium outdoor video"
@@ -237,13 +247,18 @@ phases:
           context:
             correlation_id: "targeting_aware_discovery--conflicting_legacy"
         expected: |
-          Reject with INVALID_REQUEST. The seller must not choose one of two
-          contradictory delivery constraints or silently treat the legacy field
-          as a product-coverage hint.
+          The seeded product has inventory in both countries. Canadian coverage
+          selects it, while the explicit overlay configures US-only delivery.
+          The two fields express independent predicates and are not ambiguous.
         validations:
-          - check: error_code
-            value: "INVALID_REQUEST"
-            description: "Conflicting legacy and structured targeting is ambiguous"
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products[0]"
+            description: "A product covering both countries can satisfy both predicates"
+          - check: field_absent
+            path: "products[0].targeting_resolution"
+            description: "Exact US delivery needs no targeting modification"
 
   - id: release_downshift
     title: "Serve the legacy shape to a 3.1-pinned buyer"

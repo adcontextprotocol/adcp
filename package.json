@@ -65,7 +65,7 @@
     "test:a2a-profile-extension": "node --test --test-force-exit --test-timeout=30000 tests/a2a-profile-extension-v3.test.cjs",
     "test:transport-errors": "node --test --test-force-exit --test-timeout=30000 tests/transport-error-mapping.test.cjs tests/request-signing-body-integrity.test.cjs",
     "test:targeting-overlay-vectors": "node --test --test-force-exit --test-timeout=30000 tests/media-buy-targeting-overlay-vectors.test.cjs",
-    "test:targeting-aware-discovery": "node --test --test-force-exit --test-timeout=30000 tests/targeting-aware-discovery.test.cjs",
+    "test:targeting-aware-discovery": "node --test --test-force-exit --test-timeout=30000 tests/targeting-aware-discovery.test.cjs tests/product-coverage-filters.test.cjs",
     "test:geo-region-targeting": "node --test --test-force-exit --test-timeout=30000 tests/geo-region-targeting.test.cjs",
     "test:demographic-targeting": "node --test --test-force-exit --test-timeout=30000 tests/demographic-targeting.test.cjs",
     "test:audience-activation-methods": "node --test --test-force-exit --test-timeout=30000 tests/audience-activation-methods.test.cjs",
