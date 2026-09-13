@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/targeting-negative-keyword.json",
+  "$id": "/schemas/core/negative-keyword.json",
   "title": "Negative Keyword",
-  "description": "A keyword and match type to exclude from delivery.",
+  "description": "An excluded keyword.",
   "type": "object",
   "properties": {
     "keyword": {

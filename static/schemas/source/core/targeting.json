@@ -57,7 +57,7 @@
       "title": "Targeting Geo Metros",
       "type": "array",
       "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
-      "items": { "$ref": "/schemas/core/targeting-geo-metro.json" },
+      "items": { "$ref": "/schemas/core/geo-metro.json" },
       "minItems": 1
     },
     "geo_metros_exclude": {
@@ -462,7 +462,7 @@
       "title": "Targeting Negative Keywords",
       "type": "array",
       "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
-      "items": { "$ref": "/schemas/core/targeting-negative-keyword.json" },
+      "items": { "$ref": "/schemas/core/negative-keyword.json" },
       "minItems": 1
     }
   },

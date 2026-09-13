@@ -60,8 +60,8 @@ test('explicitly deprecated schema nodes carry deprecated: true', () => {
 
 test('codegen-facing schema titles remain stable', () => {
   const expectations = [
-    ['core/targeting-geo-metro.json', ['title'], 'Geo Metro'],
-    ['core/targeting-negative-keyword.json', ['title'], 'Negative Keyword'],
+    ['core/geo-metro.json', ['title'], 'Geo Metro'],
+    ['core/negative-keyword.json', ['title'], 'Negative Keyword'],
     ['core/product.json', ['anyOf', 0, 'title'], 'Named-format product'],
     ['core/product.json', ['anyOf', 1, 'title'], 'Canonical-format product'],
     ['core/creative-asset.json', ['oneOf', 0, 'title'], 'v1 creative (named-format reference)'],

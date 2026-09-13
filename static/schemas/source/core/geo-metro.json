@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/targeting-geo-metro.json",
+  "$id": "/schemas/core/geo-metro.json",
   "title": "Geo Metro",
-  "description": "A metro-area classification system and the metro codes targeted within it.",
+  "description": "A targeted metro area.",
   "type": "object",
   "properties": {
     "system": {
