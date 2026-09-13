@@ -1,3 +1,4 @@
+import { complianceRunProvenance, type ComplianceRunProvenance } from '../../compliance/run-provenance.js';
 /**
  * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
@@ -11,6 +12,7 @@ import {
   setAgentTesterLogger,
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
+  getComplianceStoryboardById,
   testCapabilityDiscovery,
   CapabilityResolutionError,
   type ComplyOptions,
@@ -22,6 +24,7 @@ import {
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
+  hostedComplianceOptions,
   hostedAuthProbeTaskForProfile,
   hostedStaticApiKeyForProfile,
   agentAdvertisesHostedComplianceTarget,
@@ -33,7 +36,7 @@ import {
   withHostedTestOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
-import { getStoryboard } from '../../services/storyboards.js';
+import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 
@@ -255,6 +258,8 @@ export async function comply(
     ),
   );
   result.adcp_version ??= target.version;
+  (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
+    complianceRunProvenance(result, options);
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
 }
@@ -702,169 +707,139 @@ function mapOverallStatus(status: string): OverallRunStatus {
   }
 }
 
-function isSyntheticRequiredToolsMissingSkip(
-  step: { skip_reason?: string; step?: unknown; step_id?: unknown },
-  scenario: unknown,
-): boolean {
-  if (step.skip_reason !== 'missing_tool' || typeof scenario !== 'string' || !scenario.endsWith('/missing_tool')) {
-    return false;
+const pinnedStoryboardContexts = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getComplianceStoryboardById>>>();
+
+function pinnedStoryboard(result: ComplianceResult, storyboardId: string) {
+  if (!result.adcp_version) return undefined;
+  let context = pinnedStoryboardContexts.get(result);
+  if (!context) {
+    context = new Map();
+    pinnedStoryboardContexts.set(result, context);
   }
-  const stepId = firstString(step.step_id);
-  const title = firstString(step.step);
-  return stepId === 'missing_tool' || title?.startsWith('Skipped — agent does not advertise') === true;
-}
-
-function isExplicitRequiresToolMissingSkip(step: {
-  skip_reason?: string;
-  details?: unknown;
-  error?: unknown;
-  warnings?: unknown;
-  skip?: { detail?: unknown };
-}): boolean {
-  if (step.skip_reason !== 'missing_tool') return false;
-  const warning = Array.isArray(step.warnings)
-    ? step.warnings.find((w): w is string => typeof w === 'string' && w.trim().length > 0)
-    : undefined;
-  const detail = firstString(step.skip?.detail, step.details, step.error, warning);
-  return detail?.startsWith('Required tool "') === true && detail.includes('" not advertised');
-}
-
-function isRunnerApplicabilitySkip(step: {
-  skip_reason?: string;
-  step_id?: unknown;
-  requirement?: unknown;
-}, scenario?: unknown): boolean {
-  switch (step.skip_reason) {
-    case 'capability_unsupported':
-    case 'capability_prerequisite_unavailable':
-      return true;
-    case 'missing_test_kit_contract':
-      return scenario === 'idempotency/rate_limit_replay_invariant' &&
-        firstString(step.step_id) === 'expect_rate_limit_not_replayed';
-    case 'requirement_unmet':
-      return firstString(step.requirement) === 'webhook_receiver';
-    default:
-      return false;
+  const key = `${result.adcp_version}:${storyboardId}`;
+  if (!context.has(key)) {
+    try {
+      context.set(key, getComplianceStoryboardById(storyboardId,
+        hostedComplianceOptions(hostedComplianceTarget(result.adcp_version))));
+    } catch {
+      context.set(key, undefined);
+    }
   }
+  return context.get(key);
 }
 
-type SkipEvidenceStep = {
-  skip_reason?: string;
-  details?: unknown;
-  error?: unknown;
-  warnings?: unknown;
-  skip?: { detail?: unknown };
-};
-
-const NO_SKIP_REASONS: ReadonlySet<string> = new Set();
-
-function prerequisiteCascadeSource(step: SkipEvidenceStep): { reason: string } | null {
-  if (step.skip_reason !== 'prerequisite_failed') return null;
-  const warning = Array.isArray(step.warnings)
-    ? step.warnings.find((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    : undefined;
-  const detail = firstString(step.skip?.detail, step.error, step.details, warning);
-  const match = detail?.match(/prior stateful step "([^"]+)" skipped \(([^)]+)\)/);
-  return match ? { reason: match[2] } : null;
-}
-
-function isApplicabilityCascade(
-  step: SkipEvidenceStep,
-  applicabilityReasons: ReadonlySet<string>,
-  nonApplicabilityReasons: ReadonlySet<string> = new Set(),
-): boolean {
-  const source = prerequisiteCascadeSource(step);
-  if (!source) return false;
-  // A controller absence is always runner-owned applicability, including
-  // cross-phase cascades where the originating step is not in this slice.
-  return source.reason === 'missing_test_controller' || (
-    applicabilityReasons.has(source.reason) && !nonApplicabilityReasons.has(source.reason)
-  );
+function classifyRunStep(result: ComplianceResult, scenario: string, step: Parameters<typeof classifyComplianceStep>[0] & { step?: string }) {
+  let optionalToolUnavailable = false;
+  if (step.skipped && ['missing_tool', 'prerequisite_failed', 'missing_test_kit_contract'].includes(step.skip_reason ?? '') && result.adcp_version) {
+    try {
+      const storyboardId = scenarioStoryboardIdForFallback(scenario);
+      if (!storyboardId) return classifyComplianceStep(step, scenario);
+      const phaseId = phaseIdFromScenario(scenario, storyboardId);
+      const storyboard = pinnedStoryboard(result, storyboardId);
+      const phase = storyboard?.phases.find(candidate => candidate.id === phaseId);
+      // rc.33 drops step IDs, so permit only an unambiguous title+task match in
+      // the exact version/phase. Never infer optionality from warning strings.
+      const matches = phase?.steps.filter(candidate => step.step_id
+        ? candidate.id === step.step_id
+        : candidate.title === step.step && candidate.task === step.task) ?? [];
+      if (step.skip_reason === 'missing_test_kit_contract' && matches.length === 1 && matches[0].requires_contract) {
+        return 'setup_gap';
+      }
+      const requiredTool = matches.length === 1 ? matches[0].requires_tool : undefined;
+      optionalToolUnavailable = typeof requiredTool === 'string' && Array.isArray(result.agent_profile?.tools) &&
+        !result.agent_profile.tools.includes(requiredTool);
+    } catch {
+      // Missing pinned metadata cannot turn a production tool failure into N/A.
+    }
+  }
+  if (optionalToolUnavailable) return 'not_applicable';
+  if (step.skipped && step.skip_reason === 'prerequisite_failed') {
+    // fixture_unavailable is the SDK's whole-storyboard preflight abort. Once
+    // emitted, subsequent legacy cascades did not exercise seller behavior.
+    const storyboardId = scenarioStoryboardIdForFallback(scenario);
+    let fixtureAborted = false;
+    for (const track of result.tracks) {
+      for (const phase of track.scenarios) {
+        if (scenarioStoryboardIdForFallback(phase.scenario) !== storyboardId) continue;
+        for (const prior of phase.steps ?? []) {
+          if (prior === step) return fixtureAborted ? 'setup_gap' : classifyComplianceStep(step, scenario);
+          if (prior.skipped && prior.skip_reason === 'fixture_unavailable') fixtureAborted = true;
+        }
+      }
+    }
+  }
+  return classifyComplianceStep(step, scenario);
 }
 
 export function isNonExecutableCoverageGapScenario(scenario: {
   scenario?: unknown;
-  steps?: Array<{
-    passed?: boolean;
-    skipped?: boolean;
-    skip_reason?: string;
-    step_id?: unknown;
-    requirement?: unknown;
-    details?: unknown;
-    error?: unknown;
-    warnings?: unknown;
-    skip?: { detail?: unknown };
-  }>;
+  steps?: Array<Parameters<typeof classifyComplianceStep>[0]>;
 }): boolean {
-  const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
-  const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
-  const hasGenuineFailure = steps.some((step) => !step.skipped && step.passed === false);
-  if (!hasGenuineFailure && steps.some(
-    (step) => step.skipped && step.skip_reason === 'fixture_unavailable',
-  )) return true;
-  return steps.length > 0 && steps.every((step) => {
-    if (!step?.skipped) return false;
-    const isApplicabilitySkip = step.skip_reason === 'peer_branch_taken' ||
-      step.skip_reason === 'peer_substituted' ||
-      step.skip_reason === 'missing_test_controller' ||
-      step.skip_reason === 'fixture_unavailable' ||
-      (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
-      isExplicitRequiresToolMissingSkip(step) ||
-      isRunnerApplicabilitySkip(step, scenarioId);
-    if (isApplicabilitySkip) {
-      return true;
-    }
-    // This UI helper receives one phase without prior-phase provenance.
-    // Only controller absence is intrinsically safe to classify as N/A;
-    // other same-reason cascades stay visible as executable coverage gaps.
-    return isApplicabilityCascade(step, NO_SKIP_REASONS);
+  const steps = scenario.steps ?? [];
+  const dispositions = steps.map(step => classifyComplianceStep(step, String(scenario.scenario ?? '')));
+  if (steps.some(step => step.skipped && step.skip_reason === 'fixture_unavailable') &&
+    !dispositions.some(d => d === 'failed' || d === 'dependency_failed')) return true;
+  return steps.length > 0 && steps.every(step => {
+    const disposition = classifyComplianceStep(step, String(scenario.scenario ?? ''));
+    return disposition === 'not_applicable' || disposition === 'setup_gap';
   });
 }
 
-function skipReasonIsCoverageGap(
-  reason: string | undefined,
-  step?: {
-    skip_reason?: string;
-    step?: unknown;
-    step_id?: unknown;
-    requirement?: unknown;
-    details?: unknown;
-    error?: unknown;
-    warnings?: unknown;
-    skip?: { detail?: unknown };
-  },
-  scenario?: unknown,
-): boolean {
-  if (step && isSyntheticRequiredToolsMissingSkip(step, scenario)) return false;
-  if (step && isExplicitRequiresToolMissingSkip(step)) return false;
-  if (step && isRunnerApplicabilitySkip(step, scenario)) return false;
-  switch (reason) {
-    case 'not_applicable':
-    case 'peer_branch_taken':
-    case 'peer_substituted':
-      return false;
-    default:
-      return true;
-  }
-}
-
-function trackHasCoverageGapSkip(track: TrackResult): boolean {
-  for (const scenario of track.scenarios) {
-    for (const step of scenario.steps ?? []) {
-      if (step.skipped && skipReasonIsCoverageGap(step.skip_reason, step, scenario.scenario)) {
-        return true;
-      }
-    }
-  }
-  return false;
+function trackHasCoverageGapSkip(result: ComplianceResult, track: TrackResult): boolean {
+  return track.scenarios.some(scenario => scenario.steps?.some(step =>
+    classifyRunStep(result, String(scenario.scenario), step) === 'setup_gap'));
 }
 
 function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
-  return track.scenarios.some((scenario) =>
-    (scenario.steps ?? []).some((step) =>
-      step.skipped && step.skip_reason === 'fixture_unavailable'
-    )
-  );
+  return track.scenarios.some(scenario => scenario.steps?.some(step =>
+    step.skipped && step.skip_reason === 'fixture_unavailable'));
+}
+
+/** Reconcile SDK aggregates with the same structural policy as storyboard rows. */
+function normalizeGradedTracks(result: ComplianceResult): ComplianceResult {
+  const tracks = result.tracks.map(track => {
+    // Preserve legacy phase-only results, including their failure verdicts.
+    if (!track.scenarios.some(scenario => scenario.steps?.length)) return track;
+    const phases = track.scenarios.map(scenario => {
+      if (!scenario.steps?.length) return {
+        scenario,
+        dispositions: [scenario.overall_passed ? 'passed' : 'failed'],
+      };
+      const dispositions = scenario.steps.map(step => classifyRunStep(result, String(scenario.scenario), step));
+      const hasFailure = dispositions.some(d => d === 'failed' || d === 'dependency_failed');
+      const fixtureAborted = scenario.steps.some(step => step.skipped && step.skip_reason === 'fixture_unavailable');
+      return {
+        scenario: { ...scenario, overall_passed: !hasFailure },
+        dispositions: fixtureAborted && !hasFailure ? [] : dispositions,
+      };
+    });
+    const scenarios = phases.map(phase => phase.scenario);
+    const gradedSteps = phases.flatMap(phase => phase.dispositions);
+    const hasPassed = gradedSteps.includes('passed');
+    const hasFailed = gradedSteps.some(d => d === 'failed' || d === 'dependency_failed') ||
+      [...(track.observations ?? []), ...(result.observations ?? []).filter(observation => observation.track === track.track)]
+        .some(observation => observation.source?.code === 'storyboard-assertion-failed');
+    const status: TrackResult['status'] = hasFailed ? hasPassed ? 'partial' : 'fail'
+      : !hasPassed ? 'skip' : track.status === 'silent' ? 'silent' : 'pass';
+    if (status === track.status && scenarios.every((scenario, index) =>
+      scenario.overall_passed === track.scenarios[index].overall_passed)) return track;
+    return { ...track, scenarios, status };
+  });
+  if (tracks.every((track, index) => track === result.tracks[index])) return result;
+  const tracksPassed = tracks.filter(t => t.status === 'pass' || t.status === 'silent').length;
+  const tracksFailed = tracks.filter(t => t.status === 'fail').length;
+  const tracksPartial = tracks.filter(t => t.status === 'partial').length;
+  const terminalFailure = result.overall_status === 'auth_required' || result.overall_status === 'unreachable';
+  const normalized = {
+    ...result, tracks,
+    overall_status: terminalFailure ? result.overall_status
+      : tracksFailed > 0 ? 'failing' : tracksPartial > 0 || tracksPassed === 0 ? 'partial' : 'passing',
+    summary: { ...result.summary, tracks_passed: tracksPassed, tracks_failed: tracksFailed,
+      tracks_partial: tracksPartial, tracks_skipped: tracks.filter(t => t.status === 'skip').length },
+  } satisfies ComplianceResult;
+  const context = pinnedStoryboardContexts.get(result);
+  if (context) pinnedStoryboardContexts.set(normalized, context);
+  return normalized;
 }
 
 /**
@@ -891,7 +866,7 @@ function effectiveRunStatus(result: ComplianceResult): {
   const hasFixtureUnavailable = result.tracks.some(trackHasFixtureUnavailableSkip);
   const hasCoverageGapSkip = hasFixtureUnavailable || result.tracks
     .filter((track: TrackResult) => track.status === 'skip')
-    .some(trackHasCoverageGapSkip);
+    .some(track => trackHasCoverageGapSkip(result, track));
   const hasGenuineFailure = activeTracks.some((track: TrackResult) => track.status === 'fail') ||
     result.overall_status === 'failing' ||
     result.overall_status === 'auth_required' ||
@@ -979,49 +954,9 @@ export function deriveStoryboardStatuses(
     skippedCount: number;
     firstFailure: FirstFailure | null;
   }
-  const branchSkipReasons = new Set<string>([
-    'peer_branch_taken',
-    'peer_substituted',
-  ]);
-  const cascadeSkipReasons = new Set<string>([
-    'prerequisite_failed',
-  ]);
-  const isControllerSkip = (step: { skip_reason?: string; requirement?: string }): boolean =>
-    step.skip_reason === 'missing_test_controller' ||
-    (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
-  const isBranchSkip = (step: { skip_reason?: string }): boolean =>
-    branchSkipReasons.has(step.skip_reason ?? '');
-  const isCascadeSkip = (step: { skip_reason?: string }): boolean =>
-    cascadeSkipReasons.has(step.skip_reason ?? '');
-  const isNeutralApplicabilitySkip = (
-    step: {
-      skip_reason?: string;
-      step?: unknown;
-      step_id?: unknown;
-      details?: unknown;
-      error?: unknown;
-      warnings?: unknown;
-      requirement?: unknown;
-      skip?: { detail?: unknown };
-    },
-    scenario: string,
-  ): boolean => {
-    if (
-      step.skip_reason === 'not_applicable' ||
-      step.skip_reason === 'fixture_unavailable'
-    ) return true;
-
-    // `@adcp/sdk` emits a single synthetic `missing_tool` phase when a
-    // storyboard's `required_tools` gate is unmet. That means the storyboard is
-    // out of scope for this agent, not that a claimed production step failed.
-    if (isSyntheticRequiredToolsMissingSkip(step, scenario)) return true;
-    if (isExplicitRequiresToolMissingSkip(step)) return true;
-    if (isRunnerApplicabilitySkip(step, scenario)) return true;
-
-    return false;
-  };
   const perStoryboard = new Map<string, Aggregate>();
-  // Storyboard IDs can contain slashes; the last component is the phase ID.
+  // Storyboard IDs can contain slashes (e.g. media_buy_seller/available_actions).
+  // The last component is the phase ID, matching the SDK projection.
   const tracks = result.tracks ?? [];
 
   for (const track of tracks) {
@@ -1059,48 +994,35 @@ export function deriveStoryboardStatuses(
         }
         continue;
       }
-      const phaseApplicabilityReasons = new Set<string>();
-      const phaseNonApplicabilityReasons = new Set<string>();
       for (const step of s.steps) {
-        if (step.skipped) {
-          if (step.skip_reason === 'fixture_unavailable') {
-            agg.fixtureUnavailable = true;
-          }
-          if (isBranchSkip(step)) {
-            continue;
-          }
-          if (isControllerSkip(step)) {
-            agg.controllerSkipped++;
-            phaseApplicabilityReasons.add('missing_test_controller');
-            continue;
-          }
-          if (isNeutralApplicabilitySkip(step, String(s.scenario))) {
-            if (step.skip_reason) phaseApplicabilityReasons.add(step.skip_reason);
-            continue;
-          }
-          if (isApplicabilityCascade(step, phaseApplicabilityReasons, phaseNonApplicabilityReasons)) {
-            continue;
-          }
-          if (step.skip_reason !== 'prerequisite_failed' && step.skip_reason) {
-            phaseNonApplicabilityReasons.add(step.skip_reason);
-          }
-          if (isCascadeSkip(step)) {
-            agg.skippedCount++;
-          } else {
-            agg.failureCount++;
-            if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardStepFailure(step);
-          }
-          agg.stepsTotal++;
+        const disposition = classifyRunStep(result, String(s.scenario), step);
+        if (disposition === 'not_applicable') continue;
+        if (disposition === 'setup_gap') {
+          agg.controllerSkipped++;
+          if (step.skip_reason === 'fixture_unavailable') agg.fixtureUnavailable = true;
           continue;
         }
         agg.stepsTotal++;
-        if (step.passed) {
+        if (disposition === 'passed') {
           agg.stepsPassed++;
+        } else if (disposition === 'dependency_failed') {
+          agg.skippedCount++;
         } else {
           agg.failureCount++;
           if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardStepFailure(step);
         }
       }
+    }
+  }
+
+  for (const observation of result.observations ?? []) {
+    if (observation.source?.code !== 'storyboard-assertion-failed') continue;
+    const id = 'storyboard_id' in observation.source ? observation.source.storyboard_id : undefined;
+    if (!id || tracks.some(track => track.scenarios.some(scenario => scenario.scenario === `${id}/storyboard`))) continue;
+    const agg = perStoryboard.get(id);
+    if (agg) {
+      agg.failureCount++;
+      agg.stepsTotal++;
     }
   }
 
@@ -1122,7 +1044,7 @@ export function deriveStoryboardStatuses(
     // Fixture availability is a whole-storyboard preflight disposition. The
     // producer step that captured the format may already have passed, but that
     // partial execution is not evidence that the seller behavior was tested.
-    if (agg.fixtureUnavailable) {
+    if (agg.fixtureUnavailable && agg.failureCount === 0 && agg.skippedCount === 0) {
       entries.push({
         storyboard_id: sbId,
         status: 'untested',
@@ -1422,20 +1344,21 @@ export function complianceResultToDbInput(
   triggeredBy: TriggeredBy = 'manual',
   storyboardIds?: string[],
 ): RecordComplianceRunInput {
+  const gradedResult = normalizeGradedTracks(result);
   const selectedStoryboardIds = storyboardIds?.length ? storyboardIds
     : result.bundle_results?.length
       ? [...new Set(result.bundle_results.flatMap(bundle => bundle.storyboard_ids))].sort()
       : undefined;
-  const tracksJson: TrackSummaryEntry[] = result.tracks.map((t: TrackResult) => ({
+  const tracksJson: TrackSummaryEntry[] = gradedResult.tracks.map((t: TrackResult) => ({
     track: t.track,
     status: t.status,
     scenario_count: t.scenarios.length,
     passed_count: t.scenarios.filter((s: { overall_passed: boolean }) => s.overall_passed).length,
     duration_ms: t.duration_ms,
-    has_coverage_gap_skip: trackHasCoverageGapSkip(t),
+    has_coverage_gap_skip: trackHasCoverageGapSkip(gradedResult, t),
   }));
 
-  const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(result);
+  const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(gradedResult);
   const resultWithCompatibleNotices = result as unknown as {
     notices?: NoticeEntry[] | null;
     summary?: { notices?: NoticeEntry[] | null };
@@ -1460,11 +1383,14 @@ export function complianceResultToDbInput(
     tracks_json: tracksJson,
     tracks_passed,
     tracks_failed,
-    tracks_skipped: result.summary.tracks_skipped,
+    tracks_skipped: gradedResult.summary.tracks_skipped,
     tracks_partial,
     agent_profile_json: result.agent_profile,
     observations_json: result.observations,
     triggered_by: triggeredBy,
+    provenance_json: redactForDiagnostics(
+      (result as ComplianceResult & { hosted_provenance?: ComplianceRunProvenance }).hosted_provenance ?? complianceRunProvenance(result),
+    ) as ComplianceRunProvenance,
     completeness: result.completeness ?? 'complete',
     is_authoritative: result.completeness !== 'timed_out' && result.overall_status !== 'auth_required' && !storyboardIds?.length,
     storyboard_statuses: deriveStoryboardStatuses(result, selectedStoryboardIds),
@@ -1518,7 +1444,7 @@ const SENSITIVE_DIAGNOSTIC_KEY_PATTERN = /(authorization|token|secret|password|c
 const SENSITIVE_DIAGNOSTIC_VALUE_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
 const SENSITIVE_DIAGNOSTIC_TEXT_PATTERN = /(?:\bbearer\s+\S+|\b(?:authorization|cookie|set-cookie|session|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential)\b\s*[:=]\s*\S+)/i;
 
-function redactForDiagnostics(value: unknown, depth = 0): unknown {
+export function redactForDiagnostics(value: unknown, depth = 0): unknown {
   if (value === undefined || value === null) return value;
   if (typeof value === 'string') {
     return SENSITIVE_DIAGNOSTIC_VALUE_PATTERN.test(value) || SENSITIVE_DIAGNOSTIC_TEXT_PATTERN.test(value)
@@ -1635,8 +1561,8 @@ export function extractFailingStepDiagnostics(result: ComplianceResult): StepDia
           response_jsonb: capDiagnosticPayload(responsePayload),
           extraction_path: extraction?.path,
           extraction_note: extraction?.note,
-          error_text: redactDiagnosticText(step.error),
-          adcp_error_jsonb: capDiagnosticPayload(step.adcp_error),
+          error_text: redactDiagnosticText(step.error ?? matchedFailure?.error),
+          adcp_error_jsonb: capDiagnosticPayload(step.adcp_error ?? matchedFailure?.adcp_error),
           failed_validations_jsonb: failedValidations && failedValidations.length > 0
             ? capDiagnosticPayload(failedValidations.map(stripValidationRequestResponse))
             : undefined,
@@ -1831,15 +1757,20 @@ function remainingFailures(lookup: FailureLookups): ComplianceFailureSummary[] {
   return out;
 }
 
-function phaseIdForFailure(_result: ComplianceResult, failure: ComplianceFailureSummary): string | undefined {
-  const storyboard = getStoryboard(failure.storyboard_id);
-  const byId = storyboard?.phases.find(phase =>
-    phase.steps.some(step => step.id === failure.step_id),
-  )?.id;
-  if (byId) return byId;
-  return storyboard?.phases.find(phase =>
-    phase.steps.some(step => step.title === failure.step_title && step.task === failure.task),
-  )?.id;
+function phaseIdForFailure(result: ComplianceResult, failure: ComplianceFailureSummary): string | undefined {
+  if (!result.adcp_version) return undefined;
+  try {
+    const storyboard = pinnedStoryboard(result, failure.storyboard_id);
+    const byId = storyboard?.phases.find(phase =>
+      phase.steps.some(step => step.id === failure.step_id),
+    )?.id;
+    if (byId) return byId;
+    return storyboard?.phases.find(phase =>
+      phase.steps.some(step => step.title === failure.step_title && step.task === failure.task),
+    )?.id;
+  } catch {
+    return undefined;
+  }
 }
 
 function failedValidationsForStep(

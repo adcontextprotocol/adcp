@@ -1,3 +1,4 @@
+import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
 import { query, getClient } from './client.js';
 import { decrypt as decryptToken } from './encryption.js';
@@ -131,6 +132,7 @@ export interface ComplianceRun {
   completeness: RunCompleteness;
   is_authoritative: boolean;
   storyboard_statuses_json: StoryboardStatusEntry[] | null;
+  provenance_json: ComplianceRunProvenance | null;
   notices_json: NoticeEntry[] | null;
 }
 
@@ -165,6 +167,7 @@ export interface AgentComplianceStatus {
   last_triggered_by: TriggeredBy | null;
   /** tracks_json from the most recent non-dry-run, used for current-run UI details */
   track_details_json?: TrackSummaryEntry[] | null;
+  provenance_json?: ComplianceRunProvenance | null;
 }
 
 export interface ComplianceStatusWithStoryboardCounts {
@@ -294,6 +297,7 @@ export interface RecordComplianceRunInput {
   dry_run?: boolean;
   completeness?: RunCompleteness;
   is_authoritative?: boolean;
+  provenance_json?: ComplianceRunProvenance | null;
   /** Durable refresh operation that produced this run; makes lease recovery idempotent. */
   refresh_operation_id?: string | null;
   /** Lease token paired with refresh_operation_id for fenced persistence. */
@@ -617,8 +621,8 @@ export class ComplianceDatabase {
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
           observations_json, triggered_by, triggered_org_id, dry_run,
-          notices_json, refresh_operation_id, completeness, is_authoritative, storyboard_statuses_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+          notices_json, refresh_operation_id, completeness, is_authoritative, storyboard_statuses_json, provenance_json
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
         ON CONFLICT (refresh_operation_id) DO NOTHING
         RETURNING *`,
         [
@@ -644,6 +648,7 @@ export class ComplianceDatabase {
           input.completeness ?? 'complete',
           authoritative,
           JSON.stringify(input.storyboard_statuses ?? []),
+          input.provenance_json ? JSON.stringify(input.provenance_json) : null,
         ],
       );
       let run = runResult.rows[0] as ComplianceRun | undefined;
@@ -1000,11 +1005,11 @@ export class ComplianceDatabase {
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
               r.triggered_by AS last_triggered_by,
-              r.tracks_json AS track_details_json
+              r.tracks_json AS track_details_json, r.provenance_json
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json FROM agent_compliance_runs
+         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -1019,13 +1024,13 @@ export class ComplianceDatabase {
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
               r.triggered_by AS last_triggered_by,
-              r.tracks_json AS track_details_json,
+              r.tracks_json AS track_details_json, r.provenance_json,
               COALESCE(sb_counts.passing, 0)::int AS storyboards_passing,
               COALESCE(sb_counts.total, 0)::int AS storyboards_total
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json FROM agent_compliance_runs
+         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -1080,11 +1085,11 @@ export class ComplianceDatabase {
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
               r.triggered_by AS last_triggered_by,
-              r.tracks_json AS track_details_json
+              r.tracks_json AS track_details_json, r.provenance_json
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by, tracks_json FROM agent_compliance_runs
+         SELECT id, triggered_by, tracks_json, provenance_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false AND is_authoritative = true
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
