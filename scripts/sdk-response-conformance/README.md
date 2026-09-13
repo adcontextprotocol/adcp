@@ -37,7 +37,7 @@ The report exits **1 for findings or skipped cases**, **2 for a harness failure*
 
 ## Initial findings and regression policy
 
-With `@adcp/sdk@14.0.0-rc.33`, `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1`, there are 124 cases per language: two catalogs, 119 published error defaults and three overrides. Go skips native listing. The initial report records:
+With `@adcp/sdk@14.0.0-rc.35`, `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1`, there are 124 cases per language: two catalogs, 119 published error defaults and three overrides. Go skips native listing. The initial report records:
 
 - TypeScript: error defaults and overrides agree; `list_products` gains `adcp_version`, which the raw pinned response schema forbids. This is a schema/envelope inconsistency, related to the prior [SDK normalization fix #2594](https://github.com/adcontextprotocol/adcp-client/issues/2594); it is not a claim that the fixed SDK client still rejects the response. The probe deliberately retains the raw artifact result instead of silently stripping fields or patching an immutable schema.
 - Python: 84 default recovery classifications differ from the published metadata; native listing gains `status: completed`, rejected both by the raw pinned schema and the MCP client's advertised-output validator.
