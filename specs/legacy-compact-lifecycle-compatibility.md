@@ -74,8 +74,10 @@ field into a compact wire request. Filtering only one already-paginated compact
 page is not equivalent to filtering the legacy result set.
 
 When the seller cannot honor a supplied field, it MUST reject before a side
-effect, identify the unsupported input by JSON Pointer in `errors[].field`,
-and use a published error code supported by the served version (for example,
+effect, identify the unsupported input at its original path using the served
+contract's error-location fields (`issues[].pointer` where supported, with the
+legacy `field` projection), and use a published error code supported by the
+served version (for example,
 `UNSUPPORTED_FEATURE`). It MUST NOT silently drop the field, replace a hard
 predicate with prose, invent missing seller facts, or reinterpret the input as
 a different request. A valid request with no matching products still returns
