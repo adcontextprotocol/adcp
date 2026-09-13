@@ -257,6 +257,114 @@ describe('resolveCallerOrgId', () => {
     expect(dbQueryMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['removed', undefined],
+    ['replaced with a valid API key', 'Bearer sk_injected'],
+    ['replaced with a different authentication scheme', 'Basic dXNlcjpwYXNz'],
+  ] as const)('keeps an invalid JWT terminal when Authorization is %s during verification', async (_change, replacement) => {
+    let rejectVerification!: (error: Error) => void;
+    const verification = new Promise<never>((_resolve, reject) => { rejectVerification = reject; });
+    decodeJwtMock.mockReturnValue({ iss: ISS });
+    jwtVerifyMock.mockReturnValueOnce(verification);
+    validateWorkOSApiKeyMock.mockImplementation(async (validationReq: { headers: { authorization?: string } }) => (
+      validationReq.headers.authorization === 'Bearer sk_injected'
+        ? { organizationId: 'org_injected' }
+        : null
+    ));
+    dbQueryMock.mockResolvedValue({ rows: [{ primary_organization_id: 'org_cookie', joins_valid: true }] });
+    const incoming = reqWith('Bearer eyJoriginal.payload.sig', { id: 'user_cookie' });
+
+    const result = resolveCallerOrgId(incoming).then(
+      (organizationId) => ({ organizationId }),
+      (error: { status: number }) => ({ status: error.status }),
+    );
+    expect(jwtVerifyMock).toHaveBeenCalledWith('eyJoriginal.payload.sig', expect.any(Function), expect.any(Object));
+    if (replacement === undefined) delete incoming.headers.authorization;
+    else incoming.headers.authorization = replacement;
+    rejectVerification(Object.assign(new Error('Expired original JWT'), { code: 'ERR_JWT_EXPIRED' }));
+
+    expect(await result).toEqual({ status: 401 });
+    expect(dbQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps unavailable JWT verification terminal after the bearer header is removed', async () => {
+    let rejectVerification!: (error: Error) => void;
+    const verification = new Promise<never>((_resolve, reject) => { rejectVerification = reject; });
+    decodeJwtMock.mockReturnValue({ iss: ISS });
+    jwtVerifyMock.mockReturnValueOnce(verification);
+    const incoming = reqWith('bEaReR\teyJoriginal.payload.sig', { id: 'user_cookie' });
+
+    const result = resolveCallerOrgId(incoming).then(
+      (organizationId) => ({ organizationId }),
+      (error: { status: number }) => ({ status: error.status }),
+    );
+    expect(jwtVerifyMock).toHaveBeenCalledTimes(1);
+    delete incoming.headers.authorization;
+    rejectVerification(new Error('JWKS unavailable'));
+
+    expect(await result).toEqual({ status: 503 });
+    expect(validateWorkOSApiKeyMock).not.toHaveBeenCalled();
+    expect(dbQueryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['headers', 'x-organization-id'],
+    ['query', 'organizationId'],
+    ['body', 'organizationId'],
+    ['params', 'organizationId'],
+  ] as const)('retains an original %s selector conflict across JWT verification', async (location, field) => {
+    let finishVerification!: (result: { payload: { org_id: string } }) => void;
+    const verification = new Promise((resolve) => { finishVerification = resolve; });
+    decodeJwtMock.mockReturnValue({ iss: ISS });
+    jwtVerifyMock.mockReturnValueOnce(verification);
+    const incoming = reqWith('Bearer eyJoriginal.payload.sig', { id: 'user_cookie' }, {
+      [location]: { [field]: 'org_conflicting' },
+    });
+
+    const result = resolveCallerOrgId(incoming).then(
+      (organizationId) => ({ organizationId }),
+      (error: { status: number }) => ({ status: error.status }),
+    );
+    expect(jwtVerifyMock).toHaveBeenCalledTimes(1);
+    (incoming[location] as Record<string, unknown>)[field] = 'org_verified';
+    finishVerification({ payload: { org_id: 'org_verified' } });
+
+    expect(await result).toEqual({ status: 403 });
+    expect(dbQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('retains a matching organization selector when another middleware replaces it during JWT verification', async () => {
+    let finishVerification!: (result: { payload: { org_id: string } }) => void;
+    const verification = new Promise((resolve) => { finishVerification = resolve; });
+    decodeJwtMock.mockReturnValue({ iss: ISS });
+    jwtVerifyMock.mockReturnValueOnce(verification);
+    const incoming = reqWith('Bearer eyJoriginal.payload.sig', { id: 'user_cookie' }, {
+      query: { organizationId: 'org_verified' },
+    });
+
+    const result = resolveCallerOrgId(incoming);
+    expect(jwtVerifyMock).toHaveBeenCalledTimes(1);
+    incoming.query = { organizationId: 'org_other' };
+    finishVerification({ payload: { org_id: 'org_verified' } });
+
+    expect(await result).toBe('org_verified');
+    expect(dbQueryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [Object.assign(new Error('Expired token'), { code: 'ERR_JWT_EXPIRED' }), 401],
+    [new Error('JWT provider unavailable'), 503],
+  ] as const)('reports credential failure before inspecting conflicting selectors: %s', async (error, status) => {
+    decodeJwtMock.mockReturnValue({ iss: ISS });
+    jwtVerifyMock.mockRejectedValue(error);
+    validateWorkOSApiKeyMock.mockResolvedValue(null);
+
+    await expect(resolveCallerOrgId(reqWith('Bearer eyJfailure.payload.sig', { id: 'user_cookie' }, {
+      query: { organizationId: 'org_conflicting' },
+    }))).rejects.toMatchObject({ status });
+    expect(dbQueryMock).not.toHaveBeenCalled();
+  });
+
   // ── Sealed-session path (existing behavior) ─────────────────────
 
   it('falls back to users.primary_organization_id when only req.user is set', async () => {

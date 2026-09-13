@@ -109,44 +109,67 @@ export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null
   }
 }
 
-/**
- * Resolve the caller's organization via (in order) OIDC JWT → API key →
- * sealed-session user lookup. Null is reserved for callers without a bearer.
- * A supplied bearer must authorize an organization or fail explicitly.
- */
-export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
-  if (getBearerToken(req.headers.authorization) !== null) {
-    try {
-      const jwtOrg = await orgIdFromBearerJwt(req);
-      if (jwtOrg) {
-        selectedOrganizationForAuthentication(req as Request, jwtOrg);
-        return jwtOrg;
-      }
-      const apiKey = await validateWorkOSApiKey(req as Request);
-      if (apiKey) {
-        selectedOrganizationForAuthentication(req as Request, apiKey.organizationId);
-        return apiKey.organizationId;
-      }
-    } catch (error) {
-      if (error instanceof ConflictingOrganizationSelectionError) {
-        throw new CallerOrganizationAuthError(403);
-      }
-      throw new CallerOrganizationAuthError(503);
-    }
-    // Neither anonymous access nor an accompanying user's primary org may
-    // replace an explicitly selected credential that did not authorize an org.
-    throw new CallerOrganizationAuthError(401);
-  }
+type ResolvedBearerOrganization =
+  | { kind: 'verified'; organizationId: string }
+  | { kind: 'invalid' };
 
-  if (req.user?.id) {
+/** Each validator skips unsupported formats without making provider calls. */
+async function resolveBearerOrganization(req: MinimalReq): Promise<ResolvedBearerOrganization> {
+  try {
+    const jwtOrg = await orgIdFromBearerJwt(req);
+    if (jwtOrg) return { kind: 'verified', organizationId: jwtOrg };
+
+    const apiKey = await validateWorkOSApiKey(req as Request);
+    if (apiKey) return { kind: 'verified', organizationId: apiKey.organizationId };
+
+    return { kind: 'invalid' };
+  } catch {
+    throw new CallerOrganizationAuthError(503);
+  }
+}
+
+async function resolveCookieOrganization(userId: string | undefined): Promise<string | null> {
+  if (userId) {
     try {
-      return await resolvePrimaryOrganization(req.user.id);
+      return await resolvePrimaryOrganization(userId);
     } catch (err) {
-      logger.warn({ err, userId: req.user.id }, 'caller org resolution failed — falling back to public-only');
+      logger.warn({ err, userId }, 'caller org resolution failed — falling back to public-only');
     }
   }
 
   return null;
+}
+
+/**
+ * Resolve the caller's organization from a verified credential result.
+ * Null is reserved for callers without a bearer; a supplied bearer must
+ * authorize an organization or fail explicitly.
+ */
+export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
+  const authorization = req.headers.authorization;
+  if (getBearerToken(authorization) === null) return resolveCookieOrganization(req.user?.id);
+
+  // Capture the credential and selection before any await. Later request
+  // mutation cannot substitute another key or erase an organization conflict.
+  const request = req as Request;
+  const credentialRequest = {
+    headers: Object.freeze({ ...req.headers, authorization }),
+    query: Object.freeze({ ...request.query }),
+    body: Object.freeze({ ...request.body }),
+    params: Object.freeze({ ...request.params }),
+  };
+  const credential = await resolveBearerOrganization(credentialRequest);
+  if (credential.kind === 'invalid') throw new CallerOrganizationAuthError(401);
+
+  try {
+    selectedOrganizationForAuthentication(credentialRequest as Request, credential.organizationId);
+  } catch (error) {
+    if (error instanceof ConflictingOrganizationSelectionError) {
+      throw new CallerOrganizationAuthError(403);
+    }
+    throw new CallerOrganizationAuthError(503);
+  }
+  return credential.organizationId;
 }
 
 /** Test hook: reset the per-client JWKS cache. */
