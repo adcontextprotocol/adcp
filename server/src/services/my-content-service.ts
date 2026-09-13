@@ -75,7 +75,7 @@ export class MyContentError<C extends MyContentErrorCode = MyContentErrorCode> e
 
 export interface ListMyContentInput {
   userId: string;
-  /** Null forbids platform scope; omitted retains legacy web compatibility. */
+  /** Null forbids platform and committee-leader scope; omitted retains legacy compatibility. */
   adminPrincipal?: AAOAdminPrincipal | null;
   /** One of MyContentStatus, the literal 'all', or undefined (returns all). */
   status?: string;
@@ -114,9 +114,14 @@ export async function listMyContent({
 
   // Committees the user leads — feeds the "owner" relationship and the
   // SQL WHERE clause that surfaces all content for those committees.
+  const authorizationUserId = adminPrincipal === null
+    ? null
+    : adminPrincipal
+      ? adminPrincipal.authWorkosUserId ?? adminPrincipal.id
+      : userId;
   const leaderResult = await pool.query<{ working_group_id: string }>(
     `SELECT working_group_id FROM working_group_leaders WHERE user_id = $1`,
-    [userId],
+    [authorizationUserId],
   );
   const ledCommitteeIds = leaderResult.rows.map((r) => r.working_group_id);
 

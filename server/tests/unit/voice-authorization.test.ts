@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getAuthorizationFingerprint: vi.fn(),
   getUser: vi.fn(),
   getAuthorizationEnforcementWorkos: vi.fn(),
+  queryWithTimeout: vi.fn(),
 }));
 
 vi.mock('../../src/db/authorization-epoch-db.js', () => ({
@@ -12,9 +13,17 @@ vi.mock('../../src/db/authorization-epoch-db.js', () => ({
 vi.mock('../../src/auth/workos-client.js', () => ({
   getAuthorizationEnforcementWorkos: mocks.getAuthorizationEnforcementWorkos,
 }));
+vi.mock('../../src/db/client.js', () => ({
+  queryWithTimeout: mocks.queryWithTimeout,
+  withDatabaseDeadline: (_deadline: number, work: () => unknown) => work(),
+}));
 
 import {
   captureVoiceAuthorization,
+  issueVoiceCallbackBinding,
+  isVoiceSessionOwner,
+  persistVoiceCallbackBinding,
+  resolveVoiceCallback,
   resolveVoiceAuthorization,
   VoiceAuthorizationUnavailableError,
 } from '../../src/addie/voice-authorization.js';
@@ -119,5 +128,134 @@ describe('persisted voice credential authorization', () => {
   it('never accepts a different credential returned by the provider', async () => {
     mocks.getUser.mockResolvedValue({ id: 'user_canonical', email: 'canonical-admin@example.test' });
     await expect(resolveVoiceAuthorization(persisted)).resolves.toEqual({ status: 'unavailable', source: 'workos' });
+  });
+});
+
+describe('server-issued voice callback capability', () => {
+  const threadId = '11111111-1111-4111-8111-111111111111';
+  const otherThreadId = '22222222-2222-4222-8222-222222222222';
+  const externalId = `addie-${threadId}`;
+  let issued: ReturnType<typeof issueVoiceCallbackBinding>;
+  let thread: Record<string, unknown>;
+  const previousSecret = process.env.TAVUS_LLM_SECRET;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    process.env.TAVUS_LLM_SECRET = 'test-callback-secret';
+    issued = issueVoiceCallbackBinding(threadId, externalId, 3600);
+    thread = {
+      thread_id: threadId, external_id: externalId, channel: 'video', user_type: 'workos', user_id: 'user_canonical',
+      context: { voice_callback_binding: { ...issued.binding, provider_conversation_id: 'tavus-current' }, tavus_conversation_id: 'tavus-current', voice_authorization: persisted },
+    };
+    mocks.queryWithTimeout.mockImplementation(async () => ({ rows: [thread] }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (previousSecret === undefined) delete process.env.TAVUS_LLM_SECRET;
+    else process.env.TAVUS_LLM_SECRET = previousSecret;
+  });
+
+  it('resolves only the persisted primary-database video session after validating its MAC', async () => {
+    const decision = await resolveVoiceCallback(issued.token, 'tavus-current');
+    expect(decision.status).toBe('verified');
+    if (decision.status !== 'verified') throw new Error('expected verified callback');
+    expect(decision.thread.thread_id).toBe(threadId);
+    expect(Object.isFrozen(decision.thread)).toBe(true);
+    expect(mocks.queryWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining("channel = 'video'"), [threadId, externalId], 5000,
+    );
+  });
+
+  it.each([undefined, null, '', `[conductor:thread_id=${threadId}]`, `${'x'.repeat(1025)}.mac`])(
+    'rejects missing, raw-thread, and malformed capabilities without database access %#', async (token) => {
+      await expect(resolveVoiceCallback(token)).resolves.toEqual({ status: 'invalid' });
+      expect(mocks.queryWithTimeout).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a known victim thread substituted into an otherwise valid token', async () => {
+    const [payload, mac] = issued.token.split('.');
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    claims.thread_id = otherThreadId;
+    const altered = `${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${mac}`;
+    await expect(resolveVoiceCallback(altered)).resolves.toEqual({ status: 'invalid' });
+    expect(mocks.queryWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('rejects a modified MAC and signatures made with the wrong secret', async () => {
+    await expect(resolveVoiceCallback(`${issued.token.slice(0, -5)}xxxxx`)).resolves.toEqual({ status: 'invalid' });
+    process.env.TAVUS_LLM_SECRET = 'rotated-callback-secret';
+    await expect(resolveVoiceCallback(issued.token)).resolves.toEqual({ status: 'invalid' });
+    expect(mocks.queryWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('expires at the configured session duration and rejects expiration during the lookup', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const shortSession = issueVoiceCallbackBinding(threadId, externalId, 60);
+    expect(shortSession.binding.expires_at).toBe(now + 60_000);
+    clock.mockReturnValue(now + 60_000);
+    await expect(resolveVoiceCallback(shortSession.token)).resolves.toEqual({ status: 'invalid' });
+    expect(mocks.queryWithTimeout).not.toHaveBeenCalled();
+
+    clock.mockReturnValue(now);
+    mocks.queryWithTimeout.mockImplementation(async () => {
+      clock.mockReturnValue(issued.binding.expires_at);
+      return { rows: [thread] };
+    });
+    await expect(resolveVoiceCallback(issued.token)).resolves.toEqual({ status: 'invalid' });
+  });
+
+  it.each(['missing', 'nonce_changed', 'expiry_changed', 'conversation_missing', 'conversation_rebound', 'conversation_mismatch', 'non_video', 'wrong_owner_type', 'wrong_thread', 'wrong_external_id', 'deleted', 'ambiguous'])(
+    'fails closed for a %s persisted binding', async (condition) => {
+      const context = thread.context as Record<string, unknown>;
+      if (condition === 'missing') delete context.voice_callback_binding;
+      if (condition === 'nonce_changed') context.voice_callback_binding = { ...issued.binding, nonce: 'different-nonce' };
+      if (condition === 'expiry_changed') context.voice_callback_binding = { ...issued.binding, expires_at: issued.binding.expires_at + 1 };
+      if (condition === 'conversation_missing') delete context.tavus_conversation_id;
+      if (condition === 'conversation_rebound') context.tavus_conversation_id = 'tavus-rebound';
+      if (condition === 'non_video') thread.channel = 'web';
+      if (condition === 'wrong_owner_type') thread.user_type = 'anonymous';
+      if (condition === 'wrong_thread') thread.thread_id = otherThreadId;
+      if (condition === 'wrong_external_id') thread.external_id = `addie-${otherThreadId}`;
+      if (condition === 'deleted') mocks.queryWithTimeout.mockResolvedValue({ rows: [] });
+      if (condition === 'ambiguous') mocks.queryWithTimeout.mockResolvedValue({ rows: [thread, thread] });
+      await expect(resolveVoiceCallback(issued.token, condition === 'conversation_mismatch' ? 'tavus-other' : undefined))
+        .resolves.toEqual({ status: 'invalid' });
+    },
+  );
+
+  it('reports missing signing configuration and primary database failure as unavailable', async () => {
+    mocks.queryWithTimeout.mockRejectedValue(new Error('primary unavailable'));
+    await expect(resolveVoiceCallback(issued.token)).resolves.toEqual({ status: 'unavailable' });
+    delete process.env.TAVUS_LLM_SECRET;
+    await expect(resolveVoiceCallback(issued.token)).resolves.toEqual({ status: 'unavailable' });
+    expect(() => issueVoiceCallbackBinding(threadId, externalId, 3600)).toThrow(VoiceAuthorizationUnavailableError);
+  });
+
+  it('persists the exact binding with bounded primary writes and prevents finalization after nonce revocation', async () => {
+    mocks.queryWithTimeout.mockResolvedValue({ rowCount: 1 });
+    await persistVoiceCallbackBinding(threadId, externalId, issued.binding, 'tavus-current');
+    expect(mocks.queryWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining("context->'voice_callback_binding'->>'nonce' = $4"),
+      [threadId, externalId, JSON.stringify({
+        voice_callback_binding: { ...issued.binding, provider_conversation_id: 'tavus-current' },
+        tavus_conversation_id: 'tavus-current',
+      }), issued.binding.nonce],
+      5000,
+    );
+  });
+
+  it.each([0, null, 2])('rejects a callback grant or revocation when the write affects %s rows', async (rowCount) => {
+    mocks.queryWithTimeout.mockResolvedValue({ rowCount });
+    await expect(persistVoiceCallbackBinding(threadId, externalId, issued.binding)).rejects.toBeInstanceOf(VoiceAuthorizationUnavailableError);
+    await expect(persistVoiceCallbackBinding(threadId, externalId, null)).rejects.toBeInstanceOf(VoiceAuthorizationUnavailableError);
+  });
+
+  it('treats only the exact captured credential as session owner, never a linked canonical identity', () => {
+    expect(isVoiceSessionOwner(persisted, { id: 'user_canonical', authWorkosUserId: 'user_authenticated' })).toBe(true);
+    expect(isVoiceSessionOwner(persisted, { id: 'user_authenticated', authWorkosUserId: 'other_credential' })).toBe(false);
+    expect(isVoiceSessionOwner(undefined, { id: 'user_authenticated' })).toBe(false);
   });
 });
