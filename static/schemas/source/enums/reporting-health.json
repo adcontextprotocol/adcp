@@ -8,7 +8,7 @@
   "enumDescriptions": {
     "healthy": "Due obligations in the queried active scope are current and automated delivery is working.",
     "waiting": "No obligation in the queried active scope is due yet.",
-    "delayed": "At least one obligation is late, but remains within the seller's declared automated recovery path.",
+    "delayed": "At least one obligation is late but remains within the seller's declared automated recovery path, or — for a caller-scoped Reliable Reporting view only — an authenticated consumer's received status was made stale by a seller restatement and is still inside its bounded re-read grace window. In the second case nothing is late; treat the two causes separately when building a seller-lateness SLA view, and read issues[].code to tell them apart.",
     "action_required": "A delivery, SLA, retry, or immediate readable-evidence receipt-reconciliation boundary was crossed and at least one structured human action is supplied.",
     "complete": "The queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization."
   }

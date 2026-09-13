@@ -10,6 +10,8 @@ import {
   prepareReliableReportingReconciledBillingProbe,
   projectedReportingConfigurationStates,
   publishZeroRowReportingCoreLifecycleProbe,
+  restateAfterReceivedReportingCoreLifecycleProbe,
+  UnsupportedReportingFeatureError,
   restateReportingCoreLifecycleProbeSnapshot,
   publishReliableReportingCoreIntegrityCorrection,
   publishReliableReportingReconciledAdjustments,
@@ -139,6 +141,64 @@ describe('training-agent Core reporting reliability ledger', () => {
       reporting_revision_id: original.reporting_revision_id,
     }, 'buyer:alpha', ACCOUNT_ID);
     expect(prior).toMatchObject({ revision: { reporting_revision_id: original.reporting_revision_id } });
+  });
+
+  it('rejects the reserved authoritative_party value with UNSUPPORTED_FEATURE instead of coercing it', () => {
+    const sellerAuthoritative = structuredClone(TRAINING_REPORTING_CORE_CONFIGURATION);
+    expect(() => validateReportingConfigurations([sellerAuthoritative])).not.toThrow();
+    expect(() => validateReportingConfigurations([{ ...sellerAuthoritative, authoritative_party: 'seller' }])).not.toThrow();
+
+    // The schema keeps `consumer` parseable so a seller can answer
+    // UNSUPPORTED_FEATURE rather than a parse error — which only works if the
+    // seller actually implements the rejection.
+    let thrown: unknown;
+    try {
+      validateReportingConfigurations([{ ...sellerAuthoritative, authoritative_party: 'consumer' }]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(UnsupportedReportingFeatureError);
+    expect((thrown as UnsupportedReportingFeatureError).code).toBe('UNSUPPORTED_FEATURE');
+
+    // Rejection is total: no generation is installed for the caller.
+    expect(() => replaceReportingConfigurations(
+      'buyer:alpha', ACCOUNT_ID, [{ ...sellerAuthoritative, authoritative_party: 'consumer' }], '2026-08-01T00:00:00.000Z',
+    )).toThrow(UnsupportedReportingFeatureError);
+    expect(reportingConfigurationStatesForAccount('buyer:alpha', ACCOUNT_ID)).toHaveLength(0);
+  });
+
+  it('binds a post-received restatement to the revision the caller read and publishes its grace boundary', () => {
+    prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const received = publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+
+    expect(() => restateAfterReceivedReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, 'reporting-revision.not-read'))
+      .toThrow(/must name the revision this caller currently reports as received/);
+
+    const restated = restateAfterReceivedReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, received.reporting_revision_id);
+    expect(restated).toMatchObject({
+      received_reporting_revision_id: received.reporting_revision_id,
+      supersedes_reporting_revision_id: received.reporting_revision_id,
+      finality: 'snapshot',
+      expected_mismatch_severity: 'delayed',
+    });
+    // The installed fixture schedule declares delivery_sla PT1H.
+    expect(Date.parse(restated.stale_received_grace_deadline) - Date.parse(restated.restated_at)).toBe(60 * 60 * 1000);
+    expect(Date.parse(restated.simulated_now)).toBeLessThan(Date.parse(restated.stale_received_grace_deadline));
+
+    // Repeating the operation is convergent: the same restatement, a later clock.
+    const escalated = restateAfterReceivedReportingCoreLifecycleProbe(
+      'buyer:alpha', ACCOUNT_ID, received.reporting_revision_id, 'past_grace',
+    );
+    expect(escalated.reporting_revision_id).toBe(restated.reporting_revision_id);
+    expect(escalated.stale_received_grace_deadline).toBe(restated.stale_received_grace_deadline);
+    expect(escalated.expected_mismatch_severity).toBe('action_required');
+    expect(Date.parse(escalated.simulated_now)).toBeGreaterThan(Date.parse(escalated.stale_received_grace_deadline));
+
+    const status = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    const restatedPeriod = status.periods?.find(
+      period => period.reporting_obligation_id === restated.reporting_obligation_id,
+    );
+    expect(restatedPeriod).toMatchObject({ revision_count: 2 });
   });
 
   it('isolates revision chains for concurrent configs sharing a definition and period', () => {

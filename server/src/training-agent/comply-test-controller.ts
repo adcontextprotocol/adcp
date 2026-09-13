@@ -103,6 +103,7 @@ import {
   publishReliableReportingCoreIntegrityCorrection,
   publishReportingCoreLifecycleProbeRows,
   publishZeroRowReportingCoreLifecycleProbe,
+  restateAfterReceivedReportingCoreLifecycleProbe,
   restateReportingCoreLifecycleProbeSnapshot,
   probeReportingSourceCalendarDst,
   resolveReportingAccountDurably,
@@ -1723,6 +1724,29 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Published a new immutable snapshot revision superseding the current snapshot.',
       };
     }
+    if (operation === 'restate_after_received') {
+      const receivedRevisionId = params.received_reporting_revision_id;
+      const advanceTo = params.advance_to ?? 'within_grace';
+      if (typeof receivedRevisionId !== 'string' || receivedRevisionId.length === 0) {
+        return {
+          success: false,
+          error: 'INVALID_PARAMS',
+          error_detail: 'reporting_core_lifecycle_probe restate_after_received requires params.received_reporting_revision_id',
+        };
+      }
+      if (advanceTo !== 'within_grace' && advanceTo !== 'past_grace') {
+        return {
+          success: false,
+          error: 'INVALID_PARAMS',
+          error_detail: 'reporting_core_lifecycle_probe restate_after_received accepts params.advance_to: within_grace or past_grace',
+        };
+      }
+      return {
+        success: true,
+        simulated: restateAfterReceivedReportingCoreLifecycleProbe(ctx.principal, accountId, receivedRevisionId, advanceTo),
+        message: `Restated the revision the caller received and left the clock ${advanceTo === 'past_grace' ? 'past' : 'inside'} the stale-received grace window.`,
+      };
+    }
     if (operation === 'omit_obligation') {
       return {
         success: true,
@@ -1740,7 +1764,7 @@ async function handleReportingCoreLifecycleProbe(
   return {
     success: false,
     error: 'INVALID_PARAMS',
-    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, or omit_obligation',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, or omit_obligation',
   };
   }, account);
 }
