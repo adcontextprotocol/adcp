@@ -671,7 +671,7 @@ export function createTavusRouter(options?: {
     } catch (err) {
       if (err instanceof VoiceAuthorizationUnavailableError) {
         res.setHeader('Retry-After', '5');
-        return res.status(503).json({ error: err.code, message: err.message });
+        return res.status(503).json({ error: err.code, message: 'Voice authorization is temporarily unavailable. Please try again.' });
       }
       logger.error({ err }, "Tavus: Error creating conversation");
       return res.status(500).json({ error: "Internal error" });
