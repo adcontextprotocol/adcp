@@ -2056,15 +2056,7 @@ export function createMyContentRouter(): Router {
     try {
       const user = captureAuthenticatedContentUser(req.user!);
       const { id } = req.params;
-      const { user_id, display_name, display_title } = req.body;
       const pool = getPool();
-
-      if (!user_id || !display_name) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          message: 'user_id and display_name are required',
-        });
-      }
 
       // Check ownership
       const contentResult = await pool.query(
@@ -2095,6 +2087,17 @@ export function createMyContentRouter(): Router {
         return res.status(403).json({
           error: 'Permission denied',
           message: 'You do not have permission to add authors to this content',
+        });
+      }
+
+      // Authorize the authenticated principal against stored content before
+      // interpreting the requested author. Body fields never control whether
+      // the ownership, committee, or platform authorization checks run.
+      const { user_id, display_name, display_title } = req.body;
+      if (!user_id || !display_name) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'user_id and display_name are required',
         });
       }
 

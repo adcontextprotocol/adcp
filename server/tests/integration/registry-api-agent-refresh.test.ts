@@ -1,10 +1,9 @@
 /**
  * Integration tests for POST /api/registry/agents/:encodedUrl/refresh.
  *
- * The endpoint lets an agent's owner (or an AAO admin) re-probe the agent
- * on demand and write fresh `agent_health_snapshot` / `agent_capabilities_snapshot`
- * rows. It replaces the prior pattern of either waiting for the 60-min
- * periodic crawl or hitting the (admin-only, full-fan-out) /api/crawler/run.
+ * Human refresh requests are fenced until durable credential provenance is
+ * supported. Static-admin refreshes retain the durable probe/compliance lifecycle;
+ * legacy human queue rows must fail before recovering or publishing evidence.
  *
  * Run locally:
  *   DATABASE_URL=postgresql://adcp:localdev@localhost:53198/adcp_test \
@@ -23,6 +22,8 @@ import { AAO_UA_COMPLIANCE } from '../../src/config/user-agents.js';
 import { HOSTED_FULL_COMPLIANCE_TIMEOUT_MS } from '../../src/services/hosted-compliance-version.js';
 import { ComplianceRefreshRequestsDatabase } from '../../src/db/compliance-refresh-requests-db.js';
 import { ComplianceDatabase } from '../../src/db/compliance-db.js';
+import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
+import type { ComplianceRefreshQueue } from '../../src/services/compliance-refresh-queue.js';
 import { complianceRunProvenance } from '../../src/compliance/run-provenance.js';
 import type { ComplianceResult, ComplyOptions } from '@adcp/sdk/testing';
 
@@ -44,7 +45,17 @@ const SECOND_ORG_ID = `org_test_refresh_second_${RUN_SUFFIX}`;
 // expects it to succeed.
 const ownedAgentUrl = (slug: string) => `https://refresh-${slug}-${RUN_SUFFIX}.example.com/mcp`;
 const OTHER_AGENT_URL = `https://other-agent-${RUN_SUFFIX}.example.com/mcp`;
+const LEGACY_USER_CASES = (['manual', 'owner_test'] as const).flatMap(triggeredBy =>
+  (['queued', 'running'] as const).flatMap(status =>
+    [false, true].map(checkpointed => ({
+      triggeredBy, status, checkpointed,
+      slug: `legacy-${triggeredBy}-${status}-${checkpointed ? 'checkpoint' : 'fresh'}`,
+    })),
+  ),
+);
 const ALL_OWNED_URLS = [
+  ...LEGACY_USER_CASES.map(({ slug }) => ownedAgentUrl(slug)),
+  ownedAgentUrl('legacy-static-owner'),
   ownedAgentUrl('owner'),
   ownedAgentUrl('admin'),
   ownedAgentUrl('linked-owner'),
@@ -346,6 +357,144 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   const url = (agentUrl: string) => `/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`;
 
+  const stopRefreshWorker = async () => {
+    const queue = (server as unknown as { complianceRefreshQueue: ComplianceRefreshQueue }).complianceRefreshQueue;
+    queue.stop();
+    await vi.waitFor(() => {
+      expect((queue as unknown as { processing: boolean }).processing).toBe(false);
+    });
+    return queue;
+  };
+
+  it.each(LEGACY_USER_CASES)(
+    'terminally rejects legacy user $triggeredBy $status checkpointed=$checkpointed before any domain work',
+    async ({ triggeredBy, status, checkpointed, slug }) => {
+      const queue = await stopRefreshWorker();
+      const operationId = randomUUID();
+      const agentUrl = ownedAgentUrl(slug);
+      const runId = randomUUID();
+      const canonicalUserId = triggeredBy === 'manual' ? ADMIN_USER_ID : OWNER_USER_ID;
+      const probe = checkpointed ? {
+        online: true, tools_count: 4, response_time_ms: 120, inferred_type: 'governance',
+        type_promoted: false, oauth_required: false, checked_at: new Date().toISOString(),
+      } : null;
+      const context = await new AgentContextDatabase().create({
+        organization_id: TEST_ORG_ID, agent_url: agentUrl, created_by: OWNER_USER_ID,
+      });
+      await new AgentContextDatabase().saveAuthToken(context.id, 'legacy-test-bearer-do-not-use-in-prod', 'bearer');
+      await pool.query(
+        `INSERT INTO agent_compliance_refresh_requests
+         (id, agent_url, owner_org_id, requester_type, requested_by_user_id, triggered_by,
+          test_session_id, status, attempts, max_attempts, available_at,
+          lease_owner, lease_token, lease_expires_at, probe_result_json, auth_available)
+         VALUES ($1, $2, $3, 'user', $4, $5, $6, $7, $8, 5, NOW(), $9, $10, $11, $12::jsonb, $13)`,
+        [operationId, agentUrl, triggeredBy === 'owner_test' ? TEST_ORG_ID : null,
+          canonicalUserId, triggeredBy, `legacy-refresh-${operationId}`, status,
+          status === 'running' ? 1 : 0, status === 'running' ? 'expired-worker' : null,
+          status === 'running' ? randomUUID() : null,
+          status === 'running' ? new Date(Date.now() - 60_000) : null,
+          probe ? JSON.stringify(probe) : null, checkpointed ? true : null],
+      );
+      if (checkpointed) {
+        await pool.query(
+          `INSERT INTO agent_compliance_runs
+           (id, agent_url, lifecycle_stage, overall_status, triggered_by, dry_run, refresh_operation_id)
+           VALUES ($1, $2, 'production', 'passing', $3, FALSE, $4)`,
+          [runId, agentUrl, triggeredBy, operationId],
+        );
+      }
+      const domainState = () => pool.query(
+        `SELECT * FROM (
+         SELECT 'runs' AS source, to_jsonb(t) AS value FROM agent_compliance_runs t WHERE agent_url = $1
+         UNION ALL SELECT 'status', to_jsonb(t) FROM agent_compliance_status t WHERE agent_url = $1
+         UNION ALL SELECT 'storyboards', to_jsonb(t) FROM agent_storyboard_status t WHERE agent_url = $1
+         UNION ALL SELECT 'diagnostics', to_jsonb(t) FROM agent_compliance_step_diagnostics t WHERE agent_url = $1
+         UNION ALL SELECT 'badges', to_jsonb(t) FROM agent_verification_badges t WHERE agent_url = $1
+         UNION ALL SELECT 'health', to_jsonb(t) FROM agent_health_snapshot t WHERE agent_url = $1
+         UNION ALL SELECT 'capabilities', to_jsonb(t) FROM agent_capabilities_snapshot t WHERE agent_url = $1
+         UNION ALL SELECT 'credentials', to_jsonb(t) FROM agent_contexts t WHERE agent_url = $1) AS domain_state
+         ORDER BY source, value::text`,
+        [agentUrl],
+      );
+      const before = await domainState();
+      const forbiddenCalls = [
+        vi.spyOn(ComplianceDatabase.prototype, 'getRunForRefreshOperation'),
+        vi.spyOn(ComplianceDatabase.prototype, 'resolveOwnerAuth'),
+        vi.spyOn(ComplianceDatabase.prototype, 'recordComplianceRun'),
+        vi.spyOn(ComplianceDatabase.prototype, 'upsertBadge'),
+        vi.spyOn(ComplianceDatabase.prototype, 'revokeBadge'),
+        vi.spyOn(ComplianceDatabase.prototype, 'revokeAllBadges'),
+        vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl'),
+        vi.spyOn(AgentContextDatabase.prototype, 'getAuthInfoByOrgAndUrl'),
+        vi.spyOn(AgentContextDatabase.prototype, 'getOAuthTokensByOrgAndUrl'),
+        vi.spyOn(AgentContextDatabase.prototype, 'getOAuthClientCredentialsByOrgAndUrl'),
+        vi.spyOn(AgentContextDatabase.prototype, 'findOwnerOrgWithSavedAuth'),
+        vi.spyOn(ComplianceRefreshRequestsDatabase.prototype, 'recordProbeResult'),
+        vi.spyOn(ComplianceRefreshRequestsDatabase.prototype, 'markSucceeded'),
+        vi.spyOn(ComplianceRefreshRequestsDatabase.prototype, 'requeueAfterFailure'),
+      ];
+      try {
+        expect(await queue.processQueue()).toEqual({ claimed: 1, succeeded: 0, failed: 1, lostLease: 0 });
+        const failed = await pool.query('SELECT * FROM agent_compliance_refresh_requests WHERE id = $1', [operationId]);
+        expect(failed.rows[0]).toMatchObject({
+          status: 'failed', attempts: status === 'running' ? 2 : 1,
+          last_error_code: 'authorization_provenance_missing',
+          last_error: 'Refresh requester authorization provenance is unavailable',
+          lease_owner: null, lease_token: null, lease_expires_at: null,
+          result_json: null, probe_result_json: probe,
+        });
+        expect(failed.rows[0].completed_at).toBeInstanceOf(Date);
+        expect(await queue.processQueue()).toEqual({ claimed: 0, succeeded: 0, failed: 0, lostLease: 0 });
+        expect((await pool.query('SELECT attempts FROM agent_compliance_refresh_requests WHERE id = $1', [operationId])).rows[0].attempts)
+          .toBe(status === 'running' ? 2 : 1);
+        for (const spy of forbiddenCalls) expect(spy).not.toHaveBeenCalled();
+        expect(isAdminMock).not.toHaveBeenCalled();
+        expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+        expect(complyMock).not.toHaveBeenCalled();
+        expect((await domainState()).rows).toEqual(before.rows);
+
+        currentUserId = STATIC_ADMIN_USER_ID;
+        const response = await request(app).get(`${url(agentUrl)}es/${operationId}`).send();
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          status: 'failed',
+          error: {
+            code: 'authorization_provenance_missing',
+            message: 'Refresh requester authorization provenance is unavailable',
+          },
+        });
+      } finally {
+        for (const spy of forbiddenCalls) spy.mockRestore();
+        await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [runId]);
+        await pool.query('DELETE FROM agent_compliance_refresh_requests WHERE id = $1', [operationId]);
+        await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+        queue.start();
+      }
+    },
+  );
+
+  it('preserves rejection of a legacy static-admin row carrying an owner context without a requester', async () => {
+    const queue = await stopRefreshWorker();
+    const operationId = randomUUID();
+    const agentUrl = ownedAgentUrl('legacy-static-owner');
+    try {
+      await pool.query(
+        `INSERT INTO agent_compliance_refresh_requests
+         (id, agent_url, owner_org_id, requester_type, requested_by_user_id, triggered_by, test_session_id)
+         VALUES ($1, $2, $3, 'static_admin', NULL, 'owner_test', $4)`,
+        [operationId, agentUrl, TEST_ORG_ID, `legacy-refresh-${operationId}`],
+      );
+      expect(await queue.processQueue()).toEqual({ claimed: 1, succeeded: 0, failed: 1, lostLease: 0 });
+      const failed = await pool.query('SELECT status, last_error_code FROM agent_compliance_refresh_requests WHERE id = $1', [operationId]);
+      expect(failed.rows[0]).toEqual({ status: 'failed', last_error_code: 'authorization_revoked' });
+      expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+      expect(complyMock).not.toHaveBeenCalled();
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_refresh_requests WHERE id = $1', [operationId]);
+      queue.start();
+    }
+  });
+
   it.each(['complete', 'timed_out'] as const)('reports targeted %s runs as audit-only with provenance and no diagnostics', async completeness => {
     const agentUrl = ownedAgentUrl(`targeted-${completeness}`);
     complyMock.mockImplementation(async (_url: string, options: ComplyOptions) => {
@@ -366,7 +515,8 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       .toBe(res.body.provenance.test_session_id);
   });
 
-  it('owner can refresh and gets the snapshot back', async () => {
+  it('static admin can refresh and gets the snapshot back', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('owner');
     const res = await request(app).post(url(agentUrl)).send();
     expect(res.status).toBe(200);
@@ -405,8 +555,8 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       [agentUrl],
     );
     expect(latestRun.rows[0]).toMatchObject({
-      triggered_by: 'owner_test',
-      triggered_org_id: TEST_ORG_ID,
+      triggered_by: 'manual',
+      triggered_org_id: null,
     });
     expect(latestRun.rows[0].notices_json).toEqual([{
       severity: 'info',
@@ -434,6 +584,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   });
 
   it('public compliance bounds notice output while retaining the raw private record', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('public-notices');
     const refresh = await request(app).post(url(agentUrl)).send();
     expect(refresh.status).toBe(200);
@@ -563,12 +714,15 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
   });
 
-  it('preserves confirmed owner refresh when the separate platform-admin lookup is unavailable', async () => {
+  it('fences a confirmed unlinked owner without misreporting a separate platform-admin outage', async () => {
     isAdminMock.mockRejectedValue(new AAOAdminLookupUnavailableError());
     const agentUrl = ownedAgentUrl('owner-admin-outage');
     const response = await request(app).post(url(agentUrl)).send();
-    expect(response.status).toBe(200);
-    expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe('refresh_authorization_provenance_required');
+    expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+    expect(complyMock).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
     expect(isAdminMock.mock.calls.every(([principal]) => (principal.authWorkosUserId ?? principal.id) === OWNER_USER_ID)).toBe(true);
   });
 
@@ -682,6 +836,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   });
 
   it('returns 502 when the probe throws', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     refreshSingleAgentMock.mockRejectedValue(new Error('Probe timeout'));
     const res = await request(app).post(url(ownedAgentUrl('probe-fail'))).send();
     expect(res.status).toBe(502);
@@ -692,6 +847,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   });
 
   it('returns 409 when monitoring is paused', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     refreshSingleAgentMock.mockRejectedValue(new Error('Monitoring paused for this agent'));
     const res = await request(app).post(url(ownedAgentUrl('paused'))).send();
     expect(res.status).toBe(409);
@@ -699,6 +855,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   });
 
   it('returns an immediate durable handle and polls a long-running refresh to completion', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('async-refresh');
     let resolveCompliance!: (value: ReturnType<typeof makeComplianceResult>) => void;
     const deferredCompliance = new Promise<ReturnType<typeof makeComplianceResult>>((resolve) => {
@@ -729,7 +886,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const forbidden = await request(app).get(accepted.body.status_url).send();
     expect(forbidden.status).toBe(404);
 
-    currentUserId = OWNER_USER_ID;
+    currentUserId = STATIC_ADMIN_USER_ID;
     const waitForStatus = async (target: 'running' | 'succeeded') => {
       const deadline = Date.now() + 12_000;
       while (Date.now() < deadline) {
@@ -756,6 +913,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   }, 20_000);
 
   it('falls back to 202 at the legacy deadline without Prefer, then completes by polling', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('legacy-timeout');
     let resolveCompliance!: (value: ReturnType<typeof makeComplianceResult>) => void;
     const deferredCompliance = new Promise<ReturnType<typeof makeComplianceResult>>((resolve) => {
@@ -892,6 +1050,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   }, 30_000);
 
   it('retries failed badge persistence from the saved run without executing a second suite', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('badge-retry');
     complyMock.mockResolvedValueOnce(makeComplianceResult({
       specialisms: ['sales-broadcast-tv'],
@@ -931,6 +1090,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   }, 40_000);
 
   it('surfaces an allowlisted badge failure after retry exhaustion', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('badge-retry-exhausted');
     complyMock.mockResolvedValueOnce(makeComplianceResult({
       specialisms: ['sales-broadcast-tv'],
@@ -973,6 +1133,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   }, 40_000);
 
   it('recovers the same operation handle when a completed response is retried', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('rate-limit');
     const first = await request(app).post(url(agentUrl)).send();
     expect(first.status).toBe(200);
@@ -993,7 +1154,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   // even though evaluate_agent_quality (which resolves saved auth) worked
   // fine. The route now resolves owner-org auth and threads it to the
   // crawler so the probe sees the same credentials.
-  it('threads the org-saved bearer token to the crawler', async () => {
+  it('fences owner refresh before using an organization-saved bearer token', async () => {
     const agentUrl = ownedAgentUrl('saved-bearer');
     const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
     const db = new AgentContextDatabase();
@@ -1007,20 +1168,17 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
     try {
       const res = await request(app).post(url(agentUrl)).send();
-      expect(res.status).toBe(200);
-      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
-        agentUrl,
-        expect.objectContaining({
-          auth: { type: 'bearer', token: FAKE_BEARER },
-          ownerOrgId: TEST_ORG_ID,
-        }),
-      );
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('refresh_authorization_provenance_required');
+      expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+      expect(complyMock).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
     }
   });
 
-  it('canonicalizes the requested URL before owner auth lookup and probe', async () => {
+  it('fences a canonicalized owner URL before resolving saved auth or probing', async () => {
     const agentUrl = ownedAgentUrl('canonical-saved-bearer');
     const requestedUrl = agentUrl
       .replace('https://', 'HTTPS://')
@@ -1037,14 +1195,11 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
     try {
       const res = await request(app).post(url(requestedUrl)).send();
-      expect(res.status).toBe(200);
-      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
-        agentUrl,
-        expect.objectContaining({
-          auth: { type: 'bearer', token: FAKE_BEARER },
-          ownerOrgId: TEST_ORG_ID,
-        }),
-      );
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('refresh_authorization_provenance_required');
+      expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+      expect(complyMock).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
     }
@@ -1085,7 +1240,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     }
   });
 
-  it('uses the selected org credentials when a shared agent is refreshed', async () => {
+  it('fences selected-organization owner refresh before using saved credentials', async () => {
     const agentUrl = ownedAgentUrl('selected-org-refresh');
     const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
     const db = new AgentContextDatabase();
@@ -1102,14 +1257,11 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         .post(url(agentUrl))
         .send({ organization_id: SECOND_ORG_ID });
 
-      expect(res.status).toBe(200);
-      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
-        agentUrl,
-        expect.objectContaining({
-          auth: { type: 'bearer', token },
-          ownerOrgId: SECOND_ORG_ID,
-        }),
-      );
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('refresh_authorization_provenance_required');
+      expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+      expect(complyMock).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
     }
@@ -1145,7 +1297,8 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(stored.rows).toEqual([{ organization_id: SECOND_ORG_ID }]);
   });
 
-  it('fans out badge issuance for an owner refresh with a passing specialism', async () => {
+  it('fans out badge issuance for a static-admin refresh with a passing specialism', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('badge-fanout');
     complyMock.mockResolvedValueOnce(makeComplianceResult({
       specialisms: ['sales-broadcast-tv'],
