@@ -182,6 +182,7 @@ import {
   getGoogleEmailAliases,
   normalizeEmail,
 } from "../../utils/email-domain.js";
+import { AAOAdminLookupUnavailableError } from "../admin-status-lookup.js";
 
 const logger = createLogger("addie-admin-tools");
 const orgDb = new OrganizationDatabase();
@@ -204,51 +205,79 @@ const COUNCIL_CACHE_TTL_MS = 30 * 60 * 1000;
  * Authorization results are not cached, so grants and revocations are visible
  * across replicas on the next request.
  */
-export async function isSlackUserAAOAdmin(
+export type SlackAAOAdminAccessDecision =
+  | { status: "authorized"; workosUserId: string }
+  | { status: "forbidden"; reason: "unmapped" | "not_member"; workosUserId?: string }
+  | { status: "unavailable"; stage: "mapping" | "authority_group" | "membership"; cause: unknown };
+
+/**
+ * Resolve Slack platform-admin authority without collapsing infrastructure
+ * failure into a durable denial. Callers which assemble privileged tools must
+ * propagate `unavailable` as retryable instead of silently reducing access.
+ */
+export async function resolveSlackUserAAOAdminAccess(
   slackUserId: string,
-): Promise<boolean> {
+): Promise<SlackAAOAdminAccessDecision> {
+  let mapping: Awaited<ReturnType<SlackDatabase["getBySlackUserId"]>>;
   try {
-    // Look up the Slack user mapping to get their WorkOS user ID
-    const mapping = await slackDb.getBySlackUserId(slackUserId);
-
-    if (!mapping?.workos_user_id) {
-      logger.debug(
-        { slackUserId },
-        "Admin check: no WorkOS mapping for Slack user",
-      );
-      return false;
-    }
-
-    // Get the aao-admin working group
-    const adminGroup = await wgDb.getWorkingGroupBySlug(
-      AAO_ADMIN_WORKING_GROUP_SLUG,
-    );
-
-    if (!adminGroup) {
-      logger.warn("Admin check: aao-admin working group not found in DB");
-      return false;
-    }
-
-    // Check if the user is a member of the admin working group
-    const isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
-
-    logger.info(
-      {
-        slackUserId,
-        workosUserId: mapping.workos_user_id,
-        isAdmin,
-        adminGroupId: adminGroup.id,
-      },
-      "Admin status check result",
-    );
-    return isAdmin;
+    mapping = await slackDb.getBySlackUserId(slackUserId);
   } catch (error) {
-    logger.error(
-      { error, slackUserId },
-      "Error checking if Slack user is admin",
-    );
-    return false;
+    return { status: "unavailable", stage: "mapping", cause: error };
   }
+
+  if (!mapping?.workos_user_id) {
+    logger.debug({ slackUserId }, "Admin check: no WorkOS mapping for Slack user");
+    return { status: "forbidden", reason: "unmapped" };
+  }
+
+  let adminGroup: Awaited<ReturnType<WorkingGroupDatabase["getWorkingGroupBySlug"]>>;
+  try {
+    adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+  } catch (error) {
+    return { status: "unavailable", stage: "authority_group", cause: error };
+  }
+  if (!adminGroup) {
+    return {
+      status: "unavailable",
+      stage: "authority_group",
+      cause: new Error("Platform administrator authority group is missing"),
+    };
+  }
+
+  let isAdmin: boolean;
+  try {
+    isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
+  } catch (error) {
+    return { status: "unavailable", stage: "membership", cause: error };
+  }
+
+  logger.info({
+    slackUserId,
+    workosUserId: mapping.workos_user_id,
+    isAdmin,
+    adminGroupId: adminGroup.id,
+  }, "Admin status check result");
+  return isAdmin
+    ? { status: "authorized", workosUserId: mapping.workos_user_id }
+    : { status: "forbidden", reason: "not_member", workosUserId: mapping.workos_user_id };
+}
+
+/**
+ * Boolean adapter for existing Slack authorization gates. Confirmed denials
+ * remain false; an unavailable authority source is a retryable setup failure.
+ */
+export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean> {
+  const decision = await resolveSlackUserAAOAdminAccess(slackUserId);
+  if (decision.status === "unavailable") {
+    logger.error({
+      error: decision.cause,
+      slackUserId,
+      stage: decision.stage,
+      code: "admin_authorization_unavailable",
+    }, "Slack administrator authorization lookup unavailable");
+    throw new AAOAdminLookupUnavailableError({ cause: decision.cause });
+  }
+  return decision.status === "authorized";
 }
 
 // Re-export Slack/web admin invalidators from the shared cache module so

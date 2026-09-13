@@ -531,6 +531,8 @@ export function createTavusRouter(options?: {
   voiceClient?: TavusVoiceClient;
   /** An explicit null exercises the safe router-unavailable fallback. */
   router?: TavusVoiceRouter | null;
+  /** Deterministic test seam for a renewal racing a mutation reservation. */
+  leaseRenewalScheduler?: (renew: () => Promise<void>) => () => void;
 }) {
   // Page router: serves GET /video and GET /video/lab.
   // Both routes go through serveHtmlWithConfig so the global app config and
@@ -1198,16 +1200,48 @@ export function createTavusRouter(options?: {
     res.setHeader("Connection", "keep-alive");
     res.setHeader('X-Addie-Client-Turn-Id', clientRequestId);
 
-    const leaseRenewal = setInterval(() => {
-      const claimed = claimedVoiceTurn;
-      if (!claimed || leaseOwnershipLost) return;
-      void threadService.renewClientTurnLease(threadId, clientRequestId, claimed.leaseId)
-        .then((owned) => {
+    const inFlightLeaseRenewals = new Set<Promise<void>>();
+    let leaseCriticalSection = Promise.resolve();
+    const withLeaseCriticalSection = async <T>(operation: () => Promise<T>): Promise<T> => {
+      const previous = leaseCriticalSection;
+      let release!: () => void;
+      leaseCriticalSection = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        return await operation();
+      } finally {
+        release();
+      }
+    };
+    const renewVoiceTurnLease = (): Promise<void> => {
+      const renewal = withLeaseCriticalSection(async () => {
+        const claimed = claimedVoiceTurn;
+        if (!claimed || leaseOwnershipLost) return;
+        try {
+          const owned = await threadService.renewClientTurnLease(threadId, clientRequestId, claimed.leaseId);
           if (!owned) markLeaseOwnershipLost('periodic_renewal_rejected');
-        })
-        .catch((error) => markLeaseOwnershipLost('periodic_renewal_unavailable', error));
-    }, 15_000);
-    leaseRenewal.unref();
+        } catch (error) {
+          markLeaseOwnershipLost('periodic_renewal_unavailable', error);
+        }
+      });
+      inFlightLeaseRenewals.add(renewal);
+      void renewal.finally(() => inFlightLeaseRenewals.delete(renewal));
+      return renewal;
+    };
+    const drainInFlightLeaseRenewals = async (): Promise<void> => {
+      while (inFlightLeaseRenewals.size > 0) {
+        await Promise.all(inFlightLeaseRenewals);
+      }
+    };
+    const stopLeaseRenewal = options?.leaseRenewalScheduler
+      ? options.leaseRenewalScheduler(renewVoiceTurnLease)
+      : (() => {
+          const leaseRenewal = setInterval(() => void renewVoiceTurnLease(), 15_000);
+          leaseRenewal.unref();
+          return () => clearInterval(leaseRenewal);
+        })();
 
     let connectionClosed = false;
     req.on("close", () => {
@@ -1273,16 +1307,24 @@ export function createTavusRouter(options?: {
           costScope,
           reserveSideEffect: async ({ toolName, parameters }) => {
             if (!threadId) throw new Error('A durable conversation thread is required for an external action');
-            // This inline ownership proof extends the exact lease immediately
-            // before the durable reservation and handler dispatch boundary.
-            await proveVoiceTurnLease(`before_side_effect:${toolName}`);
-            await reserveToolIntentCheckpoint(threadService, {
-              threadId,
-              toolName,
-              parameters,
-              requestedModel: AddieModelConfig.voice,
-              clientRequestId,
+            await withLeaseCriticalSection(async () => {
+              // This inline ownership proof extends the exact lease immediately
+              // before the durable reservation and handler dispatch boundary.
+              await proveVoiceTurnLease(`before_side_effect:${toolName}`);
+              await reserveToolIntentCheckpoint(threadService, {
+                threadId,
+                toolName,
+                parameters,
+                requestedModel: AddieModelConfig.voice,
+                clientRequestId,
+              });
+              await proveVoiceTurnLease(`after_side_effect_reservation:${toolName}`);
             });
+            // Drain every periodic probe which queued before the serialized
+            // reservation released. Once this synchronous tail passes, the
+            // shared executor runs before a later timer task can interleave.
+            await drainInFlightLeaseRenewals();
+            if (leaseOwnershipLost) throw new Error('Voice turn lease is no longer owned');
           },
         }
       );
@@ -1317,13 +1359,20 @@ export function createTavusRouter(options?: {
             break;
           }
           try {
-            await proveVoiceTurnLease(`before_tool_checkpoint:${event.tool_name}`);
-            await threadService.addMessage(buildToolResultCheckpoint({
-              threadId,
-              execution: event.execution,
-              requestedModel: AddieModelConfig.voice,
-              clientRequestId,
-            }));
+            await drainInFlightLeaseRenewals();
+            if (leaseOwnershipLost) throw new Error('Voice turn lease is no longer owned');
+            await withLeaseCriticalSection(async () => {
+              await proveVoiceTurnLease(`before_tool_checkpoint:${event.tool_name}`);
+              await threadService.addMessage(buildToolResultCheckpoint({
+                threadId,
+                execution: event.execution,
+                requestedModel: AddieModelConfig.voice,
+                clientRequestId,
+              }));
+              await proveVoiceTurnLease(`after_tool_checkpoint:${event.tool_name}`);
+            });
+            await drainInFlightLeaseRenewals();
+            if (leaseOwnershipLost) throw new Error('Voice turn lease is no longer owned');
           } catch (checkpointError) {
             logger.error({ checkpointError, threadId, toolName: event.tool_name }, 'Tavus: Tool outcome checkpoint failed');
             streamError = true;
@@ -1337,7 +1386,8 @@ export function createTavusRouter(options?: {
       logger.error({ err }, "Tavus: Streaming error");
       streamError = true;
     } finally {
-      clearInterval(leaseRenewal);
+      stopLeaseRenewal();
+      await drainInFlightLeaseRenewals();
       activeVoiceIterator = null;
     }
 
