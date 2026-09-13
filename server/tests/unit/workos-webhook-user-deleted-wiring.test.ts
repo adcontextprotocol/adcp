@@ -90,7 +90,7 @@ describe('user.deleted containment wiring (#6827)', () => {
     expect(bindingLock).toBeGreaterThan(credentialLock);
     expect(identityLock).toBeGreaterThan(bindingLock);
     expect(identityDbSource).toContain('CREDENTIAL_MUTATION_MAX_ATTEMPTS = 3');
-    expect(identityDbSource).toContain('if (await hasConfirmedDeletionTombstone(client, workosUserId))');
+    expect(identityDbSource).toContain('if (await hasTerminalCredentialLifecycleMarker(client, workosUserId))');
     expect(identityDbSource).not.toContain('Credential event mutation retry bound exhausted; applying without lock');
   });
 });
