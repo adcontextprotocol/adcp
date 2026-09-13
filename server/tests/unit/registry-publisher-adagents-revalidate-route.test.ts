@@ -3,7 +3,7 @@ import express from 'express';
 import request from 'supertest';
 
 const validateCrawlDomainMock = vi.fn();
-const isWebUserAAOAdminMock = vi.fn();
+const isAuthenticatedUserAAOAdminMock = vi.fn();
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY || 'sk_test_registry_adagents_revalidate';
@@ -18,10 +18,12 @@ vi.mock('../../src/utils/url-security.js', async () => {
   };
 });
 
-vi.mock('../../src/addie/admin-status-lookup.js', () => ({
-  isWebUserAAOAdmin: (userId: string) => isWebUserAAOAdminMock(userId),
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>()),
+  isAuthenticatedUserAAOAdmin: (principal: { id: string; authWorkosUserId?: string; email?: string | null }) => isAuthenticatedUserAAOAdminMock(principal),
 }));
 
+import { AAOAdminLookupUnavailableError } from '../../src/addie/admin-status-lookup.js';
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
 
 const ORIGINAL_ADMIN_EMAILS = process.env.ADMIN_EMAILS;
@@ -29,8 +31,9 @@ const ORIGINAL_DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
 const ORIGINAL_DEV_USER_ID = process.env.DEV_USER_ID;
 
 function buildApp(options: {
-  user?: { id: string; email: string; isAdmin?: boolean };
-  crawler: Pick<RegistryApiConfig['crawler'], 'revalidatePublisherAdagents'>;
+  user?: { id: string; authWorkosUserId?: string; email: string; isAdmin?: boolean };
+  crawler: Pick<RegistryApiConfig['crawler'], 'revalidatePublisherAdagents'>
+    & Partial<Pick<RegistryApiConfig['crawler'], 'getPublisherCrawlRequest'>>;
 }) {
   const app = express();
   app.use(express.json());
@@ -68,7 +71,7 @@ describe('POST /api/registry/publisher/:domain/adagents/revalidate', () => {
     delete process.env.DEV_USER_EMAIL;
     delete process.env.DEV_USER_ID;
     validateCrawlDomainMock.mockImplementation(async (domain: string) => domain.toLowerCase().trim());
-    isWebUserAAOAdminMock.mockResolvedValue(false);
+    isAuthenticatedUserAAOAdminMock.mockImplementation(async (principal: { id: string; authWorkosUserId?: string }) => (principal.authWorkosUserId ?? principal.id) === 'admin_user');
   });
 
   afterEach(() => {
@@ -209,7 +212,7 @@ describe('POST /api/registry/publisher/:domain/adagents/revalidate', () => {
 
   it('rejects authenticated non-admin callers', async () => {
     const revalidatePublisherAdagents = vi.fn();
-    isWebUserAAOAdminMock.mockResolvedValue(false);
+    isAuthenticatedUserAAOAdminMock.mockResolvedValue(false);
 
     const res = await request(buildApp({
       user: { id: 'member_user', email: 'member@example.com', isAdmin: false },
@@ -236,4 +239,158 @@ describe('POST /api/registry/publisher/:domain/adagents/revalidate', () => {
     expect(res.body).toMatchObject({ error: 'Authentication required' });
     expect(revalidatePublisherAdagents).not.toHaveBeenCalled();
   });
+  it.each([
+    { authenticated: 'admin_user', canonical: 'member_user', allowed: true },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false },
+  ])('uses exact $authenticated authority linked to $canonical, ignoring stale isAdmin', async ({ authenticated, canonical, allowed }) => {
+    const user = { id: canonical, authWorkosUserId: authenticated, email: 'credential@example.com', isAdmin: !allowed };
+    const sideEffect = vi.fn().mockResolvedValue({ domain: 'security.example', adagents_valid: true });
+    const app = buildApp({ user, crawler: { revalidatePublisherAdagents: sideEffect } });
+    const response = await request(app).post('/api/registry/publisher/security.example/adagents/revalidate').send();
+    expect(response.status).toBe(allowed ? 200 : 403);
+    expect(sideEffect).toHaveBeenCalledTimes(Number(allowed));
+    expect(isAuthenticatedUserAAOAdminMock).toHaveBeenCalledTimes(allowed ? 2 : 1);
+    const principal = isAuthenticatedUserAAOAdminMock.mock.calls[0][0];
+    expect(principal.authWorkosUserId ?? principal.id).toBe(authenticated);
+    expect(principal.email).toBe('credential@example.com');
+    expect(Object.isFrozen(principal)).toBe(true);
+    expect(principal).not.toBe(user);
+    for (const [checked] of isAuthenticatedUserAAOAdminMock.mock.calls) expect(checked).toBe(principal);
+  });
+
+  it('returns retryable unavailable without trusting a stale admin flag or running the side effect', async () => {
+    isAuthenticatedUserAAOAdminMock.mockRejectedValueOnce(new AAOAdminLookupUnavailableError());
+    const user = { id: 'admin_user', authWorkosUserId: 'revoked_credential', email: 'credential@example.com', isAdmin: true };
+    const sideEffect = vi.fn().mockResolvedValue({ domain: 'security.example', adagents_valid: true });
+    const app = buildApp({ user, crawler: { revalidatePublisherAdagents: sideEffect } });
+    const response = await request(app).post('/api/registry/publisher/security.example/adagents/revalidate').send();
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('admin_authorization_unavailable');
+    expect(response.headers['retry-after']).toBe('5');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(sideEffect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { authenticated: 'admin_user', canonical: 'member_user', allowed: true },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false },
+  ])('captures immutable $authenticated provenance before an awaited authorization lookup', async ({ authenticated, canonical, allowed }) => {
+    const user = { id: canonical, authWorkosUserId: authenticated, email: 'credential@example.com', isAdmin: !allowed };
+    isAuthenticatedUserAAOAdminMock.mockImplementationOnce(async (principal) => {
+      await Promise.resolve();
+      user.id = authenticated;
+      user.authWorkosUserId = canonical;
+      user.email = 'changed@example.com';
+      return (principal.authWorkosUserId ?? principal.id) === 'admin_user';
+    });
+    const sideEffect = vi.fn().mockResolvedValue({ domain: 'security.example', adagents_valid: true });
+    const app = buildApp({ user, crawler: { revalidatePublisherAdagents: sideEffect } });
+    const response = await request(app).post('/api/registry/publisher/security.example/adagents/revalidate').send();
+    expect(response.status).toBe(allowed ? 200 : 403);
+    expect(sideEffect).toHaveBeenCalledTimes(Number(allowed));
+    const principal = isAuthenticatedUserAAOAdminMock.mock.calls[0][0];
+    expect(Object.isFrozen(principal)).toBe(true);
+    expect(principal.authWorkosUserId ?? principal.id).toBe(authenticated);
+    expect(principal.email).toBe('credential@example.com');
+  });
+
+  it.each(['revoked', 'unavailable'] as const)('fails closed when authorization becomes %s during preflight I/O', async (decision) => {
+    const user = { id: 'member_user', authWorkosUserId: 'admin_user', email: 'credential@example.com', isAdmin: true };
+    isAuthenticatedUserAAOAdminMock.mockResolvedValueOnce(true);
+    if (decision === 'revoked') isAuthenticatedUserAAOAdminMock.mockResolvedValueOnce(false);
+    else isAuthenticatedUserAAOAdminMock.mockRejectedValueOnce(new AAOAdminLookupUnavailableError());
+    const sideEffect = vi.fn().mockResolvedValue({ domain: 'security.example', adagents_valid: true });
+    const app = buildApp({ user, crawler: { revalidatePublisherAdagents: sideEffect } });
+    const response = await request(app).post('/api/registry/publisher/security.example/adagents/revalidate').send();
+    expect(response.status).toBe(decision === 'revoked' ? 403 : 503);
+    expect(sideEffect).not.toHaveBeenCalled();
+    if (decision === 'unavailable') expect(response.body.error).toBe('admin_authorization_unavailable');
+    expect(isAuthenticatedUserAAOAdminMock).toHaveBeenCalledTimes(2);
+    // A refusal before the crawler runs must release its per-domain reservation.
+    const retry = await request(app).post('/api/registry/publisher/security.example/adagents/revalidate').send();
+    expect(retry.status).toBe(200);
+    expect(sideEffect).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { authenticated: 'admin_user', canonical: 'member_user', allowed: true, mutate: false },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false, mutate: false },
+    { authenticated: 'admin_user', canonical: 'member_user', allowed: true, mutate: true },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false, mutate: true },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false, mutate: false, unavailable: true },
+  ])('keeps crawl status authority on $authenticated before asynchronous row loading (mutate=$mutate)', async ({ authenticated, canonical, allowed, mutate, unavailable }) => {
+    if (unavailable) isAuthenticatedUserAAOAdminMock.mockRejectedValueOnce(new AAOAdminLookupUnavailableError());
+    const user = { id: canonical, authWorkosUserId: authenticated, email: 'credential@example.com', isAdmin: !allowed };
+    const id = '11111111-1111-4111-8111-111111111111';
+    const getPublisherCrawlRequest = vi.fn(async () => {
+      await Promise.resolve();
+      if (mutate) {
+        user.id = authenticated;
+        user.authWorkosUserId = canonical;
+        user.email = 'changed@example.com';
+      }
+      return {
+        id, publisher_domain: 'private-request.example', requester_type: 'user',
+        requested_by_user_id: 'unrelated_requester', status: 'succeeded', attempts: 1, max_attempts: 2,
+        created_at: new Date(), completed_at: new Date(), available_at: new Date(),
+      };
+    });
+    const response = await request(buildApp({
+      user, crawler: { revalidatePublisherAdagents: vi.fn(), getPublisherCrawlRequest },
+    })).get(`/api/registry/crawl-request/${id}`).send();
+    expect(response.status).toBe(unavailable ? 503 : allowed ? 200 : 404);
+    if (unavailable) {
+      expect(response.body.error).toBe('admin_authorization_unavailable');
+      expect(response.headers['retry-after']).toBe('5');
+      expect(response.headers['cache-control']).toBe('no-store');
+    }
+    if (allowed) expect(response.body.domain).toBe('private-request.example');
+    const principal = isAuthenticatedUserAAOAdminMock.mock.calls[0][0];
+    expect(principal.id).toBe(authenticated);
+    expect(principal.email).toBe('credential@example.com');
+    expect(Object.isFrozen(principal)).toBe(true);
+  });
+
+  it.each([
+    { authenticated: 'request_owner', canonical: 'member_user', allowed: true },
+    { authenticated: 'member_user', canonical: 'request_owner', allowed: false },
+  ])('uses exact $authenticated ownership for crawl status instead of canonical $canonical', async ({ authenticated, canonical, allowed }) => {
+    if (allowed) isAuthenticatedUserAAOAdminMock.mockRejectedValue(new AAOAdminLookupUnavailableError());
+    const id = '22222222-2222-4222-8222-222222222222';
+    const getPublisherCrawlRequest = vi.fn().mockResolvedValue({
+      id, publisher_domain: 'owned-request.example', requester_type: 'user',
+      requested_by_user_id: 'request_owner', status: 'succeeded', attempts: 1, max_attempts: 2,
+      created_at: new Date(), completed_at: new Date(), available_at: new Date(),
+    });
+    const response = await request(buildApp({
+      user: { id: canonical, authWorkosUserId: authenticated, email: 'credential@example.com' },
+      crawler: { revalidatePublisherAdagents: vi.fn(), getPublisherCrawlRequest },
+    })).get(`/api/registry/crawl-request/${id}`).send();
+    expect(response.status).toBe(allowed ? 200 : 404);
+    if (allowed) expect(isAuthenticatedUserAAOAdminMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '/api/registry/authorizations?agent_url=https%3A%2F%2Fagent.example&include=raw',
+    '/api/registry/authorizations/snapshot?include=raw',
+  ])('keeps raw authorization audit access static-key-only at %s', async (path) => {
+    const { AuthorizationSnapshotDatabase } = await import('../../src/db/authorization-snapshot-db.js');
+    const narrow = vi.spyOn(AuthorizationSnapshotDatabase.prototype, 'getNarrow');
+    const snapshot = vi.spyOn(AuthorizationSnapshotDatabase.prototype, 'openSnapshot');
+    try {
+      isAuthenticatedUserAAOAdminMock.mockResolvedValue(true);
+      const response = await request(buildApp({
+        user: { id: 'member_user', authWorkosUserId: 'admin_user', email: 'admin@example.com', isAdmin: true },
+        crawler: { revalidatePublisherAdagents: vi.fn() },
+      })).get(path).send();
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('include=raw requires admin access');
+      expect(narrow).not.toHaveBeenCalled();
+      expect(snapshot).not.toHaveBeenCalled();
+    } finally {
+      narrow.mockRestore();
+      snapshot.mockRestore();
+    }
+  });
+
 });

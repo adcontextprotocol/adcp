@@ -196,9 +196,9 @@ import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
-import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
-import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
+import { isAuthenticatedUserAAOAdmin, isWebUserAAOAdmin, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
+import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
+import { isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
@@ -223,6 +223,11 @@ import {
   type ClaimedComplianceRefreshRequest,
 } from "../db/compliance-refresh-requests-db.js";
 import { ComplianceRefreshQueue } from "../services/compliance-refresh-queue.js";
+
+const RegistryAdminAuthorizationUnavailableSchema = z.object({
+  error: z.literal('admin_authorization_unavailable'),
+  message: z.string(),
+});
 
 type PublisherBrandSummary = {
   name?: string;
@@ -1956,17 +1961,17 @@ registry.registerPath({
       },
     },
     503: {
-      description: "Publisher crawl is temporarily busy",
+      description: "Publisher crawl is temporarily busy, or administrator authorization could not be checked",
       headers: z.object({
         "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
       }),
       content: {
         "application/json": {
-          schema: z.object({
+          schema: z.union([RegistryAdminAuthorizationUnavailableSchema, z.object({
             error: z.string(),
             code: z.literal("publisher_crawl_busy"),
             retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
-          }),
+          })]),
         },
       },
     },
@@ -2004,6 +2009,11 @@ registry.registerPath({
       },
     },
     500: { description: "Crawl failed", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Administrator authorization could not be checked",
+      headers: z.object({ "Retry-After": z.string() }),
+      content: { "application/json": { schema: RegistryAdminAuthorizationUnavailableSchema } },
+    },
   },
 });
 
@@ -3433,17 +3443,17 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Crawl request not found", content: { "application/json": { schema: ErrorSchema } } },
     503: {
-      description: "Crawl status is temporarily unavailable",
+      description: "Crawl status or administrator authorization is temporarily unavailable",
       headers: z.object({
         "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
       }),
       content: {
         "application/json": {
-          schema: z.object({
+          schema: z.union([RegistryAdminAuthorizationUnavailableSchema, z.object({
             error: z.string(),
             code: z.literal("crawl_status_unavailable"),
             retry_after: z.number().int(),
-          }),
+          })]),
         },
       },
     },
@@ -4213,7 +4223,14 @@ registry.registerPath({
     },
     500: { description: "Refresh failed after durable execution", content: { "application/json": { schema: ErrorSchema } } },
     502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
-    503: { description: "Durable refresh queue unavailable or at capacity", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Refresh queue or authorization unavailable. Human administrator and linked-credential submissions are temporarily fenced with refresh_authorization_provenance_required.",
+      headers: z.object({ "Retry-After": z.string() }),
+      content: { "application/json": { schema: z.union([
+        RegistryAdminAuthorizationUnavailableSchema,
+        z.object({ error: z.string(), code: z.string(), retry_after: z.number().int() }),
+      ]) } },
+    },
   },
 });
 
@@ -4274,7 +4291,7 @@ registry.registerPath({
         },
       },
     },
-    503: { description: "Refresh status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Refresh status or administrator authorization temporarily unavailable", content: { "application/json": { schema: z.union([RegistryAdminAuthorizationUnavailableSchema, ErrorSchema]) } } },
   },
 });
 
@@ -7357,18 +7374,28 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     return (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
   }
 
-  async function isRegistryAdminRequest(req: Request): Promise<boolean> {
-    if (isStaticAdminRequest(req)) return true;
-    const user = req.user as ({ id?: string; email?: string; isAdmin?: boolean } | undefined);
-    if (!user) return false;
-    if (user.isAdmin === true) return true;
+  type RegistryPrincipal = Readonly<{
+    staticAdmin: boolean;
+    canonicalUserId: string | null;
+    user: Readonly<AAOAdminPrincipal> | null;
+  }>;
 
-    const devUser = isDevModeEnabled() ? getDevUser(req) : null;
-    if (devUser?.isAdmin === true) return true;
+  // Capture authenticated middleware state before the first await. Neither
+  // presentation flags nor later mutation of req.user can change authority.
+  function captureRegistryPrincipal(req: Request): RegistryPrincipal {
+    return Object.freeze({
+      staticAdmin: isStaticAdminRequest(req),
+      canonicalUserId: req.user?.id ?? null,
+      user: req.user ? Object.freeze({
+        id: req.user.authWorkosUserId ?? req.user.id,
+        email: req.user.email,
+      }) : null,
+    });
+  }
 
-    if (isBreakGlassAdminEmail(user.email)) return true;
-    if (!user.id) return false;
-    return isWebUserAAOAdmin(user.id);
+  async function isRegistryAdminRequest(principal: RegistryPrincipal): Promise<boolean> {
+    if (principal.staticAdmin) return true;
+    return principal.user ? isAuthenticatedUserAAOAdmin(principal.user) : false;
   }
 
   router.get(
@@ -8208,6 +8235,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   );
 
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, capabilityProbeRateLimiter, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
     const responseDeadline = Date.now() + legacyRefreshWaitMs;
     try {
       const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -8215,7 +8243,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
       const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
-      if (!req.user) {
+      if (!principal.user && !principal.staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
@@ -8223,23 +8251,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       if (!orgSelection.ok) {
         return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
       }
-      const ownerOrgId = await resolveOwnerOrgForUser(
-        req.user.id,
+      const ownerOrgId = principal.user && !principal.staticAdmin ? await resolveOwnerOrgForUser(
+        principal.user.id,
         agentUrl,
         orgSelection.organizationId,
-      );
+      ) : null;
 
-      // Owner OR AAO admin. Admin escape hatch lets staff fix things for
-      // any registered agent (mirrors how admin tools work elsewhere).
-      // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
-      // `requireAdmin`'s pattern in middleware/auth.ts — in production
-      // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
-      const isStaticAdmin = isStaticAdminRequest(req);
+      const isStaticAdmin = principal.staticAdmin;
       const isOwner = ownerOrgId !== null;
-      const isAaoAdmin = await isWebUserAAOAdmin(req.user.id);
-      const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
-      if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
+      if (!isOwner && !(await isRegistryAdminRequest(principal))) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
+      }
+
+      // #7457 owns durable credential + epoch provenance and worker barriers.
+      // Old workers cannot safely represent human administrator authority or
+      // distinguish a linked requester from its canonical attribution ID.
+      // There is deliberately no environment switch to reopen this path.
+      if (!isStaticAdmin && (!isOwner || principal.user?.id !== principal.canonicalUserId)) {
+        logger.warn({ workosUserId: principal.user?.id, code: 'refresh_authorization_provenance_required' },
+          'Refresh admission fenced until durable authorization provenance is supported');
+        res.setHeader('Retry-After', '60');
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.status(503).json({
+          error: 'Refresh is temporarily unavailable for this credential. Please try again later.',
+          code: 'refresh_authorization_provenance_required',
+          retry_after: 60,
+        });
       }
       try {
         const operationId = randomUUID();
@@ -8248,7 +8285,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           agentUrl,
           ownerOrgId,
           requesterType: isStaticAdmin ? 'static_admin' : 'user',
-          requestedByUserId: isStaticAdmin ? null : req.user.id,
+          requestedByUserId: isStaticAdmin ? null : principal.user!.id,
           triggeredBy: ownerOrgId ? 'owner_test' : 'manual',
           agentWindowMs: REFRESH_AGENT_RATE_LIMIT_MS,
           requesterWindowMs: REFRESH_USER_WINDOW_MS,
@@ -8345,6 +8382,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         throw error;
       }
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error, path: req.path }, "Failed to enqueue agent refresh");
       res.setHeader('Retry-After', '5');
       res.status(503).json({
@@ -8360,6 +8398,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     agentReadRateLimiter,
     async (req, res) => {
+      const principal = captureRegistryPrincipal(req);
       try {
         const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
         if (!validateAgentUrlParam(rawAgentUrl)) {
@@ -8369,7 +8408,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         if (!isUuid(req.params.operationId)) {
           return res.status(400).json({ error: "Invalid refresh operation ID" });
         }
-        if (!req.user) {
+        if (!principal.user && !principal.staticAdmin) {
           return res.status(401).json({ error: "Authentication required" });
         }
 
@@ -8377,11 +8416,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         if (!operation || operation.agent_url !== agentUrl) {
           return res.status(404).json({ error: "Refresh operation not found" });
         }
-        const ownsCredentialContext = !!operation.owner_org_id
-          && await isOrgOwnerOfAgent(operation.owner_org_id, req.user.id, agentUrl);
-        const canRead = isStaticAdminRequest(req)
+        const ownsCredentialContext = !!operation.owner_org_id && !!principal.user
+          && await isOrgOwnerOfAgent(operation.owner_org_id, principal.user.id, agentUrl);
+        const canRead = principal.staticAdmin
           || ownsCredentialContext
-          || await isRegistryAdminRequest(req);
+          || await isRegistryAdminRequest(principal);
         if (!canRead) {
           return res.status(404).json({ error: "Refresh operation not found" });
         }
@@ -8406,6 +8445,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           error: failure,
         });
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error, path: req.path }, "Failed to read agent refresh operation");
         res.setHeader('Retry-After', '5');
         return res.status(503).json({
@@ -12161,6 +12201,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     res: import('express').Response,
     rateLimitKey: string,
     domainOverride?: string,
+    memberIdOverride?: string,
   ): Promise<string | null> {
     const domain = domainOverride ?? req.body?.domain;
     if (!domain || typeof domain !== 'string') {
@@ -12177,7 +12218,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       return null;
     }
 
-    const memberId = req.user?.id || 'anonymous';
+    const memberId = memberIdOverride ?? req.user?.id ?? 'anonymous';
 
     // Per-domain rate limit (shared key space for all crawl types on same domain)
     const lastCrawl = crawlRequestRateLimits.get(rateLimitKey);
@@ -12208,9 +12249,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   }
 
   /** Release the reservation when synchronous crawler admission rejects. */
-  function releaseCrawlRateLimit(req: import('express').Request, rateLimitKey: string): void {
+  function releaseCrawlRateLimit(req: import('express').Request, rateLimitKey: string, memberIdOverride?: string): void {
     crawlRequestRateLimits.delete(rateLimitKey);
-    const memberId = req.user?.id || 'anonymous';
+    const memberId = memberIdOverride ?? req.user?.id ?? 'anonymous';
     const memberState = memberCrawlCounts.get(memberId);
     if (!memberState) return;
     if (memberState.count <= 1) {
@@ -12223,12 +12264,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
 
   router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
-    let reservedDomain: string | null = null;
+    const principal = captureRegistryPrincipal(req);
+    const rateLimitMemberId = principal.user?.id ?? 'anonymous';
+    let reservedRateLimitKey: string | null = null;
     try {
-      if (!req.user && !isStaticAdminRequest(req)) {
+      if (!principal.user && !principal.staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      if (!(await isRegistryAdminRequest(req))) {
+      if (!(await isRegistryAdminRequest(principal))) {
         return res.status(403).json({ error: "Admin access required" });
       }
 
@@ -12239,18 +12282,29 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "Invalid domain" });
       }
 
-      reservedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain);
-      if (!reservedDomain) return;
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain, rateLimitMemberId);
+      if (!normalizedDomain) return;
+      reservedRateLimitKey = rawDomain;
 
+      // DNS validation can suspend the request. Recheck the same credential
+      // immediately before dispatch, including revocation during that wait.
+      if (!(await isRegistryAdminRequest(principal))) {
+        releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return res.status(403).json({ error: "Admin access required" });
+      }
       const force = req.query.force === 'true' || req.query.force === '1';
-      const result = await crawler.revalidatePublisherAdagents(reservedDomain, { force });
+      const result = await crawler.revalidatePublisherAdagents(normalizedDomain, { force });
       return res.json(result);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) {
+        if (reservedRateLimitKey) releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return;
+      }
       const errorCode = error instanceof Error
         ? (error as Error & { code?: string }).code
         : undefined;
       if (errorCode === 'crawl_deferred' || errorCode === 'crawl_execution_lock_lost') {
-        if (reservedDomain) releaseCrawlRateLimit(req, reservedDomain);
+        if (reservedRateLimitKey) releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
         res.setHeader('Retry-After', '5');
         return res.status(503).json({
           error: "Publisher crawl is temporarily busy",
@@ -12264,11 +12318,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   });
 
   router.post("/registry/brand/:domain/force-crawl", authMiddleware, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
+    const rateLimitMemberId = principal.user?.id ?? 'anonymous';
+    let reservedRateLimitKey: string | null = null;
     try {
-      if (!req.user && !isStaticAdminRequest(req)) {
+      if (!principal.user && !principal.staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      if (!(await isRegistryAdminRequest(req))) {
+      if (!(await isRegistryAdminRequest(principal))) {
         return res.status(403).json({ error: "Admin access required" });
       }
 
@@ -12284,10 +12341,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         res,
         rawDomain,
         rawDomain,
+        rateLimitMemberId,
       );
       if (!normalizedDomain) return;
+      reservedRateLimitKey = rawDomain;
 
       const previous = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+      if (!(await isRegistryAdminRequest(principal))) {
+        releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return res.status(403).json({ error: "Admin access required" });
+      }
       const crawlResult = await crawler.scanBrandForDomain(normalizedDomain);
       const current = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
 
@@ -12310,6 +12373,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         checked_at: new Date().toISOString(),
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) {
+        if (reservedRateLimitKey) releaseCrawlRateLimit(req, reservedRateLimitKey, rateLimitMemberId);
+        return;
+      }
       logger.error({ error, path: req.path }, "Failed to force brand.json crawl");
       return res.status(500).json({ error: "Failed to force brand.json crawl" });
     }
@@ -12395,25 +12462,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   });
 
   router.get("/registry/crawl-request/:crawlRequestId", authMiddleware, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
     try {
       const crawlRequestId = req.params.crawlRequestId;
       if (!isUuid(crawlRequestId)) {
         return res.status(400).json({ error: "Invalid crawl request ID" });
       }
-      const staticAdmin = isStaticAdminRequest(req);
-      if (!req.user && !staticAdmin) {
+      const staticAdmin = principal.staticAdmin;
+      if (!principal.user && !staticAdmin) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
       const crawlRequest = await crawler.getPublisherCrawlRequest(crawlRequestId);
-      const ownsRequest = !!req.user
+      const ownsRequest = !!principal.user
         && crawlRequest?.requester_type === 'user'
-        && crawlRequest.requested_by_user_id === req.user.id;
+        && crawlRequest.requested_by_user_id === principal.user.id;
       if (!crawlRequest) {
         return res.status(404).json({ error: "Crawl request not found" });
       }
       const canReadAnyRequest = staticAdmin
-        || (!ownsRequest && await isRegistryAdminRequest(req));
+        || (!ownsRequest && await isRegistryAdminRequest(principal));
       if (!ownsRequest && !canReadAnyRequest) {
         return res.status(404).json({ error: "Crawl request not found" });
       }
@@ -12435,6 +12503,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         last_error_code: crawlRequest.last_error_code,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ error, crawl_request_id: req.params.crawlRequestId }, "Failed to read crawl request");
       res.setHeader('Retry-After', '5');
       return res.status(503).json({
