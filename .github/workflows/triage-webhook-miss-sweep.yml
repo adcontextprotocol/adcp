@@ -63,7 +63,11 @@ jobs:
                 and ((.user.login | endswith("[bot]")) | not)
                 and (.created_at >= "'"$floor"'")
                 and (.created_at <= "'"$ceiling"'")
-                and ([.labels[].name] | (contains(["claude-triaged"]) or contains(["claude-triaging"])) | not)
+                and ([.labels[].name] | (
+                  contains(["claude-triaged"])
+                  or contains(["claude-triaging"])
+                  or contains(["needs-wg-review"])
+                ) | not)
               ) | .number'
           )
 

@@ -76,4 +76,5 @@ test('missed-webhook recovery preserves auto-intake milestone guarantees', () =>
     /END_UNTRUSTED_ISSUE_BODY_" \+ \$untrusted_boundary/,
   );
   expect(recoveryWorkflow).not.toMatch(/Issue: #" \+ \$num \+ " \\\"/);
+  expect(recoveryWorkflow).toMatch(/contains\(\["needs-wg-review"\]\)/);
 });
