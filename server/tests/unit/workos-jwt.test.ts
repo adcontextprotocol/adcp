@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet, type KeyLike } from 'jose';
+import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet, errors, type KeyLike } from 'jose';
 import {
   looksLikeJWT,
   verifyWorkOSJWT,
@@ -142,15 +142,27 @@ describe('verifyWorkOSJWT', () => {
     expect(isInvalidWorkOSJWTError(error)).toBe(true);
   });
 
-  it('separates unsupported provider key material from an invalid token', async () => {
+  it('separates malformed provider key material from an invalid token', async () => {
     const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP });
     const jwk = await exportJWK(publicKey);
     __setJWKSForTesting(createLocalJWKSet({ keys: [{ ...jwk, alg: 'RS256' }] }));
     await expect(verifyWorkOSJWT(token)).resolves.toMatchObject({ sub: 'user_01ABC' });
 
-    // The actual JOSE key importer emits ERR_JOSE_NOT_SUPPORTED for this JWK.
-    __setJWKSForTesting(createLocalJWKSet({ keys: [{ ...jwk, alg: 'RS256', oth: [] }] }));
+    // An RSA key without its required modulus cannot be imported by Web Crypto.
+    __setJWKSForTesting(createLocalJWKSet({ keys: [{ kty: 'RSA', e: jwk.e, alg: 'RS256' }] }));
     await expect(verifyWorkOSJWT(token)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('treats unsupported provider key resolver errors as unavailable', async () => {
+    const token = await mint({ sub: 'user_01ABC', azp: EXPECTED_AZP });
+    __setJWKSForTesting(async () => {
+      throw new errors.JOSENotSupported('Unsupported provider key material');
+    });
+
+    const error = await verifyWorkOSJWT(token).catch((error: unknown) => error);
+
+    expect(error).toMatchObject({ status: 503 });
+    expect(isInvalidWorkOSJWTError(error)).toBe(false);
   });
 
   it('still identifies unsupported token headers as invalid before key lookup', async () => {
