@@ -403,6 +403,7 @@ type CoreConfig = {
   coverage_requirement: 'full' | 'allow_partial';
   required_finality: 'snapshot' | 'official';
   reconciliation_mode: 'delivery_only' | 'consumer_receipt';
+  authoritative_party?: 'seller' | 'consumer';
   method?: Record<string, unknown>;
   schedule: {
     period_duration: 'PT1H' | 'P1D';
@@ -920,12 +921,37 @@ function activeWindowAt(stored: StoredConfig, evaluatedAtMs: number): { start: s
   ));
 }
 
+/**
+ * Configuration names a reserved capability this seller does not implement.
+ * Callers map this to the UNSUPPORTED_FEATURE error code rather than to a
+ * generic validation failure, because the buyer's request was well formed.
+ */
+export class UnsupportedReportingFeatureError extends Error {
+  readonly code = 'UNSUPPORTED_FEATURE';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedReportingFeatureError';
+  }
+}
+
 /** Validate an account replacement before mutating either account or ledger state. */
 export function validateReportingConfigurations(configurations: unknown[]): void {
   const generations = new Set<string>();
   const activeIds = new Set<string>();
   for (const raw of configurations) {
     const config = canonicalCoreConfig(raw);
+    // authoritative_party is reserved, not implemented. The schema keeps
+    // `consumer` parseable so a seller can answer UNSUPPORTED_FEATURE instead
+    // of a parse error, which means the rejection has to live here: relaxing
+    // the billing allOf for that value would otherwise let a buyer-authoritative
+    // billing feed through with no receipt and no method. Do not coerce to
+    // `seller` — that would silently accept a different contract than asked for.
+    if (config.authoritative_party === 'consumer') {
+      throw new UnsupportedReportingFeatureError(
+        `delivery_config_id "${config.delivery_config_id}" requests authoritative_party "consumer", which no AdCP 3.2 seller implements. See https://github.com/adcontextprotocol/adcp/issues/7440.`,
+      );
+    }
     const key = generationKey(config);
     if (generations.has(key)) {
       throw new Error(`delivery_config_id "${config.delivery_config_id}" version ${config.delivery_config_version} must be unique within an account.`);
@@ -1270,6 +1296,70 @@ export function restateReportingCoreLifecycleProbeSnapshot(
     finality: 'snapshot',
     row_count: restated.row_count,
     simulated_now: ledger.virtualNow ?? iso(Date.now()),
+  };
+}
+
+/**
+ * Restate the current provisional revision the caller already reported as
+ * `received`, so the stale-received grace projection is gradable without a
+ * wall-clock wait. The fixture binds the restatement to a named prior read and
+ * returns the grace boundary derived from the installed schedule's
+ * `delivery_sla`; `advanceTo` parks the virtual clock on either side of it.
+ */
+export function restateAfterReceivedReportingCoreLifecycleProbe(
+  principal: string | undefined,
+  accountId: string,
+  receivedReportingRevisionId: string,
+  advanceTo: 'within_grace' | 'past_grace' = 'within_grace',
+): {
+  account_id: string;
+  reporting_obligation_id: string;
+  received_reporting_revision_id: string;
+  reporting_revision_id: string;
+  supersedes_reporting_revision_id: string;
+  revision_content_sha256: string;
+  finality: 'snapshot';
+  row_count: number;
+  restated_at: string;
+  stale_received_grace_deadline: string;
+  expected_mismatch_severity: 'delayed' | 'action_required';
+  simulated_now: string;
+} {
+  const ledger = ledgerFor(principal, accountId);
+  const first = [...ledger.configs.values()][0];
+  if (!first) throw new Error('Prepare the reporting_core_lifecycle_probe before restating a received revision.');
+  const obligation = obligationId(accountId, first.config, '2026-08-01T01:00:00.000Z');
+  const current = ledger.publishedRevisions.get(obligation);
+  if (!current) throw new Error('Publish a snapshot revision before restating it.');
+  // The caller must name the revision it actually read: either the revision
+  // still current, or — on a convergent retry — the one this fixture already
+  // superseded. Restating into a vacuum would not exercise stale-received.
+  const alreadyRestated = current.supersedes_reporting_revision_id === receivedReportingRevisionId;
+  if (!alreadyRestated && current.reporting_revision_id !== receivedReportingRevisionId) {
+    throw new Error('received_reporting_revision_id must name the revision this caller currently reports as received.');
+  }
+  const restated = restateReportingCoreLifecycleProbeSnapshot(principal, accountId);
+  const restatedRevision = ledger.publishedRevisions.get(obligation);
+  if (!restatedRevision) throw new Error('The restated snapshot is not readable in the fixture ledger.');
+  const restatedAtMs = parseInstant(restatedRevision.created_at);
+  const { slaMs } = scheduleTiming(first.config.schedule);
+  const graceDeadlineMs = restatedAtMs + (slaMs > 0 ? slaMs : RECOVERY_WINDOW_MS);
+  const simulatedNow = advanceTo === 'past_grace' ? iso(graceDeadlineMs + 1_000) : iso(restatedAtMs);
+  if (ledger.virtualNow !== simulatedNow) ledger.version += 1;
+  ledger.virtualNow = simulatedNow;
+  return {
+    account_id: accountId,
+    reporting_obligation_id: obligation,
+    received_reporting_revision_id: receivedReportingRevisionId,
+    reporting_revision_id: restated.reporting_revision_id,
+    supersedes_reporting_revision_id: restated.supersedes_reporting_revision_id,
+    revision_content_sha256: restated.revision_content_sha256,
+    finality: 'snapshot',
+    row_count: restated.row_count,
+    restated_at: iso(restatedAtMs),
+    stale_received_grace_deadline: iso(graceDeadlineMs),
+    expected_mismatch_severity: advanceTo === 'past_grace' ? 'action_required' : 'delayed',
+    simulated_now: simulatedNow,
   };
 }
 

@@ -71,17 +71,22 @@
     "observed_revision_content_sha256": {
       "type": "string",
       "pattern": "^[A-Fa-f0-9]{64}$",
-      "description": "revision_content_sha256 independently recomputed from the exact consumed Core revision binding. Required only for received; unlike a Reconciled Billing receipt it carries no materialization evidence, row totals, canonical digest, or billing acceptance."
+      "description": "revision_content_sha256 independently recomputed from the exact consumed Core revision binding. Required for received and content_mismatch, where it proves which exact revision content the consumer read; unlike a Reconciled Billing receipt it carries no materialization evidence, row totals, canonical digest, or billing acceptance."
     },
     "consumer_status": {
       "type": "string",
-      "enum": ["received", "obligation_missing", "revision_missing", "unreadable"],
-      "description": "received means the exact revision content was successfully consumed; obligation_missing means the independently expected period was absent from the seller ledger; revision_missing means the obligation existed but no required revision was available after expected_at; unreadable means a named revision was advertised but its exact content could not be consumed. None of these values reconciles billing evidence."
+      "enum": ["received", "obligation_missing", "revision_missing", "unreadable", "content_mismatch"],
+      "description": "received means the exact revision content was successfully consumed; obligation_missing means the independently expected period was absent from the seller ledger; revision_missing means the obligation existed but no required revision was available after expected_at; unreadable means a named revision was advertised but its exact content could not be consumed; content_mismatch means the exact revision content was read but contradicts a fact the accepted configuration generation already fixed, named by the closed mismatch_code. None of these values reconciles billing evidence, and content_mismatch in particular is not a measurement dispute."
     },
     "status_as_of": {
       "type": "string",
       "format": "date-time",
       "description": "When the consumer established this status. For received, this is when the named revision first became consumable to this consumer; sellers use it as buyer-attributed arrival evidence rather than silently substituting publication time."
+    },
+    "mismatch_code": {
+      "type": "string",
+      "enum": ["scope_media_buy_missing", "coverage_short", "metric_missing", "schema_nonconformant", "currency_mismatch", "period_mismatch"],
+      "description": "Closed reason the consumed revision contradicts the accepted configuration generation. Each value is decidable from the obligation, the pinned report definition, and the revision itself, with no reference to either party's own measurement. scope_media_buy_missing: a media buy frozen in the obligation's media_buy_ids denominator is absent from the revision and is not represented by an explicit zero row, so the revision cannot distinguish zero delivery from an omitted buy. coverage_short: the revision covers fewer packages than the obligation's frozen coverage.covered_package_ids claims. metric_missing: a metric named in the pinned report definition's metrics[].name is absent from the revision. schema_nonconformant: rows do not validate against the reporting profile's pinned schema_uri and schema_sha256. currency_mismatch: a value's unit disagrees with the unit the pinned report definition fixed for that metric, or a control total's unit disagrees with the profile-defined unit for that name. period_mismatch: the revision carries a time dimension declared by the pinned grain whose values fall outside the obligation's half-open period. Precedence when more than one applies: schema_nonconformant is used only when the failure is structural validation against the pinned schema; a metric that is simply absent uses metric_missing even when the pinned schema declares it required. Each names a contract fact already fixed by the accepted generation, never a difference of opinion about counts. Agents dispatch on this value, not on prose."
     },
     "failure_code": {
       "type": "string",
@@ -127,27 +132,34 @@
       "if": { "properties": { "consumer_status": { "const": "received" } }, "required": ["consumer_status"] },
       "then": {
         "required": ["reporting_obligation_id", "reporting_revision_id", "observed_revision_content_sha256"],
-        "not": { "required": ["failure_code"] }
+        "not": { "anyOf": [{ "required": ["failure_code"] }, { "required": ["mismatch_code"] }] }
       }
     },
     {
       "if": { "properties": { "consumer_status": { "const": "obligation_missing" } }, "required": ["consumer_status"] },
       "then": {
-        "not": { "anyOf": [{ "required": ["reporting_obligation_id"] }, { "required": ["reporting_revision_id"] }, { "required": ["observed_revision_content_sha256"] }, { "required": ["failure_code"] }] }
+        "not": { "anyOf": [{ "required": ["reporting_obligation_id"] }, { "required": ["reporting_revision_id"] }, { "required": ["observed_revision_content_sha256"] }, { "required": ["failure_code"] }, { "required": ["mismatch_code"] }] }
       }
     },
     {
       "if": { "properties": { "consumer_status": { "const": "revision_missing" } }, "required": ["consumer_status"] },
       "then": {
         "required": ["reporting_obligation_id"],
-        "not": { "anyOf": [{ "required": ["reporting_revision_id"] }, { "required": ["observed_revision_content_sha256"] }, { "required": ["failure_code"] }] }
+        "not": { "anyOf": [{ "required": ["reporting_revision_id"] }, { "required": ["observed_revision_content_sha256"] }, { "required": ["failure_code"] }, { "required": ["mismatch_code"] }] }
       }
     },
     {
       "if": { "properties": { "consumer_status": { "const": "unreadable" } }, "required": ["consumer_status"] },
       "then": {
         "required": ["reporting_obligation_id", "reporting_revision_id", "failure_code"],
-        "not": { "required": ["observed_revision_content_sha256"] }
+        "not": { "anyOf": [{ "required": ["observed_revision_content_sha256"] }, { "required": ["mismatch_code"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "consumer_status": { "const": "content_mismatch" } }, "required": ["consumer_status"] },
+      "then": {
+        "required": ["reporting_obligation_id", "reporting_revision_id", "observed_revision_content_sha256", "mismatch_code"],
+        "not": { "required": ["failure_code"] }
       }
     },
     {
@@ -157,9 +169,9 @@
     }
   ],
   "x-adcp-validation": {
-    "attribution": "The consumer principal comes only from authenticated transport and is never asserted in the payload. Sellers disclose a status only to the same authenticated consumer that submitted it. A consumer status never overwrites or becomes authoritative seller obligation, revision, materialization, receipt, or adjustment evidence.",
-    "expected_period": "The configuration generation and report_definition_id MUST resolve for the authenticated caller/account, and period MUST be one exact eligible period derived from that immutable generation. obligation_missing and revision_missing are valid only when status_as_of is at or after the obligation's expected_at. The seller MUST accept obligation_missing without a seller-issued obligation or revision ID when this independently derivable identity is valid.",
-    "revision_binding": "For received or unreadable, reporting_revision_id and reporting_obligation_id MUST match the same configuration generation, report definition, and period. received requires the consumer to recompute the Core revision binding and submit the matching revision_content_sha256; it does not assert matching Managed materialization evidence, billing control totals, canonical billing evidence, invoice approval, or dispute waiver.",
+    "attribution": "The consumer principal comes only from authenticated transport and is never asserted in the payload. Sellers disclose a status only to the same authenticated consumer that submitted it. A consumer status never overwrites or becomes authoritative seller obligation, revision, materialization, receipt, or adjustment evidence. The one reserved carve-out is a configuration generation declaring reporting-delivery-config authoritative_party: consumer, where a later minor will define a separate buyer-deposited revision task rather than change the meaning of this statement; no released version defines that task, so in 3.2 sellers reject that value with UNSUPPORTED_FEATURE and this attribution rule has no exception (see https://github.com/adcontextprotocol/adcp/issues/7440).",
+    "expected_period": "The configuration generation and report_definition_id MUST resolve for the authenticated caller/account, and period MUST be one exact eligible period derived from that immutable generation. obligation_missing and revision_missing are valid only when status_as_of is at or after the obligation's expected_at; content_mismatch is valid only against a revision the seller currently requires for that period. The seller MUST accept obligation_missing without a seller-issued obligation or revision ID when this independently derivable identity is valid.",
+    "revision_binding": "For received, unreadable, or content_mismatch, reporting_revision_id and reporting_obligation_id MUST match the same configuration generation, report definition, and period. received requires the consumer to recompute the Core revision binding and submit the matching revision_content_sha256; it does not assert matching Managed materialization evidence, billing control totals, canonical billing evidence, invoice approval, or dispute waiver. content_mismatch requires the same recomputed binding so the disagreement names the exact bytes the consumer read, and its mismatch_code MUST identify a fact the accepted configuration generation already fixed — denominator membership, coverage, promised metrics, the pinned profile schema, the pinned metric units, or the half-open period. A consumer MUST NOT use content_mismatch to dispute how many impressions the seller counted; that is a measurement disagreement, handled by measurement_terms and makegood_policy rather than by this operational loop.",
     "immutability": "reporting_status_id is immutable. Exact retries are unchanged; reuse with different content is an idempotency conflict. Each consumer has exactly one current leaf per account, configuration generation, report definition, and period. This logical key remains the chain identity when an obligation_missing statement predates a repaired seller obligation; the seller attaches that chain to the later obligation and never resets or forks it. If a leaf already exists, a new statement MUST name that exact leaf in supersedes_reporting_status_id; omission, a stale leaf, or any attempt to fork the chain fails atomically with a conflict. The new statement becomes current only after that comparison succeeds.",
     "retention_and_limits": "Superseded statements remain readable as append-only history for at least the advertised status_retention_days. After that retention boundary, sellers MAY prune expired superseded statements while retaining enough chain metadata to reject ID reuse and stale supersession. Sellers apply ordinary authenticated task rate limits and per-caller/account resource limits to pathological status churn without allowing one caller to affect another.",
     "snapshot_provenance": "When seller_ledger_snapshot_id is present, the seller MUST resolve it and require seller_ledger_as_of to exactly match the issued snapshot for this authenticated caller, account, and applicable filter scope. Unknown, unauthorized, cross-account, cross-caller, expired, or mismatched snapshot identities fail with the same unavailable result.",

@@ -55,8 +55,8 @@ Four Core ideas, plus one opt-in status loop:
 5. **When `consumer_status_task` is advertised,
    [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)
    closes the loop** — the buyer tells the seller whether an expected period
-   was received, omitted, missing, or unreadable. Both attributed histories
-   stay visible; neither overwrites the other.
+   was received, omitted, missing, unreadable, or contradictory. Both
+   attributed histories stay visible; neither overwrites the other.
 
 | Health | Meaning |
 |---|---|
@@ -221,7 +221,24 @@ digest is intentionally retained).
    `delayed` or `action_required`.
 7. **Escalate honestly.** A due obligation stays `delayed` while automated
    recovery runs, for at most `automated_recovery_window_seconds`; after
-   that it is `action_required`. Never park a dead feed in `delayed`.
+   that it is `action_required`. Never park a dead feed in `delayed`. A
+   `CONSUMER_STATUS_MISMATCH` follows the same discipline: every conflict is
+   `action_required` immediately *except* a `received` status made stale only by
+   your own restatement, which is `delayed` until the first superseding
+   revision's `created_at + delivery_sla` (or
+   `automated_recovery_window_seconds` when that SLA resolves to zero) and
+   `action_required` after. Later restatements do not restart that window. Carry
+   one `issue_id` and one `opened_at` across the transition. If you advertise
+   `consumer_mismatch_escalation_seconds`, also advertise `operations_contact`
+   and switch `recommended_action` to a `contact_*` value once the window
+   elapses; that boundary wins when it overlaps the grace window. Never retire a
+   mismatch out of a degraded projection while the statement that caused it is
+   still the buyer's current leaf.
+8. **Count silence; do not act on it.** A buyer that misses its
+   `expected_at + automated_recovery_window_seconds` status deadline is counted
+   in `obligation_counts.consumer_status_pending` and nothing else. Missing
+   buyer status never changes your health, your reliability statistics, or
+   another caller's view.
 
 ## Build order for a buyer
 
@@ -249,8 +266,15 @@ digest is intentionally retained).
    `consumer_status_task`, call `sync_reporting_status` after bounded repair
    with the exact configuration generation, report definition, and period.
    Failures are sent promptly; later state changes use a new immutable status ID
-   that supersedes the current leaf. Before closing a scope, ensure every elapsed
-   expected period has a current status.
+   that supersedes the current leaf. Post a current status for every elapsed
+   expected period by `expected_at + automated_recovery_window_seconds` — not
+   only before closing the scope — and still have one for every elapsed period at
+   scope close. If reporting arrives but contradicts the accepted generation
+   (a frozen media buy with no rows, a promised metric missing, the wrong
+   currency), that is `content_mismatch` with a closed `mismatch_code`, not a
+   measurement argument. When a seller restatement makes your `received` stale,
+   re-read and supersede within the grace window rather than waiting for the
+   escalation.
 7. **Treat push as a wake-up.** `reporting.ledger_changed` starts a
    `changes_after` repair. Because a clock-only health transition may commit no
    ledger record, `reporting.status_changed` starts a non-incremental current
@@ -303,6 +327,40 @@ advertised:
   bilateral agreement on exact logical content, for billing.
 
 Start with Core. It solves the problem everyone actually has.
+
+## Reporting reliability and billing authority
+
+Reliable Reporting answers *"did the report I was promised arrive, intact, on
+time?"* It does not answer *"whose number governs the invoice?"* That second
+question is answered by `measurement_terms.billing_measurement` on the media
+buy — see [Billing Authority](/docs/media-buy/advanced-topics/billing-authority)
+for how a deal names the seller's ad server, the buyer's third-party ad server,
+or a measurement vendor as the authoritative counter.
+
+The two models are deliberately separate today, and a buyer can be green on
+both surfaces while the invoice is still disputed: Reliable Reporting proves
+the seller's feed was delivered and read, not that its counts match the
+authoritative party's. Until they are unified, keep the distinction explicit:
+
+- **Reliable Reporting** is the operational contract for the seller-produced
+  feed: obligations, immutable revisions, health, and — when advertised —
+  consumer status.
+- **`report_usage`** is the predecessor path for media-buy billing when the
+  authoritative counter is the buyer or a vendor. It has no obligations, no
+  immutable revisions, no binding digest, and no status surface. Treat it as
+  the pre-Reliable-Reporting path for that case, not as a second reporting
+  ledger.
+- **`content_mismatch`** on `sync_reporting_status` covers contract facts the
+  accepted configuration generation already fixed. It is not the channel for
+  "your count and mine differ by 12%"; that is `max_variance_percent` and
+  `makegood_policy`.
+
+`reporting-delivery-config.json` reserves an `authoritative_party` field for
+the eventual unification. In 3.2 the only accepted value is `seller` (the
+default); a seller MUST reject `consumer` with `UNSUPPORTED_FEATURE` because no
+released minor defines the buyer-deposited revision task. Reserving the field
+now keeps that work additive instead of breaking the billing-feed constraints.
+Tracked in [#7440](https://github.com/adcontextprotocol/adcp/issues/7440).
 
 ## File-transfer object and version references
 

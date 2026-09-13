@@ -241,9 +241,14 @@ test("experiment report keeps all alternatives smaller than standalone model con
     variants.prompt_cleanup.context_bytes <
       variants.standalone.context_bytes * 0.83
   );
+  // Report both operands on failure: this bound drifts into its own limit and
+  // is then re-pinned by whichever schema PR trips it first (#6571), and the
+  // bare assert.ok gave no way to see how close it was without instrumenting
+  // the test. The threshold itself is left where main set it.
   assert.ok(
     variants.shared_dictionary.context_bytes <
-      variants.standalone.context_bytes * 0.39
+      variants.standalone.context_bytes * 0.39,
+    `shared dictionary is not materially smaller than standalone: ${variants.shared_dictionary.context_bytes} of ${variants.standalone.context_bytes}`
   );
   assert.ok(
     variants.shared_dictionary_with_prompt_cleanup.context_bytes <
