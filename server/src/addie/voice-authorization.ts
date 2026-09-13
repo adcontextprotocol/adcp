@@ -1,10 +1,159 @@
+import crypto from 'node:crypto';
 import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { getAuthorizationEnforcementWorkos } from '../auth/workos-client.js';
 import { getAuthorizationFingerprint } from '../db/authorization-epoch-db.js';
+import { queryWithTimeout, withDatabaseDeadline } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import type { AAOAdminPrincipal } from './admin-status-lookup.js';
+import type { Thread } from './thread-service.js';
 
 const logger = createLogger('voice-authorization');
+
+const CALLBACK_TOKEN_DOMAIN = 'adcp:tavus-callback:v1\0';
+const verifiedCallback = Symbol('verified voice callback');
+type VerifiedVoiceThread = Readonly<Omit<Thread, 'user_id'>> & {
+  readonly user_id: string;
+  readonly [verifiedCallback]: true;
+};
+
+interface VoiceCallbackBinding {
+  version: 1;
+  nonce: string;
+  expires_at: number;
+  provider_conversation_id?: string;
+}
+
+interface VoiceCallbackClaims extends VoiceCallbackBinding {
+  thread_id: string;
+  external_id: string;
+}
+
+export type VoiceCallbackDecision =
+  | { status: 'verified'; thread: VerifiedVoiceThread }
+  | { status: 'invalid' }
+  | { status: 'unavailable' };
+
+/**
+ * A per-session capability, independent of the mutable conversation text.
+ * Only the authenticated session-creation route issues it. The shared LLM
+ * secret is domain-separated from this MAC and is never put in a prompt.
+ */
+export function issueVoiceCallbackBinding(
+  threadId: string,
+  externalId: string,
+  maxDurationSeconds: number,
+): { token: string; binding: VoiceCallbackBinding } {
+  const secret = process.env.TAVUS_LLM_SECRET;
+  if (!secret || !Number.isInteger(maxDurationSeconds) || maxDurationSeconds < 60 || maxDurationSeconds > 7200) {
+    throw new VoiceAuthorizationUnavailableError();
+  }
+  const binding: VoiceCallbackBinding = {
+    version: 1,
+    nonce: crypto.randomBytes(32).toString('base64url'),
+    expires_at: Date.now() + maxDurationSeconds * 1000,
+  };
+  const claims: VoiceCallbackClaims = { ...binding, thread_id: threadId, external_id: externalId };
+  const encoded = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const mac = crypto.createHmac('sha256', secret).update(CALLBACK_TOKEN_DOMAIN).update(encoded).digest('base64url');
+  return { token: `${encoded}.${mac}`, binding };
+}
+
+/** A callback grant/revocation must affect exactly the intended primary row. */
+export async function persistVoiceCallbackBinding(
+  threadId: string,
+  externalId: string,
+  binding: VoiceCallbackBinding | null,
+  conversationId?: string,
+): Promise<void> {
+  const patch = conversationId === undefined
+    ? { voice_callback_binding: binding }
+    : { voice_callback_binding: { ...binding, provider_conversation_id: conversationId }, tavus_conversation_id: conversationId };
+  try {
+    const result = await withDatabaseDeadline(Date.now() + 5000, () => queryWithTimeout(
+      `UPDATE addie_threads
+       SET context = COALESCE(context, '{}'::jsonb) || $3::jsonb
+       WHERE thread_id = $1 AND channel = 'video' AND external_id = $2
+         AND ($4::text IS NULL OR context->'voice_callback_binding'->>'nonce' = $4)
+       RETURNING thread_id`,
+      [threadId, externalId, JSON.stringify(patch), conversationId === undefined ? null : binding?.nonce],
+      5000,
+    ), { readOnly: false });
+    if (result.rowCount !== 1) throw new Error('Voice callback binding update did not affect exactly one row');
+  } catch (error) {
+    logger.error({ code: 'voice_authorization_unavailable' }, 'Voice callback binding persistence unavailable');
+    throw new VoiceAuthorizationUnavailableError({ cause: error });
+  }
+}
+
+/** Canonical thread ownership is person-state, never proof of the credential. */
+export function isVoiceSessionOwner(persistedContext: unknown, principal: AAOAdminPrincipal): boolean {
+  const provenance = readVoiceAuthorization(persistedContext);
+  return provenance !== null
+    && provenance.authenticated_workos_user_id === getOrganizationAuthorizationUserId(principal);
+}
+
+/**
+ * Do not treat a system-message thread id as authority: Tavus participants
+ * can replace conversational context. Verify the server-issued capability,
+ * then resolve its current binding on the primary database. Only database
+ * values cross the branded boundary. A provider-supplied conversation id,
+ * when present, is an additional consistency check, never the authority.
+ */
+export async function resolveVoiceCallback(
+  token: unknown,
+  presentedConversationId?: unknown,
+): Promise<VoiceCallbackDecision> {
+  const secret = process.env.TAVUS_LLM_SECRET;
+  if (!secret) return { status: 'unavailable' };
+  if (typeof token !== 'string' || token.length > 1024) return { status: 'invalid' };
+  const parts = token.split('.');
+  if (parts.length !== 2) return { status: 'invalid' };
+  const [encoded, suppliedMac] = parts;
+  const expectedMac = crypto.createHmac('sha256', secret).update(CALLBACK_TOKEN_DOMAIN).update(encoded).digest();
+  const actualMac = Buffer.from(suppliedMac, 'base64url');
+  if (actualMac.length !== expectedMac.length || !crypto.timingSafeEqual(actualMac, expectedMac)) {
+    return { status: 'invalid' };
+  }
+
+  let claims: VoiceCallbackClaims;
+  try {
+    claims = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    if (!claims || claims.version !== 1
+      || typeof claims.thread_id !== 'string' || !/^[0-9a-f-]{36}$/.test(claims.thread_id)
+      || typeof claims.external_id !== 'string' || !/^addie-[0-9a-f-]{36}$/.test(claims.external_id)
+      || typeof claims.nonce !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(claims.nonce)
+      || !Number.isSafeInteger(claims.expires_at) || claims.expires_at <= Date.now()) {
+      return { status: 'invalid' };
+    }
+  } catch {
+    return { status: 'invalid' };
+  }
+
+  try {
+    const result = await queryWithTimeout<Thread>(
+      `SELECT * FROM addie_threads WHERE thread_id = $1 AND channel = 'video' AND external_id = $2`,
+      [claims.thread_id, claims.external_id],
+      5000,
+    );
+    const thread = result.rows[0];
+    const binding = thread?.context?.voice_callback_binding as Partial<VoiceCallbackBinding> | undefined;
+    const conversationId = thread?.context?.tavus_conversation_id;
+    if (result.rows.length !== 1 || !thread || thread.channel !== 'video' || thread.user_type !== 'workos'
+      || typeof thread.user_id !== 'string' || !thread.user_id || thread.thread_id !== claims.thread_id || thread.external_id !== claims.external_id
+      || binding?.version !== 1 || binding.nonce !== claims.nonce || binding.expires_at !== claims.expires_at
+      || typeof conversationId !== 'string' || conversationId.length === 0
+      || binding.provider_conversation_id !== conversationId
+      || (presentedConversationId !== undefined && presentedConversationId !== conversationId)
+      || claims.expires_at <= Date.now()) {
+      return { status: 'invalid' };
+    }
+    return { status: 'verified', thread: Object.freeze({ ...thread, user_id: thread.user_id, [verifiedCallback]: true as const }) };
+  } catch {
+    // Neither the bearer capability nor caller text belongs in logs.
+    logger.error({ code: 'voice_authorization_unavailable' }, 'Voice callback binding lookup unavailable');
+    return { status: 'unavailable' };
+  }
+}
 
 /** Only server-created, persisted thread context may supply this provenance. */
 export interface VoiceAuthorizationContext {

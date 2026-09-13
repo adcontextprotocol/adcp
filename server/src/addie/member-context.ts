@@ -24,6 +24,7 @@ import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-member-context');
+
 import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
@@ -58,6 +59,39 @@ const joinRequestDb = new JoinRequestDatabase();
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 const agentContextDb = new AgentContextDatabase();
 const usersDb = new UsersDatabase();
+
+const resolvedWebAuthority = Symbol('resolved web member authority');
+interface WebMemberAuthority {
+  readonly [resolvedWebAuthority]: true;
+  readonly authenticatedWorkosUserId: string | null;
+  readonly isAAOAdmin: boolean;
+}
+const NO_WEB_AUTHORITY: WebMemberAuthority = Object.freeze({
+  [resolvedWebAuthority]: true as const,
+  authenticatedWorkosUserId: null,
+  isAAOAdmin: false,
+});
+
+/** Resolve authority once at the authenticated boundary, before hydration. */
+export async function resolveWebMemberAuthority(principal?: AAOAdminPrincipal): Promise<WebMemberAuthority> {
+  if (principal === undefined) return NO_WEB_AUTHORITY;
+  const credentialId = principal.authWorkosUserId ?? principal.id;
+  if (typeof credentialId !== 'string' || !credentialId || credentialId.trim() !== credentialId) {
+    throw new AAOAdminLookupUnavailableError();
+  }
+  // Copy only authentication provenance. Person-state ids and arbitrary
+  // caller properties never flow into the resolved authority decision.
+  const authenticatedPrincipal = Object.freeze({
+    id: credentialId,
+    authWorkosUserId: credentialId,
+    email: principal.email,
+  });
+  return Object.freeze({
+    [resolvedWebAuthority]: true as const,
+    authenticatedWorkosUserId: credentialId,
+    isAAOAdmin: await isAuthenticatedUserAAOAdmin(authenticatedPrincipal),
+  });
+}
 
 type ActiveWorkosMembership = {
   userId: string;
@@ -1029,8 +1063,8 @@ async function resolveContextFromLocalDb(
   context: MemberContext,
   organizationId: string,
   workosUserId: string,
+  webAuthority: WebMemberAuthority,
   orgMemberUserIds: string[] = [],
-  adminPrincipal?: AAOAdminPrincipal,
 ): Promise<MemberContext> {
   const org = await orgDb.getOrganization(organizationId);
   if (org) {
@@ -1222,13 +1256,12 @@ async function resolveContextFromLocalDb(
     }
   }
 
-  const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
-  // Person-state IDs must never supply platform authority on the web path.
-  const isAAOAdmin = adminPrincipal ? await isAuthenticatedUserAAOAdmin(adminPrincipal) : false;
-
-  if (leadsCommittees.length > 0 || isAAOAdmin) {
+  // Pending moderation content is authority, not person-state hydration.
+  // The helper rechecks committee leadership for this exact credential;
+  // canonical working-group context must never confer a leader's access.
+  if (webAuthority.authenticatedWorkosUserId !== null) {
     try {
-      const pendingContent = await getPendingContentForUser(workosUserId, isAAOAdmin);
+      const pendingContent = await getPendingContentForUser(webAuthority.authenticatedWorkosUserId, webAuthority.isAAOAdmin);
       if (pendingContent.total > 0) {
         context.pending_content = pendingContent;
       }
@@ -1282,6 +1315,7 @@ export async function getWebMemberContext(
   selectedOrganizationId?: string | null,
   adminPrincipal?: AAOAdminPrincipal,
 ): Promise<MemberContext> {
+  const webAuthority = await resolveWebMemberAuthority(adminPrincipal);
   const context: MemberContext = {
     is_mapped: true, // They're authenticated via WorkOS, so they're "mapped"
     is_member: false,
@@ -1310,7 +1344,7 @@ export async function getWebMemberContext(
       // Resolve org from dev config, then run local DB lookups
       const devOrgId = devUser.organizationId || 'org_dev_company_001';
       try {
-        return await resolveContextFromLocalDb(context, devOrgId, workosUserId, [], adminPrincipal);
+        return await resolveContextFromLocalDb(context, devOrgId, workosUserId, webAuthority);
       } catch (error) {
         if (error instanceof AAOAdminLookupUnavailableError) throw error;
         logger.warn({ error, workosUserId }, 'Dev mode: failed to resolve local DB context');
@@ -1397,7 +1431,7 @@ export async function getWebMemberContext(
       joined_at: userJoinedAt,
     };
 
-    return await resolveContextFromLocalDb(context, organizationId, workosUserId, webOrgMemberUserIds, adminPrincipal);
+    return await resolveContextFromLocalDb(context, organizationId, workosUserId, webAuthority, webOrgMemberUserIds);
   } catch (error) {
     if (error instanceof AAOAdminLookupUnavailableError) throw error;
     logger.error({ error, workosUserId }, 'Addie Web: Error getting member context');
