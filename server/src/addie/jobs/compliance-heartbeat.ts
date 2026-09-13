@@ -1,3 +1,4 @@
+import { complianceRunProvenance } from '../../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
 /**
  * Compliance Heartbeat Job
@@ -19,6 +20,7 @@ import {
   selectedComplianceTargetMatchesObservedProfile,
   type ComplyOptions,
   type ComplianceTargetSelection,
+  type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query, withDatabaseDeadline } from '../../db/client.js';
@@ -459,6 +461,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           triggered_by: 'heartbeat',
           dry_run: false,
           completeness: 'not_completed',
+          provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
           is_authoritative: false,
           replace_storyboard_statuses: true,
         });

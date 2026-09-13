@@ -21,6 +21,8 @@ import { AAO_UA_COMPLIANCE } from '../../src/config/user-agents.js';
 import { HOSTED_FULL_COMPLIANCE_TIMEOUT_MS } from '../../src/services/hosted-compliance-version.js';
 import { ComplianceRefreshRequestsDatabase } from '../../src/db/compliance-refresh-requests-db.js';
 import { ComplianceDatabase } from '../../src/db/compliance-db.js';
+import { complianceRunProvenance } from '../../src/compliance/run-provenance.js';
+import type { ComplianceResult, ComplyOptions } from '@adcp/sdk/testing';
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY ??= 'sk_test_registry_refresh';
@@ -61,6 +63,8 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('badge-retry'),
   ownedAgentUrl('badge-retry-exhausted'),
   ownedAgentUrl('legacy-timeout'),
+  ownedAgentUrl('targeted-complete'),
+  ownedAgentUrl('targeted-timed_out'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -324,6 +328,26 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   });
 
   const url = (agentUrl: string) => `/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`;
+
+  it.each(['complete', 'timed_out'] as const)('reports targeted %s runs as audit-only with provenance and no diagnostics', async completeness => {
+    const agentUrl = ownedAgentUrl(`targeted-${completeness}`);
+    complyMock.mockImplementation(async (_url: string, options: ComplyOptions) => {
+      const result = { ...makeComplianceResult(), completeness, adcp_version: '3.0.22' } as unknown as ComplianceResult;
+      return { ...result, hosted_provenance: complianceRunProvenance(result, options) };
+    });
+    const res = await request(app).post(`/api/registry/agents/${encodeURIComponent(agentUrl)}/storyboard/media_buy_seller/run`).send();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ completeness, is_authoritative: false, badge_eligible: false,
+      badge_eligible_adcp_versions: [], diagnostics: [],
+      provenance: { sdk_version: '14.0.0-rc.33', test_session_id: expect.any(String), agent_build_version: null },
+    });
+    expect(complyMock.mock.calls[0][1].test_session_id).toBe(res.body.provenance.test_session_id);
+    const db = new ComplianceDatabase();
+    expect(await db.getComplianceStatus(agentUrl)).toBeNull();
+    expect(await db.getBadgesForAgent(agentUrl)).toEqual([]);
+    expect((await db.getComplianceRun(agentUrl, res.body.run_id))?.provenance_json?.test_session_id)
+      .toBe(res.body.provenance.test_session_id);
+  });
 
   it('owner can refresh and gets the snapshot back', async () => {
     const agentUrl = ownedAgentUrl('owner');
@@ -731,7 +755,9 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         expect(materialized.rowCount).toBe(0);
         const history = await request(app).get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/history`);
         expect(history.body.runs).toEqual([]);
-
+        const diagnostics = await request(app).get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics`);
+        expect(diagnostics.body).toMatchObject({ completeness: 'timed_out', is_authoritative: false,
+          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: '14.0.0-rc.33', agent_build_version: null } });
       }
     } finally {
       revokeBadges.mockRestore();

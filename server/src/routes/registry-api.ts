@@ -43,6 +43,7 @@ import {
 import {
   comply,
   complianceResultToDbInput,
+  redactForDiagnostics,
   isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
@@ -134,6 +135,7 @@ import {
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
+  ComplianceRunProvenanceSchema,
   ComplianceStepDiagnosticSchema,
   OutboundRequestSchema,
   AgentAuthStatusSchema,
@@ -709,7 +711,7 @@ interface PublicComplianceObservation {
   message: string;
 }
 
-function toPublicComplianceObservation(obs: unknown): PublicComplianceObservation | null {
+function toPublicComplianceObservation(obs: unknown, includeDiagnostics = false): PublicComplianceObservation | null {
   if (!obs || typeof obs !== "object") return null;
   const record = obs as Record<string, unknown>;
   if (
@@ -722,8 +724,16 @@ function toPublicComplianceObservation(obs: unknown): PublicComplianceObservatio
   return {
     category: record.category,
     severity: record.severity,
-    message: record.message,
+    message: record.severity === 'error' && !includeDiagnostics
+      ? 'Compliance failure recorded. Details are available to the owner or operator.'
+      : String(redactForDiagnostics(record.message)),
   };
+}
+
+function publicComplianceHeadline(status: string, headline: string | null): string | null {
+  if (!headline) return null;
+  return status === 'passing' ? String(redactForDiagnostics(headline))
+    : 'Compliance assessment recorded. Details are available to the owner or operator.';
 }
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
@@ -4038,6 +4048,13 @@ registry.registerPath({
           schema: z.object({
             agent_url: z.string(),
             run_id: z.string().nullable(),
+            completeness: z.enum(['complete', 'timed_out', 'not_completed']).nullable(),
+            is_authoritative: z.boolean(),
+            provenance: ComplianceRunProvenanceSchema.nullable(),
+            storyboard_statuses: z.array(z.any()),
+            observations: z.array(z.unknown()),
+            diagnostics_visibility: z.literal('owner_or_operator'),
+            diagnostics_note: z.string(),
             count: z.number().int(),
             diagnostics: z.array(ComplianceStepDiagnosticSchema),
           }),
@@ -4140,6 +4157,7 @@ registry.registerPath({
               ran: z.boolean().openapi({ description: "True if a compliance run was recorded. Check completeness and is_authoritative before treating its results as the public grade." }),
               completeness: z.enum(['complete', 'timed_out', 'not_completed']).optional(),
               is_authoritative: z.boolean().optional().openapi({ description: "Only authoritative runs update the public grade and badge state. Incomplete runs preserve the previous complete assessment." }),
+              provenance: ComplianceRunProvenanceSchema.nullable().optional(),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
               requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
@@ -4942,6 +4960,7 @@ registry.registerPath({
             run_id: z.string().openapi({ description: "Compliance run id written by this owner-triggered storyboard run." }),
             completeness: z.enum(['complete', 'timed_out', 'not_completed']),
             is_authoritative: z.boolean(),
+            provenance: ComplianceRunProvenanceSchema.nullable(),
             storyboard_status: StoryboardRunStatusResponseSchema.openapi({ description: "Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status." }),
             phases: z.any(),
             summary: z.any(),
@@ -6745,9 +6764,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
                 track_details: cs.track_details_json || [],
+                provenance: cs.provenance_json ?? null,
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
-                headline: cs.headline,
+                headline: publicComplianceHeadline(cs.status, cs.headline),
                 monitoring_paused: meta?.monitoring_paused ?? false,
                 check_interval_hours: meta?.check_interval_hours ?? 12,
                 verified: agentBadges.length > 0,
@@ -6855,11 +6875,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // observations (best-practice warnings, suggestions, etc.). Do not merge
       // observations across runs; a fixed field on the wire must clear the
       // advisory as soon as the latest run stops emitting it.
-      let observations: PublicComplianceObservation[] = [];
+      let rawObservations: unknown[] = [];
       try {
-        observations = (await complianceDb.getLatestObservations(agentUrl))
-          .map(toPublicComplianceObservation)
-          .filter((obs): obs is PublicComplianceObservation => obs !== null);
+        rawObservations = await complianceDb.getLatestObservations(agentUrl);
       } catch (err) {
         logger.warn({ err, agentUrl }, "Latest observations query failed");
       }
@@ -6924,8 +6942,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
+      const includeDiagnostics = ownerMembership.is_owner || isStaticAdminRequest(req);
+      const observations = rawObservations.map(obs => toPublicComplianceObservation(obs, includeDiagnostics))
+        .filter((obs): obs is PublicComplianceObservation => obs !== null);
       const serializedStoryboardStatuses = storyboardStatuses.map(s =>
-        serializeStoryboardStatus(s, { includeDiagnostics: ownerMembership.is_owner }),
+        serializeStoryboardStatus(s, { includeDiagnostics }),
       );
 
       res.json({
@@ -6938,11 +6959,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         badge_requalification_required: metadata?.badge_requalification_required ?? false,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
+        provenance: status.provenance_json ?? null,
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
         last_passed_at: status.last_passed_at?.toISOString() || null,
         last_failed_at: status.last_failed_at?.toISOString() || null,
-        headline: status.headline,
+        headline: includeDiagnostics ? redactForDiagnostics(status.headline) : publicComplianceHeadline(status.status, status.headline),
         status_changed_at: status.status_changed_at?.toISOString() || null,
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
@@ -7027,10 +7049,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         agent_url: agentUrl,
         runs: history.map(run => ({
           id: run.id,
+          completeness: run.completeness,
+          is_authoritative: run.is_authoritative,
+          provenance: run.provenance_json ?? null,
           requested_compliance_target: run.requested_compliance_target ?? null,
           adcp_version: run.adcp_version ?? null,
           overall_status: run.overall_status,
-          headline: run.headline,
+          headline: publicComplianceHeadline(run.overall_status, run.headline),
           tracks_passed: run.tracks_passed,
           tracks_failed: run.tracks_failed,
           tracks_skipped: run.tracks_skipped,
@@ -7941,6 +7966,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       overall_status?: string;
       completeness?: string;
       is_authoritative?: boolean;
+      provenance?: unknown;
       storyboards_passing?: number;
       storyboards_total?: number;
       run_id?: string;
@@ -7961,6 +7987,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         overall_status: run.overall_status,
         completeness: run.completeness,
         is_authoritative: isAuthoritativeComplianceRun(run),
+        provenance: run.provenance_json ?? null,
         storyboards_passing: storyboardStatuses.filter(status => status.status === 'passing').length,
         storyboards_total: storyboardStatuses.length,
         observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
@@ -8082,6 +8109,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             overall_status: run.overall_status,
             completeness: run.completeness,
             is_authoritative: isAuthoritativeComplianceRun(run),
+            provenance: run.provenance_json ?? null,
             storyboards_passing: passing,
             storyboards_total: storyboardStatuses.length,
             observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
@@ -8428,11 +8456,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           limit = Math.min(Math.floor(parsed), 1000);
         }
 
-        const rows = await complianceDb.getStepDiagnostics(agentUrl, { runId: runIdRaw, limit });
+        const run = await complianceDb.getComplianceRun(agentUrl, runIdRaw);
+        const rows = run ? await complianceDb.getStepDiagnostics(agentUrl, { runId: run.id, limit }) : [];
 
         res.json({
           agent_url: agentUrl,
-          run_id: runIdRaw ?? (rows[0]?.run_id ?? null),
+          run_id: run?.id ?? null,
+          completeness: run?.completeness ?? null,
+          is_authoritative: run?.is_authoritative ?? false,
+          provenance: run?.provenance_json ?? null,
+          storyboard_statuses: run?.storyboard_statuses_json ?? [],
+          observations: redactForDiagnostics(run?.observations_json ?? []),
+          diagnostics_visibility: 'owner_or_operator',
+          diagnostics_note: 'Credentials are redacted. Missing wire fields were not captured by the SDK; an absent agent build version is unknown.',
           count: rows.length,
           diagnostics: rows,
         });
@@ -9166,6 +9202,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         const complyOptions = {
           timeout_ms: 90_000,
           storyboards: [req.params.storyboardId],
+          test_session_id: randomUUID(),
           ...(sdkAuth && { auth: sdkAuth }),
         };
         const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(agentUrl);
@@ -9293,6 +9330,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           run_id: run.id,
           completeness: run.completeness,
           is_authoritative: isAuthoritativeComplianceRun(run),
+          provenance: run.provenance_json ?? null,
           storyboard_status: serializedStoryboardStatus,
           phases: annotatedPhases,
           summary: complyResult.summary,

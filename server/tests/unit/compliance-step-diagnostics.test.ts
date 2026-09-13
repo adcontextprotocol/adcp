@@ -4,6 +4,7 @@ vi.mock('@adcp/sdk/testing', () => ({
   setAgentTesterLogger: vi.fn(),
   comply: vi.fn(),
   loadComplianceIndex: vi.fn(() => ({ specialisms: [] })),
+  getComplianceStoryboardById: vi.fn(() => undefined),
   SAMPLE_BRIEFS: [],
   getBriefsByVertical: vi.fn(() => []),
 }));
@@ -22,9 +23,9 @@ import {
   extractFailingStepDiagnostics,
   complianceResultToDbInput,
 } from '../../src/addie/services/compliance-testing.js';
-import { getStoryboard } from '../../src/services/storyboards.js';
+import { getComplianceStoryboardById } from '@adcp/sdk/testing';
 
-const mockGetStoryboard = vi.mocked(getStoryboard);
+const mockGetPinnedStoryboard = vi.mocked(getComplianceStoryboardById);
 
 function step(overrides: Record<string, unknown>) {
   return {
@@ -53,6 +54,7 @@ function phase(scenarioKey: string, steps: any[]) {
 function resultWith(tracks: any[]) {
   return {
     overall_status: 'partial',
+    adcp_version: '3.1.20',
     tracks,
     summary: {
       headline: 'fixture',
@@ -69,8 +71,34 @@ function resultWith(tracks: any[]) {
 
 describe('extractFailingStepDiagnostics', () => {
   beforeEach(() => {
-    mockGetStoryboard.mockReset();
-    mockGetStoryboard.mockReturnValue(undefined);
+    mockGetPinnedStoryboard.mockReset();
+    mockGetPinnedStoryboard.mockReturnValue(undefined);
+  });
+
+  it('loads pinned metadata once for repeated skipped steps across adapter projections', () => {
+    mockGetPinnedStoryboard.mockReturnValue({ phases: [{ id: 'setup', steps: [{
+      id: 'optional', title: 'Optional controller', task: 'comply_test_controller', requires_tool: 'comply_test_controller',
+    }] }] } as any);
+    const result = resultWith([{ track: 'core', status: 'skip', duration_ms: 0,
+      scenarios: [phase('nested/storyboard/setup', Array.from({ length: 5 }, () => ({
+        step_id: 'optional', passed: false, skipped: true, skip_reason: 'missing_tool',
+      })))],
+    }]) as any;
+    const input = complianceResultToDbInput(result, 'https://agent.example.test/mcp', 'production');
+    expect(input.tracks_json[0].status).toBe('skip');
+    expect(input.overall_status).not.toBe('passing');
+    expect(mockGetPinnedStoryboard).toHaveBeenCalledTimes(1);
+    expect(mockGetPinnedStoryboard.mock.calls[0][0]).toBe('nested/storyboard');
+    expect(JSON.stringify(mockGetPinnedStoryboard.mock.calls[0][1])).toContain('3.1.20');
+    complianceResultToDbInput(result, 'https://agent.example.test/mcp', 'production');
+    expect(mockGetPinnedStoryboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves unmatched attribution unknown when the pinned metadata is unavailable', () => {
+    mockGetPinnedStoryboard.mockImplementation(() => { throw new Error('Pinned bundle unavailable'); });
+    const result = resultWith([]) as any;
+    result.failures = [{ track: 'core', storyboard_id: 'unavailable', step_id: 'hidden', task: 'get_products' }];
+    expect(extractFailingStepDiagnostics(result)[0].phase_id).toBe('unknown');
   });
 
   it('captures request + response payloads for a failing wire step', () => {
@@ -385,6 +413,7 @@ describe('extractFailingStepDiagnostics', () => {
         track: 'media_buy',
         storyboard_id: 'media_buy_seller/available_actions',
         step_id: 'get_product_allowed_actions',
+        adcp_error: { code: 'INVALID_REQUEST', field: 'account' },
         step_title: 'Read allowed_actions from get_products',
         task: 'get_products',
         error: 'Probe validations failed.',
@@ -408,6 +437,7 @@ describe('extractFailingStepDiagnostics', () => {
       step_id: 'get_product_allowed_actions',
       task: 'get_products',
       duration_ms: 456,
+      adcp_error_jsonb: { code: 'INVALID_REQUEST', field: 'account' },
       error_text: 'Probe validations failed.',
       response_jsonb: {
         products: [{ product_id: 'available_actions_display', allowed_actions: [] }],
@@ -612,7 +642,7 @@ describe('extractFailingStepDiagnostics', () => {
   });
 
   it('captures an unmatched failure summary when the runner halts after a passing visible step', () => {
-    mockGetStoryboard.mockReturnValue({
+    mockGetPinnedStoryboard.mockReturnValue({
       phases: [
         {
           id: 'list_and_filter',
@@ -692,7 +722,7 @@ describe('extractFailingStepDiagnostics', () => {
   });
 
   it('captures an unmatched stale-response failure summary when the visible step has no failed validation', () => {
-    mockGetStoryboard.mockReturnValue({
+    mockGetPinnedStoryboard.mockReturnValue({
       phases: [
         {
           id: 'stale_response_forcing',
@@ -822,7 +852,7 @@ describe('extractFailingStepDiagnostics', () => {
   });
 
   it('resolves an unmatched hidden failure to its authored phase instead of the first scenario', () => {
-    mockGetStoryboard.mockReturnValue({
+    mockGetPinnedStoryboard.mockReturnValue({
       phases: [
         {
           id: 'discovery',
@@ -934,7 +964,7 @@ describe('extractFailingStepDiagnostics', () => {
         fix_command: 'adcp storyboard step https://x creative_lifecycle phase_two_hidden --json',
       },
     ];
-    mockGetStoryboard.mockReturnValue({
+    mockGetPinnedStoryboard.mockReturnValue({
       phases: [
         {
           id: 'phase_one',

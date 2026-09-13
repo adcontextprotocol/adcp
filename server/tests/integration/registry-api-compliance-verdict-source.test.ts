@@ -27,6 +27,8 @@ import request from 'supertest';
 import type { Pool } from 'pg';
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { ComplianceDatabase } from '../../src/db/compliance-db.js';
+import { complianceResultToDbInput, type ComplianceResult } from '../../src/addie/services/compliance-testing.js';
 import { runMigrations } from '../../src/db/migrate.js';
 
 vi.hoisted(() => {
@@ -451,6 +453,81 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failure_message: null,
       }),
     ]));
+  });
+
+  it('keeps partial-run provenance and redacted failures visible only to the owner/operator', async () => {
+    const db = new ComplianceDatabase();
+    const partial = complianceResultToDbInput({
+      completeness: 'timed_out', adcp_version: '3.1.20', overall_status: 'failing',
+      agent_profile: { tools: [], adcp_build_version: 'build-immutable-42', library_version: 'seller-sdk-2' },
+      summary: { headline: 'Partial', tracks_passed: 0, tracks_failed: 1, tracks_partial: 0, tracks_skipped: 0 },
+      tracks: [{ track: 'core', status: 'fail', duration_ms: 1, scenarios: [{
+        scenario: 'debug_storyboard/check', overall_passed: false, steps: [{
+          step_id: 'debug_step', step: 'Read products', task: 'get_products', passed: false,
+          error: 'Expected products array', observation_data: { api_key: 'fixture-secret-value', products: [] },
+        }],
+      }] }], observations: [], total_duration_ms: 1,
+    } as unknown as ComplianceResult, AGENT_URL, 'production', 'owner_test');
+    const { run } = await db.recordComplianceRun({ ...partial, dry_run: false });
+    try {
+      for (const user of [OWNER_USER_ID, STATIC_ADMIN_USER_ID]) {
+        currentUserId = user;
+        const response = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({ run_id: run.id, completeness: 'timed_out', is_authoritative: false,
+          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0-rc.33', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
+          diagnostics_visibility: 'owner_or_operator' });
+        expect(response.body.diagnostics[0].error_text).toBe('Expected products array');
+        expect(JSON.stringify(response.body)).not.toContain('fixture-secret-value');
+      }
+      for (const user of [null, CROSS_ORG_USER_ID]) {
+        currentUserId = user;
+        const card = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance`);
+        expect(card.body.storyboard_statuses[0].first_failure_message).toBeNull();
+        expect(card.body.status).toBe('passing');
+        const history = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/history`);
+        expect(history.body.runs.some((entry: { id: string }) => entry.id === run.id)).toBe(false);
+        const debug = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
+        expect(debug.status).toBe(user === null ? 401 : 403);
+      }
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_step_diagnostics WHERE run_id = $1', [run.id]);
+      await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [run.id]);
+    }
+  });
+
+  it('keeps observation-only diagnostics useful to owners while redacting public failures and legacy headlines', async () => {
+    const db = new ComplianceDatabase();
+    const previous = (await pool.query('SELECT * FROM agent_compliance_runs WHERE id = $1', [complianceRunId])).rows[0];
+    const observations = [{ category: 'setup', severity: 'error', message: 'Controller fixture setup unavailable', evidence: { api_key: 'fixture-private-key' } }];
+    await pool.query('UPDATE agent_compliance_runs SET observations_json = $2, headline = $3, overall_status = $4 WHERE id = $1',
+      [complianceRunId, JSON.stringify(observations), 'Failure: api_key=fixture-private-key', 'failing']);
+    const { run } = await db.recordComplianceRun({ agent_url: AGENT_URL, lifecycle_stage: 'production',
+      overall_status: 'failing', tracks_json: [], completeness: 'not_completed', is_authoritative: false,
+      tracks_passed: 0, tracks_failed: 0, tracks_partial: 0, tracks_skipped: 0,
+      observations_json: observations, dry_run: false });
+    try {
+      for (const user of [OWNER_USER_ID, STATIC_ADMIN_USER_ID]) {
+        currentUserId = user;
+        const card = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance`);
+        expect(card.body.observations[0].message).toBe('Controller fixture setup unavailable');
+        const debug = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
+        expect(debug.body).toMatchObject({ run_id: run.id, completeness: 'not_completed', count: 0, diagnostics: [] });
+        expect(debug.body.observations[0].message).toBe('Controller fixture setup unavailable');
+        expect(JSON.stringify(debug.body)).not.toContain('fixture-private-key');
+        expect(JSON.stringify(card.body)).not.toContain('fixture-private-key');
+      }
+      currentUserId = null;
+      const card = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance`);
+      expect(card.body.observations[0].message).not.toContain('Controller fixture');
+      expect(JSON.stringify(card.body)).not.toContain('fixture-private-key');
+      const history = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/history`);
+      expect(JSON.stringify(history.body)).not.toContain('fixture-private-key');
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [run.id]);
+      await pool.query('UPDATE agent_compliance_runs SET observations_json = $2, headline = $3, overall_status = $4 WHERE id = $1',
+        [complianceRunId, JSON.stringify(previous.observations_json), previous.headline, previous.overall_status]);
+    }
   });
 
   it('static admin API key can read per-step diagnostics for any agent', async () => {

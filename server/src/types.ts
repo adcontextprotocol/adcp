@@ -1171,6 +1171,7 @@ export interface CommitteeDocumentActivity {
 // Agent Compliance Types
 
 export interface AgentCompliance {
+  provenance?: import('./compliance/run-provenance.js').ComplianceRunProvenance | null;
   status: 'passing' | 'degraded' | 'failing' | 'unknown';
   requested_compliance_target?: string | null;
   adcp_version?: string | null;
