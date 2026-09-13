@@ -2,6 +2,6 @@
 "adcontextprotocol": patch
 ---
 
-Fix 17 compliance storyboards that incorrectly included `get_adcp_capabilities` in `required_tools` alongside capability-specific tools. Because `required_tools` uses OR semantics, listing a universal tool made the storyboard-level gate trivially satisfied for every conformant agent — agents lacking the actual capability tool (e.g. `sync_accounts`, `build_creative`, `get_products`) would enter the storyboard and fail at the first capability-specific step instead of receiving a clean coverage-gap skip.
+Fix the four compliance storyboards present on the 3.1 maintenance line that incorrectly included `get_adcp_capabilities` in `required_tools` alongside capability-specific tools: `billing_gate_dispatch`, `billing_out_of_band`, `canonical_supported_formats`, and `evaluator_auth`.
 
-Affected storyboards: `billing_gate_dispatch`, `agent_notification_configs`, and 15 scenarios across the `media-buy` and `creative` protocol families.
+Removing the universal capability-discovery tool prevents agents without the storyboard's capability-specific tools from entering through the per-storyboard OR gate. This backports the applicable subset of #6774; the other 13 storyboards changed on main do not exist on this line.
