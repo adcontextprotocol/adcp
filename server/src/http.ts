@@ -1441,6 +1441,13 @@ export class HTTPServer {
       res.redirect(302, 'https://docs.adcontextprotocol.org/docs/building/by-layer/L0/a2a-profile-extension');
     });
 
+    // Transport-safe AdCP 3.2 profile. Its JSON-text DataParts are not
+    // wire-compatible with the legacy v3 profile's object-valued DataParts.
+    this.app.get('/extensions/adcp/v3.2', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.redirect(302, 'https://docs.adcontextprotocol.org/docs/building/by-layer/L0/a2a-profile-extension');
+    });
+
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")

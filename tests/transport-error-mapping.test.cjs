@@ -30,6 +30,16 @@ function validateAdcpError(error) {
  * Client libraries should produce identical results.
  */
 function extractAdcpError(response) {
+  const decodeA2aDataPart = (part) => {
+    if (typeof part?.data !== 'string' || part.mediaType !== 'application/json') return null;
+    try {
+      const payload = JSON.parse(part.data);
+      return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+    } catch {
+      return null;
+    }
+  };
+
   // 1. MCP structuredContent (tool-level, requires isError)
   if (response.isError && response.structuredContent?.adcp_error) {
     return validateAdcpError(response.structuredContent.adcp_error);
@@ -38,10 +48,11 @@ function extractAdcpError(response) {
   // 2. A2A artifact DataPart
   if (response.artifacts) {
     for (const artifact of response.artifacts) {
-      const dataParts = (artifact.parts || []).filter(p => p.kind === 'data');
+      const dataParts = (artifact.parts || []).filter(p => p?.data != null);
       for (const part of dataParts) {
-        if (part.data?.adcp_error) {
-          return validateAdcpError(part.data.adcp_error);
+        const payload = decodeA2aDataPart(part);
+        if (payload?.adcp_error) {
+          return validateAdcpError(payload.adcp_error);
         }
       }
     }
@@ -51,8 +62,9 @@ function extractAdcpError(response) {
   const statusParts = response.status?.message?.parts;
   if (Array.isArray(statusParts)) {
     for (const part of statusParts) {
-      if (part.kind === 'data' && part.data?.adcp_error) {
-        return validateAdcpError(part.data.adcp_error);
+      const payload = decodeA2aDataPart(part);
+      if (payload?.adcp_error) {
+        return validateAdcpError(payload.adcp_error);
       }
     }
   }
@@ -278,11 +290,14 @@ describe('Validation and safety', () => {
     const result = extractAdcpError({
       id: 'task_303',
       status: {
-        state: 'failed',
+        state: 'TASK_STATE_FAILED',
         message: {
-          role: 'agent',
+          role: 'ROLE_AGENT',
           parts: [
-            { kind: 'data', data: { adcp_error: { code: 'SERVICE_UNAVAILABLE', recovery: 'transient' } } }
+            {
+              data: '{"adcp_error":{"code":"SERVICE_UNAVAILABLE","recovery":"transient"}}',
+              mediaType: 'application/json'
+            }
           ]
         }
       }

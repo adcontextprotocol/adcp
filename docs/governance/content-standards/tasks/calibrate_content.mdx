@@ -120,7 +120,7 @@ const response1 = await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "calibrate_content",
         input: {
           idempotency_key: crypto.randomUUID(),
@@ -133,7 +133,8 @@ const response1 = await a2a.send({
             ]
           }
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -146,7 +147,7 @@ const response2 = await a2a.send({
     contextId: response1.contextId,
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "calibrate_content",
         input: {
           idempotency_key: crypto.randomUUID(),
@@ -159,7 +160,8 @@ const response2 = await a2a.send({
             ]
           }
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -172,7 +174,7 @@ const response3 = await a2a.send({
     contextId: response1.contextId,
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "calibrate_content",
         input: {
           idempotency_key: crypto.randomUUID(),
@@ -185,7 +187,8 @@ const response3 = await a2a.send({
             ]
           }
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });

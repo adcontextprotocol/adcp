@@ -2,7 +2,7 @@
   "version": 1,
   "name": "A2A JSON number interoperability",
   "specification": "https://adcontextprotocol.org/docs/building/by-layer/L0/a2a-profile-extension#json-number-interoperability",
-  "description": "Cross-SDK vectors for JSON numbers carried in A2A google.protobuf.Value. input_json_number is a string so the source lexeme remains exact in the vector. Integer-valued numbers outside the safe range must be rejected before encoding and after decoding when detectable. Exact decimals beyond binary64 precision require a schema-defined string representation. The expected result is normative.",
+  "description": "Legacy /extensions/adcp/v3 cross-SDK vectors for JSON numbers carried through the numeric arm of A2A google.protobuf.Value. The transport-safe /extensions/adcp/v3.2 profile instead carries the complete AdCP envelope through the string arm; see a2a-profile-extension-v3-2.json. input_json_number is a string so the source lexeme remains exact in the vector. Integer-valued numbers outside the safe range must be rejected before encoding and after decoding when detectable. Exact decimals beyond binary64 precision require a schema-defined string representation. The expected result is normative for the legacy profile.",
   "vectors": [
     {
       "id": "integer-and-zero-fraction-equivalent",

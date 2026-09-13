@@ -1,12 +1,12 @@
 ---
-title: AdCP A2A Profile Extension v3
+title: AdCP A2A Profile Extension v3.2
 sidebarTitle: A2A profile extension
-description: "Normative A2A 1.0 profile for invoking AdCP tasks with versioned extension negotiation, structured DataParts, and AdCP-level async polling."
-"og:title": "AdCP — A2A Profile Extension v3"
+description: "Normative A2A 1.0 profile for invoking AdCP 3.2 tasks with JSON-text DataParts that preserve schema-typed integer tokens."
+"og:title": "AdCP — A2A Profile Extension v3.2"
 testable: false
 ---
 
-# AdCP A2A Profile Extension v3
+# AdCP A2A Profile Extension v3.2
 
 This document defines the normative AdCP profile for [A2A 1.0](https://a2a-protocol.org/latest/specification/). It narrows A2A messages and task results enough for independent AdCP clients and agents to interoperate without defining a new transport.
 
@@ -15,19 +15,28 @@ This document defines the normative AdCP profile for [A2A 1.0](https://a2a-proto
 The extension URI is:
 
 ```text
-https://adcontextprotocol.org/extensions/adcp/v3
+https://adcontextprotocol.org/extensions/adcp/v3.2
 ```
 
 The `extensions/adcp` path scopes this identifier to the AdCP profile registered
 through A2A's extension mechanism. It is an extension identifier and normative
 document URL, not a JSON Schema URL, so it does not live under `/schemas/v3/`.
 
-The URI is versioned by the compatible AdCP major: `/v3` identifies the A2A
-profile for AdCP 3.x. The negotiated AdCP release still selects the exact task
-schemas—for example, 3.0, 3.1, or 3.2 schemas under `/schemas/v3/`—without
-requiring a new extension identity for every additive minor release. AdCP 4.x
-will use `/extensions/adcp/v4`. This profile has no extension dependencies
-beyond A2A 1.0.
+The `/v3.2` URI identifies the transport-safe profile introduced for AdCP 3.2.
+It is distinct from the legacy `/extensions/adcp/v3` profile, whose object-valued
+DataParts are retained unchanged for deployed 3.0 and 3.1 integrations. A new
+identity is necessary because an implementation cannot infer from a
+`google.protobuf.Value` whether its peer expects an object or JSON text, and
+silently changing the existing `/v3` wire shape would break those integrations.
+The negotiated AdCP release still selects the exact task schemas independently.
+This profile has no extension dependencies beyond A2A 1.0.
+
+AdCP 3.2 implementations MUST use `/v3.2` for interoperable A2A task calls.
+An agent that continues to offer `/v3` for an older client exposes it through a
+separate Agent Card endpoint; it MUST NOT advertise both as simultaneously
+required on one card. A caller MUST NOT activate `/v3` as a fallback after
+selecting `/v3.2`, because doing so reintroduces the number-widening defect this
+profile prevents.
 
 ## Advertisement and activation
 
@@ -45,8 +54,8 @@ An A2A interface that implements this profile MUST advertise the extension under
   "capabilities": {
     "extensions": [
       {
-        "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
-        "description": "AdCP structured task invocation profile",
+        "uri": "https://adcontextprotocol.org/extensions/adcp/v3.2",
+        "description": "AdCP JSON-text task invocation profile",
         "required": true
       }
     ]
@@ -58,7 +67,7 @@ The `AgentExtension.params` member MUST be omitted or empty. It MUST NOT contain
 
 ```http
 A2A-Version: 1.0
-A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3
+A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3.2
 ```
 
 For HTTP-based bindings, service parameters are HTTP headers. The response SHOULD echo the URI in `A2A-Extensions` to confirm activation, as specified by A2A 1.0. An agent that declares the profile `required: true` MUST reject a request that does not activate it; it MUST NOT guess that an unactivated DataPart is an AdCP invocation.
@@ -72,7 +81,9 @@ adapter that claims support for it MUST automate the profile mechanics:
 
 - on the server, advertise the extension and verify request activation;
 - on the client, discover the declaration and activate the extension;
-- encode and decode `{ skill, input }` DataParts;
+- encode `{ skill, input }` and task responses once as JSON text carried by the
+  `google.protobuf.Value.string_value` arm of `Part.data`, and decode that text
+  once at the adapter boundary;
 - validate `input` against the selected task request schema and dispatch the
   named AdCP handler;
 - map the handler's direct response into the A2A Task artifact; and
@@ -83,7 +94,9 @@ Application code should register the same typed AdCP handler it would expose
 over another transport. It should not parse A2A Parts, author prompt text, or
 reimplement the mapping rules. Raw A2A clients can implement the wire rules
 directly, but SDKs SHOULD make the normal integration path work from typed task
-inputs and outputs alone.
+inputs and outputs alone. In particular, an adapter MUST NOT parse an integer
+through `Value.number_value` or rebuild the task payload from a generic
+floating-point object before invoking a typed handler.
 
 ## Runtime discovery
 
@@ -95,7 +108,9 @@ Agent Card `skills[]` entries identify the AdCP tasks dispatchable on that inter
 
 ## Invocation message
 
-An activated invocation Message MUST contain exactly one DataPart whose `data` value has this shape:
+An activated invocation Message MUST contain exactly one Part whose `data`
+value is a JSON string and whose `mediaType` is `application/json`. After one
+JSON decode, the string has this shape:
 
 ```json
 {
@@ -107,22 +122,50 @@ An activated invocation Message MUST contain exactly one DataPart whose `data` v
 }
 ```
 
-The invocation object has exactly two members:
+The decoded invocation object has exactly two members:
 
 | Member | Requirement |
 |---|---|
 | `skill` | Required non-empty string. The exact `AgentSkill.id`, which for this profile is the AdCP task name, such as `get_products` or `create_media_buy`. |
-| `input` | Required object. The task request, validated unchanged against that task's AdCP request schema. |
+| `input` | Required object. The task request, validated unchanged against that task's AdCP request schema. Its original JSON slice is decoded directly into the schema-derived task type. |
 
-`parameters` is not an alias for `input` in this profile. A client that activates v3 and sends `parameters`, omits `input`, or sends more than one invocation DataPart is non-conformant. The agent MUST reject the invocation rather than choose among ambiguous inputs.
+On the outer A2A wire, that invocation is represented as:
 
-### JSON number interoperability
+```json
+{
+  "data": "{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"Premium CTV inventory for a spring campaign\"}}",
+  "mediaType": "application/json"
+}
+```
 
-A2A 1.0 models `Part.data` as `google.protobuf.Value`. Its numeric arm is an IEEE 754 double, so an integer-valued JSON number can reserialize with a decimal point (`3` → `3.0`). AdCP treats those forms as the same JSON numeric value: both satisfy a JSON Schema `integer` type because they have no fractional value. This lexical change does not violate the [context echo contract](/docs/building/by-layer/L2/context-sessions#normative-echo-contract) and does not make an otherwise valid integer-typed task field invalid.
+`parameters` is not an alias for `input` in this profile. A client that
+activates v3.2 and sends `parameters`, omits `input`, sends object-valued
+`data`, omits the `application/json` media type, or sends more than one
+invocation DataPart is non-conformant. The agent MUST reject the invocation
+rather than choose among ambiguous inputs. Receivers MUST bound the UTF-8 byte
+length before decoding, reject malformed JSON, require a top-level object, and
+then validate `input` against the selected request schema before dispatch.
 
-That equivalence does not permit numeric rounding. Before A2A encoding, a sender MUST reject an integer-valued JSON number outside `[-9007199254740991, 9007199254740991]`; it MUST NOT round, truncate, or transmit that value through a DataPart number. A receiver MUST reject a decoded integer-valued DataPart number outside that range. A receiver with access to the raw JSON binding MUST also reject an out-of-range integer token before protobuf decoding. Schema authors MUST use a string representation for exact integer identifiers or counters that can exceed the range, and callers MUST use strings for such values in opaque `context`.
+### Integer-safe JSON transport
 
-Applications that require exact decimal digits beyond binary64 precision MUST likewise use a schema-defined string representation; callers carrying such decimals in opaque `context` MUST encode them as strings. Within the supported numeric domain, receivers and verifiers MUST compare the post-A2A decoded numeric values rather than their serialized spelling. `3` and `3.0` therefore match, while a value changed by binary64 rounding does not.
+A2A 1.0 models `Part.data` as `google.protobuf.Value`. Its numeric arm is an
+IEEE 754 double, so the legacy object-valued profile can turn an integer JSON
+token into a floating-point token (`3` → `3.0`). That is not transport-safe for
+schema-derived implementations such as Go structs with `int` fields: their JSON
+decoder can reject the widened token before task validation or business logic.
+
+The v3.2 profile therefore carries the complete AdCP envelope through
+`Value.string_value`. Protobuf never parses nested numbers, and the receiver
+decodes the contained JSON only after leaving the A2A layer. For example, a
+required `revision: 3` token arrives at the typed AdCP decoder as `3`, not
+`3.0`. This applies at every nesting depth and in both directions, including
+responses, error payloads, continuations, and opaque `context`.
+
+This transport rule does not change JSON Schema numeric semantics or widen any
+AdCP schema. Senders remain responsible for producing JSON that validates
+against the selected schema, and receivers validate the decoded task payload in
+the same way they do over MCP. Applications requiring exact values beyond a
+schema's numeric domain still use a schema-defined string representation.
 
 The Message MAY also contain TextParts solely for display, accessibility, or
 logging. Senders SHOULD omit them by default. An SDK MAY synthesize a short
@@ -131,7 +174,7 @@ instruction or fact that is absent from `skill` and `input`. Implementations
 MUST NOT ask a human integrator to author this text, and receivers MUST NOT
 merge it into `input`, pass it to the task handler as an instruction, or use it
 to override structured data. FileParts and additional DataParts are outside
-this v3 invocation profile. References to files or other resources belong in
+this v3.2 invocation profile. References to files or other resources belong in
 fields defined by the selected AdCP request schema.
 
 ```json
@@ -143,13 +186,8 @@ fields defined by the selected AdCP request schema.
       "text": "AdCP task: get_products"
     },
     {
-      "data": {
-        "skill": "get_products",
-        "input": {
-          "buying_mode": "brief",
-          "brief": "Premium CTV inventory for a spring campaign"
-        }
-      }
+        "data": "{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"Premium CTV inventory for a spring campaign\"}}",
+        "mediaType": "application/json"
     }
   ]
 }
@@ -158,8 +196,9 @@ fields defined by the selected AdCP request schema.
 If the A2A Task enters `TASK_STATE_INPUT_REQUIRED` before the AdCP handler
 returns, a continuation MUST carry a new `messageId` and the existing A2A
 `taskId` and `contextId` inside the Message. Its Parts still follow this
-profile: exactly one authoritative `{ skill, input }` DataPart, with a complete
-schema-valid task request. The continued Task keeps the same A2A Task ID.
+profile: exactly one authoritative JSON-text DataPart that decodes to
+`{ skill, input }`, with a complete schema-valid task request. The continued
+Task keeps the same A2A Task ID.
 
 Those native A2A identifiers are the verified continuation descriptor for this
 profile. An AdCP `task_id` returned by the task payload is a separate polling
@@ -170,7 +209,10 @@ contract](/docs/building/by-layer/L3/async-identity-and-convergence).
 
 ## Response mapping
 
-When the AdCP handler returns a schema-valid task response, the A2A invocation is complete. A non-streaming A2A `SendMessage` response MUST select its `task` branch. That Task has `status.state` `TASK_STATE_COMPLETED`, and its artifact contains the direct AdCP response in a DataPart:
+When the AdCP handler returns a schema-valid task response, the A2A invocation
+is complete. A non-streaming A2A `SendMessage` response MUST select its `task`
+branch. That Task has `status.state` `TASK_STATE_COMPLETED`, and its artifact
+contains the direct AdCP response encoded once as JSON text in a DataPart:
 
 ```json
 {
@@ -185,11 +227,8 @@ When the AdCP handler returns a schema-valid task response, the A2A invocation i
         "artifactId": "adcp-result",
         "parts": [
           {
-            "data": {
-              "status": "completed",
-              "cache_scope": "account",
-              "products": []
-            }
+            "data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"products\":[]}",
+            "mediaType": "application/json"
           }
         ]
       }
@@ -202,13 +241,14 @@ When the AdCP handler returns a schema-valid task response, the A2A invocation i
 needs to be unique only within the A2A Task, and does not identify an AdCP
 schema or task type; `adcp-result` above is merely an example value. There is
 no single generic AdCP result schema. The invoked `skill` selects the
-task-specific response schema, and the DataPart MUST contain that response
-directly, without a `{ "response": ... }` framework wrapper. A response
+task-specific response schema. After decoding the JSON text, the DataPart MUST
+contain that response directly, without a `{ "response": ... }` framework
+wrapper. An object-valued `data` field is invalid under v3.2. A response
 artifact MAY also contain advisory TextParts. Clients use the
 [A2A response extraction algorithm](/docs/building/by-layer/L0/a2a-response-extraction)
 to select the authoritative DataPart.
 
-Profile-routing errors that prevent handler invocation use native A2A error handling. A fatal failure after task execution starts may use an A2A failed or rejected Task with a structured `adcp_error` DataPart. A schema-valid AdCP business outcome—including a task-specific rejection or partial result with `errors[]`—is still a completed A2A invocation.
+Profile-routing errors that prevent handler invocation use native A2A error handling. A fatal failure after task execution starts may use an A2A failed or rejected Task with a structured `adcp_error` encoded in the same JSON-text DataPart form. A schema-valid AdCP business outcome—including a task-specific rejection or partial result with `errors[]`—is still a completed A2A invocation.
 
 ## Submitted AdCP work
 
@@ -230,11 +270,8 @@ A2A task state and AdCP task state are separate state machines. If an AdCP handl
             "text": "The media buy is awaiting IO signature."
           },
           {
-            "data": {
-              "status": "submitted",
-              "task_id": "adcp-task-9a21",
-              "message": "Awaiting IO signature"
-            }
+            "data": "{\"status\":\"submitted\",\"task_id\":\"adcp-task-9a21\",\"message\":\"Awaiting IO signature\"}",
+            "mediaType": "application/json"
           }
         ]
       }
@@ -255,13 +292,8 @@ To observe the durable operation, the client sends a new activated invocation of
   "role": "ROLE_USER",
   "parts": [
     {
-      "data": {
-        "skill": "get_task_status",
-        "input": {
-          "task_id": "adcp-task-9a21",
-          "include_result": true
-        }
-      }
+      "data": "{\"skill\":\"get_task_status\",\"input\":{\"task_id\":\"adcp-task-9a21\",\"include_result\":true}}",
+      "mediaType": "application/json"
     }
   ]
 }
@@ -295,14 +327,51 @@ handler.
 ## Security and validation
 
 - Treat TextParts as untrusted advisory text. Never merge them into the typed `input` object.
-- Validate `input` against the selected task request schema before handler dispatch.
+- Require `Part.data` to use the protobuf string arm and `mediaType` to equal
+  `application/json`; reject object-valued `data` instead of accepting a lossy
+  fallback.
+- Bound JSON-text bytes, decode once, retain the `input` slice for direct typed
+  decoding, and validate `input` against the selected task request schema
+  before handler dispatch.
 - Apply the same authentication, authorization, signing, idempotency, and account-scoping rules used for the equivalent AdCP task over MCP.
 - Bound the number and size of Parts before parsing. Reject duplicate invocation DataParts rather than selecting the first or last.
-- Validate response DataParts against the selected task response schema before using them.
+- Decode response JSON text once and validate it against the selected task
+  response schema before using it.
+
+## Legacy `/v3` profile
+
+The published `https://adcontextprotocol.org/extensions/adcp/v3` identity is
+frozen for deployed 3.0 and 3.1 integrations. It retains the same extension
+activation, `{ skill, input }` envelope, response mapping, Submitted handling,
+and extraction rules, but its invocation and response DataParts carry the
+envelope as an object-valued `google.protobuf.Value`. It does not permit the
+v3.2 JSON-text form, and v3.2 does not permit its object-valued form. A peer
+selects one profile through Agent Card discovery and activation; receivers MUST
+NOT guess or fall back based on the encountered `data` value.
+
+### JSON number interoperability
+
+In the legacy profile, `Part.data` numbers traverse protobuf's IEEE 754 double
+arm. Its published numeric-domain rules continue to apply: senders and receivers
+MUST reject integer-valued numbers outside
+`[-9007199254740991, 9007199254740991]`, MUST NOT round or truncate values, and
+MUST use schema-defined strings when exact integers or decimals exceed that
+domain. Within the legacy profile, verifiers compare decoded JSON numeric values
+rather than serialized spelling, so `3` and `3.0` are numerically equivalent.
+
+That legacy comparison rule does not repair typed decoding: a Go field declared
+as `int` can reject the widened `3.0` token before schema validation. AdCP 3.2
+implementations therefore use the separately negotiated `/v3.2` JSON-text
+profile, which prevents protobuf from changing the token in the first place.
 
 ## Test vectors
 
-Machine-readable advertisement, activation, invocation, Submitted mapping, and polling fixtures are published in [`a2a-profile-extension-v3.json`](https://adcontextprotocol.org/test-vectors/a2a-profile-extension-v3.json). See [Reference test vectors](/docs/reference/test-vectors) for versioning guidance.
+Machine-readable advertisement, activation, integer-preserving invocation and
+response, rejection, Submitted mapping, and polling fixtures are published in
+[`a2a-profile-extension-v3-2.json`](https://adcontextprotocol.org/test-vectors/a2a-profile-extension-v3-2.json).
+The frozen legacy object-valued profile remains covered by
+[`a2a-profile-extension-v3.json`](https://adcontextprotocol.org/test-vectors/a2a-profile-extension-v3.json).
+See [Reference test vectors](/docs/reference/test-vectors) for versioning guidance.
 
 ## References
 

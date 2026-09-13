@@ -1,0 +1,215 @@
+{
+  "version": "3.2.0",
+  "extension_uri": "https://adcontextprotocol.org/extensions/adcp/v3.2",
+  "legacy_extension_uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+  "a2a_protocol_version": "1.0",
+  "description": "Reference vectors for the transport-safe AdCP 3.2 A2A profile. AdCP envelopes are encoded as JSON text in Part.data so protobuf Value carries them through its string arm and cannot widen integer tokens through its double arm.",
+  "advertisement_vectors": [
+    {
+      "id": "agent-card-json-text-extension",
+      "description": "A 3.2 interface advertises the JSON-text profile as a required A2A extension.",
+      "valid": true,
+      "agent_card": {
+        "name": "StreamHaus sales agent",
+        "description": "Advertising sales agent",
+        "version": "3.2.0",
+        "supportedInterfaces": [{
+          "url": "https://sales.streamhaus.example/a2a/jsonrpc",
+          "protocolBinding": "JSONRPC",
+          "protocolVersion": "1.0"
+        }],
+        "capabilities": {
+          "extensions": [{
+            "uri": "https://adcontextprotocol.org/extensions/adcp/v3.2",
+            "description": "AdCP JSON-text task invocation profile",
+            "required": true
+          }]
+        },
+        "defaultInputModes": ["application/json"],
+        "defaultOutputModes": ["application/json"],
+        "skills": [
+          {"id": "get_adcp_capabilities", "name": "Discover AdCP capabilities", "description": "Discover runtime AdCP capabilities", "tags": ["adcp"]},
+          {"id": "control_media_buy", "name": "Control media buy", "description": "Apply an optimistic-concurrency-checked control", "tags": ["adcp"]}
+        ]
+      }
+    },
+    {
+      "id": "legacy-extension-does-not-activate-3-2",
+      "description": "The legacy object-valued v3 extension is a different wire profile and does not activate v3.2.",
+      "valid": false,
+      "expected_error": "extension_not_advertised",
+      "agent_card": {
+        "capabilities": {
+          "extensions": [{
+            "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+            "description": "Legacy AdCP structured task invocation profile",
+            "required": true
+          }]
+        },
+        "skills": [{"id": "get_adcp_capabilities", "name": "Discover AdCP capabilities", "description": "Discover runtime AdCP capabilities", "tags": ["adcp"]}]
+      }
+    }
+  ],
+  "invocation_vectors": [
+    {
+      "id": "control-media-buy-integer-token-preserved",
+      "description": "The required revision token remains the integer literal 3 because protobuf sees only the outer string value.",
+      "valid": true,
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3.2"
+      },
+      "message": {
+        "messageId": "msg-control-001",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": "{\"skill\":\"control_media_buy\",\"input\":{\"idempotency_key\":\"ctl-mb-0000000001\",\"account\":{\"account_id\":\"acc_nova_nl\"},\"media_buy_id\":\"mb_123\",\"revision\":3,\"paused\":true}}",
+          "mediaType": "application/json"
+        }]
+      },
+      "input_schema": "/schemas/media-buy/control-media-buy-request.json",
+      "expected_skill": "control_media_buy",
+      "expected_integer_tokens": [
+        {"pointer": "/revision", "name": "revision", "value": 3, "lexeme": "3"}
+      ]
+    },
+    {
+      "id": "sync-catalogs-overlay-revision-token-preserved",
+      "description": "A required expected_overlay_revision remains the integer literal 3 even when nested in an availability update.",
+      "valid": true,
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3.2"
+      },
+      "message": {
+        "messageId": "msg-catalog-overlay-001",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": "{\"skill\":\"sync_catalogs\",\"input\":{\"idempotency_key\":\"catalog-overlay-0001\",\"account\":{\"account_id\":\"acc_nova_nl\"},\"item_availability_updates\":[{\"catalog_id\":\"product-feed\",\"catalog_generation\":\"catgen_01K2ABCD\",\"item_id\":\"SKU-12345\",\"expected_overlay_revision\":3,\"action\":\"suppress\",\"reason\":\"out_of_stock\"}]}}",
+          "mediaType": "application/json"
+        }]
+      },
+      "input_schema": "/schemas/media-buy/sync-catalogs-request.json",
+      "expected_skill": "sync_catalogs",
+      "expected_integer_tokens": [
+        {"pointer": "/item_availability_updates/0/expected_overlay_revision", "name": "expected_overlay_revision", "value": 3, "lexeme": "3"}
+      ]
+    },
+    {
+      "id": "object-valued-invocation-rejected",
+      "description": "The v3.2 extension rejects the legacy object-valued DataPart instead of silently entering the lossy protobuf number path.",
+      "valid": false,
+      "expected_error": "data_not_json_text",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3.2"
+      },
+      "message": {
+        "messageId": "msg-control-legacy-object",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": {
+            "skill": "control_media_buy",
+            "input": {
+              "idempotency_key": "ctl-mb-0000000001",
+              "account": {"account_id": "acc_nova_nl"},
+              "media_buy_id": "mb_123",
+              "revision": 3,
+              "paused": true
+            }
+          },
+          "mediaType": "application/json"
+        }]
+      }
+    },
+    {
+      "id": "wrong-media-type-rejected",
+      "description": "JSON text without the application/json media type is not a v3.2 invocation.",
+      "valid": false,
+      "expected_error": "invalid_media_type",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3.2"
+      },
+      "message": {
+        "messageId": "msg-control-text-plain",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": "{\"skill\":\"control_media_buy\",\"input\":{}}",
+          "mediaType": "text/plain"
+        }]
+      }
+    },
+    {
+      "id": "malformed-json-rejected",
+      "description": "Malformed JSON text is rejected before task dispatch.",
+      "valid": false,
+      "expected_error": "invalid_json_text",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3.2"
+      },
+      "message": {
+        "messageId": "msg-control-malformed",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": "{\"skill\":\"control_media_buy\",\"input\":",
+          "mediaType": "application/json"
+        }]
+      }
+    }
+  ],
+  "response_vectors": [
+    {
+      "id": "control-media-buy-response-integer-token-preserved",
+      "description": "The response revision remains the integer literal 4 inside JSON text.",
+      "valid": true,
+      "response_schema": "/schemas/media-buy/control-media-buy-response.json",
+      "response": {
+        "task": {
+          "id": "a2a-task-control-001",
+          "contextId": "ctx-control-001",
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{
+            "artifactId": "adcp-result",
+            "parts": [{
+              "data": "{\"status\":\"completed\",\"media_buy_id\":\"mb_123\",\"revision\":4,\"media_buy_status\":\"paused\"}",
+              "mediaType": "application/json"
+            }]
+          }]
+        }
+      },
+      "expected_integer_tokens": [
+        {"pointer": "/revision", "name": "revision", "value": 4, "lexeme": "4"}
+      ]
+    },
+    {
+      "id": "object-valued-response-rejected",
+      "description": "The v3.2 extension rejects a legacy object-valued response rather than accepting a potentially widened revision.",
+      "valid": false,
+      "expected_error": "data_not_json_text",
+      "response": {
+        "task": {
+          "id": "a2a-task-control-object",
+          "contextId": "ctx-control-object",
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{
+            "artifactId": "adcp-result",
+            "parts": [{
+              "data": {"status": "completed", "media_buy_id": "mb_123", "revision": 4, "media_buy_status": "paused"},
+              "mediaType": "application/json"
+            }]
+          }]
+        }
+      }
+    }
+  ],
+  "legacy_widening_regression": {
+    "description": "The same request encoded by the legacy v3 profile traverses google.protobuf.Value.number_value and the Python A2A 1.0 ProtoJSON implementation emits revision as 3.0. The v3.2 representation keeps the complete AdCP envelope in Value.string_value.",
+    "source_adcp_json": "{\"skill\":\"control_media_buy\",\"input\":{\"revision\":3}}",
+    "legacy_v3_protojson": "{\"data\":{\"skill\":\"control_media_buy\",\"input\":{\"revision\":3.0}}}",
+    "v3_2_protojson": "{\"data\":\"{\\\"skill\\\":\\\"control_media_buy\\\",\\\"input\\\":{\\\"revision\\\":3}}\",\"mediaType\":\"application/json\"}",
+    "typed_go_legacy_result": "json: cannot unmarshal number 3.0 into Go struct field .revision of type int",
+    "typed_go_v3_2_result": "accepted"
+  }
+}

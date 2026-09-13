@@ -76,11 +76,8 @@ Same status and data, different packaging:
         "text": "I need your budget and target audience"
       },
       {
-        "kind": "data",
-        "data": {
-          "products": [],
-          "suggestions": ["budget", "audience"]
-        }
+        "data": "{\"products\":[],\"suggestions\":[\"budget\",\"audience\"]}",
+        "mediaType": "application/json"
       }
     ]
   }]
@@ -131,7 +128,7 @@ if (adcpResponse.status === "submitted") {
 
 ### A2A Async Pattern
 
-The AdCP v3 profile returns an AdCP Submitted result inside a completed A2A
+The AdCP v3.2 profile returns an AdCP Submitted result inside a completed A2A
 Task. The two IDs remain independent:
 
 ```json
@@ -143,10 +140,8 @@ Task. The two IDs remain independent:
     "artifacts": [{
       "artifactId": "adcp-result",
       "parts": [{
-        "data": {
-          "status": "submitted",
-          "task_id": "adcp-task-456"
-        }
+        "data": "{\"status\":\"submitted\",\"task_id\":\"adcp-task-456\"}",
+        "mediaType": "application/json"
       }]
     }]
   }
@@ -184,10 +179,13 @@ const response1 = await a2a.send({
   message: {
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
-    parts: [{ data: {
-      skill: "get_products",
-      input: { buying_mode: "brief", brief: "Find video products" }
-    } }]
+    parts: [{
+      data: JSON.stringify({
+        skill: "get_products",
+        input: { buying_mode: "brief", brief: "Find video products" }
+      }),
+      mediaType: "application/json"
+    }]
   }
 });
 
@@ -197,10 +195,13 @@ const response2 = await a2a.send({
     messageId: crypto.randomUUID(),
     contextId: response1.contextId,
     role: "ROLE_USER",
-    parts: [{ data: {
-      skill: "get_products",
-      input: { buying_mode: "brief", brief: "Focus on premium video inventory" }
-    } }]
+    parts: [{
+      data: JSON.stringify({
+        skill: "get_products",
+        input: { buying_mode: "brief", brief: "Focus on premium video inventory" }
+      }),
+      mediaType: "application/json"
+    }]
   }
 });
 ```

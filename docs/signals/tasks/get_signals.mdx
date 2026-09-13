@@ -561,7 +561,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
 #### Natural Language Invocation
 
 Text-only invocation requires a separate generic A2A interface whose Agent
-Card does not mark the AdCP v3 profile as required. It is not an AdCP profile
+Card does not mark the AdCP v3.2 profile as required. It is not an AdCP profile
 invocation.
 
 #### Explicit Skill Invocation
@@ -571,7 +571,7 @@ await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "get_signals",
         input: {
           signal_spec: "High-income households interested in luxury goods",
@@ -595,7 +595,8 @@ await a2a.send({
             max_results: 5
           }
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -616,26 +617,10 @@ A non-streaming `SendMessage` response selects the Task branch:
       "name": "signal_discovery_result",
       "parts": [
         { "text": "Found one matching luxury segment." },
-        { "data": {
-          "status": "completed",
-          "cache_scope": "account",
-          "signals": [{
-            "signal_ref": {
-              "scope": "data_provider",
-              "data_provider_domain": "provider.example",
-              "signal_id": "luxury_auto_intenders"
-            },
-            "signal_agent_segment_id": "luxury_auto_intenders",
-            "name": "Luxury Automotive Intenders",
-            "description": "People researching luxury vehicles",
-            "signal_type": "marketplace",
-            "deployments": [{
-              "type": "platform",
-              "platform": "the-trade-desk",
-              "is_live": false
-            }]
-          }]
-        } }
+        {
+          "data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"signals\":[{\"signal_ref\":{\"scope\":\"data_provider\",\"data_provider_domain\":\"provider.example\",\"signal_id\":\"luxury_auto_intenders\"},\"signal_agent_segment_id\":\"luxury_auto_intenders\",\"name\":\"Luxury Automotive Intenders\",\"description\":\"People researching luxury vehicles\",\"signal_type\":\"marketplace\",\"deployments\":[{\"type\":\"platform\",\"platform\":\"the-trade-desk\",\"is_live\":false}]}]}",
+          "mediaType": "application/json"
+        }
       ]
     }]
   }

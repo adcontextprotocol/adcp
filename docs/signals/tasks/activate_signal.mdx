@@ -247,7 +247,7 @@ After polling for completion:
 #### Natural Language Invocation
 
 Text-only invocation requires a separate generic A2A interface whose Agent
-Card does not mark the AdCP v3 profile as required. It is not an AdCP profile
+Card does not mark the AdCP v3.2 profile as required. It is not an AdCP profile
 invocation.
 
 #### Explicit Skill Invocation
@@ -257,7 +257,7 @@ await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "activate_signal",
         input: {
           idempotency_key: crypto.randomUUID(),
@@ -269,7 +269,8 @@ await a2a.send({
             account: "agency-123-ttd"
           }]
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -292,20 +293,10 @@ or `SubscribeToTask` operation and consumes `StreamResponse` SSE frames.
       "name": "signal_activation_result",
       "parts": [
         { "text": "Signal successfully activated on The Trade Desk" },
-        { "data": {
-          "status": "completed",
-          "deployments": [{
-            "type": "platform",
-            "platform": "the-trade-desk",
-            "account": "agency-123-ttd",
-            "is_live": true,
-            "activation_key": {
-              "type": "segment_id",
-              "segment_id": "ttd_agency123_lux_auto"
-            },
-            "deployed_at": "2025-01-15T14:30:00Z"
-          }]
-        } }
+        {
+          "data": "{\"status\":\"completed\",\"deployments\":[{\"type\":\"platform\",\"platform\":\"the-trade-desk\",\"account\":\"agency-123-ttd\",\"is_live\":true,\"activation_key\":{\"type\":\"segment_id\",\"segment_id\":\"ttd_agency123_lux_auto\"},\"deployed_at\":\"2025-01-15T14:30:00Z\"}]}",
+          "mediaType": "application/json"
+        }
       ]
     }]
   }

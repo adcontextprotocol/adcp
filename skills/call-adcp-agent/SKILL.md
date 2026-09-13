@@ -15,7 +15,7 @@ AdCP (Ad Context Protocol) agents expose a fixed tool surface (`get_products`, `
 
 - User wants to call a publisher / SSP / retail media network over AdCP
 - Tool names like `get_products`, `create_media_buy`, `sync_creatives`, `get_signals` appear in the available-tools list
-- A2A 1.0 Agent Card advertises `https://adcontextprotocol.org/extensions/adcp/v3` under `capabilities.extensions[]`, with `skills` listing AdCP task names
+- A2A 1.0 Agent Card advertises `https://adcontextprotocol.org/extensions/adcp/v3.2` under `capabilities.extensions[]`, with `skills` listing AdCP task names
 - **Not this skill:** building an AdCP seller agent (see `@adcp/client/skills/build-seller-agent/` and analogous SDK skills)
 
 ## Discovery chain
@@ -78,7 +78,7 @@ A mutating tool can return one of three shapes:
 { "errors": [{ "code": "PRODUCT_NOT_FOUND", "message": "..." }] }
 ```
 
-When you see `status: 'submitted'`, the work is NOT complete. Under the AdCP v3 A2A profile, the enclosing A2A Task is completed and the AdCP `task_id` appears only in the artifact DataPart. Poll by sending fresh profile invocations of `get_task_status` with that `task_id`; do not poll the completed A2A Task and do not look for `artifact.metadata.adcp_task_id`. On MCP, use the AdCP polling task the agent advertises.
+When you see `status: 'submitted'`, the work is NOT complete. Under the AdCP v3.2 A2A profile, the enclosing A2A Task is completed and the AdCP `task_id` appears only in the JSON text carried by the artifact DataPart. Poll by sending fresh profile invocations of `get_task_status` with that `task_id`; do not poll the completed A2A Task and do not look for `artifact.metadata.adcp_task_id`. On MCP, use the AdCP polling task the agent advertises.
 
 ### `packages[*]` on media buys
 
@@ -246,7 +246,7 @@ Returns `{ signals: [{ signal_agent_segment_id, match_rate, pricing, ... }] }`. 
 ## Transport notes
 
 - **MCP**: `tools/call` with `{ name: 'tool_name', arguments: {...} }`. Returns `{ content, structuredContent, isError? }`. Read `structuredContent` for the typed response.
-- **A2A 1.0**: activate `https://adcontextprotocol.org/extensions/adcp/v3`, then Send Message with exactly one invocation DataPart of shape `{ skill: 'tool_name', input: {...} }`. `parameters` is not an alias. Optional TextParts are advisory. Read the authoritative DataPart from the completed Task artifact.
+- **A2A 1.0**: activate `https://adcontextprotocol.org/extensions/adcp/v3.2`, then Send Message with exactly one invocation DataPart whose string-valued `data` is `JSON.stringify({ skill: 'tool_name', input: {...} })` and whose `mediaType` is `application/json`. `parameters` is not an alias. Optional TextParts are advisory. Decode the authoritative response DataPart's JSON text once at the adapter boundary. Do not accept object-valued `data` as a fallback: protobuf's numeric arm can widen required integer tokens such as `revision: 3` to `3.0`.
 
 Both transports share: idempotency, error shape, schema enforcement, and handler semantics. If a call works on one, the equivalent call works on the other.
 
@@ -273,7 +273,7 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
 | `required` at `/format_kind` | Sent only a deprecated `format_id`, or omitted the canonical selector | Copy `format_kind` and, when needed, `format_option_ref` from the selected product's `format_options[]`. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
-| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | On the AdCP v3 A2A profile, invoke `get_task_status`; on MCP, use the advertised AdCP polling task. |
+| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | On the AdCP v3.2 A2A profile, invoke `get_task_status`; on MCP, use the advertised AdCP polling task. |
 | `recovery: 'transient'` (rate limit, 5xx, timeout) | Server-side, retry-safe | Retry with the **same** `idempotency_key`. |
 | `recovery: 'correctable'` | Buyer-side fix | Read `issues[]`, patch the pointers, resend. Most cases close in one attempt. |
 | `recovery: 'terminal'` (account suspended, payment required, …) | Requires human action | Don't retry. Surface to the user. |

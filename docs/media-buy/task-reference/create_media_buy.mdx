@@ -1598,7 +1598,7 @@ const response = await a2a.send({
     messageId: crypto.randomUUID(),
     role: 'ROLE_USER',
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: 'create_media_buy',
         input: {
           idempotency_key: '550e8400-e29b-41d4-a716-446655440010',
@@ -1609,7 +1609,8 @@ const response = await a2a.send({
           start_time: 'asap',
           end_time: '2027-06-30T23:59:59Z'
         }
-      }
+      }),
+      mediaType: 'application/json'
     }]
   }
 });
@@ -1627,14 +1628,8 @@ const response = await a2a.send({
       "parts": [
         { "text": "Media buy created successfully" },
         {
-          "data": {
-            "status": "completed",
-            "media_buy_id": "mb_12345",
-            "confirmed_at": "2025-06-01T10:00:00Z",
-            "creative_deadline": "2025-06-15T23:59:59Z",
-            "revision": 1,
-            "packages": [{ "package_id": "pkg_001" }]
-          }
+          "data": "{\"status\":\"completed\",\"media_buy_id\":\"mb_12345\",\"confirmed_at\":\"2025-06-01T10:00:00Z\",\"creative_deadline\":\"2025-06-15T23:59:59Z\",\"revision\":1,\"packages\":[{\"package_id\":\"pkg_001\"}]}",
+          "mediaType": "application/json"
         }
       ]
     }]
@@ -1659,7 +1654,7 @@ const response = await a2a.send({
     messageId: crypto.randomUUID(),
     role: 'ROLE_USER',
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: 'create_media_buy',
         input: {
           idempotency_key: '550e8400-e29b-41d4-a716-446655440011',
@@ -1670,7 +1665,8 @@ const response = await a2a.send({
           start_time: 'asap',
           end_time: '2027-06-30T23:59:59Z'
         }
-      }
+      }),
+      mediaType: 'application/json'
     }]
   }
 });
@@ -1686,11 +1682,8 @@ const response = await a2a.send({
     "artifacts": [{
       "artifactId": "adcp-result",
       "parts": [{
-        "data": {
-          "status": "submitted",
-          "task_id": "adcp-task-abc",
-          "message": "Awaiting budget approval"
-        }
+        "data": "{\"status\":\"submitted\",\"task_id\":\"adcp-task-abc\",\"message\":\"Awaiting budget approval\"}",
+        "mediaType": "application/json"
       }]
     }]
   }
@@ -1718,7 +1711,7 @@ Task is paused waiting for clarification or approval.
         "role": "ROLE_AGENT",
         "parts": [
           { "text": "The requested budget exceeds your pre-approved limit. Please confirm you want to proceed with $500K spend." },
-          { "data": { "reason": "APPROVAL_REQUIRED" } }
+          { "data": "{\"reason\":\"APPROVAL_REQUIRED\"}", "mediaType": "application/json" }
         ]
       }
     }
@@ -1735,7 +1728,7 @@ await a2a.send({
     contextId: 'ctx_456',
     role: 'ROLE_USER',
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: 'create_media_buy',
         input: {
           idempotency_key: '550e8400-e29b-41d4-a716-446655440011',
@@ -1747,7 +1740,8 @@ await a2a.send({
           end_time: '2027-06-30T23:59:59Z',
           ext: { 'buyer.example': { approval_confirmed: true } }
         }
-      }
+      }),
+      mediaType: 'application/json'
     }]
   }
 });
@@ -1767,13 +1761,8 @@ await a2a.send({
       "parts": [
         { "text": "Failed to create media buy" },
         {
-          "data": {
-            "adcp_error": {
-              "code": "INSUFFICIENT_INVENTORY",
-              "message": "Requested targeting yields no available impressions",
-              "suggestion": "Expand geographic targeting"
-            }
-          }
+          "data": "{\"adcp_error\":{\"code\":\"INSUFFICIENT_INVENTORY\",\"message\":\"Requested targeting yields no available impressions\",\"suggestion\":\"Expand geographic targeting\"}}",
+          "mediaType": "application/json"
         }
       ]
     }]

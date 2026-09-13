@@ -89,7 +89,7 @@ Include `push_notification_config` as a task argument, merged with the rest of y
 
 ### A2A
 
-For a durable AdCP operation invoked through the v3 A2A profile, keep the AdCP
+For a durable AdCP operation invoked through the v3.2 A2A profile, keep the AdCP
 webhook registration inside the typed task input:
 
 ```json
@@ -98,22 +98,8 @@ webhook registration inside the typed task input:
     "messageId": "msg-create-001",
     "role": "ROLE_USER",
     "parts": [{
-      "data": {
-        "skill": "create_media_buy",
-        "input": {
-          "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-          "account": { "account_id": "acc_demo_001" },
-          "brand": { "domain": "brand.example" },
-          "proposal_id": "proposal_001",
-          "total_budget": { "amount": 100000, "currency": "USD" },
-          "start_time": "asap",
-          "end_time": "2027-06-30T23:59:59Z",
-          "push_notification_config": {
-            "url": "https://you.example/webhooks/adcp/create-media-buy",
-            "operation_id": "op_abc123"
-          }
-        }
-      }
+      "data": "{\"skill\":\"create_media_buy\",\"input\":{\"idempotency_key\":\"550e8400-e29b-41d4-a716-446655440000\",\"account\":{\"account_id\":\"acc_demo_001\"},\"brand\":{\"domain\":\"brand.example\"},\"proposal_id\":\"proposal_001\",\"total_budget\":{\"amount\":100000,\"currency\":\"USD\"},\"start_time\":\"asap\",\"end_time\":\"2027-06-30T23:59:59Z\",\"push_notification_config\":{\"url\":\"https://you.example/webhooks/adcp/create-media-buy\",\"operation_id\":\"op_abc123\"}}}",
+      "mediaType": "application/json"
     }]
   }
 }
@@ -290,12 +276,8 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
       "parts": [
         { "text": "Media buy created successfully" },
         {
-          "data": {
-            "media_buy_id": "mb_12345",
-            "packages": [
-              { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
-            ]
-          }
+          "data": "{\"media_buy_id\":\"mb_12345\",\"packages\":[{\"package_id\":\"pkg_001\",\"context\":{\"line_item\":\"li_ctv_sports\"}}]}",
+          "mediaType": "application/json"
         }
       ]
     }]
@@ -620,7 +602,9 @@ function extractAdcpResponseFromWebhook(payload, knownFormat) {
   const format = knownFormat || detectFormat(payload);
 
   if (format === 'mcp') return payload.result ?? null;
-  if (format === 'a2a') return extractAdcpResponseFromA2A(payload);
+  if (format === 'a2a') return extractAdcpResponseFromA2A(payload, {
+    profileUri: 'https://adcontextprotocol.org/extensions/adcp/v3.2'
+  });
   return null;
 }
 

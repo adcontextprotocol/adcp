@@ -232,26 +232,16 @@
       "response": {
         "id": "task_456",
         "status": {
-          "state": "failed",
+          "state": "TASK_STATE_FAILED",
           "timestamp": "2025-01-22T10:30:00Z"
         },
         "artifacts": [{
           "artifactId": "error-result",
           "parts": [
+            { "text": "Rate limit exceeded. Retry in 5 seconds." },
             {
-              "kind": "text",
-              "text": "Rate limit exceeded. Retry in 5 seconds."
-            },
-            {
-              "kind": "data",
-              "data": {
-                "adcp_error": {
-                  "code": "RATE_LIMITED",
-                  "message": "Request rate exceeded",
-                  "retry_after": 5,
-                  "recovery": "transient"
-                }
-              }
+              "data": "{\"adcp_error\":{\"code\":\"RATE_LIMITED\",\"message\":\"Request rate exceeded\",\"retry_after\":5,\"recovery\":\"transient\"}}",
+              "mediaType": "application/json"
             }
           ]
         }]
@@ -272,25 +262,16 @@
       "response": {
         "id": "task_789",
         "status": {
-          "state": "failed",
+          "state": "TASK_STATE_FAILED",
           "timestamp": "2025-01-22T11:00:00Z"
         },
         "artifacts": [{
           "artifactId": "error-result",
           "parts": [
+            { "text": "Account has been suspended. Contact seller to resolve." },
             {
-              "kind": "text",
-              "text": "Account has been suspended. Contact seller to resolve."
-            },
-            {
-              "kind": "data",
-              "data": {
-                "adcp_error": {
-                  "code": "ACCOUNT_SUSPENDED",
-                  "message": "Account has been suspended",
-                  "recovery": "terminal"
-                }
-              }
+              "data": "{\"adcp_error\":{\"code\":\"ACCOUNT_SUSPENDED\",\"message\":\"Account has been suspended\",\"recovery\":\"terminal\"}}",
+              "mediaType": "application/json"
             }
           ]
         }]
@@ -513,34 +494,16 @@
       "response": {
         "id": "task_202",
         "status": {
-          "state": "failed",
+          "state": "TASK_STATE_FAILED",
           "timestamp": "2025-01-22T13:00:00Z"
         },
         "artifacts": [{
           "artifactId": "error-result",
           "parts": [
+            { "text": "Creative rejected: violates alcohol advertising policy." },
             {
-              "kind": "text",
-              "text": "Creative rejected: violates alcohol advertising policy."
-            },
-            {
-              "kind": "data",
-              "data": {
-                "adcp_error": {
-                "code": "CREATIVE_REJECTED",
-                "message": "Creative failed content policy review",
-                "recovery": "correctable",
-                "buyer_reason": {
-                  "code": "POLICY_VIOLATION",
-                  "message": "The creative does not satisfy the published alcohol advertising policy."
-                },
-                "suggestion": "Revise creative to comply with alcohol advertising policy",
-                  "details": {
-                    "policy_id": "alcohol-advertising-v2",
-                    "reasons": ["Contains health claims not permitted for alcohol products"]
-                  }
-                }
-              }
+              "data": "{\"adcp_error\":{\"code\":\"CREATIVE_REJECTED\",\"message\":\"Creative failed content policy review\",\"recovery\":\"correctable\",\"buyer_reason\":{\"code\":\"POLICY_VIOLATION\",\"message\":\"The creative does not satisfy the published alcohol advertising policy.\"},\"suggestion\":\"Revise creative to comply with alcohol advertising policy\",\"details\":{\"policy_id\":\"alcohol-advertising-v2\",\"reasons\":[\"Contains health claims not permitted for alcohol products\"]}}}",
+              "mediaType": "application/json"
             }
           ]
         }]
@@ -730,25 +693,15 @@
       "response": {
         "id": "task_303",
         "status": {
-          "state": "failed",
+          "state": "TASK_STATE_FAILED",
           "timestamp": "2025-01-22T14:00:00Z",
           "message": {
             "role": "agent",
             "parts": [
+              { "text": "Service temporarily unavailable." },
               {
-                "kind": "text",
-                "text": "Service temporarily unavailable."
-              },
-              {
-                "kind": "data",
-                "data": {
-                  "adcp_error": {
-                    "code": "SERVICE_UNAVAILABLE",
-                    "message": "Seller service is temporarily unavailable",
-                    "recovery": "transient",
-                    "retry_after": 15
-                  }
-                }
+                "data": "{\"adcp_error\":{\"code\":\"SERVICE_UNAVAILABLE\",\"message\":\"Seller service is temporarily unavailable\",\"recovery\":\"transient\",\"retry_after\":15}}",
+                "mediaType": "application/json"
               }
             ]
           }

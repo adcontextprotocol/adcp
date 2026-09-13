@@ -154,26 +154,16 @@ Use `status: "failed"` with the AdCP error in an artifact `DataPart`, plus a `Te
 {
   "id": "task_456",
   "status": {
-    "state": "failed",
+    "state": "TASK_STATE_FAILED",
     "timestamp": "2025-01-22T10:30:00Z"
   },
   "artifacts": [{
     "artifactId": "error-result",
     "parts": [
+      { "text": "Rate limit exceeded. Retry in 5 seconds." },
       {
-        "kind": "text",
-        "text": "Rate limit exceeded. Retry in 5 seconds."
-      },
-      {
-        "kind": "data",
-        "data": {
-          "adcp_error": {
-            "code": "RATE_LIMITED",
-            "message": "Request rate exceeded",
-            "retry_after": 5,
-            "recovery": "transient"
-          }
-        }
+        "data": "{\"adcp_error\":{\"code\":\"RATE_LIMITED\",\"message\":\"Request rate exceeded\",\"retry_after\":5,\"recovery\":\"transient\"}}",
+        "mediaType": "application/json"
       }
     ]
   }]
@@ -184,19 +174,12 @@ This follows the [A2A Response Format](/docs/building/by-layer/L0/a2a-response-f
 
 **Relationship to the "no wrappers" rule.** The `adcp_error` key is an intentional exception for failed tasks. Unlike success responses where `DataPart` contains task-specific data (e.g., `products`), a failed task's `DataPart` contains only the error. The key acts as a type discriminator so clients can distinguish error from success payloads without relying solely on status.
 
-### Error MIME Type (Optional)
+### Error media type
 
-A2A agents MAY set `metadata.mimeType` on the error `DataPart`:
-
-```json
-{
-  "kind": "data",
-  "data": { "adcp_error": { "code": "RATE_LIMITED", "recovery": "transient" } },
-  "metadata": { "mimeType": "application/vnd.adcp.error+json" }
-}
-```
-
-Clients MUST NOT require the MIME type. The `adcp_error` key is the authoritative signal.
+Under the AdCP v3.2 profile, error DataParts use the same required
+`mediaType: "application/json"` and string-valued JSON text as every other AdCP
+DataPart. A custom error media type or object-valued fallback is not permitted.
+After profile decoding, the `adcp_error` key is the authoritative signal.
 
 ## Envelope vs. payload errors
 
@@ -214,8 +197,8 @@ A fatal task failure SHOULD populate **both** layers — see the canonical `prot
 Clients MUST check for AdCP errors in this order:
 
 1. **`structuredContent.adcp_error`** (with `isError: true`) — MCP tool-level error
-2. **`artifacts[].parts[].data.adcp_error`** — A2A task-level error (artifacts)
-3. **`status.message.parts[].data.adcp_error`** — A2A task-level error (status message)
+2. **`decode(artifacts[].parts[].data).adcp_error`** — A2A v3.2 task-level error (artifacts)
+3. **`decode(status.message.parts[].data).adcp_error`** — A2A v3.2 task-level error (status message)
 4. **`error.data.adcp_error`** — JSON-RPC transport-level error
 5. **JSON-parsed `content[].text` with `adcp_error` key** — Text fallback for older MCP servers (only for `isError` responses)
 6. **`payload.errors[0]`** (or top-level `errors[0]`) — payload-layer fallback. Used when the transport envelope does not surface `adcp_error` but the payload carries an `errors[]` array. Reading from the payload is legitimate for non-fatal cases where only the payload layer is populated (e.g., `input-required` tasks reporting warnings), but a fatal task that surfaces errors only via the payload is a conformance gap on the agent side.
@@ -280,13 +263,24 @@ function extractAdcpErrorFromMcpError(error) {
 
 ```javascript A2A Client
 function extractAdcpErrorFromA2a(task) {
+  const decode = (part) => {
+    if (typeof part?.data !== 'string' || part.mediaType !== 'application/json') return null;
+    try {
+      const value = JSON.parse(part.data);
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+
   // 1. Artifacts (preferred — final state data)
   if (task.artifacts) {
     for (const artifact of task.artifacts) {
-      const dataParts = (artifact.parts || []).filter(p => p.kind === 'data');
+      const dataParts = (artifact.parts || []).filter(p => p?.data != null);
       for (const part of dataParts) {
-        if (part.data?.adcp_error) {
-          return validate(part.data.adcp_error);
+        const payload = decode(part);
+        if (payload?.adcp_error) {
+          return validate(payload.adcp_error);
         }
       }
     }
@@ -296,8 +290,9 @@ function extractAdcpErrorFromA2a(task) {
   const parts = task.status?.message?.parts;
   if (Array.isArray(parts)) {
     for (const part of parts) {
-      if (part.kind === 'data' && part.data?.adcp_error) {
-        return validate(part.data.adcp_error);
+      const payload = decode(part);
+      if (payload?.adcp_error) {
+        return validate(payload.adcp_error);
       }
     }
   }

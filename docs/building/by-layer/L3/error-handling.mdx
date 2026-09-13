@@ -110,8 +110,8 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
   "artifacts": [{
     "artifactId": "error-result",
     "parts": [
-      { "kind": "data", "data": { "adcp_error": { "code": "BUDGET_TOO_LOW", ... } } },
-      { "kind": "data", "data": { "errors": [{ "code": "BUDGET_TOO_LOW", "field": "budget.total", ... }] } }
+      { "data": "{\"adcp_error\":{\"code\":\"BUDGET_TOO_LOW\"}}", "mediaType": "application/json" },
+      { "data": "{\"errors\":[{\"code\":\"BUDGET_TOO_LOW\",\"field\":\"budget.total\"}]}", "mediaType": "application/json" }
     ]
   }]
 }

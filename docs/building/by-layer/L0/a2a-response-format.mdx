@@ -11,18 +11,22 @@ This document defines the **canonical structure** for AdCP responses transmitted
 
 Examples below use **A2A 1.0** wire format: Parts carry no `kind` discriminator (content type is implied by which field is set — `text`, `data`, `url`, or `raw`), roles are `ROLE_USER` / `ROLE_AGENT`, and task states are `TASK_STATE_*` (ProtoJSON canonical). See the [A2A Guide](/docs/building/by-layer/L0/a2a-guide#a2a-protocol-versions) for a side-by-side with v0.3.
 
-There are two distinct status layers. A2A `task.status.state` describes transport execution; the AdCP DataPart's top-level `status` describes the task-specific protocol result. They usually align, but they are not aliases. For example, a structured `get_products` business rejection uses A2A `TASK_STATE_COMPLETED` and DataPart `status: "rejected"`: the invocation completed and produced a deliberate commercial-refusal result.
+There are two distinct status layers. A2A `task.status.state` describes transport execution; the AdCP payload decoded from the DataPart's JSON text has the task-specific top-level `status`. They usually align, but they are not aliases. For example, a structured `get_products` business rejection uses A2A `TASK_STATE_COMPLETED` while the decoded payload has `status: "rejected"`: the invocation completed and produced a deliberate commercial-refusal result.
 
-The [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension) also pins an AdCP `status: "submitted"` response inside an A2A `TASK_STATE_COMPLETED` Task. Native A2A `TASK_STATE_SUBMITTED` is an interim transport state before the AdCP handler returns; it is not the mapping for queued AdCP work.
+The [AdCP A2A Profile Extension v3.2](/docs/building/by-layer/L0/a2a-profile-extension) also pins an AdCP `status: "submitted"` response inside an A2A `TASK_STATE_COMPLETED` Task. Native A2A `TASK_STATE_SUBMITTED` is an interim transport state before the AdCP handler returns; it is not the mapping for queued AdCP work.
 
-For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` and states become lowercase. Extraction clients accept both shapes during the compatibility period.
+The v3.2 profile encodes the complete AdCP payload once as JSON text in
+string-valued `data` with `mediaType: "application/json"`. The legacy
+`/extensions/adcp/v3` profile and v0.3 compatibility paths use object-valued
+`data`; they are separate negotiated profiles, not fallback representations for
+v3.2.
 
 ## Required Structure
 
 ### Final Responses (status: "completed")
 
 **AdCP responses over A2A MUST:**
-- Include at least one DataPart (a Part carrying a non-null `data` field) containing the task response payload
+- Include at least one DataPart whose string-valued `data` field contains the task response as JSON text and whose `mediaType` is `application/json`
 - Use single artifact with multiple parts (not multiple artifacts)
 - Use the last DataPart as authoritative when multiple data parts exist
 - NOT wrap AdCP payloads in custom framework objects (no `{ response: {...} }` wrappers)
@@ -45,12 +49,8 @@ For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` 
           "text": "Found 12 video products perfect for pet food campaigns"
         },
         {
-          "data": {
-            "status": "completed",
-            "cache_scope": "account",
-            "products": [...],
-            "total": 12
-          }
+          "data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"products\":[],\"total\":12}",
+          "mediaType": "application/json"
         }
       ]
     }]
@@ -59,7 +59,7 @@ For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` 
 ```
 
 - **TextPart** (Part with `text` field): Human-readable summary — **recommended** but optional
-- **DataPart** (Part with `data` field): Structured AdCP response payload — **required**
+- **DataPart** (Part with string-valued `data` and `mediaType: "application/json"`): JSON-text AdCP response payload — **required**
 - **FilePart** (Part with `url` or `raw` field): Optional file references (previews, reports)
 
 AdCP profile responses use exactly one artifact. Put related TextParts,
@@ -79,11 +79,8 @@ When the AdCP handler returns `status: "submitted"`, the handler invocation is f
     "artifacts": [{
       "artifactId": "adcp-result",
       "parts": [{
-        "data": {
-          "status": "submitted",
-          "task_id": "adcp-task-9a21",
-          "message": "Awaiting IO signature"
-        }
+        "data": "{\"status\":\"submitted\",\"task_id\":\"adcp-task-9a21\",\"message\":\"Awaiting IO signature\"}",
+        "mediaType": "application/json"
       }]
     }]
   }
@@ -113,10 +110,8 @@ Interim status updates are delivered as `TaskStatusUpdateEvent`, with optional p
           "text": "Processing your request. Analyzing 50,000 inventory records..."
         },
         {
-          "data": {
-            "percentage": 45,
-            "current_step": "analyzing_inventory"
-          }
+          "data": "{\"percentage\":45,\"current_step\":\"analyzing_inventory\"}",
+          "mediaType": "application/json"
         }
       ]
     }
@@ -136,26 +131,14 @@ When delivered over SSE or as a push notification, this event is wrapped in the 
 
 ### Framework Wrappers (NOT PERMITTED)
 
-**CRITICAL**: DataPart content MUST be the direct AdCP response payload, not wrapped in framework-specific objects.
+**CRITICAL**: After decoding the DataPart JSON text once, its content MUST be the direct AdCP response payload, not wrapped in framework-specific objects.
 
 ```json
-// ❌ WRONG - Wrapped in custom object
-{
-  "data": {
-    "response": {           // ← Framework wrapper
-      "products": [...]
-    }
-  }
-}
+// ❌ WRONG decoded payload - wrapped in custom object
+{"response": {"products": []}}
 
-// ✅ CORRECT - Direct AdCP payload
-{
-  "data": {
-    "status": "completed",
-    "cache_scope": "account",
-    "products": []
-  }
-}
+// ✅ CORRECT decoded payload - direct AdCP response
+{"status": "completed", "cache_scope": "account", "products": []}
 ```
 
 **Why this matters:**
@@ -236,10 +219,20 @@ function handleA2aResponse(response) {
 Extract data from the appropriate location based on webhook type:
 
 ```javascript
-// Part-type detectors: field presence (A2A 1.0) with kind fallback (v0.3)
-const isDataPart = (p) =>
-  p.data != null && typeof p.data === 'object' && !Array.isArray(p.data);
+// The negotiated profile selects decoding; never infer it from the value type.
+const isDataPart = (p) => p.data != null;
 const isTextPart = (p) => typeof p.text === 'string';
+
+function decodeV3_2DataPart(part) {
+  if (typeof part.data !== 'string' || part.mediaType !== 'application/json') {
+    throw new Error('Invalid AdCP v3.2 DataPart');
+  }
+  const payload = JSON.parse(part.data);
+  if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Invalid AdCP v3.2 payload: expected an object');
+  }
+  return payload;
+}
 
 // For FINAL statuses (Task object) - extract from .artifacts, return null if absent
 function extractDataPartFromArtifacts(response) {
@@ -248,7 +241,7 @@ function extractDataPartFromArtifacts(response) {
 
   // Use LAST data part as authoritative
   const lastDataPart = dataParts[dataParts.length - 1];
-  const payload = lastDataPart.data;
+  const payload = decodeV3_2DataPart(lastDataPart);
 
   // CRITICAL: Payload MUST be direct AdCP response, not a framework wrapper.
   // A wrapper is a single-key object { response: {...} } — reject it.
@@ -278,7 +271,7 @@ function extractTextPartFromArtifacts(response) {
 // For INTERIM statuses (TaskStatusUpdateEvent) - extract from status.message.parts
 function extractDataPartFromMessage(response) {
   const dataPart = response.status?.message?.parts?.find(isDataPart);
-  return dataPart?.data || null;
+  return dataPart ? decodeV3_2DataPart(dataPart) : null;
 }
 
 function extractTextPartFromMessage(response) {
@@ -287,7 +280,10 @@ function extractTextPartFromMessage(response) {
 }
 ```
 
-These detectors work for both wire formats: a 1.0 DataPart has `data` set (no `kind`), a v0.3 DataPart has `kind: "data"` and `data` set — both satisfy `p.data != null`.
+Field-presence detection works for both A2A wire versions. The decoder above is
+specific to the negotiated v3.2 profile; a legacy `/v3` or v0.3 adapter instead
+requires object-valued `data`. Implementations select that decoder from the
+active profile and MUST NOT retry with it after v3.2 decoding fails.
 
 ### Rule 3: Schema Validation
 
@@ -340,7 +336,10 @@ async function executeTask(taskName, params) {
     message: {
       messageId: crypto.randomUUID(),
       role: 'ROLE_USER',
-      parts: [{ data: { skill: taskName, input: params } }]
+      parts: [{
+        data: JSON.stringify({ skill: taskName, input: params }),
+        mediaType: 'application/json'
+      }]
     }
   });
 
@@ -394,8 +393,8 @@ Task artifact uses last-DataPart authority:
       "artifactId": "product-result",
       "parts": [
         {"text": "Found 12 products"},
-        {"data": {"progress": 25}},
-        {"data": {"status": "completed", "cache_scope": "account", "products": [...], "total": 12}}
+        {"data": "{\"progress\":25}", "mediaType": "application/json"},
+        {"data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"products\":[],\"total\":12}", "mediaType": "application/json"}
       ]
     }]
   }
@@ -423,7 +422,7 @@ const workingResponse = {
       role: 'ROLE_AGENT',
       parts: [
         { text: 'Processing inventory...' },
-        { data: { percentage: 50, current_step: 'analyzing' } }
+        { data: '{"percentage":50,"current_step":"analyzing"}', mediaType: 'application/json' }
       ]
     }
   }
@@ -445,7 +444,7 @@ const completedResponse = {
     artifactId: 'product-result',
     parts: [
       { text: 'Found 3 products' },
-      { data: { status: 'completed', cache_scope: 'account', products: [...], total: 3 } }
+      { data: '{"status":"completed","cache_scope":"account","products":[],"total":3}', mediaType: 'application/json' }
     ]
   }]
 };
@@ -461,7 +460,7 @@ const wrappedResponse = {
   artifacts: [{
     artifactId: 'product-result',
     parts: [
-      { data: { response: { products: [...] } } }
+      { data: '{"response":{"products":[]}}', mediaType: 'application/json' }
     ]
   }]
 };
@@ -519,14 +518,8 @@ response selects the task branch:
     "artifacts": [{
       "artifactId": "signal-result",
       "parts": [{
-        "data": {
-          "status": "completed",
-          "signals": [],
-          "errors": [{
-            "code": "NO_DATA_IN_REGION",
-            "message": "No signal data available for Australia"
-          }]
-        }
+        "data": "{\"status\":\"completed\",\"signals\":[],\"errors\":[{\"code\":\"NO_DATA_IN_REGION\",\"message\":\"No signal data available for Australia\"}]}",
+        "mediaType": "application/json"
       }]
     }]
   }
@@ -546,12 +539,8 @@ mechanism.
     "artifacts": [{
       "artifactId": "adcp-error",
       "parts": [{
-        "data": {
-          "adcp_error": {
-            "code": "AUTHENTICATION_FAILED",
-            "message": "The API token is invalid or expired"
-          }
-        }
+        "data": "{\"adcp_error\":{\"code\":\"AUTHENTICATION_FAILED\",\"message\":\"The API token is invalid or expired\"}}",
+        "mediaType": "application/json"
       }]
     }]
   }
@@ -583,7 +572,7 @@ the same Task structure used by `SendMessageResponse`:
       "artifactId": "media-buy-result",
       "parts": [
         { "text": "Media buy approved and live" },
-        { "data": { "status": "completed", "media_buy_id": "mb_456", "confirmed_at": "2026-01-22T10:30:00.000Z", "revision": 1, "packages": [] } }
+        { "data": "{\"status\":\"completed\",\"media_buy_id\":\"mb_456\",\"confirmed_at\":\"2026-01-22T10:30:00.000Z\",\"revision\":1,\"packages\":[]}", "mediaType": "application/json" }
       ]
     }]
   }
@@ -608,7 +597,7 @@ its own `messageId` plus the matching `taskId` and `contextId`:
         "role": "ROLE_AGENT",
         "parts": [
           { "text": "Select a supported campaign start time." },
-          { "data": { "reason": "START_TIME_REQUIRED" } }
+          { "data": "{\"reason\":\"START_TIME_REQUIRED\"}", "mediaType": "application/json" }
         ]
       }
     }
@@ -630,7 +619,7 @@ artifact. They never replace the typed AdCP response:
     "artifacts": [{
       "artifactId": "creative-result",
       "parts": [
-        { "data": { "status": "completed", "creative_id": "cr_789" } },
+        { "data": "{\"status\":\"completed\",\"creative_id\":\"cr_789\"}", "mediaType": "application/json" },
         { "url": "https://cdn.example.com/cr_789/preview.mp4", "filename": "preview.mp4", "mediaType": "video/mp4" }
       ]
     }]
@@ -652,12 +641,13 @@ When implementing A2A responses for AdCP:
 
 **Final Responses (status: "completed" or "failed") - Use `Task` object:**
 - [ ] **Always include status field** from TaskState enum
-- [ ] **Use `.artifacts` array with at least one DataPart** containing AdCP response payload
+- [ ] **Use `.artifacts` array with at least one DataPart** containing JSON-text AdCP response payload
 - [ ] **Include TextPart** with human-readable message (recommended for UX)
 - [ ] **Use single artifact with multiple parts** (not multiple artifacts)
 - [ ] **Use last DataPart as authoritative** if multiple exist
 - [ ] **Never nest AdCP data in custom wrappers** (no `{ response: {...} }` objects)
-- [ ] **DataPart content MUST match AdCP schemas** (validate against `[task]-response.json`)
+- [ ] **DataPart MUST be string-valued JSON with `mediaType: application/json`**, decoded exactly once at the adapter boundary
+- [ ] **Decoded DataPart content MUST match AdCP schemas** (validate against `[task]-response.json`)
 - [ ] **Map an AdCP `status: "submitted"` response to A2A completed**, keep `task_id` only in the DataPart, and direct clients to the AdCP `get_task_status` task
 
 **Interim A2A Responses (status: "working", native "submitted", "input-required") - Use `TaskStatusUpdateEvent`:**

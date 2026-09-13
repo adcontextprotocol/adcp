@@ -61,7 +61,7 @@
     "test:functional-request-signing-contract": "node --test --test-force-exit --test-timeout=30000 tests/functional-request-signing-contract.test.cjs",
     "test:webhook-receiver-envelope": "node --test --test-force-exit --test-timeout=30000 tests/webhook-receiver-envelope.test.cjs",
     "test:oauth-setup-vectors": "node --test --test-force-exit --test-timeout=30000 tests/oauth-setup-vectors.test.cjs",
-    "test:a2a-profile-extension": "node --test --test-force-exit --test-timeout=30000 tests/a2a-profile-extension-v3.test.cjs",
+    "test:a2a-profile-extension": "node --test --test-force-exit --test-timeout=30000 tests/a2a-profile-extension-v3.test.cjs tests/a2a-profile-extension-v3-2.test.cjs",
     "test:transport-errors": "node --test --test-force-exit --test-timeout=30000 tests/transport-error-mapping.test.cjs tests/request-signing-body-integrity.test.cjs",
     "test:targeting-overlay-vectors": "node --test --test-force-exit --test-timeout=30000 tests/media-buy-targeting-overlay-vectors.test.cjs",
     "test:targeting-aware-discovery": "node --test --test-force-exit --test-timeout=30000 tests/targeting-aware-discovery.test.cjs",

@@ -36,13 +36,13 @@ Examples below use **1.0 wire format** (no `kind` field, ProtoJSON enums). For a
 
 ## A2A Client Setup
 
-Deterministic AdCP invocation on A2A 1.0 uses the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension), identified by `https://adcontextprotocol.org/extensions/adcp/v3`. Clients activate it on every request with `A2A-Extensions`.
+Deterministic AdCP 3.2 invocation on A2A 1.0 uses the [AdCP A2A Profile Extension v3.2](/docs/building/by-layer/L0/a2a-profile-extension), identified by `https://adcontextprotocol.org/extensions/adcp/v3.2`. Clients activate it on every request with `A2A-Extensions`. The older `/v3` identity remains the frozen object-valued profile for existing 3.0/3.1 integrations.
 
 ### 1. Initialize an A2A 1.0 client
 
 ```javascript
 const endpoint = 'https://seller.example/a2a/jsonrpc';
-const profileUri = 'https://adcontextprotocol.org/extensions/adcp/v3';
+const profileUri = 'https://adcontextprotocol.org/extensions/adcp/v3.2';
 
 function normalizeState(state) {
   return state?.replace(/^TASK_STATE_/, '').toLowerCase().replaceAll('_', '-');
@@ -99,7 +99,7 @@ const a2a = {
 // Check available skills
 const agentCard = await a2a.getAgentCard();
 const adcpProfile = agentCard.capabilities.extensions?.find(
-  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp/v3'
+  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp/v3.2'
 );
 if (!adcpProfile) throw new Error('Agent does not advertise the AdCP A2A profile');
 console.log(agentCard.skills.map(s => s.id));
@@ -114,13 +114,14 @@ const response = await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "get_products",
         input: {
           buying_mode: "brief",
           brief: "Find video products for a pet food campaign"
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -134,7 +135,11 @@ console.log(response.message);  // Human-readable summary
 
 ### Profile Invocation Messages
 
-A profile invocation contains exactly one authoritative DataPart with `{ skill, input }`. It may also contain advisory TextParts. Text never overrides the structured input:
+A profile invocation contains exactly one authoritative DataPart whose `data`
+is JSON text encoding `{ skill, input }` and whose `mediaType` is
+`application/json`. Keeping the complete envelope in the protobuf string arm
+prevents integer widening. The Message may also contain advisory TextParts;
+text never overrides the decoded input:
 
 ```javascript
 // SDK-generated display label + authoritative structured invocation
@@ -147,7 +152,7 @@ const response = await a2a.send({
         text: "AdCP task: create_media_buy"
       },
       {
-        data: {
+        data: JSON.stringify({
           skill: "create_media_buy",
           input: {
             idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
@@ -158,7 +163,8 @@ const response = await a2a.send({
             start_time: "asap",
             end_time: "2027-06-30T23:59:59Z"
           }
-        }
+        }),
+        mediaType: "application/json"
       }
     ]
   }
@@ -182,13 +188,14 @@ const task = await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "get_products",
         input: {
           buying_mode: "brief",
           brief: "Premium CTV inventory under $50 CPM"
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -206,13 +213,14 @@ const task = await a2a.send({
         text: "AdCP task: get_products"
       },
       {
-        data: {
+        data: JSON.stringify({
           skill: "get_products",
           input: {
             buying_mode: "brief",
             brief: "Premium CTV inventory for a spring campaign under $45 CPM"
           }
-        }
+        }),
+        mediaType: "application/json"
       }
     ]
   }
@@ -229,7 +237,10 @@ The profile rejects `parameters` as an alias and rejects ambiguous messages with
 
 ### Normalized SDK Response Structure
 
-AdCP responses over A2A **MUST** include at least one DataPart (a Part carrying a `data` field) containing the task response. A TextPart (a Part carrying a `text` field) for human-readable messages is **recommended** but optional.
+AdCP 3.2 responses over A2A **MUST** include at least one DataPart whose
+string-valued `data` field contains the task response as JSON text and whose
+`mediaType` is `application/json`. A TextPart for human-readable messages is
+**recommended** but optional.
 
 The following is the normalized `@adcp/sdk` client shape. It flattens raw A2A
 `Task.status.state` to lowercase `status` and exposes the A2A Task `id` as
@@ -248,12 +259,8 @@ The following is the normalized `@adcp/sdk` client shape. It flattens raw A2A
         "text": "Found 12 video products perfect for pet food campaigns"
       },
       {
-        "data": {
-          "status": "completed",
-          "cache_scope": "account",
-          "products": [...],
-          "total": 12
-        }
+        "data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"products\":[],\"total\":12}",
+        "mediaType": "application/json"
       }
     ]
   }]
@@ -284,7 +291,11 @@ if (artifact) {
   const isData = (p) => p.data != null || p.kind === 'data';
 
   const message = artifact.parts?.find(isText)?.text;
-  const data = artifact.parts?.filter(isData).at(-1)?.data;
+  const dataPart = artifact.parts?.filter(isData).at(-1);
+  if (typeof dataPart?.data !== 'string' || dataPart.mediaType !== 'application/json') {
+    throw new Error('Invalid AdCP v3.2 DataPart');
+  }
+  const data = JSON.parse(dataPart.data);
 
   return {
     artifactId: artifact.artifactId,
@@ -318,7 +329,7 @@ await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "create_media_buy",
         input: {
           idempotency_key: crypto.randomUUID(),
@@ -333,7 +344,8 @@ await a2a.send({
             operation_id: operationId
           }
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -398,19 +410,8 @@ When a task finishes, the server sends the full `Task` object wrapped in the A2A
           "text": "Media buy created successfully"
         },
         {
-          "data": {
-            "status": "completed",
-            "media_buy_id": "mb_12345",
-            "confirmed_at": "2026-01-22T10:30:00.000Z",
-            "revision": 1,
-            "creative_deadline": "2026-01-30T23:59:59.000Z",
-            "packages": [
-              {
-                "package_id": "pkg_001",
-                "context": { "line_item": "li_ctv_sports" }
-              }
-            ]
-          }
+          "data": "{\"status\":\"completed\",\"media_buy_id\":\"mb_12345\",\"confirmed_at\":\"2026-01-22T10:30:00.000Z\",\"revision\":1,\"creative_deadline\":\"2026-01-30T23:59:59.000Z\",\"packages\":[{\"package_id\":\"pkg_001\",\"context\":{\"line_item\":\"li_ctv_sports\"}}]}",
+          "mediaType": "application/json"
         }
       ]
     }]
@@ -441,9 +442,8 @@ During execution, interim status updates can include optional data in `status.me
         "parts": [
           { "text": "Campaign budget $150K requires VP approval" },
           {
-            "data": {
-              "reason": "BUDGET_EXCEEDS_LIMIT"
-            }
+            "data": "{\"reason\":\"BUDGET_EXCEEDS_LIMIT\"}",
+            "mediaType": "application/json"
           }
         ]
       },
@@ -453,7 +453,7 @@ During execution, interim status updates can include optional data in `status.me
 }
 ```
 
-**Do not conflate the two `submitted` values.** Native A2A `TASK_STATE_SUBMITTED` is an interim transport state and may appear in a `TaskStatusUpdateEvent` before an AdCP handler returns. An AdCP response whose DataPart contains `status: "submitted"` is instead pinned inside an A2A `TASK_STATE_COMPLETED` Task by the AdCP v3 profile. Observe that durable AdCP operation with `get_task_status`.
+**Do not conflate the two `submitted` values.** Native A2A `TASK_STATE_SUBMITTED` is an interim transport state and may appear in a `TaskStatusUpdateEvent` before an AdCP handler returns. An AdCP response whose decoded JSON-text DataPart contains `status: "submitted"` is instead pinned inside an A2A `TASK_STATE_COMPLETED` Task by the AdCP v3.2 profile. Observe that durable AdCP operation with `get_task_status`.
 
 ### A2A Webhook Payload Types
 
@@ -552,6 +552,16 @@ app.post('/webhooks/a2a/:taskType/:operationId', async (req, res) => {
   // Detect Part type by field presence (1.0) with kind fallback (v0.3)
   const isDataPart = (p) => p.data != null || p.kind === 'data';
   const isTextPart = (p) => typeof p.text === 'string' || p.kind === 'text';
+  const decodeDataPart = (part) => {
+    if (typeof part?.data !== 'string' || part.mediaType !== 'application/json') {
+      throw new Error('Invalid AdCP v3.2 DataPart');
+    }
+    const payload = JSON.parse(part.data);
+    if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('Invalid AdCP v3.2 payload');
+    }
+    return payload;
+  };
 
   // Extract AdCP data based on status
   let adcpData, textMessage;
@@ -565,13 +575,13 @@ app.post('/webhooks/a2a/:taskType/:operationId', async (req, res) => {
       ?? webhook.status?.message?.parts?.find(isDataPart);
     const textPart = artifactParts?.find(isTextPart)
       ?? webhook.status?.message?.parts?.find(isTextPart);
-    adcpData = dataPart?.data;
+    adcpData = dataPart ? decodeDataPart(dataPart) : undefined;
     textMessage = textPart?.text;
   } else {
     // INTERIM STATES: Extract from status.message.parts (optional)
     const dataPart = webhook.status?.message?.parts?.find(isDataPart);
     const textPart = webhook.status?.message?.parts?.find(isTextPart);
-    adcpData = dataPart?.data;
+    adcpData = dataPart ? decodeDataPart(dataPart) : undefined;
     textMessage = textPart?.text;
   }
 
@@ -661,10 +671,13 @@ const response1 = await a2a.send({
   message: {
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
-    parts: [{ data: {
-      skill: "get_products",
-      input: { buying_mode: "brief", brief: "Find premium video products" }
-    }}]
+    parts: [{
+      data: JSON.stringify({
+        skill: "get_products",
+        input: { buying_mode: "brief", brief: "Find premium video products" }
+      }),
+      mediaType: "application/json"
+    }]
   }
 });
 
@@ -674,17 +687,20 @@ const response2 = await a2a.send({
     messageId: crypto.randomUUID(),
     contextId: response1.contextId,
     role: "ROLE_USER",
-    parts: [{ data: {
-      skill: "get_products",
-      input: { buying_mode: "brief", brief: "Premium sports video products" }
-    }}]
+    parts: [{
+      data: JSON.stringify({
+        skill: "get_products",
+        input: { buying_mode: "brief", brief: "Premium sports video products" }
+      }),
+      mediaType: "application/json"
+    }]
   }
 });
 ```
 
 ## File and Multi-Modal Inputs
 
-Generic A2A messages can combine text, data, and files. The activated AdCP v3 A2A profile deliberately narrows invocation messages to one structured DataPart plus optional advisory TextParts. Put resource references in the selected AdCP task's typed `input`; do not add a FilePart that the task schema cannot validate.
+Generic A2A messages can combine text, data, and files. The activated AdCP v3.2 A2A profile deliberately narrows invocation messages to one JSON-text DataPart plus optional advisory TextParts. Put resource references in the selected AdCP task's typed `input`; do not add a FilePart that the task schema cannot validate.
 
 ### Creative Upload with Context
 
@@ -699,7 +715,7 @@ const response = await a2a.send({
         text: "AdCP task: sync_creatives"
       },
       {
-        data: {
+        data: JSON.stringify({
           skill: "sync_creatives",
           input: {
             idempotency_key: crypto.randomUUID(),
@@ -720,14 +736,15 @@ const response = await a2a.send({
               }
             }]
           }
-        }
+        }),
+        mediaType: "application/json"
       }
     ]
   }
 });
 ```
 
-If a task schema does not define a field for the file or resource, that input is not supported by the AdCP v3 A2A profile. Use a separate generic A2A interface or first transform the resource into schema-valid AdCP fields.
+If a task schema does not define a field for the file or resource, that input is not supported by the AdCP v3.2 A2A profile. Use a separate generic A2A interface or first transform the resource into schema-valid AdCP fields.
 
 ## Available Skills
 
@@ -743,12 +760,13 @@ await a2a.send({
     messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      data: {
+      data: JSON.stringify({
         skill: "skill_id",          // Exact AgentSkill.id from Agent Card
         input: {                   // Task-specific request
           // See task documentation for request fields
         }
-      }
+      }),
+      mediaType: "application/json"
     }]
   }
 });
@@ -820,8 +838,8 @@ In 1.0, the top-level `url` and `protocolVersion` fields from v0.3 are replaced 
     "extendedAgentCard": false,
     "extensions": [
       {
-        "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
-        "description": "AdCP structured task invocation profile",
+        "uri": "https://adcontextprotocol.org/extensions/adcp/v3.2",
+        "description": "AdCP JSON-text task invocation profile",
         "required": true
       }
     ]
@@ -876,10 +894,10 @@ Python SDK servers must also pass `enable_v0_3_compat=True` when constructing ro
 Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for runtime capability discovery. The Agent Card extension declaration identifies the A2A wire profile only.
 </Note>
 
-Include the versioned AdCP profile under `capabilities.extensions[]` and activate it on every invocation with `A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3`.
+Include the versioned AdCP profile under `capabilities.extensions[]` and activate it on every invocation with `A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3.2`.
 
 The A2A protocol's `AgentExtension` has:
-- **`uri`**: Extension identifier (`https://adcontextprotocol.org/extensions/adcp/v3`)
+- **`uri`**: Extension identifier (`https://adcontextprotocol.org/extensions/adcp/v3.2`)
 - **`description`**: Human-readable description of how you use AdCP
 - **`required`**: `true` on an interface that requires the structured AdCP profile
 - **`params`**: Omitted or empty for this profile
@@ -891,7 +909,7 @@ const agentCard = await fetch('https://sales.example.com/.well-known/agent-card.
 
 // Find the AdCP profile under AgentCapabilities.
 const adcpExt = agentCard.capabilities.extensions?.find(
-  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp/v3'
+  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp/v3.2'
 );
 
 if (adcpExt) {
@@ -900,7 +918,10 @@ if (adcpExt) {
     message: {
       messageId: crypto.randomUUID(),
       role: 'ROLE_USER',
-      parts: [{ data: { skill: 'get_adcp_capabilities', input: {} } }]
+      parts: [{
+        data: JSON.stringify({ skill: 'get_adcp_capabilities', input: {} }),
+        mediaType: 'application/json'
+      }]
     }
   });
   console.log(capabilities);
@@ -933,7 +954,10 @@ async function handleA2aResponse(response, invocation) {
           taskId: response.taskId,
           contextId: response.contextId,
           role: "ROLE_USER",
-          parts: [{ data: { skill: invocation.skill, input: refinedInput } }]
+          parts: [{
+            data: JSON.stringify({ skill: invocation.skill, input: refinedInput }),
+            mediaType: 'application/json'
+          }]
         }
       });
 
@@ -945,7 +969,11 @@ async function handleA2aResponse(response, invocation) {
       // Extract last DataPart — presence of .data field identifies it in 1.0
       const parts = response.artifacts[0].parts;
       const dataParts = parts.filter(p => p.data != null || p.kind === 'data');
-      return dataParts[dataParts.length - 1].data;
+      const dataPart = dataParts[dataParts.length - 1];
+      if (typeof dataPart.data !== 'string' || dataPart.mediaType !== 'application/json') {
+        throw new Error('Invalid AdCP v3.2 DataPart');
+      }
+      return JSON.parse(dataPart.data);
 
     case 'failed':
       throw new Error(response.message);
@@ -960,14 +988,15 @@ const result = await a2a.send({
     parts: [
       { text: "AdCP task: get_products" },
       {
-        data: {
+        data: JSON.stringify({
           skill: "get_products",
           input: {
             idempotency_key: "550e8400-e29b-41d4-a716-446655442071",
             buying_mode: "brief",
             brief: "Luxury car inventory for in-market shoppers"
           }
-        }
+        }),
+        mediaType: "application/json"
       }
     ]
   }

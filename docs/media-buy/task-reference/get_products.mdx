@@ -1572,10 +1572,8 @@ The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diag
     {
       "parts": [
         {
-          "data": {
-            "status": "rejected",
-            "reason": "The requested budget is below the minimum for this inventory."
-          }
+          "data": "{\"status\":\"rejected\",\"reason\":\"The requested budget is below the minimum for this inventory.\"}",
+          "mediaType": "application/json"
         }
       ]
     }
@@ -1854,15 +1852,8 @@ Send the profile URI in `A2A-Extensions` and use the structured invocation body:
     "messageId": "msg-get-products-001",
     "role": "ROLE_USER",
     "parts": [{
-      "data": {
-        "skill": "get_products",
-        "input": {
-          "idempotency_key": "550e8400-e29b-41d4-a716-446655441034",
-          "buying_mode": "brief",
-          "brief": "CTV inventory for sports audience",
-          "brand": { "domain": "acmecorp.com" }
-        }
-      }
+      "data": "{\"skill\":\"get_products\",\"input\":{\"idempotency_key\":\"550e8400-e29b-41d4-a716-446655441034\",\"buying_mode\":\"brief\",\"brief\":\"CTV inventory for sports audience\",\"brand\":{\"domain\":\"acmecorp.com\"}}}",
+      "mediaType": "application/json"
     }]
   }
 }
@@ -1881,7 +1872,7 @@ completed and carries the direct AdCP response in its artifact:
       "artifactId": "adcp-result",
       "parts": [
         { "text": "Found 3 products matching your requirements" },
-        { "data": { "status": "completed", "cache_scope": "account", "products": [] } }
+        { "data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"products\":[]}", "mediaType": "application/json" }
       ]
     }]
   }
@@ -1907,10 +1898,8 @@ Real-time updates via SSE when clarification is needed:
         "parts": [
           { "text": "I need a bit more information. What's your budget range and campaign duration?" },
           {
-            "data": {
-              "reason": "CLARIFICATION_NEEDED",
-              "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
-            }
+            "data": "{\"reason\":\"CLARIFICATION_NEEDED\",\"suggestions\":[\"$50K-$100K\",\"1 month\",\"Q1 2024\"]}",
+            "mediaType": "application/json"
           }
         ]
       }
@@ -1929,13 +1918,8 @@ Send a new activated profile invocation in the same context, with the refined ty
     "contextId": "ctx_123",
     "role": "ROLE_USER",
     "parts": [{
-      "data": {
-        "skill": "get_products",
-        "input": {
-          "buying_mode": "brief",
-          "brief": "CTV sports inventory with a $75K budget for three weeks in March"
-        }
-      }
+      "data": "{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"CTV sports inventory with a $75K budget for three weeks in March\"}}",
+      "mediaType": "application/json"
     }]
   }
 }
@@ -1953,7 +1937,7 @@ The resulting Task uses the same completed-artifact mapping as the immediate res
       "artifactId": "adcp-result",
       "parts": [
         { "text": "Found 5 products within your budget" },
-        { "data": { "status": "completed", "cache_scope": "account", "products": [] } }
+        { "data": "{\"status\":\"completed\",\"cache_scope\":\"account\",\"products\":[]}", "mediaType": "application/json" }
       ]
     }]
   }
@@ -1962,12 +1946,12 @@ The resulting Task uses the same completed-artifact mapping as the immediate res
 
 #### Complex Search (AdCP Submitted and Polling)
 
-Activate the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension) on the request:
+Activate the [AdCP A2A Profile Extension v3.2](/docs/building/by-layer/L0/a2a-profile-extension) on the request:
 
 ```http
 POST /api/a2a HTTP/1.1
 A2A-Version: 1.0
-A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3
+A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3.2
 Content-Type: application/json
 ```
 
@@ -1977,15 +1961,8 @@ Content-Type: application/json
     "messageId": "msg-get-products-003",
     "role": "ROLE_USER",
     "parts": [{
-      "data": {
-        "skill": "get_products",
-        "input": {
-          "idempotency_key": "550e8400-e29b-41d4-a716-446655441035",
-          "buying_mode": "brief",
-          "brief": "Premium inventory across all formats for a luxury automotive brand",
-          "brand": { "domain": "acmecorp.com" }
-        }
-      }
+      "data": "{\"skill\":\"get_products\",\"input\":{\"idempotency_key\":\"550e8400-e29b-41d4-a716-446655441035\",\"buying_mode\":\"brief\",\"brief\":\"Premium inventory across all formats for a luxury automotive brand\",\"brand\":{\"domain\":\"acmecorp.com\"}}}",
+      "mediaType": "application/json"
     }]
   }
 }
@@ -2002,11 +1979,8 @@ If custom curation is queued, the A2A invocation is still complete. The AdCP Sub
     "artifacts": [{
       "artifactId": "adcp-result",
       "parts": [{
-        "data": {
-          "status": "submitted",
-          "task_id": "adcp-task-789",
-          "message": "Custom curation queued; typical turnaround 10-30 minutes"
-        }
+        "data": "{\"status\":\"submitted\",\"task_id\":\"adcp-task-789\",\"message\":\"Custom curation queued; typical turnaround 10-30 minutes\"}",
+        "mediaType": "application/json"
       }]
     }]
   }
@@ -2021,13 +1995,8 @@ Later, send a fresh activated invocation of `get_task_status`. Do not poll `a2a-
     "messageId": "msg-get-products-poll-001",
     "role": "ROLE_USER",
     "parts": [{
-      "data": {
-        "skill": "get_task_status",
-        "input": {
-          "task_id": "adcp-task-789",
-          "include_result": true
-        }
-      }
+      "data": "{\"skill\":\"get_task_status\",\"input\":{\"task_id\":\"adcp-task-789\",\"include_result\":true}}",
+      "mediaType": "application/json"
     }]
   }
 }
