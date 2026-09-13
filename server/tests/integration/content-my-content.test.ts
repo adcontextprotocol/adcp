@@ -1024,6 +1024,25 @@ describe('My Content — body, admin scope, status, delete', () => {
         expect(authors.rows).toHaveLength(expectedCount);
       }
     });
+
+    it.each([
+      { missing: 'user_id', body: { display_name: 'Untrusted author' } },
+      { missing: 'display_name', body: { user_id: OTHER_USER_ID } },
+    ])('authorizes before validating missing $missing or trusting body authority', async ({ body }) => {
+      const id = await insertPerspective({
+        slug: 'mc-test-credential-author-validation', title: 'Stored author authority',
+        status: 'draft', proposerUserId: null, workingGroupId: authorityGroupId,
+      });
+      const response = await request(app).post(`/api/me/content/${id}/authors`).send({
+        ...body,
+        adminPrincipal: { id: USER_ID }, authWorkosUserId: USER_ID,
+        proposer_user_id: canonical, isAdmin: true,
+      });
+
+      expect(response.status).toBe(allowed ? 400 : 403);
+      expectCapturedAuthority(authenticated);
+      expect((await pool.query('SELECT 1 FROM content_authors WHERE perspective_id = $1', [id])).rows).toEqual([]);
+    });
   });
 
   describe.each([

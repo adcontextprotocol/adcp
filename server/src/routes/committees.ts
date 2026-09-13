@@ -1191,9 +1191,13 @@ export function createCommitteeRouters(): {
 
   // GET /api/working-groups/:slug/events - Get events for a committee
   publicApiRouter.get('/:slug/events', optionalAuth, async (req: Request, res: Response) => {
+    const user = req.user ? Object.freeze({
+      id: req.user.id,
+      authWorkosUserId: req.user.authWorkosUserId,
+      email: req.user.email,
+    }) : null;
     try {
       const { slug } = req.params;
-      const user = req.user;
 
       const group = await workingGroupDb.getWorkingGroupBySlug(slug);
 
@@ -1204,7 +1208,10 @@ export function createCommitteeRouters(): {
         });
       }
 
-      if (group.slug === 'aao-admin' && !(await canViewWorkingGroupContent(req, group))) {
+      // Resolve exact authority independently of include_subgroups. That
+      // query may select the response shape, never whether authorization runs.
+      const isAAOAdmin = user ? await isAuthenticatedUserAAOAdmin(user) : false;
+      if (group.slug === 'aao-admin' && !isAAOAdmin) {
         return res.status(404).json({
           error: 'Working group not found',
           message: `No working group found with slug: ${slug}`,
@@ -1215,7 +1222,6 @@ export function createCommitteeRouters(): {
         ? user?.authWorkosUserId ?? user?.id
         : user?.id;
       const includeSubgroups = req.query.include_subgroups !== 'false';
-      const isAAOAdmin = includeSubgroups && user?.id ? await isAuthenticatedUserAAOAdmin(user) : false;
       const targetIds = includeSubgroups
         ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null, {
           canViewReservedAdminGroup: isAAOAdmin,

@@ -30,7 +30,7 @@ import { getCompanyDomain } from "../utils/email-domain.js";
 import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { isValidWorkOSMembershipId } from "../utils/workos-validation.js";
-import { isAuthenticatedUserAAOAdmin } from "../addie/admin-status-lookup.js";
+import { AAOAdminLookupUnavailableError, isAuthenticatedUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import {
   createStripeCustomer,
   createCustomerPortalSession,
@@ -1509,17 +1509,17 @@ export function createOrganizationsRouter(): Router {
   //  auto_provision_brand_hierarchy_children)
   router.patch('/:orgId/settings', requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
+      const user = Object.freeze({ id: req.user!.id });
+      const principal = Object.freeze({
+        id: req.user!.authWorkosUserId ?? req.user!.id,
+        email: req.user!.email,
+      });
+      const isStaticAdminApiKey =
+        (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
       const { orgId } = req.params;
-      const {
-        company_type,
-        revenue_tier,
-        auto_provision_verified_domain,
-        auto_provision_brand_hierarchy_children,
-      } = req.body;
 
       // Verify user is member of this organization with owner or admin role
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, principal.id, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1534,6 +1534,20 @@ export function createOrganizationsRouter(): Router {
           error: 'Insufficient permissions',
           message: 'Only organization owners and admins can update settings',
         });
+      }
+
+      // Resolve the privilege-grant capability from trusted authority before
+      // request fields decide which settings to write. Preserve ordinary
+      // settings updates when only the separate platform lookup is unavailable.
+      let canChangeAutoProvision = userRole === 'owner' || isStaticAdminApiKey;
+      let autoProvisionLookupError: AAOAdminLookupUnavailableError | undefined;
+      if (!canChangeAutoProvision) {
+        try {
+          canChangeAutoProvision = await isAuthenticatedUserAAOAdmin(principal);
+        } catch (error) {
+          if (!(error instanceof AAOAdminLookupUnavailableError)) throw error;
+          autoProvisionLookupError = error;
+        }
       }
 
       // Check if organization is personal (cannot have company type/revenue tier)
@@ -1551,6 +1565,13 @@ export function createOrganizationsRouter(): Router {
           message: 'Personal workspaces cannot have company type or revenue tier',
         });
       }
+
+      const {
+        company_type,
+        revenue_tier,
+        auto_provision_verified_domain,
+        auto_provision_brand_hierarchy_children,
+      } = req.body;
 
       // Validate company_type if provided
       if (company_type !== undefined && company_type !== null && !COMPANY_TYPE_VALUES.includes(company_type)) {
@@ -1592,14 +1613,12 @@ export function createOrganizationsRouter(): Router {
       // unilaterally (admins can promote auto-joined members to admin under
       // the role-cap policy). Restrict to owner-only. AAO super-admin (or
       // the static admin API key for internal tooling) can override.
-      const isPrivilegeGrant =
-        auto_provision_verified_domain !== undefined ||
-        auto_provision_brand_hierarchy_children !== undefined;
-      if (isPrivilegeGrant && userRole !== 'owner') {
-        const isStaticAdminApiKey =
-          (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
-        const isAAOAdmin = isStaticAdminApiKey || (await isAuthenticatedUserAAOAdmin(user));
-        if (!isAAOAdmin) {
+      if (!canChangeAutoProvision) {
+        if (
+          auto_provision_verified_domain !== undefined
+          || auto_provision_brand_hierarchy_children !== undefined
+        ) {
+          if (autoProvisionLookupError) throw autoProvisionLookupError;
           return res.status(403).json({
             error: 'Insufficient permissions',
             message: 'Only owners can change auto-provisioning settings',
