@@ -1048,6 +1048,10 @@ export function createCommitteeRouters(): {
       const visibleSubgroups: typeof allSubgroups = [];
       for (const sg of allSubgroups) {
         if (sg.status !== 'active') continue;
+        if (sg.slug === 'aao-admin') {
+          if (isAAOAdmin) visibleSubgroups.push(sg);
+          continue;
+        }
         if (!sg.is_private || isAAOAdmin) {
           visibleSubgroups.push(sg);
           continue;
@@ -1131,7 +1135,10 @@ export function createCommitteeRouters(): {
       const includeSubgroups = req.query.include_subgroups !== 'false';
       const isAAOAdmin = user?.id ? await isAuthenticatedUserAAOAdmin(user) : false;
       const targetIds = includeSubgroups
-        ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null, { isAdmin: isAAOAdmin })
+        ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null, {
+          isAdmin: isAAOAdmin,
+          canViewReservedAdminGroup: isAAOAdmin,
+        })
         : [group.id];
 
       const result = await pool.query(
@@ -1208,8 +1215,11 @@ export function createCommitteeRouters(): {
         ? user?.authWorkosUserId ?? user?.id
         : user?.id;
       const includeSubgroups = req.query.include_subgroups !== 'false';
+      const isAAOAdmin = includeSubgroups && user?.id ? await isAuthenticatedUserAAOAdmin(user) : false;
       const targetIds = includeSubgroups
-        ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null)
+        ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null, {
+          canViewReservedAdminGroup: isAAOAdmin,
+        })
         : [group.id];
 
       const events = await eventsDb.getEventsByCommittee(targetIds, { includeUnpublished: false });

@@ -429,4 +429,116 @@ describe('private working-group document reads', () => {
     });
   });
 
+  describe('reserved administrator subgroup behind an ordinary public parent', () => {
+    const reserved = { ...privateGroup, slug: 'aao-admin', parent_id: publicGroup.id };
+    const ordinaryPrivate = {
+      ...privateGroup,
+      id: '55555555-5555-4555-8555-555555555555',
+      slug: 'ordinary-private-child',
+      parent_id: publicGroup.id,
+    };
+    const paths = [
+      '/api/working-groups/public-group',
+      '/api/working-groups/public-group/posts',
+      '/api/working-groups/public-group/events',
+    ];
+
+    beforeEach(() => {
+      db.getWorkingGroupBySlug.mockResolvedValue(publicGroup);
+      db.getWorkingGroupById.mockResolvedValue(publicGroup);
+      db.isMember.mockImplementation(async (groupId: string, userId: string) => (
+        groupId === reserved.id && userId === 'admin'
+      ));
+      db.isFamilyMember.mockResolvedValue(false);
+      db.getMembershipsByWorkingGroup.mockImplementation(async (groupId: string) => (
+        groupId === reserved.id ? [{ workos_user_id: 'admin' }] : []
+      ));
+      db.listSubgroups.mockResolvedValue([reserved, ordinaryPrivate]);
+      db.countFamilyMembers.mockResolvedValue(1);
+      // This mock checks route-to-helper permission plumbing. The real helper's
+      // reserved and ordinary privacy policies are tested independently.
+      db.getVisibleDescendantIds.mockImplementation(async (
+        groupId: string, _userId: string | null,
+        options: { isAdmin?: boolean; canViewReservedAdminGroup?: boolean } = {},
+      ) => [
+        groupId,
+        ...(options.canViewReservedAdminGroup ? [reserved.id] : []),
+        ...(options.isAdmin ? [ordinaryPrivate.id] : []),
+      ]);
+      db.query.mockImplementation(async (_sql: string, params: [string[]]) => ({
+        rows: params[0].includes(reserved.id)
+          ? [{ id: 'reserved-post', content: 'Reserved admin content' }]
+          : [],
+      }));
+      db.getEventsByCommittee.mockImplementation(async (groupIds: string[]) => [
+        ...(groupIds.includes(reserved.id) ? [{ id: 'reserved-event' }] : []),
+        ...(groupIds.includes(ordinaryPrivate.id) ? [{ id: 'ordinary-private-event' }] : []),
+      ]);
+    });
+
+    function includesReserved(response: request.Response, path: string): boolean {
+      if (path.endsWith('/posts')) return response.body.posts.some((post: { id: string }) => post.id === 'reserved-post');
+      if (path.endsWith('/events')) return response.body.some((event: { id: string }) => event.id === 'reserved-event');
+      return response.body.working_group.subgroups.some((group: { slug: string }) => group.slug === 'aao-admin');
+    }
+
+    it.each(paths)('retains exact admin access through the ordinary parent at %s', async (path) => {
+      const response = await request(createApp()).get(path)
+        .set('x-test-user', 'member').set('x-test-authenticated-user', 'admin').expect(200);
+      expect(includesReserved(response, path)).toBe(true);
+    });
+
+    it.each(paths)('does not inherit reserved subgroup access through a canonical admin at %s', async (path) => {
+      const response = await request(createApp()).get(path)
+        .set('x-test-user', 'admin').set('x-test-authenticated-user', 'member').expect(200);
+      expect(includesReserved(response, path)).toBe(false);
+      expect(db.getMembershipsByWorkingGroup).not.toHaveBeenCalledWith(reserved.id);
+      if (path.endsWith('/posts')) expect(db.query.mock.calls[0][1][0]).not.toContain(reserved.id);
+      if (path.endsWith('/events')) expect(db.getEventsByCommittee.mock.calls[0][0]).not.toContain(reserved.id);
+    });
+
+    it.each(paths)('honors break-glass for the reserved subgroup through %s', async (path) => {
+      process.env.ADMIN_EMAILS = 'break-glass@example.test';
+      const response = await request(createApp()).get(path)
+        .set('x-test-user', 'admin').set('x-test-authenticated-user', 'member')
+        .set('x-test-email', 'break-glass@example.test').expect(200);
+      expect(includesReserved(response, path)).toBe(true);
+    });
+
+    it.each(paths)('returns retryable unavailable before reading reserved subgroup data through %s', async (path) => {
+      db.authorityUnavailable = true;
+      const response = await request(createApp()).get(path)
+        .set('x-test-user', 'admin').set('x-test-authenticated-user', 'member').expect(503);
+      expect(response.body.error).toBe('admin_authorization_unavailable');
+      expect(response.headers['retry-after']).toBe('5');
+      expect(db.getMembershipsByWorkingGroup).not.toHaveBeenCalledWith(reserved.id);
+      expect(db.getVisibleDescendantIds).not.toHaveBeenCalled();
+      expect(db.query).not.toHaveBeenCalled();
+      expect(db.getEventsByCommittee).not.toHaveBeenCalled();
+    });
+
+    it.each(paths)('keeps the ordinary parent readable anonymously without its reserved subgroup at %s', async (path) => {
+      const response = await request(createApp()).get(path).expect(200);
+      expect(includesReserved(response, path)).toBe(false);
+      expect(db.getMembershipsByWorkingGroup).not.toHaveBeenCalledWith(reserved.id);
+    });
+
+    it('does not expose a reserved subgroup marked public in parent details', async () => {
+      db.listSubgroups.mockResolvedValue([{ ...reserved, is_private: false }]);
+      const response = await request(createApp()).get(paths[0])
+        .set('x-test-user', 'admin').set('x-test-authenticated-user', 'member').expect(200);
+      expect(includesReserved(response, paths[0])).toBe(false);
+      expect(db.getMembershipsByWorkingGroup).not.toHaveBeenCalledWith(reserved.id);
+    });
+
+    it('preserves ordinary private-child event membership despite exact platform authority', async () => {
+      const response = await request(createApp()).get(paths[2])
+        .set('x-test-user', 'member').set('x-test-authenticated-user', 'admin').expect(200);
+      expect(response.body).toEqual([{ id: 'reserved-event' }]);
+      expect(db.getVisibleDescendantIds).toHaveBeenCalledWith(publicGroup.id, 'member', {
+        canViewReservedAdminGroup: true,
+      });
+    });
+  });
+
 });
