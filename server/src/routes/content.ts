@@ -17,6 +17,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { contentProposeRateLimiter, contentFetchUrlRateLimiter, contentAssetUploadRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../addie/admin-status-lookup.js';
 import { sendChannelMessage } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 import { notifyPublishedPost, sendSocialAmplificationDM } from '../notifications/slack.js';
@@ -352,6 +353,15 @@ async function getUserInfo(userId: string): Promise<{ name: string } | null> {
 export interface ContentUser {
   id: string;
   email?: string;
+  /** Explicit null means a person-only context with no platform authority. */
+  adminPrincipal?: AAOAdminPrincipal | null;
+}
+
+async function isContentUserAAOAdmin(user: ContentUser): Promise<boolean> {
+  if (user.adminPrincipal === null) return false;
+  if (user.adminPrincipal) return isAuthenticatedUserAAOAdmin(user.adminPrincipal);
+  // Preserve existing HTTP callers until their separate authorization sweep.
+  return isWebUserAAOAdmin(user.id);
 }
 
 /**
@@ -408,7 +418,7 @@ export async function proposeContentForUser(
   // Membership tier gate — Professional+ required for content submission.
   // System users (system:* prefix) and site admins are exempt, matching the
   // rate-limiter carve-out and the existing admin bypass pattern below.
-  if (!user.id.startsWith('system:') && !(await isWebUserAAOAdmin(user.id))) {
+  if (!user.id.startsWith('system:') && !(await isContentUserAAOAdmin(user))) {
     const eligible = await checkContentSubmissionTier(user.id);
     if (!eligible) {
       logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
@@ -488,7 +498,7 @@ export async function proposeContentForUser(
 
   // Check if user can submit to this collection
   const userIsLead = await isCommitteeLead(committeeId, user.id);
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsAdmin = await isContentUserAAOAdmin(user);
 
   // For non-public collections, user must be a member
   if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
@@ -735,7 +745,7 @@ export async function listPendingContentForUser(
     [user.id]
   );
   const ledCommitteeIds = leaderResult.rows.map(c => c.id);
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsAdmin = await isContentUserAAOAdmin(user);
 
   if (!userIsAdmin && ledCommitteeIds.length === 0) {
     return { items: [], summary: { total: 0, by_collection: {} } };
@@ -856,7 +866,7 @@ export async function approveContentForUser(
     };
   }
 
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsAdmin = await isContentUserAAOAdmin(user);
   const userIsLead = content.working_group_id
     ? await isCommitteeLead(content.working_group_id, user.id)
     : false;
@@ -988,7 +998,7 @@ export async function rejectContentForUser(
     };
   }
 
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsAdmin = await isContentUserAAOAdmin(user);
   const userIsLead = content.working_group_id
     ? await isCommitteeLead(content.working_group_id, user.id)
     : false;
@@ -1061,7 +1071,7 @@ export async function requestRevisionsForUser(
     };
   }
 
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsAdmin = await isContentUserAAOAdmin(user);
   const userIsLead = content.working_group_id
     ? await isCommitteeLead(content.working_group_id, user.id)
     : false;

@@ -1,4 +1,5 @@
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-status-lookup.js';
 /**
  * Addie Member Tools
  *
@@ -2516,8 +2517,14 @@ export function createMemberToolHandlers(
   slackUserId?: string,
   certificationModuleContext?: { moduleId?: string },
   accountLinkOrigin?: AccountLinkOriginInput,
+  adminPrincipal?: AAOAdminPrincipal,
 ): Map<string, (input: Record<string, unknown>) => Promise<ToolHandlerResult>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<ToolHandlerResult>>();
+  // Slack hydration maps the actual Slack actor to a WorkOS credential; web
+  // hydration may carry a canonical person and must supply explicit authority.
+  const contentAdminPrincipal = adminPrincipal ?? (slackUserId && memberContext?.workos_user
+    ? { id: memberContext.workos_user.workos_user_id }
+    : null);
 
   // ============================================
   // WORKING GROUPS
@@ -2615,21 +2622,12 @@ export function createMemberToolHandlers(
     }
 
     if (includeMembers) {
-      // Check admin status — try WorkOS user ID first, then fall back to Slack user ID
-      let isAdmin = false;
-      const workosUserId = memberContext?.workos_user?.workos_user_id;
-      const slackUserId = memberContext?.slack_user?.slack_user_id;
-      const adminGroup = await wgDb.getWorkingGroupBySlug('aao-admin');
-      if (adminGroup) {
-        if (workosUserId) {
-          isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-        } else if (slackUserId) {
-          const mapping = await slackDb.getBySlackUserId(slackUserId);
-          if (mapping?.workos_user_id) {
-            isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
-          }
-        }
-      }
+      // Web authority comes only from this request's authenticated credential.
+      // A canonical WorkOS user or linked Slack account cannot grant the bypass.
+      const { isSlackUserAAOAdmin } = await import('./admin-tools.js');
+      const isAdmin = adminPrincipal
+        ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
+        : slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
 
       if (group.is_private && !isAdmin) {
         response += `_Member list is only available to admins for private groups._\n`;
@@ -3592,6 +3590,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       {
         title,
@@ -3708,8 +3707,10 @@ export function createMemberToolHandlers(
 
     // Check permission
     const userId = memberContext.workos_user.workos_user_id;
-    const { isWebUserAAOAdmin: checkAdmin } = await import('./admin-tools.js');
-    const userIsAdmin = await checkAdmin(userId);
+    const { isSlackUserAAOAdmin } = await import('./admin-tools.js');
+    const userIsAdmin = adminPrincipal
+      ? await isAuthenticatedUserAAOAdmin(adminPrincipal)
+      : slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
     if (!userIsAdmin) {
       const authorCheck = await pool.query(
         `SELECT 1 FROM perspectives WHERE id = $1 AND (author_user_id = $2 OR proposer_user_id = $2)
@@ -3868,6 +3869,7 @@ export function createMemberToolHandlers(
     try {
       data = await listMyContentService({
         userId: memberContext.workos_user.workos_user_id,
+        adminPrincipal: contentAdminPrincipal,
         status,
         collection,
         relationship,
@@ -3953,6 +3955,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       { committeeSlug }
     );
@@ -4026,6 +4029,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       contentId,
       { publishImmediately }
@@ -4066,6 +4070,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       contentId,
       reason
@@ -4104,6 +4109,7 @@ export function createMemberToolHandlers(
       {
         id: memberContext.workos_user.workos_user_id,
         email: memberContext.workos_user.email,
+        adminPrincipal: contentAdminPrincipal,
       },
       contentId,
       notes
