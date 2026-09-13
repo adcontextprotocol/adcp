@@ -21,8 +21,8 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
-import { invalidateSessionsForUsers } from '../middleware/auth.js';
-import { deleteIdentityCredential } from '../db/identity-db.js';
+import { deleteIdentityCredential } from '../services/identity-credential-deletion.js';
+import { upsertWorkosUserUnlessConfirmedDeleted } from '../db/identity-db.js';
 import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
@@ -437,42 +437,26 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
  * Upsert user to local users table
  * Called on user.created and user.updated events
  */
-async function upsertUser(user: UserData): Promise<void> {
+async function upsertUser(user: UserData): Promise<boolean> {
   const pool = getPool();
 
   const { firstName, lastName } = await resolveUserNameWithFallbacks(
     pool, user.id, user.first_name, user.last_name,
   );
 
-  await pool.query(
-    `INSERT INTO users (
-      workos_user_id,
-      email,
-      first_name,
-      last_name,
-      email_verified,
-      workos_created_at,
-      workos_updated_at,
-      created_at,
-      updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-    ON CONFLICT (workos_user_id) DO UPDATE SET
-      email = EXCLUDED.email,
-      first_name = COALESCE(NULLIF(TRIM(EXCLUDED.first_name), ''), users.first_name),
-      last_name = COALESCE(NULLIF(TRIM(EXCLUDED.last_name), ''), users.last_name),
-      email_verified = EXCLUDED.email_verified,
-      workos_updated_at = EXCLUDED.workos_updated_at,
-      updated_at = NOW()`,
-    [
-      user.id,
-      user.email,
-      firstName,
-      lastName,
-      user.email_verified,
-      user.created_at,
-      user.updated_at,
-    ]
-  );
+  const upserted = await upsertWorkosUserUnlessConfirmedDeleted({
+    id: user.id,
+    email: user.email,
+    firstName,
+    lastName,
+    emailVerified: user.email_verified,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+  });
+  if (!upserted) {
+    logger.warn({ userId: user.id }, 'Ignored stale WorkOS user event after confirmed deletion');
+    return false;
+  }
 
   // Close the user.created vs organization_membership.created race: if a
   // membership webhook fired first, its backfill UPDATE was a no-op because
@@ -493,6 +477,7 @@ async function upsertUser(user: UserData): Promise<void> {
   }
 
   logger.info({ userId: user.id, email: user.email }, 'Upserted user');
+  return true;
 }
 
 /**
@@ -998,7 +983,10 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.created': {
             const user = event.data as unknown as UserData;
-            await upsertUser(user);
+            if (!(await upsertUser(user))) {
+              invalidateUnifiedUsersCache();
+              break;
+            }
             // Try to auto-link to Slack account by email
             const linkResult = await tryAutoLinkWebsiteUserToSlack(user.id, user.email);
             if (linkResult.linked) {
@@ -1114,7 +1102,10 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.updated': {
             const user = event.data as unknown as UserData;
-            await upsertUser(user);
+            if (!(await upsertUser(user))) {
+              invalidateUnifiedUsersCache();
+              break;
+            }
             await updateUserAcrossMemberships(user);
             invalidateUnifiedUsersCache();
             break;
@@ -1124,9 +1115,7 @@ export function createWorkOSWebhooksRouter(): Router {
             const user = event.data as unknown as UserData;
             // Provider deletion revokes this credential. Do not infer a new
             // primary: that would redirect surviving credentials' authority.
-            const affectedUserIds = await deleteIdentityCredential(user.id);
-            invalidateSessionsForUsers(affectedUserIds);
-            invalidateUnifiedUsersCache();
+            await deleteIdentityCredential(user.id, 'workos_webhook');
             break;
           }
 
@@ -1383,23 +1372,13 @@ export async function backfillUsers(): Promise<{
       processedUserIds.add(user.id);
 
       try {
-        await pool.query(
-          `INSERT INTO users (
-            workos_user_id, email, first_name, last_name,
-            email_verified, workos_created_at, workos_updated_at,
-            created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-          ON CONFLICT (workos_user_id) DO UPDATE SET
-            email = EXCLUDED.email,
-            first_name = COALESCE(NULLIF(TRIM(EXCLUDED.first_name), ''), users.first_name),
-            last_name = COALESCE(NULLIF(TRIM(EXCLUDED.last_name), ''), users.last_name),
-            email_verified = EXCLUDED.email_verified,
-            workos_updated_at = EXCLUDED.workos_updated_at,
-            updated_at = NOW()`,
-          [user.id, user.email, user.firstName, user.lastName,
-           user.emailVerified, user.createdAt, user.updatedAt]
-        );
-        result.usersCreated++;
+        const upserted = await upsertWorkosUserUnlessConfirmedDeleted(user);
+        if (upserted) {
+          result.usersCreated++;
+        } else {
+          result.usersSkipped++;
+          logger.warn({ userId: user.id }, 'Backfill: ignored stale user after confirmed deletion');
+        }
       } catch (userError) {
         logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
         result.errors.push(`Failed to upsert user ${user.id}`);
@@ -1502,22 +1481,17 @@ export async function backfillUsers(): Promise<{
           result.usersSkipped++;
         } catch (getErr: any) {
           if (getErr?.status === 404 || getErr?.code === 'entity_not_found') {
-            const client = await pool.connect();
             try {
-              await client.query('BEGIN');
-              await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
-              await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
-              await client.query('COMMIT');
-              result.usersRemoved++;
-              logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
+              const deletion = await deleteIdentityCredential(row.workos_user_id, 'sync_users_backfill');
+              if (deletion.deleted) {
+                result.usersRemoved++;
+                logger.info({ userId: row.workos_user_id }, 'Backfill: removed user confirmed deleted from WorkOS');
+              } else {
+                result.usersSkipped++;
+              }
             } catch (err) {
-              await client.query('ROLLBACK');
-              // FK constraints prevent deletion of users with platform activity
-              // (community_points, certifications, etc.) — this is expected
               result.usersSkipped++;
-              logger.info({ error: err, userId: row.workos_user_id }, 'Backfill: user deleted from WorkOS but retained locally due to platform activity');
-            } finally {
-              client.release();
+              logger.warn({ error: err, userId: row.workos_user_id }, 'Backfill: confirmed user deletion failed locally');
             }
           } else {
             // WorkOS API error — don't delete, log full error server-side only
@@ -1529,7 +1503,8 @@ export async function backfillUsers(): Promise<{
       }
     }
 
-    // Invalidate cache after backfill
+    // Upserts need one final invalidation; confirmed deletions invalidate
+    // their session and unified-user caches inside deleteIdentityCredential.
     invalidateUnifiedUsersCache();
 
     logger.info(result, 'Completed users backfill');
