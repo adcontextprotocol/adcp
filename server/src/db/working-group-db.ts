@@ -3,6 +3,10 @@ import type { PoolClient } from 'pg';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from './community-db.js';
 import { createLogger } from '../logger.js';
+import {
+  withActiveCredentialEventMutation,
+  withActiveCredentialSetMutation,
+} from './identity-db.js';
 import type {
   WorkingGroup,
   WorkingGroupLeader,
@@ -95,11 +99,19 @@ export class WorkingGroupDatabase {
    * narrow bypass: they resolve the server-owned slug in their transaction
    * and do not call this generic mutation surface.
    */
-  private async assertGenericMutationAllowed(workingGroupId: string): Promise<void> {
-    const result = await query<{ slug: string }>(
-      'SELECT slug FROM working_groups WHERE id = $1',
-      [workingGroupId],
-    );
+  private async assertGenericMutationAllowed(
+    workingGroupId: string,
+    externalClient?: PoolClient,
+  ): Promise<void> {
+    const result = externalClient
+      ? await externalClient.query<{ slug: string }>(
+          'SELECT slug FROM working_groups WHERE id = $1',
+          [workingGroupId],
+        )
+      : await query<{ slug: string }>(
+          'SELECT slug FROM working_groups WHERE id = $1',
+          [workingGroupId],
+        );
     if (result.rows[0]?.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
       throw new Error('AAO site-admin group can only be changed through the dedicated audited workflow');
     }
@@ -755,28 +767,12 @@ export class WorkingGroupDatabase {
       );
       const subgroup = subgroupResult.rows[0];
 
-      // 4. Promote subscribers to members
-      const subResult = await client.query<{ workos_user_id: string }>(
-        `SELECT DISTINCT workos_user_id FROM working_group_topic_subscriptions
-         WHERE working_group_id = $1 AND $2 = ANY(topic_slugs)`,
-        [parent.id, topicSlug]
-      );
-      let addedMembers = 0;
-      for (const row of subResult.rows) {
-        const existing = await client.query<{ id: string }>(
-          `SELECT id FROM working_group_memberships
-           WHERE working_group_id = $1 AND workos_user_id = $2`,
-          [subgroup.id, row.workos_user_id]
-        );
-        if (existing.rows[0]) continue;
-        await client.query(
-          `INSERT INTO working_group_memberships (
-            working_group_id, workos_user_id, status, joined_at, updated_at
-          ) VALUES ($1, $2, 'active', NOW(), NOW())`,
-          [subgroup.id, row.workos_user_id]
-        );
-        addedMembers++;
-      }
+      // 4. Do not turn subscriptions into authority automatically. Without a
+      // durable graduation intent journal, a subscriber can be deleted while
+      // this long content transaction is in flight and then be recreated as
+      // an active subgroup member. Operators may add active subscribers via
+      // the lifecycle-fenced membership workflow after graduation.
+      const addedMembers = 0;
 
       // 5. Strip the topic slug from parent subscription rows; delete empty ones
       await client.query(
@@ -921,24 +917,30 @@ export class WorkingGroupDatabase {
     // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
     const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
 
-    const result = await query<WorkingGroupMembership>(
-      `INSERT INTO working_group_memberships (
-        working_group_id, workos_user_id, user_email, user_name, user_org_name,
-        workos_organization_id, added_by_user_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (working_group_id, workos_user_id)
-      DO UPDATE SET status = 'active', updated_at = NOW()
-      RETURNING *`,
-      [
-        input.working_group_id,
-        canonicalUserId,
-        input.user_email || null,
-        input.user_name || null,
-        input.user_org_name || null,
-        input.workos_organization_id || null,
-        input.added_by_user_id || null,
-      ]
-    );
+    const guarded = await withActiveCredentialEventMutation(canonicalUserId, async (client) => {
+      const result = await client.query<WorkingGroupMembership>(
+        `INSERT INTO working_group_memberships (
+          working_group_id, workos_user_id, user_email, user_name, user_org_name,
+          workos_organization_id, added_by_user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (working_group_id, workos_user_id)
+        DO UPDATE SET status = 'active', updated_at = NOW()
+        RETURNING *`,
+        [
+          input.working_group_id,
+          canonicalUserId,
+          input.user_email || null,
+          input.user_name || null,
+          input.user_org_name || null,
+          input.workos_organization_id || null,
+          input.added_by_user_id || null,
+        ],
+      );
+      return result.rows[0];
+    });
+    if (!guarded.applied || !guarded.value) {
+      throw new Error('Cannot add working-group authority to an inactive credential');
+    }
 
     // Fire-and-forget journey recomputation
     const orgId = input.workos_organization_id || (await query<{ workos_organization_id: string }>(
@@ -950,7 +952,7 @@ export class WorkingGroupDatabase {
         .catch((err) => { logger.error({ err, workingGroupId: input.working_group_id }, 'Journey stage computation failed'); });
     }
 
-    return result.rows[0];
+    return guarded.value;
   }
 
   /**
@@ -1012,9 +1014,8 @@ export class WorkingGroupDatabase {
   async grantAAOAdminMembership(
     input: AAOAdminMembershipMutationInput,
   ): Promise<WorkingGroupMembership> {
-    const client = await getPool().connect();
-    try {
-      await client.query('BEGIN');
+    const targetUserId = await this.resolveToCanonicalUserId(input.targetUserId);
+    const guarded = await withActiveCredentialEventMutation(targetUserId, async (client) => {
       const groupResult = await client.query<{ id: string }>(
         'SELECT id FROM working_groups WHERE slug = $1 FOR SHARE',
         [AAO_ADMIN_WORKING_GROUP_SLUG],
@@ -1022,7 +1023,6 @@ export class WorkingGroupDatabase {
       const group = groupResult.rows[0];
       if (!group) throw new Error('AAO admin working group not found');
 
-      const targetUserId = await this.resolveCanonicalUserIdWithClient(client, input.targetUserId);
       const membershipResult = await client.query<WorkingGroupMembership>(
         `INSERT INTO working_group_memberships (
           working_group_id, workos_user_id, added_by_user_id
@@ -1039,16 +1039,12 @@ export class WorkingGroupDatabase {
         ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4)`,
         [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
       );
-      await client.query('COMMIT');
       return membershipResult.rows[0];
-    } catch (error) {
-      await client.query('ROLLBACK').catch((rollbackError) => {
-        logger.warn({ err: rollbackError }, 'AAO admin grant rollback failed');
-      });
-      throw error;
-    } finally {
-      client.release();
+    });
+    if (!guarded.applied || !guarded.value) {
+      throw new Error('Cannot grant AAO admin authority to an inactive credential');
     }
+    return guarded.value;
   }
 
   /**
@@ -1373,25 +1369,35 @@ export class WorkingGroupDatabase {
     );
     const oldLeaderIds = oldLeadersResult.rows.map(r => r.user_id);
 
-    // Remove existing leaders
-    await query(
-      'DELETE FROM working_group_leaders WHERE working_group_id = $1',
-      [workingGroupId]
-    );
-
-    // Add new leaders in a single bulk insert
-    if (uniqueUserIds.length > 0) {
-      const values = uniqueUserIds.map((_, i) => `($1, $${i + 2})`).join(', ');
-      await query(
-        `INSERT INTO working_group_leaders (working_group_id, user_id)
-         VALUES ${values}
-         ON CONFLICT DO NOTHING`,
-        [workingGroupId, ...uniqueUserIds]
-      );
+    if (uniqueUserIds.length === 0) {
+      await query('DELETE FROM working_group_leaders WHERE working_group_id = $1', [workingGroupId]);
+    } else {
+      const guarded = await withActiveCredentialSetMutation(uniqueUserIds, async (client) => {
+        await client.query(
+          'DELETE FROM working_group_leaders WHERE working_group_id = $1',
+          [workingGroupId],
+        );
+        const values = uniqueUserIds.map((_, i) => `($1, $${i + 2})`).join(', ');
+        await client.query(
+          `INSERT INTO working_group_leaders (working_group_id, user_id)
+           VALUES ${values}
+           ON CONFLICT DO NOTHING`,
+          [workingGroupId, ...uniqueUserIds],
+        );
+        await client.query(
+          `INSERT INTO working_group_memberships (working_group_id, workos_user_id, status)
+           SELECT $1, user_id, 'active'
+             FROM working_group_leaders
+            WHERE working_group_id = $1
+           ON CONFLICT (working_group_id, workos_user_id)
+           DO UPDATE SET status = 'active', updated_at = NOW()`,
+          [workingGroupId],
+        );
+      });
+      if (!guarded.applied) {
+        throw new Error('Cannot assign leadership to an inactive credential');
+      }
     }
-
-    // Ensure leaders are members
-    await this.ensureLeadersAreMembers(workingGroupId);
 
     // Fire-and-forget journey recomputation for affected orgs
     const allAffectedUserIds = [...new Set([...oldLeaderIds, ...uniqueUserIds])];
@@ -1410,20 +1416,40 @@ export class WorkingGroupDatabase {
   /**
    * Add a leader to a working group
    */
-  async addLeader(workingGroupId: string, userId: string): Promise<void> {
-    await this.assertGenericMutationAllowed(workingGroupId);
+  async addLeader(
+    workingGroupId: string,
+    userId: string,
+    externalClient?: PoolClient,
+  ): Promise<void> {
+    await this.assertGenericMutationAllowed(workingGroupId, externalClient);
     // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
-    const canonicalUserId = await this.resolveToCanonicalUserId(userId);
+    const canonicalUserId = externalClient
+      ? await this.resolveCanonicalUserIdWithClient(externalClient, userId)
+      : await this.resolveToCanonicalUserId(userId);
 
-    await query(
-      `INSERT INTO working_group_leaders (working_group_id, user_id)
-       VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [workingGroupId, canonicalUserId]
-    );
+    if (externalClient) {
+      await externalClient.query(
+        `INSERT INTO working_group_leaders (working_group_id, user_id)
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [workingGroupId, canonicalUserId],
+      );
+      await externalClient.query(
+        `INSERT INTO working_group_memberships (working_group_id, workos_user_id, status)
+         VALUES ($1, $2, 'active')
+         ON CONFLICT (working_group_id, workos_user_id)
+         DO UPDATE SET status = 'active', updated_at = NOW()`,
+        [workingGroupId, canonicalUserId],
+      );
+      return;
+    }
 
-    // Ensure leader is a member
-    await this.ensureLeadersAreMembers(workingGroupId);
+    const guarded = await withActiveCredentialEventMutation(canonicalUserId, async (client) => {
+      await this.addLeader(workingGroupId, canonicalUserId, client);
+    });
+    if (!guarded.applied) {
+      throw new Error('Cannot assign leadership to an inactive credential');
+    }
 
     // Fire-and-forget journey recomputation
     const orgResult = await query<{ workos_organization_id: string }>(
@@ -2029,32 +2055,37 @@ export class WorkingGroupDatabase {
     // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
     const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
 
-    const result = await query<WorkingGroupMembership>(
-      `INSERT INTO working_group_memberships (
-        working_group_id, workos_user_id, user_email, user_name, user_org_name,
-        workos_organization_id, added_by_user_id, interest_level, interest_source
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (working_group_id, workos_user_id)
-      DO UPDATE SET
-        status = 'active',
-        interest_level = COALESCE(EXCLUDED.interest_level, working_group_memberships.interest_level),
-        interest_source = COALESCE(EXCLUDED.interest_source, working_group_memberships.interest_source),
-        updated_at = NOW()
-      RETURNING *`,
-      [
-        input.working_group_id,
-        canonicalUserId,
-        input.user_email || null,
-        input.user_name || null,
-        input.user_org_name || null,
-        input.workos_organization_id || null,
-        input.added_by_user_id || null,
-        input.interest_level || null,
-        input.interest_source || null,
-      ]
-    );
-
-    return result.rows[0];
+    const guarded = await withActiveCredentialEventMutation(canonicalUserId, async (client) => {
+      const result = await client.query<WorkingGroupMembership>(
+        `INSERT INTO working_group_memberships (
+          working_group_id, workos_user_id, user_email, user_name, user_org_name,
+          workos_organization_id, added_by_user_id, interest_level, interest_source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (working_group_id, workos_user_id)
+        DO UPDATE SET
+          status = 'active',
+          interest_level = COALESCE(EXCLUDED.interest_level, working_group_memberships.interest_level),
+          interest_source = COALESCE(EXCLUDED.interest_source, working_group_memberships.interest_source),
+          updated_at = NOW()
+        RETURNING *`,
+        [
+          input.working_group_id,
+          canonicalUserId,
+          input.user_email || null,
+          input.user_name || null,
+          input.user_org_name || null,
+          input.workos_organization_id || null,
+          input.added_by_user_id || null,
+          input.interest_level || null,
+          input.interest_source || null,
+        ],
+      );
+      return result.rows[0];
+    });
+    if (!guarded.applied || !guarded.value) {
+      throw new Error('Cannot add working-group authority to an inactive credential');
+    }
+    return guarded.value;
   }
 
   /**

@@ -10,9 +10,14 @@ import type { PoolClient } from 'pg';
 import { getPool, getClient } from './client.js';
 import { findPayingOrgForDomain } from './org-filters.js';
 import { createLogger } from '../logger.js';
+import { withActiveCredentialEventMutation } from './identity-db.js';
 
 const logger = createLogger('membership-db');
 const OWNERLESS_PROMOTION_LOCK_TIMEOUT_MS = 5_000;
+
+function shouldDeferAutomaticProviderAuthorityWrites(): boolean {
+  return true;
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -118,10 +123,21 @@ async function withOwnerlessOrgPromotionLock<T>(
  */
 export async function upsertOrganizationMembership(
   params: MembershipUpsertParams,
+  externalClient?: PoolClient,
 ): Promise<MembershipUpsertResult> {
-  const pool = getPool();
+  if (!externalClient) {
+    const guarded = await withActiveCredentialEventMutation(
+      params.user_id,
+      (client) => upsertOrganizationMembership(params, client),
+    );
+    if (!guarded.applied || !guarded.value) {
+      throw new Error('Cannot write organization authority for an inactive credential');
+    }
+    return guarded.value;
+  }
+  const db = externalClient ?? getPool();
 
-  const result = await pool.query<{ role: string }>(
+  const result = await db.query<{ role: string }>(
     `INSERT INTO organization_memberships (
       workos_user_id,
       workos_organization_id,
@@ -207,8 +223,20 @@ export async function resolveRoleWithWorkosFirstPromote(args: {
 }> {
   const { workos, membershipId, userId, organizationId, incomingRole } = args;
 
+  // Upstream role mutation needs a durable intent and reconciliation record:
+  // a timeout or concurrent credential deletion otherwise leaves an unknown
+  // provider-side authority outcome that cannot safely be replayed. Preserve
+  // the signed provider role and defer owner selection to an explicit workflow.
+  void workos;
+  logger.warn(
+    { membershipId, userId, orgId: organizationId, incomingRole },
+    'Automatic ownerless promotion deferred: no durable provider intent journal',
+  );
+  return { role: incomingRole, promoted: false };
+
   // Only the 'member' input is eligible for ownerless-org promotion. Any
   // explicit role from WorkOS passes through unchanged.
+  /* c8 ignore start -- retained decisioning for an eventual journaled workflow */
   if (incomingRole !== 'member') {
     return { role: incomingRole, promoted: false };
   }
@@ -273,6 +301,7 @@ export async function resolveRoleWithWorkosFirstPromote(args: {
     );
     return { role: 'member', promoted: false, promotionError: err };
   }
+  /* c8 ignore stop */
 }
 
 // ── Delete ───────────────────────────────────────────────────────────
@@ -339,10 +368,11 @@ export async function deleteOrganizationMembership(
 export async function consumeInvitationSeatType(
   organizationId: string,
   email: string,
+  externalClient?: PoolClient,
 ): Promise<{ seat_type: string; source: ProvisioningSource | null } | null> {
-  const pool = getPool();
+  const db = externalClient ?? getPool();
 
-  const result = await pool.query<{ seat_type: string; source: string | null }>(
+  const result = await db.query<{ seat_type: string; source: string | null }>(
     `DELETE FROM invitation_seat_types
      WHERE workos_organization_id = $1 AND lower(email) = lower($2)
      RETURNING seat_type, source`,
@@ -390,13 +420,16 @@ export async function setMembershipRole(
   organizationId: string,
   role: string,
 ): Promise<void> {
-  const pool = getPool();
-
-  await pool.query(
-    `UPDATE organization_memberships SET role = $3, updated_at = NOW()
-     WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-    [userId, organizationId, role],
-  );
+  const guarded = await withActiveCredentialEventMutation(userId, async (client) => {
+    await client.query(
+      `UPDATE organization_memberships SET role = $3, updated_at = NOW()
+       WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+      [userId, organizationId, role],
+    );
+  });
+  if (!guarded.applied) {
+    throw new Error('Cannot update organization authority for an inactive credential');
+  }
 }
 
 // ── Auto-link by verified domain ────────────────────────────────────
@@ -411,8 +444,9 @@ export interface DomainLinkResult {
  * Check whether a user's email domain matches a verified domain on an
  * organization with an active subscription — directly or via the brand
  * registry hierarchy (e.g. AnalyticsIQ → Alliant). If so, and the org has
- * consented to the relevant auto-provisioning class, create a WorkOS
- * membership for them on the resolved paying org.
+ * consented to the relevant auto-provisioning class, this formerly created a
+ * WorkOS membership on the resolved paying org. Automatic upstream authority
+ * is currently deferred until a durable intent/reconciliation journal exists.
  *
  * Two consent flags on the resolved org, with different defaults:
  *   - auto_provision_verified_domain (default true) gates DIRECT matches
@@ -424,9 +458,9 @@ export interface DomainLinkResult {
  *     LLM classification or admin PATCH, ages on M&A, and the joining user
  *     gets no domain-level confirmation. Opt-in.
  *
- * Idempotent: short-circuits when the user is already in the resolved org's
- * local membership cache, and treats `organization_membership_already_exists`
- * from WorkOS as success. Safe to call on every authenticated request.
+ * Calls currently fail closed without contacting WorkOS or staging a local
+ * membership. Keep the legacy decisioning below for an eventual explicitly
+ * journaled workflow; do not enable it as an untracked automatic mutation.
  *
  * Hierarchy walk uses the same trust gates as resolveEffectiveMembership
  * (high-confidence classifications, 180-day TTL, max 4 hops up) so pre-link
@@ -437,6 +471,13 @@ export async function autoLinkByVerifiedDomain(
   userId: string,
   email: string,
 ): Promise<DomainLinkResult | null> {
+  if (shouldDeferAutomaticProviderAuthorityWrites()) {
+    logger.warn(
+      { userId },
+      'Verified-domain auto-provision deferred: no durable exactly-once provider intent journal',
+    );
+    return null;
+  }
   const pool = getPool();
   const emailDomain = email.split('@')[1]?.toLowerCase();
   if (!emailDomain) return null;

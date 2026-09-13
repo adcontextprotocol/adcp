@@ -15,7 +15,7 @@ describe('non-active organization_membership webhook handling', () => {
   )?.[0] ?? '';
 
   it('routes non-active membership updates through local cache deletion only', () => {
-    expect(nonActiveBlock).toContain('deleteInactiveMembershipCache(membership)');
+    expect(nonActiveBlock).toContain('deleteInactiveMembershipCache(membership, client)');
     expect(nonActiveBlock).not.toContain('deleteMembership(membership)');
   });
 

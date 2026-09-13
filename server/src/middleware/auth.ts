@@ -14,7 +14,11 @@ import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
-import { getAuthorizationFingerprint } from '../db/authorization-epoch-db.js';
+import {
+  readCredentialAuthorizationLifecycle,
+  type ActiveCredentialAuthorizationSnapshot,
+  type CredentialAuthorizationLifecycle,
+} from '../db/authorization-epoch-db.js';
 import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
@@ -380,34 +384,31 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
 
   if (verified.isM2M || !verified.sub) return null;
 
-  // Confirm the subject corresponds to a real local user. This catches
-  // tokens from WorkOS accounts that have been deleted or never synced,
-  // and gives us names for the synthesized WorkOSUser.
-  const pool = getPool();
-  const localUser = await pool.query<{
-    first_name: string | null;
-    last_name: string | null;
-    email: string | null;
-  }>(
-    `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
-    [verified.sub],
-  );
-  if (localUser.rowCount === 0) {
-    logger.warn({ sub: verified.sub }, 'Bearer JWT verified but user not found in local DB');
+  // A valid WorkOS signature is not enough: accept and cache only an
+  // authoritative local credential snapshot that includes the binding and
+  // proves no durable deletion tombstone exists.
+  const lifecycle = await readCredentialAuthorizationLifecycle(verified.sub);
+  if (lifecycle.status === 'unavailable') {
+    logger.warn({ sub: verified.sub }, 'Bearer JWT local credential lifecycle unavailable — failed closed');
     return null;
   }
+  if (lifecycle.status === 'terminal') {
+    logger.warn({ sub: verified.sub }, 'Bearer JWT verified but credential is not active locally');
+    return null;
+  }
+  const activeSnapshot = lifecycle.snapshot;
 
-  const row = localUser.rows[0];
-  const email = verified.email ?? row.email ?? '';
+  const email = verified.email ?? activeSnapshot.email ?? '';
   const user: WorkOSUser = {
     id: verified.sub,
     email,
-    firstName: row.first_name?.trim() || undefined,
-    lastName: row.last_name?.trim() || undefined,
+    firstName: activeSnapshot.first_name?.trim() || undefined,
+    lastName: activeSnapshot.last_name?.trim() || undefined,
     emailVerified: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  applyActiveCredentialSnapshot(user, activeSnapshot);
 
   const tokenExpMs = verified.expiresAt ? verified.expiresAt * 1000 : Infinity;
   const cacheUntil = Math.min(now + BEARER_JWT_CACHE_TTL_MS, tokenExpMs);
@@ -420,7 +421,7 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
       user,
       orgId: verified.orgId,
       expiresAt: cacheUntil,
-      authorizationFingerprint: await authorizationFingerprintFor(user),
+      authorizationFingerprint: activeSnapshot.fingerprint,
     });
   }
 
@@ -787,6 +788,19 @@ async function attachIdentityId(user: WorkOSUser): Promise<void> {
   }
 }
 
+function applyActiveCredentialSnapshot(
+  user: WorkOSUser,
+  snapshot: ActiveCredentialAuthorizationSnapshot,
+): void {
+  const authenticatedWorkosUserId = snapshot.workos_user_id;
+  user.identityId = snapshot.identity_id;
+  if (snapshot.primary_workos_user_id
+    && snapshot.primary_workos_user_id !== authenticatedWorkosUserId) {
+    user.authWorkosUserId = authenticatedWorkosUserId;
+    user.id = snapshot.primary_workos_user_id;
+  }
+}
+
 /**
  * Authorization fingerprint for the credential that actually authenticated
  * this session. `attachIdentityId` may swap `user.id` to the identity's
@@ -798,19 +812,11 @@ async function attachIdentityId(user: WorkOSUser): Promise<void> {
  * Synthetic principals (admin API key, WorkOS API key) have no credential
  * row and no identity binding; they return '' and never mismatch.
  */
-async function authorizationFingerprintFor(
+async function activeAuthorizationSnapshotFor(
   user: WorkOSUser,
-): Promise<string | undefined> {
-  if (isSyntheticUser(user.id)) return '';
-  try {
-    return await getAuthorizationFingerprint([getOrganizationAuthorizationUserId(user)]);
-  } catch (err) {
-    // Never fail authentication over the stamp: an unstamped entry reads as
-    // stale on its next hit, so the session is re-validated rather than
-    // served from a fingerprint we could not confirm.
-    logger.warn({ err }, 'Authorization epoch stamp failed — session will not be served from cache');
-    return undefined;
-  }
+): Promise<CredentialAuthorizationLifecycle> {
+  if (isSyntheticUser(user.id)) return { status: 'terminal', reason: 'missing_user' };
+  return readCredentialAuthorizationLifecycle(getOrganizationAuthorizationUserId(user));
 }
 
 /**
@@ -828,9 +834,11 @@ async function isAuthorizationFingerprintCurrent(
 ): Promise<boolean> {
   if (isSyntheticUser(user.id)) return true;
   try {
-    return (await authorizationFingerprintFor(user)) === (stamped ?? '');
+    const lifecycle = await activeAuthorizationSnapshotFor(user);
+    return lifecycle.status === 'active'
+      && lifecycle.snapshot.fingerprint === (stamped ?? '');
   } catch (err) {
-    logger.warn({ err }, 'Authorization epoch check failed — bypassing session cache');
+    logger.warn({ err }, 'Authoritative credential check failed — bypassing session cache');
     return false;
   }
 }
@@ -908,7 +916,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
-    await attachIdentityId(req.user);
     return next();
   }
 
@@ -1168,21 +1175,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let firstName = result.user.firstName ?? undefined;
     let lastName = result.user.lastName ?? undefined;
 
-    // Verify the user exists in our local DB. This catches stale sessions
-    // from deleted/merged WorkOS accounts whose JWTs haven't expired yet.
-    // Also resolves names from local DB when WorkOS doesn't provide them.
-    try {
-      const pool = getPool();
-      const localUser = await pool.query<{
-        first_name: string | null;
-        last_name: string | null;
-      }>(
-        `SELECT first_name, last_name FROM users WHERE workos_user_id = $1`,
-        [result.user.id]
-      );
-      if (localUser.rows.length === 0) {
+    // WorkOS session validity alone cannot authorize a deleted credential.
+    // Read the user, binding, canonical route, tombstone absence, and epoch
+    // atomically before accepting or caching this session.
+    const lifecycle = await readCredentialAuthorizationLifecycle(result.user.id);
+    if (lifecycle.status === 'unavailable') {
+      sessionCache.delete(cacheKey);
+      logger.warn({ userId: result.user.id, path: req.path },
+        'Local credential lifecycle unavailable — failing authentication closed');
+      return res.status(503).json({
+        error: 'Service temporarily unavailable',
+        message: 'Unable to verify your account right now. Please try again shortly.',
+      });
+    }
+    if (lifecycle.status === 'terminal') {
         logger.warn({ userId: result.user.id, email: result.user.email, path: req.path },
-          'Authenticated user not found in local DB — forcing re-login');
+          'Authenticated credential is not active in local DB — forcing re-login');
         sessionCache.delete(cacheKey);
         if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
           const oldest = deadSessionCache.keys().next().value;
@@ -1197,15 +1205,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           message: 'Your account could not be verified. Please log in again.',
           login_url: '/auth/login',
         });
-      }
-      if (!firstName?.trim()) {
-        const row = localUser.rows[0];
-        if (row.first_name?.trim()) firstName = row.first_name;
-        if (row.last_name?.trim()) lastName = row.last_name;
-      }
-    } catch (err) {
-      // Fail open: DB errors should not block authenticated users
-      logger.warn({ err, userId: result.user.id }, 'Local user check failed — allowing request through');
+    }
+    const activeSnapshot = lifecycle.snapshot;
+    if (!firstName?.trim()) {
+      if (activeSnapshot.first_name?.trim()) firstName = activeSnapshot.first_name;
+      if (activeSnapshot.last_name?.trim()) lastName = activeSnapshot.last_name;
     }
 
     const user: WorkOSUser = {
@@ -1227,8 +1231,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       );
     }
 
-    // Resolve identityId once before caching so cache hits inherit it.
-    await attachIdentityId(user);
+    applyActiveCredentialSnapshot(user, activeSnapshot);
 
     // Cache the validated session
     sessionCache.set(cacheKey, {
@@ -1236,7 +1239,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       accessToken: result.accessToken,
       expiresAt: now + SESSION_CACHE_TTL_MS,
       newSealedSession,
-      authorizationFingerprint: await authorizationFingerprintFor(user),
+      authorizationFingerprint: activeSnapshot.fingerprint,
     });
 
     req.user = user;
@@ -1963,7 +1966,6 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing optional-auth request through');
     }
 
-    await attachIdentityId(req.user);
     return next();
   }
 
@@ -2144,10 +2146,21 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         );
       }
 
-      // Resolve identityId before caching — sessionCache is shared with
-      // requireAuth, so skipping it here would let an optionalAuth request
-      // poison subsequent requireAuth cache hits with identityId=undefined.
-      await attachIdentityId(user);
+      // The shared cache may be consumed by requireAuth. Only an authoritative
+      // active local credential snapshot may create a positive entry.
+      const lifecycle = await readCredentialAuthorizationLifecycle(user.id);
+      if (lifecycle.status !== 'active') {
+        sessionCache.delete(cacheKey);
+        return next();
+      }
+      const activeSnapshot = lifecycle.snapshot;
+      if (!user.firstName?.trim() && activeSnapshot.first_name?.trim()) {
+        user.firstName = activeSnapshot.first_name;
+      }
+      if (!user.lastName?.trim() && activeSnapshot.last_name?.trim()) {
+        user.lastName = activeSnapshot.last_name;
+      }
+      applyActiveCredentialSnapshot(user, activeSnapshot);
 
       // Cache the validated session
       sessionCache.set(cacheKey, {
@@ -2155,7 +2168,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         accessToken: result.accessToken,
         expiresAt: now + SESSION_CACHE_TTL_MS,
         newSealedSession,
-        authorizationFingerprint: await authorizationFingerprintFor(user),
+        authorizationFingerprint: activeSnapshot.fingerprint,
       });
 
       req.user = user;

@@ -16,11 +16,14 @@ const mocks = vi.hoisted(() => ({
   loadSealedSession: vi.fn(),
   checkPlatformBan: vi.fn(),
   checkPlatformBanForApiKey: vi.fn(),
-  getAuthorizationFingerprint: vi.fn(),
+  readCredentialAuthorizationLifecycle: vi.fn(),
   poolQuery: vi.fn(),
+  verifyWorkOSJWT: vi.fn(),
 }));
 
 vi.hoisted(() => {
+  delete process.env.DEV_USER_EMAIL;
+  delete process.env.DEV_USER_ID;
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'sk_test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
   process.env.WORKOS_COOKIE_PASSWORD =
@@ -46,7 +49,7 @@ vi.mock('../../src/db/bans-db.js', () => ({
 }));
 
 vi.mock('../../src/db/authorization-epoch-db.js', () => ({
-  getAuthorizationFingerprint: mocks.getAuthorizationFingerprint,
+  readCredentialAuthorizationLifecycle: mocks.readCredentialAuthorizationLifecycle,
   bumpAuthorizationEpochs: vi.fn(),
 }));
 
@@ -56,7 +59,12 @@ vi.mock('../../src/db/client.js', () => ({
   isDatabaseInitialized: () => true,
 }));
 
-import { requireAuth } from '../../src/middleware/auth.js';
+vi.mock('../../src/auth/workos-jwt.js', () => ({
+  looksLikeJWT: vi.fn(() => true),
+  verifyWorkOSJWT: mocks.verifyWorkOSJWT,
+}));
+
+import { optionalAuth, requireAuth, validateWorkOSBearerJWT } from '../../src/middleware/auth.js';
 
 const SESSION_USER = {
   id: 'user_epoch_primary',
@@ -87,6 +95,27 @@ function makeResponse(): Response {
   } as unknown as Response;
 }
 
+function makeBearerRequest(token: string): Request {
+  return {
+    headers: { authorization: `Bearer ${token}` },
+  } as unknown as Request;
+}
+
+function activeLifecycle(fingerprint: string) {
+  return {
+    status: 'active' as const,
+    snapshot: {
+      workos_user_id: SESSION_USER.id,
+      email: SESSION_USER.email,
+      first_name: SESSION_USER.firstName,
+      last_name: SESSION_USER.lastName,
+      identity_id: 'identity_epoch',
+      primary_workos_user_id: SESSION_USER.id,
+      fingerprint,
+    },
+  };
+}
+
 describe('persisted authorization epoch gates the session cache', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -113,7 +142,15 @@ describe('persisted authorization epoch gates the session cache', () => {
       authenticate: mocks.authenticate,
       refresh: vi.fn(),
     });
-    mocks.getAuthorizationFingerprint.mockResolvedValue('user_epoch_primary:1');
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue(
+      activeLifecycle('user_epoch_primary:1'),
+    );
+    mocks.verifyWorkOSJWT.mockResolvedValue({
+      sub: SESSION_USER.id,
+      email: SESSION_USER.email,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      isM2M: false,
+    });
   });
 
   it('serves the cached session while the fingerprint is unchanged', async () => {
@@ -136,7 +173,9 @@ describe('persisted authorization epoch gates the session cache', () => {
     expect(mocks.authenticate).toHaveBeenCalledTimes(1);
 
     // A binding mutation bumped the credential's epoch on another instance.
-    mocks.getAuthorizationFingerprint.mockResolvedValue('user_epoch_primary:2');
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue(
+      activeLifecycle('user_epoch_primary:2'),
+    );
 
     await requireAuth(makeRequest(cookie), makeResponse(), next);
 
@@ -151,11 +190,134 @@ describe('persisted authorization epoch gates the session cache', () => {
     await requireAuth(makeRequest(cookie), makeResponse(), next);
     expect(mocks.authenticate).toHaveBeenCalledTimes(1);
 
-    mocks.getAuthorizationFingerprint.mockRejectedValueOnce(new Error('db down'));
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValueOnce({ status: 'unavailable' });
 
     await requireAuth(makeRequest(cookie), makeResponse(), next);
 
     expect(next).toHaveBeenCalledTimes(2);
     expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+  });
+
+  it('denies an epoch-0 credential on replica B immediately after replica A records deletion', async () => {
+    const cookie = `sealed-epoch-zero-deleted-${Date.now()}`;
+    const next = vi.fn() as NextFunction;
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue(activeLifecycle(''));
+
+    await requireAuth(makeRequest(cookie), makeResponse(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mocks.authenticate).toHaveBeenCalledTimes(1);
+
+    // Replica A committed a non-cascading deletion tombstone. Replica B still
+    // has its own cold epoch-0 session entry, but the next hit sees the marker.
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
+      status: 'terminal', reason: 'deleted_or_quarantined',
+    });
+    const response = makeResponse();
+    await requireAuth(makeRequest(cookie), response, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+    expect(response.status).toHaveBeenCalledWith(401);
+  });
+
+  it('does not serve replica-B cached authority when deletion-marker lookup is unavailable', async () => {
+    const cookie = `sealed-deletion-marker-outage-${Date.now()}`;
+    const next = vi.fn() as NextFunction;
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue(activeLifecycle(''));
+
+    await requireAuth(makeRequest(cookie), makeResponse(), next);
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({ status: 'unavailable' });
+    const response = makeResponse();
+    await requireAuth(makeRequest(cookie), response, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+    expect(response.status).toHaveBeenCalledWith(503);
+  });
+
+  it('invalidates replica B through persistence when only replica A receives local eviction', async () => {
+    vi.resetModules();
+    const replicaA = await import('../../src/middleware/auth.js');
+    vi.resetModules();
+    const replicaB = await import('../../src/middleware/auth.js');
+    const cookieA = `sealed-replica-a-${Date.now()}`;
+    const cookieB = `sealed-replica-b-${Date.now()}`;
+    const nextA = vi.fn() as NextFunction;
+    const nextB = vi.fn() as NextFunction;
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue(activeLifecycle(''));
+
+    await replicaA.requireAuth(makeRequest(cookieA), makeResponse(), nextA);
+    await replicaB.requireAuth(makeRequest(cookieB), makeResponse(), nextB);
+    expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+
+    // The deletion process only has access to replica A's in-memory cache.
+    // Replica B retains its independent entry and must observe the durable
+    // deletion marker on its immediate next request, without waiting for TTL.
+    replicaA.invalidateSessionsForUsers([SESSION_USER.id]);
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
+      status: 'terminal', reason: 'deleted_or_quarantined',
+    });
+    const responseB = makeResponse();
+    await replicaB.requireAuth(makeRequest(cookieB), responseB, nextB);
+
+    expect(nextB).toHaveBeenCalledTimes(1);
+    expect(mocks.authenticate).toHaveBeenCalledTimes(3);
+    expect(responseB.status).toHaveBeenCalledWith(401);
+  });
+
+  it('denies an epoch-0 cached bearer JWT on the immediate hit after deletion', async () => {
+    const token = `header.${Date.now()}.signature`;
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue(activeLifecycle(''));
+
+    await expect(validateWorkOSBearerJWT(makeBearerRequest(token))).resolves.toMatchObject({
+      user: { id: SESSION_USER.id },
+    });
+    expect(mocks.verifyWorkOSJWT).toHaveBeenCalledTimes(1);
+
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
+      status: 'terminal', reason: 'deleted_or_quarantined',
+    });
+    await expect(validateWorkOSBearerJWT(makeBearerRequest(token))).resolves.toBeNull();
+
+    expect(mocks.verifyWorkOSJWT).toHaveBeenCalledTimes(2);
+  });
+
+  it('cannot poison requireAuth from optionalAuth with a deleted sealed credential', async () => {
+    const cookie = `sealed-optional-poison-${Date.now()}`;
+    const optionalRequest = makeRequest(cookie);
+    const optionalNext = vi.fn() as NextFunction;
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
+      status: 'terminal', reason: 'deleted_or_quarantined',
+    });
+
+    await optionalAuth(optionalRequest, makeResponse(), optionalNext);
+    expect(optionalNext).toHaveBeenCalledTimes(1);
+    expect(optionalRequest.user).toBeUndefined();
+
+    const requiredResponse = makeResponse();
+    const requiredNext = vi.fn() as NextFunction;
+    await requireAuth(makeRequest(cookie), requiredResponse, requiredNext);
+
+    expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+    expect(requiredNext).not.toHaveBeenCalled();
+    expect(requiredResponse.status).toHaveBeenCalledWith(401);
+  });
+
+  it('cannot serve optionalAuth from a requireAuth cache after deletion', async () => {
+    const cookie = `sealed-required-poison-${Date.now()}`;
+    const requiredNext = vi.fn() as NextFunction;
+    await requireAuth(makeRequest(cookie), makeResponse(), requiredNext);
+    expect(requiredNext).toHaveBeenCalledTimes(1);
+
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
+      status: 'terminal', reason: 'deleted_or_quarantined',
+    });
+    const optionalRequest = makeRequest(cookie);
+    const optionalNext = vi.fn() as NextFunction;
+    await optionalAuth(optionalRequest, makeResponse(), optionalNext);
+
+    expect(mocks.authenticate).toHaveBeenCalledTimes(2);
+    expect(optionalNext).toHaveBeenCalledTimes(1);
+    expect(optionalRequest.user).toBeUndefined();
   });
 });

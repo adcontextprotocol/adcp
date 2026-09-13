@@ -72,6 +72,27 @@ vi.mock('../../src/db/client.js', () => ({
   query: mocks.query,
 }));
 
+vi.mock('../../src/db/identity-db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/db/identity-db.js')>();
+  return {
+    ...actual,
+    withCredentialCreationEventMutation: vi.fn(async (
+      _userId: string,
+      mutation: (client: { query: typeof mocks.query }) => Promise<unknown>,
+    ) => ({
+      applied: true,
+      value: await mutation({ query: mocks.query }),
+    })),
+    upsertWorkosUserInCredentialEvent: vi.fn(async (
+      client: { query: typeof mocks.query },
+      user: { id: string },
+    ) => client.query(
+      'INSERT INTO users (workos_user_id) VALUES ($1) ON CONFLICT DO NOTHING',
+      [user.id],
+    )),
+  };
+});
+
 vi.mock('../../src/db/migrate.js', () => ({
   runMigrations: vi.fn().mockResolvedValue(undefined),
 }));
@@ -355,7 +376,10 @@ describe('native OAuth HTTPServer wiring', () => {
       slack_user_id: 'U123',
       workos_user_id: null,
     } as never);
-    const mapUser = vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce(undefined);
+    const mapUser = vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce({
+      slack_user_id: 'U123',
+      workos_user_id: 'user_1',
+    } as never);
     server = new HTTPServer();
 
     const response = await request(appFor(server)).get('/auth/callback').query({
@@ -404,7 +428,10 @@ describe('native OAuth HTTPServer wiring', () => {
       slack_user_id: 'U123',
       workos_user_id: null,
     } as never);
-    vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce(undefined);
+    vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce({
+      slack_user_id: 'U123',
+      workos_user_id: 'user_1',
+    } as never);
     mocks.sendAccountLinkedMessage.mockRejectedValueOnce(new Error('synthetic Slack rejection'));
     server = new HTTPServer();
 

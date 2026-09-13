@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getModelExecutionReadiness: vi.fn(),
   getRouterShadowSummary: vi.fn(),
   serveHtmlWithConfig: vi.fn(),
+  readCredentialAuthorizationLifecycle: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -51,6 +52,11 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+}));
+
+vi.mock('../../src/db/authorization-epoch-db.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/db/authorization-epoch-db.js')>()),
+  readCredentialAuthorizationLifecycle: mocks.readCredentialAuthorizationLifecycle,
 }));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
@@ -124,6 +130,20 @@ describe('Addie real global-admin boundary', () => {
     mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: true });
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
     mocks.checkPlatformBan.mockResolvedValue({ banned: false });
+    mocks.readCredentialAuthorizationLifecycle.mockImplementation((workosUserId: string) =>
+      Promise.resolve({
+        status: 'active',
+        snapshot: {
+          workos_user_id: workosUserId,
+          email: 'sso-admin@example.test',
+          first_name: 'SSO',
+          last_name: 'Admin',
+          identity_id: '00000000-0000-4000-8000-000000000001',
+          primary_workos_user_id: workosUserId,
+          fingerprint: '',
+        },
+      }),
+    );
     mocks.getAdminWorkingGroupIdBySlug.mockResolvedValue('wg_aao_admin');
     mocks.isAdminGroupMember.mockResolvedValue(true);
     mocks.poolQuery.mockImplementation((sql: string) => {
@@ -256,6 +276,55 @@ describe('Addie real global-admin boundary', () => {
     );
     expect(mocks.getWebConversations).toHaveBeenCalledOnce();
   });
+
+  it.each([true, false])('keeps credential admin authority %s after lifecycle routing to a linked primary', async (credentialIsAdmin) => {
+    mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({
+      status: 'active',
+      snapshot: {
+        workos_user_id: 'user_sso_admin',
+        email: 'sso-admin@example.test',
+        first_name: 'SSO',
+        last_name: 'Admin',
+        identity_id: '00000000-0000-4000-8000-000000000001',
+        primary_workos_user_id: 'user_linked_primary',
+        fingerprint: '',
+      },
+    });
+    mocks.isAdminGroupMember.mockImplementation(async (_groupId, userId) =>
+      userId === 'user_sso_admin' ? credentialIsAdmin : !credentialIsAdmin,
+    );
+
+    // The second request uses the session cache and must retain the same
+    // authenticated credential for the parent's fresh authority lookup.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await request(app)
+        .get('/api/admin/addie/conversations')
+        .set('Cookie', `wos-session=linked-authority-${credentialIsAdmin}`);
+      expect(response.status).toBe(credentialIsAdmin ? 200 : 403);
+    }
+    expect(mocks.isAdminGroupMember.mock.calls).toEqual([
+      ['wg_aao_admin', 'user_sso_admin'],
+      ['wg_aao_admin', 'user_sso_admin'],
+    ]);
+    expect(mocks.getWebConversations).toHaveBeenCalledTimes(credentialIsAdmin ? 2 : 0);
+  });
+
+  it.each(['deleted_or_quarantined', 'missing_primary'] as const)(
+    'refuses a warmed administrator session after the credential becomes %s',
+    async (reason) => {
+      const cookie = `wos-session=terminal-admin-${reason}`;
+      const warm = await request(app).get('/api/admin/addie/conversations').set('Cookie', cookie);
+      expect(warm.status).toBe(200);
+      mocks.getWebConversations.mockClear();
+      mocks.isAdminGroupMember.mockClear();
+      mocks.readCredentialAuthorizationLifecycle.mockResolvedValue({ status: 'terminal', reason });
+
+      const denied = await request(app).get('/api/admin/addie/conversations').set('Cookie', cookie);
+      expect(denied.status).toBe(401);
+      expect(mocks.isAdminGroupMember).not.toHaveBeenCalled();
+      expect(mocks.getWebConversations).not.toHaveBeenCalled();
+    },
+  );
 
   it('exposes model execution readiness only through the global-admin boundary', async () => {
     const denied = await request(app)
