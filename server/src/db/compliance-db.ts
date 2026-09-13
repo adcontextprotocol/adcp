@@ -112,6 +112,7 @@ export interface ComplianceRun {
   agent_url: string;
   requested_compliance_target: string | null;
   adcp_version: string | null;
+  runner_capability_version: string | null;
   lifecycle_stage: LifecycleStage;
   overall_status: OverallRunStatus;
   headline: string | null;
@@ -267,6 +268,7 @@ export interface RecordComplianceRunInput {
   agent_url: string;
   requested_compliance_target?: string | null;
   adcp_version?: string | null;
+  runner_capability_version?: string | null;
   lifecycle_stage: LifecycleStage;
   overall_status: OverallRunStatus;
   headline?: string;
@@ -610,8 +612,8 @@ export class ComplianceDatabase {
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
           observations_json, triggered_by, triggered_org_id, dry_run,
-          notices_json, refresh_operation_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          notices_json, refresh_operation_id, runner_capability_version
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         ON CONFLICT (refresh_operation_id) DO NOTHING
         RETURNING *`,
         [
@@ -634,6 +636,7 @@ export class ComplianceDatabase {
           input.dry_run ?? true,
           input.notices_json ? JSON.stringify(input.notices_json) : null,
           input.refresh_operation_id ?? null,
+          input.runner_capability_version ?? null,
         ],
       );
       let run = runResult.rows[0] as ComplianceRun | undefined;

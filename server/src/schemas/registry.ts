@@ -1328,6 +1328,9 @@ export const ComplianceRunSchema = z
     id: z.string(),
     requested_compliance_target: z.string().nullable().optional(),
     adcp_version: z.string().nullable().optional(),
+    runner_capability_version: z.string().nullable().optional().openapi({
+      description: "Runner capability version recorded at execution time, separate from the AdCP version under test. Null when not recorded, including historical runs.",
+    }),
     overall_status: z.string(),
     headline: z.string().nullable(),
     tracks_passed: z.number().int(),

@@ -1452,6 +1452,7 @@ export function complianceResultToDbInput(
     requested_compliance_target: (result as ComplianceResult & { requested_compliance_target?: string })
       .requested_compliance_target ?? null,
     adcp_version: result.adcp_version ?? null,
+    runner_capability_version: result.summary.runner_capability_version ?? null,
     lifecycle_stage: lifecycleStage,
     overall_status,
     headline: result.summary.headline,

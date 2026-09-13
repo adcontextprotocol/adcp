@@ -440,6 +440,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           agent_url: agent.agent_url,
           requested_compliance_target: runTarget.requested,
           adcp_version: runTarget.version,
+          runner_capability_version: LIBRARY_VERSION,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
           headline,
