@@ -218,6 +218,17 @@ describe('runComplianceHeartbeatJob', () => {
     const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
     const { notifyComplianceChange, notifyVerificationChange } = await import('../../src/notifications/compliance.js');
     expect(await runComplianceHeartbeatJob({ limit: 1 })).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    const healthCall = mocks.loggerInfo.mock.calls.find(
+      ([, message]) => message === 'Compliance heartbeat shadow flush completed after public processing',
+    );
+    expect(healthCall).toBeDefined();
+    const healthFields = healthCall?.[0] as {
+      outcomes: { skipped: number };
+      skipReasons: Record<string, number>;
+    };
+    expect(healthFields.skipReasons.audit_only).toBe(1);
+    expect(Object.values(healthFields.skipReasons).reduce((total, count) => total + count, 0))
+      .toBe(healthFields.outcomes.skipped);
     expect(mocks.recordComplianceRun).toHaveBeenCalledWith(expect.objectContaining({ completeness: 'timed_out', is_authoritative: false, dry_run: false }));
     expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
     expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
