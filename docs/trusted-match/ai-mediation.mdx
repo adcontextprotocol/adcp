@@ -69,14 +69,14 @@ Before the LLM generates its response, StreamHaus sends a **Context Match** requ
     "taxonomy_source": "iab",
     "taxonomy_id": 7,
     "sentiment": "positive",
-    "keywords": ["trail shoes", "rocky terrain", "ankle support"],
+    "keywords": ["trail shoes", "athletic footwear", "outdoor recreation"],
     "language": "en",
-    "summary": "User seeking trail shoe recommendations for rocky terrain with ankle support"
+    "summary": "Shopping context categorized as outdoor athletic footwear"
   }
 }
 ```
 
-No `artifact_refs` — conversation turns are ephemeral. The `context_signals` carry the classified output. The `summary` field is especially useful for LLM-native buyers that evaluate relevance semantically. A platform that operates in a trusted execution environment could alternatively send the full conversation as an `artifact` — the publisher controls the disclosure level.
+No `artifact_refs` — conversation turns are ephemeral. The `context_signals` carry bounded topics and policy-filtered, non-verbatim keywords and summary; they MUST NOT carry an embedding derived from the turn. The `summary` field is useful for LLM-native buyers when it satisfies these privacy-reduction requirements. A platform operating under appropriate governance, including a trusted execution environment where required, could alternatively send the full conversation as an `artifact` — the publisher controls the disclosure level.
 
 </Accordion>
 
