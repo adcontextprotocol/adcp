@@ -12,6 +12,23 @@ const logger = createLogger('account-linking');
 
 const TOKEN_EXPIRY_HOURS = 24;
 
+async function sendEmailMutationFailure(res: Response, userId: string, error: unknown): Promise<Response> {
+  try {
+    const status = await getEmailMutationStatus(userId);
+    if (status.reconciliation_required) return res.status(503).json(status);
+    if ((error as { code?: unknown } | null)?.code === '55P03') {
+      return res.status(409).json({
+        error: 'credential_busy', retryable: true,
+        message: 'An email change is already in progress. Please retry.',
+      });
+    }
+  } catch { /* Status is unknown; do not invent a durable operation. */ }
+  return res.status(503).json({
+    error: 'Failed to update email', status_unknown: true,
+    message: 'We could not confirm the email change. Reload to check its status or contact support before trying again.',
+  });
+}
+
 // Rate limiter for sending verification emails (per authenticated user)
 const sendVerificationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -76,6 +93,7 @@ export function createAccountLinkingRouter(): Router {
       );
 
       return res.json({
+        credential_id: userId,
         primary_email: credential.rows[0]?.email,
         ...mutationStatus,
         aliases: aliases.rows,
@@ -212,9 +230,9 @@ export function createAccountLinkingRouter(): Router {
       return res.json({
         status: 'verification_sent',
       });
-    } catch {
+    } catch (error) {
       logger.error('Failed to initiate email link');
-      return res.status(500).json({ error: 'Failed to initiate email link' });
+      return sendEmailMutationFailure(res, req.user!.authWorkosUserId ?? req.user!.id, error);
     }
   });
 
@@ -223,17 +241,15 @@ export function createAccountLinkingRouter(): Router {
   router.put('/primary', requireAuth, verifyExecuteLimiter, async (req: Request, res: Response) => {
     try {
       const userId = req.user!.authWorkosUserId ?? req.user!.id;
-      const result = await setPrimaryEmail({ userId, email: req.body?.email, actorUserId: userId });
-      return res.json({ status: 'primary_updated', ...result });
+      const result = await setPrimaryEmail({
+        userId, email: req.body?.email, actorUserId: userId, operationId: req.body?.operation_id,
+      });
+      return res.json(result);
     } catch (error) {
       if (error instanceof EmailMutationError) return res.status(error.status).json(error.body);
       // Provider exceptions may contain request headers, tokens, or bodies.
       logger.error('Failed to set primary email');
-      return res.status(503).json({
-        error: 'Failed to update primary email',
-        reconciliation_required: true,
-        message: 'We could not confirm the email change. Please contact support before trying again.',
-      });
+      return sendEmailMutationFailure(res, req.user!.authWorkosUserId ?? req.user!.id, error);
     }
   });
 
@@ -334,7 +350,7 @@ export function handleEmailLinkVerification(app: {
         return renderVerifyPage(res, { success: false, message: 'This verification link has expired. Please request a new one from your dashboard settings.' });
       }
 
-      const mutationStatus = await getEmailMutationStatus(tokenRecord.primary_workos_user_id);
+      const mutationStatus = await getEmailMutationStatus(tokenRecord.primary_workos_user_id, client);
       if (mutationStatus.reconciliation_required) {
         await client.query('ROLLBACK');
         return renderVerifyPage(res, { success: false, message: mutationStatus.message! });

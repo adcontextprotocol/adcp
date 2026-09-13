@@ -1,307 +1,332 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Pool } from 'pg';
+import { Client, type Pool } from 'pg';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import * as databaseClient from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-
-const { getUser, updateUser } = vi.hoisted(() => ({ getUser: vi.fn(), updateUser: vi.fn() }));
-vi.mock('../../src/auth/workos-client.js', () => ({
-  getEmailMutationWorkos: () => ({ userManagement: { getUser, updateUser } }),
-}));
-import { getEmailMutationStatus, reconcileEmailMutation, setPrimaryEmail } from '../../src/services/email-mutation.js';
-
+const { getUser, updateUser, invalidate } = vi.hoisted(() => ({ getUser: vi.fn(), updateUser: vi.fn(), invalidate: vi.fn() }));
+vi.mock('../../src/auth/workos-client.js', () => ({ getEmailMutationWorkos: () => ({ userManagement: { getUser, updateUser } }) }));
+vi.mock('../../src/middleware/auth.js', () => ({ invalidateSessionsForUsers: invalidate }));
+import { getEmailMutationStatus, setPrimaryEmail } from '../../src/services/email-mutation.js';
 const userId = 'user_email_mutation_test';
 const otherUserId = 'user_email_mutation_other';
 const oldEmail = 'email-mutation-old@test.example';
 const newEmail = 'email-mutation-new@test.example';
+const thirdEmail = 'email-mutation-third@test.example';
 
-describe('email mutation provider compensation with PostgreSQL', () => {
+describe('durable exact-credential email mutation', () => {
   let pool: Pool;
   let provider: { id: string; email: string; emailVerified: boolean };
-
+  const mutate = (operationId = randomUUID(), email = newEmail) => setPrimaryEmail({ userId, email, operationId });
+  const journal = async () => (await pool.query('SELECT * FROM email_mutations WHERE workos_user_id=$1 ORDER BY created_at', [userId])).rows;
+  const epoch = async () => Number((await pool.query('SELECT epoch FROM authorization_epochs WHERE workos_user_id=$1', [userId])).rows[0]?.epoch ?? 0);
+  async function state() {
+    return {
+      user: (await pool.query('SELECT email,email_verified FROM users WHERE workos_user_id=$1', [userId])).rows,
+      aliases: (await pool.query('SELECT email,verified_at IS NOT NULL AS verified FROM user_email_aliases WHERE workos_user_id=$1 ORDER BY email', [userId])).rows,
+      memberships: (await pool.query('SELECT workos_user_id,workos_organization_id,workos_membership_id,role,email FROM organization_memberships WHERE workos_user_id=$1', [userId])).rows,
+      people: (await pool.query('SELECT email FROM person_relationships WHERE workos_user_id=$1', [userId])).rows,
+    };
+  }
+  async function clearFault() {
+    await pool.query('DROP FUNCTION IF EXISTS test_email_mutation_fault() CASCADE');
+    await pool.query('DROP SEQUENCE IF EXISTS test_email_mutation_fault_counter');
+  }
+  async function fault(table: string, event: string, body: string, timing = 'BEFORE') {
+    await pool.query(`CREATE FUNCTION test_email_mutation_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${body} RETURN NEW; END $$`);
+    await pool.query(`CREATE TRIGGER zz_test_email_mutation_fault ${timing} ${event} ON ${table} FOR EACH ROW EXECUTE FUNCTION test_email_mutation_fault()`);
+  }
+  async function cleanup() {
+    await clearFault();
+    await pool.query('DELETE FROM email_mutations WHERE workos_user_id=ANY($1)', [[userId, otherUserId]]);
+    await pool.query('DELETE FROM person_relationships WHERE workos_user_id=ANY($1)', [[userId, otherUserId]]);
+    await pool.query('DELETE FROM organization_memberships WHERE workos_user_id=$1', [userId]);
+    await pool.query('DELETE FROM users WHERE workos_user_id=ANY($1)', [[userId, otherUserId]]);
+  }
   beforeAll(async () => {
-    pool = initializeDatabase({
-      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
-    });
+    pool = initializeDatabase({ connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test' });
     await runMigrations();
   }, 60_000);
-
-  async function cleanup() {
-    await pool.query('DELETE FROM email_mutations WHERE workos_user_id = $1', [userId]);
-    await pool.query('DELETE FROM person_relationships WHERE workos_user_id = ANY($1)', [[userId, otherUserId]]);
-    await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = $1', [userId]);
-    await pool.query('DELETE FROM users WHERE workos_user_id = $1', [userId]);
-  }
-
   beforeEach(async () => {
     vi.restoreAllMocks();
     await cleanup();
-    await pool.query(
-      `INSERT INTO users (workos_user_id, email, email_verified, workos_created_at, workos_updated_at)
-       VALUES ($1, $2, false, NOW(), NOW())`, [userId, oldEmail],
-    );
-    await pool.query('INSERT INTO user_email_aliases (workos_user_id, email) VALUES ($1, $2)', [userId, newEmail]);
-    await pool.query(
-      `INSERT INTO organization_memberships
-         (workos_user_id, workos_organization_id, workos_membership_id, email, role)
-       VALUES ($1, 'org_email_mutation_test', 'om_email_mutation_test', $2, 'owner')`, [userId, oldEmail],
-    );
-    await pool.query('INSERT INTO person_relationships (workos_user_id, email) VALUES ($1, $2)', [userId, oldEmail]);
+    await pool.query('INSERT INTO users(workos_user_id,email,email_verified,workos_created_at,workos_updated_at) VALUES($1,$2,false,NOW(),NOW())', [userId, oldEmail]);
+    await pool.query('INSERT INTO user_email_aliases(workos_user_id,email) VALUES($1,$2)', [userId, newEmail]);
+    await pool.query("INSERT INTO organization_memberships(workos_user_id,workos_organization_id,workos_membership_id,email,role) VALUES($1,'org_email_mutation_test','om_email_mutation_test',$2,'owner')", [userId, oldEmail]);
+    await pool.query('INSERT INTO person_relationships(workos_user_id,email) VALUES($1,$2)', [userId, oldEmail]);
     provider = { id: userId, email: oldEmail, emailVerified: false };
     getUser.mockReset().mockImplementation(async () => ({ ...provider }));
-    updateUser.mockReset().mockImplementation(async ({ email, emailVerified }) => {
-      provider = { id: userId, email, emailVerified };
-      return { ...provider };
-    });
+    updateUser.mockReset().mockImplementation(async ({ email, emailVerified }) => { provider = { id: userId, email, emailVerified }; return { ...provider }; });
+    invalidate.mockReset();
   });
+  afterAll(async () => { vi.restoreAllMocks(); await cleanup(); await closeDatabase(); });
 
-  afterAll(async () => {
-    vi.restoreAllMocks();
-    await cleanup();
-    await closeDatabase();
-  });
-
-  async function localState() {
-    return {
-      users: (await pool.query('SELECT email, email_verified FROM users WHERE workos_user_id = $1', [userId])).rows,
-      aliases: (await pool.query('SELECT email, verified_at IS NOT NULL AS verified FROM user_email_aliases WHERE workos_user_id = $1 ORDER BY email', [userId])).rows,
-      memberships: (await pool.query('SELECT workos_user_id, workos_organization_id, workos_membership_id, role, email FROM organization_memberships WHERE workos_user_id = $1', [userId])).rows,
-      people: (await pool.query('SELECT email FROM person_relationships WHERE workos_user_id = $1', [userId])).rows,
-    };
-  }
-
-  async function journal() {
-    return (await pool.query('SELECT * FROM email_mutations WHERE workos_user_id = $1 ORDER BY created_at DESC', [userId])).rows;
-  }
-
-  async function failAfterLocalWrites() {
-    // The final person update violates this real unique index after the user,
-    // aliases and membership email have already been updated in the transaction.
-    await pool.query('INSERT INTO person_relationships (workos_user_id, email) VALUES ($1, $2)', [otherUserId, newEmail]);
-  }
-
-  it('commits the credential, aliases and email denormalizations atomically and retries idempotently', async () => {
-    const before = await localState();
-    await expect(setPrimaryEmail({ userId, email: newEmail })).resolves.toMatchObject({ primary_email: newEmail });
-    const after = await localState();
-    expect(after.users).toEqual([{ email: newEmail, email_verified: true }]);
+  it('atomically commits aliases, denormalizations and exact credential epoch before invalidating sessions', async () => {
+    const before = await state();
+    const id = randomUUID();
+    expect(await mutate(id)).toEqual({ status: 'primary_updated', primary_email: newEmail, operation_id: id });
+    const after = await state();
+    expect(after.user).toEqual([{ email: newEmail, email_verified: true }]);
     expect(after.aliases).toEqual([{ email: oldEmail, verified: false }]);
-    expect(after.memberships).toEqual(before.memberships.map(membership => ({ ...membership, email: newEmail })));
+    expect(after.memberships).toEqual(before.memberships.map(row => ({ ...row, email: newEmail })));
     expect(after.people).toEqual([{ email: newEmail }]);
-    expect((await journal())[0].state).toBe('succeeded');
-    await expect(setPrimaryEmail({ userId, email: newEmail })).resolves.toEqual({ primary_email: newEmail });
-    expect(updateUser).toHaveBeenCalledOnce();
-    expect(await getEmailMutationStatus(userId)).toEqual({ reconciliation_required: false });
+    expect(await epoch()).toBe(1);
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith([userId]);
+    expect((await journal())[0]).toMatchObject({ state: 'succeeded', epoch_after: '1', applied_email_version: '1', result_status: 200 });
   });
-
-  it('persists intent before calling the provider', async () => {
-    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => {
-      expect((await journal())[0]).toMatchObject({ state: 'pending', old_email: oldEmail, new_email: newEmail });
-      provider = { id: userId, email, emailVerified };
-      return { ...provider };
-    });
-    await setPrimaryEmail({ userId, email: newEmail });
-  });
-
-  it.each([
-    ['credential id', { id: otherUserId }],
-    ['email', { email: 'different-provider@test.example' }],
-    ['verification', { emailVerified: true }],
-  ])('blocks an already-primary retry when provider %s differs from local state', async (_field, different) => {
-    const before = await localState();
-    provider = { ...provider, ...different };
-    await expect(setPrimaryEmail({ userId, email: oldEmail })).rejects.toMatchObject({
-      status: 409, body: { reconciliation_required: true },
-    });
-    expect(await localState()).toEqual(before);
-    expect(updateUser).not.toHaveBeenCalled();
-    expect((await journal())[0]).toMatchObject({ state: 'reconciliation_required', failure_code: 'preexisting_provider_mismatch' });
-    expect(await getEmailMutationStatus(userId)).toMatchObject({ reconciliation_required: true });
-  });
-
-  it('does not claim an already-primary retry succeeded when the provider cannot be read', async () => {
-    const before = await localState();
-    getUser.mockRejectedValueOnce(new Error('sensitive provider diagnostic'));
-    await expect(setPrimaryEmail({ userId, email: oldEmail })).rejects.toMatchObject({
-      status: 503, body: { message: 'Your email was not changed. Please try again later.' },
-    });
-    expect(await localState()).toEqual(before);
-    expect(await journal()).toEqual([]);
-    expect(updateUser).not.toHaveBeenCalled();
-  });
-
-  it('does not infer alias repair from a preexisting provider mismatch during reconciliation', async () => {
-    const before = await localState();
-    provider.email = newEmail;
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-    const [operation] = await journal();
-    await expect(reconcileEmailMutation({
-      operationId: operation.id, actorUserId: 'support_test', providerTerminalConfirmed: true, evidenceReference: 'support/6827/terminal',
-    })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-    expect(await localState()).toEqual(before);
-    expect(updateUser).not.toHaveBeenCalled();
-    expect(await getEmailMutationStatus(userId)).toMatchObject({ reconciliation_required: true });
-  });
-
-  it('persists the mismatch repair guard atomically if the initial intent response is lost', async () => {
-    provider.email = newEmail;
-    const connect = pool.connect.bind(pool);
-    vi.spyOn(pool, 'connect').mockImplementationOnce(async () => {
-      const client = await connect();
-      const query = client.query.bind(client);
-      vi.spyOn(client, 'query').mockImplementation(async (...args: any[]) => {
-        const result = await (query as any)(...args);
-        if (String(args[0]).includes('INSERT INTO email_mutations')) throw new Error('intent response lost');
-        return result;
-      });
-      return client;
-    });
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toThrow('intent response lost');
-    const [operation] = await journal();
-    expect(operation).toMatchObject({ state: 'reconciliation_required', failure_code: 'preexisting_provider_mismatch' });
-    await expect(reconcileEmailMutation({
-      operationId: operation.id, actorUserId: 'support_test', providerTerminalConfirmed: true, evidenceReference: 'support/6827/terminal',
-    })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-    expect(updateUser).not.toHaveBeenCalled();
-  });
-
-  it('verifies ownership of a different target alias before reading the provider', async () => {
-    await expect(setPrimaryEmail({ userId, email: 'not-linked@test.example' })).rejects.toMatchObject({ status: 404 });
-    expect(getUser).not.toHaveBeenCalled();
-    expect(updateUser).not.toHaveBeenCalled();
-  });
-
-  it('does not mutate local data when the provider read fails before any writes', async () => {
-    const before = await localState();
-    getUser.mockRejectedValueOnce(new Error('provider secret must not escape'));
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ status: 503 });
-    expect(await localState()).toEqual(before);
-    expect(await journal()).toEqual([]);
-    expect(updateUser).not.toHaveBeenCalled();
-  });
-
-  it('does not mutate local data after a definitive provider rejection', async () => {
-    const before = await localState();
-    updateUser.mockRejectedValueOnce(Object.assign(new Error('provider secret must not escape'), { status: 422 }));
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({
-      status: 502, body: { message: 'Your email was not changed. Please try again later or contact support.' },
-    });
-    expect(await localState()).toEqual(before);
-    expect((await journal())[0]).toMatchObject({ state: 'compensated', failure_code: 'provider_rejected' });
-    expect(await getEmailMutationStatus(userId)).toEqual({ reconciliation_required: false });
-  });
-
-  it('rolls back actual local writes and restores original provider email and verification flag', async () => {
-    await failAfterLocalWrites();
-    const before = await localState();
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ status: 503 });
-    expect(updateUser).toHaveBeenNthCalledWith(2, { userId, email: oldEmail, emailVerified: false });
-    expect(provider).toEqual({ id: userId, email: oldEmail, emailVerified: false });
-    expect(await localState()).toEqual(before);
-    expect((await journal())[0]).toMatchObject({ state: 'compensated', failure_code: 'local_write_failed' });
-  });
-
-  it('blocks compensation failures, preserves evidence, and reconciles idempotently after terminal assurance', async () => {
-    await failAfterLocalWrites();
-    const before = await localState();
-    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => {
-      provider = { id: userId, email, emailVerified };
-      return { ...provider };
-    }).mockRejectedValueOnce(Object.assign(new Error('provider secret must not escape'), { status: 503 }));
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({
-      status: 409, body: { reconciliation_required: true },
-    });
-    expect(await localState()).toEqual(before);
-    expect(provider.email).toBe(newEmail);
-    const [operation] = await journal();
-    expect(operation).toMatchObject({ state: 'reconciliation_required', failure_code: 'compensation_failed' });
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ body: { operation_id: operation.id } });
+  it('replays the same normalized payload and original result after a later different operation without provider retry', async () => {
+    const id = randomUUID();
+    const first = await mutate(id);
+    await pool.query('INSERT INTO user_email_aliases(workos_user_id,email) VALUES($1,$2)', [userId, thirdEmail]);
+    await mutate(randomUUID(), thirdEmail);
+    expect(await mutate(id, newEmail.toUpperCase())).toEqual(first);
+    expect(getUser).toHaveBeenCalledTimes(2);
     expect(updateUser).toHaveBeenCalledTimes(2);
-
-    const repair = { operationId: operation.id, actorUserId: 'support_test', providerTerminalConfirmed: true as const, evidenceReference: 'support/6827/terminal' };
-    await expect(reconcileEmailMutation(repair)).resolves.toEqual({ reconciled: true });
-    await expect(reconcileEmailMutation(repair)).resolves.toEqual({ reconciled: true });
-    expect(updateUser).toHaveBeenCalledTimes(3);
-    expect(provider.email).toBe(oldEmail);
-    expect(await localState()).toEqual(before);
-    expect((await journal())[0]).toMatchObject({ state: 'compensated', failure_code: 'compensation_failed' });
-    expect((await journal())[0].reconciliation_attempts).toEqual([
-      expect.objectContaining({ actor_user_id: 'support_test', evidence_reference: 'support/6827/terminal' }),
-    ]);
+    expect(provider.email).toBe(thirdEmail);
   });
-
-  it('keeps timeout ambiguity blocked when an immediate GET is old and the provider completes later', async () => {
-    const before = await localState();
-    let finishRequest!: () => void;
-    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => {
-      finishRequest = () => { provider = { id: userId, email, emailVerified }; };
-      throw Object.assign(new Error('timed out: sensitive response'), { status: 408 });
-    });
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-    expect((await getUser(userId)).email).toBe(oldEmail);
-    expect(await localState()).toEqual(before);
-    expect(updateUser).toHaveBeenCalledOnce(); // No compensating write after ambiguity.
-    const [operation] = await journal();
-    expect(operation.failure_code).toBe('provider_outcome_unknown');
-
-    finishRequest(); // Original timed-out request completes after the old-value GET.
-    expect((await getUser(userId)).email).toBe(newEmail);
-    expect(await getEmailMutationStatus(userId)).toMatchObject({ reconciliation_required: true, operation_id: operation.id });
-    await expect(setPrimaryEmail({ userId, email: oldEmail })).rejects.toMatchObject({ body: { reconciliation_required: true } });
+  it('rejects reuse with different payload or credential without replaying private results', async () => {
+    const id = randomUUID(); await mutate(id);
+    await expect(mutate(id, thirdEmail)).rejects.toMatchObject({ status: 409, body: { error: 'operation_id_reused' } });
+    const error = await setPrimaryEmail({ userId: otherUserId, operationId: id, email: newEmail }).catch(error => error);
+    expect(error.body).toEqual({ error: 'operation_id_reused', message: 'This request identifier belongs to a different email change.' });
     expect(updateUser).toHaveBeenCalledOnce();
-    await expect(reconcileEmailMutation({
-      operationId: operation.id, actorUserId: 'support_test', providerTerminalConfirmed: false as true, evidenceReference: 'support/old-value-get',
-    })).rejects.toMatchObject({ status: 400 });
-    await reconcileEmailMutation({
-      operationId: operation.id, actorUserId: 'support_test', providerTerminalConfirmed: true, evidenceReference: 'support/6827/request-terminal',
+  });
+  it('returns a conflict for concurrent cross-credential UUID reuse after both initial lookups', async () => {
+    const otherEmail = 'other-base@test.example';
+    await pool.query('INSERT INTO users(workos_user_id,email,email_verified,workos_created_at,workos_updated_at) VALUES($1,$2,true,NOW(),NOW())', [otherUserId, otherEmail]);
+    await pool.query('INSERT INTO user_email_aliases(workos_user_id,email) VALUES($1,$2)', [otherUserId, thirdEmail]);
+    const providers = new Map([[userId, { ...provider }], [otherUserId, { id: otherUserId, email: otherEmail, emailVerified: true }]]);
+    getUser.mockImplementation(async id => ({ ...providers.get(id)! }));
+    updateUser.mockImplementation(async ({ userId: id, email, emailVerified }) => {
+      const changed = { id, email, emailVerified }; providers.set(id, changed); return changed;
     });
-    expect(provider.email).toBe(oldEmail);
-    expect(await localState()).toEqual(before);
-    expect(await getEmailMutationStatus(userId)).toEqual({ reconciliation_required: false });
+    const id = randomUUID();
+    let release!: () => void;
+    const overlap = new Promise<void>(resolve => { release = resolve; });
+    let absentReads = 0;
+    const query = Client.prototype.query;
+    vi.spyOn(Client.prototype, 'query').mockImplementation(function (this: Client, ...args: any[]) {
+      const result = (query as any).apply(this, args);
+      if (args[0] === 'SELECT * FROM email_mutations WHERE id = $1' && args[1]?.[0] === id && absentReads < 2) {
+        return Promise.resolve(result).then(async response => {
+          expect(response.rowCount).toBe(0);
+          absentReads += 1;
+          if (absentReads === 2) release();
+          await overlap;
+          return response;
+        });
+      }
+      return result;
+    });
+    const results = await Promise.allSettled([mutate(id), setPrimaryEmail({ userId: otherUserId, email: thirdEmail, operationId: id })]);
+    expect(absentReads).toBe(2);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ status: 409, body: { error: 'operation_id_reused' } });
+    expect(getUser).toHaveBeenCalledOnce(); expect(updateUser).toHaveBeenCalledOnce();
   });
-
-  it('treats a pending intent left by a crashed worker as reconciliation-required', async () => {
-    await pool.query(
-      `INSERT INTO email_mutations (id, workos_user_id, actor_user_id, old_email, old_email_verified, new_email, state)
-       VALUES (gen_random_uuid(), $1, $1, $2, false, $3, 'pending')`, [userId, oldEmail, newEmail],
-    );
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-    expect(getUser).not.toHaveBeenCalled();
-    expect(updateUser).not.toHaveBeenCalled();
+  it('confirms durable intent before provider reads and writes', async () => {
+    getUser.mockImplementationOnce(async () => { expect((await journal())[0].state).toBe('pending'); return { ...provider }; });
+    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => { expect((await journal())[0].state).toBe('pending'); provider = { id: userId, email, emailVerified }; return provider; });
+    await mutate();
   });
-
-  it('blocks a concurrent request holding the same credential advisory lock', async () => {
+  it('validates verified ownership and rejects a new operation for the current primary before provider work', async () => {
+    await expect(mutate(randomUUID(), 'unlinked@test.example')).rejects.toMatchObject({ status: 404 });
+    await expect(mutate(randomUUID(), oldEmail)).rejects.toMatchObject({ status: 400 });
+    expect(getUser).not.toHaveBeenCalled(); expect(updateUser).not.toHaveBeenCalled(); expect(await journal()).toEqual([]);
+  });
+  it.each(['read', 'reject'])('stores and replays provider %s failure with explicit retryable terminal state and no secret leakage', async kind => {
+    const before = await state(); const id = randomUUID();
+    if (kind === 'read') getUser.mockRejectedValueOnce(new Error('secret provider diagnostic'));
+    else updateUser.mockRejectedValueOnce(Object.assign(new Error('secret provider diagnostic'), { status: 422 }));
+    const first = await mutate(id).catch(error => error);
+    const second = await mutate(id).catch(error => error);
+    expect(second.body).toEqual(first.body); expect(second.status).toBe(first.status);
+    expect(first.body.reconciliation_required).toBe(false);
+    expect(JSON.stringify(first.body)).not.toContain('secret');
+    expect(await state()).toEqual(before); expect(await epoch()).toBe(1);
+    expect(getUser).toHaveBeenCalledOnce(); expect(updateUser).toHaveBeenCalledTimes(kind === 'read' ? 0 : 1);
+  });
+  it('rolls back writes and compensates provider state, while bumping epochs for reconciliation and compensation', async () => {
+    await pool.query('INSERT INTO person_relationships(workos_user_id,email) VALUES($1,$2)', [otherUserId, newEmail]);
+    const before = await state();
+    await expect(mutate()).rejects.toMatchObject({ status: 503, body: { reconciliation_required: false } });
+    expect(provider).toEqual({ id: userId, email: oldEmail, emailVerified: false });
+    expect(await state()).toEqual(before);
+    expect(updateUser).toHaveBeenNthCalledWith(2, { userId, email: oldEmail, emailVerified: false });
+    expect(await epoch()).toBe(2);
+    expect((await journal())[0]).toMatchObject({ state: 'compensated', epoch_after: '2' });
+  });
+  it('keeps compensation failure permanently blocked with no exported support mutation bypass', async () => {
+    await pool.query('INSERT INTO person_relationships(workos_user_id,email) VALUES($1,$2)', [otherUserId, newEmail]);
+    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => { provider = { id: userId, email, emailVerified }; return provider; }).mockRejectedValueOnce(new Error('timeout'));
+    const id = randomUUID(); await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    await expect(mutate()).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect(updateUser).toHaveBeenCalledTimes(2);
+    expect((await import('../../src/services/email-mutation.js'))).not.toHaveProperty('reconcileEmailMutation');
+  });
+  it('blocks timed-out writes even when GET is old and the original request completes later', async () => {
+    let complete!: () => void;
+    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => { complete = () => { provider = { id: userId, email, emailVerified }; }; throw Object.assign(new Error('secret timeout'), { status: 408 }); });
+    const id = randomUUID(); await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect((await getUser()).email).toBe(oldEmail); complete(); expect((await getUser()).email).toBe(newEmail);
+    await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect(updateUser).toHaveBeenCalledOnce(); expect(await epoch()).toBe(1);
+  });
+  it('reconciles a crashed pending intent with one epoch bump and never retries the provider', async () => {
+    const id = randomUUID();
+    const body = { operation_id: id, error: 'Email reconciliation required', message: 'Support required', reconciliation_required: true };
+    await pool.query(`INSERT INTO email_mutations(id,workos_user_id,actor_user_id,payload_hash,old_email,old_email_verified,new_email,expected_email_version,state,result_status,result_body)
+      VALUES($1,$2,$2,$3,$4,false,$5,0,'pending',409,$6)`, [id,userId,createHash('sha256').update(JSON.stringify([userId,newEmail])).digest('hex'),oldEmail,newEmail,body]);
+    await expect(mutate(id)).rejects.toMatchObject({ status: 409, body });
+    await expect(mutate(id)).rejects.toMatchObject({ status: 409, body });
+    expect(getUser).not.toHaveBeenCalled(); expect(updateUser).not.toHaveBeenCalled(); expect(await epoch()).toBe(1);
+  });
+  it('reports contention as retryable busy without a nonexistent reconciliation operation', async () => {
     const client = await pool.connect();
     try {
-      await client.query('SELECT pg_advisory_lock(hashtextextended($1, 6827))', [userId]);
-      await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-      expect(updateUser).not.toHaveBeenCalled();
-    } finally {
-      const unlocked = await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 6827)) AS unlocked', [userId]);
-      expect(unlocked.rows[0].unlocked).toBe(true);
-      client.release();
-    }
+      await client.query('SELECT pg_advisory_lock(hashtextextended($1,6827))', [userId]);
+      const error = await mutate().catch(error => error);
+      expect(error.body).toEqual({ error: 'credential_busy', message: 'An email change is already in progress. Please retry.', retryable: true });
+      expect(await journal()).toEqual([]);
+    } finally { await client.query('SELECT pg_advisory_unlock(hashtextextended($1,6827))', [userId]); client.release(); }
   });
-
-  it('does not compensate after a lost COMMIT response when the local transaction committed', async () => {
+  it.each(['null', 'after-delete'])('does not call the provider after an intent INSERT %s fault', async kind => {
+    if (kind === 'null') await fault('email_mutations', 'INSERT', 'RETURN NULL;');
+    else await fault('email_mutations', 'INSERT', 'DELETE FROM email_mutations WHERE id=NEW.id;', 'AFTER');
+    const id = randomUUID(); await expect(mutate(id)).rejects.toMatchObject({ status: 503 });
+    expect(getUser).not.toHaveBeenCalled(); expect(updateUser).not.toHaveBeenCalled(); expect(await journal()).toEqual([]);
+    await clearFault(); await mutate(id); expect(updateUser).toHaveBeenCalledOnce();
+  });
+  it.each(['null', 'after-delete'])('cannot claim a terminal outcome after a journal UPDATE %s fault', async kind => {
+    if (kind === 'null') await fault('email_mutations', 'UPDATE', "IF NEW.state IN ('succeeded','compensated') THEN RETURN NULL; END IF;");
+    else await fault('email_mutations', 'UPDATE', "IF NEW.state IN ('succeeded','compensated') THEN DELETE FROM email_mutations WHERE id=NEW.id; END IF;", 'AFTER');
+    const before = await state(); await expect(mutate()).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect(await state()).toEqual(before); expect(provider.email).toBe(oldEmail);
+    expect((await journal())[0].state).toBe('reconciliation_required');
+  });
+  it('leaves the durable pending intent when reconciliation journal UPDATE is skipped', async () => {
+    await fault('email_mutations', 'UPDATE', "IF NEW.state='reconciliation_required' THEN RETURN NULL; END IF;");
+    updateUser.mockRejectedValueOnce(new Error('timeout'));
+    const id = randomUUID(); await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect((await journal())[0].state).toBe('pending'); expect(await epoch()).toBe(0); expect(invalidate).not.toHaveBeenCalled();
+    await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } }); expect(updateUser).toHaveBeenCalledOnce();
+  });
+  it('rolls back reconciliation epoch and journal when an AFTER UPDATE deletes its marker', async () => {
+    await fault('email_mutations', 'UPDATE', "IF NEW.state='reconciliation_required' THEN DELETE FROM email_mutations WHERE id=NEW.id; END IF;", 'AFTER');
+    updateUser.mockRejectedValueOnce(new Error('timeout'));
+    await expect(mutate()).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect((await journal())[0].state).toBe('pending'); expect(await epoch()).toBe(0); expect(invalidate).not.toHaveBeenCalled();
+  });
+  it.each(['users','organization_memberships','person_relationships'])('detects suppressed %s local writes instead of reporting success', async table => {
+    await fault(table, 'UPDATE', 'RETURN NULL;');
+    const before = await state(); const result = await mutate().catch(error => error);
+    expect(result).toHaveProperty('status'); expect(result.status).not.toBe(200); expect(await state()).toEqual(before);
+    expect(provider.email).toBe(oldEmail);
+  });
+  it.each(['INSERT','DELETE'])('detects suppressed alias %s writes', async event => {
+    await fault('user_email_aliases', event, 'RETURN NULL;');
+    const before = await state(); const result = await mutate().catch(error => error);
+    expect(result.status).not.toBe(200); expect(await state()).toEqual(before); expect(provider.email).toBe(oldEmail);
+  });
+  it.each(['INSERT','UPDATE'])('cannot claim success or compensation after a suppressed epoch %s', async event => {
+    if (event === 'UPDATE') await pool.query('INSERT INTO authorization_epochs(workos_user_id,epoch) VALUES($1,7)', [userId]);
+    await fault('authorization_epochs', event, 'RETURN NULL;');
+    const before = await state(); await expect(mutate()).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect(await state()).toEqual(before); expect(await epoch()).toBe(event === 'UPDATE' ? 7 : 0); expect(invalidate).not.toHaveBeenCalled();
+  });
+  it('detects an epoch trigger that returns a row without advancing its value', async () => {
+    await pool.query('INSERT INTO authorization_epochs(workos_user_id,epoch) VALUES($1,7)', [userId]);
+    await fault('authorization_epochs', 'UPDATE', 'NEW.epoch := OLD.epoch;');
+    await expect(mutate()).rejects.toMatchObject({ body: { reconciliation_required: true } }); expect(await epoch()).toBe(7);
+  });
+  it('compensates the provider when only the first epoch write is suppressed', async () => {
+    await pool.query('CREATE SEQUENCE test_email_mutation_fault_counter');
+    await fault('authorization_epochs', 'INSERT OR UPDATE', "IF nextval('test_email_mutation_fault_counter')=1 THEN RETURN NULL; END IF;");
+    const before = await state();
+    await expect(mutate()).rejects.toMatchObject({ status: 503, body: { reconciliation_required: false } });
+    expect(updateUser).toHaveBeenCalledTimes(2); expect(provider.email).toBe(oldEmail); expect(await state()).toEqual(before);
+    expect((await journal())[0]).toMatchObject({ state: 'compensated', epoch_after: '2' }); expect(await epoch()).toBe(2);
+  });
+  it.each(['lost', 'rollback', 'unknown-marker'])('requires independent marker evidence after an intent COMMIT %s response', async mode => {
+    const verifier = vi.spyOn(databaseClient, 'getDedicatedClient');
+    if (mode === 'unknown-marker') verifier.mockResolvedValueOnce({
+      query: vi.fn().mockRejectedValue(new Error('marker unavailable')), end: vi.fn().mockResolvedValue(undefined),
+    } as any);
     const connect = pool.connect.bind(pool);
     vi.spyOn(pool, 'connect').mockImplementationOnce(async () => {
-      const client = await connect();
-      const query = client.query.bind(client);
-      let loseCommit = true;
+      const client = await connect(); const query = client.query.bind(client); let injected = false;
       vi.spyOn(client, 'query').mockImplementation(async (...args: any[]) => {
-        const result = await (query as any)(...args);
-        if (args[0] === 'COMMIT' && loseCommit) {
-          loseCommit = false;
-          throw new Error('commit response lost');
+        if (args[0] === 'COMMIT' && !injected) {
+          injected = true;
+          if (mode === 'rollback') return query('ROLLBACK');
+          await (query as any)(...args); throw new Error('intent commit response lost');
         }
-        return result;
+        return (query as any)(...args);
       });
       return client;
     });
-    await expect(setPrimaryEmail({ userId, email: newEmail })).rejects.toMatchObject({ body: { reconciliation_required: true } });
-    expect(updateUser).toHaveBeenCalledOnce();
-    expect(provider.email).toBe(newEmail);
-    expect((await localState()).users).toEqual([{ email: newEmail, email_verified: true }]);
-    expect((await journal())[0].state).toBe('succeeded');
+    if (mode === 'lost') {
+      await expect(mutate()).resolves.toMatchObject({ primary_email: newEmail });
+      expect(updateUser).toHaveBeenCalledOnce();
+      expect((await journal())[0].state).toBe('succeeded');
+    } else {
+      await expect(mutate()).rejects.toMatchObject({ status: mode === 'unknown-marker' ? 409 : 503 });
+      expect(getUser).not.toHaveBeenCalled(); expect(updateUser).not.toHaveBeenCalled();
+      expect((await journal()).map(row => row.state)).toEqual(mode === 'unknown-marker' ? ['reconciliation_required'] : []);
+    }
+    expect(verifier).toHaveBeenCalled();
+  });
+  it.each(['lost', 'rollback'])('does not compensate when terminal COMMIT %s lacks a matching committed marker', async mode => {
+    const before = await state();
+    const connect = pool.connect.bind(pool);
+    vi.spyOn(pool, 'connect').mockImplementationOnce(async () => {
+      const client = await connect(); const query = client.query.bind(client); let commits = 0;
+      vi.spyOn(client, 'query').mockImplementation(async (...args: any[]) => {
+        if (args[0] === 'COMMIT' && ++commits === 2) {
+          if (mode === 'rollback') return query('ROLLBACK');
+          throw new Error('terminal commit outcome unknown');
+        }
+        return (query as any)(...args);
+      });
+      return client;
+    });
+    await expect(mutate()).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect(await state()).toEqual(before); expect(provider.email).toBe(newEmail); expect(updateUser).toHaveBeenCalledOnce();
+    expect((await journal())[0]).toMatchObject({ state: 'reconciliation_required', failure_code: 'local_commit_unknown' });
+  });
+  it.each([{ id: otherUserId }, { email: 'unexpected@test.example' }, { emailVerified: true }])('blocks an inconsistent provider baseline %j without writing to the provider', async difference => {
+    getUser.mockResolvedValueOnce({ ...provider, ...difference });
+    const id = randomUUID(); await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    await expect(mutate(id)).rejects.toMatchObject({ body: { reconciliation_required: true } });
+    expect(updateUser).not.toHaveBeenCalled(); expect(await epoch()).toBe(1);
+  });
+  it('serializes actual concurrent requests while the provider mutation is pending', async () => {
+    let finish!: () => void;
+    const waiting = new Promise<void>(resolve => { finish = resolve; });
+    updateUser.mockImplementationOnce(async ({ email, emailVerified }) => { await waiting; provider = { id: userId, email, emailVerified }; return provider; });
+    const first = mutate();
+    try {
+      await vi.waitFor(() => expect(updateUser).toHaveBeenCalledOnce());
+      await expect(mutate()).rejects.toMatchObject({ body: { error: 'credential_busy', retryable: true } });
+      expect(await journal()).toHaveLength(1);
+    } finally { finish(); }
+    await first; expect(updateUser).toHaveBeenCalledOnce(); expect(await epoch()).toBe(1);
+  });
+  it('uses a fresh committed marker to recover a lost COMMIT response without provider compensation', async () => {
+    const connect = pool.connect.bind(pool);
+    vi.spyOn(pool, 'connect').mockImplementationOnce(async () => {
+      const client = await connect(); const query = client.query.bind(client); let commits = 0;
+      vi.spyOn(client, 'query').mockImplementation(async (...args: any[]) => { const result = await (query as any)(...args); if (args[0] === 'COMMIT' && ++commits === 2) throw new Error('commit response lost'); return result; });
+      return client;
+    });
+    const id = randomUUID(); const result = await mutate(id); expect(result.primary_email).toBe(newEmail);
+    expect(await mutate(id)).toEqual(result); expect(updateUser).toHaveBeenCalledOnce(); expect(await epoch()).toBe(1);
+  });
+  it('does not change a durable result when postcommit session eviction fails', async () => {
+    invalidate.mockImplementation(() => { throw new Error('secret local cache error'); });
+    const id = randomUUID(); const first = await mutate(id); expect(await mutate(id)).toEqual(first);
+    expect(updateUser).toHaveBeenCalledOnce(); expect(await epoch()).toBe(1);
   });
 });

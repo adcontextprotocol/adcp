@@ -1054,10 +1054,11 @@
     var linkedEmailReconciliationRequired = false;
     var linkedEmailMutationPending = false;
     var linkedEmailLoadVersion = 0;
+    var linkedEmailCredentialId = null;
     var linkedEmailReconciliationMessage = 'Your email change needs reconciliation. Contact support before making another email change.';
 
     function canMutateLinkedEmails() {
-      return linkedEmailStatusKnown && !linkedEmailReconciliationRequired && !linkedEmailMutationPending;
+      return !!linkedEmailCredentialId && linkedEmailStatusKnown && !linkedEmailReconciliationRequired && !linkedEmailMutationPending;
     }
 
     function updateLinkedEmailControls() {
@@ -1077,6 +1078,9 @@
         linkedEmailReconciliationRequired = true;
         linkedEmailStatusKnown = true;
         showLinkedEmailStatus(data.message || linkedEmailReconciliationMessage);
+      } else if (data.status_unknown === true) {
+        linkedEmailStatusKnown = false;
+        showLinkedEmailStatus(data.message || 'Unable to confirm your email change. Reload to check its status or contact support.');
       } else if (authoritative && data.reconciliation_required === false) {
         linkedEmailReconciliationRequired = false;
         linkedEmailStatusKnown = true;
@@ -1101,6 +1105,8 @@
           return;
         }
 
+        linkedEmailCredentialId = typeof data.credential_id === 'string' ? data.credential_id : null;
+        if (!linkedEmailCredentialId) throw new Error('Credential status unavailable');
         var container = document.getElementById('linkedEmailsList');
         var html = '';
 
@@ -1143,6 +1149,20 @@
       }
     }
 
+    function primaryEmailOperation(email) {
+      var key = 'member-primary-email:' + linkedEmailCredentialId;
+      var saved = window.sessionStorage.getItem(key);
+      var operation = saved ? JSON.parse(saved) : null;
+      var normalizedEmail = email.trim().toLowerCase();
+      if (!operation || operation.email !== normalizedEmail) {
+        operation = { operation_id: window.crypto.randomUUID(), email: normalizedEmail };
+        // Persist before sending: retries after a lost response or page reload
+        // must use the same caller operation ID, never start a second mutation.
+        window.sessionStorage.setItem(key, JSON.stringify(operation));
+      }
+      return { key: key, id: operation.operation_id };
+    }
+
     async function setPrimaryEmail(email) {
       if (!canMutateLinkedEmails()) return;
       if (!confirm('Make ' + email + ' your primary email? You will need to use this email to sign in.')) return;
@@ -1152,10 +1172,11 @@
       updateLinkedEmailControls();
 
       try {
+        var operation = primaryEmailOperation(email);
         var response = await fetch('/api/me/linked-emails/primary', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email }),
+          body: JSON.stringify({ email: email, operation_id: operation.id }),
           credentials: 'include'
         });
 
@@ -1163,7 +1184,12 @@
         ++linkedEmailLoadVersion;
         applyLinkedEmailStatus(data, false);
 
-        if (!response.ok || linkedEmailReconciliationRequired) {
+        if ((response.ok || data.reconciliation_required === false)
+            && data.reconciliation_required !== true && data.status_unknown !== true) {
+          window.sessionStorage.removeItem(operation.key);
+        }
+
+        if (!response.ok || linkedEmailReconciliationRequired || data.status_unknown === true) {
           accountShowToast(data.message || (linkedEmailReconciliationRequired ? linkedEmailReconciliationMessage : data.error) || 'Failed to update primary email', true);
           return;
         }

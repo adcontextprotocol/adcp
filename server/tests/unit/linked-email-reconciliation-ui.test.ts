@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +17,7 @@ function response(data: Record<string, unknown>, status = 200) {
 
 function emailStatus(overrides: Record<string, unknown> = {}) {
   return {
+    credential_id: 'user_credential',
     primary_email: 'primary@example.test',
     aliases: [{ email: 'alias@example.test' }],
     pending: [],
@@ -30,17 +32,21 @@ function deferredResponse() {
   return { promise, resolve };
 }
 
-function loadControls() {
-  const dom = new JSDOM(source);
+function loadControls(savedStorage?: Storage) {
+  const dom = new JSDOM(source, { url: 'https://agenticadvertising.org/dashboard-settings.html' });
   documents.push(dom);
   const document = dom.window.document;
   const fetchMock = vi.fn();
   const showToast = vi.fn();
   const confirmMock = vi.fn(() => true);
+  const sessionStorage = savedStorage ?? dom.window.sessionStorage;
+  const newOperationId = vi.fn(randomUUID);
   const functions = new Function('document', 'window', 'fetch', 'confirm', `
     ${source.slice(scriptStart, scriptEnd)}
     return { loadLinkedEmails, setPrimaryEmail, openLinkEmailModal, sendLinkVerification };
   `)(document, {
+    sessionStorage,
+    crypto: { randomUUID: newOperationId },
     ProfileEdit: {
       showToast,
       escapeHtml(value: string) {
@@ -73,7 +79,7 @@ function loadControls() {
     (document.getElementById('linkEmailInput') as HTMLInputElement).value = 'new@example.test';
   }
 
-  return { document, fetchMock, showToast, confirmMock, expectDisabled, loadReady, enterEmail, ...functions };
+  return { document, fetchMock, showToast, confirmMock, sessionStorage, newOperationId, expectDisabled, loadReady, enterEmail, ...functions };
 }
 
 afterEach(() => {
@@ -81,6 +87,94 @@ afterEach(() => {
 });
 
 describe('linked email reconciliation UI', () => {
+  it('persists a caller operation before sending and reuses it after a lost response and reload', async () => {
+    const first = loadControls();
+    await first.loadReady();
+    first.fetchMock.mockImplementationOnce(async (_url, options) => {
+      const sent = JSON.parse(options.body);
+      expect(JSON.parse(first.sessionStorage.getItem('member-primary-email:user_credential')!))
+        .toEqual({ email: 'alias@example.test', operation_id: sent.operation_id });
+      throw new Error('Response lost');
+    });
+    await first.setPrimaryEmail('alias@example.test');
+    first.expectDisabled(true);
+    const original = JSON.parse(first.fetchMock.mock.calls[1][1].body);
+
+    const reload = loadControls(first.sessionStorage);
+    await reload.loadReady();
+    reload.fetchMock.mockResolvedValueOnce(response({ primary_email: 'alias@example.test', operation_id: original.operation_id }))
+      .mockResolvedValueOnce(response(emailStatus({ primary_email: 'alias@example.test' })));
+    await reload.setPrimaryEmail('alias@example.test');
+    expect(JSON.parse(reload.fetchMock.mock.calls[1][1].body)).toEqual(original);
+    expect(reload.newOperationId).not.toHaveBeenCalled();
+    expect(first.sessionStorage.getItem('member-primary-email:user_credential')).toBeNull();
+  });
+
+  it('keeps lock contention retryable with the same caller operation instead of entering reconciliation', async () => {
+    const controls = loadControls();
+    await controls.loadReady();
+    controls.fetchMock.mockResolvedValueOnce(response({ error: 'credential_busy', retryable: true, message: 'Please retry.' }, 409));
+    await controls.setPrimaryEmail('alias@example.test');
+    controls.expectDisabled(false);
+    const original = JSON.parse(controls.fetchMock.mock.calls[1][1].body);
+    controls.fetchMock.mockResolvedValueOnce(response({ primary_email: 'alias@example.test', operation_id: original.operation_id }))
+      .mockResolvedValueOnce(response(emailStatus()));
+    await controls.setPrimaryEmail('alias@example.test');
+    expect(JSON.parse(controls.fetchMock.mock.calls[2][1].body)).toEqual(original);
+    expect(controls.newOperationId).toHaveBeenCalledOnce();
+  });
+
+  it.each([409, 502, 503])('starts a new caller operation after a stored terminal failure (%i)', async (status) => {
+    const controls = loadControls();
+    await controls.loadReady();
+    controls.fetchMock.mockResolvedValueOnce(response({
+      error: 'Email change failed', message: 'Your email was not changed. Start a new request.', reconciliation_required: false,
+    }, status));
+    await controls.setPrimaryEmail('alias@example.test');
+    controls.expectDisabled(false);
+    const original = JSON.parse(controls.fetchMock.mock.calls[1][1].body);
+    expect(controls.sessionStorage.getItem('member-primary-email:user_credential')).toBeNull();
+    controls.fetchMock.mockRejectedValueOnce(new Error('Response lost'));
+    await controls.setPrimaryEmail('alias@example.test');
+    expect(JSON.parse(controls.fetchMock.mock.calls[2][1].body).operation_id).not.toBe(original.operation_id);
+    expect(controls.newOperationId).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send an email mutation if its caller operation cannot be persisted', async () => {
+    const controls = loadControls();
+    await controls.loadReady();
+    const storage = Object.getPrototypeOf(controls.sessionStorage);
+    const setItem = vi.spyOn(storage, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable'); });
+    try {
+      await controls.setPrimaryEmail('alias@example.test');
+      expect(controls.fetchMock).toHaveBeenCalledOnce();
+      controls.expectDisabled(true);
+    } finally { setItem.mockRestore(); }
+  });
+
+  it('keeps an unknown server outcome disabled without inventing reconciliation state', async () => {
+    const controls = loadControls();
+    await controls.loadReady();
+    controls.fetchMock.mockResolvedValueOnce(response({ status_unknown: true, message: 'Reload to check the outcome.' }, 503));
+    await controls.setPrimaryEmail('alias@example.test');
+    controls.expectDisabled(true);
+    expect(controls.document.getElementById('linkedEmailStatusMessage')?.textContent).toContain('Reload to check the outcome.');
+  });
+
+  it('scopes persisted caller operations to the exact authenticated credential', async () => {
+    const first = loadControls();
+    await first.loadReady();
+    first.fetchMock.mockRejectedValueOnce(new Error('Response lost'));
+    await first.setPrimaryEmail('alias@example.test');
+    const original = JSON.parse(first.fetchMock.mock.calls[1][1].body);
+    const other = loadControls(first.sessionStorage);
+    other.fetchMock.mockResolvedValueOnce(response(emailStatus({ credential_id: 'user_other' })));
+    await other.loadLinkedEmails();
+    other.fetchMock.mockRejectedValueOnce(new Error('Response lost'));
+    await other.setPrimaryEmail('alias@example.test');
+    expect(JSON.parse(other.fetchMock.mock.calls[1][1].body).operation_id).not.toBe(original.operation_id);
+  });
+
   it('disables mutations before and during the initial authoritative status load', async () => {
     const controls = loadControls();
     controls.expectDisabled(true);
