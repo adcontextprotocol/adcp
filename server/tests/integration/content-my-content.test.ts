@@ -856,6 +856,100 @@ describe('My Content — body, admin scope, status, delete', () => {
     });
   });
 
+  describe.each([
+    { authenticated: 'user_my_content', canonical: 'user_my_content_other', allowed: true },
+    { authenticated: 'user_my_content_other', canonical: 'user_my_content', allowed: false },
+  ])('content leader credential $authenticated linked to $canonical', ({ authenticated, canonical, allowed }) => {
+    beforeEach(() => {
+      authState.userId = canonical;
+      authState.authWorkosUserId = authenticated;
+    });
+
+    it('passes the authenticated credential through the proposal route', async () => {
+      const response = await request(app).post('/api/content/propose').send({
+        title: 'mc-test-credential-proposal',
+        content: 'Credential-scoped publishing authority',
+        content_type: 'article',
+        collection: { slug: WG_SLUG },
+        status: 'published',
+      }).expect(201);
+
+      const expectedStatus = allowed ? 'published' : 'pending_review';
+      expect(response.body.status).toBe(expectedStatus);
+      const stored = await pool.query(
+        'SELECT status, proposer_user_id FROM perspectives WHERE id = $1', [response.body.id],
+      );
+      expect(stored.rows).toEqual([{ status: expectedStatus, proposer_user_id: canonical }]);
+    });
+
+    it('passes the authenticated credential through the pending-review route', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-credential-pending', title: 'Private pending submission',
+        status: 'pending_review', proposerUserId: null, workingGroupId: wgId,
+      });
+
+      const response = await request(app).get('/api/content/pending')
+        .query({ committee_slug: WG_SLUG }).expect(200);
+      expect(response.body.items.some((item: { id: string }) => item.id === id)).toBe(allowed);
+      if (!allowed) expect(response.body.items).toEqual([]);
+    });
+
+    it.each([
+      { action: 'approve', body: { publish_immediately: false }, nextStatus: 'draft' },
+      { action: 'reject', body: { reason: 'Please revise this submission' }, nextStatus: 'rejected' },
+      { action: 'request-revisions', body: { notes: 'Please add supporting evidence' }, nextStatus: 'needs_revisions' },
+    ])('passes the authenticated credential through the $action route', async ({ action, body, nextStatus }) => {
+      const id = await insertPerspective({
+        slug: `mc-test-credential-${action}`, title: 'Pending submission',
+        status: 'pending_review', proposerUserId: null, workingGroupId: wgId,
+      });
+
+      const response = await request(app).post(`/api/content/${id}/${action}`).send(body)
+        .expect(allowed ? 200 : 403);
+      if (allowed) expect(response.body.status).toBe(nextStatus);
+      const stored = await pool.query(
+        'SELECT status, reviewed_by_user_id, reviewed_at FROM perspectives WHERE id = $1', [id],
+      );
+      expect(stored.rows[0]).toMatchObject({
+        status: allowed ? nextStatus : 'pending_review',
+        reviewed_by_user_id: allowed ? canonical : null,
+      });
+      expect(stored.rows[0].reviewed_at !== null).toBe(allowed);
+    });
+
+    it.each(['update', 'delete', 'add-author', 'remove-author'] as const)('uses exact credential for %s authority', async (operation) => {
+      const id = await insertPerspective({
+        slug: `mc-test-credential-${operation}`, title: 'Original title',
+        status: 'draft', proposerUserId: null, workingGroupId: wgId,
+      });
+      if (operation === 'remove-author') {
+        await pool.query(
+          `INSERT INTO content_authors (perspective_id, user_id, display_name) VALUES ($1, $2, 'Existing author')`,
+          [id, OTHER_USER_ID],
+        );
+      }
+
+      const path = `/api/me/content/${id}`;
+      const response = operation === 'update'
+        ? await request(app).put(path).send({ title: 'Changed title' })
+        : operation === 'delete'
+          ? await request(app).delete(path)
+          : operation === 'add-author'
+            ? await request(app).post(`${path}/authors`).send({ user_id: OTHER_USER_ID, display_name: 'New author' })
+            : await request(app).delete(`${path}/authors/${OTHER_USER_ID}`);
+      expect(response.status).toBe(allowed ? operation === 'add-author' ? 201 : 200 : 403);
+
+      if (operation === 'update' || operation === 'delete') {
+        const stored = await pool.query(`SELECT title FROM perspectives WHERE id = $1`, [id]);
+        expect(stored.rows).toEqual(allowed && operation === 'delete' ? [] : [{ title: allowed ? 'Changed title' : 'Original title' }]);
+      } else {
+        const authors = await pool.query(`SELECT user_id FROM content_authors WHERE perspective_id = $1`, [id]);
+        const expectedCount = operation === 'add-author' ? Number(allowed) : Number(!allowed);
+        expect(authors.rows).toHaveLength(expectedCount);
+      }
+    });
+  });
+
   describe('DELETE /api/admin/content/:id', () => {
     it('resolves linked open escalations before deleting the perspective', async () => {
       const id = await insertPerspective({

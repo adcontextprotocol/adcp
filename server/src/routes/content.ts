@@ -1231,7 +1231,7 @@ export function createContentRouter(): Router {
     try {
       const user = req.user!;
       const result = await proposeContentForUser(
-        user,
+        { ...user, adminPrincipal: user },
         req.body as ProposeContentRequest
       );
 
@@ -1270,7 +1270,7 @@ export function createContentRouter(): Router {
       const user = req.user!;
       const committeeSlug = req.query.committee_slug as string | undefined;
       const result = await listPendingContentForUser(
-        user,
+        { ...user, adminPrincipal: user },
         { committeeSlug }
       );
       res.json(result);
@@ -1291,7 +1291,7 @@ export function createContentRouter(): Router {
       const { publish_immediately = true } = req.body;
 
       const result = await approveContentForUser(
-        user,
+        { ...user, adminPrincipal: user },
         id,
         { publishImmediately: publish_immediately }
       );
@@ -1417,7 +1417,7 @@ export function createContentRouter(): Router {
       const { reason } = req.body;
 
       const result = await rejectContentForUser(
-        user,
+        { ...user, adminPrincipal: user },
         id,
         reason
       );
@@ -1457,7 +1457,7 @@ export function createContentRouter(): Router {
       const { notes } = req.body;
 
       const result = await requestRevisionsForUser(
-        user,
+        { ...user, adminPrincipal: user },
         id,
         notes
       );
@@ -1490,7 +1490,7 @@ export function createContentRouter(): Router {
       const { id } = req.params;
 
       const result = await resubmitContentForUser(
-        user,
+        { ...user, adminPrincipal: user },
         id
       );
 
@@ -1747,7 +1747,7 @@ export function createMyContentRouter(): Router {
         [id, user.id]
       ).then(r => r.rows.length > 0);
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
@@ -1999,7 +1999,7 @@ export function createMyContentRouter(): Router {
         [id, user.id]
       ).then(r => r.rows.length > 0);
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
@@ -2065,7 +2065,7 @@ export function createMyContentRouter(): Router {
       // Check permission
       const isProposer = contentItem.proposer_user_id === user.id;
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
@@ -2147,7 +2147,7 @@ export function createMyContentRouter(): Router {
       // Check permission
       const isProposer = contentItem.proposer_user_id === user.id;
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, user.authWorkosUserId ?? user.id)
         : false;
       const userIsAdmin = await isContentUserAAOAdmin(user);
 
