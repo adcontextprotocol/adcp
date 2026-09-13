@@ -83,8 +83,10 @@ import { respondToAdminAuthorizationError } from "../auth/admin-authorization-re
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import {
   captureAddieMutationAuthority,
+  organizationMutationAuthorityFromMemberContext,
   revalidateAddieMutationAuthority,
 } from "../addie/mutation-authority.js";
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -800,6 +802,9 @@ export async function prepareRequestWithMemberTools(
   adminPrincipal?: AAOAdminPrincipal,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
+  const credentialUserId = adminPrincipal
+    ? getOrganizationAuthorizationUserId(adminPrincipal)
+    : userId;
   let memberContext: MemberContext | null = null;
   let siRetrievalTimeMs: number | null = null;
 
@@ -808,13 +813,13 @@ export async function prepareRequestWithMemberTools(
     // Get member context
     (async () => {
       try {
-        if (userId) {
-          return await getWebMemberContext(userId, selectedOrganizationId, adminPrincipal);
+        if (credentialUserId) {
+          return await getWebMemberContext(credentialUserId, selectedOrganizationId, adminPrincipal);
         }
         return null;
       } catch (error) {
         if (error instanceof AAOAdminLookupUnavailableError) throw error;
-        logger.warn({ error, userId }, "Addie Chat: Failed to get member context");
+        logger.warn({ error, credentialUserId }, "Addie Chat: Failed to get member context");
         return null;
       }
     })(),
@@ -823,6 +828,15 @@ export async function prepareRequestWithMemberTools(
   ]);
 
   memberContext = memberContextResult;
+  if (credentialUserId && memberContext?.workos_user?.workos_user_id !== credentialUserId) {
+    throw new AAOAdminLookupUnavailableError();
+  }
+  if (
+    selectedOrganizationId
+    && memberContext?.organization?.workos_organization_id !== selectedOrganizationId
+  ) {
+    throw new AAOAdminLookupUnavailableError();
+  }
   siRetrievalTimeMs = siRetrievalResult.retrieval_time_ms;
 
   // Build per-request context for system prompt (member info, SI agents)
@@ -955,7 +969,7 @@ export async function prepareRequestWithMemberTools(
   }
 
   // Certification tools (for authenticated users)
-  if (userId) {
+  if (credentialUserId) {
     allTools.push(...CERTIFICATION_TOOLS);
     for (const [name, handler] of createCertificationToolHandlers(memberContext, {
       threadId: threadExternalId,
@@ -969,19 +983,19 @@ export async function prepareRequestWithMemberTools(
   // users only on the web path; signing grades spawn a child Node process and
   // both tools make outbound HTTP probes, so we keep them gated behind a
   // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
-  if (userId) {
+  if (credentialUserId) {
     allTools.push(...AUTH_GRADER_TOOLS);
-    for (const [name, handler] of createAuthGraderToolHandlers(userId)) {
+    for (const [name, handler] of createAuthGraderToolHandlers(credentialUserId)) {
       combinedHandlers.set(name, handler);
     }
   }
 
   // Permission-gated tools (for authenticated users)
-  if (userId) {
+  if (credentialUserId) {
     const workingGroupDb = new WorkingGroupDatabase();
     const [userIsAdmin, ledGroups] = await Promise.all([
       adminPrincipal ? isAuthenticatedUserAAOAdmin(adminPrincipal) : Promise.resolve(false),
-      workingGroupDb.getCommitteesLedByUser(adminPrincipal?.authWorkosUserId ?? adminPrincipal?.id ?? userId),
+      workingGroupDb.getCommitteesLedByUser(credentialUserId),
     ]);
 
     if (userIsAdmin) {
@@ -1431,6 +1445,7 @@ export function createAddieChatRouter(options?: {
               const authority = await captureAddieMutationAuthority({
                 principal: req.user!,
                 platformAdminMutationTools: mutationToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
+                organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
               });
               return ({ toolName }: { toolName: string }) =>
                 revalidateAddieMutationAuthority(authority, toolName);
@@ -2061,6 +2076,7 @@ export function createAddieChatRouter(options?: {
             const authority = await captureAddieMutationAuthority({
               principal: req.user!,
               platformAdminMutationTools: mutationToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
+              organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
             });
             return ({ toolName }: { toolName: string }) =>
               revalidateAddieMutationAuthority(authority, toolName);

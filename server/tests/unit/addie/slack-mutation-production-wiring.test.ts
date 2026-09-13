@@ -23,7 +23,7 @@ describe('production Slack mutation authority wiring', () => {
     mocks.epoch.mockResolvedValue('9');
   });
 
-  it('ignores stale MemberContext and binds capture plus dispatch to the live mapping', async () => {
+  it('rejects a live remap that differs from the handler-assembly credential', async () => {
     mocks.lookupMapping.mockResolvedValue({
       slack_user_id: 'U_ACTOR',
       workos_user_id: 'credential_fresh',
@@ -39,11 +39,9 @@ describe('production Slack mutation authority wiring', () => {
       mutationToolNames: ['create_payment_link'],
     });
 
-    expect(mocks.epoch).toHaveBeenCalledWith('credential_fresh');
-    expect(mocks.epoch).not.toHaveBeenCalledWith('credential_stale');
+    expect(mocks.epoch).not.toHaveBeenCalled();
     await expect(revalidate!({ toolName: 'create_payment_link', parameters: {} }))
-      .resolves.toEqual({ allowed: true });
-    expect(mocks.lookupMapping).toHaveBeenCalledTimes(2);
-    expect(mocks.epoch).toHaveBeenCalledTimes(2);
+      .resolves.toEqual({ allowed: false, status: 'access_denied' });
+    expect(mocks.lookupMapping).toHaveBeenCalledOnce();
   });
 });

@@ -18,6 +18,7 @@ import { getPool } from '../db/client.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
 import type { SyncSlackUsersResult } from './types.js';
+import { withAuthorizationEpochBump } from '../db/authorization-epoch-db.js';
 
 const slackDb = new SlackDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
@@ -697,11 +698,11 @@ export async function checkAndAssignOrganizationByDomain(
       roleSlug: role,
     });
 
-    await pool.query(`
+    await withAuthorizationEpochBump([workosUserId], (client) => client.query(`
       INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
       VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
       ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
-    `, [workosUserId, targetOrgId, email, role]);
+    `, [workosUserId, targetOrgId, email, role]));
 
     return {
       assigned: true,
@@ -913,11 +914,11 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
         });
         // Mirror the WorkOS membership locally so code reading organization_memberships
         // sees the change immediately rather than waiting for the webhook to fire.
-        await pool.query(`
+        await withAuthorizationEpochBump([user.workos_user_id], (client) => client.query(`
           INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
           VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
           ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
-        `, [user.workos_user_id, orgId, user.email, role]);
+        `, [user.workos_user_id, orgId, user.email, role]));
         totalAdded++;
         if (!hasAdmin) hasAdmin = true; // Only promote the first one
         logger.info({ orgId, orgName: row.org_name, email: user.email, role }, 'Auto-added domain user as org member');

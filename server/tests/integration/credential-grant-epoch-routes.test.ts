@@ -34,6 +34,11 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
 const { createOrganizationsRouter } = await import('../../src/routes/organizations.js');
 const { stopAuthTimers } = await import('../../src/middleware/auth.js');
 const { WorkingGroupDatabase } = await import('../../src/db/working-group-db.js');
+const {
+  upsertOrganizationMembership,
+  setMembershipRole,
+  deleteOrganizationMembership,
+} = await import('../../src/db/membership-db.js');
 
 const ORG_ID = 'org_credential_epoch_routes';
 const ACTOR = 'user_credential_epoch_actor';
@@ -112,13 +117,17 @@ describe('exact credential grant epoch routes', () => {
 
   async function cleanup() {
     if (!pool) return;
+    await pool.query('DROP TRIGGER IF EXISTS test_suppress_credential_grant_audit ON registry_audit_log');
+    await pool.query('DROP FUNCTION IF EXISTS test_suppress_credential_grant_audit()');
+    await pool.query('DROP TRIGGER IF EXISTS test_suppress_aao_admin_audit ON aao_admin_access_events');
+    await pool.query('DROP FUNCTION IF EXISTS test_suppress_aao_admin_audit()');
     await pool.query('DELETE FROM registry_audit_log WHERE workos_organization_id = $1', [ORG_ID]);
-    await pool.query('DELETE FROM aao_admin_access_events WHERE target_user_id = $1', [ABSENT_TARGET]);
+    await pool.query('DELETE FROM aao_admin_access_events WHERE target_user_id = ANY($1)', [[ABSENT_TARGET, TARGET]]);
     await pool.query(
       `DELETE FROM working_group_memberships
-        WHERE workos_user_id = $1
+        WHERE workos_user_id = ANY($1)
           AND working_group_id = (SELECT id FROM working_groups WHERE slug = 'aao-admin')`,
-      [ABSENT_TARGET],
+      [[ABSENT_TARGET, TARGET]],
     );
     await pool.query('DELETE FROM organization_credential_grants WHERE workos_organization_id = $1', [ORG_ID]);
     await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [USERS]);
@@ -158,6 +167,42 @@ describe('exact credential grant epoch routes', () => {
       'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
       [TARGET],
     )).resolves.toMatchObject({ rows: [{ epoch: '2' }] });
+  });
+
+  it('bumps the exact target epoch for local membership grant, role change, and removal writers', async () => {
+    await upsertOrganizationMembership({
+      user_id: TARGET,
+      organization_id: ORG_ID,
+      membership_id: 'om_epoch_target',
+      email: 'target@example.test',
+      first_name: 'Target',
+      last_name: 'Member',
+      role: 'member',
+      seat_type: 'community_only',
+      has_explicit_seat_type: true,
+      provisioning_source: 'webhook',
+    });
+    await expect(pool.query(
+      'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+      [TARGET],
+    )).resolves.toMatchObject({ rows: [{ epoch: '1' }] });
+
+    await setMembershipRole(TARGET, ORG_ID, 'admin');
+    await expect(pool.query(
+      'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+      [TARGET],
+    )).resolves.toMatchObject({ rows: [{ epoch: '2' }] });
+
+    await expect(deleteOrganizationMembership(TARGET, ORG_ID)).resolves.toBe('admin');
+    await expect(pool.query(
+      'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+      [TARGET],
+    )).resolves.toMatchObject({ rows: [{ epoch: '3' }] });
+    await expect(pool.query(
+      `SELECT 1 FROM organization_memberships
+        WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+      [TARGET, ORG_ID],
+    )).resolves.toMatchObject({ rowCount: 0 });
   });
 
   it.each([
@@ -280,6 +325,126 @@ describe('exact credential grant epoch routes', () => {
     });
   });
 
+  it.each(['credential_grant_created', 'credential_grant_revoked'] as const)(
+    'rolls back the org grant mutation when a BEFORE INSERT trigger suppresses %s audit',
+    async (suppressedAction) => {
+      roles.set(ACTOR, 'owner');
+      const created = await request(app)
+        .post(`/api/organizations/${ORG_ID}/credential-grants`)
+        .set(asCredential(ACTOR))
+        .send({ workos_user_id: TARGET, role: 'member' });
+      if (suppressedAction === 'credential_grant_created') {
+        expect(created.status).toBe(201);
+        await pool.query('DELETE FROM registry_audit_log WHERE resource_id = $1', [created.body.grant_id]);
+        await pool.query('DELETE FROM organization_credential_grants WHERE id = $1', [created.body.grant_id]);
+        await pool.query('DELETE FROM authorization_epochs WHERE workos_user_id = $1', [TARGET]);
+      } else {
+        expect(created.status).toBe(201);
+      }
+
+      await pool.query(`
+        CREATE FUNCTION test_suppress_credential_grant_audit() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.workos_organization_id = '${ORG_ID}' AND NEW.action = '${suppressedAction}' THEN
+            RETURN NULL;
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      await pool.query(`
+        CREATE TRIGGER test_suppress_credential_grant_audit
+        BEFORE INSERT ON registry_audit_log
+        FOR EACH ROW EXECUTE FUNCTION test_suppress_credential_grant_audit()
+      `);
+
+      if (suppressedAction === 'credential_grant_created') {
+        const failed = await request(app)
+          .post(`/api/organizations/${ORG_ID}/credential-grants`)
+          .set(asCredential(ACTOR))
+          .send({ workos_user_id: TARGET, role: 'member' });
+        expect(failed.status).toBe(500);
+        await expect(pool.query(
+          `SELECT 1 FROM organization_credential_grants
+            WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+          [ORG_ID, TARGET],
+        )).resolves.toMatchObject({ rowCount: 0 });
+        await expect(pool.query(
+          'SELECT 1 FROM authorization_epochs WHERE workos_user_id = $1',
+          [TARGET],
+        )).resolves.toMatchObject({ rowCount: 0 });
+      } else {
+        const beforeEpoch = await pool.query<{ epoch: string }>(
+          'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+          [TARGET],
+        );
+        const failed = await request(app)
+          .delete(`/api/organizations/${ORG_ID}/credential-grants/${created.body.grant_id}`)
+          .set(asCredential(ACTOR));
+        expect(failed.status).toBe(500);
+        await expect(pool.query(
+          'SELECT revoked_at FROM organization_credential_grants WHERE id = $1',
+          [created.body.grant_id],
+        )).resolves.toMatchObject({ rows: [{ revoked_at: null }] });
+        await expect(pool.query<{ epoch: string }>(
+          'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+          [TARGET],
+        )).resolves.toMatchObject({ rows: beforeEpoch.rows });
+      }
+    },
+  );
+
+  it.each(['granted', 'revoked'] as const)(
+    'rolls back the AAO membership mutation when a BEFORE INSERT trigger suppresses the %s audit',
+    async (eventType) => {
+      const workingGroupDb = new WorkingGroupDatabase();
+      const input = {
+        targetUserId: TARGET,
+        actorUserId: ACTOR,
+        actorCanonicalUserId: CANONICAL,
+        actorAuthorizationMechanism: 'static_admin_api_key' as const,
+        reason: 'Audit suppression barrier',
+      };
+      if (eventType === 'revoked') await workingGroupDb.grantAAOAdminMembership(input);
+
+      await pool.query(`
+        CREATE FUNCTION test_suppress_aao_admin_audit() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.target_user_id = '${TARGET}' AND NEW.event_type = '${eventType}' THEN
+            RETURN NULL;
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      await pool.query(`
+        CREATE TRIGGER test_suppress_aao_admin_audit
+        BEFORE INSERT ON aao_admin_access_events
+        FOR EACH ROW EXECUTE FUNCTION test_suppress_aao_admin_audit()
+      `);
+
+      const beforeEpoch = await pool.query<{ epoch: string }>(
+        'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+        [TARGET],
+      );
+      await expect(eventType === 'granted'
+        ? workingGroupDb.grantAAOAdminMembership(input)
+        : workingGroupDb.revokeAAOAdminMembership(input))
+        .rejects.toThrow(/audit did not persist exactly one row/);
+      const membership = await pool.query(
+        `SELECT 1 FROM working_group_memberships
+          WHERE workos_user_id = $1
+            AND working_group_id = (SELECT id FROM working_groups WHERE slug = 'aao-admin')`,
+        [TARGET],
+      );
+      expect(membership.rowCount).toBe(eventType === 'revoked' ? 1 : 0);
+      await expect(pool.query<{ epoch: string }>(
+        'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+        [TARGET],
+      )).resolves.toMatchObject({ rows: beforeEpoch.rows });
+    },
+  );
+
   it('serializes a local actor-grant revocation against the transactional authority recheck', async () => {
     roles.set(ACTOR, 'owner');
     const actorGrant = await request(app)
@@ -401,6 +566,7 @@ describe('exact credential grant epoch routes', () => {
     await expect(workingGroupDb.grantAAOAdminMembership({
       targetUserId: ABSENT_TARGET,
       actorUserId: ACTOR,
+      actorCanonicalUserId: ACTOR,
       actorAuthorizationMechanism: 'static_admin_api_key',
       reason: 'Must not create phantom authority',
     })).rejects.toThrow('AAO admin target credential not found');

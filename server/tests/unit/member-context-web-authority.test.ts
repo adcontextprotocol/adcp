@@ -15,7 +15,12 @@ vi.mock('../../src/auth/workos-client.js', () => ({ getWorkos: vi.fn() }));
 vi.mock('../../src/db/client.js', () => ({ query: mocks.query, getPool: () => ({ query: mocks.query }) }));
 vi.mock('../../src/middleware/auth.js', () => ({
   isDevModeEnabled: () => true,
-  DEV_USERS: [{ id: 'user_dev_canonical', email: 'canonical@example.test', organizationId: 'org_example' }],
+  DEV_USERS: [
+    { id: 'user_dev_canonical', email: 'canonical@example.test', organizationId: 'org_example' },
+    { id: 'user_dev_credential_admin', email: 'admin@example.test', organizationId: 'org_example' },
+    { id: 'user_dev_credential_member', email: 'member@example.test', organizationId: 'org_example' },
+    { id: 'user_dev_credential_leader', email: 'leader@example.test', organizationId: 'org_example' },
+  ],
 }));
 vi.mock('../../src/db/slack-db.js', () => ({ SlackDatabase: class {} }));
 vi.mock('../../src/db/member-db.js', () => ({ MemberDatabase: class { async getProfileByOrgId() { return null; } } }));
@@ -43,10 +48,10 @@ describe('web member context authority boundary', () => {
     vi.resetAllMocks();
     mocks.workingGroups.mockResolvedValue([{ id: 'canonical_group', name: 'Canonical committee', slug: 'canonical' }]);
     mocks.isLeader.mockResolvedValue(true);
-    mocks.isAdmin.mockImplementation(async (principal) => principal.id === 'credential_admin');
+    mocks.isAdmin.mockImplementation(async (principal) => principal.id === 'user_dev_credential_admin');
     mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql.includes('FROM working_group_leaders wgl')) {
-        return { rows: params?.[0] === 'credential_leader' ? [{ id: 'credential_group', slug: 'credential' }] : [] };
+        return { rows: params?.[0] === 'user_dev_credential_leader' ? [{ id: 'credential_group', slug: 'credential' }] : [] };
       }
       if (sql.includes('GROUP BY wg.slug')) {
         return { rows: [{ committee_slug: 'credential', count: '2' }] };
@@ -56,10 +61,10 @@ describe('web member context authority boundary', () => {
   });
 
   it.each([
-    ['credential_admin', true],
-    ['credential_member', false],
+    ['user_dev_credential_admin', true],
+    ['user_dev_credential_member', false],
   ] as const)('uses exact %s for platform content access despite canonical leader/admin state', async (credential, allowed) => {
-    const context = await getWebMemberContext('user_dev_canonical', undefined, {
+    const context = await getWebMemberContext(credential, undefined, {
       id: 'user_dev_canonical', authWorkosUserId: credential, email: 'authenticated@example.test',
     });
     expect(mocks.isAdmin).toHaveBeenCalledWith({ id: credential, authWorkosUserId: credential, email: 'authenticated@example.test' });
@@ -71,8 +76,8 @@ describe('web member context authority boundary', () => {
 
   it('retains an authenticated committee leader even when the canonical identity leads nothing', async () => {
     mocks.workingGroups.mockResolvedValue([]);
-    const context = await getWebMemberContext('user_dev_canonical', undefined, {
-      id: 'user_dev_canonical', authWorkosUserId: 'credential_leader',
+    const context = await getWebMemberContext('user_dev_credential_leader', undefined, {
+      id: 'user_dev_canonical', authWorkosUserId: 'user_dev_credential_leader',
     });
     expect(context.pending_content?.total).toBe(2);
     const scopedQuery = mocks.query.mock.calls.find(([sql]) => sql.includes('GROUP BY wg.slug'));
@@ -103,6 +108,13 @@ describe('web member context authority boundary', () => {
       .rejects.toBeInstanceOf(AAOAdminLookupUnavailableError);
     expect(mocks.workingGroups).not.toHaveBeenCalled();
     expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it('rejects canonical context hydration when the exact authenticated credential differs', async () => {
+    await expect(getWebMemberContext('user_dev_canonical', undefined, {
+      id: 'user_dev_canonical',
+      authWorkosUserId: 'credential_member',
+    })).rejects.toBeInstanceOf(AAOAdminLookupUnavailableError);
   });
 
   it.each(['', ' credential_member '])('rejects malformed exact credential %j instead of falling back to canonical authority', async (credential) => {

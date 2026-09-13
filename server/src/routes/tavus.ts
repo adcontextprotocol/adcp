@@ -60,6 +60,12 @@ import {
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import { captureVoiceAuthorization, deriveVoiceCallbackTurnId, issueVoiceCallbackBinding, isVoiceSessionOwner, persistVoiceCallbackBinding, resolveVoiceCallback, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
+import {
+  captureAddieMutationAuthority,
+  organizationMutationAuthorityFromMemberContext,
+  revalidateAddieMutationAuthority,
+} from '../addie/mutation-authority.js';
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -205,7 +211,7 @@ function validateLlmSecret(req: Request): boolean {
  * This gives voice Addie the same capabilities as chat Addie.
  */
 export async function buildVoiceRequestTools(
-  userId: string,
+  _canonicalUserId: string,
   threadId: string,
   adminPrincipal: AAOAdminPrincipal,
 ): Promise<{
@@ -214,12 +220,16 @@ export async function buildVoiceRequestTools(
   memberContext: MemberContext | null;
   isAAOAdmin: boolean;
 }> {
+  const credentialUserId = getOrganizationAuthorizationUserId(adminPrincipal);
   let memberContext: MemberContext | null = null;
   try {
-    memberContext = await getWebMemberContext(userId, undefined, adminPrincipal);
+    memberContext = await getWebMemberContext(credentialUserId, undefined, adminPrincipal);
   } catch (error) {
     if (error instanceof AAOAdminLookupUnavailableError) throw error;
-    logger.warn({ error, userId }, "Tavus: Failed to get member context");
+    logger.warn({ error, credentialUserId }, "Tavus: Failed to get member context");
+  }
+  if (memberContext?.workos_user?.workos_user_id !== credentialUserId) {
+    throw new AAOAdminLookupUnavailableError();
   }
 
   // Format member context for system prompt
@@ -923,6 +933,7 @@ export function createTavusRouter(options?: {
       forceSafeFallback?: boolean;
     } | null = null;
     let memberRequestContext = "";
+    let voiceMemberContext: MemberContext | null = null;
     let userDisplayName: string | null = null;
     let voiceUserId: string | null = null;
     let voiceFillersDisabled = false;
@@ -957,6 +968,7 @@ export function createTavusRouter(options?: {
     try {
       const result = await buildVoiceRequestTools(thread.user_id, threadId, authorization.principal);
       memberRequestContext = result.requestContext;
+      voiceMemberContext = result.memberContext;
       try {
         pendingVoiceToolSelection = {
           memberContext: result.memberContext,
@@ -1304,6 +1316,15 @@ export function createTavusRouter(options?: {
           allowedToolNames: routedVoiceTools?.allowedToolNames,
           clientRequestId,
           ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
+          captureSideEffectAuthority: async ({ mutationToolNames }) => {
+            const authority = await captureAddieMutationAuthority({
+              principal: authorization.principal,
+              platformAdminMutationTools: mutationToolNames.filter((name) =>
+                ADMIN_TOOLS.some((tool) => tool.name === name)),
+              organizationAuthority: organizationMutationAuthorityFromMemberContext(voiceMemberContext),
+            });
+            return ({ toolName }) => revalidateAddieMutationAuthority(authority, toolName);
+          },
           costScope,
           reserveSideEffect: async ({ toolName, parameters }) => {
             if (!threadId) throw new Error('A durable conversation thread is required for an external action');

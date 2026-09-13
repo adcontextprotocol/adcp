@@ -14,6 +14,7 @@ import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
 import { encrypt, decrypt } from './encryption.js';
 import { WorkOS } from '@workos-inc/node';
+import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 
 const logger = createLogger('org-merge-db');
 
@@ -205,6 +206,12 @@ export async function mergeOrganizations(
     // =====================================================
     // 1. Merge organization_memberships
     // =====================================================
+    const affectedMembershipUsers = await client.query<{ workos_user_id: string }>(
+      `SELECT DISTINCT workos_user_id
+         FROM organization_memberships
+        WHERE workos_organization_id IN ($1, $2)`,
+      [primaryOrgId, secondaryOrgId],
+    );
     const membershipsResult = await client.query(
       `INSERT INTO organization_memberships (
         workos_user_id, workos_organization_id, workos_membership_id,
@@ -236,6 +243,10 @@ export async function mergeOrganizations(
     await client.query(
       `DELETE FROM organization_memberships WHERE workos_organization_id = $1`,
       [secondaryOrgId]
+    );
+    await bumpAuthorizationEpochs(
+      client,
+      affectedMembershipUsers.rows.map((row) => row.workos_user_id),
     );
 
     // Repoint users.primary_organization_id from secondary to primary. Must

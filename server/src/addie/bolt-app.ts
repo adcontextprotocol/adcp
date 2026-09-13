@@ -271,6 +271,7 @@ import {
   type SponsoredIntelligenceContextKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
+import { organizationMutationAuthorityFromMemberContext } from './mutation-authority.js';
 
 const PLATFORM_ADMIN_TOOL_NAMES = new Set(ADMIN_TOOLS.map((tool) => tool.name));
 const slackAuthorityDb = new SlackDatabase();
@@ -295,8 +296,10 @@ export function slackMutationAuthorityOptions(
         }
       };
       return captureSlackMutationAuthority({
+        assembledCredentialId: memberContext?.workos_user?.workos_user_id,
         credentialEmail: memberContext?.workos_user?.email,
         platformAdminMutationTools,
+        organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
         lookupCredential,
         revalidatePlatformAdmin: async (capturedCredentialId) => {
           const decision = await resolveSlackUserAAOAdminAccess(slackUserId);
