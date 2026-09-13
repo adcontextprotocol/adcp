@@ -5,8 +5,8 @@ description: "Tell a seller whether expected reporting was received, omitted, mi
 ---
 
 <Warning>
-`sync_reporting_status` is an additive, opt-in Reliable Reporting extension in
-current source. Published RC.1 implementations do not expose it. Sellers that
+`sync_reporting_status` is an additive, opt-in Reliable Reporting extension
+published in `3.2.0-rc.2`. RC.1 implementations do not expose it. Sellers that
 implement it advertise `consumer_status_task`; the active breaking-change
 notice makes it required Core only in the next eligible minor after October 24,
 2026.
@@ -24,13 +24,21 @@ observations about a user. It also is not a Reconciled Billing receipt:
 `received` proves only that the buyer consumed the exact Core revision binding,
 not that Managed materialization evidence or billing control totals matched.
 
-{/* Using latest because sync_reporting_status is not released in an immutable version yet.
-    Update to the next 3.2 release-candidate URL after publication. */}
-**Request schema:** [`sync-reporting-status-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-reporting-status-request.json)
+{/* The stable /schemas/v3 alias does not expose this RC.2-only task yet. */}
+**Request schema:** [`sync-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/sync-reporting-status-request.json)
 
-{/* Using latest because sync_reporting_status is not released in an immutable version yet.
-    Update to the next 3.2 release-candidate URL after publication. */}
-**Response schema:** [`sync-reporting-status-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-reporting-status-response.json)
+{/* The stable /schemas/v3 alias does not expose this RC.2-only task yet. */}
+**Response schema:** [`sync-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/sync-reporting-status-response.json)
+
+<Note>
+`3.2.0-rc.2` publishes the task itself, not the hardening described on this
+page. The `content_mismatch` status and its `mismatch_code`, the
+stale-`received` grace window, `obligation_counts.consumer_status_pending`,
+issue `opened_at` / `issue_state` / `external_ref`, and the
+`operations_contact` / `consumer_mismatch_escalation_seconds` capability fields
+land in the next prerelease. Until then, validate those against the development
+bundle served from `/schemas/latest/` rather than the rc.2 pin above.
+</Note>
 
 ## Status values
 

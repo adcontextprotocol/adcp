@@ -28,9 +28,9 @@ its checkpoint, post-official `adjustments[]` and `adjustment_receipts[]`, and t
 correction/reconciliation semantics below are published in RC.1. RC.0 supports the
 `summary`, `periods`, and `revision` views, retained revisions, materializations,
 `receipts[]`, and cursor pagination; do not infer the RC.1 additions from that baseline.
-Current unreleased source adds `consumer_statuses[]` for sellers advertising
+`3.2.0-rc.2` adds `consumer_statuses[]` for sellers advertising
 `consumer_status_task` and includes those immutable records in flat pagination
-and `changes_after` checkpoints. It also adds
+and `changes_after` checkpoints. Still unreleased in current source:
 `obligation_counts.consumer_status_pending`, issue `opened_at` / `issue_state` /
 `external_ref`, and the `consumer_mismatch_escalation_seconds` and
 `operations_contact` capability fields.
