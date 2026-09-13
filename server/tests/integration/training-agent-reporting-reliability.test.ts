@@ -333,11 +333,32 @@ describe('sales training-agent reporting Core exercise', () => {
         adcp_version: ADCP_VERSION,
         params: { operation: 'publish_zero_row' },
       });
-      expect(published.result?.structuredContent).toMatchObject({ success: true });
+      expect(published.result?.structuredContent).toMatchObject({
+        success: true,
+        simulated: { finality: 'snapshot', revision_content_sha256: expect.any(String) },
+      });
+      const publishedRevisionId = (published.result?.structuredContent?.simulated as { reporting_revision_id?: unknown } | undefined)?.reporting_revision_id;
+      const restated = await call(url, 80, 'comply_test_controller', {
+        account,
+        scenario: 'reporting_core_lifecycle_probe',
+        adcp_version: ADCP_VERSION,
+        params: { operation: 'restate_snapshot' },
+      });
+      expect(restated.result?.structuredContent).toMatchObject({
+        success: true,
+        simulated: {
+          finality: 'snapshot',
+          reporting_revision_id: expect.any(String),
+          supersedes_reporting_revision_id: publishedRevisionId,
+        },
+      });
       const complete = await call(url, 9, 'get_reporting_status', { account, view: 'periods', adcp_version: ADCP_VERSION });
       expect(complete.result?.structuredContent).toMatchObject({
-        periods: expect.arrayContaining([expect.objectContaining({ reporting_obligation_id: expect.any(String), production_status: 'published' })]),
-        revisions: expect.arrayContaining([expect.objectContaining({ row_count: 0, control_totals: [] })]),
+        periods: expect.arrayContaining([expect.objectContaining({ reporting_obligation_id: expect.any(String), production_status: 'published', revision_count: 2 })]),
+        revisions: expect.arrayContaining([
+          expect.objectContaining({ reporting_revision_id: publishedRevisionId, row_count: 0, control_totals: [] }),
+          expect.objectContaining({ supersedes_reporting_revision_id: publishedRevisionId, row_count: 0, control_totals: [] }),
+        ]),
       });
 
       await call(url, 10, 'comply_test_controller', {

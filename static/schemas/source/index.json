@@ -1955,6 +1955,16 @@
             "description": "Authoritative reporting ledger status for summary, periods, or one exact revision"
           }
         },
+        "sync-reporting-status": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-reporting-status-request.json",
+            "description": "Submit authenticated consumer status for expected reporting periods"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-reporting-status-response.json",
+            "description": "Per-status durable recording results"
+          }
+        },
         "sync-reporting-receipts": {
           "request": {
             "$ref": "/schemas/media-buy/sync-reporting-receipts-request.json",

@@ -612,12 +612,13 @@ wire-compatible, so each is evaluated through its own capability surface.
 
 | Tier | Advertised by | Contains | Required? |
 |---|---|---|---|
-| **Core** | `supported: true` | Obligations, revisions, immutable post-official adjustments, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method`, destinations, materializations, and canonicalization. | **Yes** — the only required tier |
+| **Core** | `supported: true` | Obligations, revisions, immutable post-official adjustments, the five health states, and seller [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status). Current source also defines opt-in buyer-to-seller [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status) over ordinary task transport; it becomes required only in the next eligible minor after the notice window. Core offerings omit `method`, destinations, materializations, Managed canonicalization, billing receipts, and bespoke status webhooks. | **Yes** — the only required tier |
 | **Managed delivery** | `managed_delivery: true` | Offerings whose `method` names `file_transfer`, `dataset_share`, or `warehouse_materialization`, plus exact-resource retention and authorization-revocation bounds. | No |
 | **Reconciled billing** | `reconciled_billing: true` | `receipt_task` ([`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)), `consumer_receipt` reconciliation, and the canonical-digest contract in offering profiles. | No |
 
-A polling-only seller that repairs through `get_reporting_status` is fully
-Core-conformant. A supported RFC 9421 `webhook_signing` profile is required only
+A seller with no outbound reporting push remains Core-conformant: status sync is
+an ordinary inbound task, not a buyer-hosted callback. A supported RFC 9421
+`webhook_signing` profile is required only
 when the seller declares any reporting notification.
 
 Three optional doorbells: `status_notification` (`reporting.status_changed`) is
@@ -633,6 +634,19 @@ is managed-delivery-only positive readiness. Ledger changes repair through
 content-addressed reporting profile/schema, schedule, and supported finality;
 managed-delivery offerings additionally bind transport, orchestration,
 provider/access mode/format, and destination modes.
+
+The Core capability can declare both status directions:
+
+- `status_task: "get_reporting_status"` exposes the seller's obligation and
+  revision ledger; and
+- optional `consumer_status_task: "sync_reporting_status"` records what the
+  authenticated buyer could actually consume. It becomes mandatory only in the
+  next eligible minor after the active notice window.
+
+The second task does not require the buyer to expose an agent endpoint or
+webhook. A buyer using a Reliable Reporting configuration calls the seller task
+automatically after bounded repair and whenever its period status changes.
+Missing buyer status remains unknown and never excuses seller reporting.
 
 Schedules may align to UTC, the AdCP account timezone, an explicit upstream
 `source_timezone`, or an anchored billing cycle. `source_timezone` covers clocks

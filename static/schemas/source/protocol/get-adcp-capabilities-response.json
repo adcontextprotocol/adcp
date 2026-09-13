@@ -1321,7 +1321,7 @@
         "reporting_delivery": {
           "$ref": "/schemas/core/reporting-delivery-capabilities.json",
           "x-status": "experimental",
-          "description": "AdCP 3.2 Reliable Reporting capability. The affirmative machine answer to ‘Do you support Reliable Reporting?’ requires this block with supported: true and reliable_reporting_version: 1.0 plus media_buy.reporting_delivery in experimental_features. managed_delivery and reconciled_billing identify optional tiers. This generalizes, but does not remove, the legacy reporting_delivery_methods/offline_delivery_protocols surface; those legacy fields and declarations from other protocols do not imply Reliable Reporting support."
+          "description": "AdCP 3.2 Reliable Reporting capability. The affirmative machine answer to ‘Do you support Reliable Reporting?’ requires this block with supported: true and reliable_reporting_version: 1.0 plus media_buy.reporting_delivery in experimental_features. Core exposes seller get_reporting_status; during the published migration window, consumer_status_task separately advertises opt-in buyer-to-seller sync_reporting_status and becomes required Core only in the next eligible minor. managed_delivery and reconciled_billing identify optional tiers. This generalizes, but does not remove, the legacy reporting_delivery_methods/offline_delivery_protocols surface; those legacy fields and declarations from other protocols do not imply Reliable Reporting support."
         },
         "supports_proposals": {
           "type": "boolean",

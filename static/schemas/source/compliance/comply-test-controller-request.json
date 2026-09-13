@@ -819,7 +819,7 @@
             "required": ["operation"],
             "properties": {
               "operation": {
-                "enum": ["prepare", "advance_time", "publish_zero_row", "publish_nonempty", "omit_obligation"]
+                "enum": ["prepare", "advance_time", "publish_zero_row", "publish_nonempty", "restate_snapshot", "omit_obligation"]
               }
             },
             "allOf": [
@@ -906,8 +906,8 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "omit_obligation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
-          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, and omit_obligation to exercise obligation availability, health deadlines, explicit empty reporting, and buyer-side missing-obligation detection. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
+          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "omit_obligation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
+          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, and omit_obligation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, and buyer-side missing-obligation detection. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
         },
         "target_health": {
           "type": "string",

@@ -10,6 +10,7 @@ import {
   prepareReliableReportingReconciledBillingProbe,
   projectedReportingConfigurationStates,
   publishZeroRowReportingCoreLifecycleProbe,
+  restateReportingCoreLifecycleProbeSnapshot,
   publishReliableReportingCoreIntegrityCorrection,
   publishReliableReportingReconciledAdjustments,
   reportingConfigurationStatesForAccount,
@@ -76,6 +77,7 @@ describe('training-agent Core reporting reliability ledger', () => {
     const periods = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
 
     expect(published.reporting_obligation_id).toBe(prepared.reporting_obligation_id);
+    expect(published.finality).toBe('snapshot');
     expect(periods).toMatchObject({ health: 'complete', obligation_counts: { complete: 1 } });
     expect(periods.ledger_snapshot_id).not.toBe(beforePublication.ledger_snapshot_id);
     expect(periods.periods?.[0]).toMatchObject({
@@ -106,6 +108,62 @@ describe('training-agent Core reporting reliability ledger', () => {
     }, 'buyer:alpha', ACCOUNT_ID);
     expect(reread.view === 'revision' && revision.view === 'revision' ? reread.revision : undefined)
       .toEqual(revision.view === 'revision' ? revision.revision : undefined);
+  });
+
+  it('restates a snapshot idempotently while retaining exact access to the prior revision', () => {
+    prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const original = publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const restated = restateReportingCoreLifecycleProbeSnapshot('buyer:alpha', ACCOUNT_ID);
+    const replay = restateReportingCoreLifecycleProbeSnapshot('buyer:alpha', ACCOUNT_ID);
+
+    expect(restated).toMatchObject({
+      finality: 'snapshot',
+      row_count: 0,
+      supersedes_reporting_revision_id: original.reporting_revision_id,
+    });
+    expect(restated.reporting_revision_id).not.toBe(original.reporting_revision_id);
+    expect(replay).toEqual(restated);
+
+    const current = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    expect(current.periods?.[0]).toMatchObject({ revision_count: 2 });
+    expect(current.revisions).toHaveLength(2);
+    expect(current.revisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reporting_revision_id: restated.reporting_revision_id,
+        supersedes_reporting_revision_id: original.reporting_revision_id,
+      }),
+    ]));
+    const prior = getReportingStatusForAccount({
+      ...BASE_REQUEST,
+      view: 'revision',
+      reporting_revision_id: original.reporting_revision_id,
+    }, 'buyer:alpha', ACCOUNT_ID);
+    expect(prior).toMatchObject({ revision: { reporting_revision_id: original.reporting_revision_id } });
+  });
+
+  it('isolates revision chains for concurrent configs sharing a definition and period', () => {
+    prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const scopedConfig = structuredClone(TRAINING_REPORTING_CORE_CONFIGURATION);
+    scopedConfig.delivery_config_id = 'training-pacing-scoped';
+    scopedConfig.scope = { media_buy_ids: ['mb_scoped_only'] };
+    replaceReportingConfigurations(
+      'buyer:alpha',
+      ACCOUNT_ID,
+      [TRAINING_REPORTING_CORE_CONFIGURATION, scopedConfig],
+      '2026-08-01T00:00:00.000Z',
+    );
+
+    publishZeroRowReportingCoreLifecycleProbe(
+      'buyer:alpha', ACCOUNT_ID, TRAINING_REPORTING_CORE_CONFIGURATION.delivery_config_id,
+    );
+    publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, scopedConfig.delivery_config_id);
+    restateReportingCoreLifecycleProbeSnapshot('buyer:alpha', ACCOUNT_ID);
+
+    const status = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'periods' }, 'buyer:alpha', ACCOUNT_ID);
+    const obligations = new Map(status.periods?.map(period => [period.delivery_config_id, period]));
+    expect(obligations.get(TRAINING_REPORTING_CORE_CONFIGURATION.delivery_config_id)?.revision_count).toBe(2);
+    expect(obligations.get(scopedConfig.delivery_config_id)?.revision_count).toBe(1);
+    expect(status.revisions).toHaveLength(3);
   });
 
   it('repairs content changes from a durable checkpoint independently of health transitions', () => {

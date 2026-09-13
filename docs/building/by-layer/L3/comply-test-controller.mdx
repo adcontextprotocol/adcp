@@ -385,7 +385,8 @@ Prepares and advances a deterministic, caller/account-scoped
 [`reporting.core`](/docs/media-buy/reporting-core-implementation-guide)
 fixture without waiting for real reporting boundaries. This lets a learner or
 storyboard observe that an obligation exists before its first report, then
-exercise deadline-based health or publish an explicit empty revision.
+exercise deadline-based health, publish an explicit empty revision, or
+restate a provisional revision after a buyer has read it.
 
 The fixture is Core-only: no destination, materialization, readiness doorbell,
 canonical digest, or receipt is implied.
@@ -396,13 +397,16 @@ canonical digest, or receipt is implied.
 | **advance_time** | `target_health: delayed` | Set `simulated_now` to `2026-08-01T02:05:00.000Z`, strictly after `expected_at`. The same obligation becomes `delayed` with a stable issue while automated recovery remains open. |
 | **advance_time** | `target_health: action_required` | Set `simulated_now` to `2026-08-01T04:05:00.000Z`, strictly after the returned `recovery_deadline`. The same obligation becomes `action_required`. |
 | **publish_zero_row** | none | Commit an immutable current revision with `row_count: 0`. The obligation becomes satisfied; this is empty reporting, not missing reporting. |
+| **restate_snapshot** | none | Commit a new immutable snapshot revision that names the current snapshot in `supersedes_reporting_revision_id`. Reject the operation when no snapshot exists or the current revision is official. |
 | **omit_obligation** | none | Advance through a second elapsed period while deliberately suppressing its obligation. The response supplies the expected period and ID so a buyer can demonstrate denominator-based detection. Sandbox education only: this intentionally produces a non-conformant ledger. |
 
 Every successful response includes `account_id` and the applied
 `simulated_now`. `prepare` returns the resolved configuration, generation
 tuple, obligation ID, half-open period, `expected_at`, and `recovery_deadline`;
 `advance_time` repeats the generation, obligation, and deadline identities;
-`publish_zero_row` adds `reporting_revision_id` and `row_count`; and
+`publish_zero_row` adds `reporting_revision_id`, `revision_content_sha256`,
+`finality: "snapshot"`, and `row_count`; `restate_snapshot` returns those fields
+for the new snapshot plus `supersedes_reporting_revision_id`; and
 `omit_obligation` instead returns `expected_reporting_obligation_id`,
 `omitted_period`, and its `expected_at`. Implementations choose fixture
 identifiers, so callers capture the returned values rather than guessing them.

@@ -40,6 +40,7 @@
     "sync_agent_notification_configs",
     "sync_principal",
     "get_principal",
+    "sync_reporting_status",
     "sync_reporting_receipts"
   ],
   "enumDescriptions": {
@@ -78,6 +79,7 @@
     "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications",
     "sync_principal": "Protocol domain: Synchronize caller-scoped agent connection configuration, including webhooks and reusable reporting destinations",
     "get_principal": "Protocol domain: Read caller-scoped agent connection configuration, its version, and destination setup states without mutation",
+    "sync_reporting_status": "Media-buy domain: Submit authenticated consumer status for expected reporting periods",
     "sync_reporting_receipts": "Media-buy domain: Submit authenticated consumer reconciliation outcomes for reporting materializations"
   },
   "x-task-result-schema-overrides": {

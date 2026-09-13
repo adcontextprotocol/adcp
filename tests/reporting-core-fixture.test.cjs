@@ -81,8 +81,8 @@ const reconciledOffering = {
   },
 };
 
-// The complete Core capability block: no receipt task, no push
-// notification, no managed-delivery retention or revocation machinery.
+// The complete current-RC Core capability block. Consumer status is a separate
+// opt-in during the migration window.
 const coreCapabilities = {
   supported: true,
   reliable_reporting_version: '1.0',
@@ -208,12 +208,23 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     assert.equal(offering.definitions.ReportingDeliveryPattern.title, 'Reporting Delivery Pattern');
   });
 
-  it('accepts a Core capability block with no receipt, push, or managed-delivery fields', () => {
+  it('accepts baseline Core without the opt-in consumer-status extension', () => {
     assert.equal(validateCapabilities(coreCapabilities), true, JSON.stringify(validateCapabilities.errors));
+    assert.equal('consumer_status_task' in coreCapabilities, false);
 
     for (const forbidden of ['receipt_task', 'readiness_notification', 'managed_delivery', 'reconciled_billing', 'resource_retention_days', 'authorization_revocation_seconds']) {
       assert.equal(forbidden in coreCapabilities, false, `${forbidden} must not be needed for Core`);
     }
+  });
+
+  it('accepts consumer status as an explicit Reliable Reporting opt-in', () => {
+    const optedIn = { ...coreCapabilities, consumer_status_task: 'sync_reporting_status' };
+    assert.equal(validateCapabilities(optedIn), true, JSON.stringify(validateCapabilities.errors));
+
+    const legacyShape = { ...optedIn };
+    delete legacyShape.reliable_reporting_version;
+    delete legacyShape.revision_content_task;
+    assert.equal(validateCapabilities(legacyShape), false, 'consumer status requires Reliable Reporting 1.0');
   });
 
   it('rejects tier flags without their tier machinery', () => {

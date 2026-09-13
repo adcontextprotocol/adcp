@@ -1,0 +1,143 @@
+---
+title: sync_reporting_status
+description: "Tell a seller whether expected reporting was received, omitted, missing, or unreadable."
+"og:title": "AdCP — sync_reporting_status"
+---
+
+<Warning>
+`sync_reporting_status` is an additive, opt-in Reliable Reporting extension in
+current source. Published RC.1 implementations do not expose it. Sellers that
+implement it advertise `consumer_status_task`; the active breaking-change
+notice makes it required Core only in the next eligible minor after October 24,
+2026.
+</Warning>
+
+`sync_reporting_status` closes the operational loop between what a seller says
+it published and what an authenticated buyer could actually consume. The buyer
+calls it on the seller through ordinary AdCP task transport. Buyers do not expose
+a reverse task endpoint, and sellers do not advertise a separate ingestion
+webhook.
+
+This task records **consumer status**, not measurement data. A statement carries
+no delivery metrics, attribution results, prices, invoices, or arbitrary
+observations about a user. It also is not a Reconciled Billing receipt:
+`received` proves only that the buyer consumed the exact Core revision binding,
+not that Managed materialization evidence or billing control totals matched.
+
+{/* Using latest because sync_reporting_status is not released in an immutable version yet.
+    Update to the next 3.2 release-candidate URL after publication. */}
+**Request schema:** [`sync-reporting-status-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-reporting-status-request.json)
+
+{/* Using latest because sync_reporting_status is not released in an immutable version yet.
+    Update to the next 3.2 release-candidate URL after publication. */}
+**Response schema:** [`sync-reporting-status-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-reporting-status-response.json)
+
+## Status values
+
+Each immutable statement addresses one exact `(authenticated consumer, account,
+delivery_config_id, delivery_config_version, report_definition_id, period)`
+chain:
+
+| `consumer_status` | Meaning | Required evidence |
+|---|---|---|
+| `received` | The exact revision content was successfully consumed. | Seller obligation ID, revision ID, and the independently recomputed Core `revision_content_sha256`. |
+| `obligation_missing` | The period is required by the accepted configuration generation but the seller ledger omitted it. | Configuration generation, report definition, and exact period; no seller obligation or revision ID exists. |
+| `revision_missing` | The seller obligation exists, but no required revision was available after `expected_at` and the buyer's bounded retry/give-up window. | Seller obligation ID. |
+| `unreadable` | A revision was advertised, but its exact content could not be consumed. | Seller obligation ID, revision ID, and a closed `failure_code`. |
+
+`obligation_missing` is deliberately keyed without a seller-issued obligation
+ID. Requiring that ID would make the first missing report invisible again. The
+seller validates the period against the authenticated caller's accepted
+configuration generation instead.
+
+## Example
+
+```json
+{
+  "account": { "account_id": "acc_123" },
+  "idempotency_key": "019db314-4f2a-7c91-bf38-e0df4020bb0b",
+  "statuses": [
+    {
+      "reporting_status_id": "status_daily_2026_09_01_01",
+      "delivery_config_id": "daily_reporting",
+      "delivery_config_version": 2,
+      "report_definition_id": "daily_delivery_v2",
+      "period": {
+        "start": "2026-09-01T00:00:00Z",
+        "end": "2026-09-02T00:00:00Z",
+        "source_timezone": "UTC"
+      },
+      "consumer_status": "obligation_missing",
+      "status_as_of": "2026-09-02T02:05:00Z",
+      "seller_ledger_snapshot_id": "snapshot_2026_09_02_0205",
+      "seller_ledger_as_of": "2026-09-02T02:05:00Z"
+    }
+  ]
+}
+```
+
+The response returns one `recorded`, `unchanged`, or `failed` result per
+statement. Exact retries reuse both the batch idempotency key and immutable
+`reporting_status_id`. Reusing either identity with changed content is an
+idempotency conflict.
+
+When status changes, the buyer creates a new statement and names the current
+leaf in `supersedes_reporting_status_id`. For example, a later successful read
+supersedes `revision_missing` with `received`. The seller keeps both statements;
+only the new leaf is current. The seller atomically rejects a missing or stale
+supersession pointer, so concurrent updates cannot fork the chain. This
+preserves the outage instead of allowing a successful retry to erase it.
+
+Superseded history remains readable for at least the seller's advertised
+`status_retention_days`; older expired statements may be pruned while identity
+reuse and stale supersession remain rejected. Ordinary authenticated rate and
+per-caller resource limits protect the ledger from pathological update churn.
+
+## Seller behavior
+
+The seller:
+
+1. derives consumer identity from authenticated transport;
+2. validates configuration generation, report definition, and period without
+   requiring an obligation to exist;
+3. verifies any seller snapshot ID and timestamp against the exact
+   caller/account-scoped snapshot it issued;
+4. records the immutable status idempotently with atomic leaf supersession;
+5. exposes the caller's history through
+   [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status);
+   and
+6. compares its current producer state with the buyer's current status.
+
+If the seller projects `healthy` or `complete` while the buyer's current status
+conflicts, only that caller/account view becomes `action_required` with a
+stable `CONSUMER_STATUS_MISMATCH` issue. The seller assigns
+`responsible_party` from the diagnosed cause: seller production or publication,
+buyer access/configuration, or provider failure. One buyer's statement never
+changes another buyer's view or seller-advertised reliability statistics without
+corroboration.
+
+A conflict includes a negative status and a `received` status naming an older
+revision after the seller publishes a newer required restatement. The latter is
+the explicit signal that reporting changed after the buyer already read it.
+
+## Buyer behavior
+
+When the seller advertises `consumer_status_task`, a buyer using that Reliable
+Reporting configuration automates this task for that configuration:
+
+- sync a failure promptly after its bounded retry/give-up window expires;
+- sync every later state change with explicit supersession; and
+- ensure every elapsed expected period has a current status before closing the
+  reporting scope.
+
+Missing buyer feedback remains unknown. It never excuses the seller's obligation
+or changes the seller's production SLA.
+
+## Relationship to billing receipts
+
+[`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
+is the stronger, optional Reconciled Billing operation. It requires a Managed
+materialization plus independently observed row counts, control totals, and the
+selected verification evidence. `sync_reporting_status` belongs to Core, can
+report a seller obligation that does not exist, and says nothing about invoice
+approval, payable amount, dispute waiver, or settlement.

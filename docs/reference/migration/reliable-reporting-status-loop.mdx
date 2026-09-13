@@ -1,0 +1,94 @@
+---
+title: "Reliable Reporting consumer-status loop"
+description: "Breaking-change notice and migration guide for sync_reporting_status in Reliable Reporting Core."
+"og:title": "AdCP — Reliable Reporting consumer-status migration"
+---
+
+<Warning>
+**Experimental breaking-change notice published September 12, 2026.** Under
+AdCP's six-week experimental-surface notice policy, the Core requirement
+described here must not appear in an immutable release before October 24,
+2026. Published `3.2.0-rc.1` remains unchanged.
+</Warning>
+
+Reliable Reporting RC.1 lets a seller publish its obligation/revision state and
+requires a buyer to derive an independent expected-period denominator. It does
+not give the buyer a standard way to tell the seller that reporting was absent
+or unreadable. A seller can therefore project `healthy` while the buyer's
+webhook, exact revision read, or destination access is failing.
+
+Current source closes that loop additively with opt-in
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+A seller advertises `consumer_status_task` only when the task and readback are
+implemented. The requirement itself lands only in the next eligible minor
+after the notice window. Both changes remain inside the experimental
+`media_buy.reporting_delivery` surface.
+
+## Capability change
+
+Before (`3.2.0-rc.1`):
+
+```json
+{
+  "supported": true,
+  "reliable_reporting_version": "1.0",
+  "configuration_task": "sync_accounts",
+  "status_task": "get_reporting_status",
+  "revision_content_task": "get_media_buy_delivery"
+}
+```
+
+Current opt-in form, and required form in the next eligible minor after the
+notice window:
+
+```json
+{
+  "supported": true,
+  "reliable_reporting_version": "1.0",
+  "configuration_task": "sync_accounts",
+  "status_task": "get_reporting_status",
+  "consumer_status_task": "sync_reporting_status",
+  "revision_content_task": "get_media_buy_delivery"
+}
+```
+
+The new field is optional during the notice window. When present, it commits the
+seller to the complete task and readback contract below. The next eligible minor
+makes the field required for Reliable Reporting Core. It does not add a buyer
+endpoint or webhook: buyers call the seller-hosted task using the same
+authenticated transport as other AdCP tasks.
+
+## Seller migration
+
+1. Accept batched immutable consumer status statements with ordinary AdCP
+   idempotency, atomic current-leaf supersession, bounded per-caller resources,
+   and caller/account isolation.
+2. Validate a missing obligation from the accepted configuration generation,
+   report definition, and period; do not require a seller-issued obligation ID.
+3. Retain superseded status history and include it in
+   `get_reporting_status(view: "periods")`, pagination totals, and
+   `changes_after` checkpoints for at least `status_retention_days`. Verify any
+   supplied seller snapshot ID and timestamp against the scoped snapshot you
+   actually issued.
+4. Compare the current buyer statement with the current seller projection. A
+   conflict creates a caller-scoped `CONSUMER_STATUS_MISMATCH`; it never rewrites
+   either party's evidence or contaminates another caller.
+5. Add `consumer_status_task: "sync_reporting_status"` only when every item
+   above is deployed.
+
+## Buyer migration
+
+1. Continue retaining accepted configuration generations and deriving expected
+   periods independently.
+2. After bounded retries, submit `received`, `obligation_missing`,
+   `revision_missing`, or `unreadable` for the exact period; do not wait
+   indefinitely before making failure visible.
+3. Send a new immutable statement with explicit supersession whenever status
+   changes.
+4. Before closing the reporting scope, ensure every elapsed expected period has
+   a current consumer status.
+
+Missing buyer feedback remains unknown and never excuses the seller's reporting
+obligation. `received` is Core access evidence only; Reconciled Billing still
+uses [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
+for materialization evidence, row/control totals, and canonical billing digests.
