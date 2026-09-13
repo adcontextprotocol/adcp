@@ -35,7 +35,7 @@ jobs:
           git fetch origin main --depth=1
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
       - name: Authenticate only as the evidence verifier
-        # v2.1.8
+        # v3.0.0
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: ${{ vars.MATCHED_V4_GCS_WIF_PROVIDER }}
