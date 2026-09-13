@@ -1,4 +1,4 @@
-/** Mounted conformance route with the real snapshot and organization resolvers. */
+/** Mounted consumers with the real snapshot and organization resolvers. */
 import express from 'express';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +9,11 @@ const mocks = vi.hoisted(() => ({
   boundedQuery: vi.fn(),
   memberships: vi.fn(),
   validateApiKey: vi.fn(),
+  listProposals: vi.fn(),
+  getProposal: vi.fn(),
+  getClient: vi.fn(),
+  isAdmin: vi.fn(),
+  isModerator: vi.fn(),
 }));
 
 vi.mock('../../src/middleware/auth.js', () => ({
@@ -21,18 +26,35 @@ vi.mock('../../src/middleware/auth.js', () => ({
 vi.mock('../../src/db/client.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../src/db/client.js')>(),
   queryWithTimeout: mocks.boundedQuery,
+  getClient: mocks.getClient,
 }));
 vi.mock('../../src/auth/workos-client.js', () => ({
   getAuthorizationEnforcementWorkos: () => ({ userManagement: { listOrganizationMemberships: mocks.memberships } }),
 }));
+vi.mock('../../src/db/community-mirror-db.js', () => ({
+  CommunityMirrorDatabase: class {
+    listProposals = mocks.listProposals;
+    getProposalById = mocks.getProposal;
+  },
+}));
+vi.mock('../../src/db/publisher-db.js', () => ({ PublisherDatabase: class {} }));
+vi.mock('../../src/addie/admin-status-lookup.js', () => ({ isWebUserAAOAdmin: mocks.isAdmin }));
+vi.mock('../../src/services/brand-logo-auth.js', () => ({ isRegistryModerator: mocks.isModerator }));
+vi.mock('../../src/notifications/registry.js', () => ({}));
+vi.mock('../../src/middleware/rate-limit.js', () => {
+  const pass = (_req: express.Request, _res: express.Response, next: express.NextFunction) => next();
+  return { registryReadRateLimiter: pass, brandCreationRateLimiter: pass };
+});
 
 import { buildConformanceTokenRouter } from '../../src/conformance/token-route.js';
+import { createCommunityMirrorRouter } from '../../src/routes/community-mirrors.js';
 import { verifyConformanceToken } from '../../src/conformance/token.js';
 import { loadAuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
 import { resolveCallerOrgId } from '../../src/routes/helpers/resolve-caller-org.js';
 
 const ORG = 'org_pinnacle';
 const OTHER_ORG = 'org_streamhaus';
+const PROPOSAL_ID = '00000000-0000-4000-8000-000000000001';
 const originalSecret = process.env.CONFORMANCE_JWT_SECRET;
 let row: Record<string, unknown>;
 
@@ -40,6 +62,19 @@ function app() {
   const instance = express();
   instance.use(express.json());
   instance.use('/api/conformance', buildConformanceTokenRouter());
+  return instance;
+}
+
+function mirrorApp(attachedOrganizationId?: string) {
+  const instance = express();
+  instance.use(express.json());
+  instance.use('/api/registry', createCommunityMirrorRouter({
+    requireAuth: (req, _res, next) => {
+      req.user = mocks.principal;
+      if (attachedOrganizationId) Object.assign(req, { apiKey: { organizationId: attachedOrganizationId } });
+      next();
+    },
+  }));
   return instance;
 }
 
@@ -77,11 +112,105 @@ beforeEach(() => {
     data: [{ id: 'membership_pinnacle', userId, organizationId, status: 'active', role: { slug: 'member' } }],
   }));
   mocks.validateApiKey.mockResolvedValue(null);
+  mocks.listProposals.mockResolvedValue({ proposals: [{ id: PROPOSAL_ID }], total: 1 });
+  mocks.getProposal.mockImplementation(async () => ({
+    id: PROPOSAL_ID, proposed_by_user_id: mocks.principal?.id,
+    proposed_by_organization_id: ORG, adagents_json: { private_proposal: true },
+  }));
+  // A canonical admin/moderator result must never rescue denied exact authority.
+  mocks.isAdmin.mockResolvedValue(true);
+  mocks.isModerator.mockResolvedValue(true);
 });
 
 afterAll(() => {
   if (originalSecret === undefined) delete process.env.CONFORMANCE_JWT_SECRET;
   else process.env.CONFORMANCE_JWT_SECRET = originalSecret;
+});
+
+describe.each([
+  ['user_primary', 'user_linked'],
+  ['user_linked', 'user_primary'],
+])('community mirror proposals with authenticated %s attributed to %s', (authenticated, canonical) => {
+  it.each(['no selection', 'no membership', 'canonical membership', 'conflict', 'stale epoch', 'unavailable'])(
+    'denies list and detail for %s without canonical-user fallback', async denied => {
+      await authenticate(authenticated, canonical, denied === 'no selection' ? null : ORG);
+      if (denied === 'no membership') mocks.memberships.mockResolvedValue({ data: [] });
+      if (denied === 'canonical membership') mocks.memberships.mockResolvedValue({
+        data: [{ userId: canonical, organizationId: ORG, status: 'active', role: { slug: 'owner' } }],
+      });
+      if (denied === 'stale epoch') row.authorization_epoch = '8';
+      if (denied === 'unavailable') mocks.boundedQuery.mockRejectedValue(new Error('database unavailable'));
+      for (const path of ['/mirror-proposals', `/mirror-proposals/${PROPOSAL_ID}`]) {
+        const pending = request(mirrorApp()).get(`/api/registry${path}`);
+        if (denied === 'conflict') pending.set('X-Organization-Id', OTHER_ORG);
+        const response = await pending;
+        expect(response.status).toBe(404);
+        expect(response.body).toEqual({ error: 'Community mirror proposal not found' });
+      }
+      expect(mocks.listProposals).not.toHaveBeenCalled();
+      expect(mocks.getProposal).not.toHaveBeenCalled();
+      expect(mocks.isAdmin).not.toHaveBeenCalled();
+      expect(mocks.isModerator).not.toHaveBeenCalled();
+    },
+  );
+
+  it('scopes authorized list/detail to the selected org and denies other-org or unscoped rows', async () => {
+    await authenticate(authenticated, canonical);
+    const instance = mirrorApp();
+    expect((await request(instance).get('/api/registry/mirror-proposals')).status).toBe(200);
+    expect(mocks.listProposals).toHaveBeenCalledWith(expect.objectContaining({ proposedByOrganizationId: ORG }));
+    expect(mocks.listProposals.mock.calls[0][0].proposedByUserId).toBeUndefined();
+    expect((await request(instance).get(`/api/registry/mirror-proposals/${PROPOSAL_ID}`)).status).toBe(200);
+    for (const organizationId of [OTHER_ORG, null]) {
+      mocks.getProposal.mockResolvedValue({
+        id: PROPOSAL_ID, proposed_by_user_id: canonical, proposed_by_organization_id: organizationId,
+      });
+      expect((await request(instance).get(`/api/registry/mirror-proposals/${PROPOSAL_ID}`)).status).toBe(404);
+    }
+    expect(mocks.memberships.mock.calls.every(([input]) => input.userId === authenticated)).toBe(true);
+  });
+
+  it('rejects list/detail replay after revocation before reading proposals', async () => {
+    await authenticate(authenticated, canonical);
+    const instance = mirrorApp();
+    for (const path of ['/mirror-proposals', `/mirror-proposals/${PROPOSAL_ID}`]) {
+      expect((await request(instance).get(`/api/registry${path}`)).status).toBe(200);
+    }
+    row.authorization_epoch = '8';
+    mocks.listProposals.mockClear();
+    mocks.getProposal.mockClear();
+    for (const path of ['/mirror-proposals', `/mirror-proposals/${PROPOSAL_ID}`]) {
+      expect((await request(instance).get(`/api/registry${path}`)).status).toBe(404);
+    }
+    expect(mocks.listProposals).not.toHaveBeenCalled();
+    expect(mocks.getProposal).not.toHaveBeenCalled();
+  });
+
+  it.each(['no selection', 'stale epoch', 'conflict'])('does not rescue %s with an attached API-key organization', async denied => {
+    await authenticate(authenticated, canonical, denied === 'no selection' ? null : ORG);
+    if (denied === 'stale epoch') row.authorization_epoch = '8';
+    for (const path of ['/mirror-proposals', `/mirror-proposals/${PROPOSAL_ID}`]) {
+      const pending = request(mirrorApp(ORG)).get(`/api/registry${path}`);
+      if (denied === 'conflict') pending.set('X-Organization-Id', OTHER_ORG);
+      expect((await pending).status).toBe(404);
+    }
+    expect(mocks.listProposals).not.toHaveBeenCalled();
+    expect(mocks.getProposal).not.toHaveBeenCalled();
+  });
+
+  it('denies human manager fallback for queue, approve, reject, publish and retire', async () => {
+    await authenticate(authenticated, canonical, null);
+    const instance = mirrorApp();
+    expect((await request(instance).get('/api/registry/mirror-proposals?review_queue=true')).status).toBe(403);
+    for (const action of ['approve', 'reject']) {
+      expect((await request(instance).post(`/api/registry/mirror-proposals/${PROPOSAL_ID}/${action}`).send({})).status).toBe(403);
+    }
+    expect((await request(instance).put('/api/registry/mirrors/example').send({})).status).toBe(403);
+    expect((await request(instance).delete('/api/registry/mirrors/example')).status).toBe(403);
+    expect(mocks.getClient).not.toHaveBeenCalled();
+    expect(mocks.isAdmin).not.toHaveBeenCalled();
+    expect(mocks.isModerator).not.toHaveBeenCalled();
+  });
 });
 
 describe('sealed-session organization boundary on POST /api/conformance/token', () => {
