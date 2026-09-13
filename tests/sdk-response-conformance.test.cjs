@@ -141,3 +141,13 @@ test('regression baseline retains findings and detects changed coverage or SDK p
   assert.equal(snapshot[0].findings[0].skip, 'Unsupported fixture');
   assert.notDeepEqual(snapshot, baseline([{ ...result, sdk: { package: 'fixture', version: '2' } }]));
 });
+
+test('error envelopes validate version fields as well as the inner error', () => {
+  const result = inspect(probe('default:RATE_LIMITED'), {
+    adcp_version: '3.2.0-rc.1',
+    adcp_error: { code: 'RATE_LIMITED', message: 'Fixture', recovery: 'transient' },
+  });
+  assert.equal(result.schema, 'invalid', 'full semver is not a valid wire selector');
+  assert.equal(result.semantics, 'passed');
+  assert.ok(result.schema_errors.some(error => error.instancePath === '/adcp_version'));
+});

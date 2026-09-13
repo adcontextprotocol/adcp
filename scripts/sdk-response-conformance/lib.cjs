@@ -189,6 +189,9 @@ function assess(plan, run, root = ROOT) {
     const domainErrors = payload.errors;
     const fatal = wire.isError === true || !!error || (Array.isArray(domainErrors) && domainErrors.length > 0 && payload.status === 'failed');
     let schemaErrors = [];
+    if (Object.hasOwn(payload, 'adcp_version') || Object.hasOwn(payload, 'adcp_major_version')) {
+      schemaErrors.push(...contract.validate('core/version-envelope.json', payload));
+    }
     if (fatal || probe.kind === 'error') {
       result.response_kind = wire.isError ? 'mcp-tool-error' : 'domain-error';
       const emitted = error ? [error, ...(Array.isArray(domainErrors) ? domainErrors : [])] : domainErrors;
