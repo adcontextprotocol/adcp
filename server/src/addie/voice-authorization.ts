@@ -10,6 +10,7 @@ import type { Thread } from './thread-service.js';
 const logger = createLogger('voice-authorization');
 
 const CALLBACK_TOKEN_DOMAIN = 'adcp:tavus-callback:v1\0';
+const CALLBACK_TURN_DOMAIN = 'adcp:tavus-callback-turn:v1\0';
 const verifiedCallback = Symbol('verified voice callback');
 type VerifiedVoiceThread = Readonly<Omit<Thread, 'user_id'>> & {
   readonly user_id: string;
@@ -32,6 +33,67 @@ export type VoiceCallbackDecision =
   | { status: 'verified'; thread: VerifiedVoiceThread }
   | { status: 'invalid' }
   | { status: 'unavailable' };
+
+/**
+ * Derive the database idempotency key for one provider callback. Tavus does
+ * not supply a turn id, but an exact retry repeats the ordered OpenAI message
+ * envelope. The verified thread separates identical transcripts in different
+ * sessions; the session bearer token itself is intentionally not a receipt.
+ */
+function canonicalVoiceCallbackJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonicalVoiceCallbackJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => (
+    `${JSON.stringify(key)}:${canonicalVoiceCallbackJson(record[key])}`
+  )).join(',')}}`;
+}
+
+function normalizeSystemCapability(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.replace(
+      /\[conductor:voice_session=[A-Za-z0-9_.-]{1,1024}\]/g,
+      '[conductor:voice_session]',
+    );
+  }
+  if (Array.isArray(value)) return value.map(normalizeSystemCapability);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, normalizeSystemCapability(item)]),
+  );
+}
+
+export function deriveVoiceCallbackTurnId(input: {
+  threadId: string;
+  externalId: string;
+  providerConversationId: string;
+  messages: readonly unknown[];
+}): string {
+  const normalizedMessages = input.messages.map((message) => {
+    if (!message || typeof message !== 'object' || (message as { role?: unknown }).role !== 'system') {
+      return message;
+    }
+    const record = message as Record<string, unknown>;
+    return { ...record, content: normalizeSystemCapability(record.content) };
+  });
+  const digest = crypto.createHash('sha256')
+    .update(CALLBACK_TURN_DOMAIN)
+    .update(input.threadId)
+    .update('\0')
+    .update(input.externalId)
+    .update('\0')
+    .update(input.providerConversationId)
+    .update('\0')
+    .update(canonicalVoiceCallbackJson(normalizedMessages))
+    .digest();
+  // PostgreSQL UUID with deterministic v5/variant bits (the hash construction,
+  // rather than an RFC namespace UUID, supplies the collision domain).
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = digest.subarray(0, 16).toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /**
  * A per-session capability, independent of the mutable conversation text.

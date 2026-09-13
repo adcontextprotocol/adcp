@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   getThread: vi.fn(),
   getThreadByExternalId: vi.fn(),
   patchThreadContext: vi.fn(),
+  claimClientTurn: vi.fn(),
+  getMessagesByClientRequestId: vi.fn(),
+  renewClientTurnLease: vi.fn(),
+  setClientTurnStatus: vi.fn(),
   processMessageStream: vi.fn(),
   getWebMemberContext: vi.fn(),
   isWebUserAdmin: vi.fn(),
@@ -55,6 +59,10 @@ vi.mock("../../src/addie/thread-service.js", () => ({
     getThread: mocks.getThread,
     getThreadByExternalId: mocks.getThreadByExternalId,
     patchThreadContext: mocks.patchThreadContext,
+    claimClientTurn: mocks.claimClientTurn,
+    getMessagesByClientRequestId: mocks.getMessagesByClientRequestId,
+    renewClientTurnLease: mocks.renewClientTurnLease,
+    setClientTurnStatus: mocks.setClientTurnStatus,
   }),
 }));
 
@@ -264,6 +272,10 @@ describe("Tavus session guidance route boundary", () => {
       }
     );
     mocks.addMessage.mockResolvedValue(undefined);
+    mocks.claimClientTurn.mockResolvedValue({ state: 'claimed', leaseId: '11111111-1111-4111-8111-111111111112' });
+    mocks.getMessagesByClientRequestId.mockResolvedValue([]);
+    mocks.renewClientTurnLease.mockResolvedValue(true);
+    mocks.setClientTurnStatus.mockResolvedValue(true);
     mocks.getWebMemberContext.mockResolvedValue(null);
     mocks.isWebUserAdmin.mockResolvedValue(false);
     mocks.captureVoiceAuthorization.mockResolvedValue(VOICE_AUTHORIZATION);
@@ -926,6 +938,193 @@ describe("Tavus session guidance route boundary", () => {
     expect(mocks.processMessageStream).not.toHaveBeenCalled();
   });
 
+  it('replays a completed callback receipt without repeating transcript, tool, or model work', async () => {
+    let toolSideEffects = 0;
+    mocks.processMessageStream.mockImplementationOnce(async function* () {
+      toolSideEffects += 1;
+      yield {
+        type: 'tool_end',
+        tool_name: 'save_brand',
+        execution: {
+          tool_name: 'save_brand', parameters: { domain: 'acme.example' }, result: 'saved', is_error: false, duration_ms: 1,
+        },
+      };
+      yield { type: 'done', response: { text: 'Saved once.', tools_used: ['save_brand'], tool_executions: [], flagged: false } };
+    });
+    const first = await voiceTurn(mountApp());
+    const clientTurnId = first.headers['x-addie-client-turn-id'];
+    expect(first.status).toBe(200);
+    expect(clientTurnId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(mocks.processMessageStream).toHaveBeenCalledTimes(1);
+    expect(toolSideEffects).toBe(1);
+    expect(mocks.claimClientTurn.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.resolveVoiceAuthorization.mock.invocationCallOrder[0],
+    );
+
+    mocks.claimClientTurn.mockResolvedValueOnce({ state: 'completed' });
+    mocks.getMessagesByClientRequestId.mockResolvedValueOnce([{
+      role: 'assistant',
+      content: 'Publishers can use AdCP programmatically.',
+      delivery_status: 'completed',
+      client_request_id: clientTurnId,
+    }]);
+    const duplicate = await voiceTurn(mountApp());
+
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.headers['x-addie-client-turn-id']).toBe(clientTurnId);
+    expect(duplicate.text).toContain('"replayed":true');
+    expect(mocks.processMessageStream).toHaveBeenCalledTimes(1);
+    expect(toolSideEffects).toBe(1);
+    expect(mocks.addMessage.mock.calls.filter(([message]) => message.role === 'user')).toHaveLength(1);
+  });
+
+  it('does not replay a completed receipt after the exact credential becomes stale', async () => {
+    mocks.claimClientTurn.mockResolvedValueOnce({ state: 'completed' });
+    mocks.getMessagesByClientRequestId.mockResolvedValueOnce([{
+      role: 'assistant', content: 'private prior answer', delivery_status: 'completed',
+    }]);
+    mocks.resolveVoiceAuthorization.mockResolvedValueOnce({ status: 'stale', reason: 'epoch_changed' });
+
+    const response = await voiceTurn(mountApp());
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('voice_reauthentication_required');
+    expect(response.text).not.toContain('private prior answer');
+    expect(mocks.getWebMemberContext).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('rejects a concurrent callback claim before transcript, tool, or model work', async () => {
+    mocks.claimClientTurn
+      .mockResolvedValueOnce({ state: 'processing' })
+      .mockResolvedValueOnce({ state: 'processing' });
+
+    const response = await voiceTurn(mountApp());
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('voice_turn_in_progress');
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('reclaims an expired processing callback lease through the atomic retry claim', async () => {
+    mocks.claimClientTurn
+      .mockResolvedValueOnce({ state: 'processing' })
+      .mockResolvedValueOnce({ state: 'claimed', leaseId: '11111111-1111-4111-8111-111111111114' });
+
+    const response = await voiceTurn(mountApp());
+
+    expect(response.status).toBe(200);
+    expect(mocks.claimClientTurn.mock.calls.map((call) => call[2])).toEqual([false, true]);
+    expect(mocks.processMessageStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts a reclaimed-worker race before side effects or a completed receipt when lease ownership is lost', async () => {
+    let sideEffects = 0;
+    mocks.renewClientTurnLease
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    mocks.processMessageStream.mockImplementationOnce(async function* (...args: unknown[]) {
+      const options = args[3] as {
+        reserveSideEffect: (request: { toolName: string; parameters: Record<string, unknown> }) => Promise<void>;
+      };
+      try {
+        await options.reserveSideEffect({ toolName: 'save_brand', parameters: { domain: 'unsafe.example' } });
+        sideEffects += 1;
+      } catch {
+        // The shared tool executor turns a failed reservation into a blocked
+        // tool result, after which a provider could still sample a response.
+      }
+      yield {
+        type: 'done',
+        response: { text: 'Unsafe completion.', tools_used: [], tool_executions: [], flagged: false },
+      };
+    });
+
+    const response = await voiceTurn(mountApp());
+
+    expect(response.status).toBe(200);
+    expect(mocks.renewClientTurnLease).toHaveBeenCalledTimes(2);
+    expect(sideEffects).toBe(0);
+    expect(response.text).not.toContain('Unsafe completion.');
+    expect(response.text).not.toContain('[DONE]');
+    expect(mocks.addMessage.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({ role: 'user', client_request_id: expect.any(String) }),
+    ]);
+  });
+
+  it('fails closed before authorization, transcript, tool, or model work when the turn claim is unavailable', async () => {
+    mocks.claimClientTurn.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await voiceTurn(mountApp());
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe('voice_authorization_unavailable');
+    expect(mocks.resolveVoiceAuthorization).not.toHaveBeenCalled();
+    expect(mocks.getWebMemberContext).not.toHaveBeenCalled();
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('releases a failed pre-model callback and reclaims the same turn for retry', async () => {
+    const router = {
+      quickMatch: () => null,
+      route: vi.fn()
+        .mockRejectedValueOnce(new Error('router unavailable'))
+        .mockResolvedValueOnce(null),
+    };
+    mocks.claimClientTurn
+      .mockResolvedValueOnce({ state: 'claimed', leaseId: '11111111-1111-4111-8111-111111111112' })
+      .mockResolvedValueOnce({ state: 'not_retryable' })
+      .mockResolvedValueOnce({ state: 'claimed', leaseId: '11111111-1111-4111-8111-111111111113' });
+    mocks.getMessagesByClientRequestId
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ role: 'user', content: SPOKEN_MESSAGE, delivery_status: 'completed' }]);
+
+    const first = await voiceTurn(mountApp(router));
+    const retry = await voiceTurn(mountApp(router));
+
+    expect(first.status).toBe(503);
+    expect(retry.status).toBe(200);
+    expect(mocks.setClientTurnStatus).toHaveBeenCalledWith(
+      THREAD_ID,
+      expect.any(String),
+      '11111111-1111-4111-8111-111111111112',
+      'interrupted',
+    );
+    expect(mocks.claimClientTurn.mock.calls.map((call) => call[2])).toEqual([false, false, true]);
+    expect(mocks.addMessage.mock.calls.filter(([message]) => message.role === 'user')).toHaveLength(1);
+    expect(mocks.processMessageStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a checkpointed successful tool call when an interrupted callback retries', async () => {
+    mocks.claimClientTurn
+      .mockResolvedValueOnce({ state: 'not_retryable' })
+      .mockResolvedValueOnce({ state: 'claimed', leaseId: '11111111-1111-4111-8111-111111111113' });
+    mocks.getMessagesByClientRequestId.mockResolvedValueOnce([
+      { role: 'user', content: SPOKEN_MESSAGE, delivery_status: 'completed' },
+      {
+        role: 'assistant',
+        content: '',
+        delivery_status: 'interrupted',
+        tool_calls: [{ name: 'search_docs', input: { query: 'idempotency' }, result: 'done', is_error: false }],
+      },
+    ]);
+    let replayDecision: unknown;
+    mocks.processMessageStream.mockImplementationOnce(async function* (...args: unknown[]) {
+      const options = args[3] as { toolExecutionPolicy?: (request: unknown) => Promise<unknown> };
+      replayDecision = await options.toolExecutionPolicy?.({
+        toolName: 'search_docs', input: { query: 'idempotency' }, tool: { name: 'search_docs' },
+      });
+      yield { type: 'done', response: { text: 'Already checked.', tools_used: [], tool_executions: [], flagged: false } };
+    });
+
+    const response = await voiceTurn(mountApp());
+
+    expect(response.status).toBe(200);
+    expect(replayDecision).toEqual({ allowed: false });
+  });
+
   it.each(['error_event', 'throw'] as const)(
     'does not persist partial assistant text after %s before terminal done',
     async (failureMode) => {
@@ -953,7 +1152,15 @@ describe("Tavus session guidance route boundary", () => {
         });
 
       expect(response.status).toBe(200);
-      expect(mocks.addMessage.mock.calls.filter(([message]) => message.role === 'assistant')).toEqual([]);
+      const assistantRows = mocks.addMessage.mock.calls
+        .map(([message]) => message)
+        .filter((message) => message.role === 'assistant');
+      expect(assistantRows).toHaveLength(1);
+      expect(assistantRows[0]).toMatchObject({
+        delivery_status: 'interrupted',
+        finalize_client_turn_status: 'interrupted',
+      });
+      expect(assistantRows[0].content).not.toContain('partial private response');
     },
   );
 

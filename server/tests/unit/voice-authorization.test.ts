@@ -20,6 +20,7 @@ vi.mock('../../src/db/client.js', () => ({
 
 import {
   captureVoiceAuthorization,
+  deriveVoiceCallbackTurnId,
   issueVoiceCallbackBinding,
   isVoiceSessionOwner,
   persistVoiceCallbackBinding,
@@ -148,6 +149,30 @@ describe('server-issued voice callback capability', () => {
       context: { voice_callback_binding: { ...issued.binding, provider_conversation_id: 'tavus-current' }, tavus_conversation_id: 'tavus-current', voice_authorization: persisted },
     };
     mocks.queryWithTimeout.mockImplementation(async () => ({ rows: [thread] }));
+  });
+
+  it('derives a stable turn id without using the session capability as its receipt', () => {
+    const messages = [
+      { role: 'system', content: `[conductor:voice_session=${issued.token}]` },
+      { role: 'user', content: 'Please perform this turn once.' },
+    ];
+    const sameTurn = deriveVoiceCallbackTurnId({ threadId, externalId, providerConversationId: 'tavus-current', messages });
+    const replacementCapability = issueVoiceCallbackBinding(threadId, externalId, 3600);
+
+    expect(deriveVoiceCallbackTurnId({ threadId, externalId, providerConversationId: 'tavus-current', messages })).toBe(sameTurn);
+    expect(deriveVoiceCallbackTurnId({ threadId, externalId, providerConversationId: 'tavus-current', messages: [
+      { role: 'system', content: `[conductor:voice_session=${replacementCapability.token}]` },
+      messages[1],
+    ] })).toBe(sameTurn);
+    expect(deriveVoiceCallbackTurnId({ threadId: otherThreadId, externalId: `addie-${otherThreadId}`, providerConversationId: 'tavus-other', messages })).not.toBe(sameTurn);
+    expect(deriveVoiceCallbackTurnId({ threadId, externalId, providerConversationId: 'tavus-current', messages: [...messages, { role: 'assistant', content: 'prior reply' }, messages[1]] })).not.toBe(sameTurn);
+    expect(deriveVoiceCallbackTurnId({ threadId, externalId, providerConversationId: 'tavus-current', messages: [
+      messages[0],
+      { role: 'user', content: `[conductor:voice_session=${replacementCapability.token}]` },
+    ] })).not.toBe(deriveVoiceCallbackTurnId({ threadId, externalId, providerConversationId: 'tavus-current', messages: [
+      messages[0],
+      { role: 'user', content: `[conductor:voice_session=${issued.token}]` },
+    ] }));
   });
 
   afterEach(() => {
