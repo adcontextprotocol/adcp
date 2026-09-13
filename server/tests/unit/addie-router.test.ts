@@ -819,6 +819,29 @@ describe('ROUTING_RULES', () => {
 // ============================================================================
 
 describe('AddieRouter.route', () => {
+  // Generic — opinion poll in a channel. Fixture-backed: this input straddles
+  // the IAB/ad-tech boundary and is non-deterministic at the model's default
+  // sampling temperature, so the model reply is pinned through the provider
+  // seam rather than spied on a raw Anthropic client.
+  it('ignores opinion polls addressed to the channel when the model says so', async () => {
+    const provider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"ignore","reason":"opinion poll addressed to the channel, not a protocol question"}',
+    }]);
+    const subject = new AddieRouter('unused', provider);
+
+    const plan = await subject.route({
+      message: 'What do you all think about the new IAB guidelines for CTV measurement?',
+      source: 'channel',
+      isAAOAdmin: false,
+      memberContext: { is_member: true } as RoutingContext['memberContext'],
+      channelName: 'general',
+    });
+
+    expect(provider.requests).toHaveLength(1);
+    expect(plan.action).toBe('ignore');
+  });
+
   it('uses the shared production request and preserves plan metadata', async () => {
     const provider = fakeRouterProvider([{
       type: 'text',
@@ -1131,13 +1154,27 @@ describe('parseRouterResponse', () => {
 
 // ============================================================================
 // LLM Router — real Claude API calls to verify routing decisions
-// Skip if no API key available (CI-safe)
+//
+// These scenarios are a live model evaluation, not a unit test: they spend
+// API calls and their assertions track the model's current routing
+// behaviour. They are opt-in so a developer shell that happens to export
+// ANTHROPIC_API_KEY (Conductor, Claude Code, local `.env`) does not turn the
+// pre-commit server-unit gate into a flaky live eval (#7478). Run them with:
+//
+//   ADDIE_ROUTER_LIVE_TESTS=1 ANTHROPIC_API_KEY=... npx vitest run \
+//     --config server/vitest.config.ts server/tests/unit/addie-router.test.ts
 // ============================================================================
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
-const describeWithApi = apiKey ? describe : describe.skip;
+const liveTestsRequested = /^(1|true|yes)$/i.test(process.env.ADDIE_ROUTER_LIVE_TESTS ?? '');
+const liveTestsEnabled = liveTestsRequested && Boolean(apiKey);
+if (liveTestsRequested && !apiKey) {
+  console.warn('ADDIE_ROUTER_LIVE_TESTS is set but ANTHROPIC_API_KEY is missing; skipping live router scenarios.');
+}
 
-describeWithApi('AddieRouter.route (LLM)', () => {
+describe.skipIf(!liveTestsEnabled)(
+  'AddieRouter.route (LLM) [opt-in: ADDIE_ROUTER_LIVE_TESTS=1 + ANTHROPIC_API_KEY]',
+  () => {
   const liveRouter = new AddieRouter(apiKey!);
 
   // ---- Helpers ----
@@ -1238,30 +1275,6 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       );
       expect(plan.action).toBe('ignore');
     }, 15000);
-
-    // Generic — opinion poll (fixture-backed: this input straddles the IAB/ad-tech
-    // boundary and is non-deterministic at the model's default sampling temperature)
-    it('should ignore opinion requests', async () => {
-      const createSpy = vi.spyOn(liveRouter['client'].messages, 'create').mockResolvedValueOnce({
-        id: 'msg_fixture_opinion_poll',
-        type: 'message',
-        role: 'assistant',
-        content: [{ type: 'text', text: '{"action":"ignore","reason":"opinion poll addressed to the channel, not a protocol question"}' }],
-        model: 'claude-haiku-4-5',
-        stop_reason: 'end_turn',
-        stop_sequence: null,
-        usage: { input_tokens: 1, output_tokens: 12 },
-      } as any);
-
-      try {
-        const plan = await routeInChannel(
-          'What do you all think about the new IAB guidelines for CTV measurement?'
-        );
-        expect(plan.action).toBe('ignore');
-      } finally {
-        createSpy.mockRestore();
-      }
-    });
 
     // Brian O'Kelley — thread reply directed at another user
     // Prod: Correctly ignored (after Addie had responded earlier in thread)
@@ -1499,4 +1512,5 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       }
     }, 15000);
   });
-});
+  },
+);

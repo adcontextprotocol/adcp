@@ -1947,9 +1947,9 @@
             },
             "supported_window_units": {
               "type": "array",
-              "description": "Duration units the seller supports for frequency cap windows. Values must match the duration.json unit enum (e.g., 'hours', 'days', 'campaign'). Omit to indicate all duration units are supported.",
+              "description": "Duration units the seller supports for frequency cap windows. Values from the duration-unit enum shared with duration.json (e.g., 'hours', 'days', 'campaign'). Omit to indicate all duration units are supported.",
               "items": {
-                "type": "string"
+                "$ref": "/schemas/enums/duration-unit.json"
               },
               "minItems": 1,
               "uniqueItems": true

@@ -30,7 +30,6 @@ Discover products with a natural language brief:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/sdk/testing';
-import { GetProductsResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.getProducts({
   idempotency_key: '550e8400-e29b-41d4-a716-446655441000',
@@ -45,18 +44,17 @@ if (!result.success) {
   throw new Error(`Request failed: ${result.error}`);
 }
 
-// Validate response against schema
-const validated = GetProductsResponseSchema.parse(result.data);
-if (validated.status === 'rejected') {
-  console.log(`Seller declined the brief: ${validated.reason}`);
-  for (const suggestion of validated.suggestions ?? []) {
+// result.data is the get_products response: a discriminated union on status
+const response = result.data;
+if (response.status === 'rejected') {
+  console.log(`Seller declined the brief: ${response.reason}`);
+  for (const suggestion of response.suggestions ?? []) {
     console.log(`- ${suggestion}`);
   }
 } else {
-  console.log(`Found ${validated.products.length} products`);
+  console.log(`Found ${response.products.length} products`);
 
-  // Access validated product fields
-  for (const product of validated.products) {
+  for (const product of response.products) {
     console.log(`- ${product.name} (${product.delivery_type})`);
     console.log(`  Formats: ${product.format_options.map(option => option.format_kind).join(', ')}`);
   }
@@ -1599,11 +1597,11 @@ The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diag
 
 ### Authentication Comparison
 
-See the difference between authenticated and unauthenticated access:
+See the difference between authenticated and unauthenticated access. The hosted test agent requires authentication for every call, so this comparison is illustrative and is not executed by the snippet tests:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
 
 // WITH authentication - full product results with pricing
@@ -1641,7 +1639,7 @@ console.log(`Without auth: ${publicProducts.data.products.length} products`);
 console.log(`First product pricing: ${publicProducts.data.products[0].pricing_options?.length || 0} options`);
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent, test_agent_no_auth
 
@@ -1696,7 +1694,9 @@ Most product searches complete immediately, but some scenarios require asynchron
 
 #### SDK Status Handling
 
-```typescript
+The `agent` handle below stands in for any configured `AgentClient`; this is TypeScript pseudo-code and is not executed by the snippet tests:
+
+```typescript test=false
 import { randomUUID } from 'node:crypto';
 
 const params = {
@@ -1778,9 +1778,9 @@ Response (200 OK):
 }
 ```
 
-Resume only with a verified continuation descriptor supplied by the transport or SDK. Do not send response `context_id` as an MCP tool argument:
+Resume only with a verified continuation descriptor supplied by the transport or SDK. Do not send response `context_id` as an MCP tool argument. The helper names below are placeholders for your own transport plumbing, so this block is illustrative and not executed by the snippet tests:
 
-```javascript
+```javascript test=false
 const continuation = verifiedContinuationFor(response);
 if (!continuation) return requireReconciliation(response);
 await resumeContinuation(continuation, {

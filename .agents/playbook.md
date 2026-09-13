@@ -98,7 +98,17 @@ user-facing strings where ambiguity causes misdiagnosis and bad escalations.
 All documentation and examples MUST match JSON schemas in `static/schemas/source/`:
 - Verify fields exist in schema before documenting
 - Remove examples that don't match schema (don't mark as `test=false`)
-- Test with: `npm test -- --file docs/path/to/file.mdx`
+- Check a single doc page directly — only these two suites honour `--file`:
+  ```bash
+  node tests/snippet-validation.test.cjs --file docs/path/to/file.mdx   # executes JS/TS/Python/bash snippets
+  node tests/json-schema-validation.test.cjs --file docs/path/to/file.mdx   # validates `$schema`-tagged JSON examples
+  ```
+  `npm test -- --file docs/path/to/file.mdx` also works but runs every
+  `test:*` suite with the filter, which takes minutes per file.
+- `test=false` on a fence is only for illustrative pseudo-code (undefined
+  helper stubs, top-level `return`, TypeScript-only syntax in a `typescript`
+  fence, or a flow the hosted test agent cannot serve). Say so in the prose
+  right above the fence.
 - ID-bearing fields that can cross storyboard step boundaries must carry an `x-entity` annotation — see `docs/contributing/x-entity-annotation.md`. For bulk sweeps use `node scripts/add-x-entity-annotations.mjs` with `scripts/x-entity-field-map.json`.
 
 ### Expert Review Scenarios
@@ -786,6 +796,44 @@ Walkthrough pages use progressive disclosure — grouped by reader intent:
 4. **Reference**: Task reference and specification pages
 
 Apply this pattern when restructuring protocol sections.
+
+## Local Hooks
+
+`.husky/pre-commit` runs `npm run precommit` (root unit tests, dynamic-import
+and format-identity guards, the staged-file-scoped server unit suite, and
+`typecheck`). It must pass on a clean checkout of `main` in any shell:
+
+- `server/tests/setup/revenue-tracking-env.ts` scrubs `DEV_USER_EMAIL`,
+  `DEV_USER_ID`, `ALLOW_DEV_MODE_IN_PROD`, `ADMIN_API_KEY`, and `ADMIN_EMAILS`
+  before every server unit file. Conductor's `.env.local` exports these, and the auth middleware reads
+  them at module load, so without the scrub the auth boundary tests pass in
+  CI and fail locally. Tests that exercise those boundaries set the variables
+  explicitly in `vi.hoisted()`.
+- Staging anything under `docs/`, `static/schemas/source/`, `.agents/`, or
+  `server/src/` runs the **full** server unit suite (see
+  `FULL_SERVER_UNIT_PATTERNS` in `scripts/precommit-server-unit.cjs`). The
+  suite is sequential by design (`fileParallelism: false`) and took ~1020s
+  for 612 files on an idle Vercel sandbox, so the `with-timeout` budget in
+  the `precommit` script is 1500s (raised from 600s in #7478, as #6644 raised
+  it from 240s). A `⏰ TIMEOUT` marker means budget, not a failing test.
+- Live-model router scenarios in `server/tests/unit/addie-router.test.ts`
+  are opt-in: `ADDIE_ROUTER_LIVE_TESTS=1` plus `ANTHROPIC_API_KEY`. Having the
+  key in your shell is not enough on its own; they are an eval, not a gate.
+
+`.husky/pre-push` runs the storyboard matrix
+(`scripts/run-storyboards-matrix.sh`) when training-agent or compliance
+source changed. Treat the local run as **advisory**: the
+`training-agent-storyboards.yml` workflow is the authoritative gate.
+
+- The matrix grades the working tree, not the pushed ref. The hook skips it
+  when tracked files have uncommitted changes and says so; commit or stash to
+  run it against HEAD, or run the script directly.
+- `ADCP_SKIP_STORYBOARD_MATRIX=1 git push` skips it explicitly (for example
+  on a loaded sandbox where the ~3 minute run stretches to tens of minutes).
+- The matrix snapshots the freshly built `dist/schemas/latest` into a
+  temporary directory before running tenants, so a concurrent
+  `npm run build:schemas` in the same tree cannot fail the SDK's schema-root
+  version check mid-run.
 
 ## PR Preparation Checklist
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/duration-unit.json",
+  "title": "Duration Unit",
+  "description": "Time unit for a Duration. Shared by duration.json and every capability declaration that enumerates supported duration units (for example frequency cap windows), so the vocabulary cannot drift between the value type and the capability that advertises it.",
+  "type": "string",
+  "enum": ["seconds", "minutes", "hours", "days", "campaign"],
+  "enumDescriptions": {
+    "seconds": "Seconds. Sub-minute precision for time budgets and short windows.",
+    "minutes": "Minutes.",
+    "hours": "Hours.",
+    "days": "Days.",
+    "campaign": "The full campaign flight. interval must be 1 when this unit is used."
+  }
+}

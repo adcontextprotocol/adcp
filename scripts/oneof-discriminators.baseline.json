@@ -79,7 +79,7 @@
     "brand/update-rights-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
-      "note": "0:[rights_id,terms] | 1:[errors]"
+      "note": "0:[rights_id,terms,generation_credentials,rights_constraint] | 1:[errors]"
     },
     "brand/verify-brand-claim-response.json##/oneOf": {
       "kind": "narrowable",
