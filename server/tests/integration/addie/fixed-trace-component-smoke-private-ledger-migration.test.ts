@@ -534,39 +534,65 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     const entry = plan.find((candidate) => candidate.disposition === 'local_terminal')!;
     const recoveryAtPlanSet = deferred();
     const releaseRecovery = deferred();
+    const applicationAtGate = deferred();
+    let applicationGateAcquired = false;
+    let applicationTargetRequested = false;
     let blocked = false;
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
-    const recoveryPool = {
+    const ledgerPool = (isRecovery: boolean) => ({
       connect: async () => {
         const connection = await pool.connect();
         const mutable = connection as unknown as { query: (sql: string, values?: readonly unknown[]) => Promise<unknown> };
         const query = mutable.query.bind(connection);
         mutable.query = async (sql, values) => {
-          if (!blocked && sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) {
+          // This test proves lock ordering. Production timeout bounds are
+          // covered separately; do not race CI scheduling against 250 ms.
+          if (sql.startsWith('SET LOCAL lock_timeout =')) return query("SET LOCAL lock_timeout = '5s'");
+          if (sql.startsWith('SET LOCAL statement_timeout =')) return query("SET LOCAL statement_timeout = '5s'");
+          if (isRecovery && !blocked && sql.startsWith('SELECT assignment_id FROM addie_fixed_trace_component_smoke_run_plan')) {
             blocked = true;
             recoveryAtPlanSet.resolve();
             await releaseRecovery.promise;
           }
+          if (!isRecovery && sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN ROW EXCLUSIVE MODE') {
+            const pending = query(sql, values);
+            applicationAtGate.resolve();
+            const result = await pending;
+            applicationGateAcquired = true;
+            return result;
+          }
+          if (!isRecovery && sql.includes('FROM addie_fixed_trace_component_smoke_run_plan')) applicationTargetRequested = true;
           return query(sql, values);
         };
         return connection;
       },
-    };
+    });
+    let recovery: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordUnknownExposure']> | undefined;
+    let application: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordNonDispatchTerminal']> | undefined;
     try {
-      const recoveryLedger = new PostgresFixedTraceComponentSmokePrivateLedger(recoveryPool as never);
-      const applicationLedger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
-      const recovery = recoveryLedger.recordUnknownExposure(reservationFor(authorizationDigest));
-      await recoveryAtPlanSet.promise;
-      let applicationSettled = false;
-      const application = applicationLedger.recordNonDispatchTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'local_terminal' })
-        .then((outcome) => { applicationSettled = true; return outcome; });
-      await new Promise((resolve) => setTimeout(resolve, 75));
-      expect(applicationSettled).toBe(false);
+      const recoveryLedger = new PostgresFixedTraceComponentSmokePrivateLedger(ledgerPool(true) as never);
+      const applicationLedger = new PostgresFixedTraceComponentSmokePrivateLedger(ledgerPool(false) as never);
+      recovery = recoveryLedger.recordUnknownExposure(reservationFor(authorizationDigest));
+      expect(await Promise.race([
+        recoveryAtPlanSet.promise.then(() => 'paused'), recovery.then(() => 'settled'),
+      ])).toBe('paused');
+      application = applicationLedger.recordNonDispatchTerminal({ reservation: reservationFor(authorizationDigest), assignmentId: entry.assignmentId, status: 'local_terminal' });
+      expect(await Promise.race([
+        applicationAtGate.promise.then(() => 'gate'), application.then(() => 'settled'),
+      ])).toBe('gate');
+      expect(applicationGateAcquired).toBe(false);
+      expect(applicationTargetRequested).toBe(false);
       releaseRecovery.resolve();
       expect(await recovery).toEqual({ status: 'recorded' });
       expect(await application).toEqual({ status: 'refused', reason: 'unknown_exposure' });
-    } finally { await pool.end(); await client!.query('BEGIN'); }
+      expect(applicationGateAcquired).toBe(true);
+    } finally {
+      releaseRecovery.resolve();
+      await Promise.allSettled([recovery, application]);
+      await pool.end();
+      await client!.query('BEGIN');
+    }
   });
 
   it('application terminalizes a known provider failure after its fail-stop transition', async () => {
