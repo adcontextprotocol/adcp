@@ -2,11 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-purchase.json",
   "title": "Product Purchase",
-  "description": "One canonical product selection shared by buy_products inputs and compact proposal snapshots. Direct purchases accept published terms as-is; sellers resolve omitted inherited flight, measurement, and performance terms into the accepted commercial snapshot. Changes to those terms belong in the proposal lifecycle. Creative content and creative assignments are intentionally absent.",
+  "description": "One resolved canonical product selection in a compact proposal or accepted commercial snapshot. Request-side buy_products selections use product-purchase-input.json. This strict snapshot shape contains effective non-null targeting and resolved inherited terms. Creative content and creative assignments are intentionally absent.",
   "type": "object",
   "x-adcp-validation": {
     "verifier_constraints": {
-      "direct_purchase_terms": "On buy_products, supplied start_time, end_time, measurement_terms, and performance_standards MUST exactly match the selected published offer; omission inherits that offer.",
       "accepted_snapshot_terms": "Inside canonical-proposal.commercial_terms, each purchase MUST carry resolved start_time and end_time and MUST preserve every applicable measurement term and performance standard. Omission of measurement_terms or performance_standards means the accepted offer declared none.",
       "pricing_identity": {
         "pricing_option_id": "equals_pricing.pricing_option_id_when_pricing_present",
@@ -62,6 +61,7 @@
       "description": "Soft lifetime spend target for seller-optimized allocation."
     },
     "impressions": {
+      "title": "Product Purchase Impressions",
       "type": "number",
       "minimum": 0
     },
@@ -84,7 +84,7 @@
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json",
-      "description": "Buyer-selected targeting, including compatible wholesale signal selections, applied within the product's published targeting contract."
+      "description": "Resolved effective buyer-selected targeting, including compatible wholesale signal selections, applied within the product's published targeting contract. Cleared dimensions are omitted; null is invalid in an accepted snapshot."
     },
     "optimization_goals": {
       "type": "array",
@@ -94,6 +94,7 @@
       "minItems": 1
     },
     "audience_evidence_requirements": {
+      "title": "Product Purchase Audience Evidence Requirements",
       "$ref": "/schemas/core/product-audience-evidence-requirements.json",
       "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
     },
@@ -114,6 +115,7 @@
     },
     "ext": { "$ref": "/schemas/core/ext.json" },
     "measurement_terms": {
+      "title": "Product Purchase Measurement Terms",
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
     },

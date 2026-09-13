@@ -69,7 +69,7 @@ assignment fails. Implementations MUST NOT describe such a sequence as an
 atomic translation of the compatibility facade.
 
 Some compatibility requests therefore require the facade itself. A placement
-targeting replacement that removes a placement used by an assignment must
+targeting patch that removes a placement used by an assignment must
 replace or reroute that assignment in the same `update_media_buy` mutation.
 `control_media_buy` cannot carry creative assignments, so `control_media_buy`
 followed by `sync_creatives` is not equivalent. Inline-only creative sellers
