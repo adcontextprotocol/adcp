@@ -1,0 +1,152 @@
+id: media_buy_seller/package_automatic_bidding
+version: "1.0.0"
+title: "Seller preserves explicit package automatic bidding"
+category: media_buy_seller
+summary: "Verifies package-scoped automatic bidding independently of media-buy bidding support."
+track: media_buy
+
+requires_capability:
+  path: media_buy.features.bidding_policy.package.fixed.modes
+  contains: automatic
+
+required_tools:
+  - create_media_buy
+  - get_media_buys
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  `{automatic:true}` is an authored package policy, not an omitted default.
+  Sellers advertising fixed package automatic support preserve it on create
+  and durable readback even when they advertise no media-buy bidding mode.
+  The separate bidding_policy_placement scenario tests the stronger case where
+  this package block overrides an inherited media-buy max bid.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - bidding_policy
+  examples:
+    - "Auction seller with package-native automatic delivery"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller supports explicit automatic bidding on a fixed USD auction package."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "package_automatic_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "package_automatic_display"
+      pricing_option_id: "automatic_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+
+phases:
+  - id: setup
+    title: "Establish account"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: "Return an active account."
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#package_automatic_bidding_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a seller-assigned identifier"
+
+  - id: create_explicit_automatic_package
+    title: "Create an explicit package automatic policy"
+    steps:
+      - id: create_media_buy_with_package_automatic
+        title: "Author automatic bidding at package scope"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: "Echo `{automatic:true}` on the package without materializing a media-buy policy."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          packages:
+            - product_id: "package_automatic_display"
+              pricing_option_id: "automatic_cpm"
+              budget: 20000
+              bidding:
+                automatic: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#package_automatic_bidding_create"
+        context_outputs:
+          - name: automatic_package_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_absent
+            path: "bidding"
+            description: "No media-buy policy is materialized"
+          - check: field_value
+            path: "packages[0].bidding.automatic"
+            value: true
+            description: "Response preserves the explicit package policy"
+
+  - id: read_explicit_automatic_package
+    title: "Read back explicit package automatic bidding"
+    steps:
+      - id: get_media_buy_with_package_automatic
+        title: "Verify durable authored scope"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Keep automatic bidding explicit on the package and absent at media-buy scope."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.automatic_package_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_absent
+            path: "media_buys[0].bidding"
+            description: "Readback keeps media-buy policy absent"
+          - check: field_value
+            path: "media_buys[0].packages[0].bidding.automatic"
+            value: true
+            description: "Readback preserves explicit package automatic bidding"

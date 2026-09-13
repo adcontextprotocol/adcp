@@ -1,0 +1,545 @@
+id: reporting_consumer_status
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Reliable Reporting: consumer-status loop"
+category: schema_validation
+summary: "Validates opt-in buyer-to-seller reporting status, missing-obligation identity, caller-scoped mismatch, and immutable supersession."
+track: core
+required_tools:
+  - get_reporting_status
+  - get_media_buy_delivery
+  - sync_reporting_status
+
+requires:
+  - controller
+
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.supported"
+    equals: true
+  - path: "media_buy.reporting_delivery.reliable_reporting_version"
+    equals: "1.0"
+  - path: "media_buy.reporting_delivery.consumer_status_task"
+    equals: "sync_reporting_status"
+
+narrative: |
+  During the published migration window this storyboard applies only to sellers
+  that opt in by advertising consumer_status_task. It proves both identities
+  needed to close the reporting loop: a buyer can name an independently
+  expected period even when the seller omitted its obligation, and can name a
+  visible obligation whose revision is missing. Buyer statements remain
+  separately attributed, appear in get_reporting_status, create a typed
+  caller-scoped mismatch after seller recovery, and are replaced only through
+  immutable exact-leaf supersession.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "media_buy.reporting_delivery.consumer_status_task"
+  examples:
+    - "A Reliable Reporting seller that opts in to consumer status"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness acting as an authorized buyer"
+
+prerequisites:
+  description: |
+    The seller advertises consumer_status_task and supports the deterministic
+    reporting_core_lifecycle_probe controller fixture.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+phases:
+  - id: omitted_obligation
+    title: "Report a period the seller omitted"
+    narrative: |
+      The controller deliberately suppresses the second elapsed obligation.
+      The buyer addresses it from the accepted configuration generation,
+      report definition, and exact period without inventing a seller ID.
+
+    steps:
+      - id: prepare_omission_fixture
+        title: "Prepare the reporting configuration"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_omission_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+
+      - id: omit_expected_obligation
+        title: "Suppress the next elapsed obligation"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_omission_config_id
+            path: "simulated.resolved_configuration.delivery_config_id"
+          - name: consumer_omission_config_version
+            path: "simulated.resolved_configuration.delivery_config_version"
+          - name: consumer_omission_definition_id
+            path: "simulated.resolved_configuration.report_definition_id"
+          - name: consumer_omission_period_start
+            path: "simulated.omitted_period.start"
+          - name: consumer_omission_period_end
+            path: "simulated.omitted_period.end"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_omission_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "omit_obligation"
+        validations:
+          - check: response_schema
+            description: "Controller returns the independently expected period"
+          - check: field_present
+            path: "simulated.expected_reporting_obligation_id"
+            description: "The fixture proves the seller omitted a derivable obligation"
+
+      - id: advance_omission_beyond_expected
+        title: "Advance beyond the omitted period's deadline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_omission_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_time"
+            target_health: "action_required"
+        validations:
+          - check: response_schema
+            description: "The virtual clock is after the omitted period's expected_at"
+
+      - id: sync_obligation_missing
+        title: "Submit missing status without a seller obligation ID"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_omission_lab"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_omitted_obligation"
+          statuses:
+            - reporting_status_id: "consumer-status.obligation-missing.0001"
+              delivery_config_id: "$context.consumer_omission_config_id"
+              delivery_config_version: "$context.consumer_omission_config_version"
+              report_definition_id: "$context.consumer_omission_definition_id"
+              period:
+                start: "$context.consumer_omission_period_start"
+                end: "$context.consumer_omission_period_end"
+                source_timezone: "UTC"
+              consumer_status: "obligation_missing"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The seller accepts a schema-valid consumer statement"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "Missing-obligation identity does not require a seller-issued ID"
+
+      - id: read_omission_mismatch
+        title: "Read the missing obligation as a typed mismatch"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_omission_lab"
+          view: "periods"
+          period:
+            start: "$context.consumer_omission_period_start"
+            end: "$context.consumer_omission_period_end"
+        validations:
+          - check: response_schema
+            description: "Periods readback is schema-valid"
+          - check: field_value
+            path: "health"
+            value: "action_required"
+            description: "The seller cannot hide the omitted expected period"
+          - check: field_contains
+            path: "issues[*].code"
+            value: "CONSUMER_STATUS_MISMATCH"
+            description: "The disagreement is typed"
+          - check: field_contains
+            path: "consumer_statuses[*].reporting_status_id"
+            value: "consumer-status.obligation-missing.0001"
+            description: "The caller's statement is readable without becoming seller evidence"
+
+  - id: revision_recovery
+    title: "Close a missing-revision mismatch after exact consumption"
+    depends_on: []
+    narrative: |
+      A second account starts with a real obligation but no revision. The buyer
+      records revision_missing; after the seller publishes, that stale negative
+      status keeps this caller's view action_required. The buyer consumes the
+      exact Core binding and appends received with exact-leaf supersession,
+      resolving the mismatch without deleting the outage history. The seller
+      then restates that provisional revision; the buyer's formerly positive
+      statement becomes a typed mismatch until the buyer consumes the new leaf.
+
+    steps:
+      - id: prepare_revision_fixture
+        title: "Prepare an obligation without a revision"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_revision_config_id
+            path: "simulated.delivery_config_id"
+          - name: consumer_revision_config_version
+            path: "simulated.delivery_config_version"
+          - name: consumer_revision_definition_id
+            path: "simulated.resolved_configuration.report_definition_id"
+          - name: consumer_revision_obligation_id
+            path: "simulated.reporting_obligation_id"
+          - name: consumer_revision_period_start
+            path: "simulated.period.start"
+          - name: consumer_revision_period_end
+            path: "simulated.period.end"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+
+      - id: advance_revision_beyond_expected
+        title: "Advance beyond the recovery deadline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_time"
+            target_health: "action_required"
+        validations:
+          - check: response_schema
+            description: "The virtual clock crosses the recovery boundary"
+
+      - id: sync_revision_missing
+        title: "Record the missing revision"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_revision_missing"
+          statuses:
+            - reporting_status_id: "consumer-status.revision-missing.0001"
+              delivery_config_id: "$context.consumer_revision_config_id"
+              delivery_config_version: "$context.consumer_revision_config_version"
+              report_definition_id: "$context.consumer_revision_definition_id"
+              period:
+                start: "$context.consumer_revision_period_start"
+                end: "$context.consumer_revision_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_revision_obligation_id"
+              consumer_status: "revision_missing"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The missing-revision statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "The seller records buyer status separately"
+
+      - id: publish_recovered_revision
+        title: "Publish an explicit zero-row revision"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "publish_zero_row"
+        validations:
+          - check: response_schema
+            description: "Seller recovery publishes an immutable revision"
+          - check: field_value
+            path: "simulated.finality"
+            value: "snapshot"
+            description: "The consumer-status fixture uses a restatable provisional revision"
+
+      - id: read_revision_mismatch
+        title: "Keep the stale buyer status visible after seller recovery"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        context_outputs:
+          - name: consumer_revision_status_digest
+            path: "revisions[0].revision_content_sha256"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          view: "periods"
+        validations:
+          - check: response_schema
+            description: "Periods readback is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "Seller recovery does not silently erase buyer disagreement"
+          - check: field_contains
+            path: "issues[*].code"
+            value: "CONSUMER_STATUS_MISMATCH"
+            description: "The current mismatch remains typed"
+          - check: field_value
+            path: "periods[0].current_consumer_status_id"
+            value: "consumer-status.revision-missing.0001"
+            description: "The obligation points to the caller's current leaf"
+
+      - id: consume_recovered_revision
+        title: "Read and verify the exact Core revision"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        context_outputs:
+          - name: consumer_revision_digest
+            path: "reporting_revision_binding.content_sha256"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          reporting_revision_id: "$context.consumer_revision_id"
+          pagination:
+            max_results: 1
+        validations:
+          - check: response_schema
+            description: "Exact revision response is schema-valid"
+          - check: field_equals_context
+            path: "reporting_revision.reporting_revision_id"
+            context_key: "consumer_revision_id"
+            description: "The buyer consumes the exact recovered revision"
+          - check: field_equals_context
+            path: "reporting_revision_binding.content_sha256"
+            context_key: "consumer_revision_status_digest"
+            description: "Exact content matches the status ledger binding"
+
+      - id: sync_revision_received
+        title: "Supersede missing with received"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_revision_received"
+          statuses:
+            - reporting_status_id: "consumer-status.revision-received.0001"
+              supersedes_reporting_status_id: "consumer-status.revision-missing.0001"
+              delivery_config_id: "$context.consumer_revision_config_id"
+              delivery_config_version: "$context.consumer_revision_config_version"
+              report_definition_id: "$context.consumer_revision_definition_id"
+              period:
+                start: "$context.consumer_revision_period_start"
+                end: "$context.consumer_revision_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_revision_obligation_id"
+              reporting_revision_id: "$context.consumer_revision_id"
+              observed_revision_content_sha256: "$context.consumer_revision_digest"
+              consumer_status: "received"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "Superseding statement is schema-valid"
+          - check: field_value
+            path: "results[0].consumer_status.supersedes_reporting_status_id"
+            value: "consumer-status.revision-missing.0001"
+            description: "The new leaf atomically names the exact prior leaf"
+
+      - id: read_resolved_revision_status
+        title: "Read the resolved loop without losing history"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          view: "periods"
+        validations:
+          - check: response_schema
+            description: "Resolved periods response is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "complete"
+            description: "The current received status agrees with seller state"
+          - check: field_value
+            path: "periods[0].consumer_status_count"
+            value: 2
+            description: "Both immutable statements remain in retained history"
+          - check: field_value
+            path: "periods[0].current_consumer_status_id"
+            value: "consumer-status.revision-received.0001"
+            description: "The obligation points to the superseding received leaf"
+
+      - id: restate_received_revision
+        title: "Restate the revision after the buyer read it"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_restatement_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "restate_snapshot"
+        validations:
+          - check: response_schema
+            description: "The controller publishes a new immutable snapshot revision"
+          - check: field_equals_context
+            path: "simulated.supersedes_reporting_revision_id"
+            context_key: "consumer_revision_id"
+            description: "The new snapshot explicitly supersedes the revision the buyer received"
+
+      - id: read_restatement_mismatch
+        title: "Surface changed-after-read as a typed mismatch"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          view: "periods"
+          period:
+            start: "$context.consumer_revision_period_start"
+            end: "$context.consumer_revision_period_end"
+        validations:
+          - check: response_schema
+            description: "Restated periods readback is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "A positive status for the superseded revision no longer agrees with seller state"
+          - check: field_contains
+            path: "issues[*].code"
+            value: "CONSUMER_STATUS_MISMATCH"
+            description: "Changed-after-read is a typed caller-scoped disagreement"
+          - check: field_value
+            path: "periods[0].current_consumer_status_id"
+            value: "consumer-status.revision-received.0001"
+            description: "Restatement does not rewrite the buyer-attributed status chain"
+
+      - id: reject_stale_status_fork
+        title: "Reject a fork from the superseded leaf"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_stale_fork"
+          statuses:
+            - reporting_status_id: "consumer-status.revision-stale-fork.0001"
+              supersedes_reporting_status_id: "consumer-status.revision-missing.0001"
+              delivery_config_id: "$context.consumer_revision_config_id"
+              delivery_config_version: "$context.consumer_revision_config_version"
+              report_definition_id: "$context.consumer_revision_definition_id"
+              period:
+                start: "$context.consumer_revision_period_start"
+                end: "$context.consumer_revision_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_revision_obligation_id"
+              reporting_revision_id: "$context.consumer_revision_id"
+              observed_revision_content_sha256: "$context.consumer_revision_digest"
+              consumer_status: "received"
+              status_as_of: "2026-08-01T04:06:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The stale-fork result is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "failed"
+            description: "A write naming a superseded leaf does not commit"
+          - check: field_contains
+            path: "results[*].errors[*].code"
+            value: "CONFLICT"
+            description: "The seller identifies exact-leaf compare-and-swap failure"
+
+      - id: verify_stale_fork_was_atomic
+        title: "Confirm the rejected fork changed nothing"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          view: "periods"
+          period:
+            start: "$context.consumer_revision_period_start"
+            end: "$context.consumer_revision_period_end"
+        validations:
+          - check: response_schema
+            description: "Post-conflict readback is schema-valid"
+          - check: field_value
+            path: "periods[0].consumer_status_count"
+            value: 2
+            description: "The rejected fork did not append history"
+          - check: field_value
+            path: "periods[0].current_consumer_status_id"
+            value: "consumer-status.revision-received.0001"
+            description: "The exact current leaf remains unchanged"
