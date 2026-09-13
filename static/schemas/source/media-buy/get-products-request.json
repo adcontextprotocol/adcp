@@ -175,7 +175,7 @@
     },
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
-      "description": "DEPRECATED discovery-only property filter. Use targeting_overlay.property_list when the list is a concrete delivery constraint, or required_overlay_support.property_list when the list will be supplied later.",
+      "description": "DEPRECATED discovery-only property filter. On compact discovery tasks use criteria.offer_filters.property_list to preserve product eligibility. Use targeting_overlay.property_list only when the buyer intends a delivery constraint, or required_overlay_support.property_list for future selectability. A facade MUST NOT convert this discovery filter into delivery targeting.",
       "deprecated": true
     },
     "fields": {

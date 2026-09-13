@@ -13,7 +13,7 @@
  *   - Current `agent_compliance_status` row
  *   - The agent's position in the next heartbeat batch
  *
- * Optionally requeues the agent by clearing its `last_checked_at` so the
+ * Optionally requeues the agent by clearing its `next_compliance_check_at` so the
  * next heartbeat tick picks it up first.
  *
  * Usage (dev):
@@ -145,10 +145,8 @@ async function main(): Promise<void> {
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
          AND COALESCE(m.monitoring_paused, FALSE) = FALSE
          AND (
-           s.last_checked_at IS NULL
-           OR s.last_checked_at < NOW() - make_interval(hours => COALESCE(m.check_interval_hours,
-             CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
-           ))
+           m.next_compliance_check_at IS NULL
+           OR m.next_compliance_check_at < NOW()
          )
      )
      SELECT agent_url, last_checked_at, position FROM due_queue WHERE agent_url = $1`,
@@ -183,10 +181,8 @@ async function main(): Promise<void> {
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
          AND COALESCE(m.monitoring_paused, FALSE) = FALSE
          AND (
-           s.last_checked_at IS NULL
-           OR s.last_checked_at < NOW() - make_interval(hours => COALESCE(m.check_interval_hours,
-             CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
-           ))
+           m.next_compliance_check_at IS NULL
+           OR m.next_compliance_check_at < NOW()
          )`,
   );
   console.log(`   total due queue:          ${queueLen.rows[0].total}`);
@@ -195,16 +191,17 @@ async function main(): Promise<void> {
   if (requeue) {
     console.log('\n[5] Requeueing (--requeue flag set):');
     const result = await pool.query(
-      `UPDATE agent_compliance_status SET last_checked_at = NULL WHERE agent_url = $1`,
+      `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at) VALUES ($1, NULL)
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NULL`,
       [agentUrl],
     );
     if (result.rowCount === 0) {
-      console.log('   (no agent_compliance_status row to update — will be created on next run)');
+      console.log('   (no registry metadata row updated)');
     } else {
-      console.log(`   ✓ cleared last_checked_at — agent will be picked up next heartbeat tick`);
+      console.log(`   ✓ cleared next_compliance_check_at — agent will be picked up next heartbeat tick`);
     }
   } else {
-    console.log('\n[5] Rerun with --requeue to clear last_checked_at and force pickup on next tick');
+    console.log('\n[5] Rerun with --requeue to clear next_compliance_check_at and force pickup on next tick');
   }
 
   console.log('');

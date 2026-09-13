@@ -141,7 +141,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     ]);
   });
 
-  it('does not flag explicit requires_tool skips as coverage gaps', () => {
+  it('does not infer optional missing tools from warning text without pinned metadata', () => {
     const result = makeResult([
       {
         track: 'core',
@@ -171,9 +171,9 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
 
     const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
 
-    expect(out.overall_status).toBe('passing');
+    expect(out.overall_status).toBe('failing');
     expect(out.tracks_json).toEqual([
-      expect.objectContaining({ track: 'core', status: 'silent', has_coverage_gap_skip: false }),
+      expect.objectContaining({ track: 'core', status: 'fail', has_coverage_gap_skip: false }),
     ]);
   });
 
@@ -221,7 +221,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
       expect.objectContaining({
         track: 'creative',
-        status: 'pass',
+        status: 'skip',
         has_coverage_gap_skip: true,
       }),
     ]);

@@ -1,3 +1,5 @@
+import { complianceRunProvenance } from '../../compliance/run-provenance.js';
+import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
 /**
  * Compliance Heartbeat Job
  *
@@ -18,6 +20,7 @@ import {
   selectedComplianceTargetMatchesObservedProfile,
   type ComplyOptions,
   type ComplianceTargetSelection,
+  type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query, withDatabaseDeadline } from '../../db/client.js';
@@ -113,10 +116,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   // runtime — otherwise an agent late in the loop has its lock expire before the
   // loop reaches it and an overlapping run re-picks it (duplicate assessment,
   // double badge fan-out). Worst case is batchSize × the full-comply budget, plus
-  // headroom for per-agent target selection. recordComplianceRun() stamps the
-  // real last_checked_at on success or failure — this is only a concurrency lock,
-  // so a mid-loop process crash re-queues the agent after this TTL rather than
-  // waiting the full check_interval (default 12 h).
+  // headroom for per-agent target selection. Scheduling lives in registry
+  // metadata; the public last_checked_at always describes authoritative evidence.
+  // A mid-loop crash re-queues the agent after this TTL.
   const urls = agentsDue.map(a => a.agent_url);
   // Each agent has two bounded capability pre-discoveries: target selection,
   // then hosted auth defaults inside comply(). Account for both explicitly so
@@ -125,9 +127,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
     const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
     await query(
-      `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
-       SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
-       ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + make_interval(secs => $2)`,
+      `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
+       SELECT unnest($1::text[]), NOW() + make_interval(secs => $2)
+       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = NOW() + make_interval(secs => $2)`,
       [urls, lockSeconds],
     );
   }
@@ -233,6 +235,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
       assertExecutionFence();
+
+      if (!isAuthoritativeComplianceRun(dbInput)) {
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        result.skipped++;
+        logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
+          'Recorded audit-only compliance evidence; authoritative grade and badges preserved');
+        continue;
+      }
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -429,13 +439,12 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         error_message: errorMessage,
       });
 
-      // Record failure so stale passing data doesn't persist
+      // A thrown runner error is incomplete audit evidence, not an authoritative verdict.
       try {
         // Recheck the fence before writing: comply() may have thrown while a
         // concurrent owner refresh invalidated the lock. Without this guard the
         // stale heartbeat failure would race with and overwrite the fresher result.
         assertExecutionFence();
-        const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForTargetSelection(runTargetSelection)];
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
           requested_compliance_target: runTarget.requested,
@@ -451,62 +460,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
           dry_run: false,
+          completeness: 'not_completed',
+          provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
+          is_authoritative: false,
           replace_storyboard_statuses: true,
         });
 
-        if (badgeEligibleAdcpVersions.length > 0) {
-          assertExecutionFence();
-          const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
-          const badgeMetadata = await complianceDb.getRegistryMetadata(agent.agent_url);
-          const expectedBadgeGeneration = badgeMetadata?.badge_requalification_generation ?? '0';
-          const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
-          const revoked = [];
-          for (const badge of existingBadges) {
-            if (!eligibleBadgeVersions.has(badge.adcp_version)) continue;
-            const didRevoke = await complianceDb.revokeBadge(
-              agent.agent_url,
-              badge.role,
-              badge.adcp_version,
-              'Authoritative compliance run failed before storyboard verification',
-              expectedBadgeGeneration,
-            );
-            if (!didRevoke) continue;
-            revoked.push({
-              role: badge.role,
-              reason: 'Authoritative compliance run failed',
-              adcp_version: badge.adcp_version,
-            });
-          }
-          if (revoked.length > 0) {
-            try {
-              await notifyVerificationChange({
-                agentUrl: agent.agent_url,
-                issued: [],
-                revoked,
-              });
-            } catch (notifyError) {
-              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
-            }
-          }
-        } else if (runTargetSelection.confirmed) {
-          assertExecutionFence();
-          const badgeResult = await revokeUnsupportedPublicBadges({
-            complianceDb,
-            agentUrl: agent.agent_url,
-            supportedVersions: runTargetSelection.supportedVersions,
-          });
-          if (badgeResult.revoked.length > 0) {
-            try {
-              await notifyVerificationChange({
-                agentUrl: agent.agent_url,
-                issued: [],
-                revoked: badgeResult.revoked,
-              });
-            } catch (notifyError) {
-              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
-            }
-          }
-        }
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
       } catch (recordError) {
         // Fence loss during failure recording must be handled here directly:
         // we are already inside catch (error), so re-throwing would escape the
@@ -526,16 +486,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 
-      // Timeouts and capability-config faults are valid per-agent results
-      // (not skips) — they need to surface in checked/failed so the heartbeat
-      // summary reflects reality.
-      if (isAgentTimeout || isSavedAuthConfigError || capsError) {
-        result.checked++;
-        result.failed++;
-      } else {
-        result.skipped++;
-        skipReasons.agent_error++;
-      }
+      result.skipped++;
+      skipReasons.agent_error++;
     } finally {
       await executionFence.release();
     }

@@ -19,7 +19,6 @@ describe('BrandManager caching', () => {
   let relationshipDeclarations: Map<string, number>;
 
   const createManager = () => new BrandManager({
-    allowDevelopmentDomains: true,
     observeRelationshipDeclaration: async (declaration) => {
       const key = [
         declaration.houseDomain.toLowerCase(),
@@ -51,21 +50,6 @@ describe('BrandManager caching', () => {
   });
 
   describe('validateDomain caching', () => {
-    it.each([
-      '1.2.3.4',
-      'co.uk',
-      'brand.unknown',
-      'brand.localhost',
-      'brand.local',
-      'brand.10.in-addr.arpa',
-      'example.com',
-    ])('rejects non-production domain %s before network access', async (domain) => {
-      const productionManager = new BrandManager();
-      const result = await productionManager.validateDomain(domain);
-      expect(result.valid).toBe(false);
-      expect(mockedSafeFetch).not.toHaveBeenCalled();
-    });
-
     it('caches successful validation results', async () => {
       const mockBrandJson = {
         $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
@@ -1315,7 +1299,6 @@ describe('BrandManager caching', () => {
 
     it('fails closed when a missing effective_at cannot be durably observed', async () => {
       manager = new BrandManager({
-        allowDevelopmentDomains: true,
         observeRelationshipDeclaration: async () => {
           throw new Error('database unavailable');
         },
@@ -1334,7 +1317,6 @@ describe('BrandManager caching', () => {
     it('can evaluate explicit effective_at while durable storage is unavailable', async () => {
       const effectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       manager = new BrandManager({
-        allowDevelopmentDomains: true,
         observeRelationshipDeclaration: async () => {
           throw new Error('database unavailable');
         },

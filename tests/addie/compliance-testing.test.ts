@@ -9,8 +9,8 @@ import {
 function baseResult(overrides: Partial<ComplianceResult>): ComplianceResult {
   return {
     agent_url: 'https://agent.example/mcp',
-    adcp_version: '3.1.0-rc.12',
-    agent_profile: {},
+    adcp_version: '3.1.20',
+    agent_profile: { tools: [] },
     overall_status: 'partial',
     tracks: [],
     tested_tracks: [],
@@ -175,7 +175,10 @@ describe('compliance result adapter', () => {
     const dbInput = complianceResultToDbInput(result, 'https://agent.example/mcp', 'production');
     expect(dbInput.tracks_json[0]).toMatchObject({
       track: 'core',
-      has_coverage_gap_skip: false,
+      // webhook_receiver and the pinned idempotency requires_contract are
+      // unavailable runner setup. They are neutral but leave coverage gaps.
+      status: 'skip',
+      has_coverage_gap_skip: true,
     });
   });
 
@@ -239,15 +242,20 @@ describe('compliance result adapter', () => {
     ]);
 
     const dbInput = complianceResultToDbInput(result, 'https://agent.example/mcp', 'production');
-    expect(dbInput.overall_status).toBe('passing');
+    // Canonical not_applicable remains neutral. With no executed steps, it
+    // cannot manufacture a passing grade or increment the passed-track count.
+    expect(dbInput.overall_status).toBe('partial');
+    expect(dbInput.tracks_passed).toBe(0);
+    expect(dbInput.tracks_failed).toBe(0);
     expect(dbInput.tracks_partial).toBe(0);
     expect(dbInput.tracks_json[0]).toMatchObject({
       track: 'core',
+      status: 'skip',
       has_coverage_gap_skip: false,
     });
   });
 
-  it('keeps non-idempotency missing runner contracts visible as coverage gaps', () => {
+  it('keeps unmatched missing runner contracts actionable without pinned setup metadata', () => {
     const result = baseResult({
       tracks: [
         {
@@ -293,7 +301,8 @@ describe('compliance result adapter', () => {
     const dbInput = complianceResultToDbInput(result, 'https://agent.example/mcp', 'production');
     expect(dbInput.tracks_json[0]).toMatchObject({
       track: 'core',
-      has_coverage_gap_skip: true,
+      status: 'fail',
+      has_coverage_gap_skip: false,
     });
   });
 

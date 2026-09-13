@@ -739,6 +739,8 @@ components:
     AgentCompliance:
       type: object
       properties:
+        provenance:
+          $ref: "#/components/schemas/ComplianceRunProvenance"
         status:
           type: string
           enum:
@@ -829,6 +831,54 @@ components:
         - streak_days
         - last_checked_at
         - headline
+    ComplianceRunProvenance:
+      type:
+        - object
+        - "null"
+      properties:
+        grading_policy_version:
+          type: string
+        compliance_bundle_version:
+          type:
+            - string
+            - "null"
+        sdk_version:
+          type: string
+        agent_build_version:
+          type:
+            - string
+            - "null"
+          description: Agent-reported adcp.build_version; null when not supplied. Never inferred from the endpoint.
+        agent_library_version:
+          type:
+            - string
+            - "null"
+        test_session_id:
+          type:
+            - string
+            - "null"
+        timeout_ms:
+          type:
+            - number
+            - "null"
+        storyboard_start_offset:
+          type:
+            - number
+            - "null"
+        auth_type:
+          type:
+            - string
+            - "null"
+      required:
+        - grading_policy_version
+        - compliance_bundle_version
+        - sdk_version
+        - agent_build_version
+        - agent_library_version
+        - test_session_id
+        - timeout_ms
+        - storyboard_start_offset
+        - auth_type
     BadgeRole:
       type: string
       enum:
@@ -4210,6 +4260,8 @@ components:
     AgentComplianceDetail:
       type: object
       properties:
+        provenance:
+          $ref: "#/components/schemas/ComplianceRunProvenance"
         agent_url:
           type: string
         requested_compliance_target:
@@ -4677,8 +4729,18 @@ components:
     ComplianceRun:
       type: object
       properties:
+        provenance:
+          $ref: "#/components/schemas/ComplianceRunProvenance"
         id:
           type: string
+        completeness:
+          type: string
+          enum:
+            - complete
+            - timed_out
+            - not_completed
+        is_authoritative:
+          type: boolean
         requested_compliance_target:
           type:
             - string
@@ -11940,7 +12002,7 @@ paths:
     post:
       operationId: requeueAgentForHeartbeat
       summary: Requeue agent for compliance heartbeat
-      description: Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.
+      description: Clears the agent's next scheduled check time so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.
       tags:
         - Agent Compliance
       security:
@@ -12045,6 +12107,31 @@ paths:
                     type:
                       - string
                       - "null"
+                  completeness:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - complete
+                      - timed_out
+                      - not_completed
+                      - null
+                  is_authoritative:
+                    type: boolean
+                  provenance:
+                    $ref: "#/components/schemas/ComplianceRunProvenance"
+                  storyboard_statuses:
+                    type: array
+                    items: {}
+                  observations:
+                    type: array
+                    items: {}
+                  diagnostics_visibility:
+                    type: string
+                    enum:
+                      - owner_or_operator
+                  diagnostics_note:
+                    type: string
                   count:
                     type: integer
                   diagnostics:
@@ -12054,6 +12141,13 @@ paths:
                 required:
                   - agent_url
                   - run_id
+                  - completeness
+                  - is_authoritative
+                  - provenance
+                  - storyboard_statuses
+                  - observations
+                  - diagnostics_visibility
+                  - diagnostics_note
                   - count
                   - diagnostics
         "400":
@@ -12250,7 +12344,18 @@ paths:
                     properties:
                       ran:
                         type: boolean
-                        description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed.
+                        description: True if a compliance run was recorded. Check completeness and is_authoritative before treating its results as the public grade.
+                      completeness:
+                        type: string
+                        enum:
+                          - complete
+                          - timed_out
+                          - not_completed
+                      is_authoritative:
+                        type: boolean
+                        description: Only authoritative runs update the public grade and badge state. Incomplete runs preserve the previous complete assessment.
+                      provenance:
+                        $ref: "#/components/schemas/ComplianceRunProvenance"
                       run_id:
                         type: string
                         description: Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence.
@@ -13779,6 +13884,16 @@ paths:
                   run_id:
                     type: string
                     description: Compliance run id written by this owner-triggered storyboard run.
+                  completeness:
+                    type: string
+                    enum:
+                      - complete
+                      - timed_out
+                      - not_completed
+                  is_authoritative:
+                    type: boolean
+                  provenance:
+                    $ref: "#/components/schemas/ComplianceRunProvenance"
                   storyboard_status:
                     type: object
                     properties:
@@ -13880,6 +13995,9 @@ paths:
                   - badge_eligible
                   - badge_eligible_adcp_versions
                   - run_id
+                  - completeness
+                  - is_authoritative
+                  - provenance
                   - storyboard_status
                   - diagnostics
                   - total_duration_ms

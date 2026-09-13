@@ -3273,9 +3273,13 @@
         } else if (requestedTarget) {
           parts.push(`Retested against AdCP ${requestedTarget}`);
         }
-        const passing = data.compliance.storyboards_passing ?? 0;
-        const total = data.compliance.storyboards_total ?? 0;
-        parts.push(`compliance: ${passing}/${total}`);
+        if (data.compliance.is_authoritative === false || data.compliance.completeness === 'timed_out') {
+          parts.push('Incomplete assessment; previous grade and badges preserved');
+        } else {
+          const passing = data.compliance.storyboards_passing ?? 0;
+          const total = data.compliance.storyboards_total ?? 0;
+          parts.push(`compliance: ${passing}/${total}`);
+        }
       } else if (data.compliance?.error) {
         parts.push(`compliance not run (${data.compliance.error})`);
       }
@@ -3283,7 +3287,8 @@
     }
 
     function isSuccessfulAgentRetest(data) {
-      return data.online === true && data.compliance?.ran === true;
+      return data.online === true && data.compliance?.ran === true &&
+        data.compliance.is_authoritative !== false && data.compliance.completeness !== 'timed_out';
     }
 
     async function reloadAgentCardAfterRefresh(agentUrl) {

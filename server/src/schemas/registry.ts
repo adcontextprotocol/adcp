@@ -770,8 +770,21 @@ export const PropertyRegistryItemSchema = z
   })
   .openapi("PropertyRegistryItem");
 
+export const ComplianceRunProvenanceSchema = z.object({
+  grading_policy_version: z.string(),
+  compliance_bundle_version: z.string().nullable(),
+  sdk_version: z.string(),
+  agent_build_version: z.string().nullable().openapi({ description: 'Agent-reported adcp.build_version; null when not supplied. Never inferred from the endpoint.' }),
+  agent_library_version: z.string().nullable(),
+  test_session_id: z.string().nullable(),
+  timeout_ms: z.number().nullable(),
+  storyboard_start_offset: z.number().nullable(),
+  auth_type: z.string().nullable(),
+}).openapi('ComplianceRunProvenance');
+
 export const AgentComplianceSchema = z
   .object({
+    provenance: ComplianceRunProvenanceSchema.nullable().optional(),
     status: z.enum(["passing", "degraded", "failing", "unknown"]),
     requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12." }),
@@ -817,6 +830,7 @@ export const VerificationBadgeSchema = z
 
 export const AgentComplianceDetailSchema = z
   .object({
+    provenance: ComplianceRunProvenanceSchema.nullable().optional(),
     agent_url: z.string(),
     requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording." }),
@@ -1325,7 +1339,10 @@ export const MonitoringSettingsSchema = z
 
 export const ComplianceRunSchema = z
   .object({
+    provenance: ComplianceRunProvenanceSchema.nullable().optional(),
     id: z.string(),
+    completeness: z.enum(['complete', 'timed_out', 'not_completed']).optional(),
+    is_authoritative: z.boolean().optional(),
     requested_compliance_target: z.string().nullable().optional(),
     adcp_version: z.string().nullable().optional(),
     overall_status: z.string(),

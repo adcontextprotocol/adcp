@@ -32,6 +32,7 @@ function makeResult(
 ): ComplianceResult {
   return {
     agent_url: 'https://example.test/mcp',
+    agent_profile: { tools: [] },
     overall_status: 'passing',
     tracks: [
       {
@@ -109,7 +110,7 @@ describe('deriveStoryboardStatuses', () => {
     })).toBe(false);
   });
 
-  it('classifies controller skips and their prerequisite cascades as non-executable', () => {
+  it('keeps unattributed prerequisite cascades executable despite controller warning text', () => {
     expect(isNonExecutableCoverageGapScenario({
       scenario: 'stale_response_advisory/stale_response_forcing',
       steps: [
@@ -127,7 +128,7 @@ describe('deriveStoryboardStatuses', () => {
           warnings: ['Skipped: prior stateful step "force_upstream_unavailable" skipped (missing_test_controller); state never materialized.'],
         },
       ],
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it('does not hide a genuine cascade after an unrelated controller skip', () => {
@@ -176,7 +177,7 @@ describe('deriveStoryboardStatuses', () => {
     ]);
   });
 
-  it('does not hide a production missing-tool cascade after a neutral missing-tool skip', () => {
+  it('does not hide a production missing-tool cascade after a neutral capability skip', () => {
     const result = makeResult([
       {
         scenario: 'mixed_missing_tools/exercise',
@@ -185,7 +186,7 @@ describe('deriveStoryboardStatuses', () => {
           {
             passed: true,
             skipped: true,
-            skip_reason: 'missing_tool',
+            skip_reason: 'capability_unsupported',
             step: 'Preview the creative',
             task: 'preview_creative',
             warnings: ['Required tool "preview_creative" not advertised; agent tools: [get_products].'],
@@ -401,7 +402,7 @@ describe('deriveStoryboardStatuses', () => {
     });
   });
 
-  it('treats an unavailable runner fixture and any legacy cascade as untested', () => {
+  it('treats the structural whole-storyboard fixture abort and later legacy cascades as untested', () => {
     const result = makeResult([
       {
         scenario: 'creative_fate_after_cancellation/get_products_brief',
@@ -489,6 +490,7 @@ describe('deriveStoryboardStatuses', () => {
       },
     ]);
 
+    result.adcp_version = '3.1.20';
     const [entry] = deriveStoryboardStatuses(result);
 
     expect(entry).toEqual({
@@ -519,6 +521,7 @@ describe('deriveStoryboardStatuses', () => {
       },
     ]);
 
+    result.adcp_version = '3.1.20';
     const [entry] = deriveStoryboardStatuses(result);
 
     expect(entry).toEqual({
@@ -529,7 +532,7 @@ describe('deriveStoryboardStatuses', () => {
     });
   });
 
-  it('excludes prerequisite cascades caused by explicit requires_tool skips', () => {
+  it('preserves unattributed dependencies after a pinned optional-tool skip', () => {
     const result = makeResult([
       {
         scenario: 'creative_lifecycle/build_and_preview',
@@ -555,13 +558,16 @@ describe('deriveStoryboardStatuses', () => {
       },
     ]);
 
+    result.adcp_version = '3.1.20';
     const [entry] = deriveStoryboardStatuses(result);
 
     expect(entry).toEqual({
       storyboard_id: 'creative_lifecycle',
-      status: 'untested',
+      status: 'failing',
       steps_passed: 0,
-      steps_total: 0,
+      steps_total: 1,
+      failure_count: 0,
+      skipped_count: 1,
     });
   });
 
