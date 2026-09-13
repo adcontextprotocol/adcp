@@ -550,11 +550,18 @@ export async function tryAutoLinkWebsiteUserToSlack(
     }
 
     // Link the accounts
-    await slackDb.mapUser({
+    const mapped = await slackDb.mapUser({
       slack_user_id: slackUser.slack_user_id,
       workos_user_id: workosUserId,
       mapping_source: 'email_auto',
     });
+    if (!mapped) {
+      logger.warn(
+        { workosUserId, slackUserId: slackUser.slack_user_id },
+        'Skipped Slack auto-link because the local credential is not active',
+      );
+      return { linked: false, reason: 'credential_inactive' };
+    }
 
     logger.info(
       { workosUserId, slackUserId: slackUser.slack_user_id, email },
@@ -625,6 +632,13 @@ export async function checkAndAssignOrganizationByDomain(
   previousOrgName?: string;
   error?: string;
 } | null> {
+  logger.warn(
+    { workosUserId },
+    'Automatic domain organization assignment deferred: no durable provider intent journal',
+  );
+  return null;
+
+  /* c8 ignore start -- retained discovery for an eventual journaled workflow */
   const pool = getPool();
 
   try {
@@ -721,6 +735,7 @@ export async function checkAndAssignOrganizationByDomain(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+  /* c8 ignore stop */
 }
 
 /**
@@ -819,6 +834,10 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
   skipped: number;
   errors: number;
 }> {
+  logger.warn('Automatic verified-domain membership sweep deferred: no durable provider intent journal');
+  return { added: 0, skipped: 0, errors: 0 };
+
+  /* c8 ignore start -- retained discovery for an eventual journaled workflow */
   const pool = getPool();
 
   const result = await pool.query<{
@@ -943,4 +962,5 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
   }
 
   return { added: totalAdded, skipped: totalSkipped, errors: totalErrors };
+  /* c8 ignore stop */
 }

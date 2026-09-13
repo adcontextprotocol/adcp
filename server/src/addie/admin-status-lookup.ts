@@ -43,9 +43,10 @@ const wgDb = new WorkingGroupDatabase();
 export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
   const cache = getWebAdminStatusCache();
   const cached = cache.get(workosUserId);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && !cached.isAdmin && cached.expiresAt > Date.now()) {
     return cached.isAdmin;
   }
+  if (cached?.isAdmin) cache.delete(workosUserId);
 
   try {
     const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
@@ -58,10 +59,12 @@ export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> 
     }
 
     const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-    cache.set(workosUserId, {
-      isAdmin,
-      expiresAt: Date.now() + (isAdmin ? AAO_ADMIN_POSITIVE_CACHE_TTL_MS : AAO_ADMIN_NEGATIVE_CACHE_TTL_MS),
-    });
+    if (!isAdmin) {
+      cache.set(workosUserId, {
+        isAdmin: false,
+        expiresAt: Date.now() + AAO_ADMIN_NEGATIVE_CACHE_TTL_MS,
+      });
+    }
     logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
     return isAdmin;
   } catch (error) {

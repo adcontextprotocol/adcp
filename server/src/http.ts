@@ -57,12 +57,16 @@ import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { autoLinkByVerifiedDomain } from "./db/membership-db.js";
+import { autoLinkByVerifiedDomain, upsertOrganizationMembership } from "./db/membership-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { assertIdentityConsolidationAllowed } from "./db/identity-mutation-policy.js";
+import {
+  upsertWorkosUserInCredentialEvent,
+  withCredentialCreationEventMutation,
+} from "./db/identity-db.js";
 import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
@@ -7750,25 +7754,27 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // On INSERT, use WorkOS values — falling back to existing DB / Slack
         // mapping when WorkOS itself has empty names. On UPDATE, preserve
         // user-set names: only fill in names that are currently empty.
-        try {
-          const pool = getPool();
-          const { firstName, lastName } = await resolveUserNameWithFallbacks(
-            pool, user.id, user.firstName, user.lastName,
-          );
-          await pool.query(
-            `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-             ON CONFLICT (workos_user_id) DO UPDATE SET
-               email = EXCLUDED.email,
-               first_name = COALESCE(NULLIF(TRIM(users.first_name), ''), EXCLUDED.first_name),
-               last_name = COALESCE(NULLIF(TRIM(users.last_name), ''), EXCLUDED.last_name),
-               email_verified = EXCLUDED.email_verified,
-               workos_updated_at = EXCLUDED.workos_updated_at,
-               updated_at = NOW()`,
-            [user.id, user.email, firstName, lastName, user.emailVerified, user.createdAt, user.updatedAt]
-          );
-        } catch (upsertError) {
-          logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
+        const pool = getPool();
+        const { firstName, lastName } = await resolveUserNameWithFallbacks(
+          pool, user.id, user.firstName, user.lastName,
+        );
+        const localFinalize = await withCredentialCreationEventMutation(user.id, async (client) => {
+          await upsertWorkosUserInCredentialEvent(client, {
+            id: user.id,
+            email: user.email,
+            firstName,
+            lastName,
+            emailVerified: user.emailVerified,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+          }, 'preserve_existing');
+        });
+        if (!localFinalize.applied) {
+          logger.warn({ userId: user.id }, 'Refused OAuth callback for terminal local credential');
+          return res.status(403).json({
+            error: 'Account unavailable',
+            message: 'This account cannot be authenticated. Contact support if this is unexpected.',
+          });
         }
 
         // Auto-merge duplicate accounts caused by Google email aliases.
@@ -8163,30 +8169,40 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
               if (existingMapping && !existingMapping.workos_user_id) {
                 // Link the Slack user to the newly authenticated WorkOS user
-                await slackDb.mapUser({
+                const mapped = await slackDb.mapUser({
                   slack_user_id: slackUserIdToLink,
                   workos_user_id: user.id,
                   mapping_source: 'user_claimed',
                 });
-                accountLinked = true;
-                accountNewlyLinked = true;
-                logger.info(
-                  { slackUserId: slackUserIdToLink, workosUserId: user.id },
-                  'Auto-linked Slack account after signup'
-                );
+                if (!mapped) {
+                  logger.warn(
+                    { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                    'Skipped Slack account link because the local credential is no longer active',
+                  );
+                } else {
+                  accountLinked = true;
+                  accountNewlyLinked = true;
+                  logger.info(
+                    { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                    'Auto-linked Slack account after signup'
+                  );
+                }
 
-                // Record account linking in the relationship system
-                try {
-                  const { resolvePersonId } = await import('./db/relationship-db.js');
-                  const { recordEvent } = await import('./db/person-events-db.js');
-                  const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
-                  await recordEvent(personId, 'account_linked', {
-                    channel: 'web',
-                    data: { workos_user_id: user.id },
-                  });
-                  logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
-                } catch (trackingError) {
-                  logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
+                // Record account linking only after the lifecycle-fenced map
+                // actually commits.
+                if (mapped) {
+                  try {
+                    const { resolvePersonId } = await import('./db/relationship-db.js');
+                    const { recordEvent } = await import('./db/person-events-db.js');
+                    const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
+                    await recordEvent(personId, 'account_linked', {
+                      channel: 'web',
+                      data: { workos_user_id: user.id },
+                    });
+                    logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
+                  } catch (trackingError) {
+                    logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
+                  }
                 }
 
               } else if (!existingMapping) {
@@ -9251,13 +9267,21 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
               role: roleSlug,
             }, 'User auto-added to organization via verified domain');
 
-            // Mirror membership locally so it's visible immediately
-            const pool2 = getPool();
-            await pool2.query(`
-              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
-              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
-              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
-            `, [user.id, organization_id, user.email, roleSlug]);
+            // Mirror only while the exact credential is still active. A
+            // provider response that settles after deletion must not restore
+            // local organization authority.
+            await upsertOrganizationMembership({
+              user_id: user.id,
+              organization_id,
+              membership_id: membership.id,
+              email: user.email,
+              first_name: user.firstName ?? null,
+              last_name: user.lastName ?? null,
+              role: roleSlug,
+              seat_type: 'community_only',
+              has_explicit_seat_type: false,
+              provisioning_source: 'verified_domain',
+            });
 
             // Record audit log
             await orgDb.recordAuditLog({

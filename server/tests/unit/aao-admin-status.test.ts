@@ -13,7 +13,6 @@ vi.mock('../../src/db/working-group-db.js', () => ({
 }));
 
 import {
-  AAO_ADMIN_POSITIVE_CACHE_TTL_MS,
   isWebUserAAOAdmin,
   resolveWebUserAAOAdminAccess,
 } from '../../src/addie/admin-status-lookup.js';
@@ -45,12 +44,9 @@ describe('site-admin access decisions', () => {
     else process.env.ADMIN_EMAILS = originalAdminEmails;
   });
 
-  it('bounds cached positive membership decisions to one minute', async () => {
+  it('does not cache positive membership decisions across requests', async () => {
     await expect(isWebUserAAOAdmin('user_admin')).resolves.toBe(true);
-    const cached = getWebAdminStatusCache().get('user_admin');
-
-    expect(cached?.expiresAt).toBe(Date.now() + AAO_ADMIN_POSITIVE_CACHE_TTL_MS);
-    vi.advanceTimersByTime(AAO_ADMIN_POSITIVE_CACHE_TTL_MS + 1);
+    expect(getWebAdminStatusCache().get('user_admin')).toBeUndefined();
     await isWebUserAAOAdmin('user_admin');
     expect(mocks.isMember).toHaveBeenCalledTimes(2);
   });
