@@ -13,12 +13,7 @@ import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
-import { getPool } from '../db/client.js';
-import {
-  readCredentialAuthorizationLifecycle,
-  type ActiveCredentialAuthorizationSnapshot,
-  type CredentialAuthorizationLifecycle,
-} from '../db/authorization-epoch-db.js';
+import { loadAuthorizationSnapshot, AuthorizationSnapshotUnavailableError } from '../db/user-authorization-snapshot-db.js';
 import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
@@ -39,8 +34,8 @@ interface CachedSession {
   accessToken: string;
   expiresAt: number;
   newSealedSession?: string; // Set if session was refreshed
-  /** Persisted authorization epoch observed when this entry was stored (#6827). */
-  authorizationFingerprint?: string;
+  /** Explicit organization from the authenticated provider session, never inferred. */
+  orgId?: string;
 }
 const sessionCache = new Map<string, CachedSession>();
 
@@ -317,19 +312,15 @@ export interface ValidatedBearerJWT {
 
 /**
  * Short-lived positive cache for successfully-validated bearer JWTs.
- * Keyed on SHA-256 of the raw token; value includes the synthesized user
+ * Keyed on SHA-256 of the raw token; value includes verified provider claims
  * and an expiry that is the minimum of (token exp, now + BEARER_JWT_CACHE_TTL_MS).
  *
- * Without this, every REST request with a Bearer JWT incurs a DB round-trip
- * for the local-user lookup — the cookie path has an equivalent cache
- * (`sessionCache`) and its absence here creates a DoS amplifier.
+ * Only signature-verified provider claims live here. Request authority is
+ * hydrated afresh from the primary database; no canonical user or grant is cached.
  */
 interface CachedBearerJWT {
-  user: WorkOSUser;
-  orgId?: string;
+  verified: Awaited<ReturnType<typeof verifyWorkOSJWT>>;
   expiresAt: number;
-  /** Persisted authorization epoch observed when this entry was stored (#6827). */
-  authorizationFingerprint?: string;
 }
 const bearerJwtCache = new Map<string, CachedBearerJWT>();
 const BEARER_JWT_CACHE_TTL_MS = 60 * 1000;
@@ -366,63 +357,37 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   const cacheKey = hashBearerToken(token);
   const now = Date.now();
   const cached = bearerJwtCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    if (await isAuthorizationFingerprintCurrent(cached.user, cached.authorizationFingerprint)) {
-      return { user: cached.user, rawToken: token, orgId: cached.orgId };
-    }
-    // Identity bindings changed since this entry was stored — re-verify.
-    bearerJwtCache.delete(cacheKey);
-  }
-
   let verified: Awaited<ReturnType<typeof verifyWorkOSJWT>>;
-  try {
-    verified = await verifyWorkOSJWT(token);
-  } catch (err) {
-    logger.debug({ err }, 'Bearer JWT verification failed');
-    return null;
+  if (cached && cached.expiresAt > now) {
+    verified = cached.verified;
+  } else {
+    try {
+      verified = await verifyWorkOSJWT(token);
+    } catch (err) {
+      logger.debug({ err }, 'Bearer JWT verification failed');
+      return null;
+    }
   }
-
   if (verified.isM2M || !verified.sub) return null;
 
-  // A valid WorkOS signature is not enough: accept and cache only an
-  // authoritative local credential snapshot that includes the binding and
-  // proves no durable deletion tombstone exists.
-  const lifecycle = await readCredentialAuthorizationLifecycle(verified.sub);
-  if (lifecycle.status === 'unavailable') {
-    logger.warn({ sub: verified.sub }, 'Bearer JWT local credential lifecycle unavailable — failed closed');
-    return null;
-  }
-  if (lifecycle.status === 'terminal') {
-    logger.warn({ sub: verified.sub }, 'Bearer JWT verified but credential is not active locally');
-    return null;
-  }
-  const activeSnapshot = lifecycle.snapshot;
-
-  const email = verified.email ?? activeSnapshot.email ?? '';
-  const user: WorkOSUser = {
+  // Only provider authentication is cached. Identity, grants and the epoch
+  // always come from the same fresh primary-database snapshot, even on hits.
+  const user = await hydrateAuthenticatedUser({
     id: verified.sub,
-    email,
-    firstName: activeSnapshot.first_name?.trim() || undefined,
-    lastName: activeSnapshot.last_name?.trim() || undefined,
+    email: verified.email ?? '',
     emailVerified: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
-  applyActiveCredentialSnapshot(user, activeSnapshot);
+  }, selectedOrganizationForAuthentication(req, verified.orgId));
 
   const tokenExpMs = verified.expiresAt ? verified.expiresAt * 1000 : Infinity;
   const cacheUntil = Math.min(now + BEARER_JWT_CACHE_TTL_MS, tokenExpMs);
-  if (cacheUntil > now) {
+  if ((!cached || cached.expiresAt <= now) && cacheUntil > now) {
     if (bearerJwtCache.size >= BEARER_JWT_CACHE_MAX_SIZE) {
       const oldest = bearerJwtCache.keys().next().value;
       if (oldest) bearerJwtCache.delete(oldest);
     }
-    bearerJwtCache.set(cacheKey, {
-      user,
-      orgId: verified.orgId,
-      expiresAt: cacheUntil,
-      authorizationFingerprint: activeSnapshot.fingerprint,
-    });
+    bearerJwtCache.set(cacheKey, { verified, expiresAt: cacheUntil });
   }
 
   return { user, rawToken: token, orgId: verified.orgId };
@@ -713,134 +678,89 @@ function hasValidAdminApiKey(req: Request): boolean {
 }
 
 /**
- * True if `id` is a synthetic user (static admin API key or per-org WorkOS
- * API key). Synthetic users don't represent a person, so they have no
- * identity binding.
- */
-function isSyntheticUser(id: string): boolean {
-  return id === 'admin_api_key' || id.startsWith('api_key_');
-}
-
-/**
  * Drop any cached sessions whose WorkOS user id matches one of the given
- * ids, on either auth credential (post-swap canonical or actual auth).
- * Called when an identity binding changes (mergeUsers, admin rebind) so
- * subsequent requests re-resolve identity instead of serving a stale swap.
+ * ids. This saves a provider round trip after local mutations; correctness
+ * comes from the fresh database snapshot on every request, on every instance.
  */
 export function invalidateSessionsForUsers(workosUserIds: string[]): void {
   if (workosUserIds.length === 0) return;
   const ids = new Set(workosUserIds);
   for (const [key, value] of sessionCache.entries()) {
-    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+    if (ids.has(value.user.id)) {
       sessionCache.delete(key);
     }
   }
   for (const [key, value] of bearerJwtCache.entries()) {
-    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+    if (ids.has(value.verified.sub)) {
       bearerJwtCache.delete(key);
     }
   }
 }
 
-/**
- * Resolve the identity for a WorkOS user. Sets `user.identityId` and, when
- * the authenticated user is a non-primary binding, swaps `user.id` to the
- * identity's primary workos_user_id so app-state reads land on the right
- * person. The original authenticated id is preserved on `user.authWorkosUserId`.
- *
- * Skipped for synthetic users (admin API key, WorkOS API key) — they don't
- * represent a person. Failures are swallowed: identity resolution must
- * never block an authenticated request, and a degraded request that sees
- * only the auth user's slice of data is still better than a 500.
- */
-async function attachIdentityId(user: WorkOSUser): Promise<void> {
-  if (isSyntheticUser(user.id)) return;
+class InvalidAuthorizationCredentialError extends Error {}
+class ConflictingOrganizationSelectionError extends Error {}
+
+/** Request selectors must agree; authenticated provider selection is used only
+ * when the request supplies none. Neither memberships nor caches pick an org. */
+function selectedOrganizationForAuthentication(req: Request, providerOrg?: string): string | null {
+  const selectors = [
+    req.headers['x-organization-id'], req.query?.org, req.query?.organization_id,
+    req.body?.organization_id, req.body?.organizationId,
+    req.params?.orgId, req.params?.organizationId,
+  ].filter((value) => value !== undefined && value !== null);
+  if (selectors.some((value) => typeof value !== 'string' || !value.trim())) {
+    throw new ConflictingOrganizationSelectionError();
+  }
+  const ids = new Set(selectors.map((value) => (value as string).trim()));
+  if (ids.size > 1) throw new ConflictingOrganizationSelectionError();
+  return ids.values().next().value ?? providerOrg ?? null;
+}
+
+/** Hydrate a new request object; never mutate the provider object in a cache. */
+async function hydrateAuthenticatedUser(user: WorkOSUser, organizationId: string | null): Promise<WorkOSUser> {
+  const authenticatedUserId = getOrganizationAuthorizationUserId(user);
+  const snapshot = await loadAuthorizationSnapshot(authenticatedUserId, organizationId);
+  if (!snapshot) throw new InvalidAuthorizationCredentialError();
+  const hydrated: WorkOSUser = {
+    ...user,
+    id: snapshot.canonicalUserId,
+    authWorkosUserId: snapshot.canonicalUserId !== authenticatedUserId ? authenticatedUserId : undefined,
+    identityId: snapshot.identityId ?? undefined,
+    email: snapshot.credential.email ?? '',
+    emailVerified: snapshot.credential.emailVerified,
+    firstName: snapshot.credential.firstName?.trim() || user.firstName?.trim() || undefined,
+    lastName: snapshot.credential.lastName?.trim() || user.lastName?.trim() || undefined,
+  };
+  // Server-only authority must not leak through JSON responses or user spreads.
+  Object.defineProperty(hydrated, 'authorizationSnapshot', { value: snapshot });
+  return hydrated;
+}
+
+/** Local dev login is an explicit synthetic-auth bypass. Keep attribution useful
+ * against seeded databases without making a database mandatory for dev fixtures. */
+async function hydrateDevUser(user: WorkOSUser): Promise<WorkOSUser> {
   try {
-    const result = await getPool().query<{
-      identity_id: string;
-      primary_workos_user_id: string | null;
-    }>(
-      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
-         FROM identity_workos_users iwu
-         LEFT JOIN identity_workos_users primary_iwu
-           ON primary_iwu.identity_id = iwu.identity_id
-          AND primary_iwu.is_primary = TRUE
-        WHERE iwu.workos_user_id = $1`,
-      [user.id]
-    );
-    const row = result.rows[0];
-    if (!row) return;
-
-    user.identityId = row.identity_id;
-
-    if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
-      // Non-primary binding signed in. Swap id so app-state reads see the
-      // canonical person; preserve the actual auth user on authWorkosUserId.
-      logger.debug(
-        { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
-        'Identity id-swap: routing non-primary binding to canonical user'
-      );
-      user.authWorkosUserId = user.id;
-      user.id = row.primary_workos_user_id;
-    }
-  } catch (err) {
-    logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
+    return await hydrateAuthenticatedUser(user, null);
+  } catch {
+    return user;
   }
 }
 
-function applyActiveCredentialSnapshot(
-  user: WorkOSUser,
-  snapshot: ActiveCredentialAuthorizationSnapshot,
-): void {
-  const authenticatedWorkosUserId = snapshot.workos_user_id;
-  user.identityId = snapshot.identity_id;
-  if (snapshot.primary_workos_user_id
-    && snapshot.primary_workos_user_id !== authenticatedWorkosUserId) {
-    user.authWorkosUserId = authenticatedWorkosUserId;
-    user.id = snapshot.primary_workos_user_id;
+function sendAuthorizationStateError(error: unknown, res: Response): boolean {
+  if (error instanceof AuthorizationSnapshotUnavailableError) {
+    logger.warn({ err: error }, 'Primary authorization snapshot unavailable');
+    res.status(503).json({ error: 'Authorization service temporarily unavailable' });
+    return true;
   }
-}
-
-/**
- * Authorization fingerprint for the credential that actually authenticated
- * this session. `attachIdentityId` may swap `user.id` to the identity's
- * canonical credential, so the authenticated credential is read through
- * `getOrganizationAuthorizationUserId` — that value is stable across the
- * swap, and every identity-binding mutation bumps the epoch for each
- * credential bound to the identity, so a change always moves this value.
- *
- * Synthetic principals (admin API key, WorkOS API key) have no credential
- * row and no identity binding; they return '' and never mismatch.
- */
-async function activeAuthorizationSnapshotFor(
-  user: WorkOSUser,
-): Promise<CredentialAuthorizationLifecycle> {
-  if (isSyntheticUser(user.id)) return { status: 'terminal', reason: 'missing_user' };
-  return readCredentialAuthorizationLifecycle(getOrganizationAuthorizationUserId(user));
-}
-
-/**
- * True when a cached entry still reflects persisted authorization state.
- *
- * Entries cached before an identity-binding change carry the pre-change
- * fingerprint and must not be served — on any instance, not just the one
- * that ran the mutation. A lookup failure returns false so the request
- * falls through to full re-validation rather than serving state we could
- * not confirm; that degrades the cache, it does not sign anyone out.
- */
-async function isAuthorizationFingerprintCurrent(
-  user: WorkOSUser,
-  stamped: string | undefined,
-): Promise<boolean> {
-  if (isSyntheticUser(user.id)) return true;
-  try {
-    const lifecycle = await activeAuthorizationSnapshotFor(user);
-    return lifecycle.status === 'active'
-      && lifecycle.snapshot.fingerprint === (stamped ?? '');
-  } catch (err) {
-    logger.warn({ err }, 'Authoritative credential check failed — bypassing session cache');
-    return false;
+  if (error instanceof InvalidAuthorizationCredentialError) {
+    res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
+    return true;
   }
+  if (error instanceof ConflictingOrganizationSelectionError) {
+    res.status(403).json({ error: 'An unambiguous organization selection is required' });
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -897,7 +817,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   // Check for OAuth-issued user JWT (user SSO'd via AuthKit through the
   // MCP OAuth flow and is now calling the REST API with that token).
-  const jwtAuth = await validateWorkOSBearerJWT(req);
+  let jwtAuth: ValidatedBearerJWT | null;
+  try {
+    jwtAuth = await validateWorkOSBearerJWT(req);
+  } catch (error) {
+    if (sendAuthorizationStateError(error, res)) return;
+    throw error;
+  }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT');
     req.user = jwtAuth.user;
@@ -905,8 +831,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     try {
       const userBan = await checkPlatformBan(
-        `user:${jwtAuth.user.id}`,
-        () => bansDb.checkPlatformBan(jwtAuth.user.id),
+        `user:${getOrganizationAuthorizationUserId(jwtAuth.user)}`,
+        () => bansDb.checkPlatformBan(getOrganizationAuthorizationUserId(jwtAuth.user)),
       );
       if (userBan) {
         logger.info({ userId: jwtAuth.user.id, banId: userBan.id }, 'User request blocked by platform ban');
@@ -923,14 +849,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (DEV_MODE_ENABLED) {
     const devUser = createDevUser(req);
     if (devUser) {
-      req.user = devUser;
+      req.user = await hydrateDevUser(devUser);
       req.accessToken = 'dev-mode-token';
       // Carry over dev config flags (isMember, isAdmin) so enrichUserWithMembership skips DB lookup
       const devConfig = getDevUser(req);
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
-      await attachIdentityId(req.user);
       return next();
     }
     // No dev session - redirect to dev login page
@@ -985,19 +910,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       deadSessionCache.delete(cacheKey);
     }
 
-    if (
-      cached &&
-      cached.expiresAt > now &&
-      !(await isAuthorizationFingerprintCurrent(cached.user, cached.authorizationFingerprint))
-    ) {
-      // Identity bindings changed since this entry was stored. Drop it so
-      // this request re-resolves identity and organization context instead
-      // of inheriting pre-change authority.
-      sessionCache.delete(cacheKey);
-    } else if (cached && cached.expiresAt > now) {
+    if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
-      req.user = cached.user;
+      req.user = await hydrateAuthenticatedUser(
+        cached.user, selectedOrganizationForAuthentication(req, cached.orgId),
+      );
       req.accessToken = cached.accessToken;
 
       // If session was refreshed, update the cookie
@@ -1172,51 +1090,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       impersonator?: { email: string; reason: string | null };
     };
 
-    let firstName = result.user.firstName ?? undefined;
-    let lastName = result.user.lastName ?? undefined;
-
-    // WorkOS session validity alone cannot authorize a deleted credential.
-    // Read the user, binding, canonical route, tombstone absence, and epoch
-    // atomically before accepting or caching this session.
-    const lifecycle = await readCredentialAuthorizationLifecycle(result.user.id);
-    if (lifecycle.status === 'unavailable') {
-      sessionCache.delete(cacheKey);
-      logger.warn({ userId: result.user.id, path: req.path },
-        'Local credential lifecycle unavailable — failing authentication closed');
-      return res.status(503).json({
-        error: 'Service temporarily unavailable',
-        message: 'Unable to verify your account right now. Please try again shortly.',
-      });
-    }
-    if (lifecycle.status === 'terminal') {
-        logger.warn({ userId: result.user.id, email: result.user.email, path: req.path },
-          'Authenticated credential is not active in local DB — forcing re-login');
-        sessionCache.delete(cacheKey);
-        if (deadSessionCache.size >= DEAD_SESSION_MAX_SIZE) {
-          const oldest = deadSessionCache.keys().next().value;
-          if (oldest) deadSessionCache.delete(oldest);
-        }
-        deadSessionCache.set(cacheKey, Date.now());
-        if (isHtmlRequest) {
-          return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
-        }
-        return res.status(401).json({
-          error: 'Invalid session',
-          message: 'Your account could not be verified. Please log in again.',
-          login_url: '/auth/login',
-        });
-    }
-    const activeSnapshot = lifecycle.snapshot;
-    if (!firstName?.trim()) {
-      if (activeSnapshot.first_name?.trim()) firstName = activeSnapshot.first_name;
-      if (activeSnapshot.last_name?.trim()) lastName = activeSnapshot.last_name;
-    }
-
     const user: WorkOSUser = {
       id: result.user.id,
       email: result.user.email,
-      firstName,
-      lastName,
+      firstName: result.user.firstName ?? undefined,
+      lastName: result.user.lastName ?? undefined,
       emailVerified: result.user.emailVerified,
       createdAt: result.user.createdAt,
       updatedAt: result.user.updatedAt,
@@ -1231,18 +1109,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       );
     }
 
-    applyActiveCredentialSnapshot(user, activeSnapshot);
+    const hydrated = await hydrateAuthenticatedUser(
+      user, selectedOrganizationForAuthentication(req, result.organizationId),
+    );
 
-    // Cache the validated session
+    // Retain authentication only; derived request authority is never cached.
     sessionCache.set(cacheKey, {
-      user,
+      user: Object.freeze(user),
       accessToken: result.accessToken,
       expiresAt: now + SESSION_CACHE_TTL_MS,
       newSealedSession,
-      authorizationFingerprint: activeSnapshot.fingerprint,
+      orgId: result.organizationId,
     });
 
-    req.user = user;
+    req.user = hydrated;
     req.accessToken = result.accessToken;
 
     // Check platform ban for cookie-authenticated user (fail-open: DB timeout should not log users out)
@@ -1261,6 +1141,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     next();
   } catch (error) {
+    if (sendAuthorizationStateError(error, res)) return;
     if (isTransientAuthError(error)) {
       logger.warn({ err: error, path: req.path }, 'Transient auth upstream failure — returning 503 without clearing session');
       if (isHtmlRequest) {
@@ -1547,9 +1428,8 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     if (!req.user) {
       const mockUser = createDevUser(req);
       if (mockUser) {
-        req.user = mockUser;
+        req.user = await hydrateDevUser(mockUser);
         req.accessToken = 'dev-mode-token';
-        await attachIdentityId(req.user);
       }
     }
 
@@ -1947,7 +1827,13 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     return next();
   }
 
-  const jwtAuth = await validateWorkOSBearerJWT(req);
+  let jwtAuth: ValidatedBearerJWT | null;
+  try {
+    jwtAuth = await validateWorkOSBearerJWT(req);
+  } catch (error) {
+    if (sendAuthorizationStateError(error, res)) return;
+    throw error;
+  }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT (optional auth)');
     req.user = jwtAuth.user;
@@ -1955,8 +1841,8 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
     try {
       const userBan = await checkPlatformBan(
-        `user:${jwtAuth.user.id}`,
-        () => bansDb.checkPlatformBan(jwtAuth.user.id),
+        `user:${getOrganizationAuthorizationUserId(jwtAuth.user)}`,
+        () => bansDb.checkPlatformBan(getOrganizationAuthorizationUserId(jwtAuth.user)),
       );
       if (userBan) {
         logger.info({ userId: jwtAuth.user.id, banId: userBan.id }, 'User optional-auth request blocked by platform ban');
@@ -1973,7 +1859,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   if (DEV_MODE_ENABLED) {
     const devUser = createDevUser(req);
     if (devUser) {
-      req.user = devUser;
+      req.user = await hydrateDevUser(devUser);
       req.accessToken = 'dev-mode-token';
       // Carry over dev config flags (isMember, isAdmin) so enrichUserWithMembership skips DB lookup
       const devConfig = getDevUser(req);
@@ -2006,16 +1892,12 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       deadSessionCache.delete(cacheKey);
     }
 
-    if (
-      cached &&
-      cached.expiresAt > now &&
-      !(await isAuthorizationFingerprintCurrent(cached.user, cached.authorizationFingerprint))
-    ) {
-      sessionCache.delete(cacheKey);
-    } else if (cached && cached.expiresAt > now) {
+    if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
-      req.user = cached.user;
+      req.user = await hydrateAuthenticatedUser(
+        cached.user, selectedOrganizationForAuthentication(req, cached.orgId),
+      );
       req.accessToken = cached.accessToken;
 
       // If session was refreshed, update the cookie
@@ -2146,35 +2028,24 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         );
       }
 
-      // The shared cache may be consumed by requireAuth. Only an authoritative
-      // active local credential snapshot may create a positive entry.
-      const lifecycle = await readCredentialAuthorizationLifecycle(user.id);
-      if (lifecycle.status !== 'active') {
-        sessionCache.delete(cacheKey);
-        return next();
-      }
-      const activeSnapshot = lifecycle.snapshot;
-      if (!user.firstName?.trim() && activeSnapshot.first_name?.trim()) {
-        user.firstName = activeSnapshot.first_name;
-      }
-      if (!user.lastName?.trim() && activeSnapshot.last_name?.trim()) {
-        user.lastName = activeSnapshot.last_name;
-      }
-      applyActiveCredentialSnapshot(user, activeSnapshot);
+      const hydrated = await hydrateAuthenticatedUser(
+        user, selectedOrganizationForAuthentication(req, result.organizationId),
+      );
 
-      // Cache the validated session
+      // Retain authentication only; derived request authority is never cached.
       sessionCache.set(cacheKey, {
-        user,
+        user: Object.freeze(user),
         accessToken: result.accessToken,
         expiresAt: now + SESSION_CACHE_TTL_MS,
         newSealedSession,
-        authorizationFingerprint: activeSnapshot.fingerprint,
+        orgId: result.organizationId,
       });
 
-      req.user = user;
+      req.user = hydrated;
       req.accessToken = result.accessToken;
     }
   } catch (error) {
+    if (sendAuthorizationStateError(error, res)) return;
     // Silently fail for optional auth
     logger.debug({ err: error }, 'Optional auth failed');
   }
