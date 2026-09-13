@@ -113,7 +113,12 @@
       "then": {
         "properties": {
           "overlay_support": {
-            "not": { "required": ["frequency_cap"] }
+            "not": {
+              "anyOf": [
+                { "required": ["frequency_cap"] },
+                { "required": ["frequency_cap_support"] }
+              ]
+            }
           }
         }
       }

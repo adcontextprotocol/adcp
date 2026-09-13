@@ -1,0 +1,299 @@
+id: media_buy_seller/frequency_cap_capability_updates
+version: "1.0.0"
+title: "Package frequency-cap capability and update boundaries"
+category: media_buy_seller
+summary: "Verifies constrained discovery with seller-wide unit inheritance, create-only rejection, out-of-range rejection, mutable update, package-qualified actions, and exact readback."
+track: media_buy
+
+requires_capability:
+  path: media_buy.frequency_capping
+  present: true
+
+required_tools:
+  - sync_accounts
+  - get_products
+  - create_media_buy
+  - control_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants: [status.monotonic]
+
+narrative: |
+  Constrained package support is independently positive: older buyers see no
+  legacy frequency_cap: true promise. This scenario combines a create-only
+  product with a mutable product that omits window_constraints, so its
+  supported window units resolve from the seller-wide frequency_capping
+  declaration. It verifies that a unit requirement matches through that
+  inheritance, that available_actions names the eligible package, rejects the
+  immutable target, rejects an out-of-range count on the mutable one rather
+  than clamping it, updates the mutable one, and preserves two independent
+  package caps on readback. Like frequency_cap_enforcement, the fixtures use
+  campaign windows, so the seller-wide supported_window_units must include
+  campaign or be omitted.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media, supports_non_guaranteed, frequency_capping]
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency"
+
+prerequisites:
+  description: "The runner seeds one create-only and one mutable package-cap product."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "frequency_cap_create_only"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      overlay_support:
+        frequency_cap_support:
+          mutable_fields: []
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            allowed_values: [2, 3]
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+    - product_id: "frequency_cap_mutable"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      overlay_support:
+        frequency_cap_support:
+          mutable_fields: ["max_impressions"]
+          supported_control_modes: ["max_impressions"]
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            allowed_values: [2, 5]
+      allowed_actions:
+        - action: "update_frequency_caps"
+          modes: ["self_serve"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params: { width: 300, height: 250 }
+  pricing_options:
+    - product_id: "frequency_cap_create_only"
+      pricing_option_id: "create_only_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+    - product_id: "frequency_cap_mutable"
+      pricing_option_id: "mutable_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+
+phases:
+  - id: setup
+    title: "Discover constrained support and create mixed packages"
+    steps:
+      - id: sync_account
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#frequency_cap_capability_sync"
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+
+      - id: discover_mutable_support
+        title: "Require mutable package-cap support with an inherited window unit"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#frequency_cap_capability_products"
+          buying_mode: "brief"
+          brief: "Display inventory with a package cap that can be updated."
+          required_overlay_support:
+            frequency_cap_support:
+              mutable_fields: ["max_impressions"]
+              supported_per_units: ["individuals"]
+              supported_window_units: ["campaign"]
+          account: { account_id: "$context.account_id" }
+        validations:
+          - check: response_schema
+          - check: field_contains
+            path: "products[0].overlay_support.frequency_cap_support.mutable_fields[*]"
+            value: "max_impressions"
+          - check: field_absent
+            path: "products[0].overlay_support.frequency_cap_support.window_constraints"
+
+      - id: create_mixed_cap_buy
+        title: "Create independent immutable and mutable package caps"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand: { domain: "acmeoutdoor.example" }
+          account: { account_id: "$context.account_id" }
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "frequency_cap_create_only"
+              pricing_option_id: "create_only_cpm"
+              budget: 5000
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 3
+                  per: "individuals"
+                  window: { interval: 1, unit: "campaign" }
+            - product_id: "frequency_cap_mutable"
+              pricing_option_id: "mutable_cpm"
+              budget: 5000
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 5
+                  per: "individuals"
+                  window: { interval: 1, unit: "campaign" }
+          idempotency_key: "$generate:uuid_v4#frequency_cap_capability_create"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: create_only_package_id
+            path: "packages[0].package_id"
+          - name: mutable_package_id
+            path: "packages[1].package_id"
+          - name: media_buy_revision
+            path: "revision"
+        validations:
+          - check: response_schema
+
+      - id: get_mixed_buy_actions
+        title: "Read package-qualified update action"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "update_frequency_caps"
+              applicable_package_ids: ["$context.mutable_package_id"]
+
+  - id: enforce_update_boundaries
+    title: "Reject immutable update and accept mutable update"
+    steps:
+      - id: reject_create_only_update
+        title: "Reject a cap change on the create-only package"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision"
+          packages:
+            - package_id: "$context.create_only_package_id"
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 2
+                  per: "individuals"
+                  window: { interval: 1, unit: "campaign" }
+          idempotency_key: "$generate:uuid_v4#frequency_cap_capability_reject"
+        validations:
+          - check: error_code
+            value: "ACTION_NOT_ALLOWED"
+
+      - id: reject_out_of_range_update
+        title: "Reject a count outside the mutable product's allowed values"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision"
+          packages:
+            - package_id: "$context.mutable_package_id"
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 4
+                  per: "individuals"
+                  window: { interval: 1, unit: "campaign" }
+          idempotency_key: "$generate:uuid_v4#frequency_cap_capability_reject_range"
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+
+      - id: update_mutable_package
+        title: "Update the mutable package cap"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.media_buy_revision"
+          packages:
+            - package_id: "$context.mutable_package_id"
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 2
+                  per: "individuals"
+                  window: { interval: 1, unit: "campaign" }
+          idempotency_key: "$generate:uuid_v4#frequency_cap_capability_update"
+        validations:
+          - check: response_schema
+          - check: field_contains
+            path: "affected_package_ids"
+            value: "$context.mutable_package_id"
+
+      - id: read_back_independent_caps
+        title: "Read back both independent package caps"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account: { account_id: "$context.account_id" }
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.frequency_cap.max_impressions"
+            value: 3
+          - check: field_value
+            path: "media_buys[0].packages[1].targeting_overlay.frequency_cap.max_impressions"
+            value: 2

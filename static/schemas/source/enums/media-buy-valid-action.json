@@ -52,7 +52,7 @@
     "update_targeting": "Update targeting overlays on existing packages.",
     "update_pacing": "Update aggregate media-buy pacing or pacing on existing packages.",
     "update_bidding": "Replace or clear the media-buy bidding default or package-authored bidding overrides. Maps to `bidding` and `packages[].bidding`; the seller validates the resulting effective policies atomically before mutation.",
-    "update_frequency_caps": "Update frequency capping rules. Distinct from targeting because frequency is renegotiated mid-flight on a different cadence (especially for CTV/video buys).",
+    "update_frequency_caps": "Update package targeting-overlay frequency caps.",
     "replace_creative": "Swap a creative for another without changing assignment logic. Distinct AM workflow from changing the assignment set.",
     "update_creative_assignments": "Change which creatives are assigned to which packages.",
     "remove_creative": "Remove a creative from the buy. Often the most time-sensitive action when a creative misbehaves; sellers SHOULD support self_serve removal where possible even when add/swap require approval.",

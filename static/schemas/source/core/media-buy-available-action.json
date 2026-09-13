@@ -6,7 +6,8 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "change_term_link": "When change_term_id is present, it resolves to exactly one accepted_proposal.commercial_terms.change_terms[].term_id whose action, service_mode, and processing_sla agree with this projection.",
-      "legacy_alias_agreement": "When change_term_id and deprecated terms_ref are both present and terms_ref is being used as the proposal-term link, their values are identical. A 3.1 terms_ref with no accepted change term remains an opaque legacy commercial pointer and MUST NOT be reinterpreted as authority."
+      "legacy_alias_agreement": "When change_term_id and deprecated terms_ref are both present and terms_ref is being used as the proposal-term link, their values are identical. A 3.1 terms_ref with no accepted change term remains an opaque legacy commercial pointer and MUST NOT be reinterpreted as authority.",
+      "applicable_package_scope": "Every applicable_package_ids value identifies a package of this media buy."
     }
   },
   "type": "object",
@@ -33,6 +34,13 @@
     },
     "terms_ref": {
       "$ref": "/schemas/core/media-buy-legacy-terms-ref.json"
+    },
+    "applicable_package_ids": {
+      "type": "array",
+      "description": "For a package-scoped action, the exact packages currently eligible. Omission means every relevant package.",
+      "items": { "$ref": "/schemas/core/applicable-package-id.json" },
+      "minItems": 1,
+      "uniqueItems": true
     }
   },
   "required": ["action", "mode"],

@@ -39,9 +39,11 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Exact Reliable Reporting reads include the shared pagination closure;
   // consumer-status sync adds one compact tool and its status definition;
   // targeting reuses four named codegen-safe item and cross-field schemas.
-  assert.equal(report.definition_instances, 645);
-  assert.equal(report.unique_definitions, 174);
-  assert.equal(report.repeated_definitions, 122);
+  // Structured package frequency-cap constraints and requirements add a small
+  // shared closure (constraint, interval, and enum schemas).
+  assert.equal(report.definition_instances, 657);
+  assert.equal(report.unique_definitions, 178);
+  assert.equal(report.repeated_definitions, 126);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -165,7 +167,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 174);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 178);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
