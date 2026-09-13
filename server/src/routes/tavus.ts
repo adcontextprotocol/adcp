@@ -58,7 +58,7 @@ import {
   createAdminToolHandlers,
 } from "../addie/mcp/admin-tools.js";
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
-import { captureVoiceAuthorization, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
+import { captureVoiceAuthorization, issueVoiceCallbackBinding, isVoiceSessionOwner, persistVoiceCallbackBinding, resolveVoiceCallback, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
 import {
   EVENT_READONLY_TOOLS,
@@ -487,7 +487,7 @@ export function createTavusRouter(options?: {
       // dashboard / direct API call.
       return res.status(404).json({ error: "Conversation not found" });
     }
-    if (thread.user_id !== req.user.id) {
+    if (!isVoiceSessionOwner(thread.context?.voice_authorization, req.user)) {
       let userIsAdmin: boolean;
       try {
         userIsAdmin = await isAuthenticatedUserAAOAdmin(req.user);
@@ -498,6 +498,15 @@ export function createTavusRouter(options?: {
       if (!userIsAdmin) {
         return res.status(403).json({ error: "Forbidden" });
       }
+    }
+
+    // Revoke callbacks before the external end request. A provider timeout
+    // must not let a participant replay the capability after ending locally.
+    try {
+      await persistVoiceCallbackBinding(thread.thread_id, thread.external_id, null);
+    } catch {
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({ error: 'voice_authorization_unavailable' });
     }
 
     // Tavus identifies conversations by their internal conversation_id, not
@@ -584,7 +593,7 @@ export function createTavusRouter(options?: {
       // Clamp duration: Tavus's effective max is 1 hour for most plans.
       const maxDurationSec = typeof settings.maxDurationSec === "number" && Number.isFinite(settings.maxDurationSec)
         ? Math.max(60, Math.min(7200, Math.round(settings.maxDurationSec)))
-        : undefined;
+        : 3600;
       const greenscreen = settings.greenscreen === true;
       // Tavus expects the full language name ("spanish") not an ISO code.
       const language = typeof settings.language === "string" && /^[a-z]{3,20}$/.test(settings.language)
@@ -613,6 +622,8 @@ export function createTavusRouter(options?: {
         user_display_name: displayName,
         context: threadContext,
       });
+      const callback = issueVoiceCallbackBinding(thread.thread_id, conversationName, maxDurationSec);
+      await persistVoiceCallbackBinding(thread.thread_id, conversationName, callback.binding);
 
       // Tavus appends conversational_context to its system message. Keep it
       // strictly server-generated: caller guidance is stored on our thread and
@@ -620,7 +631,7 @@ export function createTavusRouter(options?: {
       const conversationalContext = buildTavusConversationalContext({
         threadId: thread.thread_id,
         displayName,
-      });
+      }) + `\n[conductor:voice_session=${callback.token}]`;
 
       const tavusBody: Record<string, unknown> = {
         persona_id: personaId,
@@ -644,9 +655,9 @@ export function createTavusRouter(options?: {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         logger.error(
-          { status: response.status, error: errorText },
+          // Provider error bodies may echo the signed session capability.
+          { status: response.status },
           "Tavus: Failed to create conversation"
         );
         return res.status(502).json({ error: "Failed to create video session" });
@@ -656,11 +667,20 @@ export function createTavusRouter(options?: {
       // Tavus normalizes conversation_name (replaces "-" with " ") so we
       // can't reliably round-trip lookup by name. Stash Tavus's internal
       // conversation_id on the thread so end-call can call /conversations/:id/end
-      // directly without scanning the active list.
-      if (data.conversation_id) {
-        await threadService
-          .patchThreadContext(thread.thread_id, { tavus_conversation_id: data.conversation_id })
-          .catch((err) => logger.warn({ err, threadId: thread.thread_id }, "Tavus: failed to persist tavus_conversation_id"));
+      // directly without scanning the active list. This binding must commit
+      // before we release the session to its participant.
+      if (typeof data.conversation_id !== 'string' || !data.conversation_id) {
+        throw new VoiceAuthorizationUnavailableError();
+      }
+      try {
+        await persistVoiceCallbackBinding(thread.thread_id, conversationName, callback.binding, data.conversation_id);
+      } catch (error) {
+        // Fail closed and release the billable provider session if its local
+        // authorization binding could not be persisted.
+        await fetch(`https://tavusapi.com/v2/conversations/${encodeURIComponent(data.conversation_id)}/end`, {
+          method: 'POST', headers: { 'x-api-key': tavusApiKey }, signal: AbortSignal.timeout(5000),
+        }).catch(() => undefined);
+        throw new VoiceAuthorizationUnavailableError({ cause: error });
       }
       return res.json({
         conversation_url: data.conversation_url,
@@ -709,16 +729,27 @@ export function createTavusRouter(options?: {
       return res.status(400).json({ error: { message: "Invalid messages format" } });
     }
 
-    // Extract thread_id from the system message injected via conversational_context
-    const threadIdMatch = messages
+    // Tavus participants can replace system conversational context. A bare
+    // thread id is never authority. Authenticate the server-issued session
+    // capability and its current database binding before any scoped work.
+    const callbackTokens = [...messages
       .filter((m) => m.role === "system")
       .map((m) => extractTavusText(m.content))
       .join(" ")
-      .match(/\[conductor:thread_id=([0-9a-f-]{36})\]/);
-    const threadId = threadIdMatch?.[1] ?? null;
-    if (!threadId) {
-      logger.warn("Tavus LLM: No thread_id in system message — transcript will not be logged");
+      .matchAll(/\[conductor:voice_session=([A-Za-z0-9_.-]{1,1024})\]/g)];
+    const callback = await resolveVoiceCallback(
+      callbackTokens.length === 1 ? callbackTokens[0][1] : undefined,
+      req.body.conversation_id,
+    );
+    if (callback.status === 'unavailable') {
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
     }
+    if (callback.status !== 'verified') {
+      return res.status(409).json({ error: { code: 'voice_reauthentication_required', message: 'This video session could not be verified. Please start a new video call.' } });
+    }
+    const thread = callback.thread;
+    const threadId = thread.thread_id;
 
     const parsed = buildTavusThreadContext(messages);
     if (!parsed) {
@@ -750,83 +781,68 @@ export function createTavusRouter(options?: {
     let voiceUserId: string | null = null;
     let voiceFillersDisabled = false;
     let sessionGuidance = "";
-    if (threadId) {
-      const threadService = getThreadService();
+    try {
+      const authorization = await resolveVoiceAuthorization(thread.context?.voice_authorization);
+      if (authorization.status === 'unavailable') {
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
+      }
+      if (authorization.status === 'stale') {
+        logger.info({ threadId, reason: authorization.reason }, 'Voice session requires fresh authentication');
+        return res.status(409).json({ error: { code: 'voice_reauthentication_required', message: 'Your sign-in authorization changed. Please sign in again and start a new video call.' } });
+      }
+      userDisplayName = thread.user_display_name;
+      voiceUserId = thread.user_id;
+      voiceFillersDisabled = thread.context?.disable_fillers === true;
+      sessionGuidance = readTavusSessionGuidance(thread.context?.video_session_guidance);
+      const result = await buildVoiceRequestTools(thread.user_id, threadId, authorization.principal);
+      memberRequestContext = result.requestContext;
       try {
-        const thread = await threadService.getThread(threadId);
-        if (thread?.user_id && thread.channel === 'video') {
-          userDisplayName = thread.user_display_name;
-          voiceUserId = thread.user_id;
-          voiceFillersDisabled = thread.context?.disable_fillers === true;
-          sessionGuidance = readTavusSessionGuidance(
-            thread.context?.video_session_guidance
-          );
-          const authorization = await resolveVoiceAuthorization(thread.context?.voice_authorization);
-          if (authorization.status === 'unavailable') {
-            res.setHeader('Retry-After', '5');
-            return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
-          }
-          if (authorization.status === 'stale') {
-            logger.info({ threadId, reason: authorization.reason }, 'Voice session requires fresh authentication');
-            return res.status(409).json({ error: { code: 'voice_reauthentication_required', message: 'Your sign-in authorization changed. Please sign in again and start a new video call.' } });
-          }
-          const result = await buildVoiceRequestTools(thread.user_id, threadId, authorization.principal);
-          memberRequestContext = result.requestContext;
-          try {
-            pendingVoiceToolSelection = {
-              memberContext: result.memberContext,
-              isAAOAdmin: result.isAAOAdmin,
-              requestTools: result.requestTools,
-              globalToolNames: activeVoiceClient.getRegisteredTools?.(),
-            };
-          } catch (error) {
-            // Global pairing inspection is part of capability assembly. It
-            // must never leave the broad registry eligible for dispatch.
-            logger.warn({ error, threadId }, 'Tavus: Global tool inspection failed; preparing safe read-only fallback');
-            pendingVoiceToolSelection = {
-              memberContext: result.memberContext,
-              isAAOAdmin: result.isAAOAdmin,
-              requestTools: result.requestTools,
-              forceSafeFallback: true,
-            };
-          }
+        pendingVoiceToolSelection = {
+          memberContext: result.memberContext,
+          isAAOAdmin: result.isAAOAdmin,
+          requestTools: result.requestTools,
+          globalToolNames: activeVoiceClient.getRegisteredTools?.(),
+        };
+      } catch (error) {
+        // Global pairing inspection is part of capability assembly. It
+        // must never leave the broad registry eligible for dispatch.
+        logger.warn({ error, threadId }, 'Tavus: Global tool inspection failed; preparing safe read-only fallback');
+        pendingVoiceToolSelection = {
+          memberContext: result.memberContext,
+          isAAOAdmin: result.isAAOAdmin,
+          requestTools: result.requestTools,
+          forceSafeFallback: true,
+        };
+      }
+    } catch (err) {
+      if (respondToAdminAuthorizationError(err, res)) return;
+      logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools; using safe read-only fallback");
+      // A verified video thread still represents an authenticated direct
+      // response even when its dynamic capability assembly fails. Never
+      // fall through to the mutable global baseline in that case.
+      if (voiceUserId) {
+        let globalToolNames: readonly string[] | undefined;
+        let forceSafeFallback = false;
+        try {
+          globalToolNames = activeVoiceClient.getRegisteredTools?.();
+        } catch (globalToolError) {
+          logger.warn({ globalToolError, threadId }, 'Tavus: Could not inspect global tools for safe fallback');
+          // Request-scoped assembly and global pairing inspection both
+          // failed. Keep a live router out of this uncertain capability
+          // state so the authenticated response stays read-only.
+          forceSafeFallback = true;
         }
-      } catch (err) {
-        if (respondToAdminAuthorizationError(err, res)) return;
-        logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools; using safe read-only fallback");
-        // A verified video thread still represents an authenticated direct
-        // response even when its dynamic capability assembly fails. Never
-        // fall through to the mutable global baseline in that case.
-        if (voiceUserId) {
-          let globalToolNames: readonly string[] | undefined;
-          let forceSafeFallback = false;
-          try {
-            globalToolNames = activeVoiceClient.getRegisteredTools?.();
-          } catch (globalToolError) {
-            logger.warn({ globalToolError, threadId }, 'Tavus: Could not inspect global tools for safe fallback');
-            // Request-scoped assembly and global pairing inspection both
-            // failed. Keep a live router out of this uncertain capability
-            // state so the authenticated response stays read-only.
-            forceSafeFallback = true;
-          }
-          pendingVoiceToolSelection = {
-            memberContext: null,
-            isAAOAdmin: false,
-            requestTools: { tools: [], handlers: new Map() },
-            globalToolNames,
-            forceSafeFallback,
-          };
-        }
+        pendingVoiceToolSelection = {
+          memberContext: null,
+          isAAOAdmin: false,
+          requestTools: { tools: [], handlers: new Map() },
+          globalToolNames,
+          forceSafeFallback,
+        };
       }
     }
-
-    // Tavus's shared-secret LLM endpoint can be reached without a verified
-    // video thread (for example, an abandoned or malformed callback). Keep
-    // that degraded path useful for public knowledge questions, but never
-    // let it inherit the mutable global registry wholesale. In particular,
-    // unauthenticated callbacks must not see globally registered brand
-    // mutations. The normal selection boundary below intersects the safe
-    // read-only fallback with definitions that were paired at startup.
+    // Capability assembly failures remain bounded to public read-only tools.
     if (!pendingVoiceToolSelection) {
       let globalToolNames: readonly string[] | undefined;
       try {

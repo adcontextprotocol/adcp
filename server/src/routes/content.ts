@@ -319,7 +319,8 @@ async function notifyPendingReview(
 /**
  * Check if user is a committee lead (handles both WorkOS and Slack user IDs)
  */
-async function isCommitteeLead(committeeId: string, userId: string): Promise<boolean> {
+async function isCommitteeLead(committeeId: string, userId: string | null): Promise<boolean> {
+  if (!userId) return false;
   const pool = getPool();
   const result = await pool.query(
     `SELECT 1 FROM working_group_leaders wgl
@@ -353,8 +354,16 @@ async function getUserInfo(userId: string): Promise<{ name: string } | null> {
 export interface ContentUser {
   id: string;
   email?: string;
-  /** Explicit null means a person-only context with no platform authority. */
+  /** Explicit null means a person-only context with no administrative or committee-leader authority. */
   adminPrincipal?: AAOAdminPrincipal | null;
+}
+
+/** Keep profile attribution separate from credential-scoped review authority. */
+function contentAuthorizationUserId(user: ContentUser): string | null {
+  if (user.adminPrincipal === null) return null;
+  return user.adminPrincipal
+    ? user.adminPrincipal.authWorkosUserId ?? user.adminPrincipal.id
+    : user.id; // Legacy internal/HTTP callers; migrated web callers supply provenance.
 }
 
 async function isContentUserAAOAdmin(user: ContentUser): Promise<boolean> {
@@ -497,7 +506,7 @@ export async function proposeContentForUser(
   const acceptsPublicSubmissions = committee.accepts_public_submissions;
 
   // Check if user can submit to this collection
-  const userIsLead = await isCommitteeLead(committeeId, user.id);
+  const userIsLead = await isCommitteeLead(committeeId, contentAuthorizationUserId(user));
   const userIsAdmin = await isContentUserAAOAdmin(user);
 
   // For non-public collections, user must be a member
@@ -742,7 +751,7 @@ export async function listPendingContentForUser(
      LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
      JOIN working_groups wg ON wg.id = wgl.working_group_id
      WHERE wgl.user_id = $1 OR sm.workos_user_id = $1`,
-    [user.id]
+    [contentAuthorizationUserId(user)]
   );
   const ledCommitteeIds = leaderResult.rows.map(c => c.id);
   const userIsAdmin = await isContentUserAAOAdmin(user);
@@ -868,7 +877,7 @@ export async function approveContentForUser(
 
   const userIsAdmin = await isContentUserAAOAdmin(user);
   const userIsLead = content.working_group_id
-    ? await isCommitteeLead(content.working_group_id, user.id)
+    ? await isCommitteeLead(content.working_group_id, contentAuthorizationUserId(user))
     : false;
 
   if (!userIsAdmin && !userIsLead) {
@@ -1000,7 +1009,7 @@ export async function rejectContentForUser(
 
   const userIsAdmin = await isContentUserAAOAdmin(user);
   const userIsLead = content.working_group_id
-    ? await isCommitteeLead(content.working_group_id, user.id)
+    ? await isCommitteeLead(content.working_group_id, contentAuthorizationUserId(user))
     : false;
 
   if (!userIsAdmin && !userIsLead) {
@@ -1073,7 +1082,7 @@ export async function requestRevisionsForUser(
 
   const userIsAdmin = await isContentUserAAOAdmin(user);
   const userIsLead = content.working_group_id
-    ? await isCommitteeLead(content.working_group_id, user.id)
+    ? await isCommitteeLead(content.working_group_id, contentAuthorizationUserId(user))
     : false;
 
   if (!userIsAdmin && !userIsLead) {
