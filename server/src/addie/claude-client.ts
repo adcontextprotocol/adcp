@@ -81,6 +81,7 @@ import {
   orchestrateAcceptedAddieTurn,
   type AddieAcceptedTurnDecision,
   type AddieExecutionMode,
+  type AddieToolExecutorOptions,
   type ToolExecution,
   type ToolExecutionPolicy,
   type ToolHandler,
@@ -102,6 +103,7 @@ import {
   buildModelToolDefinitions,
 } from './tool-wire-shape.js';
 import { assembleAddieRequestTools } from './request-tool-assembly.js';
+import { isSideEffectTool } from './side-effect-claims.js';
 import { assembleAddieFallbackPrompt } from './prompt-assembly.js';
 import {
   MAX_OUTPUT_LENGTH,
@@ -652,6 +654,12 @@ export interface ProcessMessageOptions {
     toolName: string;
     parameters: Record<string, unknown>;
   }) => void | Promise<void>;
+  /** Exact-credential authority check at the live mutation boundary. */
+  revalidateSideEffectAuthority?: AddieToolExecutorOptions['revalidateSideEffectAuthority'];
+  /** Capture authority from the final assembled mutation surface. */
+  captureSideEffectAuthority?: (request: {
+    mutationToolNames: readonly string[];
+  }) => Promise<AddieToolExecutorOptions['revalidateSideEffectAuthority'] | undefined>;
   /**
    * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
@@ -1614,6 +1622,13 @@ export class AddieClaudeClient {
       modelTools,
       requestWebSearchEnabled,
     } = prepared;
+    const mutationToolNames = [...toolsByName.values()]
+      .filter((tool) => isSideEffectTool(tool.name) || tool.replaySafety === 'mutation')
+      .map((tool) => tool.name);
+    const revalidateSideEffectAuthority = options?.revalidateSideEffectAuthority
+      ?? (mutationToolNames.length > 0
+        ? await options?.captureSideEffectAuthority?.({ mutationToolNames })
+        : undefined);
     const executeToolCall = createAddieToolExecutor(
       [...toolsByName.values()],
       allHandlers,
@@ -1624,6 +1639,7 @@ export class AddieClaudeClient {
           this.executionPolicy(options),
         ),
         reserveSideEffect: options?.reserveSideEffect,
+        revalidateSideEffectAuthority,
         notificationContext: {
           slackUserId: options?.slackUserId,
           userDisplayName: options?.userDisplayName,
@@ -2234,6 +2250,13 @@ export class AddieClaudeClient {
       modelMessages,
       modelTools,
     } = prepared;
+    const mutationToolNames = [...toolsByName.values()]
+      .filter((tool) => isSideEffectTool(tool.name) || tool.replaySafety === 'mutation')
+      .map((tool) => tool.name);
+    const revalidateSideEffectAuthority = options?.revalidateSideEffectAuthority
+      ?? (mutationToolNames.length > 0
+        ? await options?.captureSideEffectAuthority?.({ mutationToolNames })
+        : undefined);
     systemPromptMs = prepared.systemPromptMs;
 
     if (options?.modelOverride && options.modelOverride !== this.model) {
@@ -2247,6 +2270,7 @@ export class AddieClaudeClient {
         this.executionPolicy(options),
       ),
       reserveSideEffect: options?.reserveSideEffect,
+      revalidateSideEffectAuthority,
       notificationContext: {
         slackUserId: options?.slackUserId,
         userDisplayName: options?.userDisplayName,

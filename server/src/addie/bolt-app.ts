@@ -62,7 +62,12 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAAOAdmin,
+  resolveSlackUserAAOAdminAccess,
 } from './mcp/admin-tools.js';
+import {
+  captureSlackMutationAuthority,
+  type SlackCredentialAuthorityDecision,
+} from './slack-mutation-authority.js';
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -266,6 +271,45 @@ import {
   type SponsoredIntelligenceContextKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
+
+const PLATFORM_ADMIN_TOOL_NAMES = new Set(ADMIN_TOOLS.map((tool) => tool.name));
+const slackAuthorityDb = new SlackDatabase();
+
+/** Capture the WorkOS credential mapped to this exact Slack principal. */
+export function slackMutationAuthorityOptions(
+  slackUserId: string,
+  memberContext: MemberContext | null,
+): Pick<ProcessMessageOptions, 'captureSideEffectAuthority'> {
+  return {
+    captureSideEffectAuthority: async ({ mutationToolNames }) => {
+      const platformAdminMutationTools = mutationToolNames
+        .filter((name) => PLATFORM_ADMIN_TOOL_NAMES.has(name));
+      const lookupCredential = async (): Promise<SlackCredentialAuthorityDecision> => {
+        try {
+          const mapping = await slackAuthorityDb.getBySlackUserId(slackUserId);
+          return mapping?.workos_user_id
+            ? { status: 'authorized', credentialId: mapping.workos_user_id }
+            : { status: 'forbidden' };
+        } catch (cause) {
+          return { status: 'unavailable', cause };
+        }
+      };
+      return captureSlackMutationAuthority({
+        credentialEmail: memberContext?.workos_user?.email,
+        platformAdminMutationTools,
+        lookupCredential,
+        revalidatePlatformAdmin: async (capturedCredentialId) => {
+          const decision = await resolveSlackUserAAOAdminAccess(slackUserId);
+          if (decision.status === 'unavailable') return 'unavailable';
+          return decision.status === 'authorized'
+            && decision.workosUserId === capturedCredentialId
+            ? 'authorized'
+            : 'forbidden';
+        },
+      });
+    },
+  };
+}
 
 /**
  * Slack's built-in system bot user ID.
@@ -2104,6 +2148,7 @@ async function handleUserMessage({
         ? { modelOverride: ModelConfig.depth }
         : {}),
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext),
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -2551,6 +2596,7 @@ async function handleUserMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
         result_status: exec.normalized_result?.status,
+        ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
         ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: dmEffectiveModel,
@@ -2935,6 +2981,7 @@ export async function handleAppMention({
     selectedToolSetNames: routedTools.selectedToolSets,
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext),
     threadId: thread.thread_id,
     ...(await (dependencies?.buildCurrentChannelCostOptions ?? buildCurrentChannelCostOptions)(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
@@ -3001,6 +3048,7 @@ export async function handleAppMention({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
         result_status: exec.normalized_result?.status,
+        ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
         ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: mentionEffectiveModel,
@@ -3847,6 +3895,7 @@ export async function buildChannelResponseInvocation(input: {
             channelContext?.viewing_channel_is_private === false,
           ),
       slackUserId: userId,
+      ...slackMutationAuthorityOptions(userId, memberContext),
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
       ...(officialDocsProfile
@@ -4280,6 +4329,7 @@ async function handleDirectMessage(
     selectedToolSetNames: routedTools.selectedToolSets,
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext),
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -4347,6 +4397,7 @@ async function handleDirectMessage(
       duration_ms: exec.duration_ms,
         is_error: exec.is_error,
         result_status: exec.normalized_result?.status,
+        ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
         ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
     model: directMessageEffectiveModel,
@@ -4705,6 +4756,7 @@ async function handleActiveThreadReply({
     selectedToolSetNames: routedTools.selectedToolSets,
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext),
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -4778,6 +4830,7 @@ async function handleActiveThreadReply({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
         result_status: exec.normalized_result?.status,
+        ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
         ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: activeThreadEffectiveModel,
@@ -5387,6 +5440,7 @@ async function handleChannelMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
         result_status: exec.normalized_result?.status,
+        ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
         ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: invocation.effectiveModel,
@@ -6321,6 +6375,7 @@ async function handleReactionAdded({
     selectedToolSetNames: reactionSelection.selectedToolSets,
     allowedToolNames: reactionSelection.allowedToolNames,
     slackUserId: reactingUserId,
+    ...slackMutationAuthorityOptions(reactingUserId, memberContext),
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, reactingUserId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -6382,6 +6437,7 @@ async function handleReactionAdded({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
         result_status: exec.normalized_result?.status,
+        ...(exec.dispatch_status && { dispatch_status: exec.dispatch_status }),
         ...(exec.github_issue_receipt && { github_issue_receipt: exec.github_issue_receipt }),
       })),
       model: AddieModelConfig.chat,

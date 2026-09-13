@@ -68,3 +68,25 @@ export async function getAuthorizationFingerprint(
   );
   return result.rows[0]?.fingerprint ?? '';
 }
+
+/**
+ * Read one exact credential's persisted authorization epoch while also
+ * proving that the local credential still exists. Unlike the aggregate
+ * fingerprint helper, an existing credential with no epoch row is distinct
+ * from a deleted credential (`"0"` versus `null`). Long-running Addie turns
+ * use this value to reject authority captured before a grant, revocation, or
+ * credential deletion.
+ */
+export async function getExactCredentialAuthorizationEpoch(
+  workosUserId: string,
+): Promise<string | null> {
+  const result = await query<{ epoch: string }>(
+    `SELECT COALESCE(ae.epoch, 0)::text AS epoch
+       FROM users u
+       LEFT JOIN authorization_epochs ae
+         ON ae.workos_user_id = u.workos_user_id
+      WHERE u.workos_user_id = $1`,
+    [workosUserId],
+  );
+  return result.rows[0]?.epoch ?? null;
+}

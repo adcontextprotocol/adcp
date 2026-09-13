@@ -13,6 +13,12 @@ import {
 import { AddieDatabase } from '../../src/db/addie-db.js';
 import { getGeminiDirectResults, GEMINI_DIRECT_EXPERIMENT } from '../../src/addie/gemini-direct-experiment.js';
 import { getModelExecutionReadiness } from '../../src/addie/model-execution-readiness.js';
+import { createAddieToolExecutor } from '../../src/addie/model-providers/tool-orchestration.js';
+import {
+  buildToolResultCheckpoint,
+  reserveToolIntentCheckpoint,
+} from '../../src/addie/stream-tool-checkpoints.js';
+import type { AddieTool } from '../../src/addie/types.js';
 
 // These tests require a running PostgreSQL instance. Lives in integration/
 // so the build-check.yml server-integration job picks them up; the skipIf
@@ -284,6 +290,107 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         delivery_status: 'interrupted',
         mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
       })).rejects.toThrow('unknown prior outcome');
+    });
+
+    it('allows an identical retry after an executor-proven non-dispatch settles its reservation', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-known-nondispatch-reservation`,
+        user_type: 'anonymous',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const reservation = {
+        name: 'schedule_meeting',
+        input: parameters,
+        result: 'External action dispatch reserved; outcome unknown.',
+        is_error: true,
+      };
+
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          ...reservation,
+          result: 'Authorization temporarily unavailable; action was not run.',
+          result_status: 'recoverable_error',
+          dispatch_status: 'not_dispatched',
+        }],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+      });
+
+      await expect(threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: '',
+        tool_calls: [reservation],
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+        delivery_status: 'interrupted',
+        mutation_reservation: { tool_name: 'schedule_meeting', input: parameters },
+      })).resolves.toBeDefined();
+    });
+
+    it('persists a post-reservation authority outage as retryable without dispatch', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-authority-barrier-nondispatch`,
+        user_type: 'workos',
+        user_id: 'credential_barrier',
+      });
+      const parameters = { title: 'Review', attendees: ['member@example.test'] };
+      const tool: AddieTool = {
+        name: 'schedule_meeting',
+        description: 'Schedule a meeting',
+        input_schema: { type: 'object', properties: {} },
+      };
+      const handler = vi.fn();
+      let authorityChecks = 0;
+      const executor = createAddieToolExecutor([tool], new Map([[tool.name, handler]]), {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect: ({ toolName, parameters: reservedParameters }) =>
+          reserveToolIntentCheckpoint(threadService, {
+            threadId: thread.thread_id,
+            toolName,
+            parameters: reservedParameters,
+            requestedModel: 'claude-sonnet-5',
+          }),
+        revalidateSideEffectAuthority: async () => {
+          authorityChecks += 1;
+          return authorityChecks === 1
+            ? { allowed: true }
+            : { allowed: false, status: 'recoverable_error' };
+        },
+      });
+
+      const result = await executor({
+        type: 'tool_call', id: 'barrier-call', name: tool.name, input: parameters,
+      }, 1);
+      await threadService.addMessage(buildToolResultCheckpoint({
+        threadId: thread.thread_id,
+        execution: result.execution,
+        requestedModel: 'claude-sonnet-5',
+      }));
+
+      expect(authorityChecks).toBe(2);
+      expect(handler).not.toHaveBeenCalled();
+      expect(result.execution.dispatch_status).toBe('not_dispatched');
+      await expect(reserveToolIntentCheckpoint(threadService, {
+        threadId: thread.thread_id,
+        toolName: tool.name,
+        parameters,
+        requestedModel: 'claude-sonnet-5',
+      })).resolves.toBeUndefined();
     });
 
     it('does not settle a GitHub creation reservation from a receiptless ok result', async () => {

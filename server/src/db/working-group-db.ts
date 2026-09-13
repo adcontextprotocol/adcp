@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from './community-db.js';
 import { createLogger } from '../logger.js';
+import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 import type {
   WorkingGroup,
   WorkingGroupLeader,
@@ -1015,6 +1016,13 @@ export class WorkingGroupDatabase {
       if (!group) throw new Error('AAO admin working group not found');
 
       const targetUserId = await this.resolveCanonicalUserIdWithClient(client, input.targetUserId);
+      const exactCredential = await client.query(
+        'SELECT workos_user_id FROM users WHERE workos_user_id = $1 FOR UPDATE',
+        [targetUserId],
+      );
+      if (exactCredential.rowCount !== 1) {
+        throw new Error('AAO admin target credential not found');
+      }
       const membershipResult = await client.query<WorkingGroupMembership>(
         `INSERT INTO working_group_memberships (
           working_group_id, workos_user_id, added_by_user_id
@@ -1031,6 +1039,7 @@ export class WorkingGroupDatabase {
         ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4)`,
         [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
       );
+      await bumpAuthorizationEpochs(client, [targetUserId]);
       await client.query('COMMIT');
       return membershipResult.rows[0];
     } catch (error) {
@@ -1077,6 +1086,7 @@ export class WorkingGroupDatabase {
         ) VALUES ('revoked', $1, $2, 'aao_admin_working_group', $3, $4)`,
         [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
       );
+      await bumpAuthorizationEpochs(client, [targetUserId]);
       await client.query('COMMIT');
       return targetUserId;
     } catch (error) {
