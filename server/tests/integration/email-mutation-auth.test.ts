@@ -1,7 +1,6 @@
 /** Real request authorization must observe journal state even without an epoch bump. */
 import { createHmac, randomUUID } from 'node:crypto';
 import express, { type Express, type Request, type Response } from 'express';
-import cookieParser from 'cookie-parser';
 import supertest from 'supertest';
 import { generateKeyPair, SignJWT } from 'jose';
 import type { Pool } from 'pg';
@@ -40,7 +39,10 @@ type AuthModule = typeof import('../../src/middleware/auth.js');
 type DatabaseModule = typeof import('../../src/db/client.js');
 type JwtModule = typeof import('../../src/auth/workos-jwt.js');
 type MutationModule = typeof import('../../src/services/email-mutation.js');
-type Replica = { app: Express; auth: AuthModule; database: DatabaseModule; jwt: JwtModule; pool: Pool };
+type Replica = {
+  app: Express; auth: AuthModule; database: DatabaseModule; jwt: JwtModule; pool: Pool;
+  cookieFixtures: Map<string, Record<string, string>>;
+};
 type Authentication = 'cookie' | 'bearer';
 
 describe('member email mutation authorization across independent replicas', () => {
@@ -66,7 +68,16 @@ describe('member email mutation authorization across independent replicas', () =
     const { csrfProtection } = await import('../../src/middleware/csrf.js');
     auth.stopAuthTimers();
     const app = express();
-    app.use(cookieParser());
+    const cookieFixtures = new Map<string, Record<string, string>>();
+    // Match the authorization-epoch HTTP suite: supply app-owned parsed cookie
+    // fixtures while requests still send the corresponding actual Cookie header.
+    // Absent cookies stay absent; a presented empty cookie retains its value.
+    app.use((req, _res, next) => {
+      const header = req.get('Cookie');
+      if (header !== undefined) expect(cookieFixtures.has(header)).toBe(true);
+      req.cookies = header === undefined ? {} : { ...cookieFixtures.get(header) };
+      next();
+    });
     app.use(csrfProtection);
     const respond = (req: Request, res: Response) => res.json({
       user_id: req.user?.id,
@@ -79,7 +90,7 @@ describe('member email mutation authorization across independent replicas', () =
     });
     app.get('/api/admin/check', auth.requireAuth, auth.requireAdmin, respond);
     app.get('/api/member/check', auth.requireAuth, respond);
-    return { app, auth, database, jwt, pool };
+    return { app, auth, database, jwt, pool, cookieFixtures };
   }
   async function token(authentication: Authentication, email = ADMIN_EMAIL, verified = true): Promise<string> {
     if (authentication === 'cookie') {
@@ -95,7 +106,12 @@ describe('member email mutation authorization across independent replicas', () =
   }
   function request(replica: Replica, authentication: Authentication, credential: string, admin = true) {
     const req = supertest(replica.app).get(admin ? '/api/admin/check' : '/api/member/check').set('Accept', 'application/json');
-    return authentication === 'cookie' ? req.set('Cookie', `wos-session=${credential}`) : req.set('Authorization', `Bearer ${credential}`);
+    if (authentication === 'cookie') {
+      const header = `wos-session=${credential}`;
+      replica.cookieFixtures.set(header, { 'wos-session': credential });
+      return req.set('Cookie', header);
+    }
+    return req.set('Authorization', `Bearer ${credential}`);
   }
   async function epoch() {
     return (await replicaB.pool.query('SELECT COALESCE((SELECT epoch FROM authorization_epochs WHERE workos_user_id=$1),0)::text AS epoch', [USER_ID])).rows[0].epoch;
@@ -128,6 +144,8 @@ describe('member email mutation authorization across independent replicas', () =
     await cleanup();
     replicaA.auth.invalidateSessionsForUsers([USER_ID]);
     replicaB.auth.invalidateSessionsForUsers([USER_ID]);
+    replicaA.cookieFixtures.clear();
+    replicaB.cookieFixtures.clear();
     replicaA.jwt.__setJWKSForTesting(async () => signingKeys.publicKey);
     replicaB.jwt.__setJWKSForTesting(async () => signingKeys.publicKey);
     cookieClaims.clear();
@@ -135,9 +153,12 @@ describe('member email mutation authorization across independent replicas', () =
     await replicaB.pool.query('INSERT INTO user_email_aliases(workos_user_id,email) VALUES($1,$2)', [USER_ID, ORDINARY_EMAIL]);
     fixtureIdentities = (await replicaB.pool.query('SELECT identity_id FROM identity_workos_users WHERE workos_user_id=$1', [USER_ID])).rows.map(row => row.identity_id);
     provider = { id: USER_ID, email: ADMIN_EMAIL, emailVerified: true };
-    providerMocks.authenticate.mockReset().mockImplementation(async (sealed: string) => ({
-      authenticated: true, user: { id: USER_ID, ...cookieClaims.get(sealed), createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }, accessToken: 'test-access-token',
-    }));
+    providerMocks.authenticate.mockReset().mockImplementation(async (sealed: string) => {
+      const claims = cookieClaims.get(sealed);
+      return claims ? {
+        authenticated: true, user: { id: USER_ID, ...claims, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }, accessToken: 'test-access-token',
+      } : { authenticated: false };
+    });
     providerMocks.getUser.mockReset().mockImplementation(async () => ({ ...provider }));
     providerMocks.updateUser.mockReset().mockImplementation(async ({ userId, email, emailVerified }) => {
       provider = { id: userId, email, emailVerified }; return { ...provider };
@@ -152,6 +173,51 @@ describe('member email mutation authorization across independent replicas', () =
     }
     if (oldAdminEmails === undefined) delete process.env.ADMIN_EMAILS;
     else process.env.ADMIN_EMAILS = oldAdminEmails;
+  });
+
+  it('rejects absent credentials without reusing a previous request cookie fixture', async () => {
+    const cookie = await token('cookie');
+    for (const replica of [replicaA, replicaB]) {
+      const authenticated = await request(replica, 'cookie', cookie);
+      expect(authenticated.status).toBe(200);
+      expect(authenticated.headers['set-cookie']).toEqual(expect.arrayContaining([expect.stringMatching(/^csrf-token=/)]));
+      const response = await supertest(replica.app).get('/api/member/check').set('Accept', 'application/json');
+      expect(response.status).toBe(401);
+      expect(response.body).not.toHaveProperty('user_id');
+    }
+  });
+  it.each(['', 'invalid-sealed-cookie'])('rejects the presented cookie %j through real authentication', async credential => {
+    for (const replica of [replicaA, replicaB]) {
+      const response = await request(replica, 'cookie', credential, false);
+      expect(response.status).toBe(401);
+      expect(response.body).not.toHaveProperty('user_id');
+    }
+    if (credential === '') expect(providerMocks.authenticate).not.toHaveBeenCalled();
+    else expect(providerMocks.authenticate.mock.calls).toEqual([[credential], [credential]]);
+  });
+  it.each(['', 'Basic invalid'])('rejects malformed presented Authorization %j without a cookie fixture', async authorization => {
+    for (const replica of [replicaA, replicaB]) {
+      const response = await supertest(replica.app).get('/api/member/check')
+        .set('Accept', 'application/json').set('Authorization', authorization);
+      expect(response.status).toBe(401);
+      expect(response.body).not.toHaveProperty('user_id');
+    }
+    expect(providerMocks.authenticate).not.toHaveBeenCalled();
+  });
+  it('rejects a presented JWT signed by a different key without using a previous cookie fixture', async () => {
+    const wrongKeys = await generateKeyPair('RS256');
+    const invalidJwt = await new SignJWT({ email: ADMIN_EMAIL, azp: process.env.WORKOS_CLIENT_ID })
+      .setProtectedHeader({ alg: 'RS256' }).setSubject(USER_ID).setJti(randomUUID())
+      .setIssuedAt().setExpirationTime('1h').sign(wrongKeys.privateKey);
+    const cookie = await token('cookie');
+    for (const replica of [replicaA, replicaB]) {
+      expect((await request(replica, 'cookie', cookie)).status).toBe(200);
+      providerMocks.authenticate.mockClear();
+      const response = await request(replica, 'bearer', invalidJwt, false);
+      expect(response.status).toBe(401);
+      expect(response.body).not.toHaveProperty('user_id');
+      expect(providerMocks.authenticate).not.toHaveBeenCalled();
+    }
   });
 
   describe.each(['cookie', 'bearer'] as const)('%s authentication', authentication => {
