@@ -198,6 +198,8 @@ phases:
       resolving the mismatch without deleting the outage history. The seller
       then restates that provisional revision; the buyer's formerly positive
       statement becomes a typed mismatch until the buyer consumes the new leaf.
+      That mismatch is delayed while the buyer still has its bounded re-read
+      window and action_required only after the grace deadline passes.
 
     steps:
       - id: prepare_revision_fixture
@@ -435,13 +437,17 @@ phases:
         context_outputs:
           - name: consumer_restatement_revision_id
             path: "simulated.reporting_revision_id"
+          - name: consumer_stale_received_grace_deadline
+            path: "simulated.stale_received_grace_deadline"
         sample_request:
           account:
             account_id: "reporting_consumer_revision_lab"
             sandbox: true
           scenario: "reporting_core_lifecycle_probe"
           params:
-            operation: "restate_snapshot"
+            operation: "restate_after_received"
+            received_reporting_revision_id: "$context.consumer_revision_id"
+            advance_to: "within_grace"
         validations:
           - check: response_schema
             description: "The controller publishes a new immutable snapshot revision"
@@ -449,6 +455,70 @@ phases:
             path: "simulated.supersedes_reporting_revision_id"
             context_key: "consumer_revision_id"
             description: "The new snapshot explicitly supersedes the revision the buyer received"
+          - check: field_present
+            path: "simulated.stale_received_grace_deadline"
+            description: "The seller publishes the boundary at which a stale received status escalates"
+
+      - id: read_restatement_grace
+        title: "Hold the stale received status at delayed inside the grace window"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+          view: "periods"
+          period:
+            start: "$context.consumer_revision_period_start"
+            end: "$context.consumer_revision_period_end"
+        validations:
+          - check: response_schema
+            description: "Grace-window periods readback is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "delayed"
+            description: "The buyer read exactly what the seller then required, so restatement alone is not an escalation"
+          - check: field_contains
+            path: "issues[*].code"
+            value: "CONSUMER_STATUS_MISMATCH"
+            description: "The disagreement is typed while the buyer still has time to re-read"
+          - check: field_contains
+            path: "issues[*].severity"
+            value: "delayed"
+            description: "Severity is delayed until the grace deadline, not action_required"
+          - check: field_present
+            path: "issues[0].opened_at"
+            description: "The issue carries the first-observed instant that anchors escalation"
+
+      - id: advance_past_restatement_grace
+        title: "Advance past the stale-received grace deadline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "restate_after_received"
+            received_reporting_revision_id: "$context.consumer_revision_id"
+            advance_to: "past_grace"
+        validations:
+          - check: response_schema
+            description: "Repeating the operation is convergent and only moves the clock"
+          - check: field_equals_context
+            path: "simulated.reporting_revision_id"
+            context_key: "consumer_restatement_revision_id"
+            description: "No second restatement is committed"
+          - check: field_equals_context
+            path: "simulated.stale_received_grace_deadline"
+            context_key: "consumer_stale_received_grace_deadline"
+            description: "The grace deadline is anchored to the restatement, not to the poll"
 
       - id: read_restatement_mismatch
         title: "Surface changed-after-read as a typed mismatch"
@@ -475,6 +545,10 @@ phases:
             path: "issues[*].code"
             value: "CONSUMER_STATUS_MISMATCH"
             description: "Changed-after-read is a typed caller-scoped disagreement"
+          - check: field_contains
+            path: "issues[*].severity"
+            value: "action_required"
+            description: "The grace window is bounded: past its deadline the mismatch escalates"
           - check: field_value
             path: "periods[0].current_consumer_status_id"
             value: "consumer-status.revision-received.0001"

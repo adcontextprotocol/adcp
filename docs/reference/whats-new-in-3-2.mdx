@@ -181,7 +181,11 @@ The model has three explicitly discovered tiers:
   post-official adjustments, health, `get_reporting_status` seller readback,
   and—after the active six-week experimental change notice—
   `sync_reporting_status` buyer-to-seller consumption status over reporting
-  transports the seller already offers;
+  transports the seller already offers. That loop is two-sided and bounded on
+  both ends: the buyer owes a status for each elapsed period by
+  `expected_at + automated_recovery_window_seconds`, and a buyer whose
+  `received` is overtaken by a seller restatement gets a re-read grace window
+  before the mismatch escalates rather than paging a human immediately;
 - **Managed Delivery** binds durable file, dataset-share, or warehouse
   materializations to exact revisions, destinations, retention, and access;
 - **Reconciled Billing** adds authenticated consumer receipts and canonical

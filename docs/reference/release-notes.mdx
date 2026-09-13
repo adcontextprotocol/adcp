@@ -16,8 +16,19 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 <Warning>
 **Reliable Reporting breaking-change notice — published September 12, 2026.**
 Current source adds opt-in `sync_reporting_status` so a buyer can report missing,
-unreadable, or exactly received reporting back to the seller; the seller can then
-detect when a received revision becomes stale after restatement. Sellers advertise
+unreadable, contradictory, or exactly received reporting back to the seller; the
+seller can then detect when a received revision becomes stale after restatement.
+The loop is hardened for RC.2: a stale `received` gets a bounded re-read grace
+window before it escalates, buyers owe a status by
+`expected_at + automated_recovery_window_seconds` (counted in
+`obligation_counts.consumer_status_pending`, never in health), issues carry
+`opened_at` / `issue_state` / `external_ref` with an optional
+`consumer_mismatch_escalation_seconds` and `operations_contact`, and
+`content_mismatch` names contract-fact disagreements through a closed
+`mismatch_code`. `reporting-delivery-config.json` also reserves
+`authoritative_party`; sellers MUST reject `consumer` with `UNSUPPORTED_FEATURE`
+until a later minor defines the buyer-deposited revision task
+([#7440](https://github.com/adcontextprotocol/adcp/issues/7440)). Sellers advertise
 `consumer_status_task` only when implemented; RC.1 remains unchanged. The next
 eligible minor makes this task required Core no earlier than October 24, 2026.
 See the [migration guide](/docs/reference/migration/reliable-reporting-status-loop).

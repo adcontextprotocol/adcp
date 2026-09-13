@@ -819,7 +819,7 @@
             "required": ["operation"],
             "properties": {
               "operation": {
-                "enum": ["prepare", "advance_time", "publish_zero_row", "publish_nonempty", "restate_snapshot", "omit_obligation"]
+                "enum": ["prepare", "advance_time", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation"]
               }
             },
             "allOf": [
@@ -837,6 +837,21 @@
                 "else": {
                   "not": { "required": ["target_health"] }
                 }
+              },
+              {
+                "if": {
+                  "properties": { "operation": { "const": "restate_after_received" } },
+                  "required": ["operation"]
+                },
+                "then": {
+                  "required": ["received_reporting_revision_id"],
+                  "properties": {
+                    "advance_to": { "enum": ["within_grace", "past_grace"] }
+                  }
+                },
+                "else": {
+                  "not": { "anyOf": [{ "required": ["received_reporting_revision_id"] }, { "required": ["advance_to"] }] }
+                }
               }
             ]
           }
@@ -848,7 +863,7 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions without waiting for wall-clock boundaries. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, or restate one the caller already received, without waiting for wall-clock boundaries. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -906,13 +921,27 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "omit_obligation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
-          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, and omit_obligation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, and buyer-side missing-obligation detection. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
+          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment"],
+          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, and omit_obligation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, and buyer-side missing-obligation detection. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
         },
         "target_health": {
           "type": "string",
           "enum": ["delayed", "action_required"],
           "description": "Clock-derived health boundary selected by reporting_core_lifecycle_probe advance_time. The controller chooses the corresponding deterministic target time; callers do not supply timestamps."
+        },
+        "received_reporting_revision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_revision",
+          "description": "Revision the caller currently reports as received, required by reporting_core_lifecycle_probe restate_after_received. The seller MUST reject the operation unless this names the caller's current required revision for the fixture obligation, and a seller advertising consumer_status_task MUST additionally require a current received consumer status from this caller naming it. This binds the restatement to a real prior read instead of restating into a vacuum."
+        },
+        "advance_to": {
+          "type": "string",
+          "enum": ["within_grace", "past_grace"],
+          "default": "within_grace",
+          "description": "Where reporting_core_lifecycle_probe restate_after_received leaves the virtual clock relative to the returned stale_received_grace_deadline. within_grace grades the delayed projection; past_grace grades the escalation to action_required. Repeating the operation is convergent: it reuses the committed restatement and only moves the clock."
         },
         "catalog_id": {
           "type": "string",
