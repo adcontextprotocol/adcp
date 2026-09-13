@@ -326,6 +326,10 @@ The September 13 response review additionally links existing
 [Go #530](https://github.com/adcontextprotocol/adcp-go/issues/530) for recovery
 classification and [#7439](https://github.com/adcontextprotocol/adcp/issues/7439)
 for the separate cross-language response-conformance harness.
+[Go #532](https://github.com/adcontextprotocol/adcp-go/issues/532) now owns the
+public buyer lifecycle coordinator, starting with listing and purchasing and
+reusing the existing continuation work. Version negotiation and continuation
+storage alone do not provide that operation-selection layer.
 
 ## Validation and reproduction
 
