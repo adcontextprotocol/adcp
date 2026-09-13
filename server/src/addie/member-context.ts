@@ -5,6 +5,7 @@
  * so Addie can personalize responses based on who's asking.
  */
 
+import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from './admin-status-lookup.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { MemberDatabase } from '../db/member-db.js';
 import { OrganizationDatabase, resolveMembershipTier } from '../db/organization-db.js';
@@ -1029,6 +1030,7 @@ async function resolveContextFromLocalDb(
   organizationId: string,
   workosUserId: string,
   orgMemberUserIds: string[] = [],
+  adminPrincipal?: AAOAdminPrincipal,
 ): Promise<MemberContext> {
   const org = await orgDb.getOrganization(organizationId);
   if (org) {
@@ -1221,8 +1223,8 @@ async function resolveContextFromLocalDb(
   }
 
   const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
-  const adminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
-  const isAAOAdmin = adminGroup ? await workingGroupDb.isMember(adminGroup.id, workosUserId) : false;
+  // Person-state IDs must never supply platform authority on the web path.
+  const isAAOAdmin = adminPrincipal ? await isAuthenticatedUserAAOAdmin(adminPrincipal) : false;
 
   if (leadsCommittees.length > 0 || isAAOAdmin) {
     try {
@@ -1278,6 +1280,7 @@ async function resolveContextFromLocalDb(
 export async function getWebMemberContext(
   workosUserId: string,
   selectedOrganizationId?: string | null,
+  adminPrincipal?: AAOAdminPrincipal,
 ): Promise<MemberContext> {
   const context: MemberContext = {
     is_mapped: true, // They're authenticated via WorkOS, so they're "mapped"
@@ -1307,8 +1310,9 @@ export async function getWebMemberContext(
       // Resolve org from dev config, then run local DB lookups
       const devOrgId = devUser.organizationId || 'org_dev_company_001';
       try {
-        return await resolveContextFromLocalDb(context, devOrgId, workosUserId);
+        return await resolveContextFromLocalDb(context, devOrgId, workosUserId, [], adminPrincipal);
       } catch (error) {
+        if (error instanceof AAOAdminLookupUnavailableError) throw error;
         logger.warn({ error, workosUserId }, 'Dev mode: failed to resolve local DB context');
         return context;
       }
@@ -1393,8 +1397,9 @@ export async function getWebMemberContext(
       joined_at: userJoinedAt,
     };
 
-    return await resolveContextFromLocalDb(context, organizationId, workosUserId, webOrgMemberUserIds);
+    return await resolveContextFromLocalDb(context, organizationId, workosUserId, webOrgMemberUserIds, adminPrincipal);
   } catch (error) {
+    if (error instanceof AAOAdminLookupUnavailableError) throw error;
     logger.error({ error, workosUserId }, 'Addie Web: Error getting member context');
     return context;
   }

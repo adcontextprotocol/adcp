@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from './auth/admin-authorization-response.js';
 import express from "express";
 import cookieParser from "cookie-parser";
 import DOMPurify from "isomorphic-dompurify";
@@ -8955,7 +8956,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import('./addie/home/index.js');
 
         const selectedOrganizationId = typeof req.query.org === 'string' ? req.query.org : null;
-        const content = await getWebHomeContent(user.id, selectedOrganizationId);
+        const content = await getWebHomeContent(user, selectedOrganizationId);
 
         // Check if HTML rendering is requested
         const format = req.query.format as string | undefined;
@@ -8967,6 +8968,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           res.json(content);
         }
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ err: error }, 'GET /api/me/addie-home error');
         res.status(500).json({
           error: 'Failed to get Addie home content',

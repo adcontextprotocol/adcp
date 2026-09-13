@@ -14,6 +14,8 @@ vi.mock('../../src/db/working-group-db.js', () => ({
 
 import {
   AAO_ADMIN_POSITIVE_CACHE_TTL_MS,
+  AAOAdminLookupUnavailableError,
+  isAuthenticatedUserAAOAdmin,
   isWebUserAAOAdmin,
   resolveWebUserAAOAdminAccess,
 } from '../../src/addie/admin-status-lookup.js';
@@ -78,6 +80,74 @@ describe('site-admin access decisions', () => {
     mocks.isMember.mockResolvedValue(false);
     expect(isBreakGlassAdminEmail('BREAK-GLASS@example.test')).toBe(true);
     await expect(resolveWebUserAAOAdminAccess('user_no_membership', 'break-glass@example.test'))
+      .resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
+  });
+
+  it.each([
+    { authenticated: 'user_admin', canonical: 'user_member', expected: true },
+    { authenticated: 'user_member', canonical: 'user_admin', expected: false },
+  ])('authorizes $authenticated independently of linked $canonical', async ({ authenticated, canonical, expected }) => {
+    mocks.isMember.mockImplementation(async (_group, userId) => userId === 'user_admin');
+    await expect(isAuthenticatedUserAAOAdmin({
+      id: canonical,
+      authWorkosUserId: authenticated,
+      email: 'ordinary@example.test',
+    })).resolves.toBe(expected);
+    expect(mocks.isMember).toHaveBeenCalledWith('wg_aao_admin', authenticated);
+    expect(getWebAdminStatusCache().has(canonical)).toBe(false);
+  });
+
+  it('uses only the authenticated email for a break-glass decision', async () => {
+    mocks.isMember.mockResolvedValue(false);
+    await expect(resolveWebUserAAOAdminAccess({
+      id: 'user_admin', authWorkosUserId: 'user_member', email: 'ordinary@example.test',
+    })).resolves.toEqual({ isAdmin: false, mechanism: null });
+    await expect(resolveWebUserAAOAdminAccess({
+      id: 'user_member', authWorkosUserId: 'user_admin', email: 'BREAK-GLASS@example.test',
+    })).resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
+  });
+
+  it('reports a lookup outage separately and retries without caching a denial', async () => {
+    mocks.isMember.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(resolveWebUserAAOAdminAccess({ id: 'user_admin' })).rejects.toBeInstanceOf(AAOAdminLookupUnavailableError);
+    expect(getWebAdminStatusCache().has('user_admin')).toBe(false);
+    await expect(isWebUserAAOAdmin('user_admin')).resolves.toBe(true);
+  });
+
+  it('never reuses an expired positive decision while its refresh is unavailable', async () => {
+    await isWebUserAAOAdmin('user_admin');
+    vi.advanceTimersByTime(AAO_ADMIN_POSITIVE_CACHE_TTL_MS + 1);
+    mocks.isMember.mockRejectedValue(new Error('database unavailable'));
+    await expect(resolveWebUserAAOAdminAccess({ id: 'user_admin' })).rejects.toMatchObject({
+      code: 'admin_authorization_unavailable', statusCode: 503,
+    });
+    expect(getWebAdminStatusCache().has('user_admin')).toBe(false);
+  });
+
+  it('treats a missing authority group as unavailable', async () => {
+    mocks.getWorkingGroupBySlug.mockResolvedValue(null);
+    await expect(resolveWebUserAAOAdminAccess({ id: 'user_admin' })).rejects.toBeInstanceOf(AAOAdminLookupUnavailableError);
+    expect(mocks.isMember).not.toHaveBeenCalled();
+    expect(getWebAdminStatusCache().size).toBe(0);
+  });
+
+  it('keeps legacy boolean callers fail-closed during an outage', async () => {
+    mocks.isMember.mockRejectedValue(new Error('database unavailable'));
+    await expect(isWebUserAAOAdmin('user_admin')).resolves.toBe(false);
+    await expect(resolveWebUserAAOAdminAccess('user_admin', 'ordinary@example.test'))
+      .resolves.toEqual({ isAdmin: false, mechanism: null });
+    expect(getWebAdminStatusCache().has('user_admin')).toBe(false);
+  });
+
+  it('preserves independent break-glass authority for legacy string callers', async () => {
+    mocks.isMember.mockRejectedValue(new Error('database unavailable'));
+    await expect(resolveWebUserAAOAdminAccess('user_admin', 'break-glass@example.test'))
+      .resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
+  });
+
+  it('honors an independent break-glass grant during a lookup outage', async () => {
+    mocks.isMember.mockRejectedValue(new Error('database unavailable'));
+    await expect(resolveWebUserAAOAdminAccess({ id: 'user_admin', email: 'break-glass@example.test' }))
       .resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
   });
 });

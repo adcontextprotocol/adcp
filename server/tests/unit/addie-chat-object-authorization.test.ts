@@ -9,6 +9,7 @@ process.env.OPENAI_API_KEY = 'test-addie-object-authorization-router-key';
 
 const mocks = vi.hoisted(() => ({
   authenticated: true,
+  isAuthenticatedUserAAOAdmin: vi.fn().mockResolvedValue(false),
   getThreadByExternalId: vi.fn(),
   getThreadMessages: vi.fn(),
   getMessagesByClientRequestId: vi.fn(),
@@ -137,7 +138,11 @@ vi.mock('../../src/addie/mcp/escalation-tools.js', () => ({
 vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   ADMIN_TOOLS: [],
   createAdminToolHandlers: () => new Map(),
-  isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>(),
+  isAuthenticatedUserAAOAdmin: mocks.isAuthenticatedUserAAOAdmin,
 }));
 
 vi.mock('../../src/addie/mcp/event-tools.js', () => ({
@@ -653,6 +658,9 @@ describe('Addie chat conversation object authorization', () => {
 
   it('restricts experiment outcomes to site admins', async () => {
     expect((await request(mountChatRouter()).get('/experiment')).status).toBe(403);
+    expect(mocks.isAuthenticatedUserAAOAdmin).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'user_attacker', email: 'attacker@example.test',
+    }));
   });
 
   it('denies a cross-user conversation UUID through the streaming path before side effects', async () => {
