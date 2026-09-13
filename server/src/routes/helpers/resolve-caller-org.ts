@@ -7,16 +7,23 @@
  *      against the WorkOS JWKS endpoint.
  *   2. WorkOS API key (sk_* / wos_api_key_* prefixes) — server-to-server
  *      integrations. Validated via the existing `validateWorkOSApiKey` helper.
- *   3. Sealed session — web/native app sessions whose cookie or bearer
- *      unsealed in `optionalAuth`, producing `req.user`. Organization is
- *      resolved via `resolvePrimaryOrganization`, which falls back to the
- *      user's organization_memberships when the cached column is NULL.
+ *   3. Cookie session — a web session unsealed in `optionalAuth`, producing
+ *      `req.user`. With no Bearer header, the legacy read-model fallback uses
+ *      `resolvePrimaryOrganization` and organization_memberships.
+ *
+ * An explicit Bearer must supply its own verified organization. Opaque/native
+ * session Bearers cannot use `req.user` to select an implicit primary organization.
  */
 
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import { isWorkOSApiKeyFormat } from '../../middleware/api-key-format.js';
-import { validateWorkOSApiKey } from '../../middleware/auth.js';
+import { getBearerToken, isWorkOSApiKeyFormat } from '../../middleware/api-key-format.js';
+import {
+  ConflictingOrganizationSelectionError,
+  selectedOrganizationForAuthentication,
+  validateWorkOSApiKey,
+} from '../../middleware/auth.js';
+import { isInvalidWorkOSJWTError, unavailableJWTKeyService, WorkOSJWTUnavailableError } from '../../auth/workos-jwt.js';
 import { resolvePrimaryOrganization } from '../../db/users-db.js';
 import { createLogger } from '../../logger.js';
 
@@ -44,15 +51,34 @@ function jwksForIssuer(iss: string): { jwks: JWTVerifyGetKey; clientId: string }
 
 export type MinimalReq = Pick<Request, 'headers'> & { user?: { id?: string } };
 
+export class CallerOrganizationAuthError extends Error {
+  constructor(readonly status: 401 | 403 | 503) {
+    super(status === 401 ? 'Invalid bearer token'
+      : status === 403 ? 'Conflicting organization selection'
+        : 'Authorization temporarily unavailable');
+    this.name = 'CallerOrganizationAuthError';
+  }
+}
+
+/** Preserve authentication failures when callers also handle application errors. */
+export function sendCallerOrganizationAuthError(error: unknown, res: Response): boolean {
+  if (!(error instanceof CallerOrganizationAuthError)) return false;
+  res.status(error.status).json({
+    error: error.status === 401 ? 'invalid_bearer_token'
+      : error.status === 403 ? 'organization_selection_conflict'
+        : 'authorization_unavailable',
+  });
+  return true;
+}
+
 /**
  * Extract and verify a WorkOS OIDC access token. Returns the `org_id` claim
  * on success, or `null` for API keys, sealed sessions, missing tokens, or
- * failed verification. Never throws.
+ * invalid verification. Key-service and unknown verification failures throw 503.
  */
 export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null> {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return null;
-  const token = auth.slice(7);
+  const token = getBearerToken(req.headers.authorization);
+  if (!token) return null;
   if (isWorkOSApiKeyFormat(token)) return null;
   // Sealed sessions are not JWTs — skip verification to avoid JWKS noise.
   if (!token.startsWith('eyJ')) return null;
@@ -69,28 +95,48 @@ export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null
       logger.warn({ iss: unverified.iss }, 'bearer JWT rejected: iss does not match WorkOS AuthKit pattern');
       return null;
     }
-    const { payload } = await jwtVerify(token, resolved.jwks, { issuer: unverified.iss });
+    const { payload } = await jwtVerify(token, unavailableJWTKeyService(resolved.jwks), {
+      issuer: unverified.iss, algorithms: ['RS256'],
+    });
     if (typeof payload.org_id !== 'string') {
       logger.warn({ clientId: resolved.clientId, sub: payload.sub }, 'bearer JWT verified but has no org_id claim');
       return null;
     }
     return payload.org_id;
   } catch (err) {
-    logger.warn({ err }, 'bearer JWT verification failed');
-    return null;
+    if (isInvalidWorkOSJWTError(err)) return null;
+    throw new WorkOSJWTUnavailableError();
   }
 }
 
 /**
  * Resolve the caller's organization via (in order) OIDC JWT → API key →
- * sealed-session user lookup. Returns `null` when no auth shape resolves.
+ * sealed-session user lookup. Null is reserved for callers without a bearer.
+ * A supplied bearer must authorize an organization or fail explicitly.
  */
 export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
-  const jwtOrg = await orgIdFromBearerJwt(req);
-  if (jwtOrg) return jwtOrg;
-
-  const apiKey = await validateWorkOSApiKey(req as Request);
-  if (apiKey) return apiKey.organizationId;
+  if (getBearerToken(req.headers.authorization) !== null) {
+    try {
+      const jwtOrg = await orgIdFromBearerJwt(req);
+      if (jwtOrg) {
+        selectedOrganizationForAuthentication(req as Request, jwtOrg);
+        return jwtOrg;
+      }
+      const apiKey = await validateWorkOSApiKey(req as Request);
+      if (apiKey) {
+        selectedOrganizationForAuthentication(req as Request, apiKey.organizationId);
+        return apiKey.organizationId;
+      }
+    } catch (error) {
+      if (error instanceof ConflictingOrganizationSelectionError) {
+        throw new CallerOrganizationAuthError(403);
+      }
+      throw new CallerOrganizationAuthError(503);
+    }
+    // Neither anonymous access nor an accompanying user's primary org may
+    // replace an explicitly selected credential that did not authorize an org.
+    throw new CallerOrganizationAuthError(401);
+  }
 
   if (req.user?.id) {
     try {

@@ -2,8 +2,8 @@
  * API key management routes
  *
  * Uses WorkOS API for organization API key CRUD.
- * Requires authenticated session (cookie-based auth).
- * Verifies org membership before allowing any operation.
+ * Requires an authenticated user credential and an explicitly selected org.
+ * Verifies fresh, exact-credential authority before every operation.
  */
 
 import type { Request, Response } from "express";
@@ -11,10 +11,12 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { createLogger } from "../logger.js";
 import { requireAuth } from "../middleware/auth.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 import {
-  resolveUserOrgMembership,
-  type UserOrgMembership,
-} from "../utils/resolve-user-org-membership.js";
+  evaluateUserOrgRoleAuthorization,
+  resolveUserOrgAuthorization,
+  type UserOrgAuthorizationMembership,
+} from "../utils/resolve-user-org-authorization.js";
 
 const logger = createLogger("api-keys-routes");
 
@@ -36,6 +38,8 @@ const AUTH_ENABLED = !!(
 const workos = AUTH_ENABLED
   ? new WorkOS(WORKOS_API_KEY!, {
       clientId: process.env.WORKOS_CLIENT_ID!,
+      timeout: 5_000,
+      maxRetries: 0,
     })
   : null;
 
@@ -88,32 +92,49 @@ async function workosRequest(
 }
 
 /**
- * Resolve the authenticated user's active membership in the specified organization.
- * Returns null and sends the appropriate error response when access is denied.
+ * Select only an explicit request organization. Never consult a session's org,
+ * the canonical identity, or a primary/first organization. Conflicting selectors
+ * are ambiguous even when the caller can administer both organizations.
  */
-async function verifyOrgMembership(
+function selectedOrganizationId(
   req: Request,
   res: Response,
-  organizationId: string,
-): Promise<UserOrgMembership | null> {
-  const membership = await resolveUserOrgMembership(
-    workos,
-    req.user!.id,
-    organizationId,
-  );
-
-  // resolveUserOrgMembership currently derives roles from active rows only,
-  // but keep the status check at this key-management boundary so a future
-  // resolver change (or inconsistent upstream response) cannot create, expose,
-  // or revoke keys for a pending or inactive membership.
-  if (!membership || membership.status !== "active") {
-    res.status(403).json({
-      error: "Access denied",
-      message: "You are not a member of this organization",
+): string | null {
+  // These are the same explicit selectors recognized by the authorization
+  // observer. Require agreement rather than giving one location precedence.
+  const headerOrg = req.headers["x-organization-id"];
+  const supplied: unknown[] = [
+    req.query.org,
+    req.query.organization_id,
+    req.query.organizationId,
+    req.body?.organizationId,
+    req.body?.organization_id,
+    headerOrg,
+  ].filter((value) => value !== undefined);
+  const headerCount = req.rawHeaders.filter(
+    (value, index) => index % 2 === 0 && value.toLowerCase() === "x-organization-id",
+  ).length;
+  if (
+    supplied.length === 0 ||
+    headerCount > 1 ||
+    (typeof headerOrg === "string" && headerOrg.includes(",")) ||
+    supplied.some((value) => typeof value !== "string" || !value || value !== value.trim()) ||
+    supplied.some((value) => value !== supplied[0])
+  ) {
+    res.status(400).json({
+      error: "Select one organization explicitly",
     });
     return null;
   }
-  return membership;
+  return supplied[0] as string;
+}
+
+interface ApiKeyManagementAuthorization extends UserOrgAuthorizationMembership {
+  actor: {
+    userId: string;
+    authWorkosUserId: string;
+    identityId?: string;
+  };
 }
 
 /**
@@ -122,18 +143,52 @@ async function verifyOrgMembership(
  * automation keys, and revocation can disable them. Keep the full lifecycle
  * restricted to active organization owners and admins.
  */
-function requireOrgAdmin(
-  membership: UserOrgMembership,
+async function authorizeKeyManagement(
+  req: Request,
   res: Response,
+  organizationId: string,
   action: "create" | "list" | "revoke",
-): boolean {
-  if (membership.role === "owner" || membership.role === "admin") return true;
+): Promise<ApiKeyManagementAuthorization | null> {
+  const credentialId = getOrganizationAuthorizationUserId(req.user!);
+  const authorizationSnapshot = req.user!.authorizationSnapshot;
+  // Preserve authentication-time attribution across provider awaits. Snapshot
+  // state is non-enumerable, so carry it explicitly into the authorization check.
+  const actor = {
+    userId: authorizationSnapshot?.canonicalUserId ?? req.user!.id,
+    authWorkosUserId: credentialId,
+    identityId: authorizationSnapshot
+      ? authorizationSnapshot.identityId ?? undefined
+      : req.user!.identityId,
+  };
+  // Key-use permissions (including tenant admin:*) do not grant key-management
+  // authority or impersonation of a user credential.
+  if (credentialId === "admin_api_key" || credentialId.startsWith("api_key_")) {
+    res.status(403).json({ error: "A user credential is required to manage API keys" });
+    return null;
+  }
+
+  // No cached organization_memberships or linked credentials participate here.
+  // Existing grants explicitly assign a role to this exact credential and org;
+  // they do not delegate use of another binding or inherit its membership.
+  const resolution = await resolveUserOrgAuthorization(
+    workos,
+    { id: actor.userId, authWorkosUserId: actor.authWorkosUserId, authorizationSnapshot },
+    organizationId,
+  );
+  const decision = evaluateUserOrgRoleAuthorization(resolution, "admin");
+  if (decision.status === "unavailable") {
+    res.status(503).json({ error: "Organization authorization unavailable" });
+    return null;
+  }
+  if (decision.status === "authorized" && decision.membership.organizationId === organizationId) {
+    return { ...decision.membership, actor };
+  }
 
   res.status(403).json({
     error: "Access denied",
     message: `Only organization owners and admins can ${action} API keys`,
   });
-  return false;
+  return null;
 }
 
 /**
@@ -159,20 +214,14 @@ export function createApiKeysRouter(): Router {
   router.get("/", requireAuth, async (req, res) => {
     try {
       if (!workos) {
-        return res.status(500).json({ error: "Authentication not configured" });
+        return res.status(503).json({ error: "Organization authorization unavailable" });
       }
 
-      const requestedOrganizationId = req.query.org as string;
-      // Missing IDs terminate here; authorization below returns a canonical
-      // organization ID from an exact-match WorkOS membership.
-      if (!requestedOrganizationId) {
-        return res
-          .status(400)
-          .json({ error: "org query parameter is required" });
-      }
+      const requestedOrganizationId = selectedOrganizationId(req, res);
+      if (!requestedOrganizationId) return;
 
-      const membership = await verifyOrgMembership(req, res, requestedOrganizationId);
-      if (!membership || !requireOrgAdmin(membership, res, "list")) return;
+      const membership = await authorizeKeyManagement(req, res, requestedOrganizationId, "list");
+      if (!membership) return;
       const authorizedOrganizationId = membership.organizationId;
 
       const params: Record<string, string> = {};
@@ -182,7 +231,7 @@ export function createApiKeysRouter(): Router {
 
       const result = await workosRequest(
         "GET",
-        `/organizations/${authorizedOrganizationId}/api_keys`,
+        `/organizations/${encodeURIComponent(authorizedOrganizationId)}/api_keys`,
         { query: params },
       );
 
@@ -197,21 +246,14 @@ export function createApiKeysRouter(): Router {
   router.post("/", requireAuth, async (req, res) => {
     try {
       if (!workos) {
-        return res.status(500).json({ error: "Authentication not configured" });
+        return res.status(503).json({ error: "Organization authorization unavailable" });
       }
 
-      const requestedOrganizationId =
-        (req.query.org as string) || req.body.organizationId;
-      // Missing IDs terminate here; authorization below returns a canonical
-      // organization ID from an exact-match WorkOS membership.
-      if (!requestedOrganizationId) {
-        return res.status(400).json({
-          error: "org query parameter or organizationId in body is required",
-        });
-      }
+      const requestedOrganizationId = selectedOrganizationId(req, res);
+      if (!requestedOrganizationId) return;
 
-      const membership = await verifyOrgMembership(req, res, requestedOrganizationId);
-      if (!membership || !requireOrgAdmin(membership, res, "create")) return;
+      const membership = await authorizeKeyManagement(req, res, requestedOrganizationId, "create");
+      if (!membership) return;
       const authorizedOrganizationId = membership.organizationId;
 
       const { name, permissions } = req.body;
@@ -250,13 +292,13 @@ export function createApiKeysRouter(): Router {
 
       const result = await workosRequest(
         "POST",
-        `/organizations/${authorizedOrganizationId}/api_keys`,
+        `/organizations/${encodeURIComponent(authorizedOrganizationId)}/api_keys`,
         { body },
       );
 
       logger.info(
         {
-          userId: req.user!.id,
+          ...membership.actor,
           organizationId: authorizedOrganizationId,
           keyName: name,
         },
@@ -274,28 +316,29 @@ export function createApiKeysRouter(): Router {
   router.delete("/:id", requireAuth, async (req, res) => {
     try {
       if (!workos) {
-        return res.status(500).json({ error: "Authentication not configured" });
+        return res.status(503).json({ error: "Organization authorization unavailable" });
       }
 
-      const requestedOrganizationId = req.query.org as string;
-      // Missing IDs terminate here; authorization below returns a canonical
-      // organization ID from an exact-match WorkOS membership.
-      if (!requestedOrganizationId) {
-        return res
-          .status(400)
-          .json({ error: "org query parameter is required" });
-      }
+      const requestedOrganizationId = selectedOrganizationId(req, res);
+      if (!requestedOrganizationId) return;
 
-      const membership = await verifyOrgMembership(req, res, requestedOrganizationId);
-      if (!membership || !requireOrgAdmin(membership, res, "revoke")) return;
+      const membership = await authorizeKeyManagement(req, res, requestedOrganizationId, "revoke");
+      if (!membership) return;
       const authorizedOrganizationId = membership.organizationId;
 
       const apiKeyId = req.params.id;
+      // Every accepted route ID first completes exact admin authorization.
+      // URL normalizes dot segments even after encodeURIComponent, so reject
+      // them before a key DELETE can become a request to the organization.
+      if (apiKeyId === "." || apiKeyId === "..") {
+        return res.status(400).json({ error: "Invalid API key ID" });
+      }
+
       try {
-        await workosRequest("DELETE", `/organizations/${authorizedOrganizationId}/api_keys/${apiKeyId}`);
+        await workosRequest("DELETE", `/organizations/${encodeURIComponent(authorizedOrganizationId)}/api_keys/${encodeURIComponent(apiKeyId)}`);
         logger.info(
           {
-            userId: req.user!.id,
+            ...membership.actor,
             organizationId: authorizedOrganizationId,
             apiKeyId,
           },
@@ -309,7 +352,7 @@ export function createApiKeysRouter(): Router {
         if (status !== 404) throw error;
         logger.info(
           {
-            userId: req.user!.id,
+            ...membership.actor,
             organizationId: authorizedOrganizationId,
             apiKeyId,
           },

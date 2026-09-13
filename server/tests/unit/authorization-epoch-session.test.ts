@@ -32,7 +32,8 @@ vi.mock('../../src/db/user-authorization-snapshot-db.js', async (importOriginal)
   ...await importOriginal<typeof import('../../src/db/user-authorization-snapshot-db.js')>(),
   loadAuthorizationSnapshot: mocks.loadAuthorizationSnapshot,
 }));
-vi.mock('../../src/auth/workos-jwt.js', () => ({
+vi.mock('../../src/auth/workos-jwt.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/auth/workos-jwt.js')>(),
   verifyWorkOSJWT: mocks.verifyWorkOSJWT,
   looksLikeJWT: (token: string) => token.split('.').length === 3,
 }));
@@ -93,6 +94,7 @@ const organizationSelectors: Array<[string, (req: Request, organizationId: strin
   ['header', (req, org) => { req.headers['x-organization-id'] = org; }],
   ['query org', (req, org) => { req.query.org = org; }],
   ['query organization_id', (req, org) => { req.query.organization_id = org; }],
+  ['query organizationId', (req, org) => { req.query.organizationId = org; }],
   ['body organization_id', (req, org) => { req.body.organization_id = org; }],
   ['body organizationId', (req, org) => { req.body.organizationId = org; }],
   ['path orgId', (req, org) => { req.params.orgId = org; }],
@@ -180,7 +182,7 @@ describe('optional authentication credential presence', () => {
   it.each([false, true])('rejects a failed JWT without anonymous or cookie fallback (cookie present: %s)', async (cookiePresent) => {
     const req = request(`header.invalid${++sequence}.signature`, true);
     if (cookiePresent) req.cookies['wos-session'] = 'otherwise-valid-cookie';
-    mocks.verifyWorkOSJWT.mockRejectedValue(new Error('Invalid JWT signature'));
+    mocks.verifyWorkOSJWT.mockRejectedValue(Object.assign(new Error('Invalid JWT signature'), { code: 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED' }));
     const res = response();
     const next = vi.fn();
     await optionalAuth(req, res, next);
@@ -597,7 +599,7 @@ describe('optional authentication HTTP route boundary', () => {
   });
 
   it.each(['', 'Basic invalid', 'Bearer header.invalid.signature'])('rejects supplied Authorization %j without using an otherwise valid cookie', async (authorization) => {
-    mocks.verifyWorkOSJWT.mockRejectedValue(new Error('Invalid JWT signature'));
+    mocks.verifyWorkOSJWT.mockRejectedValue(Object.assign(new Error('Invalid JWT signature'), { code: 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED' }));
     const cookie = `otherwise-valid-${++sequence}`;
     const { app, handler } = route({ 'wos-session': cookie });
     const result = await supertest(app).get('/optional-auth-test')

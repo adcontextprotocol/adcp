@@ -109,7 +109,7 @@ function validatedTenantKey(permission: 'admin:*' | 'admin:read') {
   return {
     apiKey: {
       id: `key_${permission}`,
-      owner: { id: 'org_tenant' },
+      owner: { type: 'organization', id: 'org_tenant' },
       name: 'Tenant admin key',
       permissions: [permission],
     },
