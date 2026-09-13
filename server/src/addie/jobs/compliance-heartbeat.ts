@@ -67,6 +67,7 @@ interface HeartbeatSkipReasons {
   execution_fence_lost: number;
   target_unconfirmed: number;
   target_superseded: number;
+  audit_only: number;
   pre_target_error: number;
   agent_error: number;
 }
@@ -95,6 +96,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     execution_fence_lost: 0,
     target_unconfirmed: 0,
     target_superseded: 0,
+    audit_only: 0,
     pre_target_error: 0,
     agent_error: 0,
   };
@@ -239,6 +241,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       if (!isAuthoritativeComplianceRun(dbInput)) {
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
+        skipReasons.audit_only++;
         logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
           'Recorded audit-only compliance evidence; authoritative grade and badges preserved');
         continue;
