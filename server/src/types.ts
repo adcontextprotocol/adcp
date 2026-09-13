@@ -393,6 +393,8 @@ export interface Impersonator {
 }
 
 export interface WorkOSUser {
+  /** Immutable primary-DB snapshot for this request only; never serialize or cache. */
+  readonly authorizationSnapshot?: import('./db/user-authorization-snapshot-db.js').AuthorizationSnapshot;
   /**
    * The canonical workos_user_id for app-state queries. For singleton
    * identities this equals the authenticated WorkOS user. For non-primary
