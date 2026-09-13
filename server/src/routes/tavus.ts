@@ -56,8 +56,10 @@ import {
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
-  isWebUserAAOAdmin,
 } from "../addie/mcp/admin-tools.js";
+import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
+import { captureVoiceAuthorization, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
+import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -200,9 +202,10 @@ function validateLlmSecret(req: Request): boolean {
  * Build user-scoped tools for a voice call, matching the web chat tool set.
  * This gives voice Addie the same capabilities as chat Addie.
  */
-async function buildVoiceRequestTools(
+export async function buildVoiceRequestTools(
   userId: string,
   threadId: string,
+  adminPrincipal: AAOAdminPrincipal,
 ): Promise<{
   requestTools: RequestTools;
   requestContext: string;
@@ -211,8 +214,9 @@ async function buildVoiceRequestTools(
 }> {
   let memberContext: MemberContext | null = null;
   try {
-    memberContext = await getWebMemberContext(userId);
+    memberContext = await getWebMemberContext(userId, undefined, adminPrincipal);
   } catch (error) {
+    if (error instanceof AAOAdminLookupUnavailableError) throw error;
     logger.warn({ error, userId }, "Tavus: Failed to get member context");
   }
 
@@ -229,7 +233,7 @@ async function buildVoiceRequestTools(
   // Build per-request tools (mirrors addie-chat.ts prepareRequestWithMemberTools)
   const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS];
   const combinedHandlers = new Map([
-    ...createMemberToolHandlers(memberContext),
+    ...createMemberToolHandlers(memberContext, undefined, undefined, undefined, adminPrincipal),
     ...createSiHostToolHandlers(() => memberContext, () => threadId),
     ...createAdcpToolHandlers(memberContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
@@ -261,8 +265,8 @@ async function buildVoiceRequestTools(
   // Permission-gated tools
   const workingGroupDb = new WorkingGroupDatabase();
   const [userIsAdmin, ledGroups] = await Promise.all([
-    isWebUserAAOAdmin(userId),
-    workingGroupDb.getCommitteesLedByUser(userId),
+    isAuthenticatedUserAAOAdmin(adminPrincipal),
+    workingGroupDb.getCommitteesLedByUser(adminPrincipal.authWorkosUserId ?? adminPrincipal.id),
   ]);
 
   // Event tools: readonly for all users, admin tools for admins only
@@ -287,7 +291,7 @@ async function buildVoiceRequestTools(
 
   if (userIsAdmin || ledGroups.length > 0) {
     allTools.push(...MEETING_TOOLS);
-    for (const [name, handler] of createMeetingToolHandlers(memberContext)) {
+    for (const [name, handler] of createMeetingToolHandlers(memberContext, undefined, undefined, adminPrincipal)) {
       combinedHandlers.set(name, handler);
     }
   }
@@ -484,7 +488,13 @@ export function createTavusRouter(options?: {
       return res.status(404).json({ error: "Conversation not found" });
     }
     if (thread.user_id !== req.user.id) {
-      const userIsAdmin = await isWebUserAAOAdmin(req.user.id).catch(() => false);
+      let userIsAdmin: boolean;
+      try {
+        userIsAdmin = await isAuthenticatedUserAAOAdmin(req.user);
+      } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
+        throw error;
+      }
       if (!userIsAdmin) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -587,7 +597,10 @@ export function createTavusRouter(options?: {
 
       // Create a thread to track this video conversation
       const threadService = getThreadService();
-      const threadContext: Record<string, unknown> = { persona_id: personaId };
+      const threadContext: Record<string, unknown> = {
+        persona_id: personaId,
+        voice_authorization: await captureVoiceAuthorization(req.user),
+      };
       if (disableFillers) threadContext.disable_fillers = true;
       if (sessionGuidance) {
         threadContext.video_session_guidance = sessionGuidance;
@@ -656,6 +669,10 @@ export function createTavusRouter(options?: {
         display_name: displayName,
       });
     } catch (err) {
+      if (err instanceof VoiceAuthorizationUnavailableError) {
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({ error: err.code, message: err.message });
+      }
       logger.error({ err }, "Tavus: Error creating conversation");
       return res.status(500).json({ error: "Internal error" });
     }
@@ -744,7 +761,16 @@ export function createTavusRouter(options?: {
           sessionGuidance = readTavusSessionGuidance(
             thread.context?.video_session_guidance
           );
-          const result = await buildVoiceRequestTools(thread.user_id, threadId);
+          const authorization = await resolveVoiceAuthorization(thread.context?.voice_authorization);
+          if (authorization.status === 'unavailable') {
+            res.setHeader('Retry-After', '5');
+            return res.status(503).json({ error: { code: 'voice_authorization_unavailable', message: 'Voice authorization is temporarily unavailable. Please try again.' } });
+          }
+          if (authorization.status === 'stale') {
+            logger.info({ threadId, reason: authorization.reason }, 'Voice session requires fresh authentication');
+            return res.status(409).json({ error: { code: 'voice_reauthentication_required', message: 'Your sign-in authorization changed. Please sign in again and start a new video call.' } });
+          }
+          const result = await buildVoiceRequestTools(thread.user_id, threadId, authorization.principal);
           memberRequestContext = result.requestContext;
           try {
             pendingVoiceToolSelection = {
@@ -766,6 +792,7 @@ export function createTavusRouter(options?: {
           }
         }
       } catch (err) {
+        if (respondToAdminAuthorizationError(err, res)) return;
         logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools; using safe read-only fallback");
         // A verified video thread still represents an authenticated direct
         // response even when its dynamic capability assembly fails. Never

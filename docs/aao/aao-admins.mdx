@@ -19,6 +19,10 @@ Site-admin access is granted through membership in the server-pinned `aao-admin`
 
 `ADMIN_EMAILS` is an environment-managed break-glass path. It is not shown or edited in the UI. Keep its list minimal, rotate it through the deployment-secret process, and remove emergency entries as soon as the incident is resolved. When removing an entry, deploy the changed environment to every application replica and verify that the former address can no longer use an admin route.
 
+Addie web and voice administrator checks use the WorkOS credential that actually signed in, including its own email for break-glass access. Linking identities does not transfer platform administration: an administrator signing in through a linked non-admin canonical profile retains access, while a non-admin credential linked to an administrator does not inherit it. Organization owners cannot list or resolve the platform-wide escalation queue.
+
+When the administrator lookup is unavailable, Addie web requests return a retryable `503` with `admin_authorization_unavailable`; an already-open Addie stream reports a recoverable error. This is separate from `403` for a confirmed denial. A separately configured break-glass email remains valid during a membership lookup outage. Voice calls require captured credential provenance; legacy calls must restart through sign-in.
+
 Every site-admin grant or revoke requires a written reason and writes an append-only event with the actor, target, access mechanism, reason, and timestamp. The revoke and its audit event commit together, so deleting the active membership cannot delete its forensic record.
 
 The replica that performs a grant or revoke clears that user's local admin-status cache immediately. Other replicas cache a positive `aao-admin` membership decision for at most 60 seconds, so emergency revocation takes effect there within that bound. Negative and failed checks remain fail-closed.

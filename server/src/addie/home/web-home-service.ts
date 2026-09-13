@@ -7,7 +7,7 @@
 
 import type { HomeContent, GreetingSection } from './types.js';
 import { getWebMemberContext, type MemberContext } from '../member-context.js';
-import { isWebUserAAOAdmin } from '../mcp/admin-tools.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-status-lookup.js';
 import { buildAlerts } from './builders/alerts.js';
 import { buildQuickActions } from './builders/quick-actions.js';
 import { buildActivityFeed } from './builders/activity.js';
@@ -22,14 +22,17 @@ const logger = createLogger('addie-web-home-service');
 /**
  * Get home content for a web user (WorkOS user ID)
  */
-export async function getWebHomeContent(workosUserId: string, selectedOrganizationId?: string | null): Promise<HomeContent> {
+export async function getWebHomeContent(user: AAOAdminPrincipal | string, selectedOrganizationId?: string | null): Promise<HomeContent> {
+  // Legacy internal previews pass an explicitly selected WorkOS credential.
+  const principal = typeof user === 'string' ? { id: user } : user;
+  const workosUserId = principal.id;
   logger.debug({ workosUserId, selectedOrganizationId }, 'Addie Web Home: Building content');
 
   // Get member context for web user
-  const memberContext = await getWebMemberContext(workosUserId, selectedOrganizationId);
+  const memberContext = await getWebMemberContext(workosUserId, selectedOrganizationId, principal);
 
   // Check if user is AAO admin (based on aao-admin working group membership)
-  const userIsAdmin = await isWebUserAAOAdmin(workosUserId);
+  const userIsAdmin = await isAuthenticatedUserAAOAdmin(principal);
 
   // Get admin user ID for prospect stats (if admin)
   const adminUserId = userIsAdmin ? workosUserId : undefined;
