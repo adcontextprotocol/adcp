@@ -6,6 +6,7 @@ import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snap
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(), loadSealedSession: vi.fn(), checkPlatformBan: vi.fn(),
   loadAuthorizationSnapshot: vi.fn(), verifyWorkOSJWT: vi.fn(), poolQuery: vi.fn(),
+  refresh: vi.fn(), getRefreshedSession: vi.fn(),
 }));
 vi.hoisted(() => {
   process.env.DEV_USER_EMAIL = '';
@@ -35,6 +36,11 @@ vi.mock('../../src/auth/workos-jwt.js', () => ({
 }));
 vi.mock('../../src/db/client.js', () => ({
   getPool: () => ({ query: mocks.poolQuery }), query: mocks.poolQuery, isDatabaseInitialized: () => true,
+}));
+vi.mock('../../src/db/session-refresh-db.js', () => ({
+  getRefreshedSession: mocks.getRefreshedSession,
+  storeRefreshedSession: vi.fn().mockResolvedValue(undefined),
+  cleanExpiredRefreshes: vi.fn().mockResolvedValue(0),
 }));
 import { AuthorizationSnapshotUnavailableError } from '../../src/db/user-authorization-snapshot-db.js';
 import { invalidateBanCache, optionalAuth, requireAuth, stopAuthTimers } from '../../src/middleware/auth.js';
@@ -74,8 +80,273 @@ beforeEach(() => {
   invalidateBanCache('user', AUTHENTICATED_ID);
   mocks.checkPlatformBan.mockResolvedValue({ banned: false });
   mocks.authenticate.mockResolvedValue({ authenticated: true, user: { ...PROVIDER_USER }, accessToken: 'access-token' });
-  mocks.loadSealedSession.mockReturnValue({ authenticate: mocks.authenticate, refresh: vi.fn() });
+  mocks.refresh.mockReset().mockResolvedValue({ authenticated: false });
+  mocks.getRefreshedSession.mockReset().mockResolvedValue(null);
+  mocks.loadSealedSession.mockReturnValue({ authenticate: mocks.authenticate, refresh: mocks.refresh });
   mocks.verifyWorkOSJWT.mockResolvedValue({ sub: AUTHENTICATED_ID, email: PROVIDER_USER.email, isM2M: false });
+});
+
+const organizationSelectors: Array<[string, (req: Request, organizationId: string) => void]> = [
+  ['header', (req, org) => { req.headers['x-organization-id'] = org; }],
+  ['query org', (req, org) => { req.query.org = org; }],
+  ['query organization_id', (req, org) => { req.query.organization_id = org; }],
+  ['body organization_id', (req, org) => { req.body.organization_id = org; }],
+  ['body organizationId', (req, org) => { req.body.organizationId = org; }],
+  ['path orgId', (req, org) => { req.params.orgId = org; }],
+  ['path organizationId', (req, org) => { req.params.organizationId = org; }],
+];
+
+describe.each([
+  ['required cookie', requireAuth, false], ['optional cookie', optionalAuth, false],
+  ['required bearer', requireAuth, true], ['optional bearer', optionalAuth, true],
+] as const)('%s provider organization binding', (_label, middleware, bearer) => {
+  beforeEach(() => {
+    mocks.authenticate.mockResolvedValue({
+      authenticated: true, user: { ...PROVIDER_USER }, accessToken: 'access-token', organizationId: 'org_pinnacle',
+    });
+    mocks.verifyWorkOSJWT.mockResolvedValue({
+      sub: AUTHENTICATED_ID, email: PROVIDER_USER.email, isM2M: false, orgId: 'org_pinnacle',
+    });
+  });
+
+  describe.each(['cold', 'warm'] as const)('%s cache', (cacheState) => {
+    it.each(organizationSelectors)('rejects a mismatched %s selector and permits a matching selector', async (_location, select) => {
+      for (const selectedOrg of ['org_streamhaus', 'org_pinnacle']) {
+        const token = bearer ? `header.org${++sequence}.signature` : `sealed-org-${++sequence}`;
+        if (cacheState === 'warm') await middleware(request(token, bearer), response(), vi.fn());
+        const req = request(token, bearer);
+        select(req, selectedOrg);
+        const res = response();
+        const next = vi.fn();
+        const snapshotsBefore = mocks.loadAuthorizationSnapshot.mock.calls.length;
+        await middleware(req, res, next);
+        if (selectedOrg === 'org_streamhaus') {
+          expect(res.status).toHaveBeenCalledWith(403);
+          expect(next).not.toHaveBeenCalled();
+          expect(req.user).toBeUndefined();
+          expect(mocks.loadAuthorizationSnapshot).toHaveBeenCalledTimes(snapshotsBefore);
+        } else {
+          expect(next).toHaveBeenCalledOnce();
+          expect(res.status).not.toHaveBeenCalled();
+          expect(req.user?.authorizationSnapshot?.selectedOrganizationId).toBe('org_pinnacle');
+        }
+      }
+    });
+  });
+
+  it.each(['', '   ', null, [], {}])('rejects malformed supplied provider organization %j', async (providerOrganization) => {
+    mocks.authenticate.mockResolvedValue({
+      authenticated: true, user: { ...PROVIDER_USER }, accessToken: 'access-token', organizationId: providerOrganization,
+    });
+    mocks.verifyWorkOSJWT.mockResolvedValue({
+      sub: AUTHENTICATED_ID, email: PROVIDER_USER.email, isM2M: false, orgId: providerOrganization,
+    });
+    const token = bearer ? `header.malformed${++sequence}.signature` : `sealed-malformed-${++sequence}`;
+    const req = request(token, bearer);
+    req.headers['x-organization-id'] = 'org_pinnacle';
+    const res = response();
+    const next = vi.fn();
+    await middleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe('optional authentication credential presence', () => {
+  function expectRejected(req: Request, res: Response, next: ReturnType<typeof vi.fn>, status: number): void {
+    expect(res.status).toHaveBeenCalledWith(status);
+    expect(next).not.toHaveBeenCalled();
+    expect(req.user).toBeUndefined();
+    expect(res.redirect).not.toHaveBeenCalled();
+  }
+
+  it('permits anonymous access only when no credential is supplied', async () => {
+    const req = request('unused');
+    req.cookies = {};
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.user).toBeUndefined();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('rejects a failed JWT without anonymous or cookie fallback (cookie present: %s)', async (cookiePresent) => {
+    const req = request(`header.invalid${++sequence}.signature`, true);
+    if (cookiePresent) req.cookies['wos-session'] = 'otherwise-valid-cookie';
+    mocks.verifyWorkOSJWT.mockRejectedValue(new Error('Invalid JWT signature'));
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each(['Bearer ', 'Bearer    ', 'Basic invalid', ''])('rejects malformed authorization header %j without cookie fallback', async (header) => {
+    const req = request('otherwise-valid-cookie');
+    req.headers.authorization = header;
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unrecognized bearer after sealed-session validation instead of using a valid cookie', async () => {
+    const token = `invalid-opaque-${++sequence}`;
+    const req = request(token, true);
+    req.cookies['wos-session'] = 'otherwise-valid-cookie';
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+    expect(mocks.loadSealedSession).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessionData: token }));
+  });
+
+  it('continues to authenticate native sealed bearer sessions', async () => {
+    const token = `native-sealed-${++sequence}`;
+    const req = request(token, true);
+    const next = vi.fn();
+    await optionalAuth(req, response(), next);
+    expect(next).toHaveBeenCalledOnce();
+    expect(mocks.loadSealedSession).toHaveBeenCalledWith(expect.objectContaining({ sessionData: token }));
+    expect(req.user?.authorizationSnapshot?.authenticatedUserId).toBe(AUTHENTICATED_ID);
+  });
+
+  it.each(['', null, {}])('rejects malformed supplied session cookie %j', async (cookie) => {
+    const req = request('unused');
+    req.cookies['wos-session'] = cookie;
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects expired sessions and their dead-cache replay instead of making them anonymous', async () => {
+    const token = `dead-session-${++sequence}`;
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const req = request(token);
+      const res = response();
+      const next = vi.fn();
+      await optionalAuth(req, res, next);
+      expectRejected(req, res, next, 401);
+    }
+    expect(mocks.authenticate).toHaveBeenCalledOnce();
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a provider result claiming authentication without a user', async () => {
+    mocks.authenticate.mockResolvedValue({ authenticated: true });
+    const req = request(`missing-user-${++sequence}`);
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+  });
+
+  it.each([false, true])('rejects a missing local credential on cold authentication (bearer: %s)', async (bearer) => {
+    mocks.loadAuthorizationSnapshot.mockResolvedValue(null);
+    const req = request(bearer ? `header.missing${++sequence}.signature` : `sealed-missing-${++sequence}`, bearer);
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+  });
+
+  it.each(['JWT verification', 'session authentication', 'session refresh'] as const)('returns 503 on transient %s failure without anonymous fallback', async (stage) => {
+    const transient = Object.assign(new Error('Authentication upstream timed out'), { code: 'ETIMEDOUT' });
+    const bearer = stage === 'JWT verification';
+    const req = request(bearer ? `header.timeout${++sequence}.signature` : `sealed-timeout-${++sequence}`, bearer);
+    if (stage === 'JWT verification') mocks.verifyWorkOSJWT.mockRejectedValue(transient);
+    if (stage === 'session authentication') mocks.authenticate.mockRejectedValue(transient);
+    if (stage === 'session refresh') {
+      mocks.authenticate.mockResolvedValue({ authenticated: false });
+      mocks.refresh.mockRejectedValue(transient);
+    }
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 503);
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 if shared session recovery is unavailable', async () => {
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    mocks.getRefreshedSession.mockRejectedValue(new Error('Session database unavailable'));
+    const req = request(`sealed-recovery-${++sequence}`);
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 503);
+  });
+
+  it.each([
+    ['JWKS HTTP response', Object.assign(new Error('Expected 200 OK from the JSON Web Key Set HTTP response'), {
+      name: 'JOSEError', code: 'ERR_JOSE_GENERIC',
+    })],
+    ['malformed JWKS response', Object.assign(new Error('Failed to parse the JSON Web Key Set HTTP response as JSON'), {
+      name: 'JOSEError', code: 'ERR_JOSE_GENERIC',
+    })],
+    ['provider HTTP 503', Object.assign(new Error('Service unavailable'), { status: 503 })],
+    ['provider HTTP 429', Object.assign(new Error('Rate limited'), { statusCode: 429 })],
+  ])('returns 503 for unavailable %s during JWT verification', async (_label, error) => {
+    mocks.verifyWorkOSJWT.mockRejectedValue(error);
+    const req = request(`header.unavailable${++sequence}.signature`, true);
+    req.cookies['wos-session'] = 'otherwise-valid-cookie';
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 503);
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+  });
+
+  it.each(['initial', 'shared'] as const)('returns 503 for a retryable %s refresh result and permits a later retry', async (stage) => {
+    const token = `retryable-${stage}-${++sequence}`;
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    if (stage === 'shared') {
+      mocks.getRefreshedSession.mockResolvedValueOnce('shared-sealed-session');
+      mocks.refresh.mockResolvedValueOnce({ authenticated: false, reason: 'invalid_grant', retryable: false });
+    }
+    mocks.refresh.mockResolvedValue({ authenticated: false, reason: 'server_error', retryable: true });
+    const req = request(token);
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 503);
+
+    mocks.authenticate.mockResolvedValue({ authenticated: true, user: { ...PROVIDER_USER }, accessToken: 'access-token' });
+    const retry = request(token);
+    const retryNext = vi.fn();
+    await optionalAuth(retry, response(), retryNext);
+    expect(retryNext).toHaveBeenCalledOnce();
+    expect(retry.user?.authorizationSnapshot?.authenticatedUserId).toBe(AUTHENTICATED_ID);
+  });
+
+  it('returns 503 on a thrown provider HTTP 503 during session refresh', async () => {
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    mocks.refresh.mockRejectedValue(Object.assign(new Error('Service unavailable'), { status: 503 }));
+    const req = request(`refresh-503-${++sequence}`);
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 503);
+  });
+
+  it('returns 401 when sealed-session decoding rejects the presented credential', async () => {
+    mocks.loadSealedSession.mockImplementationOnce(() => { throw new Error('Invalid sealed session'); });
+    const req = request(`invalid-sealed-${++sequence}`);
+    const res = response();
+    const next = vi.fn();
+    await optionalAuth(req, res, next);
+    expectRejected(req, res, next, 401);
+  });
 });
 afterAll(stopAuthTimers);
 

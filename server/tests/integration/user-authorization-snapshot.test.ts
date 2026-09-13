@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Pool, PoolClient } from 'pg';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
+import * as database from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
   AuthorizationSnapshotUnavailableError,
@@ -250,7 +251,7 @@ describe('primary database authorization snapshots', () => {
     const readBarrier = new Promise<void>(resolve => { readCompleted = resolve; });
     const deliveryBarrier = new Promise<void>(resolve => { releaseRead = resolve; });
     let pendingRead: Promise<AuthorizationSnapshot | null> | undefined;
-    const actualQuery = pool.query.bind(pool);
+    const actualQuery = database.queryWithTimeout;
     try {
       await writer.query('BEGIN');
       await link(primaryId, secondaryId, writer);
@@ -262,8 +263,8 @@ describe('primary database authorization snapshots', () => {
       // Hold delivery of the first real SQL result while the writer commits.
       // A split identity/epoch loader would then issue its epoch query against
       // the new commit and return old identity + new epoch. No rows are mocked.
-      const readSpy = vi.spyOn(pool, 'query').mockImplementationOnce(async (...args: any[]) => {
-        const result = await (actualQuery as (...queryArgs: any[]) => Promise<unknown>)(...args);
+      const readSpy = vi.spyOn(database, 'queryWithTimeout').mockImplementationOnce(async (...args) => {
+        const result = await actualQuery(...args);
         readCompleted();
         await deliveryBarrier;
         return result;
@@ -314,7 +315,7 @@ describe('primary database authorization snapshots', () => {
 
   it('fails unavailable on database errors instead of replaying a warm snapshot', async () => {
     await snapshot(PERSONAL_ID, PERSONAL_ORG);
-    vi.spyOn(pool, 'query').mockRejectedValueOnce(new Error('private database connection details'));
+    vi.spyOn(database, 'queryWithTimeout').mockRejectedValueOnce(new Error('private database connection details'));
     await expect(loadAuthorizationSnapshot(PERSONAL_ID, PERSONAL_ORG))
       .rejects.toThrow(new AuthorizationSnapshotUnavailableError());
   });
@@ -326,7 +327,7 @@ describe('primary database authorization snapshots', () => {
     const primary = await snapshot(PERSONAL_ID, PERSONAL_ORG);
     // The integration database is a primary. Simulate only the single query
     // result from a recovering replica, including its no-user anchor row.
-    const readSpy = vi.spyOn(pool, 'query').mockResolvedValueOnce({
+    const readSpy = vi.spyOn(database, 'queryWithTimeout').mockResolvedValueOnce({
       rows: [{
         in_recovery: true,
         authenticated_user_id: hasUser ? primary.authenticatedUserId : null,
@@ -350,5 +351,30 @@ describe('primary database authorization snapshots', () => {
     await expect(loadAuthorizationSnapshot(PERSONAL_ID, PERSONAL_ORG))
       .rejects.toBeInstanceOf(AuthorizationSnapshotUnavailableError);
     expect(readSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('expires a blocked statement, releases its transaction, and loads fresh authority after recovery', async () => {
+    const before = await snapshot(PERSONAL_ID, PERSONAL_ORG);
+    const writer = await pool.connect();
+    const boundedQuery = vi.spyOn(database, 'queryWithTimeout');
+    try {
+      await writer.query('BEGIN');
+      await writer.query('LOCK TABLE identity_workos_users IN ACCESS EXCLUSIVE MODE');
+      const startedAt = Date.now();
+      await expect(loadAuthorizationSnapshot(PERSONAL_ID, PERSONAL_ORG))
+        .rejects.toBeInstanceOf(AuthorizationSnapshotUnavailableError);
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
+      expect(boundedQuery).toHaveBeenCalledTimes(1);
+
+      await bumpAuthorizationEpochs(writer, [PERSONAL_ID]);
+      await writer.query('COMMIT');
+      const after = await snapshot(PERSONAL_ID, PERSONAL_ORG);
+      expect(after.authorizationEpoch).toBe('1');
+      expect(sameAuthorizationSnapshot(before, after)).toBe(false);
+      expect(boundedQuery).toHaveBeenCalledTimes(2);
+    } finally {
+      await writer.query('ROLLBACK');
+      writer.release();
+    }
   });
 });
