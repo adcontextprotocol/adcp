@@ -201,6 +201,57 @@ describe('runComplianceHeartbeatJob', () => {
     );
   });
 
+  it.each([true, false])('preserves badges, notifications, and public timestamps for a timed-out run (eligible=%s)', async eligible => {
+    const partialInput = {
+      agent_url: 'https://agent.example.com/mcp', overall_status: 'failing',
+      completeness: 'timed_out', is_authoritative: false,
+      tracks_json: [], storyboard_statuses: [], replace_storyboard_statuses: true,
+    };
+    mocks.complianceResultToDbInput.mockReturnValue(partialInput);
+    mocks.comply.mockResolvedValue({
+      completeness: 'timed_out', overall_status: 'passing', observations: [],
+      agent_profile: { specialisms: eligible ? ['signals-audience-activation'] : [], adcp_supported_versions: ['3.1'] },
+      summary: { headline: 'Incomplete run' },
+    });
+    mocks.recordComplianceRun.mockResolvedValue({ run: { id: 'audit-run' }, statusTransition: null, storyboardStatuses: [] });
+    mocks.badgeEligibleVersionsForTargetSelection.mockReturnValue(eligible ? ['3.1'] : []);
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const { notifyComplianceChange, notifyVerificationChange } = await import('../../src/notifications/compliance.js');
+    expect(await runComplianceHeartbeatJob({ limit: 1 })).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.recordComplianceRun).toHaveBeenCalledWith(expect.objectContaining({ completeness: 'timed_out', is_authoritative: false, dry_run: false }));
+    expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
+    expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
+    expect(notifyComplianceChange).not.toHaveBeenCalled();
+    expect(notifyVerificationChange).not.toHaveBeenCalled();
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget).toHaveBeenCalled();
+    expect(mocks.query.mock.calls.every(([sql]) => !String(sql).includes('last_checked_at'))).toBe(true);
+    expect(mocks.query.mock.calls[0][0]).toContain('next_compliance_check_at');
+  });
+
+  it.each(['record', 'defer'])('keeps a timed-out run audit-only after a transient %s failure', async failure => {
+    mocks.comply.mockResolvedValue({
+      completeness: 'timed_out', overall_status: 'passing', observations: [],
+      agent_profile: { adcp_supported_versions: ['3.1'] }, summary: { headline: 'Incomplete run' },
+    });
+    mocks.complianceResultToDbInput.mockReturnValue({
+      agent_url: 'https://agent.example.com/mcp', completeness: 'timed_out', is_authoritative: false,
+      overall_status: 'passing', tracks_json: [], storyboard_statuses: [],
+    });
+    mocks.recordComplianceRun.mockResolvedValue({ run: { id: 'audit-run' }, statusTransition: null, storyboardStatuses: [] });
+    if (failure === 'record') mocks.recordComplianceRun.mockRejectedValueOnce(new Error('Transient database failure'));
+    else mocks.deferComplianceCheckAfterInconclusiveTarget.mockRejectedValueOnce(new Error('Transient scheduling failure'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const { notifyComplianceChange, notifyVerificationChange } = await import('../../src/notifications/compliance.js');
+    expect(await runComplianceHeartbeatJob({ limit: 1 })).toMatchObject({ checked: 0, skipped: 1 });
+    expect(mocks.recordComplianceRun).toHaveBeenCalledTimes(2);
+    expect(mocks.recordComplianceRun.mock.calls.every(([input]) => input.is_authoritative === false)).toBe(true);
+    expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
+    expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
+    expect(notifyComplianceChange).not.toHaveBeenCalled();
+    expect(notifyVerificationChange).not.toHaveBeenCalled();
+  });
+
   it('reports the full due backlog without increasing the selected batch', async () => {
     mocks.getAgentsDueForCheck.mockResolvedValueOnce([
       {
@@ -491,13 +542,13 @@ describe('runComplianceHeartbeatJob', () => {
     });
   });
 
-  it('counts malformed saved Basic auth as a checked failure', async () => {
+  it('records malformed saved Basic auth as audit-only setup evidence', async () => {
     mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.username must be a non-empty string'));
 
     const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
     const result = await runComplianceHeartbeatJob({ limit: 1 });
 
-    expect(result).toEqual({ checked: 1, passed: 0, failed: 1, skipped: 0 });
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.comply).toHaveBeenCalledWith(
       'https://agent.example.com/mcp',
       expect.objectContaining({
@@ -509,6 +560,8 @@ describe('runComplianceHeartbeatJob', () => {
       expect.objectContaining({
         agent_url: 'https://agent.example.com/mcp',
         overall_status: 'failing',
+        is_authoritative: false,
+        completeness: 'not_completed',
         headline: 'Saved Basic auth credentials are malformed',
         observations_json: [{
           category: 'authentication',

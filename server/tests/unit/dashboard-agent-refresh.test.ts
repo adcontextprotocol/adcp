@@ -129,6 +129,16 @@ describe("dashboard agent refresh", () => {
     expect(summary).not.toContain("3.0");
   });
 
+  it("labels timed-out evidence as incomplete and preserves the previous grade", () => {
+    const context = loadRefreshHelpers();
+    const data = { online: true, compliance: { ran: true, completeness: 'timed_out', is_authoritative: false,
+      storyboards_passing: 1, storyboards_total: 2 } };
+    expect((context.isSuccessfulAgentRetest as (data: unknown) => boolean)(data)).toBe(false);
+    const summary = (context.buildAgentRefreshSummary as (data: unknown) => string)(data);
+    expect(summary).toContain('previous grade and badges preserved');
+    expect(summary).not.toContain('compliance: 1/2');
+  });
+
   it("stores freshly fetched compliance state and swaps the stale card", async () => {
     const freshState = {
       url: "https://seller.example/mcp",

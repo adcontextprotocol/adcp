@@ -1,3 +1,4 @@
+import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
 /**
  * Addie Member Tools
  *
@@ -4802,7 +4803,7 @@ export function createMemberToolHandlers(
               // Verification-change notifications are intentionally skipped —
               // the owner already received the result in their chat response.
               const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
-              if (declaredSpecialisms.length > 0 && dbInput.storyboard_statuses?.length) {
+              if (isAuthoritativeComplianceRun(dbInput) && declaredSpecialisms.length > 0 && dbInput.storyboard_statuses?.length) {
                 try {
                   await runBadgeFanOut({
                     complianceDb,
@@ -4815,7 +4816,7 @@ export function createMemberToolHandlers(
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
                 }
-              } else {
+              } else if (isAuthoritativeComplianceRun(dbInput)) {
                 try {
                   await revokeUnsupportedPublicBadges({
                     complianceDb,
@@ -4832,7 +4833,7 @@ export function createMemberToolHandlers(
           }
         } else if (isAgentOwner && writesCanonicalComplianceState && tracks) {
           skippedCanonicalWriteReason = 'tracks';
-        } else if (isAgentOwner) {
+        } else if (isAgentOwner && result.completeness !== 'timed_out') {
           skippedCanonicalWriteReason = 'target';
           try {
             await revokeUnsupportedPublicBadges({

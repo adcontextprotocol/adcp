@@ -494,7 +494,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     await expect(db.getComplianceHistory(AGENT_URL, 10)).resolves.toEqual([]);
 
     const [sql, params] = mockedQuery.mock.calls[0];
-    expect(sql).toContain('($3::boolean OR dry_run = FALSE)');
+    expect(sql).toContain('($3::boolean OR (dry_run = FALSE AND is_authoritative = TRUE))');
     expect(params).toEqual([AGENT_URL, 10, false]);
   });
 

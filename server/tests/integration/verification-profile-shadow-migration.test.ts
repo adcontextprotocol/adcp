@@ -39,7 +39,8 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
         tested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         overall_status TEXT NOT NULL DEFAULT 'unknown',
         tracks_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-        dry_run BOOLEAN NOT NULL DEFAULT FALSE
+        dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+        is_authoritative BOOLEAN NOT NULL DEFAULT TRUE
       );
       CREATE TABLE discovered_agents (agent_url TEXT PRIMARY KEY);
       CREATE TABLE agent_registry_metadata (
@@ -250,5 +251,27 @@ describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migratio
     expect(report.agents_with_two_or_more_runs).toBe(1);
     expect(report.agents_with_two_or_more_decision_ready_runs).toBe(0);
     expect(report.agents_with_stable_two_or_more_decision_ready_runs).toBe(0);
+  });
+
+  it('excludes audit-only history from both aggregate and per-agent public evidence', async () => {
+    await client.query(`
+      INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage)
+        VALUES ('https://public-profile.example.test/mcp', 'production'),
+               ('https://audit-only.example.test/mcp', 'production');
+      INSERT INTO agent_compliance_runs (agent_url, tested_at, overall_status, tracks_json, is_authoritative)
+        VALUES ('https://public-profile.example.test/mcp', NOW() - INTERVAL '1 hour', 'passing', '[{"track":"core"}]', TRUE),
+               ('https://public-profile.example.test/mcp', NOW(), 'failing', '[]', FALSE),
+               ('https://audit-only.example.test/mcp', NOW(), 'failing', '[]', FALSE);
+    `);
+    const report = await runAudit(['--hours=48', '--include-agents'], client);
+    expect(report.unassessed_without_public_run).toBe(1);
+    expect(report.unassessed_latest_public_run_empty_tracks).toBe(0);
+    const agents = report.agents as Array<Record<string, unknown>>;
+    expect(agents.find(agent => agent.agent_url === 'https://public-profile.example.test/mcp')).toMatchObject({
+      latest_public_status: 'passing', latest_public_run_empty_tracks: false,
+    });
+    expect(agents.find(agent => agent.agent_url === 'https://audit-only.example.test/mcp')).toMatchObject({
+      latest_public_run_at: null, blocking_reasons: ['not_assessed', 'no_public_run'],
+    });
   });
 });

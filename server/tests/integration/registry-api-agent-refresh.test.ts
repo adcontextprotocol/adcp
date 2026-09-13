@@ -57,6 +57,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('admin-auth-fallback'),
   ownedAgentUrl('async-refresh'),
   ownedAgentUrl('refresh-recovery'),
+  ownedAgentUrl('refresh-recovery-timed_out'),
   ownedAgentUrl('badge-retry'),
   ownedAgentUrl('badge-retry-exhausted'),
   ownedAgentUrl('legacy-timeout'),
@@ -643,9 +644,12 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     });
   }, 20_000);
 
-  it('recovers a persisted run after worker interruption without executing a second suite', async () => {
+  it.each(['complete', 'timed_out'] as const)('recovers a persisted %s run without executing a second suite or publishing partial evidence', async completeness => {
     currentUserId = STATIC_ADMIN_USER_ID;
-    const agentUrl = ownedAgentUrl('refresh-recovery');
+    const agentUrl = ownedAgentUrl(completeness === 'complete' ? 'refresh-recovery' : 'refresh-recovery-timed_out');
+    complyMock.mockResolvedValueOnce({ ...makeComplianceResult(), completeness });
+    const revokeBadges = vi.spyOn(ComplianceDatabase.prototype, 'revokeBadge');
+    const upsertBadge = vi.spyOn(ComplianceDatabase.prototype, 'upsertBadge');
     refreshSingleAgentMock
       .mockResolvedValueOnce({
         online: true,
@@ -713,12 +717,25 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
             ran: true,
             run_id: expect.any(String),
             test_session_id: accepted.body.test_session_id,
-            badge_eligible: true,
-            badge_eligible_adcp_versions: ['3.0'],
+            completeness,
+            is_authoritative: completeness === 'complete',
+            badge_eligible: completeness === 'complete',
+            badge_eligible_adcp_versions: completeness === 'complete' ? ['3.0'] : [],
           },
         },
       });
+      if (completeness === 'timed_out') {
+        expect(revokeBadges).not.toHaveBeenCalled();
+        expect(upsertBadge).not.toHaveBeenCalled();
+        const materialized = await pool.query('SELECT 1 FROM agent_compliance_status WHERE agent_url = $1', [agentUrl]);
+        expect(materialized.rowCount).toBe(0);
+        const history = await request(app).get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/history`);
+        expect(history.body.runs).toEqual([]);
+
+      }
     } finally {
+      revokeBadges.mockRestore();
+      upsertBadge.mockRestore();
       markSucceeded.mockRestore();
       resolveOwnerAuth.mockRestore();
     }

@@ -1,3 +1,4 @@
+import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 /**
  * Public Registry API routes.
  *
@@ -3993,7 +3994,7 @@ registry.registerPath({
   operationId: "requeueAgentForHeartbeat",
   summary: "Requeue agent for compliance heartbeat",
   description:
-    "Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.",
+    "Clears the agent's next scheduled check time so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4136,7 +4137,9 @@ registry.registerPath({
             status_url: z.string().optional().openapi({ description: "Durable operation URL, present on recovered responses." }),
             coalesced: z.boolean().optional(),
             compliance: z.object({
-              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              ran: z.boolean().openapi({ description: "True if a compliance run was recorded. Check completeness and is_authoritative before treating its results as the public grade." }),
+              completeness: z.enum(['complete', 'timed_out', 'not_completed']).optional(),
+              is_authoritative: z.boolean().optional().openapi({ description: "Only authoritative runs update the public grade and badge state. Incomplete runs preserve the previous complete assessment." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
               requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
@@ -4937,6 +4940,8 @@ registry.registerPath({
             badge_eligible: z.boolean(),
             badge_eligible_adcp_versions: z.array(z.string()),
             run_id: z.string().openapi({ description: "Compliance run id written by this owner-triggered storyboard run." }),
+            completeness: z.enum(['complete', 'timed_out', 'not_completed']),
+            is_authoritative: z.boolean(),
             storyboard_status: StoryboardRunStatusResponseSchema.openapi({ description: "Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status." }),
             phases: z.any(),
             summary: z.any(),
@@ -7934,6 +7939,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       badge_eligible?: boolean;
       badge_eligible_adcp_versions?: string[];
       overall_status?: string;
+      completeness?: string;
+      is_authoritative?: boolean;
       storyboards_passing?: number;
       storyboards_total?: number;
       run_id?: string;
@@ -7952,6 +7959,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         requested_compliance_target: run.requested_compliance_target ?? undefined,
         adcp_version: run.adcp_version ?? undefined,
         overall_status: run.overall_status,
+        completeness: run.completeness,
+        is_authoritative: isAuthoritativeComplianceRun(run),
         storyboards_passing: storyboardStatuses.filter(status => status.status === 'passing').length,
         storyboards_total: storyboardStatuses.length,
         observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
@@ -7974,26 +7983,28 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
       complianceSummary = {
         ...complianceSummary,
-        ...badgeEligibilityMetadata(badgeVersions),
+        ...badgeEligibilityMetadata(isAuthoritativeComplianceRun(run) ? badgeVersions : []),
       };
       lease.assertValid();
-      if (
-        Array.isArray(profile.specialisms)
-        && profile.specialisms.length > 0
-        && storyboardStatuses.length > 0
-        && badgeVersions.length > 0
-      ) {
-        await runBadgeFanOut({
-          complianceDb,
-          agentUrl,
-          declaredSpecialisms: profile.specialisms,
-          runId: run.id,
-          adcpVersions: badgeVersions,
-          supportedVersions,
-          throwOnFailure: true,
-        });
-      } else {
-        await revokeUnsupportedPublicBadges({ complianceDb, agentUrl, supportedVersions });
+      if (isAuthoritativeComplianceRun(run)) {
+        if (
+          Array.isArray(profile.specialisms)
+          && profile.specialisms.length > 0
+          && storyboardStatuses.length > 0
+          && badgeVersions.length > 0
+        ) {
+          await runBadgeFanOut({
+            complianceDb,
+            agentUrl,
+            declaredSpecialisms: profile.specialisms,
+            runId: run.id,
+            adcpVersions: badgeVersions,
+            supportedVersions,
+            throwOnFailure: true,
+          });
+        } else {
+          await revokeUnsupportedPublicBadges({ complianceDb, agentUrl, supportedVersions });
+        }
       }
       lease.assertValid();
     } else if (!probeResult.error && !probeResult.oauth_required) {
@@ -8067,8 +8078,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             test_session_id: testSessionId,
             requested_compliance_target: run.requested_compliance_target ?? undefined,
             adcp_version: run.adcp_version ?? undefined,
-            ...(replayedExisting ? {} : badgeEligibilityMetadata(runBadgeEligibleVersions)),
+            ...(replayedExisting ? {} : badgeEligibilityMetadata(isAuthoritativeComplianceRun(run) ? runBadgeEligibleVersions : [])),
             overall_status: run.overall_status,
+            completeness: run.completeness,
+            is_authoritative: isAuthoritativeComplianceRun(run),
             storyboards_passing: passing,
             storyboards_total: storyboardStatuses.length,
             observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
@@ -8076,7 +8089,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           };
 
           const declaredSpecialisms = run.agent_profile_json?.specialisms ?? [];
-          if (!replayedExisting) {
+          if (!replayedExisting && isAuthoritativeComplianceRun(run)) {
             if (
               declaredSpecialisms.length > 0
               && storyboardStatuses.length > 0
@@ -9192,11 +9205,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             error_kind: 'unresolved_compliance_target',
           });
         }
-        const runBadgeEligibleVersions = [
-          ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
-        ];
-
-        // Record the run (pass storyboard ID for per-storyboard status materialization).
+        // Record targeted evidence without publishing a partial denominator.
         // Owner-only path (gated above by resolveAgentOwnerOrg), so triggered_by
         // matches evaluate_agent_quality semantics: owner_test, not the legacy
         // 'manual' label.
@@ -9213,36 +9222,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           triggered_org_id: orgId,
         });
 
-        // Fan out badge issuance on the canonical write so an owner who
-        // just fixed a single storyboard sees the badge update on their
-        // next page load. The helper loads ALL latest storyboard statuses
-        // from agent_storyboard_status so this partial run doesn't degrade
-        // badges for storyboards it didn't touch. No notification — the
-        // owner already sees the result in the HTTP response.
-        const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-        if (declaredSpecialisms.length > 0 && runBadgeEligibleVersions.length > 0) {
-          try {
-            await runBadgeFanOut({
-              complianceDb,
-              agentUrl,
-              declaredSpecialisms,
-              adcpVersions: runBadgeEligibleVersions,
-              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-            });
-          } catch (badgeError) {
-            logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
-          }
-        } else {
-          try {
-            await revokeUnsupportedPublicBadges({
-              complianceDb,
-              agentUrl,
-              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-            });
-          } catch (badgeError) {
-            logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after storyboard-run');
-          }
-        }
+        // Targeted retests are audit-only. A complete suite establishes the
+        // fixed public denominator and is required before refreshing badges.
 
         const storyboardStatus = dbInput.storyboard_statuses?.find(s => s.storyboard_id === req.params.storyboardId) ?? {
           storyboard_id: req.params.storyboardId,
@@ -9308,8 +9289,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           },
           requested_compliance_target: runTarget.requested,
           adcp_version: complyResult.adcp_version,
-          ...badgeEligibilityMetadata(runBadgeEligibleVersions),
+          ...badgeEligibilityMetadata([]),
           run_id: run.id,
+          completeness: run.completeness,
+          is_authoritative: isAuthoritativeComplianceRun(run),
           storyboard_status: serializedStoryboardStatus,
           phases: annotatedPhases,
           summary: complyResult.summary,
