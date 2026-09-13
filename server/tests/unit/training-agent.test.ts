@@ -19275,18 +19275,6 @@ describe('proposal lifecycle', () => {
     });
     expect(pricing.result.success).toBe(true);
 
-    const conflicting = await simulateCallTool(server, 'get_products', {
-      account,
-      buying_mode: 'brief',
-      brief: 'Display inventory',
-      filters: { channels: ['display'], countries: ['CA'] },
-      targeting_overlay: { geo_countries: ['US'] },
-    });
-    expect(conflicting).toMatchObject({
-      isError: true,
-      result: { code: 'INVALID_REQUEST', field: 'filters.countries' },
-    });
-
     const inferred = await simulateCallTool(server, 'get_products', {
       account,
       buying_mode: 'brief',

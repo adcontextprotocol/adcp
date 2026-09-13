@@ -7589,20 +7589,42 @@ function canonicalStringSet(value: unknown): string[] | undefined {
   return [...new Set(value)].sort();
 }
 
-function conflictingLegacyDiscoveryTargeting(req: GetProductsRequest): string | undefined {
-  const request = req as unknown as Record<string, unknown>;
-  const filters = isRecord(request.filters) ? request.filters : undefined;
-  const overlay = isRecord(request.targeting_overlay) ? request.targeting_overlay : undefined;
-  const legacyCountries = canonicalStringSet(filters?.countries);
-  const overlayCountries = canonicalStringSet(overlay?.geo_countries);
-  if (
-    legacyCountries
-    && overlayCountries
-    && !isDeepStrictEqual(legacyCountries, overlayCountries)
-  ) {
-    return 'filters.countries';
+/** Controller fixtures expose discrete inventory coverage separately from
+ * overlay_support. The training seller can evaluate country and metro facts;
+ * it refuses geography it cannot evaluate instead of ignoring a predicate. */
+function filterProductsByCoverage(
+  products: Product[],
+  filters: Record<string, unknown>,
+): { products: Product[]; unsupported?: string } {
+  const fields = ['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity'];
+  const requested = fields.filter(field => filters[field] !== undefined);
+  if (requested.length === 0) return { products };
+  const unsupported = requested.find(field => field !== 'countries' && field !== 'metros');
+  if (unsupported) return { products: [], unsupported };
+  const coverageByProduct = new Map<Product, Record<string, unknown>>();
+  for (const product of products) {
+    const ext = (product as unknown as Record<string, unknown>).ext;
+    const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
+    const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
+    for (const field of requested) {
+      if (!coverage || !Array.isArray(coverage[field])) return { products: [], unsupported: field };
+    }
+    coverageByProduct.set(product, coverage!);
   }
-  return undefined;
+  return {
+    products: products.filter(product => {
+      const coverage = coverageByProduct.get(product)!;
+      return requested.every(field => {
+        const values = filters[field];
+        if (!Array.isArray(values)) return false;
+        const inventory = coverage[field] as unknown[];
+        return values.some(value => inventory.some(area => field === 'countries'
+          ? area === value
+          : isRecord(area) && isRecord(value)
+            && area.system === value.system && area.code === value.code));
+      });
+    }),
+  };
 }
 
 /** The training seller recognizes only deliberately explicit hard-requirement
@@ -9591,17 +9613,6 @@ async function handleGetProductsUnlocked(
       }] as TaskError[],
     };
   }
-  const conflictingTargetingField = conflictingLegacyDiscoveryTargeting(req);
-  if (conflictingTargetingField) {
-    return {
-      errors: [{
-        code: 'INVALID_REQUEST',
-        message: 'Legacy country filters and targeting_overlay.geo_countries must express the same delivery constraint when both are present.',
-        field: conflictingTargetingField,
-        recovery: 'correctable',
-      }] as TaskError[],
-    };
-  }
   if ((req as WholesaleFeedRequest).if_pricing_version !== undefined) {
     if (buyingMode !== 'wholesale') {
       return {
@@ -9726,6 +9737,24 @@ async function handleGetProductsUnlocked(
       }
       products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
     }
+    const coverageFilters = req.filters as Record<string, unknown>;
+    if (['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity'].some(field => coverageFilters[field] !== undefined)) {
+      const seededIds = seededProductIds(session);
+      if (seededIds.size > 0) products = products.filter(product => seededIds.has(product.product_id));
+    }
+    const coverage = filterProductsByCoverage(products, coverageFilters);
+    if (coverage.unsupported) {
+      const prefix = request.__adcp_operation === 'list_products'
+        || request.__adcp_operation === 'request_proposals'
+        ? '/criteria/offer_filters' : '/filters';
+      return { errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        message: `The training seller cannot evaluate ${coverage.unsupported} coverage for this selection.`,
+        field: `${prefix}/${coverage.unsupported}`,
+        recovery: 'correctable',
+      }] as TaskError[] };
+    }
+    products = coverage.products;
     const formatIdsFilter = req.filters.format_ids;
     if (formatIdsFilter?.length) {
       products = applyFormatIdsFilterToProducts(products, formatIdsFilter);

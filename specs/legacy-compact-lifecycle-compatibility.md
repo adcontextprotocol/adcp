@@ -58,6 +58,102 @@ every 3.2 `product-discovery-criteria` field. Unsupported structured criteria
 MUST be rejected by JSON Pointer before calling the legacy peer; they MUST NOT
 be dropped into prose.
 
+## Legacy request preservation on a 3.2 seller
+
+An advertised legacy facade serves the requested legacy contract. The raw
+request remains authoritative even when the seller uses compact handlers or
+shared business services internally. A field missing from a compact task is
+not permission to ignore that field on `get_products`.
+
+Before dispatching an internal operation, the facade MUST establish that it
+can preserve the request's eligibility predicates, preferences, response
+projection, identity, and transaction boundary. It MAY apply legacy logic in
+shared services, including filtering before pagination and constructing the
+legacy response from authoritative seller data. It need not translate every
+field into a compact wire request. Filtering only one already-paginated compact
+page is not equivalent to filtering the legacy result set.
+
+When the seller cannot honor a supplied field, it MUST reject before a side
+effect, identify the unsupported input by JSON Pointer in `errors[].field`,
+and use a published error code supported by the served version (for example,
+`UNSUPPORTED_FEATURE`). It MUST NOT silently drop the field, replace a hard
+predicate with prose, invent missing seller facts, or reinterpret the input as
+a different request. A valid request with no matching products still returns
+an empty result; that is distinct from an unsupported predicate. These rules
+apply to both directions of compatibility and do not require native task
+signatures to carry every legacy input.
+
+### Coverage, delivery targeting, and future support
+
+`filters.countries`, `filters.regions`, `filters.metros`,
+`filters.postal_areas`, and `filters.geo_proximity` ask which products have
+inventory in the requested area. On compact discovery their homes are the
+same-named members of `criteria.offer_filters`. Metro coverage entries retain
+`{system, code}`; delivery targeting's `{system, values}` is a different field.
+Within each coverage field, entries are alternatives; different supplied
+filter fields are combined with AND.
+
+Coverage MUST NOT become `targeting_overlay` or `required_overlay_support`.
+A product can cover an area without allowing buyers to target that area
+independently. Coverage alone neither configures a product nor changes its
+pricing/forecast scope. A caller may also provide an explicit delivery overlay;
+the seller then applies both predicates independently. Different country lists
+are not inherently an ambiguous request: a product covering the US and Canada
+may satisfy Canadian coverage while being configured to deliver in the US.
+
+The same distinction applies to legacy top-level `property_list`: its compact
+discovery home is `criteria.offer_filters.property_list`, not package targeting.
+The geographic additions complete an existing coverage-filter family. They do
+not make unrelated legacy fields mechanically projectable.
+
+### Field-specific obligations
+
+| Legacy input | Required facade behavior |
+|---|---|
+| `filters.format_ids` | Evaluate the full declaring-agent identity and supplied format parameters against the seller's authoritative compatibility metadata. A matching slug or a guessed `format_kind` is not an equivalent predicate. Keep legacy evaluation when no exact canonical mapping exists. |
+| `filters.keywords` | Preserve keyword eligibility and the source contract's `match_type` default. Do not silently activate keyword delivery targeting. |
+| `filters.signal_targeting` | Preserve the full signal identity, value predicate, and requested include/exclude capability. `targeting_mode` copied into the deprecated `targeting_overlay.signal_targeting` is inert and is not an equivalent transformation. Concrete delivery selections use `signal_targeting_groups` and its explicit operators only when delivery targeting was actually requested. |
+| `filters.required_geo_targeting` | Preserve the requested dimension, country, and classification system. A generic support boolean is insufficient when the original request names a system. |
+| `preferred_delivery_types` | Preserve the ordered, non-excluding curation preference. Do not turn it into `offer_filters.delivery_type`, which is an exclusion filter. |
+| `time_budget` | Enforce the original execution budget through the internal operation or retained handler, as specified below. A client timeout is not a substitute. |
+| `catalog` | Preserve inline items, feed definitions, queries, and their brand binding in the legacy service. A pre-existing catalog may be referenced internally only when its identity and contents are authoritatively equivalent and authorized. Do not invent a `catalog_id`, drop the catalog, or require an unchanged legacy buyer to pre-register it merely because compact selection requires an ID. |
+| `fields` | Return the requested legacy projection, including legacy-only members when available, plus fields the served contract makes mandatory. Do not substitute the intersection with compact `product-fields`. A missing internal response field must be sourced from authoritative seller data or handled under the original legacy contract. |
+| `brand`, `account`, and brand-bearing filter members | Preserve identity and any additional legacy eligibility data through the authenticated shared service. Do not resolve conflicting identities by guessing, drop richer brand metadata that affects eligibility, or use an unauthorized lookup. |
+| Recognized extension fields and legacy feature requirements | Preserve their agreed semantics. An open schema accepting a field does not prove the internal service implements it. Do not relabel a feature as a differently defined compact feature. |
+
+If any required evaluation above is unavailable, the preflight rejection rule
+applies at the original input path. This is an obligation on the facade, not a
+new global format registry or permission to add legacy carriers to native tasks.
+
+### Encoding equivalences and narrowed values
+
+- On initial discovery, `required_policies: []` means no policy requirement and
+  can be represented by absent `criteria.policy_ids`. Duplicate policy IDs may
+  be deduplicated because this is a set. On refinement, explicit clearing MUST
+  clear the prior policy predicate; omitting an internal field that means
+  "inherit" would not preserve the request.
+- Duplicate `fields` entries may be deduplicated without dropping requested
+  members. Legacy omission still means the legacy default projection.
+- Omitted legacy pagination uses its own default (50 in released 3.1), not a
+  compact task's default. Cursors and conditional-feed tokens remain bound to
+  the actual selection, account, and served surface; a matching string does
+  not establish interchangeable scopes.
+- Empty strings, unknown identifiers, and other values admitted by a looser
+  legacy schema are evaluated under that legacy contract. A narrower compact
+  schema does not authorize silently trimming or deleting them. An invalid
+  ISO subdivision does not become a real place because a legacy regex accepts
+  it; native `regions` uses the canonical ISO 3166-2 shape.
+- A legacy refinement batch exceeding compact limits, or containing repeated
+  entries, MUST retain its order and transaction semantics. Do not truncate,
+  deduplicate stateful operations, or split an atomic batch into separate
+  compact commits. Use the retained operation or reject before mutation.
+
+Internal compact mutations may use separately scoped idempotency keys bound
+durably to the legacy operation. This does not invent a guarantee: retries
+must resume the same operation record, and the actual side effects still obey
+the idempotency and transaction rules below. SDK-local continuation tokens are
+not inputs that an established buyer must start supplying.
+
 ## Products-only brief compatibility
 
 ### Projection-only outcome

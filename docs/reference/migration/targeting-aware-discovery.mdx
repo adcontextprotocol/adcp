@@ -38,22 +38,44 @@ products whose pricing and forecasts already account for those constraints.
 
 ## Filter migration
 
-| Legacy discovery field           | Replacement                                 |
-| -------------------------------- | ------------------------------------------- |
-| `filters.countries`              | `targeting_overlay.geo_countries`           |
-| `filters.regions`                | `targeting_overlay.geo_regions`             |
-| `filters.metros`                 | `targeting_overlay.geo_metros`              |
-| `filters.postal_areas`           | `targeting_overlay.geo_postal_areas`        |
-| `filters.geo_proximity`          | `targeting_overlay.geo_proximity`           |
-| `filters.keywords`               | `targeting_overlay.keyword_targets`         |
-| `filters.signal_targeting`       | `targeting_overlay.signal_targeting_groups` |
-| `filters.required_geo_targeting` | `required_overlay_support`                  |
-| top-level `property_list`        | `targeting_overlay.property_list`           |
+Coverage and delivery targeting are different requests. Preserve the meaning of
+legacy filters when upgrading a seller or buyer; using a newer field does not
+authorize changing what the buyer asked for.
 
-On split tasks, nest the replacements under `criteria` and keep channel,
-format, delivery type, pricing, reporting, and other product characteristics
-in `criteria.offer_filters`. Legacy `get_products` keeps the flattened names
-shown in the table for compatibility.
+| Legacy discovery field | Compact discovery handling |
+| --- | --- |
+| `filters.countries` | `criteria.offer_filters.countries` |
+| `filters.regions` | `criteria.offer_filters.regions` |
+| `filters.metros` | `criteria.offer_filters.metros` (same `{system, code}` entries) |
+| `filters.postal_areas` | `criteria.offer_filters.postal_areas` |
+| `filters.geo_proximity` | `criteria.offer_filters.geo_proximity` |
+| top-level `property_list` | `criteria.offer_filters.property_list` |
+| `filters.keywords` | Preserve legacy keyword eligibility in the facade; no automatic delivery-overlay translation. |
+| `filters.signal_targeting` | Preserve signal-option eligibility, values, and include/exclude capability in the facade. |
+| `filters.required_geo_targeting` | Use `criteria.required_overlay_support` only when the exact dimension, country, and system requirement is representable; otherwise retain legacy evaluation. |
+
+The geographic filters match inventory coverage. They do not require selectable
+package targeting and do not scope pricing or forecasts to that geography.
+Within one field, entries are alternatives; different filter fields combine
+with AND. Keep channel, format, delivery type, pricing, reporting, and other
+product characteristics in `criteria.offer_filters` as well. Legacy
+`get_products` continues accepting the original field names.
+
+Use `criteria.targeting_overlay` when the buyer actually intends to restrict
+delivery, and `criteria.required_overlay_support` when the buyer needs to select
+targeting values later. Coverage and an explicit overlay may coexist and are
+applied independently. For example, Canadian coverage and US-only delivery can
+both be satisfied by a product covering both countries.
+
+For concrete signal delivery selections, use `signal_targeting_groups` with
+explicit group operators. Copying a legacy `targeting_mode: "exclude"` into
+`targeting_overlay.signal_targeting` does not preserve exclusion, even if the
+result validates.
+
+See the [legacy request-preservation contract](https://github.com/adcontextprotocol/adcp/blob/main/specs/legacy-compact-lifecycle-compatibility.md#legacy-request-preservation-on-a-32-seller)
+for named formats, inline catalogs, field projections, execution budgets, and
+other inputs requiring retained seller logic. Unsupported semantics must be
+reported at the original input path before any side effect.
 
 ## Briefs versus structured fields
 
@@ -330,11 +352,10 @@ A 3.2 seller receiving a 3.1 pin either serves the 3.1 schema and omits 3.2-only
 request/response semantics, or returns `VERSION_UNSUPPORTED` when it does not
 support 3.1. It never labels a 3.2-shaped response as 3.1.
 
-Sellers may translate a legacy targeting filter into its overlay equivalent.
-When a 3.2 request contains both forms, the seller accepts them only when they
-are semantically identical; conflicting forms are rejected with
-`INVALID_REQUEST` as ambiguous. Legacy-only requests remain supported through
-3.x.
+Sellers preserve legacy coverage and eligibility filters independently of any
+explicit overlay. Equality between those fields is not required because they
+serve different purposes. Legacy-only requests remain supported through 3.x;
+unsupported legacy predicates must be rejected explicitly rather than ignored.
 
 Schema surfaces are available through the v3 alias:
 

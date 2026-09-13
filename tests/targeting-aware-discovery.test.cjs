@@ -798,26 +798,19 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
   );
   assert.equal(
     hasCheck(
-      "accept_equivalent_legacy_and_overlay_targeting",
+      "accept_same_country_coverage_and_targeting",
       "field_present",
       "products[0]"
     ),
     true,
-    "equivalent legacy and structured targeting remains accepted"
+    "coverage and delivery targeting for the same country remain accepted"
   );
   assert.equal(
-    hasCheck(
-      "reject_conflicting_legacy_and_overlay_targeting",
-      "error_code"
-    ),
+    hasCheck("accept_distinct_coverage_and_targeting", "field_present", "products[0]"),
     true,
-    "conflicting legacy and structured targeting is rejected"
+    "Canadian coverage and US delivery are independent predicates"
   );
-  assert.equal(
-    step("reject_conflicting_legacy_and_overlay_targeting").validations[0]
-      .value,
-    "INVALID_REQUEST"
-  );
+  assert.equal(step("accept_distinct_coverage_and_targeting").expect_error, undefined);
 
   assert.equal(filterStoryboard.fixtures.products.length, 3);
   assert.deepEqual(
