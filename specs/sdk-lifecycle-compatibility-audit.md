@@ -1,6 +1,7 @@
 # SDK lifecycle compatibility audit: AdCP 3.0, 3.1, and 3.2
 
 Audited September 11, 2026 for [#7403](https://github.com/adcontextprotocol/adcp/issues/7403).
+Response-conformance review evidence added September 13 against the same pinned releases.
 This is an implementation audit and review brief. It does not change native
 signatures, accepted losses, version negotiation rules, or seller obligations.
 
@@ -27,6 +28,9 @@ substantial implementation, with specific gaps:
 4. Version-selection behavior differs across implementations and from parts
    of the protocol's current pinning rules. Successful routing alone does not
    establish conformance to those rules.
+5. Go's public error helper emits invalid recovery values and misclassifies
+   published codes. The separate response check below detects defects outside
+   the lifecycle routing probe's scope.
 
 The seller-facing distinction remains important: the SDK keeps registered
 legacy handlers callable; it does not generate every legacy business behavior
@@ -34,11 +38,11 @@ from compact handlers. That is the remaining premise behind #7403.
 
 ## Revisions and evidence scope
 
-| SDK | Audited release | Source revision | Verification |
-| --- | --- | --- | --- |
-| TypeScript | `@adcp/sdk@14.0.0-rc.35`; boundary/routing probes also run against the protocol repository's `14.0.0-rc.33` dependency | [RC.35 source](https://github.com/adcontextprotocol/adcp-client/tree/2b27442fbaf972f7a4236af227800feec268aeb0) | Published npm packages; release-tag tests run against the published RC.35 build and bundled caches. |
-| Python | `adcp==8.0.0b14` / tag `v8.0.0-beta.14` | [813cf2ae](https://github.com/adcontextprotocol/adcp-client-python/tree/813cf2ae03856e9468c4f9b1fd0397be67ab1b1e) | Release-tag source and tests in Python 3.12. |
-| Go | module `adcp/v3`, release `adcp/v3.2.1` | [fc9fb2a8](https://github.com/adcontextprotocol/adcp-go/tree/fc9fb2a8af4c91daff0c9457254a64eecdd56551) | Release-tag source and version tests in Go 1.26.2. |
+| SDK | Audited release | Source revision | Embedded protocol pin | Verification |
+| --- | --- | --- | --- | --- |
+| TypeScript | `@adcp/sdk@14.0.0-rc.35`; boundary/routing probes also run against the protocol repository's `14.0.0-rc.33` dependency | [RC.35 source](https://github.com/adcontextprotocol/adcp-client/tree/2b27442fbaf972f7a4236af227800feec268aeb0) | [`3.2.0-rc.1`](https://github.com/adcontextprotocol/adcp-client/blob/2b27442fbaf972f7a4236af227800feec268aeb0/src/lib/version.ts#L12) | Published npm packages; release-tag tests run against the published RC.35 build and bundled caches. |
+| Python | `adcp==8.0.0b14` / tag `v8.0.0-beta.14` | [813cf2ae](https://github.com/adcontextprotocol/adcp-client-python/tree/813cf2ae03856e9468c4f9b1fd0397be67ab1b1e) | [`3.2.0-rc.1`](https://github.com/adcontextprotocol/adcp-client-python/blob/813cf2ae03856e9468c4f9b1fd0397be67ab1b1e/src/adcp/ADCP_VERSION) | Release-tag source and tests in Python 3.12. |
+| Go | module `adcp/v3`, release `adcp/v3.2.1` | [fc9fb2a8](https://github.com/adcontextprotocol/adcp-go/tree/fc9fb2a8af4c91daff0c9457254a64eecdd56551) | [`3.2.0-rc.1`](https://github.com/adcontextprotocol/adcp-go/blob/fc9fb2a8af4c91daff0c9457254a64eecdd56551/adcp/v3/schemas/VERSION) | Release-tag source, version tests, and public error-helper output in Go 1.26.2. |
 
 All three releases embed protocol `3.2.0-rc.1`. That is schema/checkpoint
 parity, not parity of workflow helpers. TypeScript's relevant coordinator and
@@ -239,6 +243,49 @@ family is tracked in [#7403](https://github.com/adcontextprotocol/adcp/issues/74
 this gap is expected to close in 3.2 rather than persist through the
 compatibility window. The schema change is separate from this audit.
 
+### 6. Go response errors require schema and classification checks
+
+The review identified a defect in Go's
+[`Errorf` / `defaultRecovery`](https://github.com/adcontextprotocol/adcp-go/blob/fc9fb2a8af4c91daff0c9457254a64eecdd56551/adcp/v3/errors.go#L70).
+A separate runtime check called the public `Errorf` helper for each of the 119
+codes in the pinned RC.1 `enums/error-code.json`, using a nonempty message and
+no recovery override. It extracted `StructuredContent.adcp_error`, validated
+that object against the same release's `core/error.json`, and compared its
+recovery value with the published `enumMetadata` classification.
+
+Six emitted error objects fail schema validation because their recovery value
+is outside `transient`, `correctable`, and `terminal`. In total, 110 of the 119
+classifications differ from the published metadata; 104 of those are enum-valid
+`terminal` values produced by the default branch. Examples:
+
+| Code | Emitted recovery | Published classification | Schema valid? |
+| --- | --- | --- | --- |
+| `RATE_LIMITED` | `retry` | `transient` | No |
+| `INVALID_REQUEST` | `revise` | `correctable` | No |
+| `ACCOUNT_NOT_FOUND` | `revise` | `terminal` | No |
+| `SERVICE_UNAVAILABLE` | `contact_support` | `transient` | No |
+| `AUTH_REQUIRED` | `terminal` | `correctable` | Yes |
+
+The fix is tracked in [adcp-go#530](https://github.com/adcontextprotocol/adcp-go/issues/530).
+Recovery must follow each code's published classification; replacing each
+invalid string with one enum member does not fix the default branch or the
+different meanings grouped in the existing switch. Error codes remain open:
+an unpublished code is not itself a schema violation, and its recovery policy
+needs explicit coverage rather than an invented registry entry.
+
+This check covers the SDK error helper's structured error object. It does not
+certify every Go response, transport envelope, or caller-supplied recovery
+override. It also does not change the evidence scope of the lifecycle probe.
+
+The separate [response-conformance harness follow-up, #7439](https://github.com/adcontextprotocol/adcp/issues/7439)
+covers deterministic schema-derived requests, actual SDK-produced responses,
+and error-envelope validation across languages. It will inventory tools from
+the selected release manifest and report unsupported fixtures explicitly.
+Generated requests still need stateful fixtures for business prerequisites,
+and schema-valid responses still need semantic assertions such as recovery
+classification, eligibility, and idempotency. Generating responses from the
+same schemas would not test the SDK's error-producing behavior.
+
 ## Making adoption smoother now
 
 1. Point mixed-version TypeScript buyers to the **existing coordinator** and its
@@ -275,6 +322,10 @@ and distinguish new gaps from completed or ongoing SDK work. The broader
 seller field-preservation comparison remains in
 [#7403](https://github.com/adcontextprotocol/adcp/issues/7403); closing a buyer
 helper issue does not establish complete reverse-facade coverage.
+The September 13 response review additionally links existing
+[Go #530](https://github.com/adcontextprotocol/adcp-go/issues/530) for recovery
+classification and [#7439](https://github.com/adcontextprotocol/adcp/issues/7439)
+for the separate cross-language response-conformance harness.
 
 ## Validation and reproduction
 
@@ -287,6 +338,9 @@ helper issue does not establish complete reverse-facade coverage.
 - Go: four selected top-level version/shape tests passed, including cases that
   encode the pinning divergence above. Passing SDK tests does not establish
   agreement with the protocol on those cases.
+- Go response follow-up: 119 public `Errorf` calls completed; six error objects
+  failed the pinned schema and 110 recovery classifications differed from
+  published metadata. These are observed defects, not passing conformance tests.
 - Local probes: 11 coordinator boundary observations and all nine MCP discovery
   routes on both TypeScript RC.33 and RC.35 produced the same outcomes.
 
