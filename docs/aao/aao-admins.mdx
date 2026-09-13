@@ -23,6 +23,8 @@ Addie web and voice administrator checks use the WorkOS credential that actually
 
 When the administrator lookup is unavailable, Addie web requests return a retryable `503` with `admin_authorization_unavailable`; an already-open Addie stream reports a recoverable error. This is separate from `403` for a confirmed denial. A separately configured break-glass email remains valid during a membership lookup outage. Voice calls require captured credential provenance; legacy calls must restart through sign-in.
 
+Voice callbacks also require a signed session capability bound to the server's conversation record. A thread ID supplied in conversation text grants no access. Ending a call revokes that capability before contacting the video provider; expired, revoked, or unverified calls require a new session. Rotate `TAVUS_LLM_SECRET` consistently across replicas; rotation invalidates existing call capabilities.
+
 Every site-admin grant or revoke requires a written reason and writes an append-only event with the actor, target, access mechanism, reason, and timestamp. The revoke and its audit event commit together, so deleting the active membership cannot delete its forensic record.
 
 The replica that performs a grant or revoke clears that user's local admin-status cache immediately. Other replicas cache a positive `aao-admin` membership decision for at most 60 seconds, so emergency revocation takes effect there within that bound. Negative and failed checks remain fail-closed.
@@ -37,6 +39,8 @@ Members and visitors can ask Addie to escalate when she can't help. Escalations 
 - **Categories.** `capability_gap` (Addie's knowledge needs updating), `needs_human_action` (admin had to do something), `complex_request` (multi-step / judgment), `sensitive_topic` (legal/compliance/political), `other`.
 
 ## Editorial moderation (perspectives)
+
+Addie's committee-leader review powers also belong to the authenticated credential. Linking to a committee leader's profile does not grant publishing, approval, rejection, revision, or pending-review access. Personal author attribution remains associated with the person's profile.
 
 - **Review queue.** Web UI at `/admin/perspectives` shows `pending_review`. Or ask Addie *"list pending content"* (`list_pending_content`).
 - **Approve / decline.** *"Approve perspective [slug]"* (`approve_content`), *"reject perspective [slug] with reason ..."* (`reject_content`).
