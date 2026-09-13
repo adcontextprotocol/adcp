@@ -86,6 +86,49 @@ describe('site-admin access decisions', () => {
     expect(mocks.isMember).toHaveBeenCalledTimes(3);
   });
 
+  it('reports a Slack mapping outage as retryable instead of a denial', async () => {
+    mocks.getBySlackUserId.mockRejectedValueOnce(new Error('mapping database unavailable'));
+    const slackAdmin = await import('../../src/addie/mcp/admin-tools.js');
+
+    await expect(slackAdmin.resolveSlackUserAAOAdminAccess('slack_admin')).resolves.toMatchObject({
+      status: 'unavailable', stage: 'mapping',
+    });
+    mocks.getBySlackUserId.mockRejectedValueOnce(new Error('mapping database unavailable'));
+    await expect(slackAdmin.isSlackUserAAOAdmin('slack_admin')).rejects.toMatchObject({
+      code: 'admin_authorization_unavailable', statusCode: 503,
+    });
+    expect(mocks.getWorkingGroupBySlug).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', null],
+    ['unavailable', new Error('authority group database unavailable')],
+  ] as const)('reports a %s Slack authority group as retryable', async (_label, failure) => {
+    if (failure instanceof Error) mocks.getWorkingGroupBySlug.mockRejectedValue(failure);
+    else mocks.getWorkingGroupBySlug.mockResolvedValue(failure);
+    const slackAdmin = await import('../../src/addie/mcp/admin-tools.js');
+
+    await expect(slackAdmin.resolveSlackUserAAOAdminAccess('slack_admin')).resolves.toMatchObject({
+      status: 'unavailable', stage: 'authority_group',
+    });
+    await expect(slackAdmin.isSlackUserAAOAdmin('slack_admin')).rejects.toMatchObject({
+      code: 'admin_authorization_unavailable', statusCode: 503,
+    });
+    expect(mocks.isMember).not.toHaveBeenCalled();
+  });
+
+  it('reports a Slack membership outage as retryable instead of withholding admin tools', async () => {
+    mocks.isMember.mockRejectedValue(new Error('membership database unavailable'));
+    const slackAdmin = await import('../../src/addie/mcp/admin-tools.js');
+
+    await expect(slackAdmin.resolveSlackUserAAOAdminAccess('slack_admin')).resolves.toMatchObject({
+      status: 'unavailable', stage: 'membership',
+    });
+    await expect(slackAdmin.isSlackUserAAOAdmin('slack_admin')).rejects.toMatchObject({
+      code: 'admin_authorization_unavailable', statusCode: 503,
+    });
+  });
+
   it('identifies the environment-only break-glass mechanism separately', async () => {
     mocks.isMember.mockResolvedValue(false);
     expect(isBreakGlassAdminEmail('BREAK-GLASS@example.test')).toBe(true);
