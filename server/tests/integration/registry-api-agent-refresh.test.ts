@@ -13,6 +13,8 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
+import { randomUUID } from 'node:crypto';
+import { AAOAdminLookupUnavailableError } from '../../src/addie/admin-status-lookup.js';
 import type { Pool } from 'pg';
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
@@ -45,6 +47,8 @@ const OTHER_AGENT_URL = `https://other-agent-${RUN_SUFFIX}.example.com/mcp`;
 const ALL_OWNED_URLS = [
   ownedAgentUrl('owner'),
   ownedAgentUrl('admin'),
+  ownedAgentUrl('linked-owner'),
+  ownedAgentUrl('owner-admin-outage'),
   ownedAgentUrl('probe-fail'),
   ownedAgentUrl('paused'),
   ownedAgentUrl('rate-limit'),
@@ -70,12 +74,19 @@ const ALL_OWNED_URLS = [
 // Toggle which user the auth middleware stamps onto the request. Tests
 // flip this between owner / other / admin to exercise the auth branches.
 let currentUserId: string | null = OWNER_USER_ID;
+let currentAuthWorkosUserId: string | undefined;
+let currentIsAdmin: boolean | undefined;
+let currentRequestUser: { id: string; authWorkosUserId?: string; email: string; isAdmin?: boolean } | undefined;
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
   const stampUser = (req: { user?: unknown; isStaticAdminApiKey?: boolean }) => {
     if (currentUserId === null) return;
-    req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+    currentRequestUser = {
+      id: currentUserId, authWorkosUserId: currentAuthWorkosUserId,
+      email: `${currentAuthWorkosUserId ?? currentUserId}@test.com`, isAdmin: currentIsAdmin,
+    };
+    req.user = currentRequestUser;
     if (currentUserId === STATIC_ADMIN_USER_ID) {
       req.isStaticAdminApiKey = true;
     }
@@ -116,9 +127,11 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
 
 // Admin lookup used by the /refresh route. Default to non-admin; the
 // admin test toggles it for one user id.
-const isAdminMock = vi.fn(async (userId: string) => userId === ADMIN_USER_ID);
-vi.mock('../../src/addie/admin-status-lookup.js', () => ({
-  isWebUserAAOAdmin: (userId: string) => isAdminMock(userId),
+const isAdminMock = vi.fn(async (principal: { id: string; authWorkosUserId?: string }) => (principal.authWorkosUserId ?? principal.id) === ADMIN_USER_ID);
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>()),
+  isWebUserAAOAdmin: (userId: string) => isAdminMock({ id: userId }),
+  isAuthenticatedUserAAOAdmin: (principal: { id: string; authWorkosUserId?: string }) => isAdminMock(principal),
 }));
 
 // Stub the actual probe — the test doesn't need real outbound capability
@@ -301,7 +314,11 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   beforeEach(() => {
     currentUserId = OWNER_USER_ID;
-    isAdminMock.mockClear();
+    currentAuthWorkosUserId = undefined;
+    currentIsAdmin = undefined;
+    currentRequestUser = undefined;
+    isAdminMock.mockReset();
+    isAdminMock.mockImplementation(async (principal: { id: string; authWorkosUserId?: string }) => (principal.authWorkosUserId ?? principal.id) === ADMIN_USER_ID);
     refreshSingleAgentMock.mockReset();
     refreshSingleAgentMock.mockResolvedValue({
       online: true,
@@ -487,12 +504,119 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(stored.rows[0].notices_json[0]).toHaveProperty('experimental_context');
   });
 
-  it('admin can refresh an agent they do not own', async () => {
+  it('fences administrator session refresh until durable credential provenance is supported', async () => {
     currentUserId = ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('admin');
     const res = await request(app).post(url(agentUrl)).send();
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('refresh_authorization_provenance_required');
+    expect(res.headers['retry-after']).toBe('60');
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+    expect(complyMock).not.toHaveBeenCalled();
+    const queued = await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl]);
+    expect(queued.rows).toEqual([]);
+  });
+
+  it.each([
+    { authenticated: ADMIN_USER_ID, canonical: OTHER_USER_ID, status: 503 },
+    { authenticated: OTHER_USER_ID, canonical: ADMIN_USER_ID, status: 403 },
+  ])('uses exact $authenticated admin authorization linked to $canonical before refresh admission', async ({ authenticated, canonical, status }) => {
+    currentUserId = canonical;
+    currentAuthWorkosUserId = authenticated;
+    currentIsAdmin = true;
+    const response = await request(app).post(url(OTHER_AGENT_URL)).send();
+    expect(response.status).toBe(status);
+    if (status === 503) expect(response.body.code).toBe('refresh_authorization_provenance_required');
+    expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+    expect(complyMock).not.toHaveBeenCalled();
+    const queued = await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [OTHER_AGENT_URL]);
+    expect(queued.rows).toEqual([]);
+    // The rate limiter can independently check its optional admin exemption;
+    // the route must additionally resolve its immutable captured principal.
+    const principals = isAdminMock.mock.calls.map(([principal]) => principal);
+    expect(principals.every(principal => (principal.authWorkosUserId ?? principal.id) === authenticated)).toBe(true);
+    const routePrincipal = principals.find(principal => Object.isFrozen(principal));
+    expect(routePrincipal).toMatchObject({ id: authenticated });
+  });
+
+  it('fences linked owner refresh instead of persisting ambiguous credential provenance', async () => {
+    currentUserId = OTHER_USER_ID;
+    currentAuthWorkosUserId = OWNER_USER_ID;
+    const agentUrl = ownedAgentUrl('linked-owner');
+    const response = await request(app).post(url(agentUrl)).send();
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe('refresh_authorization_provenance_required');
+    expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+    expect(complyMock).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
+  });
+
+  it('does not inherit canonical organization ownership on refresh', async () => {
+    currentUserId = OWNER_USER_ID;
+    currentAuthWorkosUserId = OTHER_USER_ID;
+    const agentUrl = ownedAgentUrl('linked-owner');
+    const response = await request(app).post(url(agentUrl)).send();
+    expect(response.status).toBe(403);
+    expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+    expect(complyMock).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [agentUrl])).rows).toEqual([]);
+  });
+
+  it('preserves confirmed owner refresh when the separate platform-admin lookup is unavailable', async () => {
+    isAdminMock.mockRejectedValue(new AAOAdminLookupUnavailableError());
+    const agentUrl = ownedAgentUrl('owner-admin-outage');
+    const response = await request(app).post(url(agentUrl)).send();
+    expect(response.status).toBe(200);
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+    expect(isAdminMock.mock.calls.every(([principal]) => (principal.authWorkosUserId ?? principal.id) === OWNER_USER_ID)).toBe(true);
+  });
+
+  it('reports non-owner admin lookup unavailability without enqueuing or trusting isAdmin', async () => {
+    currentUserId = ADMIN_USER_ID;
+    currentAuthWorkosUserId = OTHER_USER_ID;
+    currentIsAdmin = true;
+    isAdminMock.mockRejectedValue(new AAOAdminLookupUnavailableError());
+    const response = await request(app).post(url(OTHER_AGENT_URL)).send();
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('admin_authorization_unavailable');
+    expect(response.headers['retry-after']).toBe('5');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(refreshSingleAgentMock).not.toHaveBeenCalled();
+    expect(complyMock).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT id FROM agent_compliance_refresh_requests WHERE agent_url = $1', [OTHER_AGENT_URL])).rows).toEqual([]);
+  });
+
+  it.each([
+    { authenticated: ADMIN_USER_ID, canonical: OTHER_USER_ID, allowed: true },
+    { authenticated: OTHER_USER_ID, canonical: ADMIN_USER_ID, allowed: false },
+  ])('authorizes refresh status with exact $authenticated and immutable lookup provenance', async ({ authenticated, canonical, allowed }) => {
+    const operationId = randomUUID();
+    await pool.query(
+      `INSERT INTO agent_compliance_refresh_requests
+       (id, agent_url, requester_type, requested_by_user_id, triggered_by, test_session_id, status, result_json, completed_at)
+       VALUES ($1, $2, 'user', $3, 'manual', $4, 'succeeded', '{"online":true}'::jsonb, NOW())`,
+      [operationId, OTHER_AGENT_URL, OWNER_USER_ID, `test-status-${operationId}`],
+    );
+    currentUserId = canonical;
+    currentAuthWorkosUserId = authenticated;
+    currentIsAdmin = !allowed;
+    isAdminMock.mockImplementationOnce(async (principal) => {
+      await Promise.resolve();
+      currentRequestUser!.id = authenticated;
+      currentRequestUser!.authWorkosUserId = canonical;
+      return principal.id === ADMIN_USER_ID;
+    });
+    try {
+      const response = await request(app).get(`${url(OTHER_AGENT_URL)}es/${operationId}`).send();
+      expect(response.status).toBe(allowed ? 200 : 404);
+      if (allowed) expect(response.body.result).toEqual({ online: true });
+      const principal = isAdminMock.mock.calls[0][0];
+      expect(principal.id).toBe(authenticated);
+      expect(Object.isFrozen(principal)).toBe(true);
+    } finally {
+      await pool.query('DELETE FROM agent_compliance_refresh_requests WHERE id = $1', [operationId]);
+    }
   });
 
   it('static admin API key can refresh and rerun compliance for an agent it does not own', async () => {

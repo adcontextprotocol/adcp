@@ -127,7 +127,7 @@ describe('Content committee authority belongs to the authenticated credential', 
     it('uses only credential leadership for committee owner content', async () => {
       const result = await listMyContent({
         userId: canonical,
-        adminPrincipal: user.adminPrincipal,
+        adminPrincipal: user.adminPrincipal ?? null,
         collection: slug,
         relationship: 'owner',
       });
@@ -140,6 +140,13 @@ describe('Content committee authority belongs to the authenticated credential', 
         external_url: 'https://example.com/article',
         collection: { committee_slug: slug }, status: 'published',
       });
+      if (credential === null) {
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('/dashboard/membership');
+        const persisted = await pool.query('SELECT id FROM perspectives WHERE proposer_user_id = $1', [canonical]);
+        expect(persisted.rows).toEqual([]);
+        return;
+      }
       expect(result.success).toBe(true);
       expect(result.status).toBe(allowed ? 'published' : 'pending_review');
       const persisted = await pool.query('SELECT status, proposer_user_id FROM perspectives WHERE id = $1', [result.id]);

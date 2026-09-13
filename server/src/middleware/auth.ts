@@ -5,10 +5,10 @@ import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
 import {
-  decideAAOAdminAccess,
   type AAOAdminAccessMechanism,
 } from '../auth/admin-access.js';
-import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
+import { resolveWebUserAAOAdminAccess } from '../addie/admin-status-lookup.js';
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
@@ -1605,10 +1605,13 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     });
   }
 
-  const decision = decideAAOAdminAccess(
-    await isWebUserAAOAdmin(req.user.id),
-    req.user.email,
-  );
+  let decision;
+  try {
+    decision = await resolveWebUserAAOAdminAccess(req.user);
+  } catch (error) {
+    if (respondToAdminAuthorizationError(error, res)) return;
+    return next(error);
+  }
 
   if (!decision.isAdmin) {
     logger.warn({ userId: req.user.id, email: req.user.email }, 'Non-admin user attempted to access admin endpoint');
@@ -1744,15 +1747,26 @@ export function createRequireWorkingGroupLeader(
 
     // Match the platform-admin authority decision: aao-admin membership is
     // primary and ADMIN_EMAILS remains a centralized break-glass fallback.
-    // isWebUserAAOAdmin fails closed to false when its membership lookup fails.
-    const decision = decideAAOAdminAccess(
-      await isWebUserAAOAdmin(req.user.id),
-      req.user.email,
-    );
+    let decision;
+    try {
+      decision = await resolveWebUserAAOAdminAccess(req.user);
+    } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
+      return next(error);
+    }
 
     if (decision.isAdmin) {
       logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
       return next();
+    }
+
+    // This reserved group is itself the platform authority. A linked canonical
+    // member/leader must not re-grant access after the exact credential failed.
+    if (slug === 'aao-admin') {
+      return res.status(403).json({
+        error: 'Admin access required',
+        message: 'This working group is restricted to platform administrators',
+      });
     }
 
     // Look up the working group
@@ -1813,15 +1827,26 @@ export function createRequireWorkingGroupMember(
 
     // Match the platform-admin authority decision: aao-admin membership is
     // primary and ADMIN_EMAILS remains a centralized break-glass fallback.
-    // isWebUserAAOAdmin fails closed to false when its membership lookup fails.
-    const decision = decideAAOAdminAccess(
-      await isWebUserAAOAdmin(req.user.id),
-      req.user.email,
-    );
+    let decision;
+    try {
+      decision = await resolveWebUserAAOAdminAccess(req.user);
+    } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
+      return next(error);
+    }
 
     if (decision.isAdmin) {
       logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
       return next();
+    }
+
+    // This reserved group is itself the platform authority. A linked canonical
+    // member/leader must not re-grant access after the exact credential failed.
+    if (slug === 'aao-admin') {
+      return res.status(403).json({
+        error: 'Admin access required',
+        message: 'This working group is restricted to platform administrators',
+      });
     }
 
     const workingGroup = await workingGroupDb.getWorkingGroupBySlug(slug);

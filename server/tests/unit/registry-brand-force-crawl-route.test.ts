@@ -3,7 +3,7 @@ import express from 'express';
 import request from 'supertest';
 
 const validateCrawlDomainMock = vi.fn();
-const isWebUserAAOAdminMock = vi.fn();
+const isAuthenticatedUserAAOAdminMock = vi.fn();
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY || 'sk_test_registry_brand_force_crawl';
@@ -18,10 +18,12 @@ vi.mock('../../src/utils/url-security.js', async () => {
   };
 });
 
-vi.mock('../../src/addie/admin-status-lookup.js', () => ({
-  isWebUserAAOAdmin: (userId: string) => isWebUserAAOAdminMock(userId),
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>()),
+  isAuthenticatedUserAAOAdmin: (principal: { id: string; authWorkosUserId?: string; email?: string | null }) => isAuthenticatedUserAAOAdminMock(principal),
 }));
 
+import { AAOAdminLookupUnavailableError } from '../../src/addie/admin-status-lookup.js';
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
 
 const ORIGINAL_ADMIN_EMAILS = process.env.ADMIN_EMAILS;
@@ -38,7 +40,7 @@ function brand(overrides: Record<string, unknown>) {
 }
 
 function buildApp(options: {
-  user?: { id: string; email: string; isAdmin?: boolean };
+  user?: { id: string; authWorkosUserId?: string; email: string; isAdmin?: boolean };
   scanBrandForDomain: ReturnType<typeof vi.fn>;
   getDiscoveredBrandByDomain: ReturnType<typeof vi.fn>;
 }) {
@@ -74,7 +76,7 @@ describe('POST /api/registry/brand/:domain/force-crawl', () => {
     vi.clearAllMocks();
     delete process.env.ADMIN_EMAILS;
     validateCrawlDomainMock.mockImplementation(async (domain: string) => domain.toLowerCase().trim());
-    isWebUserAAOAdminMock.mockResolvedValue(false);
+    isAuthenticatedUserAAOAdminMock.mockImplementation(async (principal: { id: string; authWorkosUserId?: string }) => (principal.authWorkosUserId ?? principal.id) === 'admin_user');
   });
 
   afterEach(() => {
@@ -225,4 +227,77 @@ describe('POST /api/registry/brand/:domain/force-crawl', () => {
     expect(scanBrandForDomain).not.toHaveBeenCalled();
     expect(getDiscoveredBrandByDomain).not.toHaveBeenCalled();
   });
+  it.each([
+    { authenticated: 'admin_user', canonical: 'member_user', allowed: true },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false },
+  ])('uses exact $authenticated authority linked to $canonical, ignoring stale isAdmin', async ({ authenticated, canonical, allowed }) => {
+    const user = { id: canonical, authWorkosUserId: authenticated, email: 'credential@example.com', isAdmin: !allowed };
+    const sideEffect = vi.fn().mockResolvedValue({ found: false, valid: false, variant: null, manifestPersisted: false });
+    const app = buildApp({ user, scanBrandForDomain: sideEffect, getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null) });
+    const response = await request(app).post('/api/registry/brand/security.example/force-crawl').send();
+    expect(response.status).toBe(allowed ? 200 : 403);
+    expect(sideEffect).toHaveBeenCalledTimes(Number(allowed));
+    expect(isAuthenticatedUserAAOAdminMock).toHaveBeenCalledTimes(allowed ? 2 : 1);
+    const principal = isAuthenticatedUserAAOAdminMock.mock.calls[0][0];
+    expect(principal.authWorkosUserId ?? principal.id).toBe(authenticated);
+    expect(principal.email).toBe('credential@example.com');
+    expect(Object.isFrozen(principal)).toBe(true);
+    expect(principal).not.toBe(user);
+    for (const [checked] of isAuthenticatedUserAAOAdminMock.mock.calls) expect(checked).toBe(principal);
+  });
+
+  it('returns retryable unavailable without trusting a stale admin flag or running the side effect', async () => {
+    isAuthenticatedUserAAOAdminMock.mockRejectedValueOnce(new AAOAdminLookupUnavailableError());
+    const user = { id: 'admin_user', authWorkosUserId: 'revoked_credential', email: 'credential@example.com', isAdmin: true };
+    const sideEffect = vi.fn().mockResolvedValue({ found: false, valid: false, variant: null, manifestPersisted: false });
+    const app = buildApp({ user, scanBrandForDomain: sideEffect, getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null) });
+    const response = await request(app).post('/api/registry/brand/security.example/force-crawl').send();
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('admin_authorization_unavailable');
+    expect(response.headers['retry-after']).toBe('5');
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(sideEffect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { authenticated: 'admin_user', canonical: 'member_user', allowed: true },
+    { authenticated: 'member_user', canonical: 'admin_user', allowed: false },
+  ])('captures immutable $authenticated provenance before an awaited authorization lookup', async ({ authenticated, canonical, allowed }) => {
+    const user = { id: canonical, authWorkosUserId: authenticated, email: 'credential@example.com', isAdmin: !allowed };
+    isAuthenticatedUserAAOAdminMock.mockImplementationOnce(async (principal) => {
+      await Promise.resolve();
+      user.id = authenticated;
+      user.authWorkosUserId = canonical;
+      user.email = 'changed@example.com';
+      return (principal.authWorkosUserId ?? principal.id) === 'admin_user';
+    });
+    const sideEffect = vi.fn().mockResolvedValue({ found: false, valid: false, variant: null, manifestPersisted: false });
+    const app = buildApp({ user, scanBrandForDomain: sideEffect, getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null) });
+    const response = await request(app).post('/api/registry/brand/security.example/force-crawl').send();
+    expect(response.status).toBe(allowed ? 200 : 403);
+    expect(sideEffect).toHaveBeenCalledTimes(Number(allowed));
+    const principal = isAuthenticatedUserAAOAdminMock.mock.calls[0][0];
+    expect(Object.isFrozen(principal)).toBe(true);
+    expect(principal.authWorkosUserId ?? principal.id).toBe(authenticated);
+    expect(principal.email).toBe('credential@example.com');
+  });
+
+  it.each(['revoked', 'unavailable'] as const)('fails closed when authorization becomes %s during preflight I/O', async (decision) => {
+    const user = { id: 'member_user', authWorkosUserId: 'admin_user', email: 'credential@example.com', isAdmin: true };
+    isAuthenticatedUserAAOAdminMock.mockResolvedValueOnce(true);
+    if (decision === 'revoked') isAuthenticatedUserAAOAdminMock.mockResolvedValueOnce(false);
+    else isAuthenticatedUserAAOAdminMock.mockRejectedValueOnce(new AAOAdminLookupUnavailableError());
+    const sideEffect = vi.fn().mockResolvedValue({ found: false, valid: false, variant: null, manifestPersisted: false });
+    const app = buildApp({ user, scanBrandForDomain: sideEffect, getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null) });
+    const response = await request(app).post('/api/registry/brand/security.example/force-crawl').send();
+    expect(response.status).toBe(decision === 'revoked' ? 403 : 503);
+    expect(sideEffect).not.toHaveBeenCalled();
+    if (decision === 'unavailable') expect(response.body.error).toBe('admin_authorization_unavailable');
+    expect(isAuthenticatedUserAAOAdminMock).toHaveBeenCalledTimes(2);
+    // A refusal before the crawler runs must release its per-domain reservation.
+    const retry = await request(app).post('/api/registry/brand/security.example/force-crawl').send();
+    expect(retry.status).toBe(200);
+    expect(sideEffect).toHaveBeenCalledTimes(1);
+  });
+
 });

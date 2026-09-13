@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 /**
  * Organization routes module
  *
@@ -29,7 +30,7 @@ import { getCompanyDomain } from "../utils/email-domain.js";
 import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { isValidWorkOSMembershipId } from "../utils/workos-validation.js";
-import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import { isAuthenticatedUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import {
   createStripeCustomer,
   createCustomerPortalSession,
@@ -1597,7 +1598,7 @@ export function createOrganizationsRouter(): Router {
       if (isPrivilegeGrant && userRole !== 'owner') {
         const isStaticAdminApiKey =
           (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
-        const isAAOAdmin = isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
+        const isAAOAdmin = isStaticAdminApiKey || (await isAuthenticatedUserAAOAdmin(user));
         if (!isAAOAdmin) {
           return res.status(403).json({
             error: 'Insufficient permissions',
@@ -1668,6 +1669,7 @@ export function createOrganizationsRouter(): Router {
           : org.auto_provision_brand_hierarchy_children,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Update organization settings error');
       res.status(500).json({
         error: 'Failed to update organization settings',
@@ -2897,7 +2899,7 @@ export function createOrganizationsRouter(): Router {
         : await resolveUserOrgMembership(workos, user.id, orgId);
       const callerOrgRole = callerMembership?.role ?? null;
       const isAAOAdmin =
-        isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
+        isStaticAdminApiKey || (await isAuthenticatedUserAAOAdmin(user));
 
       const isOrgAdminOrOwner = callerOrgRole === 'admin' || callerOrgRole === 'owner';
       const isOrgOwner = callerOrgRole === 'owner';
@@ -3229,6 +3231,7 @@ export function createOrganizationsRouter(): Router {
         previous_role: rawCurrentRole,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { err: error, errorMessage, orgId, email: normalizedEmail, role },

@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 /**
  * Committee routes module
  *
@@ -20,7 +21,8 @@ import {
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
-import { invalidateWebAdminStatusCache, isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import { invalidateWebAdminStatusCache } from "../addie/admin-status-cache.js";
+import { isAuthenticatedUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
@@ -243,13 +245,18 @@ export function createCommitteeRouters(): {
    * working group itself. As with the private group detail and posts routes,
    * private content is visible only to direct members; leadership, parent-
    * group membership, and site-admin status do not bypass that boundary.
+   * The reserved platform authority group instead requires the exact
+   * authenticated administrator credential, including independent break-glass.
    * Callers outside it receive the same 404 as they would for a missing group
    * so private group existence is not disclosed.
    */
   const canViewWorkingGroupContent = async (req: Request, group: WorkingGroup): Promise<boolean> => {
+    const user = req.user;
+    if (group.slug === 'aao-admin') {
+      return !!user?.id && await isAuthenticatedUserAAOAdmin(user);
+    }
     if (!group.is_private) return true;
 
-    const user = req.user;
     if (!user?.id) return false;
 
     return workingGroupDb.isMember(group.id, user.id);
@@ -1007,30 +1014,24 @@ export function createCommitteeRouters(): {
         });
       }
 
-      if (group.is_private) {
-        if (!user?.id) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-
-        const isMember = await workingGroupDb.isMember(group.id, user.id);
-        if (!isMember) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
+      if (!(await canViewWorkingGroupContent(req, group))) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: `No working group found with slug: ${slug}`,
+        });
       }
+
+      const membershipUserId = group.slug === 'aao-admin'
+        ? user?.authWorkosUserId ?? user?.id
+        : user?.id;
 
       const memberships = await workingGroupDb.getMembershipsByWorkingGroup(group.id);
 
       let isMember = false;
       let isFamilyMember = false;
-      if (user?.id) {
-        isMember = await workingGroupDb.isMember(group.id, user.id);
-        isFamilyMember = isMember || await workingGroupDb.isFamilyMember(group.id, user.id);
+      if (membershipUserId) {
+        isMember = await workingGroupDb.isMember(group.id, membershipUserId);
+        isFamilyMember = isMember || await workingGroupDb.isFamilyMember(group.id, membershipUserId);
       }
 
       // Hierarchy context: parent summary (if any) and list of direct subgroups
@@ -1042,11 +1043,15 @@ export function createCommitteeRouters(): {
       // Private subgroups show up only for people who are direct members of
       // that subgroup, or for AAO admins. Parent membership alone does not
       // unlock private subgroup visibility.
-      const isAAOAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+      const isAAOAdmin = user?.id ? await isAuthenticatedUserAAOAdmin(user) : false;
       const allSubgroups = await workingGroupDb.listSubgroups(group.id);
       const visibleSubgroups: typeof allSubgroups = [];
       for (const sg of allSubgroups) {
         if (sg.status !== 'active') continue;
+        if (sg.slug === 'aao-admin') {
+          if (isAAOAdmin) visibleSubgroups.push(sg);
+          continue;
+        }
         if (!sg.is_private || isAAOAdmin) {
           visibleSubgroups.push(sg);
           continue;
@@ -1087,6 +1092,7 @@ export function createCommitteeRouters(): {
         is_family_member: isFamilyMember,
       });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Get working group error');
       res.status(500).json({
         error: 'Failed to get working group',
@@ -1110,26 +1116,29 @@ export function createCommitteeRouters(): {
         });
       }
 
-      let isMember = false;
-      if (user?.id) {
-        isMember = await workingGroupDb.isMember(group.id, user.id);
+      if (!(await canViewWorkingGroupContent(req, group))) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: `No working group found with slug: ${slug}`,
+        });
       }
 
-      if (group.is_private) {
-        if (!user?.id || !isMember) {
-          return res.status(404).json({
-            error: 'Working group not found',
-            message: `No working group found with slug: ${slug}`,
-          });
-        }
-      }
+      const membershipUserId = group.slug === 'aao-admin'
+        ? user?.authWorkosUserId ?? user?.id
+        : user?.id;
+      const isMember = membershipUserId
+        ? await workingGroupDb.isMember(group.id, membershipUserId)
+        : false;
 
       // Aggregate from the group plus its subgroups the caller may see.
       // Private subgroups the caller isn't a member of are filtered out.
       const includeSubgroups = req.query.include_subgroups !== 'false';
-      const isAAOAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+      const isAAOAdmin = user?.id ? await isAuthenticatedUserAAOAdmin(user) : false;
       const targetIds = includeSubgroups
-        ? await workingGroupDb.getVisibleDescendantIds(group.id, user?.id ?? null, { isAdmin: isAAOAdmin })
+        ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null, {
+          isAdmin: isAAOAdmin,
+          canViewReservedAdminGroup: isAAOAdmin,
+        })
         : [group.id];
 
       const result = await pool.query(
@@ -1143,7 +1152,7 @@ export function createCommitteeRouters(): {
         WHERE p.working_group_id = ANY($1::uuid[]) AND p.status = 'published'
           AND (p.is_members_only = false OR $2 = true)
         ORDER BY p.published_at DESC NULLS LAST`,
-        [targetIds, isMember]
+        [targetIds, isMember || (group.slug === 'aao-admin' && isAAOAdmin)]
       );
 
       const posts = result.rows.map(row => ({
@@ -1172,6 +1181,7 @@ export function createCommitteeRouters(): {
 
       res.json({ posts });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Get working group posts error');
       res.status(500).json({
         error: 'Failed to get posts',
@@ -1194,15 +1204,29 @@ export function createCommitteeRouters(): {
         });
       }
 
+      if (group.slug === 'aao-admin' && !(await canViewWorkingGroupContent(req, group))) {
+        return res.status(404).json({
+          error: 'Working group not found',
+          message: `No working group found with slug: ${slug}`,
+        });
+      }
+
+      const membershipUserId = group.slug === 'aao-admin'
+        ? user?.authWorkosUserId ?? user?.id
+        : user?.id;
       const includeSubgroups = req.query.include_subgroups !== 'false';
+      const isAAOAdmin = includeSubgroups && user?.id ? await isAuthenticatedUserAAOAdmin(user) : false;
       const targetIds = includeSubgroups
-        ? await workingGroupDb.getVisibleDescendantIds(group.id, user?.id ?? null)
+        ? await workingGroupDb.getVisibleDescendantIds(group.id, membershipUserId ?? null, {
+          canViewReservedAdminGroup: isAAOAdmin,
+        })
         : [group.id];
 
       const events = await eventsDb.getEventsByCommittee(targetIds, { includeUnpublished: false });
 
       res.json(events);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Get committee events error');
       res.status(500).json({
         error: 'Failed to get events',
@@ -1739,7 +1763,10 @@ export function createCommitteeRouters(): {
 
       // Don't expose internal content to non-leaders
       const user = req.user;
-      const isLeader = user && await workingGroupDb.isLeader(group.id, user.id);
+      const leadershipUserId = group.slug === 'aao-admin'
+        ? user?.authWorkosUserId ?? user?.id
+        : user?.id;
+      const isLeader = leadershipUserId && await workingGroupDb.isLeader(group.id, leadershipUserId);
 
       const publicDocuments = documents.map(doc => ({
         id: doc.id,
@@ -1763,6 +1790,7 @@ export function createCommitteeRouters(): {
 
       res.json({ documents: publicDocuments });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Get committee documents error');
       res.status(500).json({
         error: 'Failed to get documents',
@@ -1781,6 +1809,7 @@ export function createCommitteeRouters(): {
       const activity = await workingGroupDb.getRecentActivity(group.id);
       res.json({ activity });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Get committee activity error');
       res.status(500).json({
         error: 'Failed to get activity',
@@ -1811,6 +1840,7 @@ export function createCommitteeRouters(): {
 
       res.json({ summary });
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Get committee summary error');
       res.status(500).json({
         error: 'Failed to get summary',
@@ -2012,6 +2042,7 @@ export function createCommitteeRouters(): {
       res.setHeader('Content-Length', fileData.file_data.length);
       res.send(fileData.file_data);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Serve committee document file error');
       res.status(500).json({ error: 'Failed to serve file' });
     }
@@ -2202,10 +2233,11 @@ export function createCommitteeRouters(): {
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': "default-src 'none'",
         'Content-Disposition': 'inline',
-        'Cache-Control': group.is_private ? 'private, no-cache' : 'public, max-age=86400',
+        'Cache-Control': group.slug === 'aao-admin' || group.is_private ? 'private, no-cache' : 'public, max-age=86400',
       });
       return res.send(asset.asset_data);
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error, assetId: req.params.assetId }, 'Failed to serve document asset');
       res.status(500).send('Internal error');
     }
@@ -2235,6 +2267,7 @@ export function createCommitteeRouters(): {
         url: `/api/working-groups/assets/${a.id}`,
       })));
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, 'Failed to list document assets');
       res.status(500).json({ error: 'Failed to list assets' });
     }
