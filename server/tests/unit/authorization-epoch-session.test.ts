@@ -1,5 +1,8 @@
 /** Provider caches must never become identity, organization, or epoch authority. */
 import type { NextFunction, Request, Response } from 'express';
+import express from 'express';
+import cookieParser from 'cookie-parser';
+import supertest from 'supertest';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
 
@@ -44,6 +47,7 @@ vi.mock('../../src/db/session-refresh-db.js', () => ({
 }));
 import { AuthorizationSnapshotUnavailableError } from '../../src/db/user-authorization-snapshot-db.js';
 import { invalidateBanCache, optionalAuth, requireAuth, stopAuthTimers } from '../../src/middleware/auth.js';
+import { csrfProtection } from '../../src/middleware/csrf.js';
 
 const AUTHENTICATED_ID = 'user_epoch_authenticated';
 const PROVIDER_USER = {
@@ -561,5 +565,77 @@ describe.each([['required', requireAuth], ['optional', optionalAuth]] as const)(
     expect(following.user?.authorizationSnapshot?.authenticatedUserId).toBe(AUTHENTICATED_ID);
     expect(following.user?.authWorkosUserId).toBe(AUTHENTICATED_ID);
     expect(mocks.verifyWorkOSJWT).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('optional authentication HTTP route boundary', () => {
+  function route() {
+    const app = express();
+    // Exercise the real HTTP cookie parser, including an explicitly empty cookie.
+    // This read-only route has the same middleware chain for anonymous and authenticated callers.
+    app.use(cookieParser());
+    app.use(csrfProtection);
+    const handler = vi.fn((req: Request, res: Response) => {
+      res.json({ authenticated: Boolean(req.user) });
+    });
+    app.get('/optional-auth-test', optionalAuth, handler);
+    return { app, handler };
+  }
+
+  it('reaches the anonymous handler when neither Authorization nor Cookie is sent', async () => {
+    const { app, handler } = route();
+    const result = await supertest(app).get('/optional-auth-test');
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({ authenticated: false });
+    expect(handler).toHaveBeenCalledOnce();
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each(['', 'Basic invalid', 'Bearer header.invalid.signature'])('rejects supplied Authorization %j without using an otherwise valid cookie', async (authorization) => {
+    mocks.verifyWorkOSJWT.mockRejectedValue(new Error('Invalid JWT signature'));
+    const { app, handler } = route();
+    const result = await supertest(app).get('/optional-auth-test')
+      .set('Authorization', authorization)
+      .set('Cookie', `wos-session=otherwise-valid-${++sequence}`);
+    expect(result.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
+    expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('rejects an opaque invalid bearer after validating that bearer rather than its companion cookie', async () => {
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    const token = `invalid-native-route-${++sequence}`;
+    const { app, handler } = route();
+    const result = await supertest(app).get('/optional-auth-test')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', 'wos-session=otherwise-valid');
+    expect(result.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
+    expect(mocks.loadSealedSession).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessionData: token }));
+  });
+
+  it.each(['empty', 'invalid'] as const)('rejects an %s presented wos-session cookie before the handler', async (kind) => {
+    mocks.authenticate.mockResolvedValue({ authenticated: false });
+    const token = kind === 'empty' ? '' : `invalid-cookie-route-${++sequence}`;
+    const { app, handler } = route();
+    const result = await supertest(app).get('/optional-auth-test').set('Cookie', `wos-session=${token}`);
+    expect(result.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).not.toHaveBeenCalled();
+    if (kind === 'empty') expect(mocks.loadSealedSession).not.toHaveBeenCalled();
+  });
+
+  it.each(['bearer', 'cookie'] as const)('returns 503 for unavailable authorization on a presented %s without running the handler', async (kind) => {
+    mocks.loadAuthorizationSnapshot.mockRejectedValue(new AuthorizationSnapshotUnavailableError());
+    const { app, handler } = route();
+    const httpRequest = supertest(app).get('/optional-auth-test');
+    if (kind === 'bearer') httpRequest.set('Authorization', `Bearer header.route${++sequence}.signature`);
+    else httpRequest.set('Cookie', `wos-session=unavailable-route-${++sequence}`);
+    const result = await httpRequest;
+    expect(result.status).toBe(503);
+    expect(handler).not.toHaveBeenCalled();
+    expect(mocks.loadAuthorizationSnapshot).toHaveBeenCalledOnce();
   });
 });

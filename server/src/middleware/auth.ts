@@ -1885,6 +1885,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
   const sessionCookie = extractSealedSession(req);
 
+  // codeql[js/user-controlled-bypass] - optional auth permits anonymous access only when both credentials are absent; presented credentials fail closed
   if (!sessionCookie) {
     if (req.headers.authorization !== undefined || req.cookies?.['wos-session'] !== undefined) {
       return res.status(401).json({ error: 'Invalid session', login_url: '/auth/login' });
