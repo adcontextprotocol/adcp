@@ -45,6 +45,8 @@ const db = vi.hoisted(() => ({
   getVisibleDescendantIds: vi.fn(),
   query: vi.fn(),
   getEventsByCommittee: vi.fn(),
+  adminPrincipals: vi.fn(),
+  requestUser: null as Express.Request['user'] | null,
   authorityUnavailable: false,
 }));
 
@@ -65,6 +67,7 @@ vi.mock('../../src/middleware/auth.js', () => {
         authWorkosUserId: req.header('x-test-authenticated-user'),
         email: req.header('x-test-email') ?? `${identity}@example.com`,
       } as Express.Request['user'];
+      db.requestUser = req.user;
     }
     next();
   };
@@ -98,7 +101,10 @@ vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
     ...actual,
     isWebUserAAOAdmin: checkMembership,
     resolveWebUserAAOAdminAccess: resolve,
-    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => {
+      db.adminPrincipals(principal);
+      return (await resolve(principal)).isAdmin;
+    },
   };
 });
 
@@ -140,6 +146,7 @@ function createApp() {
 describe('private working-group document reads', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    db.requestUser = null;
     db.authorityUnavailable = false;
     delete process.env.ADMIN_EMAILS;
 
@@ -481,6 +488,41 @@ describe('private working-group document reads', () => {
       if (path.endsWith('/events')) return response.body.some((event: { id: string }) => event.id === 'reserved-event');
       return response.body.working_group.subgroups.some((group: { slug: string }) => group.slug === 'aao-admin');
     }
+
+    it.each(['false', 'true', 'admin'])('does not let include_subgroups=%s skip exact event authorization', async (includeSubgroups) => {
+      db.authorityUnavailable = true;
+      const response = await request(createApp()).get(paths[2])
+        .query({ include_subgroups: includeSubgroups, isAdmin: true, authWorkosUserId: 'admin' })
+        .set('x-test-user', 'admin').set('x-test-authenticated-user', 'member').expect(503);
+      expect(response.body.error).toBe('admin_authorization_unavailable');
+      expect(db.adminPrincipals).toHaveBeenCalledWith(expect.objectContaining({ authWorkosUserId: 'member' }));
+      expect(db.getVisibleDescendantIds).not.toHaveBeenCalled();
+      expect(db.getEventsByCommittee).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { exact: 'admin', canonical: 'member', grants: true },
+      { exact: 'member', canonical: 'admin', grants: false },
+    ])('keeps immutable event authority for $exact linked to $canonical across group lookup', async ({ exact, canonical, grants }) => {
+      db.getWorkingGroupBySlug.mockImplementationOnce(async () => {
+        db.requestUser!.id = exact;
+        db.requestUser!.authWorkosUserId = canonical;
+        return publicGroup;
+      });
+      const response = await request(createApp()).get(paths[2])
+        .set('x-test-user', canonical).set('x-test-authenticated-user', exact).expect(200);
+      expect(includesReserved(response, paths[2])).toBe(grants);
+      expect(db.adminPrincipals).toHaveBeenCalledWith(expect.objectContaining({ id: canonical, authWorkosUserId: exact }));
+      expect(Object.isFrozen(db.adminPrincipals.mock.calls[0][0])).toBe(true);
+    });
+
+    it.each(['false', 'true'])('rejects forged event authority on the reserved group with include_subgroups=%s', async (includeSubgroups) => {
+      db.getWorkingGroupBySlug.mockResolvedValue(reserved);
+      await request(createApp()).get('/api/working-groups/aao-admin/events')
+        .query({ include_subgroups: includeSubgroups, isAdmin: true, authWorkosUserId: 'admin' })
+        .set('x-test-user', 'admin').set('x-test-authenticated-user', 'member').expect(404);
+      expect(db.getEventsByCommittee).not.toHaveBeenCalled();
+    });
 
     it.each(paths)('retains exact admin access through the ordinary parent at %s', async (path) => {
       const response = await request(createApp()).get(path)
