@@ -85,6 +85,154 @@ test("get_products accepts real targeting and future overlay support", async () 
   assert.equal(validate(payload), true, errors(validate));
 });
 
+test("frequency cap detail preserves the legacy boolean", async () => {
+  const [validateSupport, validateRequirements, validateCanonicalProduct] = await Promise.all([
+    compile("/schemas/core/targeting-overlay-support.json"),
+    compile("/schemas/core/targeting-overlay-requirements.json"),
+    compile("/schemas/core/canonical-product.json"),
+  ]);
+
+  const constraints = {
+    mutable_fields: ["max_impressions"],
+    supported_control_modes: ["max_impressions"],
+    supported_per_units: ["individuals"],
+    max_impressions_constraints: { minimum: 1, maximum: 10 },
+    window_constraints: [
+      { unit: "days", allowed_intervals: [1, 7, 30] },
+    ],
+  };
+  assert.equal(
+    validateSupport({ frequency_cap: true }),
+    true,
+    errors(validateSupport)
+  );
+  assert.equal(
+    validateSupport({ frequency_cap: constraints }),
+    false,
+    "the legacy capability never widens from boolean to object"
+  );
+  assert.equal(
+    validateSupport({ frequency_cap_support: constraints }),
+    true,
+    "constrained support is independently positive so it does not weaken legacy true"
+  );
+  assert.equal(
+    validateSupport({ frequency_cap_support: { ext: { vendor: true } } }),
+    false,
+    "extension-only detail does not advertise positive frequency-cap support"
+  );
+  assert.equal(
+    validateSupport({ frequency_cap: true, frequency_cap_support: constraints }),
+    false,
+    "a product declares one form so structured constraints are always binding"
+  );
+  assert.equal(
+    validateRequirements({ frequency_cap: true, frequency_cap_support: {} }),
+    false,
+    "a requirement carrying both forms would exclude every constrained product"
+  );
+  assert.equal(
+    validateRequirements({
+      frequency_cap_support: {
+        mutable_fields: ["max_impressions"],
+        supported_per_units: ["individuals"],
+      },
+    }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.equal(
+    validateRequirements({ frequency_cap_support: {} }),
+    true,
+    "an empty structured requirement requests any positive old or new support form"
+  );
+  assert.equal(
+    validateCanonicalProduct({
+      product_id: "prod_video",
+      name: "Streaming video",
+      overlay_support: { frequency_cap_support: constraints },
+    }),
+    true,
+    errors(validateCanonicalProduct)
+  );
+  assert.equal(
+    validateCanonicalProduct({
+      product_id: "prod_create_only_unaddressable",
+      name: "Unaddressable placement",
+      identity: { persistent_identifier: false },
+      overlay_support: { frequency_cap_support: constraints },
+    }),
+    false,
+    "identity-absence products cannot promise constrained package frequency counting"
+  );
+
+  const validateConstraints = await compile("/schemas/core/frequency-cap-constraints.json");
+  assert.equal(
+    validateConstraints({
+      mutable_fields: ["max_impressions"],
+      max_impressions_constraints: { allowed_values: [1, 3, 5] },
+      window_constraints: [
+        { unit: "hours", minimum_interval: 1, maximum_interval: 24 },
+        { unit: "campaign", allowed_intervals: [1] },
+      ],
+    }),
+    true,
+    errors(validateConstraints)
+  );
+  assert.equal(
+    validateConstraints({ mutable_fields: [] }),
+    true,
+    "an empty mutable_fields list is the create-only declaration"
+  );
+  assert.equal(
+    Object.hasOwn(validateConstraints.schema.properties, "mutable"),
+    false,
+    "mutability has exactly one representation"
+  );
+  assert.equal(
+    validateConstraints({ window_constraints: [{ unit: "days" }] }),
+    false,
+    "duration units require exact presets or inclusive bounds"
+  );
+  assert.equal(
+    validateConstraints({
+      window_constraints: [
+        { unit: "days", allowed_intervals: [1, 7], minimum_interval: 1, maximum_interval: 7 },
+      ],
+    }),
+    false,
+    "presets and ranges are mutually exclusive, so no intersection rule is needed"
+  );
+  assert.equal(
+    validateConstraints({
+      max_impressions_constraints: { minimum: 1, maximum: 10, step: 2 },
+    }),
+    false,
+    "count ranges have no step"
+  );
+
+  const requirementsSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "frequency-cap-requirements.json"), "utf8")
+  );
+  assert.equal(
+    validateRequirements({
+      frequency_cap_support: { supported_window_units: ["days"], mutable_fields: ["max_impressions"] },
+    }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.match(
+    requirementsSchema.description,
+    /omits that list.*seller-wide supported_window_units includes it or is omitted/s,
+    "unit requirements resolve through seller-wide inheritance rather than a product-only precise-constraint rule"
+  );
+  assert.match(
+    requirementsSchema.properties.mutable_fields.description,
+    /mutable_fields: \[\] is create-only and never matches a non-empty list/,
+    "create-only products are excluded from mutability requirements"
+  );
+});
+
 test("split discovery tasks carry targeting through shared criteria", async () => {
   const [validateList, validateRequest, validateRefine] = await Promise.all([
     compile("/schemas/media-buy/list-products-request.json"),

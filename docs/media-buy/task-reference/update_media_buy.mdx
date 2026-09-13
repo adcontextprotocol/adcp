@@ -93,7 +93,7 @@ The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, [
 
 ### Action modes
 
-Each entry in `available_actions[]` carries a singular `mode` (resolved against the buy's current state). On the product-level `allowed_actions[]` template the field is `modes[]` (plural) because a product can offer multiple conditional modes (e.g. `self_serve` within tolerances, escalating to `requires_approval` outside).
+Each entry in `available_actions[]` carries a singular `mode` (resolved against the buy's current state). Package-scoped entries such as `update_frequency_caps` may carry `applicable_package_ids`; omission means every relevant package. On the product-level `allowed_actions[]` template the field is `modes[]` (plural) because a product can offer multiple conditional modes (e.g. `self_serve` within tolerances, escalating to `requires_approval` outside).
 
 | Mode | Meaning |
 |------|---------|

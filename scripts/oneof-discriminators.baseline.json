@@ -196,6 +196,16 @@
       "variants": 2,
       "note": "0:[dimensions] | 1:[parameters_from_format_id]"
     },
+    "core/frequency-cap-impression-constraints.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[allowed_values] | 1:[minimum,maximum]"
+    },
+    "core/frequency-cap-interval-constraints.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[allowed_intervals] | 1:[minimum_interval,maximum_interval]"
+    },
     "core/product-filters.json##/properties/geo_proximity/items/oneOf": {
       "kind": "narrowable",
       "variants": 3,
