@@ -71,6 +71,10 @@ assert.strictEqual(isProtocolScopedPath('static/registry/policies/brand-safety.j
 assert.strictEqual(isProtocolScopedPath('static/openapi/registry.yaml'), false);
 assert.strictEqual(isProtocolScopedPath('static/schemas/source/core/registry-feed-response.json'), true);
 assert.strictEqual(isProtocolScopedPath('docs/reference/versioning.mdx'), true);
+assert.strictEqual(isProtocolScopedPath('docs/trusted-match/specification.mdx'), true);
+assert.strictEqual(isProtocolScopedPath('docs/trusted-match/router-architecture.mdx'), true);
+assert.strictEqual(isProtocolScopedPath('docs/trusted-match/data-protection-roles.mdx'), false);
+assert.strictEqual(isProtocolScopedPath('docs/trusted-match/surfaces/web.mdx'), false);
 assert.strictEqual(isProtocolScopedPath('docs/registry/index.mdx'), false);
 assert.strictEqual(isProtocolScopedPath('scripts/run-storyboards-isolated.mjs'), true);
 assert.strictEqual(isProtocolScopedPath('server/src/billing/subscription-sync.ts'), false);
@@ -111,6 +115,28 @@ violations = findChangesetProtocolScopeViolations(
   readFiles({ '.changeset/schema-fix.md': protocolChangeset })
 );
 assert.deepStrictEqual(violations, [], 'Schema changes with a protocol changeset are allowed');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['docs/trusted-match/specification.mdx'] },
+    { status: 'A', paths: ['.changeset/tmp-cache-fix.md'] },
+  ],
+  readFiles({ '.changeset/tmp-cache-fix.md': protocolChangeset })
+);
+assert.deepStrictEqual(violations, [], 'Authoritative TMP docs with a protocol changeset are allowed');
+
+violations = findChangesetProtocolScopeViolations(
+  [
+    { status: 'M', paths: ['docs/trusted-match/surfaces/web.mdx'] },
+    { status: 'A', paths: ['.changeset/tmp-prose.md'] },
+  ],
+  readFiles({ '.changeset/tmp-prose.md': protocolChangeset })
+);
+assert.strictEqual(
+  violations.length,
+  1,
+  'Unrelated Trusted Match prose with a protocol changeset must fail'
+);
 
 violations = findChangesetProtocolScopeViolations(
   [

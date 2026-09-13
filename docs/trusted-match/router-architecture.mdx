@@ -136,7 +136,7 @@ Identity tokens come from existing providers (ID5, LiveRamp, UID2, etc.) that ar
 When the publisher sends a Context Match request:
 
 1. The router identifies all providers configured for the request's `property_rid` with `context_match` capability.
-2. For each matching provider, it checks the provider's Context Match response cache using the `{provider_id, context_hash}` key defined in [Caching](/docs/trusted-match/specification#caching). A placement-only key is unsafe because two requests on the same placement can carry different artifacts, signals, geo, sellers, or package subsets. On a hit, it replaces the cached response's `request_id` with the current request's value.
+2. For each matching provider, it checks the provider's Context Match response cache using the `{provider_id, cache_namespace, context_hash}` key defined in [Caching](/docs/trusted-match/specification#caching). A placement-only key is unsafe because two requests on the same placement can carry different artifacts, signals, geo, sellers, or package subsets; a body-only key is still unsafe when the authenticated principal, tenant, provider configuration, deployed model, or targeting/rules generation can change the result. On a hit, it replaces the cached response's `request_id` with the current request's value.
 3. For cache misses, it sends the request to all matching providers in parallel over HTTP/2 and validates their responses against `provider-context-match-response.json`. That provider-hop schema permits `signals.targeting_kvs` but forbids `signals_by_provider`.
 4. It waits for responses up to the latency budget (default: 50ms).
 5. It merges responses:
