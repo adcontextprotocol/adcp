@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
-  "description": "Concrete delivery constraints used during product discovery and media-buy execution. Targeting includes both audience eligibility and purchased-inventory selection: geography, demographics, placements, properties, collections, device compatibility, language, keywords, and other explicit controls. Sellers resolve requested outcomes against inherent product scope or selectable execution. A fresh create/update request MUST be applied exactly or rejected; get_products may instead return a request-scoped configured product with sparse, buyer-reviewable targeting_resolution modifications.",
+  "description": "Strict non-null targeting state used during product discovery, commercial snapshots, and media-buy readback. Targeting includes both audience eligibility and purchased-inventory selection: geography, demographics, placements, properties, collections, device compatibility, language, keywords, and other explicit controls. Sellers resolve requested outcomes against inherent product scope or selectable execution. Request-side create and update mutations use targeting-input.json so null can explicitly clear one dimension; resolved effective targeting omits cleared dimensions and MUST NOT contain null. A fresh create/update request MUST be applied exactly or rejected; get_products may instead return a request-scoped configured product with sparse, buyer-reviewable targeting_resolution modifications.",
   "x-adcp-validation": {
     "disjoint_place_fields": {
       "include": "geo_places",
@@ -54,27 +54,10 @@
       "minItems": 1
     },
     "geo_metros": {
+      "title": "Targeting Geo Metros",
       "type": "array",
       "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/metro-system.json",
-            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
-          },
-          "values": {
-            "type": "array",
-            "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1
-          }
-        },
-        "required": ["system", "values"],
-        "additionalProperties": false
-      },
+      "items": { "$ref": "/schemas/core/geo-metro.json" },
       "minItems": 1
     },
     "geo_metros_exclude": {
@@ -170,6 +153,7 @@
       "minItems": 1
     },
     "signal_targeting_groups": {
+      "title": "Targeting Signal Groups",
       "$ref": "/schemas/core/package-signal-targeting-groups.json",
       "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. Sellers MUST echo applied signal_targeting_groups on the resulting package state, including fixed/default selections. Sellers MAY return REQUOTE_REQUIRED when a targeting mutation changes commercial terms."
     },
@@ -187,9 +171,11 @@
       "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Fresh create/update targeting MUST compile exactly or be rejected. During get_products, a seller may offer a different configured predicate only through sparse targeting_resolution modifications on a distinguishable product_id; selecting that product accepts the alternative. Sellers never silently broaden, narrow, default, drop, or substitute the basis."
     },
     "frequency_cap": {
+      "title": "Targeting Frequency Cap",
       "$ref": "/schemas/core/frequency-cap.json"
     },
     "property_list": {
+      "title": "Targeting Property List",
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
     },
@@ -198,6 +184,7 @@
       "description": "Reference to a property list whose properties must not carry the buyer's ads. Matched properties are removed from delivery. Use for brand-safety do-not-run lists (apps, sites). Exclude wins on overlap with property_list, and applies regardless of the product's property_targeting_allowed flag. Seller must declare support in get_adcp_capabilities."
     },
     "collection_list": {
+      "title": "Targeting Collection List",
       "$ref": "/schemas/core/collection-list-ref.json",
       "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
     },
@@ -207,11 +194,12 @@
     },
     "placement_selection": {
       "$ref": "/schemas/core/placement-selection.json",
-      "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. On update, the surrounding targeting_overlay replacement semantics apply."
+      "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. In request-side Targeting Input, a non-null value replaces this dimension, omission preserves or inherits it, and null clears it when the product permits that broader inventory set."
     },
     "collection_selection": {
+      "title": "Targeting Collection Selection",
       "$ref": "/schemas/core/collection-selection.json",
-      "description": "Purchased collection selection within the product. On create, mode selected supplies the complete selected set and mode default uses the product's full bundle. On package readback this is the committed selection sellers MUST echo as concrete selectors, materializing any collection_list composition; collection_list fields remain the buyer-managed list mechanism. On update, the surrounding targeting_overlay replacement semantics apply."
+      "description": "Purchased collection selection within the product. On create, mode selected supplies the complete selected set and mode default uses the product's full bundle. On package readback this is the committed selection sellers MUST echo as concrete selectors, materializing any collection_list composition; collection_list fields remain the buyer-managed list mechanism. In request-side Targeting Input, a non-null value replaces this dimension, omission preserves or inherits it, and null clears it when the product permits that broader inventory set."
     },
     "age_restriction": {
       "type": "object",
@@ -436,6 +424,7 @@
       "minItems": 1
     },
     "language": {
+      "title": "Targeting Languages",
       "type": "array",
       "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
       "items": {
@@ -444,6 +433,7 @@
       "minItems": 1
     },
     "keyword_targets": {
+      "title": "Targeting Keywords",
       "type": "array",
       "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
       "items": {
@@ -469,81 +459,16 @@
       "minItems": 1
     },
     "negative_keywords": {
+      "title": "Targeting Negative Keywords",
       "type": "array",
       "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The keyword to exclude"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": false
-      },
+      "items": { "$ref": "/schemas/core/negative-keyword.json" },
       "minItems": 1
     }
   },
   "allOf": [
-    {
-      "description": "Unknown-age delivery cannot satisfy a minimum-age eligibility policy. When demographic audience targeting and age_restriction are both present, include_unknown must be false.",
-      "if": {
-        "required": ["demographics", "age_restriction"]
-      },
-      "then": {
-        "properties": {
-          "demographics": {
-            "properties": {
-              "age": {
-                "properties": {
-                  "include_unknown": { "const": false }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "description": "A legal verification requirement always narrows demographic targeting. When the buyer supplies accepted_bases and age_restriction requires verification, verified must be accepted; otherwise the constraints have an empty intersection and the request is invalid.",
-      "if": {
-        "properties": {
-          "age_restriction": {
-            "properties": {
-              "verification_required": { "const": true }
-            },
-            "required": ["verification_required"]
-          },
-          "demographics": {
-            "properties": {
-              "age": { "required": ["accepted_bases"] }
-            },
-            "required": ["age"]
-          }
-        },
-        "required": ["demographics", "age_restriction"]
-      },
-      "then": {
-        "properties": {
-          "demographics": {
-            "properties": {
-              "age": {
-                "properties": {
-                  "accepted_bases": {
-                    "contains": { "const": "verified" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    { "$ref": "/schemas/core/targeting-unknown-age-eligibility-constraint.json" },
+    { "$ref": "/schemas/core/targeting-verified-age-basis-constraint.json" }
   ],
   "additionalProperties": true
 }
