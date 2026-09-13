@@ -60,9 +60,11 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // Bounded delivery-breakdown pagination adds one small per-dimension cursor
 // input to get_media_buy_delivery (device_type, device_platform, audience,
 // placement). Core consumer-status sync adds one compact mutating input; keep
-// the resulting prompt view within 417 KiB.
+// the resulting prompt view within 417 KiB. Geographic coverage offer filters
+// reuse the targeting proximity value schema; the remaining shapes bring the
+// measured media-buy context to 417.25 KiB, bounded here at 418 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 417,
+  'media-buy': 418,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

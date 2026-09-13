@@ -83,7 +83,7 @@
     },
     "regions": {
       "type": "array",
-      "description": "Filter by product inventory coverage in the specified ISO 3166-2 subdivisions. Match at least one entry; combine with other offer filters using AND. This is a product attribute filter, not a delivery-targeting instruction. It does not add package targeting, require selectable targeting support, or rescope the product's pricing and forecasts to this area.",
+      "description": "Inventory coverage in the specified ISO 3166-2 subdivisions: OR within this field, AND across offer filters. Does not add delivery targeting, require targeting support, or rescope pricing or forecasts.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
@@ -92,7 +92,7 @@
     },
     "metros": {
       "type": "array",
-      "description": "Filter by product inventory coverage in the specified metro areas identified by system and code. Match at least one entry; combine with other offer filters using AND. This is a product attribute filter, not a delivery-targeting instruction. It does not add package targeting, require selectable targeting support, or rescope the product's pricing and forecasts to this area.",
+      "description": "Inventory coverage in the specified metro areas (system and code): OR within this field, AND across offer filters. Does not add delivery targeting, require targeting support, or rescope pricing or forecasts.",
       "items": {
         "type": "object",
         "properties": {
@@ -115,171 +115,15 @@
     },
     "postal_areas": {
       "type": "array",
-      "description": "Filter by product inventory coverage in the specified postal areas. Match at least one entry; combine with other offer filters using AND. This is a product attribute filter, not a delivery-targeting instruction. It does not add package targeting, require selectable targeting support, or rescope the product's pricing and forecasts to this area.",
+      "description": "Inventory coverage in the specified postal areas: OR within this field, AND across offer filters. Does not add delivery targeting, require targeting support, or rescope pricing or forecasts.",
       "items": {
         "$ref": "/schemas/core/postal-area.json"
       },
       "minItems": 1
     },
     "geo_proximity": {
-      "type": "array",
-      "description": "Filter by product inventory coverage in the specified proximity boundaries. Match at least one entry; combine with other offer filters using AND. This is a product attribute filter, not a delivery-targeting instruction. It does not add package targeting, require selectable targeting support, or rescope the product's pricing and forecasts to this area.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "lat": {
-            "type": "number",
-            "minimum": -90,
-            "maximum": 90,
-            "description": "Latitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
-          },
-          "lng": {
-            "type": "number",
-            "minimum": -180,
-            "maximum": 180,
-            "description": "Longitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
-          },
-          "label": {
-            "type": "string",
-            "description": "Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Primary trade area')."
-          },
-          "travel_time": {
-            "type": "object",
-            "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks.",
-            "properties": {
-              "value": {
-                "type": "number",
-                "minimum": 1,
-                "description": "Travel time limit."
-              },
-              "unit": {
-                "$ref": "/schemas/enums/travel-time-unit.json"
-              }
-            },
-            "required": [
-              "value",
-              "unit"
-            ],
-            "additionalProperties": false
-          },
-          "transport_mode": {
-            "$ref": "/schemas/enums/transport-mode.json",
-            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
-          },
-          "radius": {
-            "type": "object",
-            "description": "Simple radius from the point. The platform draws a circle of this distance around the coordinates.",
-            "properties": {
-              "value": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Radius distance."
-              },
-              "unit": {
-                "$ref": "/schemas/enums/distance-unit.json",
-                "description": "Distance unit."
-              }
-            },
-            "required": [
-              "value",
-              "unit"
-            ],
-            "additionalProperties": false
-          },
-          "geometry": {
-            "type": "object",
-            "description": "Pre-computed GeoJSON geometry defining the proximity boundary. Use for a precomputed isochrone or custom boundary. When geometry is provided, lat/lng are not required.",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Polygon",
-                  "MultiPolygon"
-                ],
-                "description": "GeoJSON geometry type."
-              },
-              "coordinates": {
-                "type": "array",
-                "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
-              }
-            },
-            "required": [
-              "type",
-              "coordinates"
-            ],
-            "additionalProperties": false
-          },
-          "ext": {
-            "$ref": "/schemas/core/ext.json"
-          }
-        },
-        "oneOf": [
-          {
-            "required": [
-              "lat",
-              "lng",
-              "travel_time",
-              "transport_mode"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "radius"
-                  ]
-                },
-                {
-                  "required": [
-                    "geometry"
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "required": [
-              "lat",
-              "lng",
-              "radius"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "travel_time"
-                  ]
-                },
-                {
-                  "required": [
-                    "geometry"
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "required": [
-              "geometry"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "travel_time"
-                  ]
-                },
-                {
-                  "required": [
-                    "radius"
-                  ]
-                }
-              ]
-            }
-          }
-        ],
-        "additionalProperties": true
-      },
-      "minItems": 1
+      "$ref": "/schemas/core/targeting.json#/properties/geo_proximity",
+      "description": "Inventory coverage in the specified proximity boundaries: OR within this field, AND across offer filters. Does not add delivery targeting, require targeting support, or rescope pricing or forecasts."
     },
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
