@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.2/enums/reach-aggregation.json",
+  "title": "Reach Aggregation",
+  "description": "How reach in a cross-buy aggregate was combined. This distinction determines whether aggregate reach is a valid denominator for frequency.",
+  "type": "string",
+  "enum": [
+    "deduplicated",
+    "sum_of_constituent_reach"
+  ],
+  "enumDescriptions": {
+    "deduplicated": "Unique reach deduplicated across every media buy included in the aggregate.",
+    "sum_of_constituent_reach": "The arithmetic sum of independently unique per-buy reach values. A person, household, device, account, or cookie may therefore be counted more than once across buys."
+  }
+}
