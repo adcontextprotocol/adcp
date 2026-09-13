@@ -843,7 +843,17 @@ This means a `200` with an empty `offers` array is a valid "no matches" response
 
 ## Caching
 
-Context Match responses are cacheable only when the result-affecting context is the same. Placement alone is not sufficient: artifacts, classified signals, geo, an explicit package subset, seller, or protocol version can change a provider's response. Routers MUST partition each provider's Context Match response cache by `{provider_id, cache_namespace, context_hash}`. Equality of `provider_id` and the forwarded request body alone is insufficient when the response-affecting security or provider configuration context differs.
+<Warning>
+The `cache_namespace` conformance requirements in this section are prospective
+AdCP 3.2 requirements effective October 25, 2026. Version 3.1.22 already
+introduced request partitioning as an emergency security correction. Until a
+router implements both request partitioning and the trusted, result-affecting
+security/configuration namespace below, it MUST bypass cache lookup, in-flight
+coalescing, and insertion for affected Context Match traffic. See the
+[breaking/security migration notice](/docs/reference/migration/trusted-match-context-cache).
+</Warning>
+
+Context Match responses are cacheable only when the result-affecting context is the same. Placement alone is not sufficient: artifacts, classified signals, geo, an explicit package subset, seller, or protocol version can change a provider's response. For AdCP 3.2 conformance on and after October 25, 2026, routers MUST partition each provider's Context Match response cache by `{provider_id, cache_namespace, context_hash}`. Equality of `provider_id` and the forwarded request body alone is insufficient when the response-affecting security or provider configuration context differs.
 
 To compute `context_hash`, start with the validated request body exactly as it will be forwarded to that provider. Remove `$schema`, which is ignored at runtime, and `request_id`, which is a per-call correlation value. Retain every other member, including version fields, seller, property, placement, `artifact`, `artifact_refs`, `context_signals`, `geo`, and `package_ids`. Serialize the resulting object using [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785), then SHA-256 the UTF-8 bytes. Array order is preserved; implementations MUST NOT sort or deduplicate arrays for this hash. Two semantically equivalent requests with differently ordered arrays may produce a safe cache miss. Implementations MUST NOT apply normalization outside JCS that collapses otherwise distinct hash inputs.
 

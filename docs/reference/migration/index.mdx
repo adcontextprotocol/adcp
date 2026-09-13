@@ -25,6 +25,15 @@ Published RC.1 remains unchanged.
 </Warning>
 
 <Warning>
+**Implementing Trusted Match Context Match?** Read the
+[privacy and context-cache breaking/security notice](/docs/reference/migration/trusted-match-context-cache).
+Version 3.1.22 shipped emergency privacy and request-partitioning corrections;
+the additional trusted cache namespace is prospective AdCP 3.2 conformance
+effective October 25, 2026. Affected routers must bypass caching until both
+partitions are implemented.
+</Warning>
+
+<Warning>
 **v2 has been unsupported since 3.0 GA and reached end of life on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AgenticAdvertising.org registry policy, and why v2 is not safe for interoperable production.
 </Warning>
 
@@ -155,6 +164,9 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
   </Card>
   <Card title="Cross-role governance" icon="shield" href="/docs/reference/migration/cross-role-governance-enforcement">
     Adopt the experimental task-scoped authorization and outcome contract as one migration
+  </Card>
+  <Card title="Trusted Match cache security" icon="shield-check" href="/docs/reference/migration/trusted-match-context-cache">
+    Apply the v3.1.22 privacy corrections and prepare for the prospective 3.2 trusted cache namespace
   </Card>
 </CardGroup>
 

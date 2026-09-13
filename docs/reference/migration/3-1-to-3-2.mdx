@@ -15,6 +15,15 @@ remains role-dependent. Keep production traffic pinned to `"3.1"`
 while validating an exact 3.2 checkpoint in staging.
 </Warning>
 
+<Warning>
+**Trusted Match cache-namespace conformance is prospective until October 25,
+2026.** Version 3.1.22 already contains emergency single-user privacy and
+request-partitioning corrections. Affected Context Match routers must bypass
+caching until both request partitioning and the trusted result-affecting
+security/configuration namespace are implemented. See the
+[breaking/security migration notice](/docs/reference/migration/trusted-match-context-cache).
+</Warning>
+
 3.2 is a minor release over 3.1. Existing integrations do not need to adopt the
 new compact tools immediately: `get_products`, `create_media_buy`, and
 `update_media_buy` remain the 3.x compatibility facades. A caller opts into 3.2
@@ -55,6 +64,7 @@ surfaces by hand.
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
 | 8 | Compliance operators | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.33`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain the exact package and wire versions. |
 | 9 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
+| 10 | Trusted Match routers | Preserve the v3.1.22 privacy and request-hash corrections; bypass affected Context Match caches until the prospective 3.2 trusted evaluation namespace is implemented. |
 
 ## Required to claim 3.2 behavior
 
