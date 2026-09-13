@@ -22,7 +22,7 @@ import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { invalidateSessionsForUsers } from '../middleware/auth.js';
-import { promoteSecondaryIfPrimaryDeleted } from '../db/identity-db.js';
+import { deleteIdentityCredential } from '../db/identity-db.js';
 import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
@@ -496,21 +496,6 @@ async function upsertUser(user: UserData): Promise<void> {
 }
 
 /**
- * Delete user from local users table
- * Called on user.deleted events
- */
-async function deleteUser(userId: string): Promise<void> {
-  const pool = getPool();
-
-  await pool.query(
-    `DELETE FROM users WHERE workos_user_id = $1`,
-    [userId]
-  );
-
-  logger.info({ userId }, 'Deleted user');
-}
-
-/**
  * Update user details across all their memberships.
  * Reads the resolved name from the users table (which may have been enriched
  * from Slack) rather than using raw WorkOS data that might be empty.
@@ -545,23 +530,6 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
     userId: user.id,
     updatedCount: result.rowCount,
   }, 'Updated user details across memberships');
-}
-
-/**
- * Delete all memberships for a user
- */
-async function deleteUserMemberships(userId: string): Promise<void> {
-  const pool = getPool();
-
-  const result = await pool.query(
-    `DELETE FROM organization_memberships WHERE workos_user_id = $1`,
-    [userId]
-  );
-
-  logger.info({
-    userId,
-    deletedCount: result.rowCount,
-  }, 'Deleted all memberships for user');
 }
 
 /**
@@ -1154,21 +1122,10 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.deleted': {
             const user = event.data as unknown as UserData;
-            // Promote a surviving secondary BEFORE the CASCADE on
-            // identity_workos_users.workos_user_id fires (via deleteUser).
-            // Without this, the identity is left with zero primaries and the
-            // surviving secondary signs in to an empty workspace — a DoS
-            // vector reachable via GDPR/CCPA-driven WorkOS deletions.
-            const promoted = await promoteSecondaryIfPrimaryDeleted(user.id);
-            await deleteUser(user.id);
-            await deleteUserMemberships(user.id);
-            // Close the 60-second session/JWT cache window where a cached
-            // pre-deletion swap would still route reads to the dead binding.
-            // Invalidate both the deleted user and the promoted successor so
-            // the next request re-resolves identity from the DB.
-            const sessionsToInvalidate = [user.id];
-            if (promoted) sessionsToInvalidate.push(promoted.promotedUserId);
-            invalidateSessionsForUsers(sessionsToInvalidate);
+            // Provider deletion revokes this credential. Do not infer a new
+            // primary: that would redirect surviving credentials' authority.
+            const affectedUserIds = await deleteIdentityCredential(user.id);
+            invalidateSessionsForUsers(affectedUserIds);
             invalidateUnifiedUsersCache();
             break;
           }

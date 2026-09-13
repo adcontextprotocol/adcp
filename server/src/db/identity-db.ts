@@ -11,6 +11,7 @@
  */
 
 import { getPool } from './client.js';
+import { assertIdentityConsolidationAllowed } from './identity-mutation-policy.js';
 import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
@@ -18,32 +19,58 @@ import { notifySystemError } from '../addie/error-notifier.js';
 const logger = createLogger('identity-db');
 
 /**
- * When a WorkOS user that is the primary binding on a multi-credential
- * identity is deleted (operator action, account closure, GDPR/CCPA erasure
- * webhook), the CASCADE on `identity_workos_users.workos_user_id` drops the
- * binding. The identity is left with zero primaries until an admin
- * intervenes — `attachIdentityId` resolves `primary_workos_user_id` to NULL
- * and skips the id-swap, so the surviving secondary signs in to an empty
- * workspace (all their app-state was keyed on the now-deleted primary's
- * workos_user_id). That's a denial-of-service against any non-primary user.
- *
- * Promote the longest-bound surviving secondary to primary in the same
- * transaction, before the CASCADE fires. The id-swap in the auth middleware
- * then routes both the dead binding and the surviving secondary to the new
- * primary, keeping app-state reads intact.
- *
- * Returns the promoted credential's workos_user_id when a promotion ran, or
- * null when there was no successor (single-credential identity — normal
- * deletion, nothing to do) or the deleted user was not primary.
- *
- * On unexpected DB errors: log + ops alert, return null. The caller still
- * returns 200 to WorkOS so the webhook doesn't retry-storm on a transient
- * promotion failure; the binding is still deleted by the subsequent CASCADE,
- * and admins can repair the identity manually.
+ * Apply an authoritative provider deletion without selecting a new primary.
+ * Revoke cached routing for every affected credential in the same transaction
+ * as the binding disappears. Return the IDs to evict from local caches after
+ * commit; their persisted epochs handle caches on other instances.
+ */
+export async function deleteIdentityCredential(workosUserId: string): Promise<string[]> {
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+    // Use a stable lock order when simultaneous webhooks delete siblings.
+    // Unlink also needs the binding row lock before it can change the identity.
+    const bound = await client.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM identity_workos_users
+       WHERE identity_id = (
+         SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1
+       )
+       ORDER BY workos_user_id
+       FOR UPDATE`,
+      [workosUserId],
+    );
+    const affectedUserIds = [...new Set([
+      workosUserId,
+      ...bound.rows.map((row) => row.workos_user_id),
+    ])];
+
+    // Authentication checks the actual credential's epoch, so deleting the
+    // primary's epoch alone would leave each surviving credential's cache valid.
+    await bumpAuthorizationEpochs(client, affectedUserIds);
+    await client.query('DELETE FROM users WHERE workos_user_id = $1', [workosUserId]);
+    await client.query('DELETE FROM organization_memberships WHERE workos_user_id = $1', [workosUserId]);
+    await client.query('COMMIT');
+    return affectedUserIds;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Legacy primary promotion is disabled for #6827: changing the canonical
+ * credential can transfer authority even without moving membership rows.
+ * Provider deletions use deleteIdentityCredential without inferring a successor.
+ * @throws IdentityMutationDisabledError before any database access.
  */
 export async function promoteSecondaryIfPrimaryDeleted(
   workosUserId: string,
 ): Promise<{ promotedUserId: string } | null> {
+  // A primary flip changes canonical authority even without moving rows.
+  assertIdentityConsolidationAllowed();
   const pool = getPool();
   const client = await pool.connect();
 

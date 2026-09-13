@@ -63,6 +63,7 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
+import { assertIdentityConsolidationAllowed } from "./db/identity-mutation-policy.js";
 import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
@@ -7816,6 +7817,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                 const workosUsers = await workos.userManagement.listUsers({ email: aliasEmail });
                 const match = workosUsers.data.find(u => u.id !== user.id);
                 if (match) {
+                  duplicateAliasEmail = match.email;
+                  // Containment before even creating a local duplicate credential.
+                  assertIdentityConsolidationAllowed();
                   // Insert into local users table so mergeUsers can operate on it
                   await pool.query(
                     `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
@@ -7835,6 +7839,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
             if (existing) {
               duplicateAliasEmail = existing.email;
+              // Refuse before alias claims or WorkOS membership copies. Mailbox
+              // equivalence cannot authorize consolidation (#6827).
+              assertIdentityConsolidationAllowed();
 
               // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
               // two users from claiming the same target concurrently.
