@@ -23,7 +23,7 @@ describe('ComplianceDatabase.getLastKnownSupportedVersions', () => {
     vi.clearAllMocks();
   });
 
-  it('returns string versions from the most recent profile without expiring the recovery hint', async () => {
+  it('returns string versions from the most recent authoritative public profile without expiring the recovery hint', async () => {
     mockedQuery.mockResolvedValueOnce({
       rows: [{ supported_versions: ['3.1', null, '', '3.0'] }],
       rowCount: 1,
@@ -35,7 +35,20 @@ describe('ComplianceDatabase.getLastKnownSupportedVersions', () => {
       expect.stringContaining("jsonb_typeof(agent_profile_json->'adcp_supported_versions') = 'array'"),
       ['https://agent.example/mcp'],
     );
+    expect(mockedQuery.mock.calls[0]?.[0]).toContain('dry_run = FALSE AND is_authoritative = TRUE');
     expect(mockedQuery.mock.calls[0]?.[0]).not.toContain('make_interval');
+  });
+
+  it('reads declared specialisms only from authoritative public profiles', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ agent_profile_json: { specialisms: ['signals-audience-activation'] } }], rowCount: 1,
+    } as never);
+    await expect(db.getLatestDeclaredSpecialisms('https://agent.example/mcp'))
+      .resolves.toEqual(['signals-audience-activation']);
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.stringContaining('dry_run = FALSE AND is_authoritative = TRUE'),
+      ['https://agent.example/mcp'],
+    );
   });
 
   it('returns an empty list when no stored profile exists', async () => {
@@ -51,7 +64,7 @@ describe('ComplianceDatabase.getLastKnownSupportedVersions', () => {
       .resolves.toBe(true);
 
     expect(mockedQuery).toHaveBeenCalledWith(
-      expect.stringMatching(/SET last_checked_at = NOW\(\)[\s\S]*last_checked_at > NOW\(\)/),
+      expect.stringMatching(/SET next_compliance_check_at = NOW\(\)[\s\S]*next_compliance_check_at > NOW\(\)/),
       ['https://agent.example/mcp'],
     );
   });

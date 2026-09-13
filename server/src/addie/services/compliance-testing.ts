@@ -1021,15 +1021,12 @@ export function deriveStoryboardStatuses(
     return false;
   };
   const perStoryboard = new Map<string, Aggregate>();
-  // Storyboard ids in `static/compliance/source/**/index.yaml` are flat
-  // identifiers (no `/`); splitting on the first `/` therefore always yields
-  // the storyboard id followed by the phase id. The `<= 0` guard also
-  // rejects pathological leading-slash strings.
+  // Storyboard IDs can contain slashes; the last component is the phase ID.
   const tracks = result.tracks ?? [];
 
   for (const track of tracks) {
     for (const s of track.scenarios) {
-      const sepIdx = typeof s.scenario === 'string' ? s.scenario.indexOf('/') : -1;
+      const sepIdx = typeof s.scenario === 'string' ? s.scenario.lastIndexOf('/') : -1;
       if (sepIdx <= 0) continue; // skip legacy bare-name scenarios (no longer emitted by storyboard-driven comply())
       const sbId = s.scenario.slice(0, sepIdx);
       let agg = perStoryboard.get(sbId);
@@ -1425,6 +1422,10 @@ export function complianceResultToDbInput(
   triggeredBy: TriggeredBy = 'manual',
   storyboardIds?: string[],
 ): RecordComplianceRunInput {
+  const selectedStoryboardIds = storyboardIds?.length ? storyboardIds
+    : result.bundle_results?.length
+      ? [...new Set(result.bundle_results.flatMap(bundle => bundle.storyboard_ids))].sort()
+      : undefined;
   const tracksJson: TrackSummaryEntry[] = result.tracks.map((t: TrackResult) => ({
     track: t.track,
     status: t.status,
@@ -1464,7 +1465,9 @@ export function complianceResultToDbInput(
     agent_profile_json: result.agent_profile,
     observations_json: result.observations,
     triggered_by: triggeredBy,
-    storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
+    completeness: result.completeness ?? 'complete',
+    is_authoritative: result.completeness !== 'timed_out' && result.overall_status !== 'auth_required' && !storyboardIds?.length,
+    storyboard_statuses: deriveStoryboardStatuses(result, selectedStoryboardIds),
     replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
     // Unknown fields, codes, and severities are stored verbatim for forward
