@@ -30,10 +30,11 @@
       ]
     },
     "geo_metros": {
-      "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/geo_metros" },
-        { "type": "null" }
-      ]
+      "title": "Targeting Geo Metros",
+      "type": ["array", "null"],
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": { "$ref": "/schemas/core/targeting-geo-metro.json" },
+      "minItems": 1
     },
     "geo_metros_exclude": {
       "anyOf": [
@@ -97,15 +98,20 @@
     },
     "signal_targeting_groups": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/signal_targeting_groups" },
+        {
+          "title": "Targeting Signal Groups",
+          "$ref": "/schemas/core/package-signal-targeting-groups.json",
+          "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. Sellers MUST echo applied signal_targeting_groups on the resulting package state, including fixed/default selections. Sellers MAY return REQUOTE_REQUIRED when a targeting mutation changes commercial terms."
+        },
         { "type": "null" }
       ]
     },
     "signal_targeting": {
-      "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/signal_targeting" },
-        { "type": "null" }
-      ]
+      "type": ["array", "null"],
+      "description": "DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Legacy flat signal_targeting remains accepted during the SignalRef migration window but cannot express grouped include/exclude composition or product-scoped pricing.",
+      "deprecated": true,
+      "items": { "$ref": "/schemas/core/signal-targeting.json" },
+      "minItems": 1
     },
     "demographics": {
       "anyOf": [
@@ -115,13 +121,20 @@
     },
     "frequency_cap": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/frequency_cap" },
+        {
+          "title": "Targeting Frequency Cap",
+          "$ref": "/schemas/core/frequency-cap.json"
+        },
         { "type": "null" }
       ]
     },
     "property_list": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/property_list" },
+        {
+          "title": "Targeting Property List",
+          "$ref": "/schemas/core/property-list-ref.json",
+          "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
+        },
         { "type": "null" }
       ]
     },
@@ -133,7 +146,11 @@
     },
     "collection_list": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/collection_list" },
+        {
+          "title": "Targeting Collection List",
+          "$ref": "/schemas/core/collection-list-ref.json",
+          "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+        },
         { "type": "null" }
       ]
     },
@@ -151,7 +168,11 @@
     },
     "collection_selection": {
       "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/collection_selection" },
+        {
+          "title": "Targeting Collection Selection",
+          "$ref": "/schemas/core/collection-selection.json",
+          "description": "Purchased collection selection within the product. On create, mode selected supplies the complete selected set and mode default uses the product's full bundle. On package readback this is the committed selection sellers MUST echo as concrete selectors, materializing any collection_list composition; collection_list fields remain the buyer-managed list mechanism. In request-side Targeting Input, a non-null value replaces this dimension, omission preserves or inherits it, and null clears it when the product permits that broader inventory set."
+        },
         { "type": "null" }
       ]
     },
@@ -210,27 +231,47 @@
       ]
     },
     "language": {
-      "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/language" },
-        { "type": "null" }
-      ]
+      "title": "Targeting Languages",
+      "type": ["array", "null"],
+      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
+      "items": { "$ref": "/schemas/core/locale-tag.json" },
+      "minItems": 1
     },
     "keyword_targets": {
-      "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/keyword_targets" },
-        { "type": "null" }
-      ]
+      "title": "Targeting Keywords",
+      "type": ["array", "null"],
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": { "$ref": "/schemas/enums/match-type.json" },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
     },
     "negative_keywords": {
-      "anyOf": [
-        { "$ref": "/schemas/core/targeting.json#/properties/negative_keywords" },
-        { "type": "null" }
-      ]
+      "title": "Targeting Negative Keywords",
+      "type": ["array", "null"],
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
+      "items": { "$ref": "/schemas/core/targeting-negative-keyword.json" },
+      "minItems": 1
     }
   },
   "allOf": [
-    { "$ref": "/schemas/core/targeting.json#/allOf/0" },
-    { "$ref": "/schemas/core/targeting.json#/allOf/1" }
+    { "$ref": "/schemas/core/targeting-unknown-age-eligibility-constraint.json" },
+    { "$ref": "/schemas/core/targeting-verified-age-basis-constraint.json" }
   ],
   "additionalProperties": true
 }

@@ -22,7 +22,11 @@
     "budget": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/budget" },
     "daily_budget_cap": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/daily_budget_cap" },
     "min_spend_target": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/min_spend_target" },
-    "impressions": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/impressions" },
+    "impressions": {
+      "title": "Product Purchase Impressions",
+      "type": "number",
+      "minimum": 0
+    },
     "start_time": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/start_time" },
     "end_time": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/end_time" },
     "pacing": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/pacing" },
@@ -32,12 +36,20 @@
       "description": "Per-dimension targeting input. Omission inherits the selected product's configured/default dimension, a non-null value replaces it, and null explicitly suppresses it. A clear cannot remove inherent product scope."
     },
     "optimization_goals": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/optimization_goals" },
-    "audience_evidence_requirements": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/audience_evidence_requirements" },
+    "audience_evidence_requirements": {
+      "title": "Product Purchase Audience Evidence Requirements",
+      "$ref": "/schemas/core/product-audience-evidence-requirements.json",
+      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
+    },
     "audience_evidence_pins": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/audience_evidence_pins" },
     "agency_estimate_number": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/agency_estimate_number" },
     "context": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/context" },
     "ext": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/ext" },
-    "measurement_terms": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/measurement_terms" },
+    "measurement_terms": {
+      "title": "Product Purchase Measurement Terms",
+      "$ref": "/schemas/core/canonical-measurement-terms.json",
+      "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
+    },
     "performance_standards": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/performance_standards" }
   },
   "required": ["product_id", "pricing_option_id"],

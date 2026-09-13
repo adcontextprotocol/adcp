@@ -61,6 +61,7 @@
       "description": "Soft lifetime spend target for seller-optimized allocation."
     },
     "impressions": {
+      "title": "Product Purchase Impressions",
       "type": "number",
       "minimum": 0
     },
@@ -93,6 +94,7 @@
       "minItems": 1
     },
     "audience_evidence_requirements": {
+      "title": "Product Purchase Audience Evidence Requirements",
       "$ref": "/schemas/core/product-audience-evidence-requirements.json",
       "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
     },
@@ -113,6 +115,7 @@
     },
     "ext": { "$ref": "/schemas/core/ext.json" },
     "measurement_terms": {
+      "title": "Product Purchase Measurement Terms",
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
     },

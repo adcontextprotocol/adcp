@@ -63,11 +63,34 @@ describe('request-only targeting null-clear semantics', () => {
     const input = readSchema('/schemas/core/targeting-input.json');
     assert.deepEqual(Object.keys(input.properties).sort(), Object.keys(strict.properties).sort());
     for (const dimension of Object.keys(strict.properties)) {
-      assert.deepEqual(input.properties[dimension].anyOf, [
-        { $ref: `/schemas/core/targeting.json#/properties/${dimension}` },
-        { type: 'null' },
-      ]);
+      if (Array.isArray(input.properties[dimension].type)) {
+        assert.deepEqual(input.properties[dimension].type, ['array', 'null']);
+        assert.deepEqual(
+          { ...input.properties[dimension], type: 'array' },
+          strict.properties[dimension],
+          `${dimension} must match its strict targeting constraint`
+        );
+        continue;
+      }
+      const [nonNull, nullBranch] = input.properties[dimension].anyOf;
+      assert.deepEqual(nullBranch, { type: 'null' });
+      const strictPropertyRef = `/schemas/core/targeting.json#/properties/${dimension}`;
+      if (nonNull.$ref === strictPropertyRef) continue;
+      assert.deepEqual(
+        nonNull,
+        strict.properties[dimension],
+        `${dimension} must match its strict targeting constraint`
+      );
     }
+    assert.equal(
+      input.allOf.length,
+      strict.allOf.length,
+      'targeting input must cover every strict cross-field constraint'
+    );
+    assert.deepEqual(
+      input.allOf,
+      strict.allOf
+    );
   });
 
   test('accepts null commands but keeps arrays non-empty when non-null', () => {
@@ -142,6 +165,22 @@ describe('request-only targeting null-clear semantics', () => {
       readSchema('/schemas/media-buy/buy-products-request.json').properties.purchases.items.$ref,
       '/schemas/media-buy/product-purchase-input.json'
     );
+  });
+
+  test('codegen-safe product purchase input copies remain in strict-schema parity', () => {
+    const strict = readSchema('/schemas/media-buy/product-purchase.json');
+    const input = readSchema('/schemas/media-buy/product-purchase-input.json');
+    assert.deepEqual(Object.keys(input.properties).sort(), Object.keys(strict.properties).sort());
+    for (const property of Object.keys(strict.properties)) {
+      if (property === 'targeting_overlay') continue;
+      const strictPropertyRef = `/schemas/media-buy/product-purchase.json#/properties/${property}`;
+      if (input.properties[property].$ref === strictPropertyRef) continue;
+      assert.deepEqual(
+        input.properties[property],
+        strict.properties[property],
+        `${property} must match its strict product purchase constraint`
+      );
+    }
   });
 
   test('machine-readable create and update vectors resolve to strict state', () => {
