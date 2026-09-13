@@ -91,10 +91,6 @@ const ALLOWED = new Set([
   'media-buy/media-buy-delivery-webhook-result.json|*',
   // GOP type open/closed overlaps but is distinct concept
   'core/opportunity-context.json|*',
-  // Evidence maximum_age narrows duration-unit: a campaign-relative age is
-  // meaningless for evidence freshness, so "campaign" is excluded on purpose.
-  'core/audience-evidence-requirements.json|/properties/maximum_age',
-  'core/product-audience-evidence-requirements.json|/properties/maximum_age',
 ]);
 
 function loadCanonicalEnums() {

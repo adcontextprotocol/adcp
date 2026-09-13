@@ -36,11 +36,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   assert.equal(report.tool_count, 19);
   // Exact Reliable Reporting reads include the shared pagination closure;
   // consumer-status sync adds one compact tool and its status definition.
-  // The shared duration-unit enum (enums/duration-unit.json) is one more
-  // definition, referenced wherever core/duration.json appears.
-  assert.equal(report.definition_instances, 629);
-  assert.equal(report.unique_definitions, 169);
-  assert.equal(report.repeated_definitions, 118);
+  assert.equal(report.definition_instances, 622);
+  assert.equal(report.unique_definitions, 168);
+  assert.equal(report.repeated_definitions, 117);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -160,7 +158,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 169);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 168);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
