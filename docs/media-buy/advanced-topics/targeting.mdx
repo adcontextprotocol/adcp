@@ -22,6 +22,41 @@ Publishers then return products that include the targeting capabilities to reach
 
 Use a typed `targeting_overlay` whenever a requirement has a structured representation and must survive booking and readback. This avoids transmitting the same fact as extra prose and avoids asking the seller to spend tokens inferring a value that code can read deterministically. In particular, numeric demographic predicates such as ages 25–40 and exact country constraints belong in the overlay; prose such as “millennial parents interested in sustainable products” remains in the brief.
 
+## Request mutation semantics
+
+Create and update requests use a request-only targeting input so each
+replaceable dimension has three transport-safe states. Discovery criteria,
+capability output, accepted commercial terms, and package readback continue to
+use strict targeting objects and never contain `null`.
+
+| Wire state for one dimension | Create | Update |
+|---|---|---|
+| Omitted | Inherit the configured-product or product default | Preserve the current effective value |
+| Non-null value | Replace that dimension with the supplied value | Replace that dimension with the supplied value |
+| `null` | Explicitly suppress the inherited/default dimension | Clear the current dimension |
+
+An explicit clear cannot remove inherent product scope or make the package
+unexecutable. Sellers reject such a request instead of treating `null` as
+omission. Mutations are atomic, and successful readback omits cleared
+dimensions. Empty arrays are not a clear operation and remain invalid where
+the strict dimension requires at least one item.
+
+For example, all three states survive ordinary JSON encoding:
+
+```json
+{
+  "package_id": "pkg-1",
+  "targeting_overlay": {
+    "geo_regions": ["US-CA"],
+    "audience_include": null
+  }
+}
+```
+
+This replaces `geo_regions`, clears `audience_include`, and preserves an
+existing `audience_exclude` because that key is absent. On create, the same
+absent exclusion dimension inherits its configured/default value.
+
 An explicit hard requirement does not become optional merely because the buyer put it in prose. Sellers MUST apply unambiguous hard targeting stated only in the brief. When a seller's structured interpretation of hard prose materially affects product eligibility, pricing, or forecasting, it MUST return that interpretation once at the discovery response's `targeting_resolution.brief_targeting`; otherwise confirmation remains a best practice. This lets the buyer verify what will actually be applied without repeating the same interpretation on every product. Unchanged values already supplied in `targeting_overlay` are not repeated.
 
 ```json
@@ -274,7 +309,7 @@ execution mechanism:
 }
 ```
 
-`targeting_overlay.demographics` preserves the booked predicate and buyer determination constraints. The demographic resolution's `applied` field contains the canonical predicate actually applied; `equivalent` is always `true` for stored packages, and buyers should still recompute predicate equality from `requested` and `applied`. `applied_bases` and `applied_verification_methods` record the effective configured eligibility paths after intersecting buyer constraints, product capability, and age compliance. They do not assert which path every individual impression used. A seller rejects any non-equivalent or unsupported compilation. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
+`targeting_overlay.demographics` preserves the booked predicate and buyer determination constraints. The demographic resolution's `applied` field contains the canonical predicate actually applied; `equivalent` is always `true` for stored packages, and buyers should still recompute predicate equality from `requested` and `applied`. `applied_bases` and `applied_verification_methods` record the effective configured eligibility paths after intersecting buyer constraints, product capability, and age compliance. They do not assert which path every individual impression used. A seller rejects any non-equivalent or unsupported compilation. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the request-only per-dimension patch semantics above and refresh the resolution atomically.
 
 ## Why Brief-Based Targeting?
 
@@ -1296,7 +1331,7 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 
 ## Managing keywords after launch
 
-Both keyword targets and negative keywords support incremental operations in `update_media_buy`, avoiding the need to replace the full `targeting_overlay`:
+Both keyword targets and negative keywords support incremental operations in `update_media_buy`, avoiding replacement of the complete keyword dimension:
 
 - **`keyword_targets_add`** — upserts by `(keyword, match_type)` identity. Adds new keywords or updates `bid_price` on existing ones.
 - **`keyword_targets_remove`** — removes matching `(keyword, match_type)` pairs.
@@ -1323,9 +1358,11 @@ Both keyword targets and negative keywords support incremental operations in `up
 }
 ```
 
-Sellers SHOULD return a validation error if `targeting_overlay.keyword_targets` is present in the same request as `keyword_targets_add` or `keyword_targets_remove` (and likewise for negative keywords). The incremental operations and the full overlay replacement are mutually exclusive within a single update.
+Sellers SHOULD return a validation error if `targeting_overlay.keyword_targets` is present in the same request as `keyword_targets_add` or `keyword_targets_remove` (and likewise for negative keywords). The incremental operations and the corresponding targeting-dimension replacement or clear are mutually exclusive within a single update.
 
-To remove all keyword targeting while preserving other overlay fields, send the full `targeting_overlay` without the `keyword_targets` field.
+To remove all keyword targeting while preserving other overlay fields, send
+`targeting_overlay.keyword_targets: null`. Omitting `keyword_targets` preserves
+the stored list.
 
 ## Implementation Requirements
 

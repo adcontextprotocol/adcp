@@ -88,8 +88,8 @@
       "minItems": 1
     },
     "targeting_overlay": {
-      "$ref": "/schemas/core/targeting.json",
-      "description": "Complete effective targeting overlay to apply to this package. On update, this replaces the package's current effective targeting, including values originally accepted through configured-product selection; omit the field to leave targeting unchanged. Every replacement must remain executable by the product. Sellers reject unsupported or partially applicable changes and use REQUOTE_REQUIRED when a change, including a broader inventory set, falls outside the priced envelope. placement_selection is purchased-inventory targeting; mode default restores the product default, and successful readback echoes the committed selected set when enumerable. If the replacement removes a placement referenced by an existing creative assignment, the seller MUST reject the update unless the same atomic package mutation supplies a compatible complete creative_assignments replacement. Sellers MUST NOT silently delete assignments or retain orphan placement refs."
+      "$ref": "/schemas/core/targeting-input.json",
+      "description": "Per-dimension targeting patch for this package. Omit targeting_overlay, or omit an individual dimension inside it, to leave the corresponding effective targeting unchanged. A non-null dimension replaces its current value; null clears it, including a value inherited from configured-product selection or a product default. Every resulting effective overlay must remain executable by the product. Sellers reject unsupported or partially applicable changes and use REQUOTE_REQUIRED when a change, including a broader inventory set, falls outside the priced envelope. placement_selection is purchased-inventory targeting; mode default restores the product default, null clears the dimension when the product permits it, and successful readback echoes the committed selected set when enumerable. If a patch removes a placement referenced by an existing creative assignment, the seller MUST reject the update unless the same atomic package mutation supplies a compatible complete creative_assignments replacement. Sellers MUST NOT silently delete assignments or retain orphan placement refs."
     },
     "keyword_targets_add": {
       "type": "array",
@@ -178,7 +178,7 @@
     },
     "creative_assignments": {
       "type": "array",
-      "description": "Replace creative assignments for this package with optional rotation, grouping, weights, and placement routing. Uses replacement semantics - omit to leave assignments unchanged. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before mutation. When the same mutation narrows targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically.",
+      "description": "Replace creative assignments for this package with optional rotation, grouping, weights, and placement routing. Uses replacement semantics - omit to leave assignments unchanged. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before mutation. When the same mutation narrows or clears targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically.",
       "x-adcp-validation": {
         "verifier_constraints": {
           "package_rotation_policy": {

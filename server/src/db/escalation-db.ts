@@ -320,7 +320,7 @@ export async function listEscalations(filters: EscalationFilters = {}): Promise<
          WHEN 'normal' THEN 3
          WHEN 'low' THEN 4
        END,
-       created_at DESC
+       created_at DESC, id DESC
      LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}`,
     params
   );
