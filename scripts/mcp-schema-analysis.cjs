@@ -11,9 +11,12 @@ const CANONICAL_ACCOUNT_REF = "external:core/canonical-account-ref.json";
 const BRAND_REF = "external:core/brand-ref.json";
 const BRAND_KEY = "external:core/brand-key.json";
 const TARGETING = "external:core/targeting.json";
+const TARGETING_INPUT = "external:core/targeting-input.json";
 const TARGETING_REQUIREMENTS =
   "external:core/targeting-overlay-requirements.json";
 const PRODUCT_PURCHASE = "external:media-buy/product-purchase.json";
+const PRODUCT_PURCHASE_INPUT =
+  "external:media-buy/product-purchase-input.json";
 
 const TARGETING_DIMENSIONS = [
   "geo_countries",
@@ -261,16 +264,24 @@ function applyMediaBuyPromptCleanupExperiment(schemas) {
 
   const targeting = definitions[TARGETING];
   assert.ok(targeting?.properties, `Experiment requires ${TARGETING}`);
+  const targetingInput = definitions[TARGETING_INPUT];
+  assert.ok(targetingInput?.properties, `Experiment requires ${TARGETING_INPUT}`);
   for (const property of [
     "axe_include_segment",
     "axe_exclude_segment",
     "signal_targeting",
   ]) {
     delete targeting.properties[property];
+    delete targetingInput.properties[property];
   }
 
   const purchase = definitions[PRODUCT_PURCHASE];
   assert.ok(purchase?.properties, `Experiment requires ${PRODUCT_PURCHASE}`);
+  const purchaseInput = definitions[PRODUCT_PURCHASE_INPUT];
+  assert.ok(
+    purchaseInput?.properties,
+    `Experiment requires ${PRODUCT_PURCHASE_INPUT}`
+  );
   for (const property of [
     "pricing",
     "start_time",
@@ -279,6 +290,7 @@ function applyMediaBuyPromptCleanupExperiment(schemas) {
     "performance_standards",
   ]) {
     delete purchase.properties[property];
+    delete purchaseInput.properties[property];
   }
 
   for (const [toolName, schema] of Object.entries(output)) {
@@ -496,7 +508,9 @@ module.exports = {
   ACCOUNT_REF,
   BRAND_REF,
   PRODUCT_PURCHASE,
+  PRODUCT_PURCHASE_INPUT,
   TARGETING,
+  TARGETING_INPUT,
   TARGETING_REQUIREMENTS,
   analyzeInputSchemaWeights,
   adaptMediaBuyPromptArguments,

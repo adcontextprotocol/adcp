@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "title": "AdCP 3.2 request-only targeting null-clear vectors",
+  "request_schema": "/schemas/core/targeting-input.json",
+  "state_schema": "/schemas/core/targeting.json",
+  "description": "Cross-SDK vectors for per-dimension create inheritance and update preservation, replacement, and clear. Input null is consumed as a command; expected effective state is always strict and non-null.",
+  "vectors": [
+    {
+      "id": "update-preserve-replace-and-clear",
+      "operation": "update",
+      "prior_state": {
+        "geo_countries": ["AU"],
+        "geo_regions": ["AU-NSW"],
+        "audience_include": ["aud_existing"],
+        "audience_exclude": ["aud_suppressed"]
+      },
+      "input": {
+        "geo_regions": null,
+        "audience_include": ["aud_loyal_customers"],
+        "audience_exclude": null
+      },
+      "expected_state": {
+        "geo_countries": ["AU"],
+        "audience_include": ["aud_loyal_customers"]
+      }
+    },
+    {
+      "id": "create-inherit-replace-and-suppress-default",
+      "operation": "create",
+      "product_defaults": {
+        "geo_countries": ["AU"],
+        "geo_regions": ["AU-NSW"],
+        "audience_include": ["aud_default"],
+        "audience_exclude": ["aud_blocked"]
+      },
+      "input": {
+        "geo_regions": null,
+        "audience_include": ["aud_new_customers"],
+        "audience_exclude": null
+      },
+      "expected_state": {
+        "geo_countries": ["AU"],
+        "audience_include": ["aud_new_customers"]
+      }
+    }
+  ]
+}
