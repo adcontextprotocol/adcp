@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.22
+
+### Patch Changes
+
+- 5739f1b: Align legacy format asset declarations with the canonical asset union and guard both individual and repeatable-group variants against future drift.
+- 8244f16: Restrict Context Match embeddings derived from non-public single-user content and require privacy reduction for free-form context signals.
+
 ## 3.1.21
 
 ### Patch Changes
