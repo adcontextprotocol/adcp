@@ -48,6 +48,16 @@ describe('WorkOS client request budgets', () => {
     });
   });
 
+  it('bounds admin credential mutations to one attempt', async () => {
+    const { getAdminCredentialMutationWorkos } = await import('../../src/auth/workos-client.js');
+    getAdminCredentialMutationWorkos();
+    getAdminCredentialMutationWorkos();
+    expect(mocks.constructWorkOS).toHaveBeenCalledOnce();
+    expect(mocks.constructWorkOS).toHaveBeenCalledWith('sk_test_timeout', {
+      clientId: 'client_test_timeout', timeout: 10_000, maxRetries: 0,
+    });
+  });
+
   it('makes one SDK attempt when retries are disabled', async () => {
     const { WorkOS } = await vi.importActual<typeof import('@workos-inc/node')>(
       '@workos-inc/node',

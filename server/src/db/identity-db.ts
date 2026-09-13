@@ -270,11 +270,184 @@ function rowsAsJson(result: { rows: JsonRow[] }): Record<string, unknown>[] {
 }
 
 async function lockCredentialMutations(
-  client: { query: (text: string, params?: unknown[]) => Promise<unknown> },
+  client: PoolClient,
   workosUserIds: string[],
 ): Promise<void> {
   for (const workosUserId of [...new Set(workosUserIds)].sort()) {
-    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 6827))`, [workosUserId]);
+    const lock = await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 6827))`, [workosUserId]);
+    if (lock.command !== 'SELECT' || lock.rowCount !== 1 || lock.rows.length !== 1) {
+      throw new Error('Credential lifecycle lock was not confirmed');
+    }
+  }
+}
+
+export interface LockedCredentialLifecycle {
+  workos_user_id: string;
+  identity_id: string | null;
+  is_primary: boolean | null;
+  user_exists: boolean;
+  binding_exists: boolean;
+  primary_count: string;
+  terminal_marker: boolean;
+}
+
+/**
+ * Inspect lifecycle under the deletion protocol's credential/binding/identity
+ * locks. The caller MUST already own a transaction on this supplied client and
+ * retain it through its local mutations. No transaction, epoch, audit, actor
+ * authorization, provider call or retry is performed on the caller's behalf.
+ * An unseen credential is distinct from a deleted or quarantined credential.
+ */
+export async function lockCredentialLifecyclesInTransaction(
+  client: PoolClient,
+  workosUserIds: string[],
+): Promise<LockedCredentialLifecycle[]> {
+  const ids = [...new Set(workosUserIds)].sort();
+  if (!ids.length || ids.some(id => !id)) throw new Error('Credential lifecycle IDs required');
+  await lockCredentialMutations(client, ids);
+  const bindings = await client.query<{ workos_user_id: string; identity_id: string }>(
+    `SELECT workos_user_id, identity_id FROM identity_workos_users
+      WHERE workos_user_id = ANY($1) ORDER BY workos_user_id FOR UPDATE`, [ids],
+  );
+  const byCredential = new Map(bindings.rows.map(row => [row.workos_user_id, row.identity_id]));
+  if (bindings.rowCount !== bindings.rows.length || byCredential.size !== bindings.rows.length
+    || bindings.rows.some(row => !ids.includes(row.workos_user_id) || typeof row.identity_id !== 'string')) {
+    throw new Error('Credential binding locks were not confirmed');
+  }
+  const identityIds = [...new Set(bindings.rows.map(row => row.identity_id))].sort();
+  if (identityIds.length) {
+    const identities = await client.query<{ id: string }>(
+      'SELECT id FROM identities WHERE id = ANY($1) ORDER BY id FOR UPDATE', [identityIds]);
+    const lockedIds = identities.rows.map(row => row.id).sort();
+    if (identities.rowCount !== identityIds.length || lockedIds.length !== identityIds.length
+      || lockedIds.some((id, index) => id !== identityIds[index])) {
+      throw new Error('Credential identity locks were not confirmed');
+    }
+  }
+  const states = await client.query<LockedCredentialLifecycle>(
+    `SELECT requested.workos_user_id, iwu.identity_id, iwu.is_primary,
+            (u.workos_user_id IS NOT NULL) AS user_exists,
+            (iwu.workos_user_id IS NOT NULL) AS binding_exists,
+            (SELECT COUNT(*) FROM identity_workos_users primary_iwu
+              WHERE primary_iwu.identity_id = iwu.identity_id AND primary_iwu.is_primary)::text AS primary_count,
+            EXISTS (SELECT 1 FROM registry_audit_log ral
+              WHERE ral.workos_user_id = requested.workos_user_id
+                AND ral.action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined',
+                  'identity_credential_admin_compensation_deleted',
+                  'identity_credential_admin_compensation_quarantined')) AS terminal_marker
+       FROM unnest($1::text[]) AS requested(workos_user_id)
+       LEFT JOIN users u USING (workos_user_id)
+       LEFT JOIN identity_workos_users iwu USING (workos_user_id)
+      ORDER BY requested.workos_user_id`, [ids],
+  );
+  // Database collations may order mixed-case WorkOS IDs differently from JS.
+  const rows = [...states.rows].sort((a, b) =>
+    a.workos_user_id < b.workos_user_id ? -1 : a.workos_user_id > b.workos_user_id ? 1 : 0);
+  if (states.rowCount !== ids.length || rows.length !== ids.length
+    || rows.some((row, index) => row.workos_user_id !== ids[index]
+      || typeof row.user_exists !== 'boolean' || typeof row.binding_exists !== 'boolean'
+      || typeof row.terminal_marker !== 'boolean'
+      || row.binding_exists !== byCredential.has(row.workos_user_id)
+      || row.identity_id !== (byCredential.get(row.workos_user_id) ?? null)
+      || (row.identity_id !== null && typeof row.identity_id !== 'string')
+      || (row.is_primary !== null && typeof row.is_primary !== 'boolean')
+      || typeof row.primary_count !== 'string'
+      || !Number.isSafeInteger(Number(row.primary_count)) || Number(row.primary_count) < 0)) {
+    throw new Error('Credential lifecycle snapshot was not confirmed');
+  }
+  return rows;
+}
+
+interface AdminCredentialCompensationActor {
+  workosUserId: string;
+  operationId: string;
+  actorUserId: string;
+  actorIdentityId: string;
+}
+
+/** Durable admission quarantine, not a claim that WorkOS deleted the user. */
+export async function recordAdminCredentialCompensationQuarantine(
+  client: PoolClient,
+  input: AdminCredentialCompensationActor,
+): Promise<void> {
+  const [state] = await lockCredentialLifecyclesInTransaction(client, [input.workosUserId]);
+  if (state.terminal_marker || state.user_exists || state.binding_exists
+    || state.identity_id !== null || state.is_primary !== null || Number(state.primary_count) !== 0) {
+    throw new Error('Admin compensation no longer owns an unseen credential');
+  }
+  const audit = await client.query<{ id: string }>(
+    `INSERT INTO registry_audit_log
+      (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+     VALUES ('system', $1::text, 'identity_credential_admin_compensation_quarantined',
+       'admin_credential_bind_operation', $2::text,
+       jsonb_build_object('operation_id', $2::text, 'provider_user_id', $1::text,
+         'acting_workos_user_id', $3::text, 'actor_identity_id', $4::text,
+         'quarantine_reason', 'admin_credential_compensation_pending', 'provider_delete_confirmed', false))
+     RETURNING id`,
+    [input.workosUserId, input.operationId, input.actorUserId, input.actorIdentityId],
+  );
+  if (audit.rowCount !== 1 || audit.rows.length !== 1 || !audit.rows[0]?.id) {
+    throw new Error('Admin compensation quarantine was not recorded');
+  }
+}
+
+/** Reacquire the lifecycle fence and permit only this exact operation's quarantine. */
+export async function lockAdminCredentialCompensationQuarantine(
+  client: PoolClient,
+  input: AdminCredentialCompensationActor,
+): Promise<void> {
+  const [state] = await lockCredentialLifecyclesInTransaction(client, [input.workosUserId]);
+  if (!state.terminal_marker || state.user_exists || state.binding_exists
+    || state.identity_id !== null || state.is_primary !== null || Number(state.primary_count) !== 0) {
+    throw new Error('Admin compensation quarantine has contradictory local state');
+  }
+  const markers = await client.query<{
+    action: string; resource_type: string; resource_id: string; details: Record<string, unknown>;
+  }>(
+    `SELECT action, resource_type, resource_id, details FROM registry_audit_log
+      WHERE workos_user_id = $1
+        AND action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined',
+          'identity_credential_admin_compensation_deleted', 'identity_credential_admin_compensation_quarantined')`,
+    [input.workosUserId],
+  );
+  const marker = markers.rows[0];
+  if (markers.rowCount !== 1 || markers.rows.length !== 1
+    || marker?.action !== 'identity_credential_admin_compensation_quarantined'
+    || marker.resource_type !== 'admin_credential_bind_operation' || marker.resource_id !== input.operationId
+    || marker.details?.operation_id !== input.operationId || marker.details?.provider_user_id !== input.workosUserId
+    || marker.details?.acting_workos_user_id !== input.actorUserId || marker.details?.actor_identity_id !== input.actorIdentityId
+    || marker.details?.quarantine_reason !== 'admin_credential_compensation_pending'
+    || marker.details?.provider_delete_confirmed !== false) {
+    throw new Error('Admin compensation quarantine ownership was not confirmed');
+  }
+}
+
+/**
+ * Admin-specific evidence for a confirmed WorkOS compensation delete. The
+ * caller must have received deleteUser success and must retain its supplied
+ * transaction through this marker, the operation audit and COMMIT. This is
+ * not a signed webhook or a provider-deletion before-graph snapshot: its exact
+ * admin credential and operation remain explicit. Failed/ambiguous provider
+ * deletes must never call this helper.
+ */
+export async function recordConfirmedAdminCredentialCompensationDeletion(
+  client: PoolClient,
+  input: AdminCredentialCompensationActor,
+): Promise<void> {
+  await lockAdminCredentialCompensationQuarantine(client, input);
+  const audit = await client.query<{ id: string }>(
+    `INSERT INTO registry_audit_log
+      (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+     VALUES ('system', $1::text, 'identity_credential_admin_compensation_deleted',
+       'admin_credential_bind_operation', $2::text,
+       jsonb_build_object('operation_id', $2::text, 'deleted_workos_user_id', $1::text,
+         'acting_workos_user_id', $3::text, 'actor_identity_id', $4::text,
+         'deletion_source', 'admin_credential_compensation', 'provider_delete_confirmed', true))
+     RETURNING id`,
+    [input.workosUserId, input.operationId, input.actorUserId, input.actorIdentityId],
+  );
+  if (audit.rowCount !== 1 || audit.rows.length !== 1 || !audit.rows[0]?.id) {
+    throw new Error('Admin compensation deletion marker was not recorded');
   }
 }
 
@@ -299,18 +472,19 @@ async function lockCredentialThenIdentityMutation(
   return { identityId, identity };
 }
 
-async function hasConfirmedDeletionTombstone(
+async function hasTerminalCredentialLifecycleMarker(
   client: PoolClient,
   workosUserId: string,
 ): Promise<boolean> {
-  const tombstone = await client.query(
+  const marker = await client.query(
     `SELECT 1 FROM registry_audit_log
       WHERE workos_user_id = $1
-        AND action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined')
+        AND action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined',
+          'identity_credential_admin_compensation_deleted', 'identity_credential_admin_compensation_quarantined')
       LIMIT 1`,
     [workosUserId],
   );
-  return tombstone.rowCount !== null && tombstone.rowCount > 0;
+  return marker.rowCount !== null && marker.rowCount > 0;
 }
 
 type ConfirmedDeletionAuditAction =
@@ -437,7 +611,7 @@ async function withCredentialEventMutation<T>(
         await client.query('BEGIN');
         await client.query(`SET LOCAL lock_timeout = '${CREDENTIAL_MUTATION_LOCK_TIMEOUT_MS}ms'`);
         const { identityId } = await lockCredentialThenIdentityMutation(client, workosUserId);
-        if (await hasConfirmedDeletionTombstone(client, workosUserId)) {
+        if (await hasTerminalCredentialLifecycleMarker(client, workosUserId)) {
           await client.query('COMMIT');
           return { applied: false };
         }
@@ -559,7 +733,9 @@ export async function withActiveCredentialSetMutation<T>(
                      WHERE ral.workos_user_id = requested.workos_user_id
                        AND ral.action IN (
                          'identity_credential_deleted',
-                         'identity_primary_deletion_quarantined'
+                         'identity_primary_deletion_quarantined',
+                         'identity_credential_admin_compensation_deleted',
+                         'identity_credential_admin_compensation_quarantined'
                        )
                   ) AS terminal_marker
              FROM unnest($1::text[]) AS requested(workos_user_id)
