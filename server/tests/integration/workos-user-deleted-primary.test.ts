@@ -5,20 +5,31 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+
+vi.mock('../../src/addie/error-notifier.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/addie/error-notifier.js')>()),
+  notifySystemError: vi.fn(),
+}));
+
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { deleteIdentityCredential, promoteSecondaryIfPrimaryDeleted } from '../../src/db/identity-db.js';
+import {
+  getIdentityRecoveryQuarantine,
+  IDENTITY_RECOVERY_STATE,
+  promoteSecondaryIfPrimaryDeleted,
+} from '../../src/db/identity-db.js';
+import { deleteIdentityCredential } from '../../src/services/identity-credential-deletion.js';
 import { bumpAuthorizationEpochs, getAuthorizationFingerprint } from '../../src/db/authorization-epoch-db.js';
+import { notifySystemError } from '../../src/addie/error-notifier.js';
+import { isSlackUserAAOAdmin } from '../../src/addie/mcp/admin-tools.js';
+import {
+  getUnifiedUsersCache,
+  setUnifiedUsersCache,
+} from '../../src/cache/unified-users.js';
 import type { Pool } from 'pg';
 
-const { notifySystemError, identityLogger } = vi.hoisted(() => ({
-  notifySystemError: vi.fn(),
-  identityLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
-vi.mock('../../src/addie/error-notifier.js', () => ({ notifySystemError }));
-vi.mock('../../src/logger.js', () => ({ createLogger: () => identityLogger }));
-
 const TEST_USER_PREFIX = 'user_wh_deleted_test_';
+const TEST_SLACK_PREFIX = 'slack_wh_deleted_test_';
 const TEST_ORG = 'org_wh_deleted_test_pinnacle';
 
 describe('user.deleted: automatic promotion containment (#6827)', () => {
@@ -44,11 +55,19 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
   });
 
   async function cleanup() {
+    await pool.query(
+      `DELETE FROM registry_audit_log
+        WHERE action IN ('identity_primary_deletion_quarantined', 'identity_credential_deleted')
+          AND workos_user_id LIKE $1`,
+      [`${TEST_USER_PREFIX}%`],
+    );
     await pool.query(`DELETE FROM organization_memberships WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
     await pool.query(`DELETE FROM working_group_memberships WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
     await pool.query(`DELETE FROM working_group_leaders WHERE user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
+    await pool.query(`DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1`, [`${TEST_SLACK_PREFIX}%`]);
     await pool.query(`DELETE FROM users WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [TEST_ORG]);
+    vi.mocked(notifySystemError).mockClear();
   }
 
   async function insertUser(suffix: string, email: string): Promise<string> {
@@ -172,14 +191,25 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
     await pool.query(
       `INSERT INTO working_group_memberships (working_group_id, workos_user_id, status)
        SELECT id, $1, 'active' FROM working_groups WHERE slug = 'aao-admin'
-       UNION ALL SELECT id, $2, 'inactive' FROM working_groups WHERE slug = 'aao-admin'`, [bystander, secondary],
+       UNION ALL SELECT id, $2, 'active' FROM working_groups WHERE slug = 'aao-admin'
+       UNION ALL SELECT id, $3, 'inactive' FROM working_groups WHERE slug = 'aao-admin'`,
+      [primary, bystander, secondary],
     );
     await pool.query(
       `INSERT INTO working_group_leaders (working_group_id, user_id)
-       SELECT id, $1 FROM working_groups WHERE slug = 'aao-admin'`, [bystander],
+       SELECT id, $1 FROM working_groups WHERE slug = 'aao-admin'
+       UNION ALL SELECT id, $2 FROM working_groups WHERE slug = 'aao-admin'`,
+      [primary, bystander],
+    );
+    const slackUserId = `${TEST_SLACK_PREFIX}primary`;
+    await pool.query(
+      `INSERT INTO slack_user_mappings (
+         slack_user_id, slack_email, workos_user_id, mapping_status, mapping_source, mapped_at
+       ) VALUES ($1, 'jordan-revoke@pinnacle.example', $2, 'mapped', 'manual_admin', NOW())`,
+      [slackUserId, primary],
     );
     await bumpAuthorizationEpochs(pool, [primary, secondary, bystander]);
-    return { primary, secondary, bystander, identityId };
+    return { primary, secondary, bystander, identityId, slackUserId };
   }
 
   async function survivorAuthority(ids: string[]) {
@@ -189,6 +219,7 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
       ['organization_memberships', 'workos_user_id'],
       ['working_group_memberships', 'workos_user_id'],
       ['working_group_leaders', 'user_id'],
+      ['slack_user_mappings', 'workos_user_id'],
     ];
     const state: Record<string, unknown> = {};
     for (const [table, column] of tables) {
@@ -201,15 +232,81 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
     return state;
   }
 
-  it('atomically revokes former sibling caches without promoting or changing their authority', async () => {
-    const { primary, secondary, bystander, identityId } = await seedDeletionAuthority();
+  async function fullBeforeGraph(identityId: string, ids: string[]) {
+    const queries = {
+      identity: [`SELECT to_jsonb(i) AS row FROM identities i WHERE id = $1`, [identityId]],
+      identity_workos_users: [
+        `SELECT to_jsonb(iwu) AS row FROM identity_workos_users iwu
+          WHERE iwu.identity_id = $1 ORDER BY iwu.workos_user_id`,
+        [identityId],
+      ],
+      users: [
+        `SELECT to_jsonb(u) AS row FROM users u
+          WHERE u.workos_user_id = ANY($1) ORDER BY u.workos_user_id`,
+        [ids],
+      ],
+      organization_memberships: [
+        `SELECT to_jsonb(om) AS row FROM organization_memberships om
+          WHERE om.workos_user_id = ANY($1)
+          ORDER BY om.workos_user_id, om.workos_organization_id`,
+        [ids],
+      ],
+      working_group_memberships: [
+        `SELECT to_jsonb(wgm) AS row FROM working_group_memberships wgm
+          WHERE wgm.workos_user_id = ANY($1)
+          ORDER BY wgm.workos_user_id, wgm.working_group_id`,
+        [ids],
+      ],
+      working_group_leaders: [
+        `SELECT to_jsonb(wgl) AS row FROM working_group_leaders wgl
+          WHERE wgl.user_id = ANY($1) ORDER BY wgl.user_id, wgl.working_group_id`,
+        [ids],
+      ],
+      slack_user_mappings: [
+        `SELECT to_jsonb(sm) AS row FROM slack_user_mappings sm
+          WHERE sm.workos_user_id = ANY($1)
+          ORDER BY sm.workos_user_id, sm.slack_user_id`,
+        [ids],
+      ],
+      authorization_epochs: [
+        `SELECT to_jsonb(ae) AS row FROM authorization_epochs ae
+          WHERE ae.workos_user_id = ANY($1) ORDER BY ae.workos_user_id`,
+        [ids],
+      ],
+    } as const;
+    const entries = await Promise.all(Object.entries(queries).map(async ([key, [sql, params]]) => {
+      const query = await pool.query(sql, params);
+      return [key, key === 'identity' ? query.rows[0].row : query.rows.map(({ row }) => row)];
+    }));
+    return Object.fromEntries(entries);
+  }
+
+  it('serializes webhook-vs-backfill deletion, revokes caches, and records the exact recovery graph once', async () => {
+    const { primary, secondary, bystander, identityId, slackUserId } = await seedDeletionAuthority();
     const survivors = [secondary, bystander];
+    const allCredentials = [primary, secondary, bystander].sort();
     const authorityBefore = await survivorAuthority(survivors);
+    const beforeGraph = await fullBeforeGraph(identityId, allCredentials);
     const fingerprintsBefore = await Promise.all(survivors.map((id) => getAuthorizationFingerprint([id])));
+    expect(await isSlackUserAAOAdmin(slackUserId)).toBe(true);
+    setUnifiedUsersCache(new Map([[TEST_ORG, [{ id: primary, email: 'jordan-revoke@pinnacle.example', firstName: 'Jordan', lastName: 'Test' }]]]));
+    expect(getUnifiedUsersCache()).not.toBeNull();
+    // Alert transport is post-commit and best-effort. Its exact failure path
+    // must preserve durable quarantine, revocation, and cache invalidation.
+    vi.mocked(notifySystemError).mockImplementation(() => {
+      throw new Error('injected operator alert transport failure');
+    });
 
-    const results = await Promise.all([deleteIdentityCredential(primary), deleteIdentityCredential(primary)]);
+    const results = await Promise.all([
+      deleteIdentityCredential(primary, 'workos_webhook'),
+      deleteIdentityCredential(primary, 'sync_users_backfill'),
+    ]);
 
-    expect(results.flat()).toEqual(expect.arrayContaining([primary, secondary, bystander]));
+    expect(results.filter(({ deleted }) => deleted)).toHaveLength(1);
+    expect(results.flatMap(({ affectedUserIds }) => affectedUserIds)).toEqual(
+      expect.arrayContaining([primary, secondary, bystander]),
+    );
+    expect(getUnifiedUsersCache()).toBeNull();
     expect(await survivorAuthority(survivors)).toEqual(authorityBefore);
     for (const [index, id] of survivors.entries()) {
       expect(await getAuthorizationFingerprint([id])).not.toBe(fingerprintsBefore[index]);
@@ -220,25 +317,77 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
       `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1 AND is_primary = TRUE`, [identityId],
     )).rows).toEqual([]);
 
-    expect(notifySystemError).toHaveBeenCalledOnce();
-    expect(identityLogger.warn).toHaveBeenCalledOnce();
-    expect(identityLogger.warn.mock.calls[0][0]).toEqual({
-      deletedUserId: primary,
-      identityId,
-      survivingCredentialCount: 2,
+    const auditRows = await pool.query(
+      `SELECT id, details FROM registry_audit_log
+        WHERE action = 'identity_primary_deletion_quarantined'
+          AND resource_type = 'identity_recovery'
+          AND resource_id = $1`,
+      [identityId],
+    );
+    expect(auditRows.rows).toHaveLength(1);
+    const durable = await getIdentityRecoveryQuarantine(identityId);
+    expect(durable).toEqual({
+      audit_id: auditRows.rows[0].id,
+      identity_id: identityId,
+      deleted_workos_user_id: primary,
+      deletion_source: expect.stringMatching(/^(workos_webhook|sync_users_backfill)$/),
+      actor: {
+        type: 'workos_provider',
+        source: expect.stringMatching(/^(workos_webhook|sync_users_backfill)$/),
+        workos_user_id: primary,
+      },
+      recovery_state: IDENTITY_RECOVERY_STATE,
+      before_graph: beforeGraph,
     });
+    expect(notifySystemError).toHaveBeenCalledTimes(1);
     expect(notifySystemError).toHaveBeenCalledWith({
-      source: 'identity-primary-missing',
-      errorMessage: expect.stringContaining(identityId),
+      source: `identity-primary-deletion-quarantine:${identityId}`,
+      errorMessage: [
+        `Primary credential ${primary} was deleted without promotion.`,
+        `Identity ${identityId} is quarantined.`,
+        `recovery_state=${IDENTITY_RECOVERY_STATE}.`,
+        `audit_id=${auditRows.rows[0].id}.`,
+      ].join(' '),
     });
-    expect(JSON.stringify(notifySystemError.mock.calls)).not.toContain('@');
+    expect((await pool.query(
+      `SELECT status FROM working_group_memberships WHERE workos_user_id = $1`,
+      [primary],
+    )).rows).toEqual([{ status: 'inactive' }]);
+    expect((await pool.query(
+      `SELECT 1 FROM working_group_leaders WHERE user_id = $1`,
+      [primary],
+    )).rows).toEqual([]);
+    expect((await pool.query(
+      `SELECT workos_user_id, mapping_status FROM slack_user_mappings WHERE slack_user_id = $1`,
+      [slackUserId],
+    )).rows).toEqual([{ workos_user_id: null, mapping_status: 'unmapped' }]);
+    expect(await isSlackUserAAOAdmin(slackUserId)).toBe(false);
 
     const fingerprintAfter = await getAuthorizationFingerprint(survivors);
-    await deleteIdentityCredential(primary);
+    await deleteIdentityCredential(primary, 'workos_webhook');
     expect(await getAuthorizationFingerprint(survivors)).toBe(fingerprintAfter);
     expect(await survivorAuthority(survivors)).toEqual(authorityBefore);
-    expect(notifySystemError).toHaveBeenCalledOnce();
-    expect(identityLogger.warn).toHaveBeenCalledOnce();
+    expect((await pool.query(
+      `SELECT 1 FROM registry_audit_log
+        WHERE action = 'identity_primary_deletion_quarantined' AND resource_id = $1`,
+      [identityId],
+    )).rows).toHaveLength(1);
+    expect(notifySystemError).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes a non-primary credential without quarantining or changing the primary', async () => {
+    const { primary, secondary, identityId } = await seedDeletionAuthority();
+
+    const deletion = await deleteIdentityCredential(secondary, 'workos_webhook');
+
+    expect(deletion).toMatchObject({ deleted: true, quarantine: null });
+    expect(await getIdentityRecoveryQuarantine(identityId)).toBeNull();
+    expect((await pool.query(
+      `SELECT workos_user_id FROM identity_workos_users
+        WHERE identity_id = $1 AND is_primary = TRUE`,
+      [identityId],
+    )).rows).toEqual([{ workos_user_id: primary }]);
+    expect(notifySystemError).not.toHaveBeenCalled();
   });
 
   it('rolls back epoch changes and deletion together when the database refuses deletion', async () => {
@@ -254,118 +403,49 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
     );
     try {
       await pool.query(`INSERT INTO identity_containment_delete_guard VALUES ($1)`, [primary]);
-      await expect(deleteIdentityCredential(primary)).rejects.toThrow();
+      await expect(deleteIdentityCredential(primary, 'workos_webhook')).rejects.toThrow();
       expect(await survivorAuthority(credentials)).toEqual(before);
       expect(await getAuthorizationFingerprint(credentials)).toBe(fingerprintBefore);
+      expect(await getIdentityRecoveryQuarantine((await pool.query<{ identity_id: string }>(
+        `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+        [primary],
+      )).rows[0].identity_id)).toBeNull();
       expect(notifySystemError).not.toHaveBeenCalled();
-      expect(identityLogger.warn).not.toHaveBeenCalled();
     } finally {
       await pool.query(`DROP TABLE identity_containment_delete_guard`);
     }
   });
 
-  it('signals only after commit and connection release, with committed deletion visible to another connection', async () => {
+  it('rolls back deletion and epochs when the durable quarantine audit write fails', async () => {
     const { primary, secondary, bystander, identityId } = await seedDeletionAuthority();
-    const observer = await pool.connect();
+    const credentials = [primary, secondary, bystander];
+    const before = await survivorAuthority(credentials);
+    const fingerprintBefore = await getAuthorizationFingerprint(credentials);
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION reject_identity_quarantine_audit() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.action = 'identity_primary_deletion_quarantined' THEN
+          RAISE EXCEPTION 'injected quarantine audit failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER reject_identity_quarantine_audit
+        BEFORE INSERT ON registry_audit_log
+        FOR EACH ROW EXECUTE FUNCTION reject_identity_quarantine_audit();
+    `);
     try {
-      // Keep an independent connection for visibility checks and leave another
-      // idle connection for deletion, so release ordering is observable.
-      await pool.query('SELECT 1');
-      const idleBeforeDeletion = pool.idleCount;
-      expect(idleBeforeDeletion).toBeGreaterThan(0);
-      let idleAtSignal = -1;
-      let stateAtSignal: Promise<{ rows: unknown[] }> | undefined;
-      notifySystemError.mockImplementation(() => {
-        idleAtSignal = pool.idleCount;
-        stateAtSignal = observer.query(
-          `SELECT
-             EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS deleted_user_exists,
-             EXISTS (SELECT 1 FROM organization_memberships WHERE workos_user_id = $1) AS deleted_membership_exists,
-             (SELECT COUNT(*)::int FROM identity_workos_users WHERE identity_id = $2) AS survivors,
-             (SELECT COUNT(*)::int FROM identity_workos_users WHERE identity_id = $2 AND is_primary) AS primaries,
-             (SELECT MIN(epoch)::int FROM authorization_epochs WHERE workos_user_id = ANY($3)) AS survivor_epoch`,
-          [primary, identityId, [secondary, bystander]],
-        );
-      });
-
-      await deleteIdentityCredential(primary);
-
-      expect(notifySystemError).toHaveBeenCalledOnce();
-      expect(idleAtSignal).toBe(idleBeforeDeletion);
-      expect((await stateAtSignal)?.rows).toEqual([{
-        deleted_user_exists: false,
-        deleted_membership_exists: false,
-        survivors: 2,
-        primaries: 0,
-        survivor_epoch: 2,
-      }]);
+      await expect(deleteIdentityCredential(primary, 'sync_users_backfill'))
+        .rejects.toThrow('injected quarantine audit failure');
+      expect(await survivorAuthority(credentials)).toEqual(before);
+      expect(await getAuthorizationFingerprint(credentials)).toBe(fingerprintBefore);
+      expect(await getIdentityRecoveryQuarantine(identityId)).toBeNull();
+      expect(notifySystemError).not.toHaveBeenCalled();
     } finally {
-      observer.release();
+      await pool.query(`DROP TRIGGER reject_identity_quarantine_audit ON registry_audit_log`);
+      await pool.query(`DROP FUNCTION reject_identity_quarantine_audit()`);
     }
   });
-
-  it.each([true, false])('does not signal when deleting the last binding (is_primary=%s) or replaying it', async (isPrimary) => {
-    const userId = await insertUser('signal_singleton', 'jordan-singleton@pinnacle.example');
-    if (!isPrimary) {
-      await pool.query(`UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1`, [userId]);
-    }
-
-    expect(await deleteIdentityCredential(userId)).toEqual([userId]);
-    expect(await deleteIdentityCredential(userId)).toEqual([userId]);
-
-    expect(notifySystemError).not.toHaveBeenCalled();
-    expect(identityLogger.warn).not.toHaveBeenCalled();
-  });
-
-  it('does not signal secondary deletion while the original primary survives', async () => {
-    const { primary, secondary, bystander } = await seedDeletionAuthority();
-    const before = await survivorAuthority([primary, bystander]);
-
-    await deleteIdentityCredential(secondary);
-
-    expect(await survivorAuthority([primary, bystander])).toEqual(before);
-    expect(notifySystemError).not.toHaveBeenCalled();
-    expect(identityLogger.warn).not.toHaveBeenCalled();
-  });
-
-  it('signals an existing identity without a primary when another credential is deleted', async () => {
-    const { primary, secondary, bystander, identityId } = await seedDeletionAuthority();
-    // Historical invalid state is an input, never permission to choose a primary.
-    await pool.query(`UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1`, [primary]);
-    const before = await survivorAuthority([primary, bystander]);
-
-    await deleteIdentityCredential(secondary);
-
-    expect(await survivorAuthority([primary, bystander])).toEqual(before);
-    expect(notifySystemError).toHaveBeenCalledWith({
-      source: 'identity-primary-missing',
-      errorMessage: expect.stringContaining(identityId),
-    });
-    expect(identityLogger.warn.mock.calls[0][0]).toEqual({
-      deletedUserId: secondary,
-      identityId,
-      survivingCredentialCount: 2,
-    });
-  });
-
-  it('returns cache invalidation IDs and preserves committed revocation if notifying throws', async () => {
-    const { primary, secondary, bystander } = await seedDeletionAuthority();
-    const before = await survivorAuthority([secondary, bystander]);
-    const notificationFailure = new Error('Notification transport unavailable');
-    notifySystemError.mockImplementation(() => { throw notificationFailure; });
-
-    await expect(deleteIdentityCredential(primary)).resolves.toEqual(expect.arrayContaining([primary, secondary, bystander]));
-
-    expect((await pool.query(`SELECT 1 FROM users WHERE workos_user_id = $1`, [primary])).rows).toEqual([]);
-    expect(await survivorAuthority([secondary, bystander])).toEqual(before);
-    expect(await getAuthorizationFingerprint([secondary])).toBe(`${secondary}:2`);
-    expect(await getAuthorizationFingerprint([bystander])).toBe(`${bystander}:2`);
-    expect(identityLogger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ err: notificationFailure }),
-      expect.any(String),
-    );
-  });
-
   it('deletes an account with accumulated community data', async () => {
     const userId = await insertUser('community', 'community@test.example');
     await pool.query(
