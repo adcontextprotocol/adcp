@@ -7,7 +7,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 const { getUser, updateUser, invalidate } = vi.hoisted(() => ({ getUser: vi.fn(), updateUser: vi.fn(), invalidate: vi.fn() }));
 vi.mock('../../src/auth/workos-client.js', () => ({ getEmailMutationWorkos: () => ({ userManagement: { getUser, updateUser } }) }));
 vi.mock('../../src/middleware/auth.js', () => ({ invalidateSessionsForUsers: invalidate }));
-import { getEmailMutationStatus, setPrimaryEmail } from '../../src/services/email-mutation.js';
+import { setPrimaryEmail } from '../../src/services/email-mutation.js';
 const userId = 'user_email_mutation_test';
 const otherUserId = 'user_email_mutation_other';
 const oldEmail = 'email-mutation-old@test.example';
