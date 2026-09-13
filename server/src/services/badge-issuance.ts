@@ -12,6 +12,7 @@ import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from './membership-tie
 import { query } from '../db/client.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { logger as baseLogger } from '../logger.js';
+import { isComplianceRefreshAccessFailure } from './compliance-refresh-authorization.js';
 
 const logger = baseLogger.child({ module: 'badge-issuance' });
 
@@ -435,6 +436,7 @@ export async function runBadgeFanOut(params: {
       for (const degraded of versionResult.degraded) aggregate.degraded.push(degraded);
       for (const unchanged of versionResult.unchanged) aggregate.unchanged.push(unchanged);
     } catch (versionError) {
+      if (isComplianceRefreshAccessFailure(versionError)) throw versionError;
       processingFailed = true;
       const errorMessage = versionError instanceof Error ? versionError.message : String(versionError);
       logger.error(
