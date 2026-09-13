@@ -4,12 +4,19 @@
  * deletion remains valid and must not silently promote a surviving credential.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { deleteIdentityCredential, promoteSecondaryIfPrimaryDeleted } from '../../src/db/identity-db.js';
 import { bumpAuthorizationEpochs, getAuthorizationFingerprint } from '../../src/db/authorization-epoch-db.js';
 import type { Pool } from 'pg';
+
+const { notifySystemError, identityLogger } = vi.hoisted(() => ({
+  notifySystemError: vi.fn(),
+  identityLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+vi.mock('../../src/addie/error-notifier.js', () => ({ notifySystemError }));
+vi.mock('../../src/logger.js', () => ({ createLogger: () => identityLogger }));
 
 const TEST_USER_PREFIX = 'user_wh_deleted_test_';
 const TEST_ORG = 'org_wh_deleted_test_pinnacle';
@@ -32,6 +39,8 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
 
   beforeEach(async () => {
     await cleanup();
+    vi.clearAllMocks();
+    notifySystemError.mockReset();
   });
 
   async function cleanup() {
@@ -211,10 +220,25 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
       `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1 AND is_primary = TRUE`, [identityId],
     )).rows).toEqual([]);
 
+    expect(notifySystemError).toHaveBeenCalledOnce();
+    expect(identityLogger.warn).toHaveBeenCalledOnce();
+    expect(identityLogger.warn.mock.calls[0][0]).toEqual({
+      deletedUserId: primary,
+      identityId,
+      survivingCredentialCount: 2,
+    });
+    expect(notifySystemError).toHaveBeenCalledWith({
+      source: 'identity-primary-missing',
+      errorMessage: expect.stringContaining(identityId),
+    });
+    expect(JSON.stringify(notifySystemError.mock.calls)).not.toContain('@');
+
     const fingerprintAfter = await getAuthorizationFingerprint(survivors);
     await deleteIdentityCredential(primary);
     expect(await getAuthorizationFingerprint(survivors)).toBe(fingerprintAfter);
     expect(await survivorAuthority(survivors)).toEqual(authorityBefore);
+    expect(notifySystemError).toHaveBeenCalledOnce();
+    expect(identityLogger.warn).toHaveBeenCalledOnce();
   });
 
   it('rolls back epoch changes and deletion together when the database refuses deletion', async () => {
@@ -233,9 +257,113 @@ describe('user.deleted: automatic promotion containment (#6827)', () => {
       await expect(deleteIdentityCredential(primary)).rejects.toThrow();
       expect(await survivorAuthority(credentials)).toEqual(before);
       expect(await getAuthorizationFingerprint(credentials)).toBe(fingerprintBefore);
+      expect(notifySystemError).not.toHaveBeenCalled();
+      expect(identityLogger.warn).not.toHaveBeenCalled();
     } finally {
       await pool.query(`DROP TABLE identity_containment_delete_guard`);
     }
+  });
+
+  it('signals only after commit and connection release, with committed deletion visible to another connection', async () => {
+    const { primary, secondary, bystander, identityId } = await seedDeletionAuthority();
+    const observer = await pool.connect();
+    try {
+      // Keep an independent connection for visibility checks and leave another
+      // idle connection for deletion, so release ordering is observable.
+      await pool.query('SELECT 1');
+      const idleBeforeDeletion = pool.idleCount;
+      expect(idleBeforeDeletion).toBeGreaterThan(0);
+      let idleAtSignal = -1;
+      let stateAtSignal: Promise<{ rows: unknown[] }> | undefined;
+      notifySystemError.mockImplementation(() => {
+        idleAtSignal = pool.idleCount;
+        stateAtSignal = observer.query(
+          `SELECT
+             EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS deleted_user_exists,
+             EXISTS (SELECT 1 FROM organization_memberships WHERE workos_user_id = $1) AS deleted_membership_exists,
+             (SELECT COUNT(*)::int FROM identity_workos_users WHERE identity_id = $2) AS survivors,
+             (SELECT COUNT(*)::int FROM identity_workos_users WHERE identity_id = $2 AND is_primary) AS primaries,
+             (SELECT MIN(epoch)::int FROM authorization_epochs WHERE workos_user_id = ANY($3)) AS survivor_epoch`,
+          [primary, identityId, [secondary, bystander]],
+        );
+      });
+
+      await deleteIdentityCredential(primary);
+
+      expect(notifySystemError).toHaveBeenCalledOnce();
+      expect(idleAtSignal).toBe(idleBeforeDeletion);
+      expect((await stateAtSignal)?.rows).toEqual([{
+        deleted_user_exists: false,
+        deleted_membership_exists: false,
+        survivors: 2,
+        primaries: 0,
+        survivor_epoch: 2,
+      }]);
+    } finally {
+      observer.release();
+    }
+  });
+
+  it.each([true, false])('does not signal when deleting the last binding (is_primary=%s) or replaying it', async (isPrimary) => {
+    const userId = await insertUser('signal_singleton', 'jordan-singleton@pinnacle.example');
+    if (!isPrimary) {
+      await pool.query(`UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1`, [userId]);
+    }
+
+    expect(await deleteIdentityCredential(userId)).toEqual([userId]);
+    expect(await deleteIdentityCredential(userId)).toEqual([userId]);
+
+    expect(notifySystemError).not.toHaveBeenCalled();
+    expect(identityLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it('does not signal secondary deletion while the original primary survives', async () => {
+    const { primary, secondary, bystander } = await seedDeletionAuthority();
+    const before = await survivorAuthority([primary, bystander]);
+
+    await deleteIdentityCredential(secondary);
+
+    expect(await survivorAuthority([primary, bystander])).toEqual(before);
+    expect(notifySystemError).not.toHaveBeenCalled();
+    expect(identityLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it('signals an existing identity without a primary when another credential is deleted', async () => {
+    const { primary, secondary, bystander, identityId } = await seedDeletionAuthority();
+    // Historical invalid state is an input, never permission to choose a primary.
+    await pool.query(`UPDATE identity_workos_users SET is_primary = FALSE WHERE workos_user_id = $1`, [primary]);
+    const before = await survivorAuthority([primary, bystander]);
+
+    await deleteIdentityCredential(secondary);
+
+    expect(await survivorAuthority([primary, bystander])).toEqual(before);
+    expect(notifySystemError).toHaveBeenCalledWith({
+      source: 'identity-primary-missing',
+      errorMessage: expect.stringContaining(identityId),
+    });
+    expect(identityLogger.warn.mock.calls[0][0]).toEqual({
+      deletedUserId: secondary,
+      identityId,
+      survivingCredentialCount: 2,
+    });
+  });
+
+  it('returns cache invalidation IDs and preserves committed revocation if notifying throws', async () => {
+    const { primary, secondary, bystander } = await seedDeletionAuthority();
+    const before = await survivorAuthority([secondary, bystander]);
+    const notificationFailure = new Error('Notification transport unavailable');
+    notifySystemError.mockImplementation(() => { throw notificationFailure; });
+
+    await expect(deleteIdentityCredential(primary)).resolves.toEqual(expect.arrayContaining([primary, secondary, bystander]));
+
+    expect((await pool.query(`SELECT 1 FROM users WHERE workos_user_id = $1`, [primary])).rows).toEqual([]);
+    expect(await survivorAuthority([secondary, bystander])).toEqual(before);
+    expect(await getAuthorizationFingerprint([secondary])).toBe(`${secondary}:2`);
+    expect(await getAuthorizationFingerprint([bystander])).toBe(`${bystander}:2`);
+    expect(identityLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: notificationFailure }),
+      expect.any(String),
+    );
   });
 
   it('deletes an account with accumulated community data', async () => {
