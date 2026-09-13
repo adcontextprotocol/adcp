@@ -175,6 +175,7 @@ function mountApp(
   router: { quickMatch: () => null; route: ReturnType<typeof vi.fn> } | null = null,
   getRegisteredTools: () => string[] = () => ['search_docs', 'get_doc', 'search_repos', 'save_brand'],
   onSseWrite?: (chunk: string) => void,
+  leaseRenewalScheduler?: (renew: () => Promise<void>) => () => void,
 ) {
   const app = express();
   app.use(express.json());
@@ -186,6 +187,7 @@ function mountApp(
       getRegisteredTools,
     },
     router,
+    leaseRenewalScheduler,
   });
   app.use("/api/addie/video", routers.apiRouter);
   if (onSseWrite) {
@@ -1047,6 +1049,183 @@ describe("Tavus session guidance route boundary", () => {
     expect(mocks.renewClientTurnLease).toHaveBeenCalledTimes(2);
     expect(sideEffects).toBe(0);
     expect(response.text).not.toContain('Unsafe completion.');
+    expect(response.text).not.toContain('[DONE]');
+    expect(mocks.addMessage.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({ role: 'user', client_request_id: expect.any(String) }),
+    ]);
+  });
+
+  it('does not dispatch or complete when periodic renewal loses the lease during mutation reservation', async () => {
+    let sideEffects = 0;
+    let scheduledRenewal: (() => Promise<void>) | undefined;
+    let settlePeriodicRenewal: ((owned: boolean) => void) | undefined;
+    let markReservationStored: (() => void) | undefined;
+    let markPeriodicRenewalStarted: (() => void) | undefined;
+    const reservationStored = new Promise<void>((resolve) => {
+      markReservationStored = resolve;
+    });
+    const periodicRenewalStarted = new Promise<void>((resolve) => {
+      markPeriodicRenewalStarted = resolve;
+    });
+    const stopRenewal = vi.fn();
+    const leaseRenewalScheduler = (renew: () => Promise<void>) => {
+      scheduledRenewal = renew;
+      return stopRenewal;
+    };
+    mocks.renewClientTurnLease
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+        settlePeriodicRenewal = resolve;
+        markPeriodicRenewalStarted!();
+      }));
+    mocks.addMessage.mockImplementation(async (message: { mutation_reservation?: unknown }) => {
+      if (message.mutation_reservation) {
+        expect(scheduledRenewal).toBeDefined();
+        void scheduledRenewal!();
+        markReservationStored!();
+      }
+    });
+    mocks.processMessageStream.mockImplementationOnce(async function* (...args: unknown[]) {
+      const options = args[3] as {
+        reserveSideEffect: (request: { toolName: string; parameters: Record<string, unknown> }) => Promise<void>;
+      };
+      try {
+        await options.reserveSideEffect({ toolName: 'save_brand', parameters: { domain: 'unsafe.example' } });
+        sideEffects += 1;
+      } catch {
+        // A failed reservation is a blocked tool result. The route must also
+        // suppress any differently sampled terminal response from this worker.
+      }
+      yield {
+        type: 'done',
+        response: { text: 'Unsafe completion.', tools_used: [], tool_executions: [], flagged: false },
+      };
+    });
+
+    let requestFinished = false;
+    const responsePromise = voiceTurn(mountApp(null, undefined, undefined, leaseRenewalScheduler))
+      .then((response) => {
+        requestFinished = true;
+        return response;
+      });
+    await reservationStored;
+    await periodicRenewalStarted;
+    expect(sideEffects).toBe(0);
+    expect(requestFinished).toBe(false);
+    expect(settlePeriodicRenewal).toBeDefined();
+    settlePeriodicRenewal!(false);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(mocks.renewClientTurnLease).toHaveBeenCalledTimes(3);
+    expect(sideEffects).toBe(0);
+    expect(stopRenewal).toHaveBeenCalledOnce();
+    expect(response.text).not.toContain('Unsafe completion.');
+    expect(response.text).not.toContain('[DONE]');
+    const storedMessages = mocks.addMessage.mock.calls.map(([message]) => message);
+    expect(storedMessages).toEqual([
+      expect.objectContaining({ role: 'user', client_request_id: expect.any(String) }),
+      expect.objectContaining({ role: 'assistant', mutation_reservation: expect.any(Object) }),
+    ]);
+    expect(storedMessages).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant', delivery_status: 'completed' }),
+    ]));
+  });
+
+  it.each(['false', 'error'] as const)(
+    'refuses a completed receipt when a terminal renewal settles %s after done',
+    async (outcome) => {
+      let scheduledRenewal: (() => Promise<void>) | undefined;
+      let settleRenewal: (() => void) | undefined;
+      let markRenewalStarted: (() => void) | undefined;
+      const renewalStarted = new Promise<void>((resolve) => {
+        markRenewalStarted = resolve;
+      });
+      const leaseRenewalScheduler = (renew: () => Promise<void>) => {
+        scheduledRenewal = renew;
+        return vi.fn();
+      };
+      mocks.renewClientTurnLease
+        .mockResolvedValueOnce(true)
+        .mockImplementationOnce(() => new Promise<boolean>((resolve, reject) => {
+          markRenewalStarted!();
+          settleRenewal = () => outcome === 'false'
+            ? resolve(false)
+            : reject(new Error('renewal unavailable'));
+        }));
+      mocks.processMessageStream.mockImplementationOnce(async function* () {
+        void scheduledRenewal!();
+        yield {
+          type: 'done',
+          response: { text: 'Stale completion.', tools_used: [], tool_executions: [], flagged: false },
+        };
+      });
+
+      let requestFinished = false;
+      const responsePromise = voiceTurn(mountApp(null, undefined, undefined, leaseRenewalScheduler))
+        .then((response) => {
+          requestFinished = true;
+          return response;
+        });
+      await renewalStarted;
+      expect(requestFinished).toBe(false);
+      expect(settleRenewal).toBeDefined();
+      settleRenewal!();
+      const response = await responsePromise;
+
+      expect(response.status).toBe(200);
+      expect(response.text).not.toContain('Stale completion.');
+      expect(response.text).not.toContain('[DONE]');
+      expect(mocks.addMessage.mock.calls.map(([message]) => message)).toEqual([
+        expect.objectContaining({ role: 'user', client_request_id: expect.any(String) }),
+      ]);
+    },
+  );
+
+  it('does not commit a tool-result checkpoint behind an unresolved renewal', async () => {
+    let scheduledRenewal: (() => Promise<void>) | undefined;
+    let settleRenewal: ((owned: boolean) => void) | undefined;
+    let markRenewalStarted: (() => void) | undefined;
+    const renewalStarted = new Promise<void>((resolve) => {
+      markRenewalStarted = resolve;
+    });
+    const leaseRenewalScheduler = (renew: () => Promise<void>) => {
+      scheduledRenewal = renew;
+      return vi.fn();
+    };
+    mocks.renewClientTurnLease
+      .mockResolvedValueOnce(true)
+      .mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+        settleRenewal = resolve;
+        markRenewalStarted!();
+      }));
+    mocks.processMessageStream.mockImplementationOnce(async function* () {
+      void scheduledRenewal!();
+      yield {
+        type: 'tool_end',
+        tool_name: 'save_brand',
+        execution: {
+          tool_name: 'save_brand', parameters: { domain: 'unsafe.example' }, result: 'saved', is_error: false, duration_ms: 1,
+        },
+      };
+      yield {
+        type: 'done',
+        response: { text: 'Stale completion.', tools_used: ['save_brand'], tool_executions: [], flagged: false },
+      };
+    });
+
+    const responsePromise = voiceTurn(mountApp(null, undefined, undefined, leaseRenewalScheduler))
+      .then((response) => response);
+    await renewalStarted;
+    expect(mocks.addMessage.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({ role: 'user', client_request_id: expect.any(String) }),
+    ]);
+    settleRenewal!(false);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(response.text).not.toContain('Stale completion.');
     expect(response.text).not.toContain('[DONE]');
     expect(mocks.addMessage.mock.calls.map(([message]) => message)).toEqual([
       expect.objectContaining({ role: 'user', client_request_id: expect.any(String) }),
