@@ -26,13 +26,15 @@ const logger = createLogger('identity-db');
  */
 export async function deleteIdentityCredential(workosUserId: string): Promise<string[]> {
   const client = await getPool().connect();
+  let affectedUserIds: string[] = [workosUserId];
+  let orphanedIdentity: { id: string; survivingCredentials: number } | undefined;
 
   try {
     await client.query('BEGIN');
     // Use a stable lock order when simultaneous webhooks delete siblings.
     // Unlink also needs the binding row lock before it can change the identity.
-    const bound = await client.query<{ workos_user_id: string }>(
-      `SELECT workos_user_id FROM identity_workos_users
+    const bound = await client.query<{ workos_user_id: string; identity_id: string; is_primary: boolean }>(
+      `SELECT workos_user_id, identity_id, is_primary FROM identity_workos_users
        WHERE identity_id = (
          SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1
        )
@@ -40,10 +42,15 @@ export async function deleteIdentityCredential(workosUserId: string): Promise<st
        FOR UPDATE`,
       [workosUserId],
     );
-    const affectedUserIds = [...new Set([
+    affectedUserIds = [...new Set([
       workosUserId,
       ...bound.rows.map((row) => row.workos_user_id),
     ])];
+    const deletedBinding = bound.rows.find((row) => row.workos_user_id === workosUserId);
+    const survivors = bound.rows.filter((row) => row.workos_user_id !== workosUserId);
+    if (deletedBinding && survivors.length > 0 && !survivors.some((row) => row.is_primary)) {
+      orphanedIdentity = { id: deletedBinding.identity_id, survivingCredentials: survivors.length };
+    }
 
     // Authentication checks the actual credential's epoch, so deleting the
     // primary's epoch alone would leave each surviving credential's cache valid.
@@ -51,13 +58,32 @@ export async function deleteIdentityCredential(workosUserId: string): Promise<st
     await client.query('DELETE FROM users WHERE workos_user_id = $1', [workosUserId]);
     await client.query('DELETE FROM organization_memberships WHERE workos_user_id = $1', [workosUserId]);
     await client.query('COMMIT');
-    return affectedUserIds;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw err;
   } finally {
     client.release();
   }
+
+  // Signal the committed access disruption without choosing a successor or
+  // inferring lost provenance. Rollbacks and replays without a binding do not
+  // report it. Notification failure must not prevent post-commit invalidation.
+  if (orphanedIdentity) {
+    logger.warn({
+      deletedUserId: workosUserId,
+      identityId: orphanedIdentity.id,
+      survivingCredentialCount: orphanedIdentity.survivingCredentials,
+    }, 'Provider deletion left surviving credentials without a primary; operator review required');
+    try {
+      notifySystemError({
+        source: 'identity-primary-missing',
+        errorMessage: `Identity ${orphanedIdentity.id} has ${orphanedIdentity.survivingCredentials} surviving credential(s) and no primary after WorkOS user.deleted for ${workosUserId}. Operator review is required; automatic promotion and historical restoration remain disabled.`,
+      });
+    } catch (err) {
+      logger.error({ err, identityId: orphanedIdentity.id }, 'Failed to report identity without a primary');
+    }
+  }
+  return affectedUserIds;
 }
 
 /**
