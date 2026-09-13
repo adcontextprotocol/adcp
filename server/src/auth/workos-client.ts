@@ -7,12 +7,14 @@ const OWNERLESS_PROMOTION_WORKOS_TIMEOUT_MS = 10_000;
 const PIPES_WORKOS_TIMEOUT_MS = 10_000;
 const AUTHORIZATION_OBSERVER_WORKOS_TIMEOUT_MS = 3_000;
 const AUTHORIZATION_ENFORCEMENT_WORKOS_TIMEOUT_MS = 5_000;
+const EMAIL_MUTATION_WORKOS_TIMEOUT_MS = 10_000;
 
 let _workos: WorkOS | null = null;
 let _ownerlessPromotionWorkos: WorkOS | null = null;
 let _pipesWorkos: WorkOS | null = null;
 let _authorizationObserverWorkos: WorkOS | null = null;
 let _authorizationEnforcementWorkos: WorkOS | null = null;
+let _emailMutationWorkos: WorkOS | null = null;
 let _clientId = '';
 
 /** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
@@ -95,6 +97,20 @@ export function getAuthorizationEnforcementWorkos(): WorkOS {
     });
   }
   return _authorizationEnforcementWorkos;
+}
+
+/** One bounded attempt: an email mutation timeout requires reconciliation. */
+export function getEmailMutationWorkos(): WorkOS {
+  if (!_emailMutationWorkos) {
+    if (!process.env.WORKOS_API_KEY) throw new Error('WORKOS_API_KEY environment variable is required');
+    if (!process.env.WORKOS_CLIENT_ID) throw new Error('WORKOS_CLIENT_ID environment variable is required');
+    _emailMutationWorkos = new WorkOS(process.env.WORKOS_API_KEY, {
+      clientId: process.env.WORKOS_CLIENT_ID,
+      timeout: EMAIL_MUTATION_WORKOS_TIMEOUT_MS,
+      maxRetries: 0,
+    });
+  }
+  return _emailMutationWorkos;
 }
 
 /**
