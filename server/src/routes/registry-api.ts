@@ -189,9 +189,8 @@ import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
-import { isAuthenticatedUserAAOAdmin, isWebUserAAOAdmin, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
-import { isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
@@ -4185,7 +4184,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`. Human submissions are temporarily fenced with HTTP 503 until durable authorization provenance is supported; static admin API key submissions remain available.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4286,7 +4285,7 @@ registry.registerPath({
     500: { description: "Refresh failed after durable execution", content: { "application/json": { schema: ErrorSchema } } },
     502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
     503: {
-      description: "Refresh queue or authorization unavailable. Human administrator and linked-credential submissions are temporarily fenced with refresh_authorization_provenance_required.",
+      description: "Refresh queue or authorization unavailable. All human submissions are temporarily fenced with refresh_authorization_provenance_required; only static admin API key submissions are supported.",
       headers: z.object({ "Retry-After": z.string() }),
       content: { "application/json": { schema: z.union([
         RegistryAdminAuthorizationUnavailableSchema,
@@ -7852,7 +7851,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   type RegistryPrincipal = Readonly<{
     staticAdmin: boolean;
-    canonicalUserId: string | null;
     user: Readonly<AAOAdminPrincipal> | null;
   }>;
 
@@ -7861,7 +7859,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   function captureRegistryPrincipal(req: Request): RegistryPrincipal {
     return Object.freeze({
       staticAdmin: isStaticAdminRequest(req),
-      canonicalUserId: req.user?.id ?? null,
       user: req.user ? Object.freeze({
         id: req.user.authWorkosUserId ?? req.user.id,
         email: req.user.email,
@@ -8286,6 +8283,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   function publicRefreshFailure(code: string | null): { code: string; message: string } {
     switch (code) {
+      case 'authorization_provenance_missing':
+        return { code, message: 'Refresh requester authorization provenance is unavailable' };
       case 'authorization_revoked':
         return { code: 'authorization_revoked', message: 'Access changed before the refresh started' };
       case 'monitoring_paused':
@@ -8326,11 +8325,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     request: ClaimedComplianceRefreshRequest,
     lease: { assertValid(): void },
   ): Promise<Record<string, unknown>> {
+    // Legacy rows cannot establish which WorkOS credential authenticated or
+    // its authorization epoch. Never infer either from canonical attribution,
+    // even for an owner, a current admin, or an already checkpointed run.
+    // #7457/591 alone may enable execution with proven durable provenance.
+    if (request.requester_type === 'user') {
+      throw refreshFailure('authorization_provenance_missing',
+        'Refresh requester authorization provenance is unavailable');
+    }
     const agentUrl = request.agent_url;
 
-    // Authorization is checked both when the request is admitted and when a
-    // worker claims it. This closes the queue-time revocation window before
-    // saved owner credentials are resolved.
+    // Preserve the existing additional ownership constraint for any legacy
+    // static-admin row carrying an owner context. User rows never reach it.
     if (request.triggered_by === 'owner_test') {
       if (
         !request.owner_org_id
@@ -8338,18 +8344,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         || !(await isOrgOwnerOfAgent(request.owner_org_id, request.requested_by_user_id, agentUrl))
       ) {
         throw refreshFailure('authorization_revoked', 'Agent ownership changed before the refresh started');
-      }
-    } else if (request.requester_type === 'user') {
-      const isCurrentAdmin = !!request.requested_by_user_id
-        && (
-          await isWebUserAAOAdmin(request.requested_by_user_id)
-          || (
-            isDevModeEnabled()
-            && process.env.DEV_USER_ID === request.requested_by_user_id
-          )
-        );
-      if (!isCurrentAdmin) {
-        throw refreshFailure('authorization_revoked', 'Administrator access changed before the refresh started');
       }
     }
 
@@ -8753,11 +8747,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
       }
 
-      // #7457 owns durable credential + epoch provenance and worker barriers.
-      // Old workers cannot safely represent human administrator authority or
-      // distinguish a linked requester from its canonical attribution ID.
+      // #7457 owns durable credential + epoch provenance. This schema cannot
+      // prove any human request, including one currently appearing unlinked.
+      // Do not enqueue work that the worker must deterministically reject.
       // There is deliberately no environment switch to reopen this path.
-      if (!isStaticAdmin && (!isOwner || principal.user?.id !== principal.canonicalUserId)) {
+      if (!isStaticAdmin) {
         logger.warn({ workosUserId: principal.user?.id, code: 'refresh_authorization_provenance_required' },
           'Refresh admission fenced until durable authorization provenance is supported');
         res.setHeader('Retry-After', '60');
@@ -8773,10 +8767,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         const { request, coalesced } = await complianceRefreshQueue.enqueue({
           id: operationId,
           agentUrl,
-          ownerOrgId,
-          requesterType: isStaticAdmin ? 'static_admin' : 'user',
-          requestedByUserId: isStaticAdmin ? null : principal.user!.id,
-          triggeredBy: ownerOrgId ? 'owner_test' : 'manual',
+          ownerOrgId: null,
+          requesterType: 'static_admin',
+          requestedByUserId: null,
+          triggeredBy: 'manual',
           agentWindowMs: REFRESH_AGENT_RATE_LIMIT_MS,
           requesterWindowMs: REFRESH_USER_WINDOW_MS,
           requesterLimit: REFRESH_USER_LIMIT,
@@ -8795,7 +8789,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
         if (coalesced && request.status === 'failed') {
           const failure = publicRefreshFailure(request.last_error_code);
-          const status = failure.code === 'authorization_revoked'
+          const status = failure.code === 'authorization_revoked' || failure.code === 'authorization_provenance_missing'
             ? 403
             : failure.code === 'monitoring_paused'
               ? 409
@@ -8822,7 +8816,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           }
           if (terminal?.status === 'failed') {
             const failure = publicRefreshFailure(terminal.last_error_code);
-            const status = failure.code === 'authorization_revoked'
+            const status = failure.code === 'authorization_revoked' || failure.code === 'authorization_provenance_missing'
               ? 403
               : failure.code === 'monitoring_paused'
                 ? 409
