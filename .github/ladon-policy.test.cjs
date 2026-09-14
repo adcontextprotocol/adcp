@@ -35,10 +35,7 @@ function validateInvocation(step) {
 
 function collectInvocations(value, location, result = []) {
   if (!value || typeof value !== "object") return result;
-  if (
-    typeof value.uses === "string" &&
-    /adcontextprotocol\/actions\/ladon\//i.test(value.uses)
-  ) {
+  if (typeof value.uses === "string" && /ladon/i.test(value.uses)) {
     result.push({ location, step: value });
   }
   for (const [key, child] of Object.entries(value)) {
@@ -269,5 +266,22 @@ test("human hold and two distinct protection bypasses remain visible", () => {
       adoption.includes(marker),
       `missing hold/audit evidence: ${marker}`,
     );
+  }
+});
+
+test("local, reusable and direct-subaction Ladon sites cannot evade inventory", () => {
+  for (const uses of [
+    "./ladon/review",
+    "./.github/workflows/ladon-review.yml",
+    "adcontextprotocol/actions/ladon/setup@" + IMPLEMENTATION,
+    "adcontextprotocol/actions/ladon/arbiter@" + IMPLEMENTATION,
+  ]) {
+    const step = { uses, with: { "auto-approve": "true" } };
+    const sites = collectInvocations(
+      { jobs: { added: { steps: [step] } } },
+      "new-workflow.yml",
+    );
+    assert.equal(sites.length, 1, `uninventoried invocation: ${uses}`);
+    assert.throws(() => validateInvocation(sites[0].step));
   }
 });
