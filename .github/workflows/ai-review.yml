@@ -63,7 +63,7 @@ jobs:
           MODIFIED=""
           while IFS= read -r f; do
             case "$f" in
-              .github/workflows/ai-review.yml|LADON.md)
+              .github/workflows/ai-review.yml|LADON.md|.github/workflows/ladon-policy.yml|.github/ladon-policy.test.cjs|.github/LADON-ADOPTION.md)
                 MODIFIED="${MODIFIED}${f}"$'\n' ;;
             esac
           done <<< "$CHANGED"

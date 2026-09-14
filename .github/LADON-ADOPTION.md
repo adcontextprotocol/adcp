@@ -43,24 +43,35 @@ The single current Ladon invocation pins the orchestrator and explicitly sets
 above. These are the reviewed revisions in
 [actions #29](https://github.com/adcontextprotocol/actions/pull/29), even if that
 Draft PR later receives documentation-only commits. No floating Ladon tag is
-used. Preserve these commits when landing the actions series.
+used. Preserve these commits when landing the actions series: retain the existing
+`conductor/enforce-human-only-ladon-gate` branch until an authorized maintainer
+has established and verified a durable retention reference containing all three
+pins. Do not delete that branch after a squash merge without this validation.
+This rollout does not create or move a tag.
 
 The read-only `Ladon approval policy` CI job checks out the exact consumer head,
-parses all tracked workflow/local-action invocation sites, and rejects missing,
+parses Ladon-named `uses` sites in tracked workflows/local actions, and rejects missing,
 enabled, malformed, boolean or expression-valued approval inputs. It verifies
 nested runtime bytes against their pins and runs the reviewed upstream tests,
 type checks and builds. Upstream tests cover clean COMMENT, findings, failing
 critical/high requests for changes, failing human escalations, stale dismissed
 approvals, direct stale-reapproval shell execution, bots/authors and zero APPROVE
 API calls in disabled mode. It inspects calls before any cleanup, so there is no
-transient approving write to race auto-merge in this pinned mode.
+transient approving write to race auto-merge in this pinned mode. Arbitrarily named
+wrappers and shell/API review writers require the separate administrator audit;
+the static inventory does not prove their absence. Existing supporting GitHub
+actions in the privileged workflow retain their pre-existing version tags; the
+immutable contract here covers Ladon code, not every third-party dependency.
+The administrator supply-chain audit must review those dependencies separately. Reviewer prompt inputs fetched
+from external repositories at runtime are not made immutable by these code pins.
 
 The consumer's **configuration tests** reject an omitted input. The revised
 review/setup/arbiter manifests default to `'false'`; omission cannot enable
 approval. Explicit `'true'` is an opt-in compatibility path, forbidden by this
 rollout's inventory policy.
 Explicit invalid runtime values fail before posting. The base workflow's human
-modification gate protects changes to this invocation; the new unprivileged CI
+modification gate protects changes to this invocation and is extended to the new
+policy workflow, policy tests and adoption document; the new unprivileged CI
 is a regression check, **not** the trusted human-approval status described below.
 Blocking findings and escalations still fail; this adoption does not turn Ladon
 into an unconditional successful check.
@@ -155,6 +166,10 @@ An explicitly authorized repository/organization administrator must:
    App identity, not just a spoofable context name. Require the policy's Ladon
    blocking result as well, with explicit handling of workflow-modification
    human holds and high-risk exceptions; optional failures do not block merge.
+   Also require `Ladon approval policy` as a configuration regression check and
+   verify that deleting its workflow leaves a missing required result and blocks
+   merging. This PR-head check can be edited by a PR author and must never serve
+   as the trusted human-approval producer or replace independent human review.
 3. The human producer must paginate reviews, resolve the latest effective
    non-dismissed review per person, and count only APPROVED at the **live exact
    head** from currently authorized collaborators/required CODEOWNERS. Exclude
