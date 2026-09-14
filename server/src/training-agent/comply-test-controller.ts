@@ -958,6 +958,10 @@ function createStore(
       const accountId = creative.accountId
         ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
       if (accountId) {
+        // Session reads deserialize a new object per request. Publish that
+        // updated object to the shared account library before its change record
+        // and webhook become visible; list_creatives prefers the shared copy.
+        upsertSharedAccountCreative(accountId, creative);
         const change = recordAccountChange(principal, {
           resource: {
             type: 'creative',
