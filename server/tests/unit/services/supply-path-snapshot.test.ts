@@ -36,6 +36,9 @@ describe('registry cache authority provenance', () => {
     expect(result.manifest).toBeNull();
     expect(result.held).toEqual(['owner.example']);
     // Invalid provenance must not replace the previously established authority pin.
+    await expect(supplyPathSnapshotEvidence(publisher, {
+      ...snapshot(), discoveryMethod: 'authoritative_location', resolvedUrl: 'https://other.example/host.json',
+    }, store)).rejects.toThrow(/migration requires independent confirmation/);
     expect((await supplyPathSnapshotEvidence(publisher, snapshot(), store)).manifest).toEqual(snapshot().manifest);
   });
 });
