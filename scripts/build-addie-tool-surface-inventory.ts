@@ -1042,7 +1042,8 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   ];
   const tavusTailRequest = [
     ...collaboration.COLLABORATION_TOOLS,
-    ...committee.COMMITTEE_LEADER_TOOLS,
+    // Keep aligned with buildVoiceRequestTools: Tavus has no immutable exact
+    // credential yet, so committee mutation definitions remain unavailable.
     ...moltbook.MOLTBOOK_TOOLS,
   ];
   const tavusMemberRequest = [
