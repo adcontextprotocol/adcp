@@ -16,7 +16,7 @@ import {
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
-import { bumpAuthorizationEpochs } from '../../db/authorization-epoch-db.js';
+import { CredentialDetachConflict, detachCredential } from '../../db/credential-detach-db.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -890,14 +890,17 @@ export function createAdminUsersRouter(): Router {
       workos_user_id: string;
       is_primary: boolean;
       bound_at: string;
+      authorization_epoch: string;
       email: string | null;
       first_name: string | null;
       last_name: string | null;
     }>(
       `SELECT iwu.workos_user_id, iwu.is_primary, iwu.bound_at,
+              COALESCE(ae.epoch, 0)::text AS authorization_epoch,
               u.email, u.first_name, u.last_name
          FROM identity_workos_users iwu
          LEFT JOIN users u ON u.workos_user_id = iwu.workos_user_id
+         LEFT JOIN authorization_epochs ae ON ae.workos_user_id = iwu.workos_user_id
         WHERE iwu.identity_id = $1
         ORDER BY iwu.is_primary DESC, iwu.bound_at ASC`,
       [identity.rows[0].identity_id]
@@ -1115,14 +1118,13 @@ export function createAdminUsersRouter(): Router {
   // separately via the WorkOS Dashboard if desired.
   //
   // Refuses if the credential is the primary — removing the primary would
-  // leave the identity with no canonical credential. Promote another
-  // credential to primary first (separate endpoint, not yet built).
+  // leave the identity with no canonical credential. Primary promotion
+  // is a separate operation.
   router.delete('/:userId/credentials/:credentialId', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
-    // For non-singleton admin identities (today: nobody — admins are still
-    // singleton-bound — but Phase 3+ may change), record the auth credential
-    // separately from the canonical id so forensics can tell them apart.
+    // Record the authenticated credential separately from the canonical user
+    // so the audit identifies the credential that actually initiated detach.
     const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
     const userId = req.params.userId;
     const credId = req.params.credentialId;
@@ -1131,94 +1133,58 @@ export function createAdminUsersRouter(): Router {
       return res.status(400).json({ error: 'Cannot remove the canonical user via this endpoint' });
     }
 
-    const pool = getPool();
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const check = await client.query<{ is_primary: boolean; identity_id: string }>(
-        `SELECT iwu.is_primary, iwu.identity_id
-           FROM identity_workos_users iwu
-          WHERE iwu.workos_user_id = $1
-            AND iwu.identity_id = (
-              SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
-            )`,
-        [credId, userId]
-      );
-
-      if (check.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Credential not bound to this user' });
-      }
-      if (check.rows[0].is_primary) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({
-          error: 'Cannot remove the primary credential',
-          message: 'Promote another credential to primary before removing this one.',
-        });
-      }
-
-      const detachedIdentityId = check.rows[0].identity_id;
-
-      // Unbind, then create a fresh singleton identity for the detached
-      // credential so the Phase 1 invariant ("every user has exactly one
-      // binding") holds.
-      await client.query(
-        `DELETE FROM identity_workos_users WHERE workos_user_id = $1`,
-        [credId]
-      );
-      const newIdentity = await client.query<{ id: string }>(
-        `INSERT INTO identities DEFAULT VALUES RETURNING id`
-      );
-      await client.query(
-        `INSERT INTO identity_workos_users (workos_user_id, identity_id, is_primary)
-         VALUES ($1, $2, TRUE)`,
-        [credId, newIdentity.rows[0].id]
-      );
-
-      // The detached credential stops routing to the host, so any session
-      // issued before this commit must lose that routing on every instance,
-      // not just the one handling this request.
-      await bumpAuthorizationEpochs(client, [userId, credId]);
-
-      // Audit log
-      const auditOrg = await client.query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships
-          WHERE workos_user_id = $1 LIMIT 1`,
-        [userId]
-      );
-      const auditOrgId = auditOrg.rows[0]?.workos_organization_id || 'system';
-      await client.query(
-        `INSERT INTO registry_audit_log (
-          workos_organization_id, workos_user_id, action, resource_type, resource_id, details
-        ) VALUES ($1, $2, 'unbind_credential', 'user', $3, $4)`,
-        [
-          auditOrgId,
-          adminUserId,
-          credId,
-          JSON.stringify({
-            host_user_id: userId,
-            detached_from_identity_id: detachedIdentityId,
-            new_identity_id: newIdentity.rows[0].id,
-            // Auth credential the admin used (may differ from adminUserId
-            // post-id-swap if the admin has multiple bound credentials).
-            acting_workos_user_id: adminAuthCredentialId,
-          }),
-        ]
-      );
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      logger.error({ err, userId, credId }, 'Admin unbind-credential: failed');
-      return res.status(500).json({ error: 'Failed to unbind credential' });
-    } finally {
-      client.release();
+    if (req.adminAccessMechanism === 'static_admin_api_key' || !req.user!.identityId) {
+      return res.status(403).json({ error: 'identity_bearing_admin_required' });
+    }
+    const expectedIdentityId = req.body?.expected_identity_id;
+    const expectedAuthorizationEpoch = req.body?.expected_authorization_epoch;
+    if (typeof expectedIdentityId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(expectedIdentityId) ||
+        typeof expectedAuthorizationEpoch !== 'string' ||
+        !/^(0|[1-9][0-9]{0,18})$/.test(expectedAuthorizationEpoch)) {
+      return res.status(400).json({
+        error: 'binding_precondition_required',
+        message: 'Reload credentials and supply the observed identity and authorization epoch.',
+      });
     }
 
-    // Invalidate cached sessions for both users so the swap is recomputed
-    // on the next request.
-    invalidateSessionsForUsers([userId, credId]);
+    try {
+      const detached = await detachCredential({
+        hostUserId: userId,
+        credentialId: credId,
+        expectedIdentityId,
+        expectedAuthorizationEpoch,
+        actorUserId: adminUserId,
+        actorCredentialId: adminAuthCredentialId,
+        actorIdentityId: req.user!.identityId,
+      });
+      invalidateSessionsForUsers(detached.affectedCredentialIds);
+    } catch (err) {
+      if (err instanceof CredentialDetachConflict) {
+        // Logger hooks run before redaction. Retain only helper-owned constant
+        // reasons, never an exception object, stack, request or provider data.
+        const reason = [
+          'Identity binding is busy; reload and retry',
+          'Identity changed; reload credentials',
+          'Credential lifecycle is busy; reload and retry',
+          'Acting identity changed; authenticate again',
+          'Credential binding changed; reload credentials',
+          'Cannot remove the primary credential',
+          'Identity has no primary credential; repair it before detaching',
+          'Credential lifecycle changed; reload credentials',
+          'Credential lifecycle requires reconciliation',
+          'Credential lifecycle is terminal or requires reconciliation',
+          'Credential authorization changed; reload credentials',
+        ].find((knownReason) => knownReason === err.message) ?? '[REDACTED]';
+        logger.warn({ failureCode: 'credential_binding_changed', reason }, 'Admin unbind-credential: conflict');
+        return res.status(409).json({
+          error: 'credential_binding_changed',
+          message: 'Credential binding changed. Reload credentials and try again.',
+        });
+      }
+      logger.error({ failureCode: 'credential_detach_failed', reason: '[REDACTED]' }, 'Admin unbind-credential: failed');
+      return res.status(500).json({ error: 'Failed to unbind credential' });
+    }
 
     logger.info(
       { adminEmail, userId, credId },
@@ -1229,7 +1195,7 @@ export function createAdminUsersRouter(): Router {
       removed: true,
       host_user_id: userId,
       removed_workos_user_id: credId,
-      message: 'Credential unbound. The WorkOS user is now a separate identity.',
+      message: 'Credential unbound. The WorkOS user is now a separate identity. Existing memberships and permissions are unchanged.',
     });
   });
 

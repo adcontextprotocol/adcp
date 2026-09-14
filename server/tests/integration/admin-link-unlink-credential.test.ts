@@ -18,7 +18,21 @@ vi.hoisted(() => {
   process.env.WORKOS_COOKIE_PASSWORD ??= 'test-cookie-password-at-least-32-chars-long';
 });
 
-const { mockGetUser } = vi.hoisted(() => ({ mockGetUser: vi.fn() }));
+const { mockGetUser, adminContext, routeLogger } = vi.hoisted(() => ({
+  mockGetUser: vi.fn(), adminContext: { identityId: '' },
+  routeLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('../../src/logger.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/logger.js')>();
+  return { ...actual, createLogger: (...args: Parameters<typeof actual.createLogger>) =>
+    args[0] === 'admin-users-routes' ? routeLogger : actual.createLogger(...args) };
+});
+
+vi.mock('../../src/db/credential-detach-db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/db/credential-detach-db.js')>();
+  return { ...actual, detachCredential: vi.fn(actual.detachCredential) };
+});
 
 vi.mock('../../src/auth/workos-client.js', () => {
   const mockUserManagement = { getUser: mockGetUser };
@@ -32,6 +46,7 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
     req.user = {
       id: 'user_test_admin_link',
       authWorkosUserId: 'user_test_admin_link_credential',
+      identityId: adminContext.identityId,
       email: 'admin@test.local',
       emailVerified: true,
       createdAt: new Date().toISOString(),
@@ -62,6 +77,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import express from 'express';
 import { createAdminUsersRouter } from '../../src/routes/admin/users.js';
 import { stopAuthTimers } from '../../src/middleware/auth.js';
+import { CredentialDetachConflict, detachCredential } from '../../src/db/credential-detach-db.js';
 
 const HOST_USER_ID = 'user_test_link_host';
 const TARGET_USER_ID = 'user_test_link_target';
@@ -83,6 +99,7 @@ describe('admin link / unlink credential', () => {
 
   afterAll(async () => {
     await cleanup();
+    await pool.query(`DELETE FROM users WHERE workos_user_id IN ('user_test_admin_link', 'user_test_admin_link_credential')`);
     stopAuthTimers();
     await closeDatabase();
   });
@@ -90,6 +107,8 @@ describe('admin link / unlink credential', () => {
   beforeEach(async () => {
     await cleanup();
     mockGetUser.mockReset();
+    vi.mocked(detachCredential).mockClear();
+    for (const log of Object.values(routeLogger)) log.mockClear();
     await pool.query(
       `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
                           workos_created_at, workos_updated_at, created_at, updated_at)
@@ -101,6 +120,7 @@ describe('admin link / unlink credential', () => {
   async function cleanup() {
     await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id = $1`, [AUTHORITY_ORG_ID]);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [AUTHORITY_ORG_ID]);
+    await pool.query(`DELETE FROM registry_audit_log WHERE resource_id IN ($1, $2)`, [HOST_USER_ID, TARGET_USER_ID]);
     await pool.query(`DELETE FROM users WHERE workos_user_id IN ($1, $2)`, [HOST_USER_ID, TARGET_USER_ID]);
   }
 
@@ -185,7 +205,17 @@ describe('admin link / unlink credential', () => {
   });
 
   describe('DELETE /credentials/:credentialId', () => {
+    let precondition: { expected_identity_id: string; expected_authorization_epoch: string };
+
     beforeEach(async () => {
+      await pool.query(`INSERT INTO users (workos_user_id, email) VALUES
+        ('user_test_admin_link', 'admin-link@example.test'),
+        ('user_test_admin_link_credential', 'admin-credential@example.test')
+        ON CONFLICT (workos_user_id) DO NOTHING`);
+      const admin = await pool.query(`SELECT identity_id FROM identity_workos_users WHERE workos_user_id = 'user_test_admin_link'`);
+      adminContext.identityId = admin.rows[0].identity_id;
+      await pool.query(`UPDATE identity_workos_users SET identity_id = $1, is_primary = FALSE
+        WHERE workos_user_id = 'user_test_admin_link_credential'`, [adminContext.identityId]);
       await pool.query(
         `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
                             workos_created_at, workos_updated_at, created_at, updated_at)
@@ -193,6 +223,47 @@ describe('admin link / unlink credential', () => {
         [TARGET_USER_ID]
       );
       await bindExistingFixture();
+      const listed = await request(app).get(`/api/admin/users/${HOST_USER_ID}/credentials`).expect(200);
+      precondition = {
+        expected_identity_id: listed.body.identity_id,
+        expected_authorization_epoch: listed.body.credentials.find((c: any) => c.workos_user_id === TARGET_USER_ID).authorization_epoch,
+      };
+    });
+
+    it('requires an observed binding and an identity-bearing actor', async () => {
+      await request(app).delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
+        .expect(400);
+      await request(app).delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
+        .send(precondition).set('X-Test-Admin-Access-Mechanism', 'static_admin_api_key').expect(403);
+      const before = await pool.query(`SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`, [TARGET_USER_ID]);
+      expect(before.rows[0].identity_id).toBe(precondition.expected_identity_id);
+    });
+
+    it.each([true, false])('keeps arbitrary exception details out of the response and logs (conflict=%s)', async (conflict) => {
+      const sensitive = 'internal-fixture-only: bearer secret-token person@example.test provider-response-body';
+      const error = conflict ? new CredentialDetachConflict(sensitive) : new Error(sensitive);
+      Object.assign(error, { stack: sensitive, cause: new Error(sensitive),
+        access_token: sensitive, response: { body: sensitive } });
+      vi.mocked(detachCredential).mockRejectedValueOnce(error);
+      const before = (await pool.query(
+        'SELECT * FROM identity_workos_users WHERE workos_user_id = $1', [TARGET_USER_ID],
+      )).rows;
+      const response = await request(app)
+        .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
+        .send(precondition).expect(conflict ? 409 : 500);
+      expect(response.body).toEqual(conflict
+        ? { error: 'credential_binding_changed', message: 'Credential binding changed. Reload credentials and try again.' }
+        : { error: 'Failed to unbind credential' });
+      const log = conflict ? routeLogger.warn : routeLogger.error;
+      expect(log).toHaveBeenCalledExactlyOnceWith({
+        failureCode: conflict ? 'credential_binding_changed' : 'credential_detach_failed', reason: '[REDACTED]',
+      }, conflict ? 'Admin unbind-credential: conflict' : 'Admin unbind-credential: failed');
+      const emitted = response.text + JSON.stringify(Object.values(routeLogger).flatMap((mock) => mock.mock.calls));
+      for (const value of [sensitive, 'secret-token', 'person@example.test', 'provider-response-body', HOST_USER_ID, TARGET_USER_ID]) {
+        expect(emitted).not.toContain(value);
+      }
+      expect((await pool.query('SELECT * FROM identity_workos_users WHERE workos_user_id = $1', [TARGET_USER_ID])).rows).toEqual(before);
+      expect((await pool.query("SELECT 1 FROM registry_audit_log WHERE action = 'unbind_credential' AND resource_id = $1", [TARGET_USER_ID])).rows).toEqual([]);
     });
 
     it("unbinds a non-primary credential without moving either credential's organization authority", async () => {
@@ -215,9 +286,21 @@ describe('admin link / unlink credential', () => {
       );
       const hostIdentity = beforeIdentity.rows[0].identity_id;
 
-      const response = await request(app)
-        .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
-        .expect(200);
+      // API keys are provider-owned: detach must not issue any HTTP write
+      // (or even read) to WorkOS's /organizations/:id/api_keys inventory.
+      const providerFetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected provider call'));
+      mockGetUser.mockClear();
+      let response;
+      try {
+        response = await request(app)
+          .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
+          .send(precondition)
+          .expect(200);
+        expect(providerFetch).not.toHaveBeenCalled();
+        expect(mockGetUser).not.toHaveBeenCalled();
+      } finally {
+        providerFetch.mockRestore();
+      }
       expect(response.body.removed).toBe(true);
       expect((await pool.query(
         `SELECT * FROM organization_memberships WHERE workos_organization_id = $1 ORDER BY workos_user_id`,
@@ -240,19 +323,25 @@ describe('admin link / unlink credential', () => {
         [TARGET_USER_ID]
       );
       expect(audit.rows).toHaveLength(1);
-      expect(audit.rows[0].details.host_user_id).toBe(HOST_USER_ID);
+      expect(audit.rows[0].details).toMatchObject({
+        host_user_id: HOST_USER_ID,
+        affected_workos_user_id: TARGET_USER_ID,
+        acting_workos_user_id: 'user_test_admin_link_credential',
+        acting_identity_id: adminContext.identityId,
+        detached_from_identity_id: precondition.expected_identity_id,
+      });
     });
 
     it('refuses to remove the primary credential', async () => {
       const response = await request(app)
         .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${HOST_USER_ID}`)
+        .send(precondition)
         .expect(400); // self-id check fires before the primary check
       expect(response.body.error).toMatch(/canonical user/i);
     });
 
     it('refuses to remove a credential that primary-bound on another identity\'s scope', async () => {
-      // Set TARGET's binding to is_primary = TRUE inside HOST's identity (corrupt
-      // state, but verifies the guard) — easier: try to unbind via wrong host id.
+      // A stale URL host cannot detach a binding from another identity.
       const otherUserId = 'user_test_link_other';
       await pool.query(
         `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
@@ -263,24 +352,31 @@ describe('admin link / unlink credential', () => {
       try {
         const response = await request(app)
           .delete(`/api/admin/users/${otherUserId}/credentials/${TARGET_USER_ID}`)
-          .expect(404);
-        expect(response.body.error).toMatch(/not bound/i);
+          .send(precondition)
+          .expect(409);
+        expect(response.body.error).toBe('credential_binding_changed');
       } finally {
         await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [otherUserId]);
       }
     });
 
-    it('404s when the credential is not bound to this host', async () => {
+    it('rejects replay when the credential is no longer bound to this host', async () => {
       // Unbind first
       await request(app)
         .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
+        .send(precondition)
         .expect(200);
 
-      // Second call should 404 — credential is no longer bound here
+      // Second call should conflict — credential is no longer bound here
       const response = await request(app)
         .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
-        .expect(404);
-      expect(response.body.error).toMatch(/not bound/i);
+        .send(precondition)
+        .expect(409);
+      expect(response.body.error).toBe('credential_binding_changed');
+      expect(response.body.message).toBe('Credential binding changed. Reload credentials and try again.');
+      expect(routeLogger.warn).toHaveBeenLastCalledWith({
+        failureCode: 'credential_binding_changed', reason: 'Credential binding changed; reload credentials',
+      }, 'Admin unbind-credential: conflict');
     });
   });
 });
