@@ -241,6 +241,18 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   });
 }
 
+test('stderr disconnects during backoff: await retry diagnostic failure before another install', { timeout: 10000 }, async t => {
+  const f = fixture(t, [{ code: 1, err: signature }, { code: 0 }], { waitDelay: true });
+  await f.waiting();
+  f.child.stderr.destroy();
+  fs.writeFileSync(path.join(f.cwd, 'continue-delay'), '');
+  assert.deepEqual(await f.done, { code: 1, signal: null });
+  assert.equal(f.calls().length, 1);
+  assert.deepEqual(f.delays(), [3000]);
+  assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), signature.replaceAll('ROOT', f.cwd));
+  assert.ok(!fs.existsSync(path.join(f.logs(), 'attempt-2.stdout.log')));
+});
+
 for (const milliseconds of [999, 5001, 1500.5]) {
   test(`reject invalid injected delay ${milliseconds} without another install`, { timeout: 10000 }, async t => {
     const f = fixture(t, [{ code: 1, err: signature }, { code: 0 }], { delayMs: milliseconds });

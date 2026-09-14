@@ -128,7 +128,12 @@ export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
         if (!interrupted || error.name !== 'AbortError') throw error;
       }
       if (interrupted || failedOutputs.size) break;
-      console.error('retrying normal npm ci once (attempt 2/2).');
+      // Observe an async write failure before starting another detached install.
+      await new Promise(resolve => process.stderr.write('retrying normal npm ci once (attempt 2/2).\n', error => {
+        if (error) failedOutputs.add(process.stderr);
+        resolve();
+      }));
+      if (interrupted || failedOutputs.size) break;
     }
   } finally {
     // Drain diagnostics while error/signal handlers are still installed. The
