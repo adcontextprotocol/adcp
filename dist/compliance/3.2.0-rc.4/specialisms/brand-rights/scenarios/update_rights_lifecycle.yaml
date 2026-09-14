@@ -1,0 +1,141 @@
+id: brand_rights/update_rights_lifecycle
+version: "1.0.0"
+title: "Update a seeded rights grant and reject unknown references"
+category: brand_rights
+summary: "Verifies that update_rights atomically updates an acquired grant and rejects an unknown rights_id with REFERENCE_NOT_FOUND."
+track: brand
+
+narrative: |
+  `update_rights` operates on a grant, not on a catalog offering. The controller
+  seeds a deterministic acquired grant, the buyer pauses it, and a second call
+  proves that an unknown or stale grant reference cannot be updated. Each step
+  is gated on its own experimental tool so this scenario does not make either
+  `update_rights` or `comply_test_controller` a baseline brand requirement.
+
+agent:
+  interaction_model: brand_rights_holder
+  capabilities:
+    - rights_licensing
+    - rights_lifecycle_management
+  examples:
+    - "A brand rights agent that supports mutable grants"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "A sandbox brand agent that exposes update_rights and the optional compliance controller."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: seed
+    title: "Seed an acquired rights grant"
+    steps:
+      - id: seed_rights_grant
+        title: "Create deterministic grant state"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        expected: "Seed the acquired grant for the same sandbox account used by update_rights."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "seed_rights_grant"
+          params:
+            rights_id: "janssen_likeness_voice"
+            fixture:
+              brand_id: "daan_janssen"
+              buyer_domain: "pinnacle-agency.example"
+              pricing_option_id: "monthly_exclusive"
+              start_date: "2099-04-01"
+              end_date: "2099-06-30"
+              impression_cap: 100000
+              paused: false
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Controller confirms the rights grant was seeded"
+
+  - id: valid_update
+    title: "Apply an atomic update"
+    depends_on: [seed]
+    steps:
+      - id: pause_seeded_grant
+        title: "Pause the seeded rights grant"
+        task: update_rights
+        requires_tool: update_rights
+        schema_ref: "brand/update-rights-request.json"
+        response_schema_ref: "brand/update-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/update_rights"
+        stateful: true
+        expected: "Return the same grant identity with paused state and updated grant terms."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          rights_id: "janssen_likeness_voice"
+          paused: true
+          idempotency_key: "$generate:uuid_v4#brand_rights_update_seeded_grant"
+          context:
+            correlation_id: "brand_rights--update_seeded_grant"
+        validations:
+          - check: response_schema
+            description: "Response matches update-rights-response.json"
+          - check: field_value
+            path: "rights_id"
+            value: "janssen_likeness_voice"
+            description: "Response identifies the seeded grant"
+          - check: field_value
+            path: "paused"
+            value: true
+            description: "Response reports the requested paused state"
+          - check: field_present
+            path: "terms"
+            description: "Response includes the grant's updated terms"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--update_seeded_grant"
+            description: "Response preserves request context"
+
+  - id: unknown_reference
+    title: "Reject an unknown or stale grant reference"
+    steps:
+      - id: update_unknown_grant
+        title: "Attempt to pause a grant that does not exist"
+        task: update_rights
+        requires_tool: update_rights
+        schema_ref: "brand/update-rights-request.json"
+        response_schema_ref: "brand/update-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/update_rights"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: "Reject the well-formed request with REFERENCE_NOT_FOUND."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          rights_id: "stale_rights_grant_00000000"
+          paused: true
+          idempotency_key: "$generate:uuid_v4#brand_rights_update_unknown_grant"
+          context:
+            correlation_id: "brand_rights--update_unknown_grant"
+        validations:
+          - check: error_code
+            value: "REFERENCE_NOT_FOUND"
+            description: "Unknown and stale grant references use the canonical reference error"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--update_unknown_grant"
+            description: "Error response preserves request context"

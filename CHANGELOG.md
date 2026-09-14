@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.2.0-rc.4
+
+### Patch Changes
+
+- 70a91fe: Add compliance scenario for frequency-cap negotiation through proposal refinement (refine_frequency_cap_negotiation). Exercises replace-cap, clear-cap, and unable outcomes against the fields introduced in #7449.
+- 336546b: Align the 3.2 docs, announcement banner, and SDK guidance with the published 3.2.0-rc.3 checkpoint and @adcp/sdk@14.0.0-rc.36.
+- eb3cbd6: `canonical_format_validate_input` no longer lists `comply_test_controller` in `required_tools`. The storyboard runner's per-storyboard gate admits a storyboard when any listed tool is present, so any agent exposing the (universal) test controller was selected and then failed all 17 steps on the missing `validate_input`. Agents without `validate_input` now receive a coverage-gap skip; agents implementing it run unchanged. Same shape as #6774 (fixes #7404, bug 1).
+- af1ea26: Gate the webhook-emission storyboard's wholesale `get_products` branch set and its aggregate assertion on the advertised wholesale buying mode, so non-media-buy agents grade the branch family as not applicable.
+- 98fa207: Add the `media_buy_frequency_cap_updates` compliance scenario covering root-cap
+  replace and clear through `update_media_buy_frequency_cap`, atomic rejection of
+  `new_packages` whose product cannot join the shared counter, the resulting-state
+  rule for clearing a cap while adding packages, and the `ACTION_NOT_ALLOWED`
+  path when the package mix can no longer change the root cap. The reference
+  training seller now implements package and shared MediaBuy frequency caps so
+  the four frequency-cap scenarios execute against it, and the specification
+  states the `ACTION_NOT_ALLOWED` rule for root-cap changes explicitly.
+- 1467e46: Training agent implements the rc.3 Reliable Reporting consumer-status hardening and the conformance storyboard grades it.
+  
+  The public training agent now advertises `consumer_status_task`, serves
+  `sync_reporting_status`, and projects the full RC.3 contract: `content_mismatch`
+  with its closed `mismatch_code`, `obligation_counts.consumer_status_pending`,
+  issue `opened_at` / `issue_state` / `external_ref`, and the
+  `operations_contact` / `consumer_mismatch_escalation_seconds` capability fields
+  driving `recommended_action` escalation — with the escalation boundary taking
+  precedence over the stale-`received` grace deadline.
+  
+  `comply_test_controller`'s `reporting_core_lifecycle_probe` gains two additive
+  operations, `advance_past_status_deadline` and `advance_past_escalation`, and
+  the capability-gated `reporting_consumer_status` storyboard uses them to grade
+  counted silence, each `mismatch_code`, `opened_at` stability across the
+  severity change, escalation to a `contact_*` action, and `operations_contact`
+  presence.
+
 ## 3.2.0-rc.3
 
 ### Minor Changes

@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/enums/media-buy-frequency-cap-control-mode.json",
+  "title": "Media Buy Frequency Cap Control Mode",
+  "description": "The aggregate MediaBuy frequency-cap control shape supported in 3.2.",
+  "type": "string",
+  "enum": [
+    "max_impressions"
+  ]
+}
