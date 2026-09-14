@@ -27,7 +27,7 @@ Voice callbacks also require a signed session capability bound to the server's c
 
 Every site-admin grant or revoke requires a written reason and writes an append-only event with the actor, target, access mechanism, reason, and timestamp. The revoke and its audit event commit together, so deleting the active membership cannot delete its forensic record.
 
-The replica that performs a grant or revoke clears that user's local admin-status cache immediately. Other replicas cache a positive `aao-admin` membership decision for at most 60 seconds, so emergency revocation takes effect there within that bound. Negative and failed checks remain fail-closed.
+Admin authorization results are not cached. A grant or revoke is visible to every replica on its next authorization check, without a positive-cache propagation window. Failed checks remain fail-closed and are reported as unavailable rather than reused as either a grant or denial.
 
 ## Escalation triage
 

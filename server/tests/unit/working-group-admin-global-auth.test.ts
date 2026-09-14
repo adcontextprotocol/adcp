@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   revokeAAOAdminMembership: vi.fn(),
   getWorkingGroupById: vi.fn(),
   getWorkingGroupBySlug: vi.fn(),
+  getWorkingGroupIdBySlug: vi.fn(),
   isMember: vi.fn(),
   updateWorkingGroup: vi.fn(),
   removeMembership: vi.fn(),
@@ -80,6 +81,7 @@ vi.mock('../../src/db/working-group-db.js', () => ({
     revokeAAOAdminMembership = mocks.revokeAAOAdminMembership;
     getWorkingGroupById = mocks.getWorkingGroupById;
     getWorkingGroupBySlug = mocks.getWorkingGroupBySlug;
+    getWorkingGroupIdBySlug = mocks.getWorkingGroupIdBySlug;
     isMember = mocks.isMember;
     updateWorkingGroup = mocks.updateWorkingGroup;
     removeMembership = mocks.removeMembership;
@@ -134,6 +136,7 @@ describe('working-group real global-admin boundary', () => {
         ? { id: 'wg_aao_admin', slug: 'aao-admin' }
         : null),
     );
+    mocks.getWorkingGroupIdBySlug.mockResolvedValue('wg_aao_admin');
     mocks.isMember.mockResolvedValue(true);
     mocks.poolQuery.mockImplementation((sql: string) => {
       if (sql.includes('FROM users')) {
@@ -231,7 +234,7 @@ describe('working-group real global-admin boundary', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([]);
-    expect(mocks.getWorkingGroupBySlug).toHaveBeenCalledWith('aao-admin');
+    expect(mocks.getWorkingGroupIdBySlug).toHaveBeenCalledWith('aao-admin');
     expect(mocks.isMember).toHaveBeenCalledWith(
       'wg_aao_admin',
       'user_sso_admin',

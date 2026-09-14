@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
 import { handleAppMention, selectRoutedDirectSlackTools } from '../../../src/addie/bolt-app.js';
+import { AAOAdminLookupUnavailableError } from '../../../src/addie/admin-status-lookup.js';
 import {
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 } from '../../../src/addie/slack-tool-selection.js';
@@ -202,6 +203,51 @@ describe('direct Slack Addie response tool routing', () => {
     const modelDispatch = vi.fn();
     const responseDelivery = vi.fn();
     const selectRoutedTools = vi.fn().mockRejectedValue(new Error('router unavailable'));
+    const buildCurrentChannelCostOptions = vi.fn();
+    const logInteraction = vi.fn();
+    const threadService = {
+      getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+      getThreadMessages: vi.fn().mockResolvedValue([]),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await handleAppMention({
+      event: { channel: 'C_PRIVATE', ts: '1', user: 'U_TEST', text: '<@B_ADDIE> help' },
+      context: { botUserId: 'B_ADDIE' },
+      say: responseDelivery,
+    } as never, {
+      claudeClient: { processMessage: modelDispatch } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({
+        viewing_channel_name: 'private-test',
+        viewing_channel_is_private: true,
+      }),
+      getChannelHistory: vi.fn().mockResolvedValue({ messages: [], has_more: false }),
+      getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({
+        requestContext: 'test request context',
+        memberContext: null,
+        activeCertificationKind: undefined,
+      }),
+      getThreadService: vi.fn(() => threadService as never),
+      selectRoutedTools,
+      buildCurrentChannelCostOptions,
+      logInteraction,
+    });
+
+    expect(selectRoutedTools).toHaveBeenCalledOnce();
+    expect(modelDispatch).not.toHaveBeenCalled();
+    expect(buildCurrentChannelCostOptions).not.toHaveBeenCalled();
+    expect(logInteraction).not.toHaveBeenCalled();
+    expect(responseDelivery).toHaveBeenCalledWith({
+      text: "I'm sorry, I can't process that request right now. Please try again.",
+      thread_ts: '1',
+    });
+  });
+
+  it('reports an admin-status outage with retry guidance and no model dispatch', async () => {
+    const modelDispatch = vi.fn();
+    const responseDelivery = vi.fn();
+    const selectRoutedTools = vi.fn().mockRejectedValue(new AAOAdminLookupUnavailableError());
     const buildCurrentChannelCostOptions = vi.fn();
     const logInteraction = vi.fn();
     const threadService = {
