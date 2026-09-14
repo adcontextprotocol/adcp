@@ -7,15 +7,16 @@
  *      against the WorkOS JWKS endpoint.
  *   2. WorkOS API key (sk_* / wos_api_key_* prefixes) — server-to-server
  *      integrations. Validated via the existing `validateWorkOSApiKey` helper.
- *   3. Sealed cookie session — authentication middleware supplies a fresh
+ *   3. Sealed cookie or authenticated native bearer session — middleware supplies a fresh
  *      authorization snapshot. Only an explicitly selected organization
  *      authorized for the exact credential is returned; primary orgs are ignored.
  *
- * An explicit Bearer must supply its own verified organization. Opaque/native
- * session Bearers cannot use `req.user` to select an implicit primary organization.
+ * Native bearer sessions require middleware transport provenance before using
+ * the exact snapshot. No sealed transport selects an implicit organization.
  */
 
 import type { Request, Response } from 'express';
+import { createHash } from 'node:crypto';
 import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { getBearerToken, isWorkOSApiKeyFormat } from '../../middleware/api-key-format.js';
 import {
@@ -51,7 +52,7 @@ function jwksForIssuer(iss: string): { jwks: JWTVerifyGetKey; clientId: string }
   return { jwks, clientId };
 }
 
-export type MinimalReq = Pick<Request, 'headers'> & Partial<Pick<Request, 'query' | 'body' | 'params'>> & {
+export type MinimalReq = Pick<Request, 'headers'> & Partial<Pick<Request, 'query' | 'body' | 'params' | 'authenticatedSealedBearer'>> & {
   user?: Partial<OrgAuthorizationPrincipal>;
 };
 
@@ -132,9 +133,9 @@ async function resolveBearerOrganization(req: MinimalReq): Promise<ResolvedBeare
   }
 }
 
-/** Missing, denied, stale or unavailable cookie authority is public-only.
+/** Missing, denied, stale or unavailable sealed-session authority is public-only.
  * Nullable consumers must never reinterpret it as canonical-user ownership. */
-async function resolveCookieOrganization(req: MinimalReq): Promise<string | null> {
+async function resolveSealedSessionOrganization(req: MinimalReq): Promise<string | null> {
   const user = req.user;
   if (user?.id && user.id !== 'admin_api_key' && !user.id.startsWith('api_key_')) {
     const principal: OrgAuthorizationPrincipal = {
@@ -167,12 +168,24 @@ async function resolveCookieOrganization(req: MinimalReq): Promise<string | null
 
 /**
  * Resolve the caller's organization from a verified credential result.
- * Null is reserved for callers without a bearer; a supplied bearer must
- * authorize an organization or fail explicitly.
+ * Authenticated sealed sessions can have no selected organization. Other
+ * supplied bearers must authorize an organization or fail explicitly.
  */
 export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
   const authorization = req.headers.authorization;
-  if (getBearerToken(authorization) === null) return resolveCookieOrganization(req);
+  const bearerToken = getBearerToken(authorization);
+  if (bearerToken === null) return resolveSealedSessionOrganization(req);
+
+  const sealedBearer = req.authenticatedSealedBearer;
+  if (sealedBearer) {
+    // Bind provenance to both the presented token and the exact middleware
+    // snapshot. Replaced credentials or principals cannot reuse it.
+    if (sealedBearer.tokenHash !== createHash('sha256').update(bearerToken).digest('hex')
+      || sealedBearer.authorizationSnapshot !== req.user?.authorizationSnapshot) {
+      throw new CallerOrganizationAuthError(401);
+    }
+    return resolveSealedSessionOrganization(req);
+  }
 
   // Capture the credential and selection before any await. Later request
   // mutation cannot substitute another key or erase an organization conflict.

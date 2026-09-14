@@ -13,7 +13,7 @@ import { bansDb } from '../db/bans-db.js';
 import { getBearerToken, getWorkOSApiKeyToken, isWorkOSApiKeyFormat } from './api-key-format.js';
 import { verifyWorkOSJWT, looksLikeJWT, isInvalidWorkOSJWTError, WorkOSJWTUnavailableError } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
-import { loadAuthorizationSnapshot, AuthorizationSnapshotUnavailableError } from '../db/user-authorization-snapshot-db.js';
+import { loadAuthorizationSnapshot, AuthorizationSnapshotUnavailableError, type AuthorizationSnapshot } from '../db/user-authorization-snapshot-db.js';
 import { ConflictingOrganizationSelectionError, selectedOrganizationForAuthentication } from '../auth/organization-selection.js';
 import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
@@ -243,6 +243,11 @@ declare global {
     interface Request {
       user?: WorkOSUser;
       accessToken?: string;
+      /** Set only after sealed bearer authentication and fresh snapshot hydration. */
+      authenticatedSealedBearer?: Readonly<{
+        tokenHash: string;
+        authorizationSnapshot: AuthorizationSnapshot;
+      }>;
       company?: Company;
       companyUser?: CompanyUser;
       /** Authority path used by requireAdmin, retained for audited mutations. */
@@ -800,6 +805,18 @@ async function hydrateAuthenticatedUser(user: WorkOSUser, organizationId: string
   return hydrated;
 }
 
+/** Request-local provenance, never retained in the shared cookie/session cache. */
+function markAuthenticatedSealedBearer(req: Request, bearerToken: string | null): void {
+  if (!bearerToken || getBearerToken(req.headers.authorization) !== bearerToken || !req.user?.authorizationSnapshot) return;
+  Object.defineProperty(req, 'authenticatedSealedBearer', {
+    value: Object.freeze({
+      tokenHash: hashSessionCookie(bearerToken),
+      authorizationSnapshot: req.user.authorizationSnapshot,
+    }),
+    configurable: true,
+  });
+}
+
 /** Local dev login is an explicit synthetic-auth bypass. Keep attribution useful
  * against seeded databases without making a database mandatory for dev fixtures. */
 async function hydrateDevUser(user: WorkOSUser): Promise<WorkOSUser> {
@@ -841,6 +858,7 @@ function sendAuthorizationStateError(error: unknown, res: Response, includeTrans
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  delete req.authenticatedSealedBearer;
   const bearerToken = getBearerToken(req.headers.authorization);
   const isHtmlRequest = bearerToken === null && req.accepts('html') && !req.originalUrl.startsWith('/api/');
 
@@ -971,6 +989,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         cached.user, selectedOrganizationForAuthentication(req, cached.orgId),
       );
       req.accessToken = cached.accessToken;
+      markAuthenticatedSealedBearer(req, bearerToken);
 
       // If session was refreshed, update the cookie
       if (cached.newSealedSession) {
@@ -1187,6 +1206,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     req.user = hydrated;
     req.accessToken = result.accessToken;
+    markAuthenticatedSealedBearer(req, bearerToken);
 
     // Check platform ban for cookie-authenticated user (fail-open: DB timeout should not log users out)
     try {
@@ -1829,6 +1849,8 @@ function extractSealedSession(req: Request): string | undefined {
  * Supports both cookie-based auth (web) and Authorization header (native apps)
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  delete req.authenticatedSealedBearer;
+  const bearerToken = getBearerToken(req.headers.authorization);
   if (hasValidAdminApiKey(req)) {
     logger.debug({ path: req.path }, 'Authenticated via static admin API key (optional auth)');
     req.user = {
@@ -1923,6 +1945,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         cached.user, selectedOrganizationForAuthentication(req, cached.orgId),
       );
       req.accessToken = cached.accessToken;
+      markAuthenticatedSealedBearer(req, bearerToken);
 
       // If session was refreshed, update the cookie
       if (cached.newSealedSession) {
@@ -2078,6 +2101,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
       req.user = hydrated;
       req.accessToken = result.accessToken;
+      markAuthenticatedSealedBearer(req, bearerToken);
     }
   } catch (error) {
     if (sendAuthorizationStateError(error, res, true)) return;
