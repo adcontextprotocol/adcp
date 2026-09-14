@@ -133,7 +133,9 @@ describe('Primary email credential boundary', () => {
 
   it('checks verification reconciliation with the already-held transaction client', async () => {
     mocks.clientQuery.mockImplementation(async (sql: string) => ({
+      rowCount: sql.includes('FROM email_link_tokens') ? 1 : 0,
       rows: sql.includes('FROM email_link_tokens') ? [{
+        verified_at: null, merge_summary: null, target_workos_user_id: null,
         id: 'token-id', primary_workos_user_id: 'user_credential', target_email: 'alias@example.test',
         status: 'pending', expires_at: new Date(Date.now() + 60_000),
       }] : [],

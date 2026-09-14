@@ -298,7 +298,8 @@ export function handleEmailLinkVerification(app: {
 
       if (new Date(tokenRecord.expires_at) < new Date()) {
         await query(
-          `UPDATE email_link_tokens SET status = 'expired' WHERE id = $1`,
+          `UPDATE email_link_tokens SET status = 'expired'
+           WHERE id = $1 AND status = 'pending' AND expires_at < NOW()`,
           [tokenRecord.id]
         );
         return renderVerifyPage(res, { success: false, message: 'This verification link has expired. Please request a new one from your dashboard settings.' });
@@ -332,7 +333,7 @@ export function handleEmailLinkVerification(app: {
 
       // Lock the token row to prevent concurrent verification
       const tokenResult = await client.query(
-        `SELECT id, primary_workos_user_id, target_email, target_workos_user_id, status, expires_at
+        `SELECT *, expires_at::text AS expires_at_exact
          FROM email_link_tokens WHERE token = $1 FOR UPDATE`,
         [token]
       );
@@ -343,86 +344,142 @@ export function handleEmailLinkVerification(app: {
         return renderVerifyPage(res, { success: false, message: 'This verification link is invalid.' });
       }
 
-      if (tokenRecord.status !== 'pending' && tokenRecord.status !== 'processing') {
+      if (tokenResult.rowCount !== 1 || tokenResult.rows.length !== 1) {
+        throw new Error('Unexpected verification token cardinality');
+      }
+
+      const replay = tokenRecord.status === 'verified';
+      if (!replay && tokenRecord.status !== 'pending' && tokenRecord.status !== 'processing') {
         await client.query('ROLLBACK');
         return renderVerifyPage(res, { success: false, message: 'This verification link has already been used.' });
       }
 
-      if (new Date(tokenRecord.expires_at) < new Date()) {
-        await client.query(
-          `UPDATE email_link_tokens SET status = 'expired' WHERE id = $1`,
-          [tokenRecord.id]
+      // Legacy processing is retryable only with no terminal evidence. Never
+      // reset a token after failure: rollback restores its locked entry state.
+      if ((!replay && tokenRecord.verified_at !== null) || tokenRecord.merge_summary !== null) {
+        throw new Error('Unexpected verification token evidence');
+      }
+
+      const finishToken = async (status: 'verified' | 'expired' | 'revoked') => {
+        const updated = await client.query(
+          `UPDATE email_link_tokens SET status = $7::varchar,
+             verified_at = CASE WHEN $7 = 'verified' THEN NOW() ELSE verified_at END
+           WHERE id = $1 AND token = $2 AND primary_workos_user_id = $3
+             AND target_email = $4 AND target_workos_user_id IS NOT DISTINCT FROM $5
+             AND status = $6 AND verified_at IS NULL AND merge_summary IS NULL
+             AND expires_at = $8
+           RETURNING *`,
+          [tokenRecord.id, token, tokenRecord.primary_workos_user_id, tokenRecord.target_email,
+            tokenRecord.target_workos_user_id, tokenRecord.status, status, tokenRecord.expires_at_exact]
         );
+        const assertTerminal = (result: typeof updated) => {
+          const row = result.rows[0];
+          if (result.rowCount !== 1 || result.rows.length !== 1 || row.id !== tokenRecord.id
+              || row.token !== token || row.primary_workos_user_id !== tokenRecord.primary_workos_user_id
+              || row.target_email !== tokenRecord.target_email
+              || row.target_workos_user_id !== tokenRecord.target_workos_user_id
+              || row.status !== status || row.merge_summary !== null
+              || (status === 'verified' ? !row.verified_at : row.verified_at !== null)
+              || new Date(row.expires_at).getTime() !== new Date(tokenRecord.expires_at).getTime()) {
+            throw new Error('Verification token transition failed');
+          }
+        };
+        assertTerminal(updated);
+        // RETURNING precedes AFTER triggers; check the persisted state too.
+        assertTerminal(await client.query('SELECT * FROM email_link_tokens WHERE id = $1', [tokenRecord.id]));
+      };
+
+      if (!replay && new Date(tokenRecord.expires_at) < new Date()) {
+        await finishToken('expired');
         await client.query('COMMIT');
         return renderVerifyPage(res, { success: false, message: 'This verification link has expired. Please request a new one from your dashboard settings.' });
       }
 
+      // Use migration 592's existing nonblocking credential fence throughout
+      // the rechecks, including replay. No new cross-email writer protocol.
+      await client.query('SELECT lock_email_writer($1)', [tokenRecord.primary_workos_user_id]);
       const mutationStatus = await getEmailMutationStatus(tokenRecord.primary_workos_user_id, client);
       if (mutationStatus.reconciliation_required) {
         await client.query('ROLLBACK');
         return renderVerifyPage(res, { success: false, message: mutationStatus.message! });
       }
 
-      // Mark token as processing (prevents concurrent attempts, but allows retry on failure)
-      await client.query(
-        `UPDATE email_link_tokens SET status = 'processing' WHERE id = $1`,
-        [tokenRecord.id]
+      if (tokenRecord.target_workos_user_id !== null) {
+        // Defense in depth: initiation now refuses tokens with a target
+        // WorkOS user (see POST /api/me/linked-emails), but in-flight
+        // tokens issued before that block landed must also be refused
+        // here. The merge-existing-accounts path is admin-only.
+        if (replay) throw new Error('Conflicting verification replay');
+        await finishToken('revoked');
+        await client.query('COMMIT');
+        logger.info(
+          {
+            tokenId: tokenRecord.id,
+            primaryUserId: tokenRecord.primary_workos_user_id,
+            targetWorkosUserId: tokenRecord.target_workos_user_id,
+          },
+          'Refused self-service merge at verify time; admin tool required'
+        );
+        return renderVerifyPage(res, {
+          success: false,
+          message: 'This email already has an AAO account. Combining accounts requires admin assistance — please contact support.',
+        });
+      }
+
+      const principal = await client.query(
+        'SELECT workos_user_id FROM users WHERE workos_user_id = $1 FOR KEY SHARE',
+        [tokenRecord.primary_workos_user_id]
       );
+      if (principal.rowCount !== 1 || principal.rows.length !== 1
+          || principal.rows[0].workos_user_id !== tokenRecord.primary_workos_user_id) {
+        throw new Error('Verification principal is unavailable');
+      }
+      // This sees credentials created since issuance. A different credential
+      // inserted AFTER this check is a residual cross-table writer race.
+      const credentials = await client.query(
+        'SELECT workos_user_id FROM users WHERE LOWER(email) = LOWER($1)', [tokenRecord.target_email]
+      );
+      if (credentials.rowCount !== 0 || credentials.rows.length !== 0) {
+        throw new Error('Verification email already has a credential');
+      }
 
-      await client.query('COMMIT');
-
-      try {
-        if (tokenRecord.target_workos_user_id) {
-          // Defense in depth: initiation now refuses tokens with a target
-          // WorkOS user (see POST /api/me/linked-emails), but in-flight
-          // tokens issued before that block landed must also be refused
-          // here. The merge-existing-accounts path is admin-only.
-          await query(
-            `UPDATE email_link_tokens SET status = 'revoked' WHERE id = $1`,
-            [tokenRecord.id]
-          );
-          logger.info(
-            {
-              tokenId: tokenRecord.id,
-              primaryUserId: tokenRecord.primary_workos_user_id,
-              targetWorkosUserId: tokenRecord.target_workos_user_id,
-            },
-            'Refused self-service merge at verify time; admin tool required'
-          );
-          return renderVerifyPage(res, {
-            success: false,
-            message: 'This email already has an AAO account. Combining accounts requires admin assistance — please contact support.',
-          });
-        }
-
-        // Record the email alias (use bare ON CONFLICT to handle both the
-        // composite UNIQUE(workos_user_id, email) and the LOWER(email) index)
-        await query(
+      if (!replay) {
+        const inserted = await client.query(
           `INSERT INTO user_email_aliases (workos_user_id, email)
            VALUES ($1, $2)
-           ON CONFLICT DO NOTHING`,
+           ON CONFLICT DO NOTHING RETURNING workos_user_id, email, verified_at`,
           [tokenRecord.primary_workos_user_id, tokenRecord.target_email]
         );
-
-        // Mark token as verified
-        await query(
-          `UPDATE email_link_tokens SET status = 'verified', verified_at = NOW() WHERE id = $1`,
-          [tokenRecord.id]
-        );
-      } catch (verifyError) {
-        // Reset token to pending so the user can retry
-        await query(
-          `UPDATE email_link_tokens SET status = 'pending' WHERE id = $1`,
-          [tokenRecord.id]
-        ).catch(() => {
-          logger.error({ tokenId: tokenRecord.id }, 'Failed to reset token status after verify error — user cannot retry');
-        });
-        throw verifyError;
+        if (inserted.rowCount !== inserted.rows.length || ![0, 1].includes(inserted.rows.length)
+            || (inserted.rows.length === 1 && (inserted.rows[0].workos_user_id !== tokenRecord.primary_workos_user_id
+              || inserted.rows[0].email !== tokenRecord.target_email || !inserted.rows[0].verified_at))) {
+          throw new Error('Verification alias insert failed');
+        }
       }
+
+      // Check ownership even after INSERT, and lock existing aliases through
+      // commit. Zero rows (including a suppressed INSERT) is never success.
+      const checkOwner = async () => {
+        const owner = await client.query(
+          `SELECT workos_user_id, email, verified_at FROM user_email_aliases
+           WHERE LOWER(email) = LOWER($1) FOR UPDATE`, [tokenRecord.target_email]
+        );
+        if (owner.rowCount !== 1 || owner.rows.length !== 1
+            || owner.rows[0].workos_user_id !== tokenRecord.primary_workos_user_id
+            || !owner.rows[0].verified_at || (replay && !tokenRecord.verified_at)) {
+          throw new Error('Verification alias ownership conflict');
+        }
+      };
+      await checkOwner();
+      if (!replay) {
+        await finishToken('verified');
+        await checkOwner();
+      }
+      await client.query('COMMIT');
 
       const message = `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> is now linked to your account.`;
 
-      logger.info(
+      if (!replay) logger.info(
         { primaryUserId: tokenRecord.primary_workos_user_id, targetEmail: tokenRecord.target_email },
         'Email link verification completed'
       );
