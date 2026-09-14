@@ -487,4 +487,69 @@ describe('native OAuth HTTPServer wiring', () => {
     expect(mocks.query.mock.calls.some(([sql]) => sql.includes('FROM users u') && sql.includes('user_email_aliases'))).toBe(true);
   });
 
+  it.each(['admin', 'ordinary'])('contains Slack email linking during a real OAuth callback (%s target)', async (target) => {
+    const id = `user_email_containment_${target}`;
+    const email = 'sam.containment@gmail.com';
+    mocks.authenticateWithCode.mockResolvedValue({
+      sealedSession: 'test-sealed-session',
+      user: { id, email, firstName: null, lastName: null, emailVerified: true,
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+    });
+    mocks.listOrganizationMemberships.mockResolvedValue({ data: [{ userId: id, organizationId: 'org_pinnacle', status: 'active' }] });
+    mocks.listUsers.mockResolvedValue({ data: [] });
+    mocks.query.mockImplementation(async (sql: string) => ({ rows:
+      sql.includes('FROM slack_user_mappings') && sql.includes('LOWER(slack_email)')
+        ? [{ slack_user_id: 'U_EMAIL_CONTAINMENT', slack_email: email,
+          slack_real_name: 'Sam Adeyemi', workos_user_id: null, slack_is_bot: false, slack_is_deleted: false }]
+        : [], rowCount: 0,
+    }));
+    const { tryAutoLinkWebsiteUserToSlack } = await import('../../src/slack/sync.js');
+    const mapUser = vi.spyOn(SlackDatabase.prototype, 'mapUser');
+    const cacheSpy = vi.spyOn(await import('../../src/addie/index.js'), 'invalidateMemberContextCache');
+    server = new HTTPServer();
+    for (let i = 0; i < 2; i++) {
+      const response = await request(appFor(server)).get('/auth/callback').query({ code: 'test-code' });
+      expect(response.status).toBe(302);
+    }
+    expect(mapUser).toHaveBeenCalledTimes(2);
+    expect(mapUser).toHaveBeenCalledWith({ slack_user_id: 'U_EMAIL_CONTAINMENT', workos_user_id: id, mapping_source: 'email_auto' });
+    expect(await tryAutoLinkWebsiteUserToSlack(id, email)).toEqual({ linked: false, reason: 'slack_email_auto_linking_disabled' });
+    expect(cacheSpy).not.toHaveBeenCalled();
+    expect(mocks.sendAccountLinkedMessage).not.toHaveBeenCalled();
+    for (const write of [mocks.createOrganizationMembership, mocks.updateOrganizationMembership, mocks.deleteOrganizationMembership]) {
+      expect(write).not.toHaveBeenCalled();
+    }
+    const writes = mocks.query.mock.calls.filter(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql));
+    // Only the authenticated login's own provider-user upsert is expected.
+    expect(writes.every(([sql, params]) => sql.startsWith('INSERT INTO users ') && params[0] === id)).toBe(true);
+    mapUser.mockRestore();
+    cacheSpy.mockRestore();
+  });
+
+  it('runs the registered scheduled Slack linker and reports contained without success', async () => {
+    const { jobScheduler } = await import('../../src/addie/jobs/scheduler.js');
+    const { registerAllJobs } = await import('../../src/addie/jobs/job-definitions.js');
+    const { autoLinkUnmappedSlackUsers } = await import('../../src/slack/sync.js');
+    const register = vi.spyOn(jobScheduler, 'register').mockImplementation(() => {});
+    registerAllJobs();
+    const job = register.mock.calls.map(([config]) => config).find(config => config.name === 'slack-auto-link')!;
+    expect(job.runner).toBe(autoLinkUnmappedSlackUsers);
+    mocks.query.mockImplementation(async (sql: string) => ({ rows:
+      sql.includes('FROM organization_memberships') ? [{ email: 'sam@pinnacle.example', workos_user_id: 'user_sam' }]
+        : sql.includes("mapping_status = 'unmapped'") ? [{ slack_user_id: 'U_SAM', slack_email: 'sam@pinnacle.example' }]
+        : [], rowCount: 0,
+    }));
+    for (let i = 0; i < 2; i++) {
+      const result = await job.runner({});
+      expect(result).toEqual({ linked: 0, contained: 1, chapters_joined: 0, organizations_assigned: 0,
+        pending_org_prospects_set: 0, errors: 0 });
+      expect(job.shouldLogResult!(result as never)).toBe(true);
+    }
+    expect(mocks.query.mock.calls.filter(([sql]) => /\b(INSERT|UPDATE|DELETE)\b/i.test(sql))).toEqual([]);
+    for (const write of [mocks.createOrganizationMembership, mocks.updateOrganizationMembership, mocks.deleteOrganizationMembership]) {
+      expect(write).not.toHaveBeenCalled();
+    }
+    register.mockRestore();
+  });
+
 });

@@ -9,6 +9,7 @@ import { FREE_EMAIL_PROVIDER_DOMAINS } from '../services/identifier-normalizatio
 import { splitFullName } from '../utils/resolve-user-name.js';
 import type { PoolClient } from 'pg';
 import { withActiveCredentialEventMutation } from './identity-db.js';
+import { SlackEmailAutoLinkContainedError } from '../slack/email-auto-containment.js';
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -119,6 +120,12 @@ export class SlackDatabase {
     mapping_source: SlackMappingSource;
     mapped_by_user_id?: string;
   }, externalClient?: PoolClient): Promise<SlackUserMapping | null> {
+    // Denormalized email is discovery data, not proof of credential ownership.
+    // Reject before opening a lifecycle transaction (including caller-owned ones)
+    // or writing mapping, names, metadata, or authorization epochs.
+    if (input.mapping_source === 'email_auto') {
+      throw new SlackEmailAutoLinkContainedError();
+    }
     if (!externalClient) {
       const guarded = await withActiveCredentialEventMutation(
         input.workos_user_id,
@@ -147,8 +154,8 @@ export class SlackDatabase {
 
     // Backfill users.first_name/last_name from the Slack mapping when they're
     // currently empty. The OAuth callback's resolveUserNameWithFallbacks runs
-    // the same cascade on next sign-in, but admin links and email-based
-    // auto-links happen out-of-band — without this, a learner can be Slack-
+    // the same cascade on next sign-in, but explicit admin links can happen
+    // out-of-band — without this, a learner can be Slack-
     // linked, earn a credential via Sage, and never have signed in via OAuth
     // in between. SQL-side split: first word → first_name, rest → last_name.
     if (mapping) {

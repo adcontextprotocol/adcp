@@ -665,7 +665,9 @@ describe('WorkOS webhook vs sync-users deletion', () => {
       const mapping = await new SlackDatabase().mapUser({
         slack_user_id: SLACK,
         workos_user_id: PRIMARY,
-        mapping_source: 'email_auto',
+        // Email auto-link is contained before lifecycle entry. Use an explicit
+        // link to keep exercising the deletion fence itself.
+        mapping_source: 'user_claimed',
       });
       if (mapping) {
         await new WorkingGroupDatabase().addMembership({
@@ -837,7 +839,7 @@ describe('WorkOS webhook vs sync-users deletion', () => {
       await new SlackDatabase().mapUser({
         slack_user_id: SLACK,
         workos_user_id: PRIMARY,
-        mapping_source: 'email_auto',
+        mapping_source: 'manual_admin',
       }, client);
       await new WorkingGroupDatabase().addLeader(chapter.rows[0].id, PRIMARY, client);
       await client.query(
