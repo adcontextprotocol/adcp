@@ -16,15 +16,15 @@ change 3.2 surfaces before GA.
 
 The 3.2 prerelease cycle started with a protocol-first beta checkpoint.
 RC.3 is the current signed protocol checkpoint. No SDK embeds it yet:
-TypeScript SDK `14.0.0-rc.36` embeds `3.2.0-rc.2`, and Python SDK `8.0.0b14`
-and Go SDK `adcp/v3@v3.2.1` still embed `3.2.0-rc.1`:
+TypeScript SDK `14.0.0-rc.35`, Python SDK `8.0.0b14`, and Go SDK
+`adcp/v3@v3.2.1` all still embed `3.2.0-rc.1`:
 
 <Info>
 **RC.3 has no matched SDK yet.** Use its signed bundle for raw-wire validation
-and code generation. The exact package pairings below are each one or two
-checkpoints behind RC.3, so an SDK-backed run is evidence for the checkpoint
-that SDK embeds — not for RC.3. Do not infer compatibility from a floating
-package tag or from an SDK generated against an earlier checkpoint.
+and code generation. The exact package pairings below are all still on RC.1,
+so an SDK-backed run is RC.1 evidence — not RC.3 evidence. Do not infer
+compatibility from a floating package tag or from an SDK generated against an
+earlier checkpoint.
 </Info>
 
 | Checkpoint | Purpose | Who should test |
@@ -42,20 +42,19 @@ package tag or from an SDK generated against an earlier checkpoint.
 | `3.2.0-beta.10` | Previous protocol checkpoint for managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Pinned adopters comparing beta.10 and beta.11 behavior |
 | `3.2.0-beta.11` | Previous protocol checkpoint | Pinned adopters comparing beta.11 and RC.0 behavior |
 | `3.2.0-rc.0` | Previous protocol checkpoint | SDK-backed integration testing with an exact RC.0 package pairing |
-| `3.2.0-rc.1` | Previous protocol checkpoint for Reliable Reporting 1.0 and reporting-semantics hardening | SDK-backed integration testing with an exact RC.1 package pairing: Python `adcp==8.0.0b14`, Go `adcp/v3@v3.2.1`, or the historical TypeScript `@adcp/sdk@14.0.0-rc.35` |
-| `3.2.0-rc.2` | Previous protocol checkpoint for the opt-in Reliable Reporting `sync_reporting_status` consumer-status loop, buyer and orchestrator storyboards, and truncated-breakdown cursor pagination | SDK-backed integration testing with the exact RC.2 TypeScript package pairing |
+| `3.2.0-rc.1` | Previous protocol checkpoint for Reliable Reporting 1.0 and reporting-semantics hardening | SDK-backed integration testing with an exact RC.1 package pairing: `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1` |
+| `3.2.0-rc.2` | Previous protocol checkpoint for the opt-in Reliable Reporting `sync_reporting_status` consumer-status loop, buyer and orchestrator storyboards, and truncated-breakdown cursor pagination | Raw-wire, signed-artifact, and code-generation integration testing; no maintained SDK embeds it |
 | `3.2.0-rc.3` | Current protocol checkpoint for consumer-status hardening, MediaBuy-level frequency caps, and request-only targeting with `null`-clear semantics | Raw-wire, signed-artifact, and code-generation integration testing |
-| Current SDK wave | `@adcp/sdk@14.0.0-rc.36` embeds `3.2.0-rc.2`; Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` embed `3.2.0-rc.1` | Exact RC.2 (TypeScript) or RC.1 (Python, Go) SDK-backed testing; higher-level Python and Go coverage remains role-dependent. No row names RC.3 |
+| Current SDK wave | `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` all embed `3.2.0-rc.1` | Exact RC.1 SDK-backed testing; higher-level Python and Go coverage remains role-dependent. No row names RC.2 or RC.3 |
 
-Earlier betas, RC.0, and RC.1 remain useful as pinned implementation
-checkpoints. TypeScript SDK RC.35 is a historical RC.1 pairing; TypeScript SDK
-beta.31 and Python SDK beta.13 are historical RC.0 pairings; TypeScript SDK
-beta.29 and Python SDK beta.12 pair with beta.11. Do not combine a newer wire
-pin with an SDK generated from an older bundle unless the SDK maintainer
-documents forward compatibility. `@adcp/sdk@14.0.0-rc.36` validates requests
-and responses against its embedded `3.2.0-rc.2` bundle; its wire-only
-`wireAdcpVersion` override can carry a different pin, but a run under that
-override is not evidence for the pinned checkpoint.
+Earlier betas and RC.0 remain useful as pinned implementation checkpoints.
+TypeScript SDK beta.31 and Python SDK beta.13 are historical RC.0 pairings;
+TypeScript SDK beta.29 and Python SDK beta.12 pair with beta.11. Do not
+combine a newer wire pin with an SDK generated from an older bundle unless the
+SDK maintainer documents forward compatibility. An SDK's wire-only
+`wireAdcpVersion` override can carry a different pin than the bundle it
+validates against, but a run under that override is not evidence for the
+pinned checkpoint.
 
 ## Know which version string to use
 
@@ -76,23 +75,20 @@ and a stable `"3.2"` pin must not silently negotiate to a prerelease.
 
 ## Use matched SDK prereleases
 
-The TypeScript SDK has exact RC.2 support. The npm `latest` tag remains on SDK
+The TypeScript SDK has exact RC.1 support. The npm `latest` tag remains on SDK
 13, so opt into the release-candidate channel explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-rc.36
+npm install @adcp/sdk@14.0.0-rc.35
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy
-lifecycle, the RC.2 schemas and compliance assets, version-aware request
+lifecycle, the RC.1 schemas and compliance assets, version-aware request
 signing, governance plan-adjustment reporting, and agent notification
-configuration. RC.36 also adds `@adcp/sdk/reporting/source` (the seller source
-executor contract, an inline executor, and a conformance harness) and
-`@adcp/sdk/reporting/ledger` (a seller ledger with a Postgres store, producer,
-`get_reporting_status` handler, `sync_reporting_status` ingest, and a lifecycle
-harness). It retains 3.0 and 3.1 adaptation for mixed-version testing. Its
-default wire release is `3.2-rc.2`, and `3.2-rc.2` is the only 3.2 checkpoint
-its `adcpVersion` schema selection accepts.
+configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
+
+The current `rc` npm tag of `@adcp/sdk` is ahead of this checkpoint: it embeds `3.2.0-rc.2` and adds the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`). The repository checkpoint alignment follows once the Python and Go SDKs publish matching bundles.
+
 See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
 matrix and install guidance.
 
@@ -157,9 +153,8 @@ An SDK support claim must name all of the following:
 - install command and one tested validation command.
 
 The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
-Its TypeScript row names exact RC.2 support and its Python and Go rows name
-exact RC.1 support, each with different higher-layer coverage. None implies
-support for another checkpoint, and none currently names RC.3. Treat generated 3.2 types and
+All three rows name exact RC.1 support with different higher-layer coverage.
+None implies support for another checkpoint, and none names RC.2 or RC.3. Treat generated 3.2 types and
 validators in every other SDK as unavailable until its row names an exact
 package and protocol checkpoint.
 Raw JSON calls may still be possible, but they are not equivalent to SDK support.
@@ -173,8 +168,8 @@ in place.
 ## Current RC.3 checkpoint
 
 Protocol beta.1 through beta.11 and RC.0 through RC.3 are published.
-TypeScript SDK RC.36 embeds RC.2; Python SDK beta.14 and Go SDK v3.2.1 embed
-RC.1. Before treating a test result as RC.3 protocol evidence, confirm that:
+TypeScript SDK RC.35, Python SDK beta.14, and Go SDK v3.2.1 all embed RC.1.
+Before treating a test result as RC.3 protocol evidence, confirm that:
 
 - the test uses the signed RC.3 artifact directly, on the raw wire or through
   types generated from it — no published SDK pairing is RC.3 evidence;
@@ -270,8 +265,10 @@ release as working groups resolve scope and interoperability risk.
   snapshot, so it can trail the newest signed bundle by one checkpoint;
   `3.2-beta` remains frozen at beta.11. Pinned semver artifacts and
   documentation snapshots remain immutable.
-- RC.3's artifacts are signed and served, but its Git tag and GitHub Release
-  are pending a release-workflow re-run. RC.2 is the latest tagged release.
+- RC.3 is tagged and published as
+  [`v3.2.0-rc.3`](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.0-rc.3),
+  with signed assets attached. Its documentation snapshot lands separately, so
+  the `3.2-rc` selector can still show RC.2 for a short window.
 - Superseded 3.x beta artifacts were retired from the repository and runtime
   image on 2026-09-14. Only the `3.2.0-beta.11` schema bundle stays hosted, to
   back the frozen `3.2-beta` documentation selector. Previously published beta

@@ -9,9 +9,9 @@ description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle
 
 <Warning>
 **3.2 is in release candidate.** RC.3 is the current signed protocol
-checkpoint, and no SDK embeds it yet: TypeScript `@adcp/sdk@14.0.0-rc.36`
-embeds RC.2, while Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` still embed
-RC.1; Python and Go higher-level coverage remains role-dependent. Test RC.3
+checkpoint, and no SDK embeds it yet: TypeScript `@adcp/sdk@14.0.0-rc.35`,
+Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` all still embed RC.1; Python
+and Go higher-level coverage remains role-dependent. Test RC.3
 from its signed bundle, and use these exact packages for staging tests against
 the checkpoints they embed. See the
 [3.2 prerelease program](/docs/reference/3-2-beta).
@@ -218,9 +218,8 @@ optional `consumer_mismatch_escalation_seconds` and `operations_contact`, and
 `authoritative_party: "consumer"` is reserved for a later minor and MUST be
 rejected with `UNSUPPORTED_FEATURE` today. The loop stays opt-in until the
 notice window closes on October 24, 2026, and becomes required Core only in
-the next eligible minor after that date. No SDK embeds RC.3 yet;
-`@adcp/sdk@14.0.0-rc.36` adds `@adcp/sdk/reporting/source` and
-`@adcp/sdk/reporting/ledger` against the RC.2 bundle. See
+the next eligible minor after that date. No maintained SDK embeds RC.2 or
+RC.3 yet, so both are raw-wire or code-generation targets today. See
 [Implementing Reliable Reporting Core](/docs/media-buy/reporting-core-implementation-guide).
 
 ### A durable connection for authenticated principals
@@ -469,7 +468,7 @@ for the remaining runner and coverage gaps.
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
 | An SDK maintainer | Generate from the signed RC.3 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
-| A compliance operator | Test RC.3 from its signed assets; no SDK pairing covers RC.3 yet. `@adcp/sdk@14.0.0-rc.36` tests RC.2, and Python `adcp==8.0.0b14` or Go `adcp/v3@v3.2.1` test RC.1. Retain exact package and wire versions end to end, and do not issue a 3.2 badge from a prerelease. |
+| A compliance operator | Test RC.3 from its signed assets; no SDK pairing covers RC.3 yet. `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` all test RC.1. Retain exact package and wire versions end to end, and do not issue a 3.2 badge from a prerelease. |
 
 ## Start here
 
