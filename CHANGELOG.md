@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.1.23
+
+### Patch Changes
+
+- 0bcfe47: `canonical_format_validate_input` no longer lists `comply_test_controller` in `required_tools`. The storyboard runner's per-storyboard gate admits a storyboard when any listed tool is present, so any agent exposing the (universal) test controller was selected and then failed all 17 steps on the missing `validate_input`. Agents without `validate_input` now receive a coverage-gap skip; agents implementing it run unchanged. Same shape as #6774 (Refs #7404, bug 1 only).
+- 8a933df: Correct the v3.1.22 release record to include the request-aware Context Match
+  cache partitioning from #7397 alongside the single-user privacy protections
+  from #7396, document the emergency privacy/security notice exception and
+  immutable artifacts, and direct operators with unsafe caches to bypass caching
+  until both request and trusted provider-evaluation contexts are isolated, while
+  keeping the additional `cache_namespace` conformance contract in 3.2.
+- 0bcfe47: Fix the four compliance storyboards present on the 3.1 maintenance line that incorrectly included `get_adcp_capabilities` in `required_tools` alongside capability-specific tools: `billing_gate_dispatch`, `billing_out_of_band`, `canonical_supported_formats`, and `evaluator_auth`.
+
+  Removing the universal capability-discovery tool prevents agents without the storyboard's capability-specific tools from entering through the per-storyboard OR gate. This backports the applicable subset of #6774; the other 13 storyboards changed on main do not exist on this line.
+
 ## 3.1.22
 
 ### Patch Changes
