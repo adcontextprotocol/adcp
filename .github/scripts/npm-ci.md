@@ -24,7 +24,9 @@ installer or the locked version changes. This is not a general npm retry policy.
 Both attempts stream stdout/stderr live, with backpressure, and retain separate
 complete files in a unique `adcp-npm-ci-*` directory under `RUNNER_TEMP` (or the
 OS temporary directory). The path is printed, directory permissions are 0700,
-and files are 0600. Capture failure disables retry. No environment/config dump,
+and files are 0600. Capture or live-forwarding failure disables retry. If a live
+log consumer disconnects, the wrapper continues draining npm into the private
+logs and preserves npm's outcome. No environment/config dump,
 shell evaluation, log replay, or artifact upload is added. GitHub's existing
 masking applies to the live streams; runner-local files are raw npm output and
 must not be uploaded as public artifacts. They live until runner cleanup.

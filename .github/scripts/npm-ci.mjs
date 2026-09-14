@@ -52,6 +52,11 @@ async function matchesFailure(log) {
 
 // Injectable clock/randomness for offline tests; the CLI always uses these defaults.
 export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
+  const outputs = [process.stdout, process.stderr];
+  const failedOutputs = new Set();
+  const outputHandlers = outputs.map(output => () => failedOutputs.add(output));
+  // A disconnected live-log consumer must not crash the wrapper or stop capture.
+  outputs.forEach((output, index) => output.on('error', outputHandlers[index]));
   const logDir = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), 'adcp-npm-ci-'));
   console.error(`npm ci logs (runner-local): ${JSON.stringify(logDir)}`);
   const backoff = new AbortController();
@@ -93,7 +98,13 @@ export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
             captureFailed = true;
           }
           // Backpressure and completion callbacks preserve live, untruncated output.
-          [process.stdout, process.stderr][index].write(chunk, encoding, callback);
+          const output = outputs[index];
+          if (failedOutputs.has(output)) return callback();
+          output.write(chunk, encoding, error => {
+            if (error) failedOutputs.add(output);
+            // Always keep draining npm into the private log, even after EPIPE.
+            callback();
+          });
         },
       })));
       const copying = Promise.allSettled(copies);
@@ -102,10 +113,10 @@ export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
       child = undefined;
       fds.forEach(fd => closeSync(fd));
       captureFailed ||= copied.some(copy => copy.status === 'rejected');
-      if (captureFailed) console.error('npm ci log capture failed; retry disabled.');
+      if (captureFailed || failedOutputs.size) console.error('npm ci log capture/forwarding failed; retry disabled.');
       interrupted ??= signal;
       process.exitCode = code ?? 1;
-      if (interrupted || code !== 1 || attempt === 2 || captureFailed || !(await matchesFailure(files[1]))) break;
+      if (interrupted || code !== 1 || attempt === 2 || captureFailed || failedOutputs.size || !(await matchesFailure(files[1]))) break;
       const milliseconds = jitter(1000, 5001);
       if (!Number.isInteger(milliseconds) || milliseconds < 1000 || milliseconds > 5000) {
         throw new RangeError('CI install retry delay must be between 1000 and 5000 ms.');
@@ -116,17 +127,21 @@ export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
       } catch (error) {
         if (!interrupted || error.name !== 'AbortError') throw error;
       }
-      if (interrupted) break;
+      if (interrupted || failedOutputs.size) break;
       console.error('retrying normal npm ci once (attempt 2/2).');
     }
   } finally {
+    // Drain diagnostics while error/signal handlers are still installed. The
+    // next event-loop turn also lets write callbacks' pending error events fire.
+    await Promise.all(outputs.map(output => new Promise(resolve => {
+      if (output.destroyed) resolve();
+      else output.write('', resolve);
+    })));
+    await new Promise(resolve => setImmediate(resolve));
+    outputs.forEach((output, index) => output.off('error', outputHandlers[index]));
     signals.forEach((signal, index) => process.off(signal, handlers[index]));
   }
-  // Let pending console writes drain before restoring the original signal outcome.
-  if (interrupted) {
-    await Promise.all([process.stdout, process.stderr].map(output => new Promise(resolve => output.write('', resolve))));
-    process.kill(process.pid, interrupted);
-  }
+  if (interrupted) process.kill(process.pid, interrupted);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -186,6 +186,31 @@ test('exact signature twice: fail after exactly two npm ci invocations', { timeo
   assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-2.stderr.log'), 'utf8'), signature.replaceAll('ROOT', f.cwd));
 });
 
+for (const stream of ['stdout', 'stderr']) {
+  for (const code of [0, 1, 42]) {
+    test(`disconnected ${stream}: retain full logs and npm exit ${code}, no retry`, { timeout: 10000 }, async t => {
+      const large = 'x'.repeat(2 * 1024 * 1024) + '\n';
+      const f = fixture(t, [{ code, out: large, err: large + signature }, { code: 0 }]);
+      f.child[stream].destroy();
+      assert.deepEqual(await f.done, { code, signal: null });
+      checkCalls(f, 1);
+      assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stdout.log'), 'utf8'), large);
+      assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), large + signature.replaceAll('ROOT', f.cwd));
+    });
+  }
+}
+
+test('disconnected stderr still forwards cancellation to npm and descendants', { timeout: 10000 }, async t => {
+  const f = fixture(t, [{ family: true, err: signature }]);
+  f.child.stderr.destroy();
+  await f.ready();
+  f.child.kill('SIGTERM');
+  assert.deepEqual(await f.done, { code: null, signal: 'SIGTERM' });
+  checkCalls(f, 1);
+  assert.equal(fs.readFileSync(path.join(f.cwd, 'npm-signal'), 'utf8'), 'SIGTERM');
+  assert.equal(fs.readFileSync(path.join(f.cwd, 'grandchild-signal'), 'utf8'), 'SIGTERM');
+});
+
 for (const milliseconds of [1000, 2753, 5000]) {
   test(`jitter ${milliseconds} ms: wait before the sole retry`, { timeout: 10000 }, async t => {
     const f = fixture(t, [{ code: 1, err: signature }, { code: 0 }], { delayMs: milliseconds, waitDelay: true });
