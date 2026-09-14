@@ -6,6 +6,10 @@ the contiguous npm stderr block identify the exact C2PA 0.9.4 release download,
 Rust fallback, and missing workspace manifest. Other versions, platforms,
 partial signatures, additional npm error codes/paths, and signals do not retry.
 A second failure remains a job failure with its own exit status or signal.
+Before the sole retry, wait a uniformly randomized integer delay of 1,000–5,000
+milliseconds. Cancellation aborts that wait and prevents the second install.
+Tests inject randomness and a clock through the module API; the CLI always uses
+the bounded production jitter and timer, with no environment override.
 
 The matcher comes from [main job 104032687845](https://github.com/adcontextprotocol/adcp/actions/runs/34860948128/job/104032687845)
 on 2026-09-14. The same release installed in other jobs of that run, and
@@ -40,7 +44,12 @@ Offline tests run before Build Check's install and can also be run locally:
 
 ```sh
 node --test .github/scripts/npm-ci.test.cjs
+node tests/changeset-protocol-scope.test.cjs
 ```
+
+No protocol changeset is appropriate for this operational change. The scope
+check exempts only the exact install-command substitution in the otherwise
+protocol-scoped storyboard workflow; any other edit there remains scoped.
 
 Draft #7511 owns external-smoke isolation; Draft #7514 owns PostgreSQL test
 barriers. This helper only addresses their shared dependency-install failure.

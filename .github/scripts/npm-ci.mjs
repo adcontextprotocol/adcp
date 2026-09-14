@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // CI-only, Linux x64: one normal npm ci retry for the observed 0.9.4 failure.
 import { spawn } from 'node:child_process';
+import { randomInt } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { createReadStream, mkdtempSync, openSync, closeSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -47,65 +50,85 @@ async function matchesFailure(log) {
   return index === expected.length && codes === 1 && paths === 1;
 }
 
-const logDir = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), 'adcp-npm-ci-'));
-console.error(`npm ci logs (runner-local): ${JSON.stringify(logDir)}`);
-let child;
-let interrupted;
-const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
-function forwardSignal(signal) {
-  interrupted ??= signal;
-  if (child?.pid) {
-    try {
-      // npm's lifecycle shell and Cargo must receive cancellation too.
-      process.kill(-child.pid, signal);
-    } catch (error) {
-      if (error.code !== 'ESRCH') throw error;
+// Injectable clock/randomness for offline tests; the CLI always uses these defaults.
+export async function runNpmCi({ jitter = randomInt, sleep = delay } = {}) {
+  const logDir = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), 'adcp-npm-ci-'));
+  console.error(`npm ci logs (runner-local): ${JSON.stringify(logDir)}`);
+  const backoff = new AbortController();
+  let child;
+  let interrupted;
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  function forwardSignal(signal) {
+    interrupted ??= signal;
+    backoff.abort();
+    if (child?.pid) {
+      try {
+        // npm's lifecycle shell and Cargo must receive cancellation too.
+        process.kill(-child.pid, signal);
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error;
+      }
     }
   }
-}
-const handlers = signals.map(signal => () => forwardSignal(signal));
-signals.forEach((signal, index) => process.on(signal, handlers[index]));
+  const handlers = signals.map(signal => () => forwardSignal(signal));
+  signals.forEach((signal, index) => process.on(signal, handlers[index]));
 
-try {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    if (interrupted) break;
-    let captureFailed = false;
-    const files = ['stdout', 'stderr'].map(stream => join(logDir, `attempt-${attempt}.${stream}.log`));
-    const fds = files.map(file => openSync(file, 'wx', 0o600));
-    // Fixed executable/arguments, no shell or flags; inherit ordinary npm config.
-    child = spawn('npm', ['ci'], { detached: true, stdio: ['inherit', 'pipe', 'pipe'] });
-    const result = new Promise(resolve => {
-      child.once('error', error => resolve({ code: error.code === 'ENOENT' ? 127 : 126 }));
-      child.once('close', (code, signal) => resolve({ code, signal }));
-    });
-    const copies = [child.stdout, child.stderr].map((input, index) => pipeline(input, new Writable({
-      write(chunk, encoding, callback) {
-        try {
-          writeFileSync(fds[index], chunk);
-        } catch {
-          captureFailed = true;
-        }
-        // Backpressure and completion callbacks preserve live, untruncated output.
-        [process.stdout, process.stderr][index].write(chunk, encoding, callback);
-      },
-    })));
-    const copying = Promise.allSettled(copies);
-    const { code, signal } = await result;
-    const copied = await copying;
-    child = undefined;
-    fds.forEach(fd => closeSync(fd));
-    captureFailed ||= copied.some(copy => copy.status === 'rejected');
-    if (captureFailed) console.error('npm ci log capture failed; retry disabled.');
-    interrupted ??= signal;
-    process.exitCode = code ?? 1;
-    if (interrupted || code !== 1 || attempt === 2 || captureFailed || !(await matchesFailure(files[1]))) break;
-    console.error('Known C2PA 0.9.4 download/workspace fallback failure; retrying normal npm ci once (attempt 2/2).');
+  try {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (interrupted) break;
+      let captureFailed = false;
+      const files = ['stdout', 'stderr'].map(stream => join(logDir, `attempt-${attempt}.${stream}.log`));
+      const fds = files.map(file => openSync(file, 'wx', 0o600));
+      // Fixed executable/arguments, no shell or flags; inherit ordinary npm config.
+      child = spawn('npm', ['ci'], { detached: true, stdio: ['inherit', 'pipe', 'pipe'] });
+      const result = new Promise(resolve => {
+        child.once('error', error => resolve({ code: error.code === 'ENOENT' ? 127 : 126 }));
+        child.once('close', (code, signal) => resolve({ code, signal }));
+      });
+      const copies = [child.stdout, child.stderr].map((input, index) => pipeline(input, new Writable({
+        write(chunk, encoding, callback) {
+          try {
+            writeFileSync(fds[index], chunk);
+          } catch {
+            captureFailed = true;
+          }
+          // Backpressure and completion callbacks preserve live, untruncated output.
+          [process.stdout, process.stderr][index].write(chunk, encoding, callback);
+        },
+      })));
+      const copying = Promise.allSettled(copies);
+      const { code, signal } = await result;
+      const copied = await copying;
+      child = undefined;
+      fds.forEach(fd => closeSync(fd));
+      captureFailed ||= copied.some(copy => copy.status === 'rejected');
+      if (captureFailed) console.error('npm ci log capture failed; retry disabled.');
+      interrupted ??= signal;
+      process.exitCode = code ?? 1;
+      if (interrupted || code !== 1 || attempt === 2 || captureFailed || !(await matchesFailure(files[1]))) break;
+      const milliseconds = jitter(1000, 5001);
+      if (!Number.isInteger(milliseconds) || milliseconds < 1000 || milliseconds > 5000) {
+        throw new RangeError('CI install retry delay must be between 1000 and 5000 ms.');
+      }
+      console.error(`Known C2PA 0.9.4 download/workspace fallback failure; waiting ${milliseconds} ms before retry.`);
+      try {
+        await sleep(milliseconds, undefined, { signal: backoff.signal });
+      } catch (error) {
+        if (!interrupted || error.name !== 'AbortError') throw error;
+      }
+      if (interrupted) break;
+      console.error('retrying normal npm ci once (attempt 2/2).');
+    }
+  } finally {
+    signals.forEach((signal, index) => process.off(signal, handlers[index]));
   }
-} finally {
-  signals.forEach((signal, index) => process.off(signal, handlers[index]));
+  // Let pending console writes drain before restoring the original signal outcome.
+  if (interrupted) {
+    await Promise.all([process.stdout, process.stderr].map(output => new Promise(resolve => output.write('', resolve))));
+    process.kill(process.pid, interrupted);
+  }
 }
-// Let pending console writes drain before restoring the original signal outcome.
-if (interrupted) {
-  await Promise.all([process.stdout, process.stderr].map(output => new Promise(resolve => output.write('', resolve))));
-  process.kill(process.pid, interrupted);
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await runNpmCi();
 }

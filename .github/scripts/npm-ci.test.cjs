@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
+const { pathToFileURL } = require('node:url');
 const test = require('node:test');
 
 const script = path.join(__dirname, 'npm-ci.mjs');
@@ -71,7 +72,33 @@ function fixture(t, plan, options = {}) {
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'npm'), `#!${process.execPath}\n${fakeNpm}`, { mode: 0o700 });
   fs.writeFileSync(path.join(cwd, 'plan.json'), JSON.stringify(plan));
-  const child = spawn(process.execPath, [script], {
+  // No production environment switch: inject a fake clock through the module API.
+  const driver = path.join(cwd, 'driver.mjs');
+  fs.writeFileSync(driver, `
+    import fs from 'node:fs';
+    import { runNpmCi } from ${JSON.stringify(pathToFileURL(script).href)};
+    await runNpmCi({
+      jitter(min, max) {
+        fs.appendFileSync('jitter.jsonl', JSON.stringify([min, max]) + '\\n');
+        return ${JSON.stringify(options.delayMs ?? 3000)};
+      },
+      sleep(milliseconds, value, { signal }) {
+        fs.appendFileSync('delays.jsonl', JSON.stringify(milliseconds) + '\\n');
+        if (!${Boolean(options.waitDelay)}) return Promise.resolve();
+        process.stdout.write('backoff-ready\\n');
+        return new Promise((resolve, reject) => {
+          const finish = () => { clearInterval(timer); signal.removeEventListener('abort', abort); };
+          const abort = () => { finish(); reject(Object.assign(new Error(), { name: 'AbortError' })); };
+          const timer = setInterval(() => {
+            if (fs.existsSync('continue-delay')) { finish(); resolve(); }
+          }, 10);
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) abort();
+        });
+      },
+    });
+  `);
+  const child = spawn(process.execPath, [options.direct ? script : driver], {
     cwd,
     env: { PATH: bin, RUNNER_TEMP: cwd, SENTINEL_SECRET: 'never-print-this-secret', ...options.env },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -96,6 +123,12 @@ function fixture(t, plan, options = {}) {
     stdout: () => stdout,
     stderr: () => stderr,
     logs: () => path.join(cwd, fs.readdirSync(cwd).find(name => name.startsWith('adcp-npm-ci-'))),
+    delays: () => fs.existsSync(path.join(cwd, 'delays.jsonl'))
+      ? fs.readFileSync(path.join(cwd, 'delays.jsonl'), 'utf8').trim().split('\n').map(JSON.parse) : [],
+    async waiting() {
+      while (!stdout.includes('backoff-ready\n')) await once(child.stdout, 'data');
+      assert.equal(child.exitCode, null);
+    },
     async ready() {
       while (!stdout.includes('ready\n')) await once(child.stdout, 'data');
       assert.equal(child.exitCode, null, 'output must arrive while npm is still running');
@@ -107,13 +140,14 @@ function checkCalls(f, count) {
   assert.equal(f.calls().length, count);
   for (const call of f.calls()) assert.deepEqual(call.args, ['ci']);
   assert.equal((f.stderr().match(/retrying normal npm ci once/g) || []).length, count - 1);
+  assert.equal(f.delays().length, count - 1, 'exactly one delay per retry');
   assert.ok(!f.stderr().includes('never-print-this-secret'));
   assert.ok(!f.stdout().includes('never-print-this-secret'));
   assert.ok(!fs.existsSync(path.join(f.cwd, 'INJECTED')));
 }
 
 test('first success: live stdout/stderr and exact normal npm arguments', { timeout: 10000 }, async t => {
-  const f = fixture(t, [{ out: 'stdout\n', err: 'stderr\n', wait: true }]);
+  const f = fixture(t, [{ out: 'stdout\n', err: 'stderr\n', wait: true }], { direct: true });
   await f.ready();
   assert.ok(f.stdout().includes('stdout\n'));
   // Stderr uses its own pipe, so wait for its independent arrival.
@@ -151,6 +185,45 @@ test('exact signature twice: fail after exactly two npm ci invocations', { timeo
   checkCalls(f, 2);
   assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-2.stderr.log'), 'utf8'), signature.replaceAll('ROOT', f.cwd));
 });
+
+for (const milliseconds of [1000, 2753, 5000]) {
+  test(`jitter ${milliseconds} ms: wait before the sole retry`, { timeout: 10000 }, async t => {
+    const f = fixture(t, [{ code: 1, err: signature }, { code: 0 }], { delayMs: milliseconds, waitDelay: true });
+    await f.waiting();
+    assert.equal(f.calls().length, 1, 'the second install cannot start before the delay completes');
+    assert.deepEqual(f.delays(), [milliseconds]);
+    assert.equal(fs.readFileSync(path.join(f.cwd, 'jitter.jsonl'), 'utf8'), '[1000,5001]\n');
+    assert.ok(!f.stderr().includes('retrying normal npm ci once'));
+    fs.writeFileSync(path.join(f.cwd, 'continue-delay'), '');
+    assert.deepEqual(await f.done, { code: 0, signal: null });
+    checkCalls(f, 2);
+    assert.equal(fs.readFileSync(path.join(f.cwd, 'jitter.jsonl'), 'utf8'), '[1000,5001]\n');
+  });
+}
+
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  test(`${signal} during backoff: preserve signal and never start retry`, { timeout: 10000 }, async t => {
+    const f = fixture(t, [{ code: 1, err: signature }, { code: 0 }], { waitDelay: true });
+    await f.waiting();
+    f.child.kill(signal);
+    assert.deepEqual(await f.done, { code: null, signal });
+    assert.equal(f.calls().length, 1);
+    assert.deepEqual(f.calls()[0].args, ['ci']);
+    assert.deepEqual(f.delays(), [3000]);
+    assert.ok(!f.stderr().includes('retrying normal npm ci once'));
+    assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), signature.replaceAll('ROOT', f.cwd));
+    assert.ok(!fs.existsSync(path.join(f.logs(), 'attempt-2.stdout.log')));
+  });
+}
+
+for (const milliseconds of [999, 5001, 1500.5]) {
+  test(`reject invalid injected delay ${milliseconds} without another install`, { timeout: 10000 }, async t => {
+    const f = fixture(t, [{ code: 1, err: signature }, { code: 0 }], { delayMs: milliseconds });
+    assert.deepEqual(await f.done, { code: 1, signal: null });
+    checkCalls(f, 1);
+    assert.ok(f.stderr().includes('delay must be between 1000 and 5000 ms'));
+  });
+}
 
 for (const [name, err] of [
   ['download symptom without workspace fallback', signature.split('npm error 🦀')[0]],

@@ -30,7 +30,9 @@ jobs:
           cache: "npm"
 
       - name: Test CI install retry
-        run: node --test .github/scripts/npm-ci.test.cjs
+        run: |
+          node --test .github/scripts/npm-ci.test.cjs
+          node tests/changeset-protocol-scope.test.cjs
 
       - name: Install dependencies
         run: node .github/scripts/npm-ci.mjs
