@@ -98,4 +98,3 @@ export interface SupplyPathInput {
   /** False when the caller deliberately skipped IAB evidence after host authorization succeeded. */
   inventoryPartnerDomainEvaluated?: boolean;
 }
-
