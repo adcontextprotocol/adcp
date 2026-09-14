@@ -1,11 +1,12 @@
 id: reporting_consumer_status
-version: "1.0.0"
+version: "1.1.0"
 introduced_in: "3.2"
 title: "Reliable Reporting: consumer-status loop"
 category: schema_validation
-summary: "Validates opt-in buyer-to-seller reporting status, missing-obligation identity, caller-scoped mismatch, and immutable supersession."
+summary: "Validates opt-in buyer-to-seller reporting status, missing-obligation identity, caller-scoped mismatch, content-mismatch contract facts, counted silence, escalation, and immutable supersession."
 track: core
 required_tools:
+  - get_adcp_capabilities
   - get_reporting_status
   - get_media_buy_delivery
   - sync_reporting_status
@@ -31,6 +32,18 @@ narrative: |
   caller-scoped mismatch after seller recovery, and are replaced only through
   immutable exact-leaf supersession.
 
+  It also grades the RC.3 hardening: content_mismatch as a contract-fact
+  disagreement with a closed mismatch_code, one issue_id and one opened_at
+  carried across the delayed-to-action_required severity change, escalation to
+  a contact_ recommended_action once the advertised
+  consumer_mismatch_escalation_seconds window elapses, and buyer silence
+  counted in obligation_counts.consumer_status_pending without changing any
+  health.
+
+  Implementations choose their own sandbox account identifiers, so every
+  buyer-side step addresses the account the controller actually returned rather
+  than a guessed one.
+
 agent:
   interaction_model: any
   capabilities:
@@ -50,6 +63,41 @@ prerequisites:
   controller_seeding: true
 
 phases:
+  - id: consumer_status_declaration
+    title: "Advertise the consumer-status loop and its escalation path"
+    narrative: |
+      A seller that publishes an escalation clock must also publish somewhere
+      for the escalation to land. operations_contact is inert human-facing
+      metadata: a caller surfaces it to an operator and never dereferences it.
+
+    steps:
+      - id: read_consumer_status_declaration
+        title: "Read the consumer-status declaration"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "reporting_consumer_status--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Capability response satisfies the reporting escalation conditionals"
+          - check: field_value
+            path: "media_buy.reporting_delivery.consumer_status_task"
+            value: "sync_reporting_status"
+            description: "The opt-in consumer-status loop is advertised by task name"
+          - check: field_present
+            path: "media_buy.reporting_delivery.automated_recovery_window_seconds"
+            description: "The buyer's status deadline is expected_at plus this advertised window"
+          - check: field_present
+            path: "media_buy.reporting_delivery.consumer_mismatch_escalation_seconds"
+            description: "The seller publishes the interval after which a mismatch must escalate"
+          - check: field_present
+            path: "media_buy.reporting_delivery.operations_contact"
+            description: "An advertised escalation clock requires a reachable named party"
+
   - id: omitted_obligation
     title: "Report a period the seller omitted"
     narrative: |
@@ -65,6 +113,9 @@ phases:
         response_schema_ref: "compliance/comply-test-controller-response.json"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
+        context_outputs:
+          - name: consumer_omission_account_id
+            path: "simulated.account_id"
         sample_request:
           account:
             account_id: "reporting_consumer_omission_lab"
@@ -75,6 +126,9 @@ phases:
         validations:
           - check: response_schema
             description: "Controller response is schema-valid"
+          - check: field_present
+            path: "simulated.account_id"
+            description: "The fixture names the account every buyer-side step must address"
 
       - id: omit_expected_obligation
         title: "Suppress the next elapsed obligation"
@@ -136,7 +190,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_omission_lab"
+            account_id: "$context.consumer_omission_account_id"
           idempotency_key: "$generate:uuid_v4#reporting_consumer_status_omitted_obligation"
           statuses:
             - reporting_status_id: "consumer-status.obligation-missing.0001"
@@ -166,7 +220,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_omission_lab"
+            account_id: "$context.consumer_omission_account_id"
           view: "periods"
           period:
             start: "$context.consumer_omission_period_start"
@@ -182,6 +236,9 @@ phases:
             path: "issues[*].code"
             value: "CONSUMER_STATUS_MISMATCH"
             description: "The disagreement is typed"
+          - check: field_present
+            path: "issues[0].opened_at"
+            description: "A consumer mismatch is ageable from its first-observed instant"
           - check: field_contains
             path: "consumer_statuses[*].reporting_status_id"
             value: "consumer-status.obligation-missing.0001"
@@ -199,7 +256,9 @@ phases:
       then restates that provisional revision; the buyer's formerly positive
       statement becomes a typed mismatch until the buyer consumes the new leaf.
       That mismatch is delayed while the buyer still has its bounded re-read
-      window and action_required only after the grace deadline passes.
+      window, escalates to a contact_ action once the advertised escalation
+      window elapses, and is action_required after the grace deadline too. One
+      issue_id and one opened_at carry across every one of those transitions.
 
     steps:
       - id: prepare_revision_fixture
@@ -210,6 +269,8 @@ phases:
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
         context_outputs:
+          - name: consumer_revision_account_id
+            path: "simulated.account_id"
           - name: consumer_revision_config_id
             path: "simulated.delivery_config_id"
           - name: consumer_revision_config_version
@@ -261,7 +322,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           idempotency_key: "$generate:uuid_v4#reporting_consumer_status_revision_missing"
           statuses:
             - reporting_status_id: "consumer-status.revision-missing.0001"
@@ -320,7 +381,7 @@ phases:
             path: "revisions[0].revision_content_sha256"
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           view: "periods"
         validations:
           - check: response_schema
@@ -350,7 +411,7 @@ phases:
             path: "reporting_revision_binding.content_sha256"
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           reporting_revision_id: "$context.consumer_revision_id"
           pagination:
             max_results: 1
@@ -366,6 +427,39 @@ phases:
             context_key: "consumer_revision_status_digest"
             description: "Exact content matches the status ledger binding"
 
+      - id: reject_received_with_wrong_binding
+        title: "Reject a positive status that names the wrong bytes"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_revision_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_wrong_binding"
+          statuses:
+            - reporting_status_id: "consumer-status.revision-wrong-binding.0001"
+              delivery_config_id: "$context.consumer_revision_config_id"
+              delivery_config_version: "$context.consumer_revision_config_version"
+              report_definition_id: "$context.consumer_revision_definition_id"
+              period:
+                start: "$context.consumer_revision_period_start"
+                end: "$context.consumer_revision_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_revision_obligation_id"
+              reporting_revision_id: "$context.consumer_revision_id"
+              observed_revision_content_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+              consumer_status: "received"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The rejected-binding result is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "failed"
+            description: "received must name the exact bytes the consumer recomputed"
+
       - id: sync_revision_received
         title: "Supersede missing with received"
         task: sync_reporting_status
@@ -375,7 +469,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           idempotency_key: "$generate:uuid_v4#reporting_consumer_status_revision_received"
           statuses:
             - reporting_status_id: "consumer-status.revision-received.0001"
@@ -409,7 +503,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           view: "periods"
         validations:
           - check: response_schema
@@ -466,9 +560,14 @@ phases:
         response_schema_ref: "media-buy/get-reporting-status-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
+        context_outputs:
+          - name: consumer_mismatch_issue_id
+            path: "issues[0].issue_id"
+          - name: consumer_mismatch_opened_at
+            path: "issues[0].opened_at"
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           view: "periods"
           period:
             start: "$context.consumer_revision_period_start"
@@ -488,9 +587,91 @@ phases:
             path: "issues[*].severity"
             value: "delayed"
             description: "Severity is delayed until the grace deadline, not action_required"
+          - check: field_contains
+            path: "issues[*].recommended_action"
+            value: "wait_for_retry"
+            description: "Inside the bounded re-read window automated recovery is still the right action"
           - check: field_present
             path: "issues[0].opened_at"
             description: "The issue carries the first-observed instant that anchors escalation"
+          - check: field_contains
+            path: "issues[*].reporting_status_id"
+            value: "consumer-status.revision-received.0001"
+            description: "The issue names the exact statement that caused it"
+
+      - id: advance_past_mismatch_escalation
+        title: "Advance past the advertised escalation window"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_escalation_deadline
+            path: "simulated.consumer_mismatch_escalation_deadline"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_revision_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_past_escalation"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_equals_context
+            path: "simulated.issue_opened_at"
+            context_key: "consumer_mismatch_opened_at"
+            description: "The escalation clock runs from the issue's opened_at, not from the poll"
+          - check: field_equals_context
+            path: "simulated.issue_id"
+            context_key: "consumer_mismatch_issue_id"
+            description: "The escalating issue is the same logical issue the buyer is already ageing"
+          - check: field_present
+            path: "simulated.consumer_mismatch_escalation_seconds"
+            description: "The crossed window is the one the seller advertises in its capability block"
+          - check: field_equals_context
+            path: "simulated.stale_received_grace_deadline"
+            context_key: "consumer_stale_received_grace_deadline"
+            description: "The still-open grace window is unchanged, so the overlap is real"
+
+      - id: read_escalated_mismatch
+        title: "Escalate to a contact_ action while the grace window is still open"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_revision_account_id"
+          view: "periods"
+          period:
+            start: "$context.consumer_revision_period_start"
+            end: "$context.consumer_revision_period_end"
+        validations:
+          - check: response_schema
+            description: "Escalated periods readback is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "The escalation boundary takes precedence over the open grace window"
+          - check: field_contains
+            path: "issues[*].severity"
+            value: "action_required"
+            description: "An unattended mismatch is an escalation, not a retry"
+          - check: field_pattern
+            path: "issues[0].recommended_action"
+            pattern: "^contact_(buyer|seller|provider)$"
+            description: "wait_for_retry does not survive the escalation boundary"
+          - check: field_equals_context
+            path: "issues[0].opened_at"
+            context_key: "consumer_mismatch_opened_at"
+            description: "opened_at never advances across re-emission or the severity change"
+          - check: field_equals_context
+            path: "issues[0].issue_id"
+            context_key: "consumer_mismatch_issue_id"
+            description: "One issue_id ages as one work item instead of two"
 
       - id: advance_past_restatement_grace
         title: "Advance past the stale-received grace deadline"
@@ -529,7 +710,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           view: "periods"
           period:
             start: "$context.consumer_revision_period_start"
@@ -549,6 +730,10 @@ phases:
             path: "issues[*].severity"
             value: "action_required"
             description: "The grace window is bounded: past its deadline the mismatch escalates"
+          - check: field_equals_context
+            path: "issues[0].opened_at"
+            context_key: "consumer_mismatch_opened_at"
+            description: "Crossing the second boundary still does not restart the issue's clock"
           - check: field_value
             path: "periods[0].current_consumer_status_id"
             value: "consumer-status.revision-received.0001"
@@ -563,7 +748,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           idempotency_key: "$generate:uuid_v4#reporting_consumer_status_stale_fork"
           statuses:
             - reporting_status_id: "consumer-status.revision-stale-fork.0001"
@@ -601,7 +786,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            account_id: "reporting_consumer_revision_lab"
+            account_id: "$context.consumer_revision_account_id"
           view: "periods"
           period:
             start: "$context.consumer_revision_period_start"
@@ -617,3 +802,593 @@ phases:
             path: "periods[0].current_consumer_status_id"
             value: "consumer-status.revision-received.0001"
             description: "The exact current leaf remains unchanged"
+
+  - id: counted_silence
+    title: "Count a missed status deadline without acting on it"
+    depends_on: []
+    narrative: |
+      A buyer owes a current status for every elapsed expected period by
+      expected_at plus the advertised automated_recovery_window_seconds. Past
+      that deadline with an empty chain, the seller counts the obligation in
+      obligation_counts.consumer_status_pending and does nothing else with it:
+      silence raises no issue, changes no health, and changes no other count.
+      Posting any status — including a negative one — clears the count.
+
+    steps:
+      - id: prepare_silence_fixture
+        title: "Prepare an obligation with no buyer status at all"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_silence_account_id
+            path: "simulated.account_id"
+          - name: consumer_silence_config_id
+            path: "simulated.delivery_config_id"
+          - name: consumer_silence_config_version
+            path: "simulated.delivery_config_version"
+          - name: consumer_silence_definition_id
+            path: "simulated.resolved_configuration.report_definition_id"
+          - name: consumer_silence_obligation_id
+            path: "simulated.reporting_obligation_id"
+          - name: consumer_silence_period_start
+            path: "simulated.period.start"
+          - name: consumer_silence_period_end
+            path: "simulated.period.end"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_silence_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+
+      - id: read_silence_before_deadline
+        title: "Do not count silence before the deadline"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_silence_account_id"
+          view: "summary"
+          period:
+            start: "$context.consumer_silence_period_start"
+            end: "$context.consumer_silence_period_end"
+        validations:
+          - check: response_schema
+            description: "Summary readback is schema-valid"
+          - check: field_value
+            path: "obligation_counts.consumer_status_pending"
+            value: 0
+            description: "A buyer that is still inside its window is not pending"
+
+      - id: advance_past_status_deadline
+        title: "Advance past the buyer's consumer-status deadline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_status_deadline
+            path: "simulated.consumer_status_deadline"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_silence_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_past_status_deadline"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_present
+            path: "simulated.consumer_status_deadline"
+            description: "The seller publishes the deadline it is measuring silence against"
+          - check: field_present
+            path: "simulated.automated_recovery_window_seconds"
+            description: "The deadline derives from the advertised recovery window, not from a fixture constant"
+
+      - id: read_counted_silence
+        title: "Count the missed deadline as visibility only"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        context_outputs:
+          - name: consumer_silence_health
+            path: "health"
+          - name: consumer_silence_action_required_count
+            path: "obligation_counts.action_required"
+        sample_request:
+          account:
+            account_id: "$context.consumer_silence_account_id"
+          view: "summary"
+          period:
+            start: "$context.consumer_silence_period_start"
+            end: "$context.consumer_silence_period_end"
+        validations:
+          - check: response_schema
+            description: "Summary readback is schema-valid"
+          - check: field_value
+            path: "obligation_counts.consumer_status_pending"
+            value: 1
+            description: "The caller's own silence past the deadline is counted"
+          - check: array_length
+            path: "issues"
+            value: 1
+            description: "Silence adds no issue of its own"
+          - check: field_value
+            path: "issues[0].code"
+            value: "REPORT_OVERDUE"
+            description: "The one open issue is the seller's own overdue report, not a consumer mismatch"
+
+      - id: sync_silence_clearing_status
+        title: "Post a status for the silent period"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_silence_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_silence_cleared"
+          statuses:
+            - reporting_status_id: "consumer-status.silence-cleared.0001"
+              delivery_config_id: "$context.consumer_silence_config_id"
+              delivery_config_version: "$context.consumer_silence_config_version"
+              report_definition_id: "$context.consumer_silence_definition_id"
+              period:
+                start: "$context.consumer_silence_period_start"
+                end: "$context.consumer_silence_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_silence_obligation_id"
+              consumer_status: "revision_missing"
+              status_as_of: "2026-08-01T04:00:01.000Z"
+        validations:
+          - check: response_schema
+            description: "The still-retrying buyer's negative status is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "A buyer meets its deadline with a negative status, not with silence"
+
+      - id: read_silence_cleared
+        title: "Clear the count without moving health"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_silence_account_id"
+          view: "summary"
+          period:
+            start: "$context.consumer_silence_period_start"
+            end: "$context.consumer_silence_period_end"
+        validations:
+          - check: response_schema
+            description: "Summary readback is schema-valid"
+          - check: field_value
+            path: "obligation_counts.consumer_status_pending"
+            value: 0
+            description: "Any unsuperseded leaf clears the count, whatever that leaf says"
+          - check: array_length
+            path: "issues"
+            value: 1
+            description: "A negative status that agrees with an overdue seller adds no issue"
+          - check: field_equals_context
+            path: "health"
+            context_key: "consumer_silence_health"
+            description: "Consumer status that agrees with the seller projection changes no health"
+          - check: field_equals_context
+            path: "obligation_counts.action_required"
+            context_key: "consumer_silence_action_required_count"
+            description: "The pending count overlaps the health counts rather than partitioning them"
+
+  - id: content_mismatch
+    title: "Dispute a contract fact the accepted generation already fixed"
+    depends_on: []
+    narrative: |
+      content_mismatch is for reporting that arrived and parsed but contradicts
+      something the accepted configuration generation already fixed. Every
+      closed mismatch_code names such a fact, the statement must name the exact
+      bytes the buyer read, and the result degrades only this caller's view. It
+      is never a measurement dispute about counts.
+
+    steps:
+      - id: prepare_mismatch_fixture
+        title: "Prepare an obligation for a contract-fact disagreement"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_content_account_id
+            path: "simulated.account_id"
+          - name: consumer_content_config_id
+            path: "simulated.delivery_config_id"
+          - name: consumer_content_config_version
+            path: "simulated.delivery_config_version"
+          - name: consumer_content_definition_id
+            path: "simulated.resolved_configuration.report_definition_id"
+          - name: consumer_content_obligation_id
+            path: "simulated.reporting_obligation_id"
+          - name: consumer_content_period_start
+            path: "simulated.period.start"
+          - name: consumer_content_period_end
+            path: "simulated.period.end"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_content_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+
+      - id: advance_mismatch_beyond_recovery
+        title: "Advance beyond the recovery deadline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_consumer_content_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_time"
+            target_health: "action_required"
+        validations:
+          - check: response_schema
+            description: "The virtual clock crosses the recovery boundary"
+
+      - id: publish_mismatch_revision
+        title: "Publish the revision the buyer will dispute"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: consumer_content_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_consumer_content_lab"
+            sandbox: true
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "publish_zero_row"
+        validations:
+          - check: response_schema
+            description: "Seller publication commits an immutable revision"
+
+      - id: consume_mismatch_revision
+        title: "Read the exact bytes before disputing them"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        context_outputs:
+          - name: consumer_content_digest
+            path: "reporting_revision_binding.content_sha256"
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          reporting_revision_id: "$context.consumer_content_revision_id"
+          pagination:
+            max_results: 1
+        validations:
+          - check: response_schema
+            description: "Exact revision response is schema-valid"
+          - check: field_equals_context
+            path: "reporting_revision.reporting_revision_id"
+            context_key: "consumer_content_revision_id"
+            description: "The disagreement will name a revision the buyer actually consumed"
+
+      - id: reject_content_mismatch_without_code
+        title: "Reject a content_mismatch with no mismatch_code"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request_skip_schema: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_no_code"
+          statuses:
+            - reporting_status_id: "consumer-status.content-no-code.0001"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The rejection is reported per statement, not as a batch failure"
+          - check: field_value
+            path: "results[0].result"
+            value: "failed"
+            description: "content_mismatch without its closed mismatch_code does not commit"
+
+      - id: sync_content_mismatch_scope_media_buy_missing
+        title: "Dispute an omitted frozen media buy"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_scope"
+          statuses:
+            - reporting_status_id: "consumer-status.content-mismatch.0001"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              mismatch_code: "scope_media_buy_missing"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The disputed-denominator statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "scope_media_buy_missing is a decidable contract fact"
+
+      - id: sync_content_mismatch_coverage_short
+        title: "Dispute short coverage"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_coverage"
+          statuses:
+            - reporting_status_id: "consumer-status.content-mismatch.0002"
+              supersedes_reporting_status_id: "consumer-status.content-mismatch.0001"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              mismatch_code: "coverage_short"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The short-coverage statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "coverage_short supersedes the prior leaf on the same chain"
+
+      - id: sync_content_mismatch_metric_missing
+        title: "Dispute a promised metric that is absent"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_metric"
+          statuses:
+            - reporting_status_id: "consumer-status.content-mismatch.0003"
+              supersedes_reporting_status_id: "consumer-status.content-mismatch.0002"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              mismatch_code: "metric_missing"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The absent-metric statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "metric_missing names a metric the pinned report definition promised"
+
+      - id: sync_content_mismatch_schema_nonconformant
+        title: "Dispute rows that fail the pinned schema"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_schema"
+          statuses:
+            - reporting_status_id: "consumer-status.content-mismatch.0004"
+              supersedes_reporting_status_id: "consumer-status.content-mismatch.0003"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              mismatch_code: "schema_nonconformant"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The nonconformant-rows statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "schema_nonconformant is structural validation against the pinned schema"
+
+      - id: sync_content_mismatch_currency_mismatch
+        title: "Dispute a unit the generation did not fix"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_currency"
+          statuses:
+            - reporting_status_id: "consumer-status.content-mismatch.0005"
+              supersedes_reporting_status_id: "consumer-status.content-mismatch.0004"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              mismatch_code: "currency_mismatch"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The unit-disagreement statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "currency_mismatch disputes a pinned unit, never a count"
+
+      - id: sync_content_mismatch_period_mismatch
+        title: "Dispute rows outside the half-open period"
+        task: sync_reporting_status
+        schema_ref: "media-buy/sync-reporting-status-request.json"
+        response_schema_ref: "media-buy/sync-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          idempotency_key: "$generate:uuid_v4#reporting_consumer_status_content_period"
+          statuses:
+            - reporting_status_id: "consumer-status.content-mismatch.0006"
+              supersedes_reporting_status_id: "consumer-status.content-mismatch.0005"
+              delivery_config_id: "$context.consumer_content_config_id"
+              delivery_config_version: "$context.consumer_content_config_version"
+              report_definition_id: "$context.consumer_content_definition_id"
+              period:
+                start: "$context.consumer_content_period_start"
+                end: "$context.consumer_content_period_end"
+                source_timezone: "UTC"
+              reporting_obligation_id: "$context.consumer_content_obligation_id"
+              reporting_revision_id: "$context.consumer_content_revision_id"
+              observed_revision_content_sha256: "$context.consumer_content_digest"
+              consumer_status: "content_mismatch"
+              mismatch_code: "period_mismatch"
+              status_as_of: "2026-08-01T04:05:00.000Z"
+        validations:
+          - check: response_schema
+            description: "The out-of-period statement is schema-valid"
+          - check: field_value
+            path: "results[0].result"
+            value: "recorded"
+            description: "Every closed mismatch_code is accepted on the same chain"
+
+      - id: read_content_mismatch
+        title: "Degrade only this caller's view"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          view: "periods"
+          period:
+            start: "$context.consumer_content_period_start"
+            end: "$context.consumer_content_period_end"
+        validations:
+          - check: response_schema
+            description: "Periods readback is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "action_required"
+            description: "A consumed revision that contradicts the generation is immediately action_required"
+          - check: field_contains
+            path: "issues[*].code"
+            value: "CONSUMER_STATUS_MISMATCH"
+            description: "The contract-fact disagreement is typed"
+          - check: field_present
+            path: "issues[0].opened_at"
+            description: "CONSUMER_STATUS_MISMATCH always carries opened_at"
+          - check: field_contains
+            path: "issues[*].reporting_status_id"
+            value: "consumer-status.content-mismatch.0006"
+            description: "The issue names the current leaf that caused it"
+          - check: field_value
+            path: "periods[0].consumer_status_count"
+            value: 6
+            description: "Every accepted statement stays in append-only history"
+          - check: field_value
+            path: "periods[0].current_consumer_status_id"
+            value: "consumer-status.content-mismatch.0006"
+            description: "The rejected no-code statement never became a leaf"
+          - check: field_value
+            path: "periods[0].production_status"
+            value: "published"
+            description: "Buyer disagreement never rewrites the seller's own production evidence"
