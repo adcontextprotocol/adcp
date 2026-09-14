@@ -378,6 +378,79 @@ describe("Tavus session guidance route boundary", () => {
     expect([...requestTools.handlers.keys()]).toContain('create_payment_link');
   });
 
+  it.each([
+    {
+      name: 'stored canonical A is privileged while linked exact credential B is not',
+      canonicalLedGroups: [{ id: 'committee-led-by-a' }],
+    },
+    {
+      name: 'stored canonical A is not privileged while linked exact credential B is',
+      canonicalLedGroups: [],
+    },
+  ])('refuses Tavus committee mutations over HTTP when $name', async ({ canonicalLedGroups }) => {
+    mocks.getThread.mockResolvedValueOnce({
+      thread_id: THREAD_ID,
+      user_id: 'credential_a',
+      user_display_name: 'Linked voice caller',
+      channel: 'video',
+      context: {},
+    });
+    mocks.getWebMemberContext.mockResolvedValueOnce({
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      workos_user: {
+        workos_user_id: 'credential_a',
+        email: 'credential-a@example.test',
+      },
+      slack_user: {
+        slack_user_id: 'U_LINKED_CREDENTIAL_B',
+        display_name: 'Linked credential B',
+        email: 'credential-b@example.test',
+      },
+    });
+    mocks.getCommitteesLedByUser.mockResolvedValueOnce(canonicalLedGroups);
+    const router = {
+      quickMatch: () => null,
+      route: vi.fn().mockResolvedValue({
+        action: 'respond' as const,
+        tool_sets: ['committee_co_leaders'],
+        confidence: 'high' as const,
+        reason: 'committee leadership request',
+        decision_method: 'llm' as const,
+      }),
+    };
+
+    const response = await request(mountApp(router))
+      .post('/api/addie/v1/chat/completions')
+      .set('Authorization', 'Bearer test-llm-secret')
+      .send({
+        messages: [
+          { role: 'system', content: `[conductor:thread_id=${THREAD_ID}] server context` },
+          { role: 'user', content: 'Add a committee co-leader.' },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(mocks.getCommitteesLedByUser).toHaveBeenCalledWith('credential_a');
+    const [_message, _history, requestTools, options] = mocks.processMessageStream.mock.calls[0] as [
+      string,
+      unknown,
+      { tools: Array<{ name: string }>; handlers: Map<string, unknown> },
+      { allowedToolNames: string[] },
+    ];
+    const committeeMutationNames = [
+      'add_committee_co_leader',
+      'remove_committee_co_leader',
+    ];
+    expect(requestTools.tools.map((tool) => tool.name))
+      .not.toEqual(expect.arrayContaining(committeeMutationNames));
+    expect([...requestTools.handlers.keys()])
+      .not.toEqual(expect.arrayContaining(committeeMutationNames));
+    expect(options.allowedToolNames)
+      .not.toEqual(expect.arrayContaining(committeeMutationNames));
+  });
+
   it('completes live routing before opening the SSE stream', async () => {
     const writes: string[] = [];
     let fillerWasWrittenBeforeRouting = false;

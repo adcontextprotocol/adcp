@@ -13,12 +13,19 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
-import type { MemberContext } from '../member-context.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { getPool } from '../../db/client.js';
 import { invalidateWebAdminStatusCache } from './admin-tools.js';
 import { inviteToChannel } from '../../slack/client.js';
+import type { WorkOSUser } from '../../types.js';
+import {
+  mutateCommitteeLeader,
+  resolveCommitteeLeaderPrincipal,
+  type CommitteeLeaderPrincipalResolution,
+} from '../../services/committee-leader-mutation.js';
+import { getAuthorizationEnforcementWorkos } from '../../auth/workos-client.js';
+import { resolveUserOrgAuthorization } from '../../utils/resolve-user-org-authorization.js';
 
 const logger = createLogger('committee-leader-tools');
 const wgDb = new WorkingGroupDatabase();
@@ -48,6 +55,10 @@ Example uses:
           type: 'string',
           description: 'Committee slug (e.g., "india-chapter", "creative-wg", "ctv-council")',
         },
+        organization_id: {
+          type: 'string',
+          description: 'Explicitly selected WorkOS organization ID for this action',
+        },
         user_id: {
           type: 'string',
           description: 'WorkOS user ID or Slack user ID of the person to add',
@@ -57,7 +68,7 @@ Example uses:
           description: 'Email address of the person to add (optional, helps identify them)',
         },
       },
-      required: ['committee_slug', 'user_id'],
+      required: ['committee_slug', 'organization_id', 'user_id'],
     },
   },
   {
@@ -76,12 +87,16 @@ You cannot remove yourself as a leader (contact admin for that).`,
           type: 'string',
           description: 'Committee slug (e.g., "india-chapter", "creative-wg", "ctv-council")',
         },
+        organization_id: {
+          type: 'string',
+          description: 'Explicitly selected WorkOS organization ID for this action',
+        },
         user_id: {
           type: 'string',
           description: 'WorkOS user ID or Slack user ID of the person to remove',
         },
       },
-      required: ['committee_slug', 'user_id'],
+      required: ['committee_slug', 'organization_id', 'user_id'],
     },
   },
   {
@@ -97,8 +112,12 @@ Works for working groups, councils, chapters, and industry gatherings.`,
           type: 'string',
           description: 'Committee slug (e.g., "india-chapter", "creative-wg", "ctv-council")',
         },
+        organization_id: {
+          type: 'string',
+          description: 'Explicitly selected WorkOS organization ID for this request',
+        },
       },
-      required: ['committee_slug'],
+      required: ['committee_slug', 'organization_id'],
     },
   },
 ];
@@ -129,6 +148,41 @@ export async function isCommitteeLeader(slackUserId: string): Promise<boolean> {
     logger.error({ error, slackUserId }, 'Error checking if user is committee leader');
     return false;
   }
+}
+
+type CommitteeLeaderImmutablePrincipal = Pick<
+  WorkOSUser,
+  'id' | 'authWorkosUserId' | 'authorizationSnapshot'
+>;
+
+export type CommitteeLeaderHandlerOptions =
+  | {
+      /** Web callers must supply the immutable authenticated request principal. */
+      surface: 'web';
+      principal: CommitteeLeaderImmutablePrincipal;
+    }
+  | {
+      /** Slack binds its signed actor id to one live mapping, then revalidates it in-transaction. */
+      surface: 'slack';
+      principal?: CommitteeLeaderImmutablePrincipal;
+    };
+
+function isLiveSlackCredentialMapping(mapping: {
+  workos_user_id?: string | null;
+  mapping_status?: string | null;
+  slack_is_deleted?: boolean | null;
+  slack_is_bot?: boolean | null;
+} | null): mapping is {
+  workos_user_id: string;
+  mapping_status: 'mapped';
+  slack_is_deleted: false;
+  slack_is_bot: false;
+} {
+  return mapping?.mapping_status === 'mapped'
+    && mapping.slack_is_deleted === false
+    && mapping.slack_is_bot === false
+    && typeof mapping.workos_user_id === 'string'
+    && mapping.workos_user_id.length > 0;
 }
 
 /**
@@ -168,38 +222,97 @@ function formatCommitteeType(type: string): string {
  * before allowing them to modify leadership.
  */
 export function createCommitteeLeaderToolHandlers(
-  memberContext?: MemberContext | null,
-  slackUserId?: string
+  _memberContext: unknown | undefined,
+  slackUserId: string | undefined,
+  options: CommitteeLeaderHandlerOptions,
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  /**
-   * Get the current user's WorkOS ID from context or Slack mapping
-   */
-  const getCurrentUserWorkosId = async (): Promise<string | null> => {
-    // Try to get from member context first
-    if (memberContext?.workos_user?.workos_user_id) {
-      return memberContext.workos_user.workos_user_id;
+  /** Resolve exact authentication provenance; MemberContext never grants authority. */
+  const resolvePrincipal = async (): Promise<CommitteeLeaderPrincipalResolution> => {
+    const requestSnapshot = options.principal?.authorizationSnapshot;
+    if (requestSnapshot) {
+      return { status: 'resolved', snapshot: requestSnapshot };
     }
 
-    // Fall back to Slack mapping
-    if (slackUserId) {
+    const requestCredentialId = options.principal
+      ? options.principal.authWorkosUserId ?? options.principal.id
+      : null;
+    if (requestCredentialId) {
+      return resolveCommitteeLeaderPrincipal(requestCredentialId);
+    }
+
+    if (options.surface !== 'slack' || !slackUserId) {
+      return { status: 'forbidden', reason: 'principal_missing' };
+    }
+    try {
       const mapping = await slackDb.getBySlackUserId(slackUserId);
-      return mapping?.workos_user_id || null;
+      if (!isLiveSlackCredentialMapping(mapping)) {
+        return { status: 'forbidden', reason: 'credential_revoked' };
+      }
+      return resolveCommitteeLeaderPrincipal(mapping.workos_user_id);
+    } catch (error) {
+      logger.warn({ err: error }, 'Slack credential mapping unavailable for committee leader tool');
+      return { status: 'unavailable', source: 'database' };
     }
-
-    return null;
   };
 
   /**
    * Check if the current user leads the specified committee
    */
-  const checkUserLeadsCommittee = async (committeeSlug: string): Promise<{ allowed: boolean; error?: string; committee?: { id: string; name: string; committee_type: string; slack_channel_id?: string | null } }> => {
-    const workosUserId = await getCurrentUserWorkosId();
-    if (!workosUserId) {
+  const checkUserLeadsCommittee = async (committeeSlug: string, organizationId: string): Promise<{ allowed: boolean; unavailable?: boolean; error?: string; committee?: { id: string; name: string; committee_type: string; slack_channel_id?: string | null } }> => {
+    const principal = await resolvePrincipal();
+    if (principal.status === 'unavailable') {
+      return {
+        allowed: false,
+        unavailable: true,
+        error: 'Committee authorization is temporarily unavailable. Please try again.',
+      };
+    }
+    if (principal.status === 'forbidden') {
       return {
         allowed: false,
         error: 'You need to link your Slack account to your AgenticAdvertising.org account to manage committee leadership.',
+      };
+    }
+    if (principal.snapshot.selectedOrganizationId
+        && principal.snapshot.selectedOrganizationId !== organizationId) {
+      return {
+        allowed: false,
+        error: 'Select the same organization for the authenticated session and this committee request.',
+      };
+    }
+    let orgAuthorization;
+    try {
+      orgAuthorization = await resolveUserOrgAuthorization(
+        getAuthorizationEnforcementWorkos(),
+        {
+          id: principal.snapshot.canonicalUserId,
+          authWorkosUserId: principal.snapshot.authenticatedUserId,
+          authorizationSnapshot: principal.snapshot,
+        },
+        organizationId,
+      );
+    } catch (error) {
+      logger.warn({ err: error }, 'Committee leader organization authorization unavailable');
+      return {
+        allowed: false,
+        unavailable: true,
+        error: 'Committee authorization is temporarily unavailable. Please try again.',
+      };
+    }
+    if (orgAuthorization.status === 'unavailable'
+        || (orgAuthorization.status === 'authorized' && !orgAuthorization.complete)) {
+      return {
+        allowed: false,
+        unavailable: true,
+        error: 'Committee authorization is temporarily unavailable. Please try again.',
+      };
+    }
+    if (orgAuthorization.status !== 'authorized') {
+      return {
+        allowed: false,
+        error: 'This authenticated credential is not authorized for the selected organization.',
       };
     }
 
@@ -213,6 +326,7 @@ export function createCommitteeLeaderToolHandlers(
     }
 
     // Check if user is a leader
+    const workosUserId = principal.snapshot.authenticatedUserId;
     const isLeader = await wgDb.isLeader(committee.id, workosUserId);
     if (!isLeader) {
       // Get committees they do lead to give helpful context
@@ -238,7 +352,8 @@ export function createCommitteeLeaderToolHandlers(
   // ============================================
   handlers.set('add_committee_co_leader', async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
-    let userId = (input.user_id as string)?.trim();
+    const organizationId = (input.organization_id as string)?.trim();
+    const userId = (input.user_id as string)?.trim();
     const userEmail = input.user_email as string | undefined;
 
     if (!committeeSlug) {
@@ -248,60 +363,65 @@ export function createCommitteeLeaderToolHandlers(
     if (!userId) {
       return '❌ Please provide a user_id (WorkOS user ID or Slack user ID).';
     }
-
-    // Check permission
-    const permCheck = await checkUserLeadsCommittee(committeeSlug);
-    if (!permCheck.allowed) {
-      return `⚠️ ${permCheck.error}`;
+    if (!organizationId) {
+      return '⚠️ Please explicitly select an organization_id before changing committee leadership.';
     }
-    const committee = permCheck.committee!;
     if (committeeSlug === 'aao-admin') {
       return '⚠️ AAO site-admin membership must be changed through the dedicated audited admin workflow.';
     }
 
     try {
-      // Resolve to canonical ID for consistent comparison
-      // The DB methods also resolve, but we need the canonical ID for the "already a leader" check
-      const canonicalUserId = await wgDb.resolveToCanonicalUserId(userId);
-
-      // Check if already a leader
-      const leaders = await wgDb.getLeaders(committee.id);
-      if (leaders.some((l) => l.canonical_user_id === canonicalUserId)) {
-        return `ℹ️ This person is already a leader of ${committee.name}.`;
+      const principal = await resolvePrincipal();
+      if (principal.status === 'unavailable') {
+        return '❌ Committee authorization is temporarily unavailable. No changes were made.';
+      }
+      if (principal.status === 'forbidden') {
+        return '⚠️ This authenticated credential is not authorized to change committee leadership.';
+      }
+      const result = await mutateCommitteeLeader({
+        action: 'add',
+        principal: principal.snapshot,
+        selectedOrganizationId: organizationId,
+        committeeSlug,
+        targetUserId: userId,
+        targetEmail: userEmail,
+        surface: options.surface,
+        slackActorUserId: slackUserId,
+      });
+      if (result.status === 'unavailable') {
+        return '❌ Committee authorization is temporarily unavailable. No changes were made.';
+      }
+      if (result.status === 'forbidden') {
+        if (result.reason === 'organization_required' || result.reason === 'organization_mismatch') {
+          return '⚠️ Select the same organization for the authenticated session and this committee action.';
+        }
+        if (result.reason === 'committee_not_found') {
+          return `⚠️ Committee "${committeeSlug}" not found. Check the slug and try again.`;
+        }
+        return '⚠️ This authenticated credential is not authorized to change leadership for that committee.';
+      }
+      if (result.status === 'unchanged') {
+        return `ℹ️ This person is already a leader of ${result.committeeName}.`;
       }
 
-      // Add as leader (DB method also resolves IDs, but we pass canonical for consistency)
-      await wgDb.addLeader(committee.id, canonicalUserId);
-
-      // Invalidate cache after adding as leader (leadership affects permissions)
-      invalidateWebAdminStatusCache(canonicalUserId);
-
-      // Also ensure they're a member
-      const memberships = await wgDb.getMembershipsByWorkingGroup(committee.id);
-      if (!memberships.some(m => m.workos_user_id === canonicalUserId)) {
-        await wgDb.addMembership({
-          working_group_id: committee.id,
-          workos_user_id: canonicalUserId,
-          user_email: userEmail,
-        });
-      }
+      invalidateWebAdminStatusCache(result.targetWorkosUserId);
 
       // Auto-invite to the group's Slack channel (fire-and-forget)
-      if (committee.slack_channel_id) {
-        slackDb.getByWorkosUserId(canonicalUserId).then(mapping => {
+      if (result.slackChannelId) {
+        slackDb.getByWorkosUserId(result.targetWorkosUserId).then(mapping => {
           if (mapping?.slack_user_id) {
-            return inviteToChannel(committee.slack_channel_id!, [mapping.slack_user_id]);
+            return inviteToChannel(result.slackChannelId!, [mapping.slack_user_id]);
           }
         }).catch(err => {
-          logger.error({ err, userId: canonicalUserId, channelId: committee.slack_channel_id }, 'Failed to auto-invite co-leader to Slack channel');
+          logger.error({ err, userId: result.targetWorkosUserId, channelId: result.slackChannelId }, 'Failed to auto-invite co-leader to Slack channel');
         });
       }
 
-      logger.info({ committeeSlug, committeeName: committee.name, userId: canonicalUserId, userEmail, addedBy: slackUserId }, 'Added committee co-leader');
+      logger.info({ committeeSlug, committeeName: result.committeeName, userId: result.targetWorkosUserId, userEmail, addedBy: slackUserId }, 'Added committee co-leader');
 
       const emailInfo = userEmail ? ` (${userEmail})` : '';
-      const typeLabel = formatCommitteeType(committee.committee_type);
-      return `✅ Successfully added ${userId}${emailInfo} as a co-leader of **${committee.name}**.
+      const typeLabel = formatCommitteeType(result.committeeType);
+      return `✅ Successfully added ${userId}${emailInfo} as a co-leader of **${result.committeeName}**.
 
 They now have management access to:
 - Create and manage ${typeLabel} events
@@ -320,7 +440,8 @@ Management page: https://agenticadvertising.org/working-groups/${committeeSlug}/
   // ============================================
   handlers.set('remove_committee_co_leader', async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
-    let userId = (input.user_id as string)?.trim();
+    const organizationId = (input.organization_id as string)?.trim();
+    const userId = (input.user_id as string)?.trim();
 
     if (!committeeSlug) {
       return '❌ Please provide a committee_slug (e.g., "india-chapter", "creative-wg").';
@@ -329,38 +450,48 @@ Management page: https://agenticadvertising.org/working-groups/${committeeSlug}/
     if (!userId) {
       return '❌ Please provide a user_id (WorkOS user ID or Slack user ID).';
     }
-
-    // Check permission
-    const permCheck = await checkUserLeadsCommittee(committeeSlug);
-    if (!permCheck.allowed) {
-      return `⚠️ ${permCheck.error}`;
+    if (!organizationId) {
+      return '⚠️ Please explicitly select an organization_id before changing committee leadership.';
     }
-    const committee = permCheck.committee!;
 
     try {
-      // Resolve to canonical ID for consistent comparison
-      const canonicalUserId = await wgDb.resolveToCanonicalUserId(userId);
-
-      // Get current user's WorkOS ID
-      const currentUserWorkosId = await getCurrentUserWorkosId();
-
-      // Prevent removing yourself - compare canonical IDs to prevent bypass
-      if (canonicalUserId === currentUserWorkosId) {
-        return `⚠️ You cannot remove yourself as a leader. If you want to step down from leading ${committee.name}, please contact an admin.`;
+      const principal = await resolvePrincipal();
+      if (principal.status === 'unavailable') {
+        return '❌ Committee authorization is temporarily unavailable. No changes were made.';
+      }
+      if (principal.status === 'forbidden') {
+        return '⚠️ This authenticated credential is not authorized to change committee leadership.';
+      }
+      const result = await mutateCommitteeLeader({
+        action: 'remove',
+        principal: principal.snapshot,
+        selectedOrganizationId: organizationId,
+        committeeSlug,
+        targetUserId: userId,
+        surface: options.surface,
+        slackActorUserId: slackUserId,
+      });
+      if (result.status === 'unavailable') {
+        return '❌ Committee authorization is temporarily unavailable. No changes were made.';
+      }
+      if (result.status === 'forbidden') {
+        if (result.reason === 'self_removal_forbidden') {
+          return '⚠️ You cannot remove your own linked identity as a leader. Please contact an admin.';
+        }
+        if (result.reason === 'organization_required' || result.reason === 'organization_mismatch') {
+          return '⚠️ Select the same organization for the authenticated session and this committee action.';
+        }
+        return '⚠️ This authenticated credential is not authorized to change leadership for that committee.';
+      }
+      if (result.status === 'unchanged') {
+        return `ℹ️ This person is not a leader of ${result.committeeName}.`;
       }
 
-      // Check if they are a leader
-      const leaders = await wgDb.getLeaders(committee.id);
-      if (!leaders.some((l) => l.canonical_user_id === canonicalUserId)) {
-        return `ℹ️ This person is not a leader of ${committee.name}.`;
-      }
+      invalidateWebAdminStatusCache(result.targetWorkosUserId);
 
-      await wgDb.removeLeader(committee.id, canonicalUserId);
-      invalidateWebAdminStatusCache(canonicalUserId);
+      logger.info({ committeeSlug, committeeName: result.committeeName, userId: result.targetWorkosUserId, removedBy: slackUserId }, 'Removed committee co-leader');
 
-      logger.info({ committeeSlug, committeeName: committee.name, userId: canonicalUserId, removedBy: slackUserId }, 'Removed committee co-leader');
-
-      return `✅ Successfully removed as a leader of **${committee.name}**.
+      return `✅ Successfully removed as a leader of **${result.committeeName}**.
 
 They are still a member but no longer have management access.`;
     } catch (error) {
@@ -374,13 +505,17 @@ They are still a member but no longer have management access.`;
   // ============================================
   handlers.set('list_committee_co_leaders', async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
+    const organizationId = (input.organization_id as string)?.trim();
 
     if (!committeeSlug) {
       return '❌ Please provide a committee_slug (e.g., "india-chapter", "creative-wg").';
     }
+    if (!organizationId) {
+      return '⚠️ Please explicitly select an organization_id before listing committee leadership.';
+    }
 
     // Check permission
-    const permCheck = await checkUserLeadsCommittee(committeeSlug);
+    const permCheck = await checkUserLeadsCommittee(committeeSlug, organizationId);
     if (!permCheck.allowed) {
       return `⚠️ ${permCheck.error}`;
     }

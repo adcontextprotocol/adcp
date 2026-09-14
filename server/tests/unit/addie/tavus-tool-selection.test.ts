@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
-import { selectRoutedTavusVoiceTools } from '../../../src/routes/tavus.js';
+import {
+  buildVoiceRequestTools,
+  selectRoutedTavusVoiceTools,
+} from '../../../src/routes/tavus.js';
 import { getToolsForSets } from '../../../src/addie/tool-sets.js';
 
 const tools: AddieTool[] = [
@@ -52,6 +55,51 @@ async function select(
 }
 
 describe('authenticated Tavus voice Addie tool routing', () => {
+  it.each([
+    {
+      name: 'stored canonical A is leader while authenticated linked B is not',
+      ledGroups: [{ id: 'committee-led-by-a' }],
+    },
+    {
+      name: 'authenticated linked B is leader while stored canonical A is not',
+      ledGroups: [],
+    },
+  ])('omits committee mutation definitions and handlers when $name', async ({ ledGroups }) => {
+    const caller = 'credential_a';
+    const canonical = 'credential_a';
+    const memberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      workos_user: {
+        workos_user_id: canonical,
+        email: `${canonical}@example.test`,
+      },
+      slack_user: {
+        slack_user_id: 'U_LINKED_VOICE',
+        display_name: 'Linked voice caller',
+        email: 'linked@example.test',
+      },
+    };
+    const result = await buildVoiceRequestTools(caller, 'thread-tavus-linked', {
+      getMemberContext: vi.fn().mockResolvedValue(memberContext),
+      isAdmin: vi.fn().mockResolvedValue(false),
+      getCommitteesLedByUser: vi.fn().mockResolvedValue(ledGroups),
+    });
+    const committeeMutationNames = [
+      'add_committee_co_leader',
+      'remove_committee_co_leader',
+    ];
+
+    expect(result.requestTools.tools.map((tool) => tool.name))
+      .not.toEqual(expect.arrayContaining(committeeMutationNames));
+    expect([...result.requestTools.handlers.keys()])
+      .not.toEqual(expect.arrayContaining(committeeMutationNames));
+    for (const name of committeeMutationNames) {
+      expect(result.requestTools.handlers.get(name)).toBeUndefined();
+    }
+  });
+
   it('selects a bounded member domain without an implicit knowledge overlay', async () => {
     const router = routerFor(['member_billing']);
     const selected = await select(router);
