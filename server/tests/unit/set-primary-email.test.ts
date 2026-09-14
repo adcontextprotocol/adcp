@@ -3,79 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isEmailUnavailable } from '../../src/routes/account-linking-errors.js';
 
-/**
- * Static analysis test for the set-primary-email endpoint.
- * Verifies the route handler exists and follows the correct swap pattern.
- */
-
-const ACCOUNT_LINKING_FILE = path.resolve(
-  __dirname,
-  '../../src/routes/account-linking.ts'
-);
-
 const DASHBOARD_SETTINGS_FILE = path.resolve(
   __dirname,
   '../../public/dashboard-settings.html'
 );
 
-describe('Set primary email endpoint', () => {
-  const source = fs.readFileSync(ACCOUNT_LINKING_FILE, 'utf-8');
-
-  it('registers a PUT /primary route on the router', () => {
-    expect(source).toMatch(/router\.put\(\s*['"]\/primary['"]/);
-  });
-
-  it('requires authentication and rate limiting', () => {
-    expect(source).toMatch(/router\.put\(\s*['"]\/primary['"],\s*requireAuth,\s*verifyExecuteLimiter/);
-  });
-
-  it('validates email is a verified alias before swapping', () => {
-    expect(source).toMatch(/user_email_aliases/);
-    expect(source).toMatch(/workos_user_id = \$1 AND LOWER\(email\) = \$2 AND verified_at IS NOT NULL/);
-  });
-
-  it('updates WorkOS as source of truth', () => {
-    expect(source).toMatch(/getWorkos\(\)\.userManagement\.updateUser/);
-  });
-
-  it('swaps emails in a transaction', () => {
-    // Must use BEGIN/COMMIT for atomicity
-    expect(source).toMatch(/BEGIN/);
-    expect(source).toMatch(/COMMIT/);
-    // Must update users table
-    expect(source).toMatch(/UPDATE users SET email/);
-    // Must delete alias for new primary
-    expect(source).toMatch(/DELETE FROM user_email_aliases/);
-    // Must insert old primary as alias
-    expect(source).toMatch(/INSERT INTO user_email_aliases[\s\S]*?VALUES/);
-  });
-
-  it('locks alias row with FOR UPDATE to prevent races', () => {
-    expect(source).toMatch(/FOR UPDATE/);
-  });
-
-  it('updates WorkOS before the DB swap so a WorkOS rejection leaves DB state untouched', () => {
-    const beginIdx = source.indexOf("'BEGIN'");
-    const workosIdx = source.indexOf('getWorkos().userManagement.updateUser');
-    expect(workosIdx).toBeGreaterThan(-1);
-    expect(beginIdx).toBeGreaterThan(-1);
-    expect(workosIdx).toBeLessThan(beginIdx);
-  });
-
-  it('classifies WorkOS rejections via isEmailUnavailable and returns a friendly 409', () => {
-    expect(source).toMatch(/isEmailUnavailable\(workosError\)/);
-    expect(source).toMatch(/already associated with another account/);
-  });
-
-  it('rolls back on error', () => {
-    expect(source).toMatch(/ROLLBACK/);
-  });
-
-  it('refreshes denormalized email on organization_memberships and person_relationships', () => {
-    expect(source).toMatch(/UPDATE organization_memberships SET email/);
-    expect(source).toMatch(/UPDATE person_relationships SET email/);
-  });
-});
+// The executable identity-mutation-route-containment suite covers this route's
+// refusal before provider and database access. Keep helper/UI coverage here.
 
 describe('isEmailUnavailable', () => {
   it('matches WorkOS GenericServerException with "This email is not available" message', () => {

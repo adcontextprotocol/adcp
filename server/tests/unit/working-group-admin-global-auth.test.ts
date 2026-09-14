@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   removeMembership: vi.fn(),
   invalidateMemberContextCache: vi.fn(),
   invalidateWebAdminStatusCache: vi.fn(),
+  readCredentialAuthorizationLifecycle: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -56,6 +57,11 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+}));
+
+vi.mock('../../src/db/authorization-epoch-db.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/db/authorization-epoch-db.js')>()),
+  readCredentialAuthorizationLifecycle: mocks.readCredentialAuthorizationLifecycle,
 }));
 
 vi.mock('../../src/addie/mcp/admin-tools.js', async () => {
@@ -129,6 +135,20 @@ describe('working-group real global-admin boundary', () => {
     mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: true });
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
     mocks.checkPlatformBan.mockResolvedValue({ banned: false });
+    mocks.readCredentialAuthorizationLifecycle.mockImplementation((workosUserId: string) =>
+      Promise.resolve({
+        status: 'active',
+        snapshot: {
+          workos_user_id: workosUserId,
+          email: 'sso-admin@example.test',
+          first_name: 'SSO',
+          last_name: 'Admin',
+          identity_id: '00000000-0000-4000-8000-000000000001',
+          primary_workos_user_id: workosUserId,
+          fingerprint: '',
+        },
+      }),
+    );
     mocks.getWorkingGroupBySlug.mockImplementation((slug: string) =>
       Promise.resolve(slug === 'aao-admin'
         ? { id: 'wg_aao_admin', slug: 'aao-admin' }
