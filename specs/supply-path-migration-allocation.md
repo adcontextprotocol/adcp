@@ -15,7 +15,7 @@ reservation. The correction changes only the filename: the SQL remains blob
 591 ledger entry to disguise a collision.
 
 The 2026-09-14 allocation audit used main
-`1467e46117e8d329f4116e548e9290be75d8e3b3`, the migration directories at all
+`70a91fe9f7eab38910e0877f56cf0e3332a21a78`, the migration directories at all
 50 open PR heads, and the coordinator's unpublished reservation inventory:
 
 | Version | Owner                                                        | Migration / reservation                                                        |
@@ -24,7 +24,7 @@ The 2026-09-14 allocation audit used main
 | 589     | main                                                         | `589_compliance_run_publication.sql`                                           |
 | 590     | main                                                         | `590_compliance_run_provenance.sql`                                            |
 | 591     | [#7457](https://github.com/adcontextprotocol/adcp/pull/7457) | `591_compliance_refresh_authenticated_credential.sql`                          |
-| 592     | [#7463](https://github.com/adcontextprotocol/adcp/pull/7463) | `592_email_mutations.sql`                                                      |
+| 592     | [#7463](https://github.com/adcontextprotocol/adcp/pull/7463) | `592_email_mutations.sql`; inherited unchanged by #7499                       |
 | 593     | [#7464](https://github.com/adcontextprotocol/adcp/pull/7464) | `593_admin_credential_bind_operations.sql`; inherited unchanged by #7460       |
 | 594     | unpublished Slack work                                       | `594_slack_identity_binding_operations.sql`; reserved, do not reallocate       |
 | 595     | [#7501](https://github.com/adcontextprotocol/adcp/pull/7501) | `595_normalized_email_invariant.sql`                                           |
