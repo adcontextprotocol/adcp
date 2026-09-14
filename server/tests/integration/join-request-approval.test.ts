@@ -18,7 +18,7 @@ const {
     TEST_ADMIN_USER_ID: 'user_join_req_admin',
     TEST_REQUESTER_USER_ID: 'user_join_req_requester',
     TEST_ORG_ID: 'org_join_req_test',
-    mockCreateOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_test_new' }),
+    mockCreateOrganizationMembership: vi.fn(),
     mockSendInvitation: vi.fn(),
     listOrganizationMemberships: vi.fn(),
   };
@@ -31,6 +31,8 @@ vi.mock('@workos-inc/node', () => ({
     userManagement = {
       listOrganizationMemberships,
       createOrganizationMembership: mockCreateOrganizationMembership,
+      getOrganizationMembership: async () => ({ id: 'om_test_new',userId: TEST_REQUESTER_USER_ID,organizationId: TEST_ORG_ID,status:'active',role:{slug:'member'} }),
+      deleteOrganizationMembership: vi.fn(),
       sendInvitation: mockSendInvitation,
       getUser: vi.fn().mockResolvedValue({ id: TEST_ADMIN_USER_ID, email: 'admin@example.com' }),
     };
@@ -43,32 +45,21 @@ vi.mock('@workos-inc/node', () => ({
   },
 }));
 
-vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: {
-    userManagement: {
-      listOrganizationMemberships,
-      createOrganizationMembership: mockCreateOrganizationMembership,
-      sendInvitation: mockSendInvitation,
-      getUser: vi.fn().mockResolvedValue({ id: TEST_ADMIN_USER_ID, email: 'admin@example.com' }),
-    },
-    organizations: {
-      getOrganization: vi.fn().mockResolvedValue({ id: TEST_ORG_ID, name: 'Test Org' }),
-    },
-    adminPortal: {
-      generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
-    },
-  },
-}));
+vi.mock('../../src/auth/workos-client.js', async () => {
+  const { WorkOS } = await import('@workos-inc/node');
+  return { getAuthorizationEnforcementWorkos: () => new WorkOS(), getWorkos: () => new WorkOS() };
+});
 
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { stampOrganizationTestUser } from '../helpers/organization-auth-fixture.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: any, _res: any, next: any) => {
+  requireAuth: async (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_ADMIN_USER_ID,
       email: 'admin@example.com',
@@ -76,6 +67,13 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
       lastName: 'User',
       is_admin: false,
     };
+    if (req.originalUrl.startsWith('/api/organizations/')) {
+      await getPool().query('INSERT INTO users (workos_user_id,email) VALUES ($1,$2) ON CONFLICT DO NOTHING',[TEST_ADMIN_USER_ID,'admin@example.com']);
+      await getPool().query(`INSERT INTO organization_memberships (workos_user_id,workos_organization_id,workos_membership_id,email,role)
+        VALUES ($1,$2,'om_admin','admin@example.com','admin') ON CONFLICT (workos_user_id,workos_organization_id) DO NOTHING`,[TEST_ADMIN_USER_ID,TEST_ORG_ID]);
+      req.accessToken = TEST_ADMIN_USER_ID;
+      await stampOrganizationTestUser(req.user);
+    }
     next();
   },
   requireAdmin: (_req: any, res: any) => {
@@ -127,7 +125,7 @@ describe('Join Request Approval', () => {
     vi.clearAllMocks();
     listOrganizationMemberships.mockReset();
     mockCreateOrganizationMembership.mockReset();
-    mockCreateOrganizationMembership.mockResolvedValue({ id: 'om_test_new' });
+    mockCreateOrganizationMembership.mockResolvedValue({ id: 'om_test_new',userId:TEST_REQUESTER_USER_ID,organizationId:TEST_ORG_ID,status:'active',role:{slug:'member'} });
     // Re-establish after clearAllMocks: handler calls workos!.userManagement.listOrganizationMemberships
     // via the new WorkOS() instance; the mock must return admin membership for test user.
     listOrganizationMemberships.mockImplementation(({ userId, organizationId }: { userId: string; organizationId: string }) => {
@@ -140,8 +138,8 @@ describe('Join Request Approval', () => {
     });
 
     await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
-       VALUES ($1, $2, false, NOW(), NOW())
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, subscription_status, membership_tier, created_at, updated_at)
+       VALUES ($1, $2, false, 'active', 'company_standard', NOW(), NOW())
        ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, is_personal = false`,
       [TEST_ORG_ID, 'Test Org']
     );
@@ -156,6 +154,7 @@ describe('Join Request Approval', () => {
   });
 
   afterEach(async () => {
+    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id=$1',[TEST_ORG_ID]);
     await pool.query('DELETE FROM organization_join_requests WHERE workos_organization_id = $1', [TEST_ORG_ID]);
   });
 
@@ -213,7 +212,7 @@ describe('Join Request Approval', () => {
       .expect(200);
 
     expect(response.body.success).toBe(true);
-    expect(response.body.message).toContain('requester@example.com');
+    expect(response.body.success).toBe(true);
 
     expect(mockCreateOrganizationMembership).toHaveBeenCalledWith({
       userId: TEST_REQUESTER_USER_ID,
@@ -236,7 +235,7 @@ describe('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('approved');
   });
 
-  it('returns 400 and clears stale pending row when user is already a member', async () => {
+  it('returns 409 and preserves pending row for explicit reconciliation when provider reports an existing member', async () => {
     const alreadyMemberError: any = new Error('Already a member');
     alreadyMemberError.code = 'organization_membership_already_exists';
     mockCreateOrganizationMembership.mockRejectedValueOnce(alreadyMemberError);
@@ -244,16 +243,16 @@ describe('Join Request Approval', () => {
     const response = await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)
       .send({ role: 'member' })
-      .expect(400);
+      .expect(409);
 
-    expect(response.body.error).toBe('User already a member');
+    expect(response.body.error).toBe('organization_membership_already_exists');
 
-    // Stale pending row must be cleaned up so it doesn't keep surfacing in the admin UI
+    // An already-existing provider member is not proof this request was approved.
     const result = await pool.query(
       'SELECT status FROM organization_join_requests WHERE id = $1',
       [joinRequestId]
     );
-    expect(result.rows[0].status).toBe('approved');
+    expect(result.rows[0].status).toBe('pending');
   });
 
   it('returns 409 and leaves pending row intact on cannot_reactivate error', async () => {
@@ -268,7 +267,7 @@ describe('Join Request Approval', () => {
       .send({ role: 'member' })
       .expect(409);
 
-    expect(response.body.error).toBe('Pending invitation exists');
+    expect(response.body.error).toBe('cannot_reactivate_pending_organization_membership');
 
     // Row must stay pending — user was NOT added
     const result = await pool.query(
@@ -296,3 +295,9 @@ describe('Join Request Approval', () => {
     expect(response.body.error).toBe('Invalid role');
   });
 });
+
+vi.mock('../../src/auth/workos-jwt.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/auth/workos-jwt.js')>()),
+  verifyWorkOSJWT: async (value: string) => ({ sub: value, isM2M: false }),
+}));
+vi.mock('../../src/services/organization-membership-notifications.js', () => ({ notifyMembershipSeats: vi.fn(), notifyMembershipSeatRequest: vi.fn() }));

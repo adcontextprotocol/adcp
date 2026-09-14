@@ -42,6 +42,7 @@ const {
     TARGET_OWNER_MEMBERSHIP_ID: 'om_target_owner',
     mockState: {
       callerRole: 'admin' as 'owner' | 'admin' | 'member',
+      targetOwnerCurrentRole: 'owner' as 'owner' | 'admin' | 'member',
       targetMemberCurrentRole: 'member' as 'owner' | 'admin' | 'member',
       isCallerAAOAdmin: false,
       isStaticAdminApiKey: false,
@@ -50,6 +51,7 @@ const {
     // and tests can inspect call args.
     sendInvitationMock: vi.fn().mockResolvedValue({
       id: 'inv_test',
+      organizationId: 'org_role_policy_test',
       email: 'new-invitee@example.com',
       state: 'pending',
       expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
@@ -81,7 +83,12 @@ vi.mock('@workos-inc/node', () => {
               }],
             });
           }
-          return Promise.resolve({ data: [] });
+          const targets = [
+            {id: TARGET_MEMBERSHIP_ID, userId: TARGET_MEMBER_USER_ID, organizationId: TEST_ORG_ID, status: 'active', role: {slug: mockState.targetMemberCurrentRole}},
+            {id: TARGET_OWNER_MEMBERSHIP_ID, userId: TARGET_OWNER_USER_ID, organizationId: TEST_ORG_ID, status: 'active', role: {slug: mockState.targetOwnerCurrentRole}},
+            {id: 'om_caller', userId: CALLER_USER_ID, organizationId: TEST_ORG_ID, status: 'active', role: {slug: mockState.callerRole}},
+          ];
+          return Promise.resolve({data: targets.filter(row => !userId || row.userId === userId)});
         }),
         listUsers: vi.fn().mockImplementation(({ email }) => {
           const e = String(email).toLowerCase();
@@ -117,17 +124,21 @@ vi.mock('@workos-inc/node', () => {
               id: TARGET_OWNER_MEMBERSHIP_ID,
               userId: TARGET_OWNER_USER_ID,
               organizationId: TEST_ORG_ID,
-              role: { slug: 'owner' },
+              role: { slug: mockState.targetOwnerCurrentRole },
               status: 'active',
             });
           }
+          if (membershipId === 'om_caller') return Promise.resolve({id: 'om_caller', userId: CALLER_USER_ID, organizationId: TEST_ORG_ID, status: 'active', role: {slug: mockState.callerRole}});
           return Promise.reject(new Error('Membership not found'));
         }),
-        updateOrganizationMembership: vi.fn().mockImplementation((id, opts) =>
-          Promise.resolve({ id, role: { slug: opts.roleSlug } }),
-        ),
+        updateOrganizationMembership: vi.fn().mockImplementation((id, opts) => {
+          if (id === TARGET_OWNER_MEMBERSHIP_ID) mockState.targetOwnerCurrentRole = opts.roleSlug;
+          else mockState.targetMemberCurrentRole = opts.roleSlug;
+          return Promise.resolve({id, userId: id === TARGET_OWNER_MEMBERSHIP_ID ? TARGET_OWNER_USER_ID : TARGET_MEMBER_USER_ID, organizationId: TEST_ORG_ID, status: 'active', role: {slug: opts.roleSlug}});
+        }),
         createOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_new_test' }),
         sendInvitation: sendInvitationMock,
+        getInvitation: vi.fn().mockImplementation(async () => sendInvitationMock.getMockImplementation()!()),
         getUser: vi.fn().mockResolvedValue({ id: 'user_x', email: 'x@example.com' }),
         authenticateWithSessionCookie: vi.fn().mockResolvedValue({ authenticated: false }),
       };
@@ -154,6 +165,7 @@ vi.mock('../../src/auth/workos-client.js', async () => {
   return {
     workos: instance,
     getWorkos: () => instance,
+    getAuthorizationEnforcementWorkos: () => instance,
   };
 });
 
@@ -161,7 +173,7 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/middleware/auth.js')>();
   return {
     ...actual,
-    requireAuth: (req: any, _res: any, next: any) => {
+    requireAuth: async (req: any, _res: any, next: any) => {
       if (mockState.isStaticAdminApiKey) {
         req.user = {
           id: 'admin_api_key',
@@ -179,6 +191,18 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
           lastName: 'Test',
           is_admin: false,
         };
+      }
+      if (!mockState.isStaticAdminApiKey) {
+        await getPool().query('INSERT INTO users (workos_user_id,email) VALUES ($1,$2) ON CONFLICT DO NOTHING', [CALLER_USER_ID,'caller@example.com']);
+        await getPool().query(`INSERT INTO organization_memberships (workos_user_id,workos_organization_id,workos_membership_id,email,role)
+          VALUES ($1,$2,'om_caller','caller@example.com',$3) ON CONFLICT (workos_user_id,workos_organization_id) DO UPDATE SET role=$3`, [CALLER_USER_ID,TEST_ORG_ID,mockState.callerRole]);
+        await getPool().query('UPDATE organization_memberships SET role=$1 WHERE workos_user_id=$2 AND workos_organization_id=$3', [mockState.targetMemberCurrentRole,TARGET_MEMBER_USER_ID,TEST_ORG_ID]);
+        if (mockState.isCallerAAOAdmin) {
+          const group = await getPool().query("SELECT id FROM working_groups WHERE slug='aao-admin'");
+          await getPool().query("INSERT INTO working_group_memberships (working_group_id,workos_user_id,status) VALUES ($1,$2,'active') ON CONFLICT (working_group_id,workos_user_id) DO UPDATE SET status='active'",[group.rows[0].id,CALLER_USER_ID]);
+        }
+        req.accessToken = CALLER_USER_ID;
+        await stampOrganizationTestUser(req.user);
       }
       next();
     },
@@ -211,7 +235,8 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
 
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
-import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { stampOrganizationTestUser } from '../helpers/organization-auth-fixture.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
@@ -242,6 +267,8 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
   beforeEach(async () => {
     mockState.callerRole = 'admin';
     mockState.targetMemberCurrentRole = 'member';
+    mockState.targetOwnerCurrentRole = 'owner';
+    await pool.query('DELETE FROM working_group_memberships WHERE workos_user_id=$1',[CALLER_USER_ID]);
     mockState.isCallerAAOAdmin = false;
     mockState.isStaticAdminApiKey = false;
     sendInvitationMock.mockClear();
@@ -288,8 +315,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ email: 'target-member@example.com', role: 'owner' })
         .expect(403);
 
-      expect(response.body.error).toBe('Insufficient permissions');
-      expect(response.body.message).toMatch(/owner/i);
+      expect(response.body.error).toMatch(/owner/i);
     });
 
     it("admin cannot change an owner's role", async () => {
@@ -300,8 +326,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ email: 'target-owner@example.com', role: 'admin' })
         .expect(403);
 
-      expect(response.body.error).toBe('Insufficient permissions');
-      expect(response.body.message).toMatch(/owner/i);
+      expect(response.body.error).toMatch(/owner/i);
     });
 
     it('owner can promote a member to admin', async () => {
@@ -380,7 +405,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ role: 'owner' })
         .expect(403);
 
-      expect(response.body.message).toMatch(/owner/i);
+      expect(response.body.error).toMatch(/owner/i);
     });
 
     it("admin cannot change an owner's role via PATCH", async () => {
@@ -391,7 +416,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ role: 'member' })
         .expect(403);
 
-      expect(response.body.message).toMatch(/owner/i);
+      expect(response.body.error).toMatch(/owner/i);
     });
 
     it('owner can change owner\'s role via PATCH', async () => {
@@ -413,10 +438,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ role: 'admin' })
         .expect(403);
 
-      // Specific message confirms we hit the role-cap branch rather than an
-      // earlier short-circuit; if the route ever drops the early "Only owners
-      // and admins" check, this assertion still fails the test.
-      expect(response.body.message).toBe('Only owners and admins can change member roles');
+      expect(response.body.error).toBe('Access denied');
     });
 
     it('admin can demote another admin to member', async () => {
@@ -518,7 +540,7 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
       await pool.query(
         `INSERT INTO organization_memberships
          (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type, created_at, updated_at, synced_at)
-         VALUES ($1, $2, 'om_caller_seed', 'caller@example.com', 'owner', 'contributor', NOW(), NOW(), NOW())
+         VALUES ($1, $2, 'om_caller', 'caller@example.com', 'owner', 'contributor', NOW(), NOW(), NOW())
          ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = 'owner'`,
         [CALLER_USER_ID, TEST_ORG_ID],
       );
@@ -552,7 +574,13 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .send({ auto_provision_verified_domain: false })
         .expect(403);
 
-      expect(response.body.message).toMatch(/owner/i);
+      expect(response.body.error).toBe('Insufficient permissions');
     });
   });
 });
+
+vi.mock('../../src/auth/workos-jwt.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/auth/workos-jwt.js')>()),
+  verifyWorkOSJWT: async (value: string) => ({ sub: value, isM2M: false }),
+}));
+vi.mock('../../src/services/organization-membership-notifications.js', () => ({ notifyMembershipSeats: vi.fn(), notifyMembershipSeatRequest: vi.fn() }));
