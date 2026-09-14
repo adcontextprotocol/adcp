@@ -24,14 +24,14 @@ describe('registry cache authority provenance', () => {
   });
   it('retains a previous denial when the next snapshot is stale', async () => {
     const store = new InMemoryStateStore();
-    await supplyPathSnapshotEvidence(publisher, { ...snapshot(), manifest: { revoked_publisher_domains: ['owner.example'] } }, store);
+    await supplyPathSnapshotEvidence(publisher, { ...snapshot(), manifest: { authorized_agents: [], revoked_publisher_domains: ['owner.example'] } }, store);
     const result = await supplyPathSnapshotEvidence(publisher, { ...snapshot(), fetchedAt: new Date(0) }, store);
     expect(result.manifest).toBeNull();
     expect(result.held).toEqual(['owner.example']);
   });
   it.each(['not a URL', 'https://[invalid', ''])('retains held denials when persisted provenance is malformed: %j', async resolvedUrl => {
     const store = new InMemoryStateStore();
-    await supplyPathSnapshotEvidence(publisher, { ...snapshot(), manifest: { revoked_publisher_domains: ['owner.example'] } }, store);
+    await supplyPathSnapshotEvidence(publisher, { ...snapshot(), manifest: { authorized_agents: [], revoked_publisher_domains: ['owner.example'] } }, store);
     const result = await supplyPathSnapshotEvidence(publisher, { ...snapshot(), discoveryMethod: 'authoritative_location', resolvedUrl }, store);
     expect(result.manifest).toBeNull();
     expect(result.held).toEqual(['owner.example']);
@@ -40,5 +40,25 @@ describe('registry cache authority provenance', () => {
       ...snapshot(), discoveryMethod: 'authoritative_location', resolvedUrl: 'https://other.example/host.json',
     }, store)).rejects.toThrow(/migration requires independent confirmation/);
     expect((await supplyPathSnapshotEvidence(publisher, snapshot(), store)).manifest).toEqual(snapshot().manifest);
+  });
+  it.each([
+    {}, { authorized_agents: null },
+    { authorized_agents: [], authoritative_location: 'https://other.example/chain.json' },
+    { authorized_agents: [], authoritative_location: null },
+    { authorized_agents: [], superseded_by: 'https://other.example/chain.json' },
+  ])('retains denials without pinning an invalid cached manifest: %j', async invalid => {
+    const store = new InMemoryStateStore();
+    const result = await supplyPathSnapshotEvidence(publisher, {
+      ...snapshot(), manifest: { ...invalid, revoked_publisher_domains: ['owner.example'] },
+    }, store);
+    expect(result.manifest).toBeNull();
+    expect(result.held).toEqual(['owner.example']);
+    const delegated = { ...snapshot(), discoveryMethod: 'authoritative_location', resolvedUrl: 'https://cdn.example/host.json' };
+    expect((await supplyPathSnapshotEvidence(publisher, delegated, store)).manifest).toEqual(delegated.manifest);
+    // The valid manifest establishes the baseline; later invalid observations
+    // preserve that pin and cannot erase the held denial.
+    expect((await supplyPathSnapshotEvidence(publisher, { ...snapshot(), manifest: invalid }, store)).held).toEqual(['owner.example']);
+    await expect(supplyPathSnapshotEvidence(publisher, snapshot(), store)).rejects.toThrow(/migration requires independent confirmation/);
+    expect((await supplyPathSnapshotEvidence(publisher, delegated, store)).manifest).toEqual(delegated.manifest);
   });
 });
