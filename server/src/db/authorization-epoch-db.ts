@@ -86,10 +86,13 @@ export async function getAuthorizationFingerprint(
          FROM authorization_epochs ae
         WHERE ae.workos_user_id = ANY($1)
        UNION ALL
-       SELECT ral.workos_user_id || ':deleted:' || ral.id AS part
+       SELECT ral.workos_user_id ||
+              CASE WHEN ral.action = 'identity_credential_admin_compensation_quarantined'
+                   THEN ':quarantined:' ELSE ':deleted:' END || ral.id AS part
          FROM registry_audit_log ral
         WHERE ral.workos_user_id = ANY($1)
-          AND ral.action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined')
+          AND ral.action IN ('identity_credential_deleted', 'identity_primary_deletion_quarantined',
+            'identity_credential_admin_compensation_deleted', 'identity_credential_admin_compensation_quarantined')
      )
      SELECT string_agg(part, ',' ORDER BY part) AS fingerprint
        FROM fingerprint_parts`,
@@ -139,7 +142,9 @@ export async function readCredentialAuthorizationLifecycle(
                  WHERE ral.workos_user_id = requested.workos_user_id
                    AND ral.action IN (
                      'identity_credential_deleted',
-                     'identity_primary_deletion_quarantined'
+                     'identity_primary_deletion_quarantined',
+                     'identity_credential_admin_compensation_deleted',
+                     'identity_credential_admin_compensation_quarantined'
                    )
               ) AS terminal_marker
          FROM requested

@@ -16,12 +16,13 @@ import {
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
-import { bumpAuthorizationEpochs } from '../../db/authorization-epoch-db.js';
-import { findSupersededMemberships } from '../../db/membership-consolidation-db.js';
+import { bumpAuthorizationEpochs, readCredentialAuthorizationLifecycle } from '../../db/authorization-epoch-db.js';
+import { decideAAOAdminAccess } from '../../auth/admin-access.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { mergeUsers } from '../../db/user-merge-db.js';
+import { createAndBindAdminCredential } from '../../services/admin-credential-bind.js';
 import { refuseIdentityConsolidation } from '../identity-mutation-containment.js';
 import { resolveMembershipTier, type MembershipTierRow } from '../../db/organization-db.js';
 import {
@@ -843,150 +844,59 @@ export function createAdminUsersRouter(): Router {
     }
   });
 
-  // POST /api/admin/users/:userId/linked-emails
-  //
-  // Bind a new sign-in email to an existing user's identity. Creates a fresh
-  // WorkOS user for the new email and binds it as a non-primary credential
-  // under the same identity. After this, the user can sign in with either
-  // email — the auth middleware id-swaps non-primary logins to the canonical
-  // workos_user_id so they see the same workspace.
-  //
-  // Use case: a user lost access to an alias email after the old delete-the-
-  // secondary merge flow. Admin restores the alias by creating a new WorkOS
-  // user and binding it.
-  //
-  // Trust model: admin is asserting the email belongs to the person. No
-  // verification email is sent to the new address. Phase 3 may add one.
-  router.post('/:userId/linked-emails', ...requireGlobalAdmin, refuseIdentityConsolidation, async (req, res) => {
-    const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
-    const existingUserId = req.params.userId;
-    const rawEmail = (req.body?.email as string | undefined)?.trim();
-
-    if (!rawEmail) {
+  // Create a fresh credential and bind it without consolidating any app state
+  // or organization authority. Ambiguous provider outcomes block email replay.
+  router.post('/:userId/linked-emails', ...requireGlobalAdmin, async (req, res) => {
+    if (req.body?.consolidate === true || req.body?.promote === true) {
+      return res.status(409).json({ error: 'credential_consolidation_disabled' });
+    }
+    if (req.adminAccessMechanism === 'static_admin_api_key' || !req.user?.identityId) {
+      return res.status(403).json({ error: 'identity_bearing_admin_required' });
+    }
+    // This new mutation must be safe even before #7452's global admin sweep
+    // lands. App-state canonicalization is not platform-admin authority.
+    // Recheck the exact live credential and its current email; never use a
+    // sibling's membership or a stale session email as break-glass authority.
+    const actorUserId = req.user.authWorkosUserId ?? req.user.id;
+    const lifecycle = await readCredentialAuthorizationLifecycle(actorUserId);
+    if (lifecycle.status === 'unavailable') {
+      return res.status(503).json({ error: 'admin_authorization_unavailable' });
+    }
+    if (lifecycle.status !== 'active' || lifecycle.snapshot.identity_id !== req.user.identityId) {
+      return res.status(403).json({ error: 'actor_identity_changed' });
+    }
+    try {
+      const membership = await getPool().query<{ is_admin: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM working_group_memberships membership
+           JOIN working_groups admin_group ON admin_group.id = membership.working_group_id
+           WHERE admin_group.slug = 'aao-admin' AND membership.workos_user_id = $1
+             AND membership.status = 'active'
+         ) AS is_admin`, [actorUserId],
+      );
+      if (membership.rowCount !== 1 || membership.rows.length !== 1
+        || typeof membership.rows[0]?.is_admin !== 'boolean') throw new Error('Unconfirmed admin membership');
+      const decision = decideAAOAdminAccess(membership.rows[0].is_admin, lifecycle.snapshot.email);
+      if (!decision.isAdmin) return res.status(403).json({ error: 'exact_credential_admin_required' });
+      req.adminAccessMechanism = decision.mechanism!;
+    } catch {
+      return res.status(503).json({ error: 'admin_authorization_unavailable' });
+    }
+    const rawEmail = req.body?.email;
+    if (typeof rawEmail !== 'string' || !rawEmail.trim()) {
       return res.status(400).json({ error: 'email is required' });
     }
-    const newEmail = rawEmail.toLowerCase();
-    if (newEmail.length > 255 || !isPlausibleEmail(newEmail)) {
+    const email = rawEmail.trim().toLowerCase();
+    if (email.length > 255 || !isPlausibleEmail(email)) {
       return res.status(400).json({ error: 'Invalid email address' });
     }
-
-    const pool = getPool();
-
-    // Verify existing user
-    const existing = await pool.query<{ email: string; first_name: string | null; last_name: string | null }>(
-      `SELECT email, first_name, last_name FROM users WHERE workos_user_id = $1`,
-      [existingUserId]
-    );
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    if (existing.rows[0].email.toLowerCase() === newEmail) {
-      return res.status(409).json({ error: 'This is already the user\'s primary email' });
-    }
-
-    // Refuse if this email is already a real WorkOS user in our DB. Binding
-    // an existing account is the high-risk path that the self-service merge
-    // flow blocks (see issue #3719); admin shouldn't silently merge two
-    // existing accounts via this endpoint either. Use the org-merge tool or
-    // a future "bind existing" admin path instead.
-    const claimed = await pool.query(
-      `SELECT workos_user_id FROM users WHERE LOWER(email) = $1`,
-      [newEmail]
-    );
-    if (claimed.rows.length > 0) {
-      return res.status(409).json({
-        error: 'This email already has an AAO account',
-        message: 'Use a separate consolidation flow to combine two existing accounts. This endpoint creates a fresh sign-in.',
-      });
-    }
-
-    const workos = getWorkos();
-    let newWorkosUser: { id: string; email: string; firstName: string | null; lastName: string | null; emailVerified: boolean; createdAt: string; updatedAt: string };
-
-    try {
-      newWorkosUser = await workos.userManagement.createUser({
-        email: newEmail,
-        emailVerified: true,
-        firstName: existing.rows[0].first_name ?? undefined,
-        lastName: existing.rows[0].last_name ?? undefined,
-      });
-    } catch (err: any) {
-      // 422 = email already in use in WorkOS (we didn't see them in our DB
-      // but WorkOS knows about them). 400 = WorkOS rejected for other
-      // reasons — typically a still-living user at that email from a prior
-      // merge whose deleteUser silently failed. Surface clearly.
-      const status = err?.status ?? err?.response?.status;
-      const workosMsg = err?.message ?? err?.rawMessage ?? '';
-      if (status === 422 || status === 409 || status === 400) {
-        logger.warn({ err, newEmail, existingUserId, status }, 'Admin bind-email: WorkOS rejected createUser');
-        return res.status(409).json({
-          error: 'WorkOS will not create a user at this email',
-          message: `WorkOS responded ${status}: ${workosMsg || 'no message'}. The email is likely already in use upstream — look it up in the WorkOS Dashboard and use the "Link existing WorkOS user" admin tool to bind by id.`,
-        });
-      }
-      logger.error({ err, newEmail, existingUserId, status }, 'Admin bind-email: WorkOS createUser failed');
-      return res.status(502).json({
-        error: 'Failed to create sign-in email upstream',
-        message: workosMsg || `WorkOS responded with status ${status ?? 'unknown'}.`,
-      });
-    }
-
-    // Insert into local users — fires the AFTER INSERT trigger which creates
-    // a singleton identity for the new WorkOS user. mergeUsers will then
-    // re-point the new user's binding to the existing user's identity.
-    try {
-      await pool.query(
-        `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
-                            workos_created_at, workos_updated_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-         ON CONFLICT (workos_user_id) DO NOTHING`,
-        [newWorkosUser.id, newWorkosUser.email, newWorkosUser.firstName, newWorkosUser.lastName,
-         newWorkosUser.emailVerified, newWorkosUser.createdAt, newWorkosUser.updatedAt]
-      );
-
-      // Merge: moves zero data rows (the new user has nothing), rebinds the
-      // new user's identity_workos_users row to the existing user's identity
-      // as is_primary = FALSE, drops the new user's orphan singleton identity.
-      await mergeUsers(existingUserId, newWorkosUser.id, adminUserId);
-    } catch (err) {
-      logger.error(
-        { err, newWorkosUserId: newWorkosUser.id, existingUserId },
-        'Admin bind-email: local bind failed after WorkOS createUser succeeded — rolling back the WorkOS user'
-      );
-      // Best-effort cleanup so a retry doesn't leave an orphan in WorkOS.
-      // If the delete itself fails, surface the WorkOS id for manual cleanup.
-      let cleanedUp = false;
-      try {
-        await workos.userManagement.deleteUser(newWorkosUser.id);
-        cleanedUp = true;
-      } catch (deleteErr) {
-        logger.error(
-          { err: deleteErr, newWorkosUserId: newWorkosUser.id },
-          'Admin bind-email: failed to roll back WorkOS user after local-bind failure'
-        );
-      }
-      return res.status(500).json({
-        error: 'Failed to bind sign-in email',
-        message: cleanedUp
-          ? 'The new WorkOS user was rolled back. Please retry.'
-          : 'Please contact engineering — a WorkOS user was created at the new email but is not yet linked, and rollback failed.',
-        ...(cleanedUp ? {} : { new_workos_user_id: newWorkosUser.id }),
-      });
-    }
-
-    logger.info(
-      { adminEmail, existingUserId, newEmail, newWorkosUserId: newWorkosUser.id },
-      'Admin bound new sign-in email to existing user'
-    );
-
-    return res.status(201).json({
-      bound: true,
-      existing_user_id: existingUserId,
-      new_email: newEmail,
-      new_workos_user_id: newWorkosUser.id,
-      message: `${newEmail} is now a sign-in email for this user. They can sign in with either address.`,
+    const result = await createAndBindAdminCredential({
+      hostUserId: req.params.userId,
+      email,
+      actorUserId,
+      actorIdentityId: req.user.identityId,
     });
+    return res.status(result.status).json(result.body);
   });
 
   // GET /api/admin/users/:userId/credentials
@@ -1353,259 +1263,9 @@ export function createAdminUsersRouter(): Router {
     });
   });
 
-  // POST /api/admin/users/:userId/credentials/:credentialId/promote
-  //
-  // Make :credentialId the primary credential of the host's identity.
-  // Moves all of the current primary's app-state forward to :credentialId
-  // (so reads keyed on the canonical workos_user_id land on the right
-  // place), swaps `is_primary`, audit row.
-  //
-  // Use case: after a `link-existing` bind, the new credential ended up as
-  // the right one for the workspace the person actually wants (e.g., a
-  // work email that's a member of a paid org), but the canonical primary
-  // sits on a different credential whose org_memberships are a different
-  // (personal) workspace. Promote re-points the canonical so id-swap
-  // routes both sign-ins to the org-bearing credential.
-  //
-  // Implementation note: we run mergeUsers(newPrimary, currentPrimary)
-  // which moves data forward and demotes the old primary as a side
-  // effect (it becomes is_primary=FALSE). Both bindings are non-primary
-  // for a brief window between the mergeUsers commit and the follow-up
-  // UPDATE; during that window `attachIdentityId` finds no primary and
-  // skips the id-swap, so requests fall back to the auth user's slice of
-  // data — degraded but not broken. A failure of the follow-up UPDATE
-  // would persist that degraded state; the audit row records the intent
-  // and the recovery is a one-line UPDATE.
-  router.post('/:userId/credentials/:credentialId/promote', ...requireGlobalAdmin, refuseIdentityConsolidation, async (req, res) => {
-    const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
-    const adminIdentityId = req.user!.identityId;
-    const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
-    const userId = req.params.userId;
-    const newPrimaryId = req.params.credentialId;
-
-    if (newPrimaryId === userId) {
-      return res.status(400).json({ error: 'The credential to promote must differ from the host id in the URL' });
-    }
-
-    const pool = getPool();
-
-    // Validate: target is bound to host's identity, find current primary
-    // and target's email (for the audit row + caller display).
-    const check = await pool.query<{
-      new_is_primary: boolean;
-      current_primary_id: string | null;
-      identity_id: string;
-      target_email: string | null;
-    }>(
-      `SELECT
-          target.is_primary AS new_is_primary,
-          primary_iwu.workos_user_id AS current_primary_id,
-          target.identity_id,
-          target_user.email AS target_email
-        FROM identity_workos_users target
-        LEFT JOIN identity_workos_users primary_iwu
-          ON primary_iwu.identity_id = target.identity_id
-         AND primary_iwu.is_primary = TRUE
-        LEFT JOIN users target_user
-          ON target_user.workos_user_id = target.workos_user_id
-       WHERE target.workos_user_id = $1
-         AND target.identity_id = (
-           SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
-         )`,
-      [newPrimaryId, userId]
-    );
-
-    if (check.rows.length === 0) {
-      return res.status(404).json({ error: 'Credential not bound to this user' });
-    }
-    if (check.rows[0].new_is_primary) {
-      return res.json({ promoted: true, message: 'Already primary — no change.' });
-    }
-
-    const identityId = check.rows[0].identity_id;
-    const currentPrimaryId = check.rows[0].current_primary_id;
-    const targetEmail = check.rows[0].target_email;
-
-    // Refuse self-promote: an admin shouldn't mutate their own identity via
-    // this admin endpoint (it would shuffle their own session's app-state
-    // mid-request). If they need to promote one of their own credentials,
-    // they sign in as the target person and use the user-facing flow (or
-    // another admin handles it).
-    if (adminIdentityId && adminIdentityId === identityId) {
-      return res.status(409).json({
-        error: 'Cannot promote your own credential',
-        message: 'This identity belongs to the signed-in admin. Have a different admin perform the promote.',
-      });
-    }
-
-    // Edge case: identity has no current primary (broken invariant from a
-    // prior partial promote, manual SQL, etc.). Just set the target as
-    // primary; nothing to move forward.
-    if (!currentPrimaryId) {
-      const repairClient = await pool.connect();
-      try {
-        await repairClient.query('BEGIN');
-        await repairClient.query(
-          `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
-          [newPrimaryId]
-        );
-        // Same transaction as the primary flip: a bump that commits
-        // separately leaves a window where the routing changed but stale
-        // sessions still validate. Every credential on the identity is
-        // bumped, not just the new primary — the flip changes where each
-        // sibling's canonical reads land.
-        const repairBound = await repairClient.query<{ workos_user_id: string }>(
-          `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1`,
-          [identityId]
-        );
-        await bumpAuthorizationEpochs(repairClient, [
-          newPrimaryId,
-          ...repairBound.rows.map((row) => row.workos_user_id),
-        ]);
-        await repairClient.query('COMMIT');
-      } catch (err) {
-        await repairClient.query('ROLLBACK').catch(() => undefined);
-        logger.error({ err, userId, newPrimaryId }, 'Promote: orphan-primary repair failed');
-        return res.status(500).json({ error: 'Failed to promote credential' });
-      } finally {
-        repairClient.release();
-      }
-      logger.info(
-        { adminEmail, userId, newPrimaryId, identityId, recovered_orphan: true },
-        'Promote: identity had no current primary; set target as primary directly'
-      );
-      invalidateSessionsForUsers([newPrimaryId]);
-      return res.json({
-        promoted: true,
-        message: 'Promoted (no current primary to demote — invariant repaired).',
-      });
-    }
-
-    // A corporate credential must remain canonical once it carries an
-    // entitled corporate membership. Otherwise an operator could safely bind
-    // a personal credential onto it, then promote that credential and move
-    // the corporate membership onto the personal account.
-    const currentMembershipRows = await pool.query<CredentialOrganizationMembership>(
-      `SELECT o.workos_organization_id, o.membership_tier,
-              o.subscription_price_lookup_key, o.subscription_status,
-              o.subscription_amount, o.subscription_interval, o.is_personal,
-              o.subscription_canceled_at
-         FROM organization_memberships om
-         JOIN organizations o
-           ON o.workos_organization_id = om.workos_organization_id
-        WHERE om.workos_user_id = $1
-          AND o.subscription_canceled_at IS NULL
-        ORDER BY o.workos_organization_id`,
-      [currentPrimaryId],
-    );
-    const corporateMemberships = resolveEntitledMemberships(currentMembershipRows.rows)
-      .filter((membership) => isCorporateMembershipTier(membership.membership_tier));
-    if (corporateMemberships.length > 0) {
-      return res.status(409).json({
-        error: 'corporate_membership_primary_required',
-        message: 'Cannot promote another credential while the current primary holds an entitled corporate membership. Keep the corporate credential canonical.',
-        corporate_memberships: corporateMemberships,
-      });
-    }
-
-    // Foot-gun gate: promote runs the same consolidation as link-credential.
-    // Memberships whose partner key the incoming credential already holds are
-    // DELETED by it — the outgoing row's role, seat, upstream membership id,
-    // and join provenance are not recoverable, and an unlink cannot put them
-    // back. Require stated intent, matching the `consolidate: true` gate on
-    // the bind path above.
-    if (req.body?.consolidate !== true) {
-      const superseded = await findSupersededMemberships(currentPrimaryId, newPrimaryId);
-      const supersededCount =
-        superseded.organizationIds.length + superseded.workingGroupIds.length;
-      if (supersededCount > 0) {
-        return res.status(409).json({
-          error: 'Promoting would delete memberships',
-          message: `The outgoing primary holds ${supersededCount} membership(s) whose organization or working group the incoming credential already belongs to. Promoting deletes those rows — their role, seat, WorkOS membership id, and join provenance cannot be recovered. Certification progress, credentials, badges, and committee interest are consolidated in the same operation and deduplicated on conflict; they are not enumerated here. Re-submit with \`"consolidate": true\` to confirm this is intended.`,
-          consolidate_confirmation_required: true,
-          superseded_organization_ids: superseded.organizationIds,
-          superseded_working_group_ids: superseded.workingGroupIds,
-        });
-      }
-    }
-
-    if (req.body?.consolidate === true && req.adminAccessMechanism === 'static_admin_api_key') {
-      return res.status(403).json({
-        error: 'identity_bearing_admin_required',
-        message: 'Destructive consolidation must be confirmed by an identity-bearing SSO admin session; the static admin API key cannot provide individual actor attribution.',
-      });
-    }
-
-    // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary
-    // rebind, AND the new primary's is_primary=TRUE flip all happen in one
-    // transaction. This closes the window where the identity has zero
-    // primaries.
-    try {
-      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId, {
-        ensurePrimaryFlag: true,
-        auditContext: {
-          acting_workos_user_id: adminAuthCredentialId,
-          admin_access_mechanism: req.adminAccessMechanism ?? null,
-          consolidation_confirmed: req.body?.consolidate === true,
-        },
-      });
-    } catch (err) {
-      logger.error(
-        { err, userId, newPrimaryId, currentPrimaryId },
-        'Promote: mergeUsers failed'
-      );
-      return res.status(500).json({ error: 'Failed to promote credential' });
-    }
-
-    // Audit row. mergeUsers writes its own merge_user audit; this adds the
-    // promote-specific record with target email + identity context. Failure
-    // here doesn't unwind the promote (the data + primary swap are
-    // committed) — log loud so we notice.
-    try {
-      const auditOrg = await pool.query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships
-          WHERE workos_user_id = $1 LIMIT 1`,
-        [newPrimaryId]
-      );
-      const auditOrgId = auditOrg.rows[0]?.workos_organization_id || 'system';
-      await pool.query(
-        `INSERT INTO registry_audit_log (
-          workos_organization_id, workos_user_id, action, resource_type, resource_id, details
-        ) VALUES ($1, $2, 'promote_credential_to_primary', 'user', $3, $4)`,
-        [
-          auditOrgId,
-          adminUserId,
-          newPrimaryId,
-          JSON.stringify({
-            host_user_id: userId,
-            identity_id: identityId,
-            previous_primary_id: currentPrimaryId,
-            new_primary_id: newPrimaryId,
-            target_email: targetEmail,
-            acting_workos_user_id: adminAuthCredentialId,
-          }),
-        ]
-      );
-    } catch (err) {
-      logger.error({ err, userId, newPrimaryId }, 'Promote: audit row insert failed (operation already committed)');
-    }
-
-    invalidateSessionsForUsers([userId, newPrimaryId, currentPrimaryId]);
-
-    logger.info(
-      { adminEmail, identityId, previous_primary_id: currentPrimaryId, new_primary_id: newPrimaryId },
-      'Admin promoted credential to primary'
-    );
-
-    return res.json({
-      promoted: true,
-      identity_id: identityId,
-      previous_primary_id: currentPrimaryId,
-      new_primary_id: newPrimaryId,
-      message: 'Credential is now primary. Sign-ins via either bound credential will route here.',
-    });
-  });
+  // Primary promotion currently consolidates state and rewrites membership
+  // provenance. Contain this admin surface until a preserving operation exists.
+  router.post('/:userId/credentials/:credentialId/promote', ...requireGlobalAdmin, refuseIdentityConsolidation);
 
   return router;
 }

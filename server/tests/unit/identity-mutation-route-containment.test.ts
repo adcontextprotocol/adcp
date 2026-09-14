@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 
+const binding = vi.hoisted(() => ({ createAndBindAdminCredential: vi.fn() }));
 const mocks = vi.hoisted(() => ({
   getPool: vi.fn(),
   getWorkos: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
     req.user = {
       id: String(req.headers['x-test-user'] || 'user_member'),
       authWorkosUserId: 'user_signed_in_credential',
+      identityId: '00000000-0000-4000-8000-000000000682',
       email: 'member@example.test',
       emailVerified: true,
       createdAt: new Date(0).toISOString(),
@@ -38,6 +40,8 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   };
   return { ...original, requireAuth: authenticate, requireGlobalAdmin: [authenticate] };
 });
+
+vi.mock('../../src/services/admin-credential-bind.js', () => binding);
 
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
@@ -78,7 +82,6 @@ const refusal = {
   message: 'Identity consolidation is disabled until authority and provenance can be preserved.',
 };
 const operations = [
-  { method: 'post', path: '/api/admin/users/user_member/linked-emails', body: { email: 'admin@example.test' } },
   { method: 'post', path: '/api/admin/users/user_member/credentials', body: { workos_user_id: 'user_admin' } },
   { method: 'post', path: '/api/admin/users/user_admin/credentials', body: { workos_user_id: 'user_member' } },
   { method: 'post', path: '/api/admin/users/user_member/credentials/user_admin/promote', body: {} },
@@ -138,6 +141,48 @@ describe('identity mutation route containment', () => {
       expectNoDataAccess();
     },
   );
+
+  it('routes fresh admin creation to the compensating binding service with the exact actor', async () => {
+    mocks.getPool.mockReturnValue({ query: mocks.query });
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('AS is_admin')) return { rowCount: 1, rows: [{ is_admin: true }] };
+      if (sql.includes('terminal_marker')) return { rowCount: 1, rows: [{
+        workos_user_id: 'user_signed_in_credential', email: 'member@example.test',
+        identity_id: '00000000-0000-4000-8000-000000000682',
+        primary_workos_user_id: 'user_member', primary_count: '1',
+        user_exists: true, binding_exists: true, terminal_marker: false, fingerprint: '',
+      }] };
+      throw new Error('Unexpected database statement');
+    });
+    binding.createAndBindAdminCredential.mockResolvedValue({ status: 201, body: { bound: true } });
+    await request(app).post('/api/admin/users/user_member/linked-emails')
+      .send({ email: 'NEW@example.test' }).expect(201);
+    expect(binding.createAndBindAdminCredential).toHaveBeenCalledExactlyOnceWith({
+      hostUserId: 'user_member', email: 'new@example.test',
+      actorUserId: 'user_signed_in_credential',
+      actorIdentityId: '00000000-0000-4000-8000-000000000682',
+    });
+    expect(mocks.query).toHaveBeenCalledTimes(2);
+    for (const [, params] of mocks.query.mock.calls) expect(params).toEqual(['user_signed_in_credential']);
+    for (const method of [mocks.createUser, mocks.updateUser, mocks.deleteUser]) expect(method).not.toHaveBeenCalled();
+  });
+
+  it.each([{ consolidate: true }, { promote: true }])('contains destructive create-and-bind options: %j', async (body) => {
+    await request(app).post('/api/admin/users/user_member/linked-emails')
+      .send({ email: 'new@example.test', ...body }).expect(409);
+    expect(binding.createAndBindAdminCredential).not.toHaveBeenCalled();
+    expectNoDataAccess();
+  });
+
+  it('keeps fresh admin creation behind authentication and an identity-bearing actor', async () => {
+    await request(app).post('/api/admin/users/user_member/linked-emails')
+      .set('X-Test-Unauthenticated', 'true').send({ email: 'new@example.test' }).expect(401);
+    await request(app).post('/api/admin/users/user_member/linked-emails')
+      .set('X-Test-Admin-Access-Mechanism', 'static_admin_api_key')
+      .send({ email: 'new@example.test' }).expect(403);
+    expect(binding.createAndBindAdminCredential).not.toHaveBeenCalled();
+    expectNoDataAccess();
+  });
 
   it('refuses a member attempt to combine existing accounts without issuing a token or email', async () => {
     mocks.query.mockImplementation(async (sql: string) => {

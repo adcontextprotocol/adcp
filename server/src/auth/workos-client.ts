@@ -13,6 +13,7 @@ let _ownerlessPromotionWorkos: WorkOS | null = null;
 let _pipesWorkos: WorkOS | null = null;
 let _authorizationObserverWorkos: WorkOS | null = null;
 let _authorizationEnforcementWorkos: WorkOS | null = null;
+let _adminCredentialMutationWorkos: WorkOS | null = null;
 let _clientId = '';
 
 /** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
@@ -24,6 +25,21 @@ export function getWorkos(): WorkOS {
     _workos = new WorkOS(process.env.WORKOS_API_KEY, { clientId: _clientId });
   }
   return _workos;
+}
+
+/** One attempt only: a timed-out admin mutation requires durable adjudication. */
+export function getAdminCredentialMutationWorkos(): WorkOS {
+  if (!_adminCredentialMutationWorkos) {
+    if (!process.env.WORKOS_API_KEY || !process.env.WORKOS_CLIENT_ID) {
+      throw new Error('WorkOS configuration is required');
+    }
+    _adminCredentialMutationWorkos = new WorkOS(process.env.WORKOS_API_KEY, {
+      clientId: process.env.WORKOS_CLIENT_ID,
+      timeout: 10_000,
+      maxRetries: 0,
+    });
+  }
+  return _adminCredentialMutationWorkos;
 }
 
 /** Returns a WorkOS client with a shorter timeout for DB-lock-held promotion flows. */
