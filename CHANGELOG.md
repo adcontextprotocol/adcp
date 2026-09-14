@@ -725,6 +725,28 @@
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
 
+## 3.1.23
+
+### Patch Changes
+
+- 0bcfe47: `canonical_format_validate_input` no longer lists `comply_test_controller` in `required_tools`. The storyboard runner's per-storyboard gate admits a storyboard when any listed tool is present, so any agent exposing the (universal) test controller was selected and then failed all 17 steps on the missing `validate_input`. Agents without `validate_input` now receive a coverage-gap skip; agents implementing it run unchanged. Same shape as #6774 (Refs #7404, bug 1 only).
+- 8a933df: Correct the v3.1.22 release record to include the request-aware Context Match
+  cache partitioning from #7397 alongside the single-user privacy protections
+  from #7396, document the emergency privacy/security notice exception and
+  immutable artifacts, and direct operators with unsafe caches to bypass caching
+  until both request and trusted provider-evaluation contexts are isolated, while
+  keeping the additional `cache_namespace` conformance contract in 3.2.
+- 0bcfe47: Fix the four compliance storyboards present on the 3.1 maintenance line that incorrectly included `get_adcp_capabilities` in `required_tools` alongside capability-specific tools: `billing_gate_dispatch`, `billing_out_of_band`, `canonical_supported_formats`, and `evaluator_auth`.
+
+  Removing the universal capability-discovery tool prevents agents without the storyboard's capability-specific tools from entering through the per-storyboard OR gate. This backports the applicable subset of #6774; the other 13 storyboards changed on main do not exist on this line.
+
+## 3.1.22
+
+### Patch Changes
+
+- 5739f1b: Align legacy format asset declarations with the canonical asset union and guard both individual and repeatable-group variants against future drift.
+- 8244f16: Restrict Context Match embeddings derived from non-public single-user content and require privacy reduction for free-form context signals.
+
 ## 3.1.21
 
 ### Patch Changes
