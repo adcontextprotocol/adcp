@@ -91,6 +91,33 @@ phases:
           - check: field_present
             path: "media_buy.reporting_delivery.automated_recovery_window_seconds"
             description: "The buyer's status deadline is expected_at plus this advertised window"
+
+  - id: escalation_declaration
+    title: "Bind an advertised escalation clock to a reachable party"
+    depends_on: []
+    requires_capability:
+      path: "media_buy.reporting_delivery.consumer_mismatch_escalation_seconds"
+      present: true
+    narrative: |
+      Both fields are optional: a seller may publish a contact without
+      committing to a clock, and publishing neither is conformant. Declaring
+      the clock is what requires the contact, so this phase runs only for a
+      seller that declared it.
+
+    steps:
+      - id: read_escalation_declaration
+        title: "Read the escalation commitment and its contact"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "reporting_consumer_status--get_escalation_capabilities"
+        validations:
+          - check: response_schema
+            description: "Capability response satisfies the reporting escalation conditionals"
           - check: field_present
             path: "media_buy.reporting_delivery.consumer_mismatch_escalation_seconds"
             description: "The seller publishes the interval after which a mismatch must escalate"
@@ -599,6 +626,20 @@ phases:
             value: "consumer-status.revision-received.0001"
             description: "The issue names the exact statement that caused it"
 
+  - id: mismatch_escalation
+    title: "Escalate an unattended mismatch while its grace window is still open"
+    depends_on: ["revision_recovery"]
+    requires_capability:
+      path: "media_buy.reporting_delivery.consumer_mismatch_escalation_seconds"
+      present: true
+    narrative: |
+      A seller that publishes an escalation clock commits to it: once the open
+      issue has been open that long, measured from its own opened_at, it must
+      be action_required with a contact_ recommended_action. That boundary
+      takes precedence over the stale-received grace window, so this phase
+      crosses it while the grace deadline is still in the future.
+
+    steps:
       - id: advance_past_mismatch_escalation
         title: "Advance past the advertised escalation window"
         task: comply_test_controller
@@ -673,6 +714,16 @@ phases:
             context_key: "consumer_mismatch_issue_id"
             description: "One issue_id ages as one work item instead of two"
 
+  - id: stale_received_grace_close
+    title: "Close the stale-received grace window and reject a forked write"
+    depends_on: ["revision_recovery"]
+    narrative: |
+      The grace deadline is bounded and anchored to the first supersession, so
+      repeating the restatement only moves the clock. Past the deadline the
+      mismatch is action_required on its own account, and the buyer-attributed
+      chain is still only replaceable through exact-leaf supersession.
+
+    steps:
       - id: advance_past_restatement_grace
         title: "Advance past the stale-received grace deadline"
         task: comply_test_controller
@@ -909,6 +960,8 @@ phases:
             path: "health"
           - name: consumer_silence_action_required_count
             path: "obligation_counts.action_required"
+          - name: consumer_silence_issues
+            path: "issues"
         sample_request:
           account:
             account_id: "$context.consumer_silence_account_id"
@@ -923,14 +976,11 @@ phases:
             path: "obligation_counts.consumer_status_pending"
             value: 1
             description: "The caller's own silence past the deadline is counted"
-          - check: array_length
-            path: "issues"
-            value: 1
-            description: "Silence adds no issue of its own"
-          - check: field_value
-            path: "issues[0].code"
+          - check: field_contains
+            path: "issues[*].code"
             value: "REPORT_OVERDUE"
-            description: "The one open issue is the seller's own overdue report, not a consumer mismatch"
+            description: "The seller's own overdue report is what degrades this period"
+
 
       - id: sync_silence_clearing_status
         title: "Post a status for the silent period"
@@ -984,10 +1034,10 @@ phases:
             path: "obligation_counts.consumer_status_pending"
             value: 0
             description: "Any unsuperseded leaf clears the count, whatever that leaf says"
-          - check: array_length
+          - check: field_equals_context
             path: "issues"
-            value: 1
-            description: "A negative status that agrees with an overdue seller adds no issue"
+            context_key: "consumer_silence_issues"
+            description: "A negative status that corroborates an overdue seller adds and removes no issue"
           - check: field_equals_context
             path: "health"
             context_key: "consumer_silence_health"
@@ -1392,3 +1442,31 @@ phases:
             path: "periods[0].production_status"
             value: "published"
             description: "Buyer disagreement never rewrites the seller's own production evidence"
+
+      - id: read_content_mismatch_revision_view
+        title: "Read the same chain through the exact-revision view"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.consumer_content_account_id"
+          view: "revision"
+          reporting_revision_id: "$context.consumer_content_revision_id"
+        validations:
+          - check: response_schema
+            description: "Revision readback is schema-valid"
+          - check: field_equals_context
+            path: "revision.reporting_revision_id"
+            context_key: "consumer_content_revision_id"
+            description: "The exact-revision view resolves the requested revision"
+          - check: field_contains
+            path: "consumer_statuses[*].reporting_revision_id"
+            value: "$context.consumer_content_revision_id"
+            description: "Consumer status is required in both views, and every entry names the requested revision"
+          - check: field_contains
+            path: "consumer_statuses[*].reporting_status_id"
+            value: "consumer-status.content-mismatch.0006"
+            description: "The caller's current leaf is readable alongside the exact content it describes"

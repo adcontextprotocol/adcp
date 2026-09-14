@@ -43,10 +43,13 @@ re-reading the entire retained history.
 ledger targets. The hard parts of a seller-side Reliable Reporting
 implementation are reusable and worth taking from a library rather than
 rewriting: half-open period generation over IANA civil days including both DST
-transitions, `expected_at` derivation from `schedule.delivery_sla`, the fixed
-RFC 8785/JCS revision-binding digest, the flat pagination union with a pinned
-`ledger_snapshot_id` and a gapless `changes_checkpoint`, the five health states
-and their issue invariants, and the coverage aggregation rules.
+transitions, ISO 8601 duration resolution for `schedule.delivery_sla` and the
+`expected_at` it implies, the fixed RFC 8785/JCS revision-binding digest, the
+flat pagination union with a pinned `ledger_snapshot_id` and a gapless
+`changes_checkpoint`, the five health states and their issue invariants, and
+the coverage aggregation rules. (The reference training agent recognizes only
+the two `delivery_sla` spellings its own offerings advertise; a general
+implementation needs a real duration parser.)
 
 What is *not* safely reusable across contract versions is the consumer-status
 projection, because its hardening landed after the first published ledger
