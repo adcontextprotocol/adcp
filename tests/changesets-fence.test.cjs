@@ -787,6 +787,11 @@ test("mutation and reconciliation mint separate tokens after setup, including fa
   );
   assert.match(step("Mint Changesets reconciliation token").if, /^always\(\)/);
   assert.equal(
+    step("Mint Changesets reconciliation token")["timeout-minutes"],
+    2,
+  );
+  assert.equal(step("Mint Changesets mutation token")["timeout-minutes"], 2);
+  assert.equal(
     step("Reconcile Changesets transaction").env.GH_TOKEN,
     "${{ steps.reconciliation-token.outputs.token }}",
   );

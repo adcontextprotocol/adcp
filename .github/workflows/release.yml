@@ -191,6 +191,7 @@ jobs:
 
       - name: Mint Changesets mutation token
         id: changesets-token
+        timeout-minutes: 2
         if: steps.release-artifacts.outputs.has_release_artifacts == 'false'
         uses: actions/create-github-app-token@v3.2.0
         with:
@@ -262,6 +263,7 @@ jobs:
 
       - name: Mint Changesets reconciliation token
         id: reconciliation-token
+        timeout-minutes: 2
         if: always() && steps.release-artifacts.outputs.has_release_artifacts == 'false' && steps.changesets-token.outcome == 'success'
         uses: actions/create-github-app-token@v3.2.0
         with:

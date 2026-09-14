@@ -236,7 +236,11 @@ only prepares release PRs; it has no independent tag/publish command. Missing
 signatures must be fixed through review, never regenerated during publication.
 
 Release runs use `queue: max` without in-progress cancellation. GitHub permits
-100 pending runs; this is not an unlimited or guaranteed delivery queue. Old
+100 pending runs; this is not an unlimited or guaranteed delivery queue.
+See [GitHub's concurrency contract](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+The exact queue/cancellation combination is regression-tested; older actionlint
+parsers require only the specific unsupported `queue`-key diagnostic exception.
+Old
 runs fail their current-branch fence. A later push with a stranded committed
 version fails explicitly, including an app-only push, and must use the recovery
 procedure below before Changesets advances the package again.
@@ -266,7 +270,8 @@ Ready transition and exact-head review.
 
 Changesets receives a fresh App token after setup, with preparation and action
 bounds of 10 and 40 minutes. An `always()` step mints a separate reconciliation
-token. Git recovery uses that token through temporary command-scoped headers,
+token. Each token mint has a two-minute bound so a hung request cannot prevent
+finalization. Git recovery uses that token through temporary command-scoped headers,
 never an expired checkout credential. Failed refresh leaves explicit unverified
 reconciliation evidence; it does not fall back to stale credentials.
 
