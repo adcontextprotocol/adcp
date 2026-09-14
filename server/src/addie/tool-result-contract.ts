@@ -310,6 +310,21 @@ function classifyMutationResult(toolName: string, text: string): ToolResultStatu
   return 'error';
 }
 
+/** Classify adapter-owned receipt headers, never failure prose inside results. */
+function classifyWorkflowFailure(toolName: string, text: string): ToolResultStatus | null {
+  const firstLine = text.trim().split(/\r?\n/, 1)[0] || '';
+  if (['call_adcp_task', 'get_adcp_capabilities', 'ask_about_adcp_task'].includes(toolName)
+    && /^(?:\*\*Task failed:\*\*|\*\*Error:\*\*)/.test(firstLine)) {
+    return 'error';
+  }
+  if (toolName === 'list_github_issues' || toolName === 'get_github_issue') {
+    if (firstLine.startsWith('GitHub rejected the request ')) return 'invalid_input';
+    if (firstLine.startsWith('GitHub authentication is unavailable ')) return 'access_denied';
+    if (firstLine.startsWith('GitHub rate limit hit ')) return 'recoverable_error';
+  }
+  return null;
+}
+
 function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
   const boundedModel = truncate(
     raw.trim() ? raw : 'The tool returned no content.',
@@ -331,8 +346,9 @@ function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
 
   const classified = classifySearchResult(toolName, raw);
   const mutationStatus = classifyMutationResult(toolName, raw);
-  const status = mutationStatus ?? classified?.status ?? (legacyResultIndicatesFailure(raw) ? 'error' : 'ok');
-  const source = classified || mutationStatus ? 'classified' : 'legacy';
+  const workflowFailure = classifyWorkflowFailure(toolName, raw);
+  const status = mutationStatus ?? workflowFailure ?? classified?.status ?? (legacyResultIndicatesFailure(raw) ? 'error' : 'ok');
+  const source = classified || mutationStatus || workflowFailure ? 'classified' : 'legacy';
   const boundedSummary = truncate(
     classified?.summary || STATUS_FALLBACKS[status],
     MAX_TOOL_USER_SUMMARY_LENGTH,

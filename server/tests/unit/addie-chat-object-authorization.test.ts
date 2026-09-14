@@ -407,6 +407,42 @@ describe('Addie chat conversation object authorization', () => {
     expect(resolved?.module_id).toBe('A2');
   });
 
+  it.each([
+    ['/', 'learning'], ['/stream', 'learning'],
+    ['/', 'assessment'], ['/stream', 'assessment'],
+  ])('passes recovered certification context through %s for %s', async (endpoint, kind) => {
+    const externalId = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
+    mocks.memberContext = { is_mapped: true, is_member: false, slack_linked: false,
+      workos_user: { workos_user_id: 'user_attacker' } };
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web', external_id: externalId,
+      user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getProgress.mockResolvedValue(kind === 'learning'
+      ? [{ module_id: 'A2B', status: 'in_progress', addie_thread_id: 'older-chat' }]
+      : []);
+    mocks.getThreadMessages.mockResolvedValue([{
+      role: 'assistant', delivery_status: 'completed', content: 'Continue the assessment.',
+      tool_calls: [{ name: kind === 'learning' ? 'get_learner_progress' : 'test_out_modules',
+        input: kind === 'learning' ? {} : { module_ids: ['A1', 'A2', 'A3'] },
+        result: 'Handled tool result', is_error: false, result_status: 'ok' }],
+    }]);
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn');
+    try {
+      const response = await request(mountChatRouter()).post(endpoint).send({
+        message: 'Here are my answers', conversation_id: externalId,
+      });
+      expect(response.status).toBe(200);
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ activeCertificationKind: kind }));
+      if (endpoint === '/stream') {
+        expect(mocks.processMessageStream).toHaveBeenCalledWith(
+          expect.any(String), expect.any(Array), expect.any(Object),
+          expect.objectContaining({ costScope: expect.objectContaining({ certificationReserveUsd: 3 }) }),
+        );
+      }
+    } finally { prepare.mockRestore(); }
+  });
+
   it('attributes capstone completion to the attempt module instead of stale thread context', async () => {
     const attemptId = '36ad6e65-7a1c-45bb-ab7f-86b05ae3b718';
     mocks.getAttemptForUser.mockResolvedValue({

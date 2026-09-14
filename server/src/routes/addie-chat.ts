@@ -27,11 +27,11 @@ import { parseWebChatModelPreference, webChatModelInfo, WebChatModelPreferenceEr
 import type { CostEvent } from "../addie/claude-cost-tracker.js";
 import { createProductionRouter } from "../addie/router-runtime.js";
 import {
-  classifyActiveCertificationProgress,
   selectBoundedRoutedToolSets,
   type ActiveCertificationKind,
   type SponsoredIntelligenceContextKind,
 } from "../addie/slack-tool-selection.js";
+import { resolveWebCertificationContext } from "../addie/web-certification-context.js";
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
 import {
   blockCheckpointedToolReplays,
@@ -1328,7 +1328,7 @@ export function createAddieChatRouter(options?: {
         siAgents,
         certificationProgress,
         isAAOAdmin,
-        hasThreadCertificationContext,
+        certificationModuleContext,
       } = await prepareRequest(
         inputValidation.sanitized,
         req.user?.id,
@@ -1337,16 +1337,12 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null
       );
-      const tieredAccess = buildTieredAccess(
-        memberTools,
-        isAuth,
-        hasThreadCertificationContext,
+      const certificationContext = resolveWebCertificationContext(
+        certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
-      const activeCertificationKind = classifyActiveCertificationProgress(
-        certificationProgress.filter((entry) =>
-          entry.addie_thread_id === externalId || entry.addie_thread_id === thread.thread_id,
-        ),
-      );
+      const activeCertificationKind = isAuth ? certificationContext.kind : null;
+      if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
+      const tieredAccess = buildTieredAccess(memberTools, isAuth, activeCertificationKind !== null);
       const experimentTurn = await prepareGeminiDirectTurn({
         client: activeChatClient,
         userId: req.user?.id,
@@ -1912,7 +1908,6 @@ export function createAddieChatRouter(options?: {
         requestTools: memberTools,
         memberContext,
         siAgents,
-        hasThreadCertificationContext: hasThreadCertCtx,
         certificationModuleContext,
         certificationProgress,
         isAAOAdmin,
@@ -1924,12 +1919,13 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null
       );
-      const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
-      const activeCertificationKind = classifyActiveCertificationProgress(
-        certificationProgress.filter((entry) =>
-          entry.addie_thread_id === externalId || entry.addie_thread_id === thread.thread_id,
-        ),
+      const certificationContext = resolveWebCertificationContext(
+        certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
+      const activeCertificationKind = isAuth ? certificationContext.kind : null;
+      const hasThreadCertCtx = activeCertificationKind !== null;
+      if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
+      const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
       const experimentTurn = await prepareGeminiDirectTurn({
         client: activeChatClient,
         userId: req.user?.id,

@@ -43,6 +43,18 @@ function call(input: Record<string, unknown> = { id: 'abc' }): ModelToolCallCont
 describe('createAddieToolExecutor', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it.each([
+    ['list_github_issues', 'GitHub rejected the request while trying to list issues (422).', 'invalid_input'],
+    ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
+  ])('marks %s adapter failures in provider results and persisted execution receipts', async (name, raw, status) => {
+    const execute = createAddieToolExecutor([{ ...tool, name }], new Map([[name, async () => raw]]), {
+      executionMode: 'evaluation', policy: () => ({ allowed: true }),
+    });
+    const result = await execute({ ...call(), name }, 1);
+    expect(result.result).toMatchObject({ isError: true, content: raw });
+    expect(result.execution).toMatchObject({ is_error: true, normalized_result: { status } });
+  });
+
   it('executes a validated call and returns a canonical provider-neutral result', async () => {
     const handler = vi.fn().mockResolvedValue('Found the requested value.');
     const policy = vi.fn().mockReturnValue({ allowed: true });
