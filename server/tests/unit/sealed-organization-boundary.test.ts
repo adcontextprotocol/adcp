@@ -92,7 +92,7 @@ async function authenticate(authenticatedUserId = 'user_primary', canonicalUserI
 }
 
 function post() {
-  return request(app()).post('/api/conformance/token').set('Authorization', 'Bearer sealed-session-fixture');
+  return request(app()).post('/api/conformance/token').set('Cookie', 'wos-session=sealed-session-fixture');
 }
 
 beforeEach(() => {
@@ -125,6 +125,42 @@ beforeEach(() => {
 afterAll(() => {
   if (originalSecret === undefined) delete process.env.CONFORMANCE_JWT_SECRET;
   else process.env.CONFORMANCE_JWT_SECRET = originalSecret;
+});
+
+describe.each([
+  ['user_primary', 'user_linked'],
+  ['user_linked', 'user_primary'],
+])('explicit Bearer with authenticated %s attributed to %s', (authenticated, canonical) => {
+  it.each([
+    'Bearer',
+    'Bearer malformed opaque token',
+    'Bearer sealed-session-fixture',
+    'bEaReR sealed-session-fixture',
+    'bEaReR\t sealed-session-fixture',
+  ])('rejects %s before using valid cookie authority in mounted consumers', async authorization => {
+    await authenticate(authenticated, canonical);
+    const mirror = mirrorApp();
+    const responses = [
+      await post().set('Authorization', authorization).set('X-Organization-Id', ORG),
+      await request(mirror).get('/api/registry/mirror-proposals')
+        .set('Cookie', 'wos-session=sealed-session-fixture')
+        .set('Authorization', authorization).set('X-Organization-Id', ORG),
+      await request(mirror).get(`/api/registry/mirror-proposals/${PROPOSAL_ID}`)
+        .set('Cookie', 'wos-session=sealed-session-fixture')
+        .set('Authorization', authorization).set('X-Organization-Id', ORG),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(401);
+      expect(response.body).toEqual({ error: 'invalid_bearer_token' });
+    }
+    expect(mocks.boundedQuery).not.toHaveBeenCalled();
+    expect(mocks.memberships).not.toHaveBeenCalled();
+    expect(mocks.listProposals).not.toHaveBeenCalled();
+    expect(mocks.getProposal).not.toHaveBeenCalled();
+    expect(mocks.getClient).not.toHaveBeenCalled();
+    expect(mocks.isAdmin).not.toHaveBeenCalled();
+    expect(mocks.isModerator).not.toHaveBeenCalled();
+  });
 });
 
 describe.each([
@@ -305,11 +341,13 @@ describe('sealed-session organization boundary on POST /api/conformance/token', 
     expect(mocks.boundedQuery).not.toHaveBeenCalled();
   });
 
-  it.each(['header', 'query', 'body', 'org_id alias'])('rejects a conflicting %s selector before provider authorization', async location => {
+  it.each(['header', 'query', 'query organizationId', 'query org_id', 'body', 'org_id alias'])('rejects a conflicting %s selector before provider authorization', async location => {
     await authenticate();
     const pending = post();
     if (location === 'header') pending.set('X-Organization-Id', OTHER_ORG);
     if (location === 'query') pending.query({ organization_id: OTHER_ORG });
+    if (location === 'query organizationId') pending.query({ organizationId: OTHER_ORG });
+    if (location === 'query org_id') pending.query({ org_id: OTHER_ORG });
     if (location === 'body') pending.send({ organizationId: OTHER_ORG });
     if (location === 'org_id alias') pending.send({ org_id: OTHER_ORG });
     const response = await pending;

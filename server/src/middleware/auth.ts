@@ -785,7 +785,6 @@ export function invalidateSessionsForUsers(workosUserIds: string[]): void {
 class InvalidAuthorizationCredentialError extends Error {}
 export { ConflictingOrganizationSelectionError, selectedOrganizationForAuthentication } from '../auth/organization-selection.js';
 
-
 /** Hydrate a new request object; never mutate the provider object in a cache. */
 async function hydrateAuthenticatedUser(
   user: WorkOSUser, organizationId: string | null,

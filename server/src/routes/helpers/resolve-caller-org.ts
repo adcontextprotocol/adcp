@@ -21,8 +21,8 @@ import { getBearerToken, isWorkOSApiKeyFormat } from '../../middleware/api-key-f
 import {
   ConflictingOrganizationSelectionError,
   selectedOrganizationForAuthentication,
-  validateWorkOSApiKey,
-} from '../../middleware/auth.js';
+} from '../../auth/organization-selection.js';
+import { validateWorkOSApiKey } from '../../middleware/auth.js';
 import { isInvalidWorkOSJWTError, unavailableJWTKeyService, WorkOSJWTUnavailableError } from '../../auth/workos-jwt.js';
 import { getAuthorizationEnforcementWorkos } from '../../auth/workos-client.js';
 import { getOrganizationAuthorizationUserId, type OrgAuthorizationPrincipal } from '../../auth/organization-principal.js';
