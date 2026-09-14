@@ -70,6 +70,7 @@ const minimalInput = (triggeredBy: 'heartbeat' | 'owner_test') => ({
   tracks_skipped: 0,
   tracks_partial: 0,
   triggered_by: triggeredBy,
+  completeness: 'complete' as const,
   dry_run: false,
 });
 
@@ -83,7 +84,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
 
   /**
    * Contract: agent_compliance_status uses ON CONFLICT DO UPDATE (not DO NOTHING).
-   * Every recordComplianceRun call — regardless of triggered_by — overwrites the
+   * Every complete authoritative run — regardless of triggered_by — overwrites the
    * materialized status row. A future change to "pick highest-priority source" or
    * "first-write-wins" would break this test.
    */

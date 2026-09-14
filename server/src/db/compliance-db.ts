@@ -1,5 +1,5 @@
 import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
-import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
+import { heartbeatRunCompleteness, isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
 import { query, getClient, withDatabaseDeadline } from './client.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
@@ -612,14 +612,19 @@ export class ComplianceDatabase {
    * Uses a transaction to ensure run and status are consistent.
    * Returns the status transition (previous -> current) for notification logic.
    */
-  async recordComplianceRun(input: RecordComplianceRunInput): Promise<{
+  async recordComplianceRun(
+    input: RecordComplianceRunInput,
+    fenceClient?: Pick<Awaited<ReturnType<typeof getClient>>, 'query'>,
+  ): Promise<{
     run: ComplianceRun;
     statusTransition: { previous: ComplianceStatus; current: ComplianceStatus } | null;
     storyboardStatuses: StoryboardStatusEntry[];
     replayedExisting: boolean;
   }> {
-    const authoritative = isAuthoritativeComplianceRun(input);
-    const client = await getClient();
+    const heartbeat = (input.triggered_by ?? 'heartbeat') === 'heartbeat';
+    const authoritative = isAuthoritativeComplianceRun({ ...input, triggered_by: input.triggered_by ?? 'heartbeat' });
+    const pooledClient = fenceClient ? undefined : await getClient();
+    const client = fenceClient ?? pooledClient!;
 
     try {
       await client.query('BEGIN');
@@ -681,7 +686,7 @@ export class ComplianceDatabase {
           input.dry_run ?? true,
           input.notices_json ? JSON.stringify(input.notices_json) : null,
           input.refresh_operation_id ?? null,
-          input.completeness ?? 'complete',
+          heartbeat ? heartbeatRunCompleteness(input.completeness) : input.completeness ?? 'complete',
           authoritative,
           JSON.stringify(input.storyboard_statuses ?? []),
           input.provenance_json ? JSON.stringify(input.provenance_json) : null,
@@ -957,8 +962,8 @@ export class ComplianceDatabase {
       // inserting fresh results. That invalidates stale verdicts from older
       // compliance targets/cache versions while preserving partial overlay
       // semantics for single-storyboard owner retests.
-      // Uses a SAVEPOINT so a missing table (pre-migration) doesn't roll back
-      // the entire compliance run — the run and status update still commit.
+      // Legacy owner/manual writes retain their savepoint behavior. Heartbeat
+      // grades and storyboard denominators must commit or roll back together.
       if (input.replace_storyboard_statuses || input.storyboard_statuses?.length) {
         // Validate status values before sending to Postgres to surface typos
         // as clear errors instead of cryptic constraint violations inside unnest
@@ -1061,6 +1066,7 @@ export class ComplianceDatabase {
           }
           await client.query('RELEASE SAVEPOINT storyboard_upsert');
         } catch (sbErr) {
+          if (heartbeat) throw sbErr;
           await client.query('ROLLBACK TO SAVEPOINT storyboard_upsert');
           logger.warn({ err: sbErr, agentUrl: input.agent_url }, 'Storyboard status upsert failed (table may not exist yet)');
         }
@@ -1075,10 +1081,10 @@ export class ComplianceDatabase {
 
       return { run, statusTransition: transition, storyboardStatuses, replayedExisting: false };
     } catch (error) {
-      await client.query('ROLLBACK');
+      await client.query('ROLLBACK').catch(() => undefined);
       throw error;
     } finally {
-      client.release();
+      pooledClient?.release();
     }
   }
 

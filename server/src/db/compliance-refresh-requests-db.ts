@@ -94,6 +94,8 @@ export class ComplianceRefreshLeaseLostError extends Error {
 
 export interface ComplianceRefreshExecutionFence {
   isValid(): boolean;
+  /** Run persistence on the lock-owning connection: losing the fence aborts its transaction. */
+  withClient<T>(operation: (client: Awaited<ReturnType<typeof getDedicatedClient>>) => Promise<T>): Promise<T>;
   release(): Promise<void>;
 }
 
@@ -435,6 +437,12 @@ export class ComplianceRefreshRequestsDatabase {
       keepalive.unref();
       return {
         isValid: () => valid && !released,
+        withClient: async (operation) => {
+          if (!valid || released) {
+            throw Object.assign(new Error('Compliance execution fence was lost'), { code: 'execution_fence_lost' });
+          }
+          return operation(client);
+        },
         release: async () => {
           if (released) return;
           released = true;

@@ -143,6 +143,9 @@ describe('runComplianceHeartbeatJob', () => {
       lifecycle_stage: 'testing',
       overall_status: 'passing',
       headline: 'All good',
+      completeness: 'complete',
+      is_authoritative: true,
+      triggered_by: 'heartbeat',
       tracks_json: [],
       storyboard_statuses: [],
       dry_run: true,
@@ -163,6 +166,7 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.releaseExecutionFence.mockResolvedValue(undefined);
     mocks.acquireAgentExecutionFence.mockResolvedValue({
       isValid: () => true,
+      withClient: async (operation: (client: object) => Promise<unknown>) => operation({ query: vi.fn() }),
       release: mocks.releaseExecutionFence,
     });
   });
@@ -278,7 +282,7 @@ describe('runComplianceHeartbeatJob', () => {
     expect(healthFields.skipReasons.audit_only).toBe(1);
     expect(Object.values(healthFields.skipReasons).reduce((total, count) => total + count, 0))
       .toBe(healthFields.outcomes.skipped);
-    expect(mocks.recordComplianceRun).toHaveBeenCalledWith(expect.objectContaining({ completeness: 'timed_out', is_authoritative: false, dry_run: false }));
+    expect(mocks.recordComplianceRun).toHaveBeenCalledWith(expect.objectContaining({ completeness: 'timed_out', is_authoritative: false, dry_run: false }), expect.any(Object));
     expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
     expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
     expect(notifyComplianceChange).not.toHaveBeenCalled();
@@ -304,7 +308,7 @@ describe('runComplianceHeartbeatJob', () => {
     const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
     const { notifyComplianceChange, notifyVerificationChange } = await import('../../src/notifications/compliance.js');
     expect(await runComplianceHeartbeatJob({ limit: 1 })).toMatchObject({ checked: 0, skipped: 1 });
-    expect(mocks.recordComplianceRun).toHaveBeenCalledTimes(2);
+    expect(mocks.recordComplianceRun).toHaveBeenCalledTimes(failure === 'record' ? 2 : 1);
     expect(mocks.recordComplianceRun.mock.calls.every(([input]) => input.is_authoritative === false)).toBe(true);
     expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
     expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
@@ -322,6 +326,7 @@ describe('runComplianceHeartbeatJob', () => {
       },
     ]);
     mocks.comply.mockResolvedValueOnce({
+      completeness: 'complete',
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
@@ -345,6 +350,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('runs heartbeat against the selected canonical target and passes supported versions to badge fan-out', async () => {
     const complianceResult = {
+      completeness: 'complete',
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: {
@@ -405,6 +411,20 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.comply).not.toHaveBeenCalled();
   });
 
+  it('does not repeat notifications or badge decisions when persistence replays existing evidence', async () => {
+    mocks.comply.mockResolvedValueOnce({ completeness: 'complete', overall_status: 'passing',
+      summary: { headline: 'All good' }, agent_profile: { adcp_supported_versions: ['3.1'] } });
+    mocks.recordComplianceRun.mockResolvedValueOnce({ run: { id: 'existing-run' }, replayedExisting: true,
+      statusTransition: { previous: 'failing', current: 'passing' }, storyboardStatuses: [] });
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const { notifyComplianceChange, notifyVerificationChange } = await import('../../src/notifications/compliance.js');
+    expect(await runComplianceHeartbeatJob()).toMatchObject({ checked: 0, skipped: 1 });
+    expect(notifyComplianceChange).not.toHaveBeenCalled();
+    expect(notifyVerificationChange).not.toHaveBeenCalled();
+    expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
+    expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
+  });
+
   it('does not persist when the shared execution fence is lost during comply', async () => {
     let fenceValid = true;
     mocks.acquireAgentExecutionFence.mockResolvedValueOnce({
@@ -460,6 +480,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('records comparison evidence from every authoritative heartbeat', async () => {
     const complianceResult = {
+      completeness: 'complete',
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
@@ -490,6 +511,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('keeps public compliance successful when shadow persistence fails', async () => {
     mocks.comply.mockResolvedValueOnce({
+      completeness: 'complete',
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
@@ -512,6 +534,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('flushes every comparison write after public processing', async () => {
     const complianceResult = {
+      completeness: 'complete',
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
@@ -545,6 +568,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('keeps public compliance successful when retention cleanup fails', async () => {
     mocks.comply.mockResolvedValueOnce({
+      completeness: 'complete',
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
@@ -592,6 +616,7 @@ describe('runComplianceHeartbeatJob', () => {
           message: 'The saved Basic auth credentials for this agent must include a non-empty username.',
         }],
       }),
+      expect.any(Object),
     );
   });
 
