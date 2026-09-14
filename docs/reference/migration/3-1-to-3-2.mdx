@@ -8,11 +8,12 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 release c
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in release candidate.** RC.1 is the current signed protocol
+**3.2 is in release candidate.** RC.2 is the current signed protocol
 checkpoint. TypeScript `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and
-Go `adcp/v3@v3.2.1` embed it exactly; Python and Go higher-level coverage
-remains role-dependent. Keep production traffic pinned to `"3.1"`
-while validating an exact 3.2 checkpoint in staging.
+Go `adcp/v3@v3.2.1` embed RC.1 exactly; retain that wire pin when using those
+packages, or use the signed RC.2 artifacts directly for exact RC.2 testing.
+Python and Go higher-level coverage remains role-dependent. Keep production
+traffic pinned to `"3.1"` while validating an exact 3.2 checkpoint in staging.
 </Warning>
 
 <Warning>
