@@ -1,0 +1,440 @@
+id: media_buy_seller/refine_frequency_cap_negotiation
+version: "1.0.0"
+title: "Seller handles frequency-cap negotiation through proposal refinement"
+category: media_buy_seller
+summary: "Verifies that a seller supporting aggregate_frequency_capping and typed proposal negotiation correctly seeds proposals carrying a root frequency cap, replaces the cap through criteria.media_buy_frequency_cap, clears it through remove_media_buy_frequency_cap, and returns unable when the revised product mix cannot share the requested cap."
+track: media_buy
+
+required_tools:
+  - request_proposals
+  - refine_proposals
+
+requires_capability:
+  all:
+    - path: media_buy.aggregate_frequency_capping
+      present: true
+    - path: media_buy.proposal_refinement.supported_dimensions
+      present: true
+
+narrative: |
+  AdCP 3.2 introduces shared MediaBuy-level frequency caps alongside typed
+  proposal negotiation. A buyer requests proposals with
+  criteria.media_buy_frequency_cap to seed a root cap. The seller returns
+  proposals whose commercial_terms.frequency_cap echoes the bound value;
+  every product in the mix must participate in the shared counter.
+
+  During refinement the buyer has two explicit frequency-cap controls:
+
+  1. criteria.media_buy_frequency_cap — replaces the inherited root cap with
+     a new value. All products in the resulting mix must still participate.
+  2. remove_media_buy_frequency_cap: true — clears the inherited root cap
+     entirely. This is the only way to clear it; omitting it inherits.
+
+  The two controls are mutually exclusive: the proposal-refinement schema
+  rejects a request carrying both.
+
+  When a refinement includes a product that does not declare
+  media_buy_support.frequency_cap and the resulting proposal would still
+  carry a root cap, the seller MUST return outcome unable with
+  reason_code constraint_unsatisfiable and unsatisfied_constraints
+  echoing media_buy_frequency_cap. The same applies when a replacement cap
+  exceeds a participating product's frequency_cap_constraints.
+
+  This storyboard exercises:
+  1. Seeding proposals with a root cap via request_proposals criteria.
+  2. Replacing the cap on a revision.
+  3. Clearing the cap on a revision.
+  4. Unable outcome for an incompatible product mix.
+  5. Unable outcome for a cap exceeding product constraints.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+    - frequency_capping
+  examples:
+    - "Full-service publisher with aggregate frequency capping and typed negotiation"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares both aggregate_frequency_capping and
+    proposal_refinement.supported_dimensions. Fixtures include
+    frequency-cap-participating products and one non-participating product.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  products:
+    - product_id: "fcap_video_q4"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+    - product_id: "fcap_display_q4"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      media_buy_support:
+        frequency_cap: true
+        frequency_cap_constraints:
+          supported_per_units: ["individuals"]
+          max_impressions_constraints:
+            minimum: 1
+            maximum: 10
+          window_constraints:
+            - unit: "campaign"
+              allowed_intervals: [1]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+    - product_id: "no_fcap_native_q4"
+      delivery_type: "guaranteed"
+      channels: ["native"]
+      format_options:
+        - format_option_id: "native_article"
+          format_kind: "native"
+  pricing_options:
+    - product_id: "fcap_video_q4"
+      pricing_option_id: "cpm_video"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 28.0
+    - product_id: "fcap_display_q4"
+      pricing_option_id: "cpm_display"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+    - product_id: "no_fcap_native_q4"
+      pricing_option_id: "cpm_native"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 18.0
+
+phases:
+  - id: capability_discovery
+    title: "Discover frequency-cap and typed-negotiation capabilities"
+    narrative: |
+      Confirm the seller declares both aggregate_frequency_capping and
+      proposal_refinement.supported_dimensions. Both are required for
+      frequency-cap-aware proposal negotiation.
+
+    steps:
+      - id: get_capabilities
+        title: "Check capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring aggregate_frequency_capping and
+          proposal_refinement with supported_dimensions.
+        sample_request:
+          context:
+            correlation_id: "fcap_negotiation--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "media_buy.aggregate_frequency_capping"
+            description: "Seller declares aggregate frequency capping"
+          - check: field_present
+            path: "media_buy.proposal_refinement.supported_dimensions"
+            description: "Seller declares typed negotiation dimensions"
+
+  - id: account_setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#fcap_negotiation_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: seed_proposals_with_cap
+    title: "Seed proposals carrying a root frequency cap"
+    narrative: |
+      Request proposals with criteria.media_buy_frequency_cap and
+      criteria.required_media_buy_support. The seller must return proposals
+      whose commercial_terms.frequency_cap echoes the requested cap. Every
+      product in the returned mix must participate in the shared counter.
+
+    steps:
+      - id: request_capped_proposals
+        title: "Request proposals with a root frequency cap"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        expected: |
+          Return proposals with commercial_terms.frequency_cap matching the
+          requested cap. Products in the proposal must declare
+          media_buy_support.frequency_cap: true.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#fcap_negotiation_seed_proposals"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "Premium video and display for Acme Outdoor Q4 campaign. Adults 25-54, US. $60K budget."
+          criteria:
+            media_buy_frequency_cap:
+              max_impressions: 3
+              per: "individuals"
+              window:
+                interval: 1
+                unit: "campaign"
+            required_media_buy_support:
+              frequency_cap: true
+
+        context_outputs:
+          - path: "proposals[0].proposal_id"
+            key: "capped_proposal_id"
+          - path: "proposals[0].terms_digest"
+            key: "capped_terms_digest"
+
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json schema"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "Response includes at least one proposal"
+          - check: field_present
+            path: "proposals[0].commercial_terms.frequency_cap"
+            description: "Proposal carries the root frequency cap in commercial terms"
+
+  - id: replace_root_cap
+    title: "Replace the root cap via criteria.media_buy_frequency_cap"
+    narrative: |
+      Send a revision with criteria.media_buy_frequency_cap carrying a
+      different cap value. The seller returns a revised draft whose
+      commercial_terms.frequency_cap reflects the replacement. The inherited
+      cap from the source proposal is overridden.
+
+    steps:
+      - id: revise_replace_cap
+        title: "Replace the root frequency cap"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised with a draft whose
+          commercial_terms.frequency_cap matches the replacement value.
+          parent_proposal_id equals the source.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#fcap_negotiation_replace_cap"
+          refinements:
+            - proposal_id: "$context.capped_proposal_id"
+              action: "revise"
+              criteria:
+                media_buy_frequency_cap:
+                  max_impressions: 5
+                  per: "individuals"
+                  window:
+                    interval: 1
+                    unit: "campaign"
+              ask: "Relax the frequency cap to 5 impressions per user for the campaign."
+
+        context_outputs:
+          - path: "results[0].proposals[0].proposal_id"
+            key: "replaced_cap_proposal_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "revised"
+            description: "Outcome is revised when replacement cap is supportable"
+          - check: field_present
+            path: "results[0].proposals[0].commercial_terms.frequency_cap"
+            description: "Revised draft carries the replacement frequency cap"
+          - check: field_value
+            path: "results[0].proposals[0].parent_proposal_id"
+            value: "$context.capped_proposal_id"
+            description: "Lineage preserved through parent_proposal_id"
+
+  - id: clear_root_cap
+    title: "Clear the root cap via remove_media_buy_frequency_cap"
+    narrative: |
+      Send a revision with remove_media_buy_frequency_cap: true. Because
+      omitting criteria.media_buy_frequency_cap inherits the source cap,
+      clearing it requires this explicit flag. The seller returns a revised
+      draft whose commercial_terms does not carry frequency_cap.
+
+    steps:
+      - id: revise_clear_cap
+        title: "Clear the inherited root frequency cap"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised with a draft whose commercial_terms does
+          not carry frequency_cap. parent_proposal_id equals the source.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#fcap_negotiation_clear_cap"
+          refinements:
+            - proposal_id: "$context.capped_proposal_id"
+              action: "revise"
+              remove_media_buy_frequency_cap: true
+              ask: "Remove the frequency cap; the creative strategy changed and reach is unrestricted."
+
+        context_outputs:
+          - path: "results[0].proposals[0].proposal_id"
+            key: "cleared_cap_proposal_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "revised"
+            description: "Outcome is revised when clearing the cap"
+          - check: field_absent
+            path: "results[0].proposals[0].commercial_terms.frequency_cap"
+            description: "Revised draft does not carry a frequency cap"
+          - check: field_value
+            path: "results[0].proposals[0].parent_proposal_id"
+            value: "$context.capped_proposal_id"
+            description: "Lineage preserved through parent_proposal_id"
+
+  - id: unable_incompatible_product
+    title: "Unable — non-participating product with inherited cap"
+    narrative: |
+      Send a revision that includes a product without
+      media_buy_support.frequency_cap while the source proposal carries a
+      root cap. Because the inherited cap requires every product in the mix
+      to participate in the shared counter, the seller must return unable
+      with reason_code constraint_unsatisfiable and unsatisfied_constraints
+      echoing media_buy_frequency_cap.
+
+    steps:
+      - id: revise_include_non_participating
+        title: "Include a non-participating product under an inherited cap"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome unable with reason_code constraint_unsatisfiable
+          and unsatisfied_constraints including media_buy_frequency_cap.
+          No proposals are returned for a fully unable result.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#fcap_negotiation_unable_product"
+          refinements:
+            - proposal_id: "$context.capped_proposal_id"
+              action: "revise"
+              product_changes:
+                no_fcap_native_q4: "include"
+              ask: "Add native inventory to the capped buy."
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "unable"
+            description: "Outcome is unable when product mix is incompatible"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "constraint_unsatisfiable"
+            description: "reason_code identifies the constraint failure"
+          - check: field_contains
+            path: "results[0].unsatisfied_constraints"
+            value: "media_buy_frequency_cap"
+            description: "unsatisfied_constraints echoes media_buy_frequency_cap"
+
+  - id: unable_exceeds_product_constraints
+    title: "Unable — replacement cap exceeds product constraints"
+    narrative: |
+      Send a revision with criteria.media_buy_frequency_cap requesting a
+      max_impressions value that exceeds a participating product's
+      frequency_cap_constraints.max_impressions_constraints.maximum. The
+      seller must return unable with unsatisfied_constraints echoing
+      media_buy_frequency_cap.
+
+    steps:
+      - id: revise_exceed_constraints
+        title: "Request a cap beyond product constraints"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome unable with reason_code constraint_unsatisfiable
+          and unsatisfied_constraints including media_buy_frequency_cap.
+          The requested max_impressions 50 exceeds the fixture maximum of 10.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#fcap_negotiation_unable_exceeds"
+          refinements:
+            - proposal_id: "$context.capped_proposal_id"
+              action: "revise"
+              criteria:
+                media_buy_frequency_cap:
+                  max_impressions: 50
+                  per: "individuals"
+                  window:
+                    interval: 1
+                    unit: "campaign"
+              ask: "Relax the frequency cap to 50 impressions."
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "unable"
+            description: "Outcome is unable when cap exceeds product constraints"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "constraint_unsatisfiable"
+            description: "reason_code identifies the constraint failure"
+          - check: field_contains
+            path: "results[0].unsatisfied_constraints"
+            value: "media_buy_frequency_cap"
+            description: "unsatisfied_constraints echoes media_buy_frequency_cap"
