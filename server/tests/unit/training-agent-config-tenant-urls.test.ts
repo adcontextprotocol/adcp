@@ -94,4 +94,15 @@ describe('formatTenantBlock', () => {
     const creativeLine = lines.find(l => l.includes(`${BASE}/creative/mcp`));
     expect(creativeLine).not.toContain('si_initiate_session');
   });
+
+  it('handles a tenant with no tools in TOOL_CATALOG gracefully', () => {
+    const block = formatTenantBlock(
+      tenantUrlsForModule(['creative', 'unknown-tenant'], BASE),
+    );
+    // Should still produce a valid block with the primary URL
+    expect(block).toContain(`agent_url (primary): "${BASE}/creative/mcp"`);
+    expect(block).toContain('Tool routing:');
+    // Creative tools should still appear
+    expect(block).toContain('sync_creatives');
+  });
 });
