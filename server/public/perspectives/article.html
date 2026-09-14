@@ -1110,7 +1110,7 @@
               ],
               ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
               ALLOW_DATA_ATTR: false,
-              ALLOWED_URI_REGEXP: /^(?:https:|\/(?!\/)|#)/i
+              ALLOWED_URI_REGEXP: /^(?:https?:|\/(?!\/)|#)/i
             });
           } else if (document.getElementById('mainContent').dataset.serverRendered !== 'true') {
             document.getElementById('articleContent').textContent = 'Article content is temporarily unavailable.';
