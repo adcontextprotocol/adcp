@@ -1,5 +1,5 @@
 id: webhook_emission
-version: "1.4.0"
+version: "1.4.1"
 title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency + sync silence)"
 category: core
 summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, avoid duplicate webhook side effects on request replay, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Sellers MUST NOT emit task webhooks for inline terminal responses; any future sync-completion notification mode would be explicit and capability-advertised. Graded by a runner hosting a webhook receiver during storyboard execution."
@@ -409,6 +409,9 @@ phases:
       Runners skip this phase unless the agent exposes `get_products` and
       advertises `media_buy.buying_modes` including `"wholesale"`.
     optional: true
+    requires_capability:
+      path: "media_buy.buying_modes"
+      contains: "wholesale"
     branch_set:
       id: synchronous_completion_handled
       semantics: any_of
@@ -482,6 +485,9 @@ phases:
       only as a structured runtime rejection of a schema-valid request; the
       payload is not a malformed JSON Schema instance.
     optional: true
+    requires_capability:
+      path: "media_buy.buying_modes"
+      contains: "wholesale"
     branch_set:
       id: synchronous_completion_handled
       semantics: any_of
@@ -529,6 +535,9 @@ phases:
       it either returns a terminal synchronous get_products response without a
       task_id or rejects the schema-valid request with a structured runtime
       error. A Submitted envelope satisfies neither branch.
+    requires_capability:
+      path: "media_buy.buying_modes"
+      contains: "wholesale"
 
     steps:
       - id: assert_synchronous_completion_handled
