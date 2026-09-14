@@ -46,8 +46,8 @@ describe('production Slack mutation authority wiring', () => {
       },
     };
     const options = slackMutationAuthorityOptions('U_ACTOR', staleMemberContext as never);
-    const revalidate = await options.captureSideEffectAuthority!({
-      mutationToolNames: ['create_payment_link'],
+    const revalidate = await options.captureToolAuthority!({
+      authorityToolNames: ['create_payment_link'],
     });
 
     expect(mocks.epoch).not.toHaveBeenCalled();
@@ -70,8 +70,8 @@ describe('production Slack mutation authority wiring', () => {
         email: 'breakglass@example.test',
       },
     } as never);
-    const revalidate = await options.captureSideEffectAuthority!({
-      mutationToolNames: ['create_payment_link'],
+    const revalidate = await options.captureToolAuthority!({
+      authorityToolNames: ['create_payment_link'],
     });
 
     await expect(revalidate!({ toolName: 'create_payment_link', parameters: {} }))

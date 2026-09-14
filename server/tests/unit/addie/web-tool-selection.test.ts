@@ -46,9 +46,10 @@ async function select(
   isAAOAdmin = false,
   requestTools = { tools, handlers },
   globalToolNames: string[] = pairedGlobalToolNames,
+  message = 'Test message',
 ) {
   return selectRoutedWebTools({
-    message: 'Test message',
+    message,
     memberContext: null,
     threadId: 'thread-1',
     isAAOAdmin,
@@ -60,6 +61,18 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
+  it.each(['list_escalations', 'resolve_escalation'])(
+    'rejects an explicit non-admin %s request before routing',
+    async (toolName) => {
+      const router = routerFor(['admin_escalations']);
+
+      await expect(select(router, false, { tools: [], handlers: new Map() }, [], toolName))
+        .rejects.toMatchObject({ code: 'platform_admin_permission_denied', statusCode: 403 });
+      expect(router.quickMatch).not.toHaveBeenCalled();
+      expect(router.route).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['admin_escalations', true, ['list_escalations', 'resolve_escalation']],
     ['agent_storyboards', false, ['recommend_storyboards', 'get_storyboard_detail', 'run_storyboard', 'run_storyboard_step']],

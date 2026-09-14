@@ -63,7 +63,7 @@ describe('Addie exact-credential mutation authority', () => {
   ] as const)('%s', async (_label, canonical, credential, allowed) => {
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: canonical, authWorkosUserId: credential, email: `${credential}@example.test` },
-      platformAdminMutationTools: ['resolve_escalation'],
+      platformAdminTools: ['resolve_escalation'],
     });
 
     await expect(revalidateAddieMutationAuthority(snapshot, 'resolve_escalation'))
@@ -76,6 +76,25 @@ describe('Addie exact-credential mutation authority', () => {
       authWorkosUserId: credential,
       email: `${credential}@example.test`,
     });
+  });
+
+  it.each([
+    ['does not inherit canonical privilege', 'canonical_admin', 'credential_member', false],
+    ['does not lose authenticated privilege', 'canonical_member', 'credential_admin', true],
+  ] as const)('sensitive read %s', async (_label, canonical, credential, allowed) => {
+    const snapshot = await captureAddieMutationAuthority({
+      principal: { id: canonical, authWorkosUserId: credential, email: `${credential}@example.test` },
+      platformAdminTools: ['list_escalations'],
+    });
+
+    await expect(revalidateAddieMutationAuthority(snapshot, 'list_escalations'))
+      .resolves.toEqual(allowed
+        ? { allowed: true }
+        : { allowed: false, status: 'access_denied' });
+    expect(mocks.isAdmin).toHaveBeenCalledWith(expect.objectContaining({
+      id: credential,
+      authWorkosUserId: credential,
+    }));
   });
 
   it.each([
@@ -120,7 +139,7 @@ describe('Addie exact-credential mutation authority', () => {
   it('rejects a stale assembled surface when another request bumps the epoch', async () => {
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'canonical_admin', authWorkosUserId: 'credential_admin', email: 'credential_admin@example.test' },
-      platformAdminMutationTools: ['resolve_escalation'],
+      platformAdminTools: ['resolve_escalation'],
     });
     mocks.epoch.mockResolvedValueOnce('8');
 
@@ -132,7 +151,7 @@ describe('Addie exact-credential mutation authority', () => {
   it('fails retryably when the persisted epoch cannot be read', async () => {
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'credential_admin', email: 'credential_admin@example.test' },
-      platformAdminMutationTools: ['resolve_escalation'],
+      platformAdminTools: ['resolve_escalation'],
     });
     mocks.epoch.mockRejectedValueOnce(new Error('replica unavailable'));
 
@@ -144,7 +163,7 @@ describe('Addie exact-credential mutation authority', () => {
   it('still validates the exact epoch for non-platform mutations', async () => {
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'canonical_member', authWorkosUserId: 'credential_member', email: 'credential_member@example.test' },
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
     });
 
     await expect(revalidateAddieMutationAuthority(snapshot, 'update_member_profile'))
@@ -163,7 +182,7 @@ describe('Addie exact-credential mutation authority', () => {
         authWorkosUserId: 'credential_admin',
         email: 'credential_admin@example.test',
       },
-      platformAdminMutationTools: ['resolve_escalation'],
+      platformAdminTools: ['resolve_escalation'],
     });
     mocks.workosGetUser.mockImplementationOnce(providerResult);
 
@@ -175,7 +194,7 @@ describe('Addie exact-credential mutation authority', () => {
   it('rejects an epoch change committed while authoritative WorkOS revalidation is in flight', async () => {
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'credential_member', email: 'credential_member@example.test' },
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
     });
     mocks.epoch
       .mockResolvedValueOnce('7')
@@ -189,7 +208,7 @@ describe('Addie exact-credential mutation authority', () => {
   it('rechecks the epoch after a custom platform-admin proof', async () => {
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'credential_admin', email: 'credential_admin@example.test' },
-      platformAdminMutationTools: ['resolve_escalation'],
+      platformAdminTools: ['resolve_escalation'],
       revalidatePlatformAdmin: vi.fn().mockResolvedValue('authorized'),
     });
     mocks.epoch
@@ -207,7 +226,7 @@ describe('Addie exact-credential mutation authority', () => {
     const revalidatePlatformAdmin = vi.fn().mockResolvedValue(decision);
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'credential_admin', authWorkosUserId: 'credential_admin', email: 'credential_admin@example.test' },
-      platformAdminMutationTools: ['resolve_escalation'],
+      platformAdminTools: ['resolve_escalation'],
       revalidatePlatformAdmin,
     });
 
@@ -224,7 +243,7 @@ describe('Addie exact-credential mutation authority', () => {
     const revalidateOrganization = vi.fn().mockResolvedValue(decision);
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'canonical_a', authWorkosUserId: 'credential_b', email: 'credential_b@example.test' },
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       organizationAuthority: {
         organizationId: 'org_selected',
         minimumRole: 'admin',
@@ -245,7 +264,7 @@ describe('Addie exact-credential mutation authority', () => {
     const revalidateOrganization = vi.fn().mockResolvedValue('authorized');
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'canonical_a', authWorkosUserId: 'credential_b', email: 'credential_b@example.test' },
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       organizationAuthority: {
         organizationId: 'org_selected',
         minimumRole: 'member',
@@ -268,7 +287,7 @@ describe('Addie exact-credential mutation authority', () => {
       .mockImplementation(async () => decisions.shift() ?? postReservation);
     const snapshot = await captureAddieMutationAuthority({
       principal: { id: 'canonical_a', authWorkosUserId: 'credential_b', email: 'credential_b@example.test' },
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       organizationAuthority: {
         organizationId: 'org_selected',
         minimumRole: 'admin',
@@ -284,7 +303,7 @@ describe('Addie exact-credential mutation authority', () => {
         executionMode: 'production',
         policy: () => ({ allowed: true }),
         reserveSideEffect,
-        revalidateSideEffectAuthority: ({ toolName }) =>
+        revalidateToolAuthority: ({ toolName }) =>
           revalidateAddieMutationAuthority(snapshot, toolName),
       },
     );

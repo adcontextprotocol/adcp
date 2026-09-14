@@ -365,7 +365,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
             parameters: reservedParameters,
             requestedModel: 'claude-sonnet-5',
           }),
-        revalidateSideEffectAuthority: async () => {
+        revalidateToolAuthority: async () => {
           authorityChecks += 1;
           return authorityChecks === 1
             ? { allowed: true }

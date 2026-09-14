@@ -60,6 +60,7 @@ import {
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import { captureVoiceAuthorization, deriveVoiceCallbackTurnId, issueVoiceCallbackBinding, isVoiceSessionOwner, persistVoiceCallbackBinding, resolveVoiceCallback, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
+import { enforceExplicitPlatformAdminToolRequest } from '../addie/admin-tool-boundary.js';
 import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import {
   captureAddieMutationAuthority,
@@ -357,6 +358,7 @@ export async function selectRoutedTavusVoiceTools(input: {
   globalToolNames?: readonly string[];
   threadMessages?: string[];
 }): Promise<RoutedTavusVoiceTools> {
+  enforceExplicitPlatformAdminToolRequest(input);
   let plan: ExecutionPlan | null = null;
   const routerAvailable = input.router !== null;
 
@@ -1097,6 +1099,17 @@ export function createTavusRouter(options?: {
     );
     const voiceContext = voiceContextLines.join("\n");
 
+    try {
+      enforceExplicitPlatformAdminToolRequest({
+        message: spokenMessage,
+        isAAOAdmin: pendingVoiceToolSelection.isAAOAdmin,
+      });
+    } catch (error) {
+      await releaseVoiceTurn('platform_admin_permission_denied');
+      if (respondToAdminAuthorizationError(error, res)) return;
+      throw error;
+    }
+
     // Complete provider-neutral admission and routing before opening the SSE
     // response. If routing is unavailable, Tavus must receive an explicit HTTP
     // error rather than a successful stream containing only a filler and DONE.
@@ -1151,6 +1164,7 @@ export function createTavusRouter(options?: {
     } catch (err) {
       logger.error({ err }, 'Tavus: Routing unavailable');
       await releaseVoiceTurn('routing_unavailable');
+      if (respondToAdminAuthorizationError(err, res)) return;
       return res.status(503).json({
         error: { message: 'LLM routing temporarily unavailable' },
       });
@@ -1316,10 +1330,10 @@ export function createTavusRouter(options?: {
           allowedToolNames: routedVoiceTools?.allowedToolNames,
           clientRequestId,
           ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
-          captureSideEffectAuthority: async ({ mutationToolNames }) => {
+          captureToolAuthority: async ({ authorityToolNames }) => {
             const authority = await captureAddieMutationAuthority({
               principal: authorization.principal,
-              platformAdminMutationTools: mutationToolNames.filter((name) =>
+              platformAdminTools: authorityToolNames.filter((name) =>
                 ADMIN_TOOLS.some((tool) => tool.name === name)),
               organizationAuthority: organizationMutationAuthorityFromMemberContext(voiceMemberContext),
             });

@@ -38,9 +38,10 @@ async function select(
   isAAOAdmin = false,
   requestTools = { tools, handlers },
   globalToolNames: string[] = pairedGlobalToolNames,
+  message = 'Test spoken request',
 ) {
   return selectRoutedTavusVoiceTools({
-    message: 'Test spoken request',
+    message,
     memberContext: null,
     threadId: 'thread-1',
     isAAOAdmin,
@@ -52,6 +53,18 @@ async function select(
 }
 
 describe('authenticated Tavus voice Addie tool routing', () => {
+  it.each(['list_escalations', 'resolve_escalation'])(
+    'rejects an explicit non-admin Tavus %s request before routing',
+    async (toolName) => {
+      const router = routerFor(['admin_escalations']);
+
+      await expect(select(router, false, { tools: [], handlers: new Map() }, [], toolName))
+        .rejects.toMatchObject({ code: 'platform_admin_permission_denied', statusCode: 403 });
+      expect(router.quickMatch).not.toHaveBeenCalled();
+      expect(router.route).not.toHaveBeenCalled();
+    },
+  );
+
   it('selects a bounded member domain without an implicit knowledge overlay', async () => {
     const router = routerFor(['member_billing']);
     const selected = await select(router);

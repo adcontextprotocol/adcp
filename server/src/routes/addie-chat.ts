@@ -82,6 +82,10 @@ import {
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import {
+  enforceExplicitPlatformAdminToolRequest,
+  PlatformAdminToolPermissionDeniedError,
+} from '../addie/admin-tool-boundary.js';
+import {
   captureAddieMutationAuthority,
   organizationMutationAuthorityFromMemberContext,
   revalidateAddieMutationAuthority,
@@ -367,6 +371,7 @@ export async function selectRoutedWebTools(input: {
   sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
   threadMessages?: string[];
 }): Promise<RoutedWebTools> {
+  enforceExplicitPlatformAdminToolRequest(input);
   const routingStarted = Date.now();
   let plan: ExecutionPlan | null = null;
   const routerAvailable = input.router !== null;
@@ -1361,6 +1366,10 @@ export function createAddieChatRouter(options?: {
         typeof organization_id === 'string' ? organization_id : null,
         req.user,
       );
+      enforceExplicitPlatformAdminToolRequest({
+        message: inputValidation.sanitized,
+        isAAOAdmin,
+      });
       const tieredAccess = buildTieredAccess(
         memberTools,
         isAuth,
@@ -1445,10 +1454,10 @@ export function createAddieChatRouter(options?: {
             });
           },
           ...(!options?.evaluationMode && req.user && {
-            captureSideEffectAuthority: async ({ mutationToolNames }: { mutationToolNames: readonly string[] }) => {
+            captureToolAuthority: async ({ authorityToolNames }: { authorityToolNames: readonly string[] }) => {
               const authority = await captureAddieMutationAuthority({
                 principal: req.user!,
-                platformAdminMutationTools: mutationToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
+                platformAdminTools: authorityToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
                 organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
               });
               return ({ toolName }: { toolName: string }) =>
@@ -1965,6 +1974,10 @@ export function createAddieChatRouter(options?: {
         typeof organization_id === 'string' ? organization_id : null,
         req.user,
       );
+      enforceExplicitPlatformAdminToolRequest({
+        message: messageForModel,
+        isAAOAdmin,
+      });
       const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
       const activeCertificationKind = classifyActiveCertificationProgress(
         certificationProgress.filter((entry) =>
@@ -2076,10 +2089,10 @@ export function createAddieChatRouter(options?: {
           });
         },
         ...(!options?.evaluationMode && req.user && {
-          captureSideEffectAuthority: async ({ mutationToolNames }: { mutationToolNames: readonly string[] }) => {
+          captureToolAuthority: async ({ authorityToolNames }: { authorityToolNames: readonly string[] }) => {
             const authority = await captureAddieMutationAuthority({
               principal: req.user!,
-              platformAdminMutationTools: mutationToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
+              platformAdminTools: authorityToolNames.filter((name) => ADMIN_TOOL_NAMES.has(name)),
               organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
             });
             return ({ toolName }: { toolName: string }) =>
@@ -2538,6 +2551,8 @@ export function createAddieChatRouter(options?: {
       }
       if (error instanceof AAOAdminLookupUnavailableError) {
         sendEvent('stream_error', { error: error.message, code: error.code, recoverable: true });
+      } else if (error instanceof PlatformAdminToolPermissionDeniedError) {
+        sendEvent('stream_error', { error: error.message, code: error.code, recoverable: false });
       } else if (error instanceof ChatAttachmentValidationError) {
         logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
         sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });

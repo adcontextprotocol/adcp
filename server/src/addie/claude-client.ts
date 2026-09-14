@@ -104,6 +104,7 @@ import {
 } from './tool-wire-shape.js';
 import { assembleAddieRequestTools } from './request-tool-assembly.js';
 import { isSideEffectTool } from './side-effect-claims.js';
+import { isSensitivePlatformAdminReadTool } from './admin-tool-boundary.js';
 import { assembleAddieFallbackPrompt } from './prompt-assembly.js';
 import {
   MAX_OUTPUT_LENGTH,
@@ -654,12 +655,12 @@ export interface ProcessMessageOptions {
     toolName: string;
     parameters: Record<string, unknown>;
   }) => void | Promise<void>;
-  /** Exact-credential authority check at the live mutation boundary. */
-  revalidateSideEffectAuthority?: AddieToolExecutorOptions['revalidateSideEffectAuthority'];
-  /** Capture authority from the final assembled mutation surface. */
-  captureSideEffectAuthority?: (request: {
-    mutationToolNames: readonly string[];
-  }) => Promise<AddieToolExecutorOptions['revalidateSideEffectAuthority'] | undefined>;
+  /** Exact-credential authority check at protected read and mutation boundaries. */
+  revalidateToolAuthority?: AddieToolExecutorOptions['revalidateToolAuthority'];
+  /** Capture authority from the final assembled protected-tool surface. */
+  captureToolAuthority?: (request: {
+    authorityToolNames: readonly string[];
+  }) => Promise<AddieToolExecutorOptions['revalidateToolAuthority'] | undefined>;
   /**
    * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
@@ -1622,12 +1623,14 @@ export class AddieClaudeClient {
       modelTools,
       requestWebSearchEnabled,
     } = prepared;
-    const mutationToolNames = [...toolsByName.values()]
-      .filter((tool) => isSideEffectTool(tool.name) || tool.replaySafety === 'mutation')
+    const authorityToolNames = [...toolsByName.values()]
+      .filter((tool) => isSideEffectTool(tool.name)
+        || tool.replaySafety === 'mutation'
+        || isSensitivePlatformAdminReadTool(tool.name))
       .map((tool) => tool.name);
-    const revalidateSideEffectAuthority = options?.revalidateSideEffectAuthority
-      ?? (mutationToolNames.length > 0
-        ? await options?.captureSideEffectAuthority?.({ mutationToolNames })
+    const revalidateToolAuthority = options?.revalidateToolAuthority
+      ?? (authorityToolNames.length > 0
+        ? await options?.captureToolAuthority?.({ authorityToolNames })
         : undefined);
     const executeToolCall = createAddieToolExecutor(
       [...toolsByName.values()],
@@ -1639,7 +1642,7 @@ export class AddieClaudeClient {
           this.executionPolicy(options),
         ),
         reserveSideEffect: options?.reserveSideEffect,
-        revalidateSideEffectAuthority,
+        revalidateToolAuthority,
         notificationContext: {
           slackUserId: options?.slackUserId,
           userDisplayName: options?.userDisplayName,
@@ -2250,12 +2253,14 @@ export class AddieClaudeClient {
       modelMessages,
       modelTools,
     } = prepared;
-    const mutationToolNames = [...toolsByName.values()]
-      .filter((tool) => isSideEffectTool(tool.name) || tool.replaySafety === 'mutation')
+    const authorityToolNames = [...toolsByName.values()]
+      .filter((tool) => isSideEffectTool(tool.name)
+        || tool.replaySafety === 'mutation'
+        || isSensitivePlatformAdminReadTool(tool.name))
       .map((tool) => tool.name);
-    const revalidateSideEffectAuthority = options?.revalidateSideEffectAuthority
-      ?? (mutationToolNames.length > 0
-        ? await options?.captureSideEffectAuthority?.({ mutationToolNames })
+    const revalidateToolAuthority = options?.revalidateToolAuthority
+      ?? (authorityToolNames.length > 0
+        ? await options?.captureToolAuthority?.({ authorityToolNames })
         : undefined);
     systemPromptMs = prepared.systemPromptMs;
 
@@ -2270,7 +2275,7 @@ export class AddieClaudeClient {
         this.executionPolicy(options),
       ),
       reserveSideEffect: options?.reserveSideEffect,
-      revalidateSideEffectAuthority,
+      revalidateToolAuthority,
       notificationContext: {
         slackUserId: options?.slackUserId,
         userDisplayName: options?.userDisplayName,

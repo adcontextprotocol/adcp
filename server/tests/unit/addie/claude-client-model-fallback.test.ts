@@ -347,7 +347,7 @@ describe('Addie provider delivery runtime', () => {
     }));
   });
 
-  it('captures mutation authority from the final filtered tool assembly', async () => {
+  it('captures dispatch authority from the final filtered protected-tool assembly', async () => {
     mocks.createMessage.mockResolvedValue({
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: 'Prepared answer.' }],
@@ -358,31 +358,47 @@ describe('Addie provider delivery runtime', () => {
       description: 'Create an issue',
       input_schema: { type: 'object' as const, properties: {} },
     };
+    const listEscalations = {
+      name: 'list_escalations',
+      description: 'List escalations',
+      input_schema: { type: 'object' as const, properties: {} },
+    };
     const requestTools = {
-      tools: [...githubIssueTools.tools, createIssue],
+      tools: [...githubIssueTools.tools, createIssue, listEscalations],
       handlers: new Map([
         ...githubIssueTools.handlers,
         ['create_github_issue', vi.fn().mockResolvedValue('{}')],
+        ['list_escalations', vi.fn().mockResolvedValue('[]')],
       ]),
     };
-    const captureSideEffectAuthority = vi.fn().mockResolvedValue(vi.fn());
+    const captureToolAuthority = vi.fn().mockResolvedValue(vi.fn());
     const client = new AddieClaudeClient('unused', AddieModelConfig.chat);
 
     await client.processMessage('read only', [], requestTools, undefined, {
       uncapped: true,
       allowedToolNames: ['get_github_issue'],
-      captureSideEffectAuthority,
+      captureToolAuthority,
     });
-    expect(captureSideEffectAuthority).not.toHaveBeenCalled();
+    expect(captureToolAuthority).not.toHaveBeenCalled();
 
     await client.processMessage('create it', [], requestTools, undefined, {
       uncapped: true,
       allowedToolNames: ['create_github_issue'],
-      captureSideEffectAuthority,
+      captureToolAuthority,
     });
-    expect(captureSideEffectAuthority).toHaveBeenCalledOnce();
-    expect(captureSideEffectAuthority).toHaveBeenCalledWith({
-      mutationToolNames: ['create_github_issue'],
+    expect(captureToolAuthority).toHaveBeenCalledOnce();
+    expect(captureToolAuthority).toHaveBeenCalledWith({
+      authorityToolNames: ['create_github_issue'],
+    });
+
+    captureToolAuthority.mockClear();
+    await client.processMessage('list them', [], requestTools, undefined, {
+      uncapped: true,
+      allowedToolNames: ['list_escalations'],
+      captureToolAuthority,
+    });
+    expect(captureToolAuthority).toHaveBeenCalledWith({
+      authorityToolNames: ['list_escalations'],
     });
   });
 

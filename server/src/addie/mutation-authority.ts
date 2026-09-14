@@ -32,7 +32,7 @@ export interface AddieMutationAuthoritySnapshot {
   readonly credentialId: string;
   readonly epoch: string;
   readonly principal: Readonly<AAOAdminPrincipal>;
-  readonly platformAdminMutationTools: ReadonlySet<string>;
+  readonly platformAdminTools: ReadonlySet<string>;
   /** Authoritative WorkOS lifecycle and email proof. Always present. */
   readonly revalidateCredentialLifecycle: AddieCredentialAuthorityLookup;
   /** Optional surface binding proof, such as the live Slack mapping. */
@@ -138,7 +138,7 @@ export async function revalidateExactOrganizationAuthority(
  */
 export async function captureAddieMutationAuthority(input: {
   principal: AAOAdminPrincipal;
-  platformAdminMutationTools: Iterable<string>;
+  platformAdminTools: Iterable<string>;
   revalidateCredentialLifecycle?: AddieCredentialAuthorityLookup;
   revalidateCredential?: AddieMutationAuthoritySnapshot['revalidateCredential'];
   revalidatePlatformAdmin?: AddieMutationAuthoritySnapshot['revalidatePlatformAdmin'];
@@ -165,7 +165,7 @@ export async function captureAddieMutationAuthority(input: {
       authWorkosUserId: credentialId,
       email: credentialEmail,
     }),
-    platformAdminMutationTools: new Set(input.platformAdminMutationTools),
+    platformAdminTools: new Set(input.platformAdminTools),
     revalidateCredentialLifecycle: input.revalidateCredentialLifecycle
       ?? ((exactCredentialId) => revalidateExactCredentialLifecycle(exactCredentialId, credentialEmail)),
     revalidateCredential: input.revalidateCredential,
@@ -240,7 +240,7 @@ export async function revalidateAddieMutationAuthority(
     }
   }
 
-  if (snapshot.platformAdminMutationTools.has(toolName)) {
+  if (snapshot.platformAdminTools.has(toolName)) {
     try {
       if (snapshot.revalidatePlatformAdmin) {
         const decision = await snapshot.revalidatePlatformAdmin(snapshot.credentialId);

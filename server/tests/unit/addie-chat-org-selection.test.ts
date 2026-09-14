@@ -349,7 +349,7 @@ describe('mounted Addie web-thread ownership', () => {
     })()),
   } as any;
 
-  function app(router?: any, prepareRequest?: any) {
+  function app(router?: any, prepareRequest?: any, evaluationMode = false) {
     const instance = express();
     instance.set('trust proxy', 1);
     instance.use(express.json());
@@ -363,7 +363,12 @@ describe('mounted Addie web-thread ownership', () => {
         : {};
       next();
     });
-    instance.use('/api/addie/chat', createAddieChatRouter({ chatClient, router, prepareRequest }).apiRouter);
+    instance.use('/api/addie/chat', createAddieChatRouter({
+      chatClient,
+      router,
+      prepareRequest,
+      evaluationMode,
+    }).apiRouter);
     return instance;
   }
 
@@ -422,10 +427,10 @@ describe('mounted Addie web-thread ownership', () => {
     authEpochMocks.getExact.mockRejectedValueOnce(new Error('epoch store unavailable'));
     chatClient.processMessage.mockImplementationOnce(async (...args: unknown[]) => {
       const options = args.find((value) => value && typeof value === 'object'
-        && 'captureSideEffectAuthority' in value) as {
-          captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<unknown>;
+        && 'captureToolAuthority' in value) as {
+          captureToolAuthority: (input: { authorityToolNames: string[] }) => Promise<unknown>;
         };
-      await options.captureSideEffectAuthority({ mutationToolNames: ['schedule_meeting'] });
+      await options.captureToolAuthority({ authorityToolNames: ['schedule_meeting'] });
       throw new Error('unreachable');
     });
 
@@ -449,12 +454,12 @@ describe('mounted Addie web-thread ownership', () => {
   ] as const)('web mutation authority denies %s after tool assembly', async (_label, changedCredential) => {
     chatClient.processMessage.mockImplementationOnce(async (...args: unknown[]) => {
       const options = args[4] as {
-        captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<
+        captureToolAuthority: (input: { authorityToolNames: string[] }) => Promise<
           (input: { toolName: string }) => Promise<unknown>
         >;
       };
-      const revalidate = await options.captureSideEffectAuthority({
-        mutationToolNames: ['schedule_meeting'],
+      const revalidate = await options.captureToolAuthority({
+        authorityToolNames: ['schedule_meeting'],
       });
       await expect(revalidate({ toolName: 'schedule_meeting' }))
         .resolves.toEqual({ allowed: true });
@@ -480,6 +485,54 @@ describe('mounted Addie web-thread ownership', () => {
     expect(response.text).toContain('event: stream_error');
     expect(response.text).toContain('admin_authorization_unavailable');
     expect(response.text).toContain('"recoverable":true');
+    expect(chatClient.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['JSON', '/api/addie/chat', 'list_escalations'],
+    ['JSON', '/api/addie/chat', 'resolve_escalation'],
+    ['SSE', '/api/addie/chat/stream', 'list_escalations'],
+    ['SSE', '/api/addie/chat/stream', 'resolve_escalation'],
+  ] as const)('returns deterministic permission denial for an explicit non-admin %s %s request without model dispatch', async (
+    delivery,
+    path,
+    toolName,
+  ) => {
+    memberContextMocks.getWebMemberContext.mockResolvedValueOnce({
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: { workos_user_id: 'credential_owner', email: 'owner@example.test' },
+      organization: {
+        workos_organization_id: 'org_owned',
+        name: 'Owned organization',
+        subscription_status: 'active',
+        is_personal: false,
+        membership_tier: 'company_standard',
+      },
+      org_membership: { role: 'owner', member_count: 2, joined_at: null },
+    });
+    const router = { quickMatch: vi.fn(), route: vi.fn() };
+    chatClient.processMessage.mockClear();
+    chatClient.processMessageStream.mockClear();
+
+    const response = await request(app(router, undefined, true))
+      .post(path)
+      .set('x-test-user-id', 'credential_owner')
+      .send({ message: toolName, organization_id: 'org_owned' });
+
+    if (delivery === 'JSON') {
+      expect(response.status).toBe(403);
+      expect(response.body).toMatchObject({ error: 'platform_admin_permission_denied' });
+    } else {
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('event: stream_error');
+      expect(response.text).toContain('platform_admin_permission_denied');
+      expect(response.text).toContain('"recoverable":false');
+    }
+    expect(router.quickMatch).not.toHaveBeenCalled();
+    expect(router.route).not.toHaveBeenCalled();
+    expect(chatClient.processMessage).not.toHaveBeenCalled();
     expect(chatClient.processMessageStream).not.toHaveBeenCalled();
   });
 

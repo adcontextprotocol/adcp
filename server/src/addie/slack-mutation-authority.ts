@@ -24,7 +24,7 @@ type SlackAdminAuthorityLookup = (
 export async function captureSlackMutationAuthority(input: {
   assembledCredentialId: string | undefined;
   credentialEmail?: string;
-  platformAdminMutationTools: readonly string[];
+  platformAdminTools: readonly string[];
   organizationAuthority?: AddieOrganizationMutationAuthority;
   lookupCredential: SlackCredentialAuthorityLookup;
   revalidatePlatformAdmin: SlackAdminAuthorityLookup;
@@ -40,7 +40,7 @@ export async function captureSlackMutationAuthority(input: {
     return async () => ({ allowed: false, status: 'access_denied' });
   }
 
-  if (input.platformAdminMutationTools.length > 0) {
+  if (input.platformAdminTools.length > 0) {
     const adminDecision = await input.revalidatePlatformAdmin(captured.credentialId);
     if (adminDecision === 'unavailable') throw new AAOAdminLookupUnavailableError();
     if (adminDecision === 'forbidden') {
@@ -54,7 +54,7 @@ export async function captureSlackMutationAuthority(input: {
       authWorkosUserId: captured.credentialId,
       email: input.credentialEmail ?? '',
     },
-    platformAdminMutationTools: input.platformAdminMutationTools,
+    platformAdminTools: input.platformAdminTools,
     revalidateCredential: async (credentialId) => {
       const current = await input.lookupCredential();
       if (current.status === 'unavailable') return 'unavailable';
