@@ -6,7 +6,6 @@ summary: "Verifies that build_creative evaluator pointers use the verifier allow
 track: creative
 introduced_in: "3.1"
 required_tools:
-  - get_adcp_capabilities
   - build_creative
 
 narrative: |

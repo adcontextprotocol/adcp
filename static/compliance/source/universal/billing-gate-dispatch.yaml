@@ -5,7 +5,6 @@ category: error_compliance
 summary: "Validates the two distinct billing-rejection paths on sync_accounts — seller-wide capability gate (BILLING_NOT_SUPPORTED) and per-buyer-agent commercial-relationship gate (BILLING_NOT_PERMITTED_FOR_AGENT) — and the clamped error.details shape that prevents the per-agent code from acting as a commercial-state oracle."
 track: error_handling
 required_tools:
-  - get_adcp_capabilities
   - sync_accounts
 
 narrative: |
