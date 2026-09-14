@@ -34,8 +34,8 @@ report configures protection.
 
 | Dependency                                              | Commit                                     |
 | ------------------------------------------------------- | ------------------------------------------ |
-| Orchestrator / reviewed regression suite                | `3d180c9b365c201d4cd4cfd93d0c2a7e8790da70` |
-| Nested setup and arbiter (including executable bundles) | `02db55f54f39f93c683c2031887b735aea0ecba2` |
+| Orchestrator / reviewed regression suite                | `d6e930d4a2a01ee0d476fd8347eaf258f85d889c` |
+| Nested setup and arbiter (including executable bundles) | `d2422f6b24f6c0b7535c1155e9175d388be44174` |
 | Nested reviewer                                         | `a64a17ba369122d6b3401f614a31df7b8607f043` |
 
 The single current Ladon invocation pins the orchestrator and explicitly sets

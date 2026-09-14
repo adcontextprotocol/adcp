@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: adcontextprotocol/actions
-          ref: 3d180c9b365c201d4cd4cfd93d0c2a7e8790da70
+          ref: d6e930d4a2a01ee0d476fd8347eaf258f85d889c
           path: .ladon-reviewed-actions
           fetch-depth: 0
           persist-credentials: false
