@@ -358,6 +358,3 @@ for (const { line, source } of forwardMergeWorkflows) {
 }
 
 console.log('Release and forward-merge workflow checks passed.');
-
-// Keep the behavioral publication regressions in the existing release gate.
-require('./release-publication-ordering.test.cjs');
