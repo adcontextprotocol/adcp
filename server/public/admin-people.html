@@ -593,6 +593,8 @@
                          data-cred-id="${escapeHtml(c.workos_user_id)}"
                          data-cred-email="${escapeHtml(c.email || '')}"
                          data-host-id="${escapeHtml(r.workos_user_id)}"
+                         data-identity-id="${escapeHtml(data.identity_id)}"
+                         data-authorization-epoch="${escapeHtml(c.authorization_epoch)}"
                          data-target-label="${escapeHtml(targetLabel)}">Remove</button>
                </div>`;
           return `
@@ -639,7 +641,7 @@
         container.querySelectorAll('.unbind-cred-btn').forEach(btn => {
           btn.addEventListener('click', (ev) => {
             const b = ev.currentTarget;
-            unbindCredential(b.dataset.hostId, b.dataset.credId, b.dataset.credEmail, b.dataset.targetLabel);
+            unbindCredential(b.dataset.hostId, b.dataset.credId, b.dataset.credEmail, b.dataset.targetLabel, b.dataset.identityId, b.dataset.authorizationEpoch);
           });
         });
         container.querySelectorAll('.promote-cred-btn').forEach(btn => {
@@ -751,10 +753,10 @@
       }
     }
 
-    async function unbindCredential(hostId, credId, credEmail, targetLabel) {
+    async function unbindCredential(hostId, credId, credEmail, targetLabel, identityId, authorizationEpoch) {
       const credLabel = credEmail || credId;
       if (credEmail) {
-        const typed = prompt(`Remove sign-in credential ${credLabel} from ${targetLabel}?\n\nThe WorkOS user stays alive in WorkOS but will no longer be associated with this account. Sign-ins via that email will reach an empty workspace.\n\nTo confirm, type the credential's email exactly:\n  ${credEmail}`);
+        const typed = prompt(`Remove sign-in credential ${credLabel} from ${targetLabel}?\n\nThe WorkOS user stays alive in WorkOS but will no longer be associated with this account. Existing memberships and permissions stay with their current credential. This does not undo past account consolidation.\n\nTo confirm, type the credential's email exactly:\n  ${credEmail}`);
         if (typed === null) return;
         if (typed.trim().toLowerCase() !== credEmail.trim().toLowerCase()) {
           alert('Confirmation email did not match. Cancelled.');
@@ -766,6 +768,8 @@
       try {
         const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(hostId)}/credentials/${encodeURIComponent(credId)}`, {
           method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expected_identity_id: identityId, expected_authorization_epoch: authorizationEpoch }),
         });
         const data = await res.json();
         if (!res.ok) {
