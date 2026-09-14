@@ -94,12 +94,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-      "description": "Publisher namespace that owns this collection. Required for supply-path verification when the declaration is read from a cross-origin authoritative document; it must match the publisher whose origin delegated retrieval. A pointer alone cannot claim another publisher's collection. May be omitted for a publisher-origin document, where that origin supplies the namespace."
-    },
-    "collection_id": {
+          "collection_id": {
             "type": "string",
             "description": "The related collection's collection_id within this seller's response",
             "x-entity": "collection"

@@ -29,4 +29,13 @@ describe('registry cache authority provenance', () => {
     expect(result.manifest).toBeNull();
     expect(result.held).toEqual(['owner.example']);
   });
+  it.each(['not a URL', 'https://[invalid', ''])('retains held denials when persisted provenance is malformed: %j', async resolvedUrl => {
+    const store = new InMemoryStateStore();
+    await supplyPathSnapshotEvidence(publisher, { ...snapshot(), manifest: { revoked_publisher_domains: ['owner.example'] } }, store);
+    const result = await supplyPathSnapshotEvidence(publisher, { ...snapshot(), discoveryMethod: 'authoritative_location', resolvedUrl }, store);
+    expect(result.manifest).toBeNull();
+    expect(result.held).toEqual(['owner.example']);
+    // Invalid provenance must not replace the previously established authority pin.
+    expect((await supplyPathSnapshotEvidence(publisher, snapshot(), store)).manifest).toEqual(snapshot().manifest);
+  });
 });
