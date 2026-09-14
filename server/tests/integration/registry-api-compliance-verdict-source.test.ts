@@ -475,7 +475,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         const response = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({ run_id: run.id, completeness: 'timed_out', is_authoritative: false,
-          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0-rc.35', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
+          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.0.0-rc.36', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
           diagnostics_visibility: 'owner_or_operator' });
         expect(response.body.diagnostics[0].error_text).toBe('Expected products array');
         expect(JSON.stringify(response.body)).not.toContain('fixture-secret-value');
