@@ -11,21 +11,21 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.1 is the current signed protocol checkpoint. It completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed RC.1 exactly; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Release-candidate cycle — minor release targeting the 3.2.0 milestone. RC.3 is the current signed protocol checkpoint. It hardens the experimental Reliable Reporting consumer-status loop, adds a shared MediaBuy-level frequency cap with structured product frequency-cap constraints, and adds request-only targeting inputs with `null`-clear semantics. No SDK embeds RC.3 yet: TypeScript `@adcp/sdk@14.0.0-rc.36` embeds RC.2, while Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` still embed RC.1; Python and Go higher-level coverage remains role-dependent. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 <Warning>
 **Reliable Reporting breaking-change notice — published September 12, 2026.**
-Current source adds opt-in `sync_reporting_status` so a buyer can report missing,
+RC.2 publishes opt-in `sync_reporting_status` so a buyer can report missing,
 unreadable, contradictory, or exactly received reporting back to the seller; the
 seller can then detect when a received revision becomes stale after restatement.
-The loop is hardened for RC.2: a stale `received` gets a bounded re-read grace
+RC.3 hardens the loop: a stale `received` gets a bounded re-read grace
 window before it escalates, buyers owe a status by
 `expected_at + automated_recovery_window_seconds` (counted in
 `obligation_counts.consumer_status_pending`, never in health), issues carry
 `opened_at` / `issue_state` / `external_ref` with an optional
 `consumer_mismatch_escalation_seconds` and `operations_contact`, and
 `content_mismatch` names contract-fact disagreements through a closed
-`mismatch_code`. `reporting-delivery-config.json` also reserves
+`mismatch_code`. RC.3's `reporting-delivery-config.json` also reserves
 `authoritative_party`; sellers MUST reject `consumer` with `UNSUPPORTED_FEATURE`
 until a later minor defines the buyer-deposited revision task
 ([#7440](https://github.com/adcontextprotocol/adcp/issues/7440)). Sellers advertise
@@ -51,7 +51,9 @@ See the [migration guide](/docs/reference/migration/reliable-reporting-status-lo
 | `3.2.0-beta.10` | Add managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.28` and exact Python schema/type support in `adcp==8.0.0b11` |
 | `3.2.0-beta.11` | Add `get_principal` to the MCP media-buy role profile and align the public training agent with the latest beta bundle | Previous protocol checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.29` and exact Python schema/type support in `adcp==8.0.0b12` |
 | `3.2.0-rc.0` | Publish the first 3.2 release candidate after beta integration fixes and expand reporting lifecycle conformance | Previous checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-beta.31` and exact Python schema/type support in `adcp==8.0.0b13` |
-| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Current signed protocol checkpoint with exact TypeScript, Python, and Go SDK pairings |
+| `3.2.0-rc.1` | Complete the experimental Reliable Reporting 1.0 contract and harden delivery currency, aggregate reach, vendor-metric identity, and integration behavior | Previous checkpoint with exact Python support in `adcp==8.0.0b14` and exact Go support in `adcp/v3@v3.2.1` |
+| `3.2.0-rc.2` | Add the opt-in experimental Reliable Reporting `sync_reporting_status` consumer-status loop, buyer and orchestrator storyboards with a buyer-orchestrator compliance track, cursor pagination for truncated `get_media_buy_delivery` breakdowns, sub-country product coverage filters, and restored `canonical-forecast-point` constraints | Previous checkpoint with exact TypeScript support in `@adcp/sdk@14.0.0-rc.36`, which also adds the `@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger` entry points |
+| `3.2.0-rc.3` | Harden the consumer-status loop (`content_mismatch` and `mismatch_code`, a bounded grace window for a stale `received`, the buyer posting deadline and `obligation_counts.consumer_status_pending`, issue lifecycle fields, `operations_contact`, and the reserved `authoritative_party`), add a shared MediaBuy-level `frequency_cap` with structured product frequency-cap constraints, add request-only targeting with `null`-clear semantics, and retire superseded beta artifacts | Current signed protocol checkpoint. No SDK embeds it yet; test it from the signed bundle |
 
 Each prerelease is immutable. The `3.2-rc` documentation selector advances to the latest release candidate; the `3.2-beta` selector remains frozen at beta.11. Pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 prerelease program](/docs/reference/3-2-beta).
 
@@ -59,12 +61,13 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 
 - **Media buying:** compact listing, immutable proposal negotiation, direct purchase, proposal acceptance, operational control, seller-optimized budgets and bidding, atomic total-budget changes, revenue-share pricing, creative rotation, warnings, and durable indicators.
 - **Identity and connections:** an experimental authenticated-principal layer for caller-scoped webhooks, reusable reporting destinations, asynchronous capability declarations, optimistic replacement, and `principal.changed` repair.
-- **Targeting and audiences:** targeting-aware discovery, portable demographic predicates, named places, value-aware regions, browser families, property exclusions, audience evidence, and exact package readback.
+- **Targeting and audiences:** targeting-aware discovery, portable demographic predicates, named places, value-aware regions, browser families, property exclusions, audience evidence, exact package readback, and request-only targeting inputs where each dimension distinguishes omission, a non-null replacement, and an explicit `null` that clears it.
+- **Frequency management:** a shared MediaBuy-level `frequency_cap` counted once across every package, advertised through `media_buy.aggregate_frequency_capping` and product `media_buy_support`, plus structured product frequency-cap constraints on `overlay_support.frequency_cap_support` and the `update_media_buy_frequency_cap` action.
 - **Inventory identity:** first-class programmed channel collections, including FAST and virtual linear streams, with host-property carriage mapping and collection-scoped host attestation for owner-sold avails.
 - **Creative:** canonical capability discovery, image pixel density and rendition sets, localization, async preview opt-in, audio loudness, VAST 4.3 and validation levels, accessibility detail, and synthetic depiction provenance.
 - **Security and evidence:** required body binding for 3.2 request-signing profiles, OAuth discovery grading, portable attestations, rights and signal evidence, signed brand-response verification, and safer secured asset access.
 - **Operations and measurement:** capability/account change notifications, snapshot-and-log repair, demographic and spot delivery, metric accountability, deterministic filters, fixture resolution, and capability-selected runtime projections.
-- **Reliable Reporting:** a separately discovered, versioned experimental three-tier contract for expected-period obligations, immutable official revisions, managed materializations, authenticated receipts, correction ledgers, and repairable status. RC.1 completes Reliable Reporting 1.0.
+- **Reliable Reporting:** a separately discovered, versioned experimental three-tier contract for expected-period obligations, immutable official revisions, managed materializations, authenticated receipts, correction ledgers, and repairable status. RC.1 completes Reliable Reporting 1.0; RC.2 adds the opt-in two-sided `sync_reporting_status` consumer-status loop; RC.3 hardens that loop and reserves `authoritative_party` for a later minor.
 - **Experimental surfaces:** cross-role campaign governance revisions and Trusted Match authentication, routing, attribution, and creative-data cleanup under their existing experimental declarations.
 
 ### Adopter action
@@ -75,8 +78,8 @@ Each prerelease is immutable. The `3.2-rc` documentation selector advances to th
 | A seller or service | Advertise and echo the exact prerelease served, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
-| An SDK maintainer | Generate from the current signed RC.1 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
-| A compliance operator | Test RC.1 from its signed assets or an exact SDK pairing: `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, or Go `adcp/v3@v3.2.1`. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
+| An SDK maintainer | Generate from the current signed RC.3 tarball, publish an exact support statement, and route accepted protocol corrections into a later prerelease. |
+| A compliance operator | Test RC.3 from its signed assets; no SDK pairing covers RC.3 yet. `@adcp/sdk@14.0.0-rc.36` tests RC.2, and Python `adcp==8.0.0b14` or Go `adcp/v3@v3.2.1` test RC.1. Retain exact package and wire versions and do not issue a 3.2 badge from a prerelease checkpoint. |
 
 ### Required 3.2 migrations
 

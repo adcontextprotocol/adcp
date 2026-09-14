@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Release candidate** | 3.2 (externally exposed candidate: `rc.3`; latest tagged release: `rc.2`) | `"3.2-rc.2"` | Development and staging only. RC.3 artifacts are signed and publicly reachable but have no Git tag or GitHub Release; RC.2 remains the latest official release. Use only exact pins advertised by the peer. Follow the [3.2 prerelease program](/docs/reference/3-2-beta). |
+| **Release candidate** | 3.2 (current prerelease: `rc.3`; latest tagged release: `rc.2`) | `"3.2-rc.3"` | Development and staging only. RC.3 is the current signed protocol checkpoint: its artifacts are signed and served, and its Git tag and GitHub Release are pending a release-workflow re-run. No SDK embeds RC.3 yet — TypeScript SDK RC.36 embeds `3.2.0-rc.2`, and Python SDK beta.14 and Go SDK 3.2.1 still embed `3.2.0-rc.1`. Test RC.3 from its signed artifacts with raw-wire or code-generation workflows. Follow the [3.2 prerelease program](/docs/reference/3-2-beta). |
 | **Active** | 3.1 (current stable: 3.1.20) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.26) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
@@ -45,9 +45,9 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
-| 3.2.0-rc.3 | 2026-09-14 (artifact exposure) | Signed candidate artifacts were exposed through R2, but the Release workflow was cancelled and no Git tag or GitHub Release exists. Do not treat RC.3 as an official release; use `"3.2-rc.3"` only for explicit incident validation with peers that advertise it. |
-| **3.2.0-rc.2** | 2026-09-13 | Latest tagged and GitHub-released signed protocol checkpoint. Adds the opt-in Reliable Reporting `sync_reporting_status` loop and other additive RC hardening. Use `"3.2-rc.2"` only with peers that explicitly advertise it; the current SDK wave still embeds `3.2.0-rc.1`. |
-| 3.2.0-rc.1 | 2026-09-05 | Previous SDK-backed protocol checkpoint. Completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. TypeScript `@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1` embed it exactly; use `"3.2-rc.1"` only with peers that explicitly advertise it. |
+| **3.2.0-rc.3** | 2026-09-14 | Current protocol checkpoint: signed and served, with its Git tag and GitHub Release pending a release-workflow re-run. Hardens the experimental Reliable Reporting consumer-status loop (`content_mismatch` with a closed `mismatch_code`, a bounded grace window for a stale `received`, the buyer posting deadline and `obligation_counts.consumer_status_pending`, issue lifecycle fields, and the reserved `authoritative_party` value), adds a shared MediaBuy-level `frequency_cap` with structured product frequency-cap constraints, and adds request-only targeting inputs with `null`-clear semantics. No SDK embeds it yet; use `"3.2-rc.3"` only with peers that explicitly advertise it. |
+| 3.2.0-rc.2 | 2026-09-13 | Previous protocol checkpoint, and the latest tagged and GitHub-released one. Adds the opt-in experimental Reliable Reporting `sync_reporting_status` consumer-status loop, buyer and orchestrator storyboards with a buyer-orchestrator compliance track, cursor pagination for truncated `get_media_buy_delivery` breakdowns, sub-country product coverage filters, and restored `canonical-forecast-point` constraints. TypeScript SDK RC.36 embeds it exactly. |
+| 3.2.0-rc.1 | 2026-09-05 | Previous protocol checkpoint. Completes the experimental Reliable Reporting 1.0 contract and hardens delivery, reach, and vendor-metric semantics. Python `adcp==8.0.0b14` and Go `adcp/v3@v3.2.1` embed it exactly, and TypeScript `@adcp/sdk@14.0.0-rc.35` is its historical pairing. |
 | 3.2.0-rc.0 | 2026-09-03 | First 3.2 release candidate. TypeScript SDK beta.31 and Python SDK beta.13 embed it exactly; Go SDK 3.2.0 remains generated from beta.9. |
 | 3.2.0-beta.11 | 2026-09-03 | Previous protocol checkpoint. Adds `get_principal` to the MCP media-buy role profile alongside `sync_principal`, and aligns training-agent and compliance guidance with the beta.10 bundle. TypeScript SDK beta.29 and Python SDK beta.12 embed it exactly. |
 | 3.2.0-beta.10 | 2026-09-01 | Previous protocol checkpoint. Adds managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, and committed collection selection. TypeScript SDK beta.28 and Python SDK beta.11 embed it. |
@@ -60,7 +60,7 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 | 3.2.0-beta.3 | 2026-08-19 | Integration checkpoint, superseded by beta.4 for new beta testing. |
 | 3.2.0-beta.2 | 2026-08-19 | Integration checkpoint, superseded by beta.3 for new beta testing. |
 | 3.2.0-beta.1 | 2026-08-19 | Integration-correction checkpoint, superseded by beta.2 for new beta testing. |
-| 3.2.0-beta.0 | 2026-08-17 | Protocol-first beta input for SDK work. Retired from the repository and runtime image on 2026-09-14 together with the other 3.x betas except `3.2.0-beta.11` (frozen `3.2-beta` documentation selector), `3.2.0-beta.6` (training-agent retained checkpoint), and `3.1.0-beta.7` (TypeScript SDK side bundle); pinned adopters should move to `3.2.0-rc.2`. |
+| 3.2.0-beta.0 | 2026-08-17 | Protocol-first beta input for SDK work. Retired from the repository and runtime image on 2026-09-14 together with the other 3.x betas except `3.2.0-beta.11` (frozen `3.2-beta` documentation selector), `3.2.0-beta.6` (training-agent retained checkpoint), and `3.1.0-beta.7` (TypeScript SDK side bundle); pinned adopters should move to `3.2.0-rc.3`. |
 | 3.1.0-rc.1 through 3.1.0-rc.15 | 2026-05-29 to 2026-06-16 | Superseded by 3.1.0 GA. These artifacts remain available for pinned prerelease adopters and release forensics. |
 | 3.0.0-beta.1 through rc.2 | 2026-01-26 to 2026-03-15 | Superseded. |
 | 3.0.0-rc.3 | 2026-04-01 | Superseded by GA. See [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) if you adopted rc.3. |
@@ -100,8 +100,8 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 | If you are… | Use |
 |---|---|
 | Building a new production integration today | **3.1**. Pin `"3.1"` on the wire. |
-| Implementing or testing 3.2 without an SDK | Use the official signed **3.2 RC.2** artifacts and wire pin `"3.2-rc.2"` with raw-wire or code-generation workflows. RC.3 artifacts are externally reachable but not tagged or GitHub-released; use `"3.2-rc.3"` only for explicit incident validation with peers that advertise it. Follow the [prerelease program](/docs/reference/3-2-beta). |
-| Running an SDK-backed 3.2 integration test | The current SDK wave (`@adcp/sdk@14.0.0-rc.35`, Python `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1`) still embeds RC.1 and requires `"3.2-rc.1"`; use raw-wire or regenerated clients for exact RC.2 testing. |
+| Implementing or testing 3.2 without an SDK | Use the signed **3.2 RC.3** artifacts with raw-wire or code-generation workflows; RC.2 remains the latest tagged release if you need one. Follow the [prerelease program](/docs/reference/3-2-beta). |
+| Running an SDK-backed 3.2 integration test | Pair the exact RC.2 wire pin `"3.2-rc.2"` with `@adcp/sdk@14.0.0-rc.36`, or the exact RC.1 wire pin `"3.2-rc.1"` with Python `adcp==8.0.0b14` or Go `adcp/v3@v3.2.1`. No SDK embeds RC.3 schemas or types yet — test RC.3 against its signed artifacts on the raw wire, or from types generated from them, until the RC.3 SDK wave ships. |
 | Running an existing 3.0 integration | Stay on **3.0** while you migrate, or move to **3.1** when your SDK and validation are ready. |
 | Running a 2.5.x integration | Upgrade now — out of support. Start with the [migration guide](/docs/reference/migration). |
 | Running a 2.0 or 2.1 integration | Upgrade now — out of support. |
