@@ -101,6 +101,28 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('keeps registration available after loading a different tool group during intake', async () => {
+    const f = fixture([
+      receipt([call('load_tool_group', { group: 'industry_research' })]),
+      receipt([call('save_agent', { agent_url: 'https://sales.streamhaus.example/mcp', type: 'sales', configure_auth_in_dashboard: true })]),
+      receipt([{ text: 'Registered. Enter credentials on your agent card.' }]),
+    ]);
+    const save = vi.fn().mockResolvedValue('Saved agent registration. Configure authentication on the dashboard.');
+    const reserve = vi.fn();
+    const result = await run({ ...f.input, isAdmin: false, modelPreference: 'gemini', activeAgentRegistration: true,
+      requestTools: {
+        tools: [{ name: 'save_agent', description: 'Register', input_schema: { type: 'object', properties: {} } }],
+        handlers: new Map([['save_agent', save]]),
+      },
+    }, { reserveSideEffect: reserve });
+    expect(JSON.stringify(f.dispatch.mock.calls[0][0].config?.tools)).toContain('save_agent');
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ configure_auth_in_dashboard: true }));
+    expect(reserve).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'save_agent' }));
+    expect(result.response?.tool_executions?.find(execution => execution.tool_name === 'save_agent')?.is_error).toBe(false);
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
+  });
+
   it('lists and resolves an authorized escalation on Gemini without routing or Sonnet', async () => {
     const f = fixture([
       receipt([call('list_escalations', { status: 'open' })]),

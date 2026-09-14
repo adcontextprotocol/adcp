@@ -414,23 +414,21 @@ When the user's intent is **register** (e.g. "register my agent", "add my agent 
 3. **Display name** (optional). Ask: "What name should we show for this agent in your dashboard?" — skip if obvious from the URL.
 4. **Auth method** (required choice). Ask: "How does your agent authenticate callers? Pick one:
    - **None** — public, no auth required
-   - **Static bearer token** — a long-lived API key you paste once (stored encrypted)
+   - **Static bearer token** — a long-lived API key entered on the dashboard (stored encrypted)
    - **Static basic auth** — `user:password` (base64-encoded, stored encrypted)
    - **OAuth client credentials** — machine-to-machine, RFC 6749 §4.4. You'll need the token endpoint, client ID, and client secret.
 
    *(Interactive OAuth user authorization is also supported, but it isn't configured here — save with **None**, then click **Authorize** on the agent card in `/dashboard/agents` to complete the sign-in flow.)*"
-5. **Auth fields** — collect only what the chosen method needs:
-   - Bearer/basic → `auth_token` (+ `auth_type: "basic"` if basic)
-   - OAuth client credentials → `oauth_client_credentials.token_endpoint`, `client_id`, `client_secret`, plus optional `scope`, `resource`, `audience`, `auth_method`
+5. **Secure credential entry.** For bearer/basic or OAuth client credentials, call `save_agent` with `configure_auth_in_dashboard: true` and no credential fields. Return its dashboard link and instructions. Registration does not configure or verify authentication. Explicitly supplied credentials can still use `auth_token` / `oauth_client_credentials`; never echo them.
 6. **Protocol** (optional). Default `mcp`. Ask only if the URL is ambiguous: "Is this an MCP or A2A endpoint?"
 
-**When to actually call `save_agent`.** Only when you have (a) `agent_url`, (b) `type` declared by the user, and (c) an explicit auth-mode choice. Anything else → ask, don't infer. If the user defers on auth ("you pick", "whatever's easiest"), default to `none` and tell them you'll save without credentials; if the agent rejects calls later, they can re-run register and add a token. **Never default `type`** — if the user can't or won't say, stop and explain that the registry needs a declared type so peers know what they're looking at.
+**Call `save_agent` only with the URL, owner-confirmed type, and auth choice.** Ask for missing fields. If the user delegates the auth choice, explain that you will save without credentials. Never default type. A saved declaration is not proof of verified capabilities.
 
 **Never echo secrets.** When the user pastes an `auth_token`, `client_secret`, or any credential, do not repeat it back. In confirmations, mask as `••••••••<last4>`. If the user picks the OAuth user-authorization path and pastes an access token by mistake, refuse it and explain the agent will mint its own token via the dashboard's Authorize flow.
 
-**Always ask for agent type — never guess.** The owner declares it. If the user describes capabilities ("it returns inventory and accepts media buys") you may suggest the closest fit (`sales` in that example), but the user must confirm before you call `save_agent`. Server-side smuggle protection still cross-checks the declared type against the capability snapshot once one exists; if the capability probe disagrees later, the dashboard surfaces the conflict.
-
 **After `save_agent` succeeds**, confirm what landed and tell them the visibility default is **Members only** — discoverable to other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader), not publicly listed. Point them to the visibility selector on the agent card if they want to go **Public** (Public requires a paid AgenticAdvertising.org tier — Professional, Builder, Member, or Leader — and a primary brand domain).
+
+**Finish registration in chat.** The dashboard **Register agent** button opens this intake; sending the user back creates a loop. Use `adcp_agent_management` (`load_tool_group` on Gemini if needed). Confirm only after a successful registry write. For deferred credentials, direct them to the existing card's **Connect agent** / **Update auth** form. State authentication is pending; claim only returned visibility and actual probe evidence.
 
 **If `save_agent` fails**, do not abandon the registration. Read the error and route:
 - **Probe timeout / unreachable** → the agent record may still have saved with the declared type. Tell them, and offer to retry once the agent is reachable.

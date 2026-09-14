@@ -13,6 +13,26 @@ import {
 } from '../../../src/addie/tool-result-contract.js';
 
 describe('Addie tool result contract', () => {
+  it('labels a visibility-limited registry miss as empty without asserting absence', () => {
+    const raw = JSON.stringify({ error: 'Agent https://sales.streamhaus.example/mcp not found or not visible to the caller', visibility_scope: ['public', 'members_only'] });
+    const result = normalizeToolResult('get_agent', raw);
+    expect(result.status).toBe('empty');
+    expect(result.presentation.source).toBe('classified');
+    expect(result.presentation.user_summary).toContain('does not establish whether a private registration exists');
+    expect(result.model_context).toBe(raw);
+  });
+
+  it.each([
+    ['get_agent', { error: 'url is required' }, 'invalid_input'],
+    ['lookup_domain', { error: 'domain is required' }, 'invalid_input'],
+    ['validate_agent', { error: 'domain and agent_url are required' }, 'invalid_input'],
+    ['get_member', { error: 'Directory unavailable' }, 'error'],
+    ['get_agent', { name: 'Agent', description: 'Example error message', metadata: { error: 'test' } }, 'ok'],
+    ['unrelated_tool', { error: 'A field in a diagnostic result' }, 'ok'],
+  ])('classifies only directory-owned top-level negative envelopes: %s', (tool, result, expected) => {
+    expect(normalizeToolResult(tool, JSON.stringify(result)).status).toBe(expected);
+  });
+
   it.each([
     ['call_adcp_task', '**Task failed:** `get_products`\n\n**Error:** Invalid get_products request at buying_mode: Invalid input', 'error'],
     ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],

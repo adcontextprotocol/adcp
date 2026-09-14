@@ -32,6 +32,7 @@ import {
   type SponsoredIntelligenceContextKind,
 } from "../addie/slack-tool-selection.js";
 import { resolveWebCertificationContext } from "../addie/web-certification-context.js";
+import { hasActiveAgentRegistration } from "../addie/agent-registration-context.js";
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
 import {
   blockCheckpointedToolReplays,
@@ -356,14 +357,22 @@ export async function selectRoutedWebTools(input: {
   /** Globally registered definitions whose handlers were paired at registration time. */
   globalToolNames?: readonly string[];
   activeCertificationKind?: ActiveCertificationKind | null;
+  activeAgentRegistration?: boolean;
   sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
   threadMessages?: string[];
 }): Promise<RoutedWebTools> {
   const routingStarted = Date.now();
   let plan: ExecutionPlan | null = null;
-  const routerAvailable = input.router !== null;
+  const registrationIntake = input.activeAgentRegistration === true && !input.activeCertificationKind;
+  const routerAvailable = registrationIntake || input.router !== null;
 
-  if (input.router) {
+  if (registrationIntake) {
+    plan = {
+      action: 'respond', tool_sets: ['adcp_agent_management', 'knowledge'],
+      confidence: 'high', reason: 'Continue agent registration intake',
+      decision_method: 'quick_match', latency_ms: 0,
+    };
+  } else if (input.router) {
     const routingContext: RoutingContext = {
       message: input.message,
       source: 'dm',
@@ -1341,6 +1350,7 @@ export function createAddieChatRouter(options?: {
         certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
       const activeCertificationKind = isAuth ? certificationContext.kind : null;
+      const activeAgentRegistration = isAuth && hasActiveAgentRegistration(messageToProcess, threadMessages);
       if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
       const tieredAccess = buildTieredAccess(memberTools, isAuth, activeCertificationKind !== null);
       const experimentTurn = await prepareGeminiDirectTurn({
@@ -1350,6 +1360,7 @@ export function createAddieChatRouter(options?: {
         threadId: thread.thread_id,
         hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
         activeCertificationKind,
+        activeAgentRegistration,
         sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
           ? 'session' : siAgents.length > 0 ? 'discovery' : null,
         startedAt: startTime,
@@ -1367,6 +1378,7 @@ export function createAddieChatRouter(options?: {
               router: resolveRouter(),
               globalToolNames: activeChatClient.getRegisteredTools?.(),
               activeCertificationKind,
+              activeAgentRegistration,
               sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
                 ? 'session'
                 : siAgents.length > 0
@@ -1923,6 +1935,7 @@ export function createAddieChatRouter(options?: {
         certificationProgress, isAuth ? threadMessages : [], externalId, thread.thread_id,
       );
       const activeCertificationKind = isAuth ? certificationContext.kind : null;
+      const activeAgentRegistration = isAuth && hasActiveAgentRegistration(messageToProcess, threadMessages);
       const hasThreadCertCtx = activeCertificationKind !== null;
       if (isAuth && certificationContext.moduleId) certificationModuleContext.moduleId = certificationContext.moduleId;
       const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
@@ -1933,6 +1946,7 @@ export function createAddieChatRouter(options?: {
         threadId: thread.thread_id,
         hasPriorAssistant: threadMessages.some(message => message.role === 'assistant'),
         activeCertificationKind,
+        activeAgentRegistration,
         sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
           ? 'session' : siAgents.length > 0 ? 'discovery' : null,
         startedAt: startTime,
@@ -1950,6 +1964,7 @@ export function createAddieChatRouter(options?: {
               router: resolveRouter(),
               globalToolNames: activeChatClient.getRegisteredTools?.(),
               activeCertificationKind,
+              activeAgentRegistration,
               sponsoredIntelligenceContextKind: hasCachedSiSession(externalId)
                 ? 'session'
                 : siAgents.length > 0

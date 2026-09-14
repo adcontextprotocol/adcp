@@ -240,6 +240,7 @@ import {
 } from '../../src/routes/addie-chat.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 import * as geminiExperiment from '../../src/addie/gemini-direct-experiment.js';
+import { getToolsForSets } from '../../src/addie/tool-sets.js';
 
 afterAll(() => {
   if (originalApiKey === undefined) {
@@ -405,6 +406,30 @@ describe('Addie chat conversation object authorization', () => {
     ], 'conversation-a1', 'internal-thread-a1');
 
     expect(resolved?.module_id).toBe('A2');
+  });
+
+  it.each(['/', '/stream'])('retains registration context from the authorized web conversation: %s', async endpoint => {
+    const externalId = '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489';
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker', channel: 'web', external_id: externalId,
+      user_type: 'workos', user_id: 'user_attacker',
+    });
+    mocks.getThreadMessages.mockResolvedValue([
+      { role: 'user', content: 'Help me register my agent.' },
+      { role: 'assistant', content: 'What is the URL and auth method?', delivery_status: 'completed' },
+    ]);
+    const registered = vi.spyOn((await getChatClaudeClient())!, 'getRegisteredTools').mockReturnValue(getToolsForSets(['adcp_agent_management', 'knowledge'], false, false));
+    const prepare = vi.spyOn(geminiExperiment, 'prepareGeminiDirectTurn');
+    try {
+      const response = await request(mountChatRouter()).post(endpoint).send({
+        message: 'Agent URL: https://sales.streamhaus.example/mcp\nType: sales\nAuth: OAuth client credentials',
+        conversation_id: externalId,
+      });
+      expect(response.status).toBe(200);
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ activeAgentRegistration: true }));
+      const control = await prepare.mock.calls[0][0].getControlTools();
+      expect(control?.allowedToolNames).toContain('save_agent');
+    } finally { prepare.mockRestore(); registered.mockRestore(); }
   });
 
   it.each([

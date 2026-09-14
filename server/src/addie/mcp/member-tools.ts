@@ -2168,13 +2168,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.',
-    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
+      'Register an agent for the current organization or an explicitly selected active organization (organization_id / organization_name). Appears in /dashboard/agents, initially members_only: visible to paying AgenticAdvertising.org members (Professional, Builder, Member, Leader). Public visibility is a separate dashboard action requiring one of those tiers and a primary brand domain. Require the owner’s declared type and auth-mode choice; never guess type. Capability probes establish verified type separately. Auth: none, encrypted bearer/basic, or OAuth client credentials. Prefer configure_auth_in_dashboard for secure credential entry outside chat. Interactive OAuth uses the agent card’s Authorize flow after saving without credentials. health_check_url provides fallback liveness for authenticated or path-prefixed endpoints; it does not establish capability or compliance. Follow the registration intake rules.',
+    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". Save the registration before handing off credentials; the dashboard Register agent button opens this chat.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
+        configure_auth_in_dashboard: { type: 'boolean', description: 'Save the agent registration now and direct the owner to the dashboard authentication form to enter credentials securely. Do not include auth_token, auth_type, or oauth_client_credentials with this option. Existing credentials are preserved. This does not configure or verify authentication.' },
         type: {
           type: 'string',
           enum: ['brand', 'rights', 'measurement', 'governance', 'creative', 'sales', 'buying', 'signals'],
@@ -7116,11 +7117,20 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
+    const configureAuthInDashboard = input.configure_auth_in_dashboard === true;
+    if (configureAuthInDashboard && ['auth_token', 'auth_type', 'oauth_client_credentials']
+      .some(field => input[field] !== undefined)) {
+      return 'Error: configure_auth_in_dashboard cannot be combined with credentials. Omit auth_token, auth_type, and oauth_client_credentials; enter them on the dashboard instead.';
+    }
+
     const saveOrg = await resolveSaveAgentOrganization(memberContext, input);
     if (!saveOrg.ok) {
       return saveOrg.message;
     }
     const saveOrgId = saveOrg.organizationId;
+    const credentialHandoff = configureAuthInDashboard
+      ? `\n\n**Complete authentication securely:** Open [your agents dashboard](https://agenticadvertising.org/dashboard/agents?org=${encodeURIComponent(saveOrgId)}). On this agent's card, use the authentication form (**Connect agent** or **Update auth**). For OAuth client credentials, choose **OAuth client credentials (machine-to-machine)**, enter the token endpoint, client ID and client secret there, then click **Save credentials**. Bearer/basic credentials also go in that form. Do not paste secrets into chat. This call saved no new credentials and did not verify authentication; any existing credentials are unchanged. Do not click **Register agent** again — that returns to chat.`
+      : '';
     const saveOrgNameForDisplay = saveOrg.organizationName
       ? formatOrgNameForTool(saveOrg.organizationName)
       : '';
@@ -7351,6 +7361,9 @@ export function createMemberToolHandlers(
         context = await agentContextDb.getById(context.id);
 
         const profileStatus = await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
+        if (configureAuthInDashboard && !profileStatus.ok) {
+          return 'Error: Agent connection details were saved, but the registry listing could not be saved. Retry save_agent before entering credentials on the dashboard. No new credentials were saved.';
+        }
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         response += `**Organization:** ${saveOrgLabel}\n`;
@@ -7366,6 +7379,7 @@ export function createMemberToolHandlers(
         if (!profileStatus.ok) {
           response += `\n⚠️ Credentials are saved, but I couldn't update your dashboard listing right now (${profileStatus.reason}). The team has been notified.`;
         }
+        if (profileStatus.ok) response += credentialHandoff;
         return response;
       }
 
@@ -7389,6 +7403,9 @@ export function createMemberToolHandlers(
       }
 
       const profileStatus = await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
+      if (configureAuthInDashboard && !profileStatus.ok) {
+        return 'Error: Agent connection details were saved, but the registry listing could not be saved. Retry save_agent before entering credentials on the dashboard. No new credentials were saved.';
+      }
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
       response += `**Organization:** ${saveOrgLabel}\n`;
@@ -7404,7 +7421,8 @@ export function createMemberToolHandlers(
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
       if (profileStatus.ok) {
-        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AgenticAdvertising.org tier). When you test this agent, I'll automatically use the saved credentials.`;
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AgenticAdvertising.org tier). Saved credentials, if configured, will be used when testing.`;
+        response += credentialHandoff;
       } else {
         response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
       }
