@@ -36,15 +36,17 @@ narrative: |
   When a refinement includes a product that does not declare
   media_buy_support.frequency_cap and the resulting proposal would still
   carry a root cap, the seller MUST return outcome unable with
-  reason_code constraint_unsatisfiable and unsatisfied_constraints
-  echoing media_buy_frequency_cap. The same applies when a replacement cap
-  exceeds a participating product's frequency_cap_constraints.
+  reason_code constraint_unsatisfiable and the failing product echoed in
+  unsatisfied_product_changes. When a replacement cap exceeds a
+  participating product's frequency_cap_constraints, the seller MUST
+  return outcome unable; the normative reporting detail for
+  criteria-dimension failures is pending spec promotion.
 
   This storyboard exercises:
   1. Seeding proposals with a root cap via request_proposals criteria.
   2. Replacing the cap on a revision.
   3. Clearing the cap on a revision.
-  4. Unable outcome for an incompatible product mix.
+  4. Unable outcome for an incompatible product mix (via product_changes).
   5. Unable outcome for a cap exceeding product constraints.
 
 agent:
@@ -347,9 +349,9 @@ phases:
       Send a revision that includes a product without
       media_buy_support.frequency_cap while the source proposal carries a
       root cap. Because the inherited cap requires every product in the mix
-      to participate in the shared counter, the seller must return unable
-      with reason_code constraint_unsatisfiable and unsatisfied_constraints
-      echoing media_buy_frequency_cap.
+      to participate in the shared counter, the seller must return outcome
+      unable with reason_code constraint_unsatisfiable and the failing
+      product echoed in unsatisfied_product_changes.
 
     steps:
       - id: revise_include_non_participating
@@ -360,9 +362,11 @@ phases:
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
-          Return outcome unable with reason_code constraint_unsatisfiable
-          and unsatisfied_constraints including media_buy_frequency_cap.
-          No proposals are returned for a fully unable result.
+          Return outcome unable with reason_code constraint_unsatisfiable.
+          The product_changes request triggers the failure, so the
+          machine-readable detail is unsatisfied_product_changes echoing the
+          non-participating product. No proposals are returned for a fully
+          unable result.
         sample_request:
           idempotency_key: "$generate:uuid_v4#fcap_negotiation_unable_product"
           refinements:
@@ -378,15 +382,14 @@ phases:
           - check: field_value
             path: "results[0].outcome"
             value: "unable"
-            description: "Outcome is unable when product mix is incompatible"
+            description: "Outcome is unable when product mix is incompatible with the inherited cap"
           - check: field_value
             path: "results[0].reason_code"
             value: "constraint_unsatisfiable"
-            description: "reason_code identifies the constraint failure"
-          - check: field_contains
-            path: "results[0].unsatisfied_constraints"
-            value: "media_buy_frequency_cap"
-            description: "unsatisfied_constraints echoes media_buy_frequency_cap"
+            description: "reason_code identifies the product-change failure"
+          - check: field_present
+            path: "results[0].unsatisfied_product_changes"
+            description: "unsatisfied_product_changes echoes the failing product action"
 
   - id: unable_exceeds_product_constraints
     title: "Unable — replacement cap exceeds product constraints"
@@ -394,8 +397,10 @@ phases:
       Send a revision with criteria.media_buy_frequency_cap requesting a
       max_impressions value that exceeds a participating product's
       frequency_cap_constraints.max_impressions_constraints.maximum. The
-      seller must return unable with unsatisfied_constraints echoing
-      media_buy_frequency_cap.
+      seller must return outcome unable. The normative reporting contract
+      for criteria-dimension failures (as distinct from typed constraints
+      failures) is not yet promoted to schema; this phase grades only the
+      outcome, not the detail fields.
 
     steps:
       - id: revise_exceed_constraints
@@ -406,9 +411,10 @@ phases:
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
-          Return outcome unable with reason_code constraint_unsatisfiable
-          and unsatisfied_constraints including media_buy_frequency_cap.
-          The requested max_impressions 50 exceeds the fixture maximum of 10.
+          Return outcome unable. The requested max_impressions 50 exceeds
+          the fixture maximum of 10. Sellers may include a reason string
+          identifying the constraint gap; the machine-readable reporting
+          contract for criteria-dimension failures is pending spec promotion.
         sample_request:
           idempotency_key: "$generate:uuid_v4#fcap_negotiation_unable_exceeds"
           refinements:
@@ -430,11 +436,3 @@ phases:
             path: "results[0].outcome"
             value: "unable"
             description: "Outcome is unable when cap exceeds product constraints"
-          - check: field_value
-            path: "results[0].reason_code"
-            value: "constraint_unsatisfiable"
-            description: "reason_code identifies the constraint failure"
-          - check: field_contains
-            path: "results[0].unsatisfied_constraints"
-            value: "media_buy_frequency_cap"
-            description: "unsatisfied_constraints echoes media_buy_frequency_cap"
