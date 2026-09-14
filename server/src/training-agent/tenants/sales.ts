@@ -15,6 +15,7 @@ import {
   legacySyncCreativesHandler,
   reportingStatusForCustomTool,
   syncReportingReceiptsForCustomTool,
+  syncReportingStatusForCustomTool,
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
@@ -135,6 +136,57 @@ export const SYNC_REPORTING_RECEIPTS_SCHEMA = z.object({
   }
 });
 
+// Deliberately structural only. The conditional evidence rules that
+// reporting-consumer-status.json expresses (mismatch_code for
+// content_mismatch, failure_code for unreadable, the recomputed Core binding
+// for received) are enforced inside the ledger so one bad statement returns a
+// per-statement `failed` instead of rejecting the caller's whole batch.
+const CONSUMER_STATUS_ID = z.string().min(16).max(255).regex(/^[A-Za-z0-9_.:-]{16,255}$/);
+const CONSUMER_STATUS = z.object({
+  reporting_status_id: CONSUMER_STATUS_ID,
+  supersedes_reporting_status_id: CONSUMER_STATUS_ID.optional(),
+  delivery_config_id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_.:-]{1,64}$/),
+  delivery_config_version: z.number().int().min(1),
+  report_definition_id: REFERENCE_ID,
+  period: z.object({
+    start: z.string().min(1),
+    end: z.string().min(1),
+    source_timezone: z.string().min(1),
+  }).passthrough(),
+  reporting_obligation_id: REFERENCE_ID.optional(),
+  reporting_revision_id: REFERENCE_ID.optional(),
+  observed_revision_content_sha256: SHA256.optional(),
+  consumer_status: z.enum(['received', 'obligation_missing', 'revision_missing', 'unreadable', 'content_mismatch']),
+  status_as_of: z.string().min(1),
+  mismatch_code: z.enum([
+    'scope_media_buy_missing',
+    'coverage_short',
+    'metric_missing',
+    'schema_nonconformant',
+    'currency_mismatch',
+    'period_mismatch',
+  ]).optional(),
+  failure_code: z.enum([
+    'access_denied',
+    'resource_not_found',
+    'integrity_mismatch',
+    'reader_incompatible',
+    'transport_failed',
+  ]).optional(),
+  consumer_commit_ref: z.string().min(1).max(512).optional(),
+  seller_ledger_snapshot_id: z.string().min(1).max(255).optional(),
+  seller_ledger_as_of: z.string().min(1).optional(),
+}).passthrough();
+export const SYNC_REPORTING_STATUS_SCHEMA = z.object({
+  account: ACCOUNT_REF,
+  idempotency_key: z.string().min(16).max(255),
+  adcp_version: z.string().optional(),
+  adcp_major_version: z.number().int().optional(),
+  statuses: z.array(CONSUMER_STATUS).min(1).max(100),
+  context: z.any().optional(),
+  ext: z.any().optional(),
+});
+
 const SYNC_CATALOGS_SCHEMA = {
   idempotency_key: z.string().min(16).max(255),
   account: ACCOUNT_REF,
@@ -219,6 +271,16 @@ export function buildSalesTenantConfig(
               {
                 annotations: { readOnlyHint: true, idempotentHint: true },
                 payloadErrorsAsSuccess: true,
+              },
+            ),
+            sync_reporting_status: customToolFor(
+              'sync_reporting_status',
+              'Tell the seller whether each expected reporting period was received, omitted, missing, unreadable, or contradictory.',
+              SYNC_REPORTING_STATUS_SCHEMA,
+              syncReportingStatusForCustomTool,
+              {
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+                enforceIdempotency: true,
               },
             ),
             sync_reporting_receipts: customToolFor(

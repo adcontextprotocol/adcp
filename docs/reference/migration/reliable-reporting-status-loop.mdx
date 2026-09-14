@@ -192,9 +192,24 @@ is affected.
 Sellers advertising `consumer_status_task` run the capability-gated
 `reporting_consumer_status` storyboard. It uses the
 [`reporting_core_lifecycle_probe`](/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
-controller fixture, including the `restate_after_received` operation that
-restates a revision the caller already reported as `received` and returns the
-`stale_received_grace_deadline`, so both sides of the grace boundary are graded
-live rather than only in a seller's own integration tests. Cross-principal
-non-disclosure still requires an integration test — see
+controller fixture, which supplies every boundary the projection depends on:
+
+- `restate_after_received` restates a revision the caller already reported as
+  `received` and returns the `stale_received_grace_deadline`, so both sides of
+  the grace boundary are graded live rather than only in a seller's own
+  integration tests.
+- `advance_past_status_deadline` crosses `expected_at +
+  automated_recovery_window_seconds` without recording any statement, so the
+  storyboard can check that `obligation_counts.consumer_status_pending` rises,
+  that it clears on any posted leaf, and that neither transition moves `health`
+  or any other count.
+- `advance_past_escalation` crosses the open issue's `opened_at` plus
+  `consumer_mismatch_escalation_seconds` while the grace window is still open,
+  so the precedence rule is graded rather than assumed — and the returned
+  `issue_id` and `issue_opened_at` prove the window is anchored to the issue
+  rather than to the poll.
+
+The storyboard also grades each closed `mismatch_code`, rejection of a
+`content_mismatch` that omits it, and the advertised `operations_contact`.
+Cross-principal non-disclosure still requires an integration test — see
 [known limitations](/docs/reference/known-limitations#conformance-and-testing).

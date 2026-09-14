@@ -98,7 +98,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -387,7 +387,10 @@ fixture without waiting for real reporting boundaries. This lets a learner or
 storyboard observe that an obligation exists before its first report, then
 exercise deadline-based health, publish an explicit empty revision, or
 restate a provisional revision after a buyer has read it — including a
-restatement bound to a revision the caller already reported as `received`.
+restatement bound to a revision the caller already reported as `received`. Two
+further operations cross the consumer-status deadline and the
+consumer-mismatch escalation boundary, so the counted-silence and escalation
+projections are gradable without a wall-clock wait.
 
 The fixture is Core-only: no destination, materialization, readiness doorbell,
 canonical digest, or receipt is implied.
@@ -401,6 +404,8 @@ canonical digest, or receipt is implied.
 | **restate_snapshot** | none | Commit a new immutable snapshot revision that names the current snapshot in `supersedes_reporting_revision_id`. Reject the operation when no snapshot exists or the current revision is official. |
 | **restate_after_received** | `received_reporting_revision_id`, optional `advance_to: within_grace \| past_grace` | Same restatement, but only against the revision the caller already read. Reject the operation unless `received_reporting_revision_id` names the caller's current required revision; a seller advertising `consumer_status_task` MUST additionally require a current `received` consumer status from that caller naming it. Return `stale_received_grace_deadline` and set `simulated_now` inside it (`within_grace`, the default) or one second past it (`past_grace`). Repeating the call is convergent: it reuses the committed restatement and only moves the clock. |
 | **omit_obligation** | none | Advance through a second elapsed period while deliberately suppressing its obligation. The response supplies the expected period and ID so a buyer can demonstrate denominator-based detection. Sandbox education only: this intentionally produces a non-conformant ledger. |
+| **advance_past_status_deadline** | none | Move `simulated_now` strictly past the buyer's consumer-status deadline — `expected_at` plus the advertised `automated_recovery_window_seconds` — without recording any consumer status. The obligation is then counted in `obligation_counts.consumer_status_pending`, and nothing else in the response moves: silence raises no issue and changes no health. Return the crossed `consumer_status_deadline`. |
+| **advance_past_escalation** | none | Move `simulated_now` strictly past the open `CONSUMER_STATUS_MISMATCH` issue's `opened_at` plus the advertised `consumer_mismatch_escalation_seconds`. Reject the operation when no mismatch is open. Return the issue's `issue_id` and `opened_at`, the crossed `consumer_mismatch_escalation_deadline`, and — when the open mismatch is a stale `received` — the still-future `stale_received_grace_deadline`, so a storyboard can grade that the escalation boundary takes precedence over the grace window rather than merely following it. |
 
 Every successful response includes `account_id` and the applied
 `simulated_now`. `prepare` returns the resolved configuration, generation
@@ -410,10 +415,17 @@ tuple, obligation ID, half-open period, `expected_at`, and `recovery_deadline`;
 `finality: "snapshot"`, and `row_count`; `restate_snapshot` returns those fields
 for the new snapshot plus `supersedes_reporting_revision_id`;
 `restate_after_received` returns those plus `received_reporting_revision_id`,
-`restated_at`, and `stale_received_grace_deadline`; and
+`restated_at`, and `stale_received_grace_deadline`;
 `omit_obligation` instead returns `expected_reporting_obligation_id`,
-`omitted_period`, and its `expected_at`. Implementations choose fixture
-identifiers, so callers capture the returned values rather than guessing them.
+`omitted_period`, and its `expected_at`;
+`advance_past_status_deadline` returns `expected_at`,
+`automated_recovery_window_seconds`, and the crossed
+`consumer_status_deadline`; and `advance_past_escalation` returns `issue_id`,
+`issue_opened_at`, `consumer_mismatch_escalation_seconds`,
+`consumer_mismatch_escalation_deadline`, `expected_recommended_action`, and any
+still-future `stale_received_grace_deadline`. Implementations choose fixture
+identifiers — including the sandbox `account_id` — so callers capture the
+returned values rather than guessing them.
 
 `restate_after_received` exists so the
 [stale-received grace projection](/docs/media-buy/task-reference/get_reporting_status#consumer-status-mismatch)
@@ -532,6 +544,37 @@ To grade the stale-received grace window, first publish a revision and record a
 Repeat the identical call with `"advance_to": "past_grace"` to cross the
 returned `stale_received_grace_deadline` without committing a second
 restatement.
+
+The two consumer-status boundaries have their own operations. Neither takes
+parameters, because the seller — not the caller — owns the windows being
+crossed:
+
+```json
+{
+  "adcp_version": "3.2-rc.1",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "advance_past_status_deadline" }
+}
+```
+
+```json
+{
+  "adcp_version": "3.2-rc.1",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "advance_past_escalation" }
+}
+```
+
+`advance_past_status_deadline` grades counted silence: the response's
+`consumer_status_deadline` is `expected_at` plus the seller's advertised
+`automated_recovery_window_seconds`, and a `get_reporting_status` summary read
+past it must raise `obligation_counts.consumer_status_pending` while leaving
+`health` and every other count exactly where they were.
+`advance_past_escalation` grades the escalation commitment: the returned
+`issue_opened_at` is the open issue's own `opened_at`, never the poll time, so
+a re-emission cannot reset the window.
 
 Reset with `prepare` before the negative fixture, then call:
 

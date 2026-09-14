@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { GetReportingStatusResponseSchema } from '@adcp/sdk/schemas';
 import {
   advanceReportingCoreLifecycleProbe,
   clearReportingReliabilityStore,
@@ -20,6 +19,7 @@ import {
   setReportingCoreLifecycleProbeClock,
   setReportingMediaBuyCandidates,
   syncReliableReportingReceiptsForAccount,
+  syncReliableReportingStatusesForAccount,
   TRAINING_REPORTING_CORE_CONFIGURATION,
   TRAINING_REPORTING_MANAGED_OFFERING,
   TRAINING_REPORTING_RECONCILED_OFFERING,
@@ -29,6 +29,21 @@ import {
   updateReliableReportingManagedDeliveryProbe,
 } from '../../src/training-agent/reporting-reliability.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
+
+/**
+ * Validate the Reliable Reporting wire shape against the in-repo source
+ * schemas, which are this branch's authority. The pinned `@adcp/sdk` generates
+ * its strict zod projection from an older published bundle that predates the
+ * RC.3 consumer-status fields (`consumer_status_count`,
+ * `obligation_counts.consumer_status_pending`, `consumer_statuses[]`), so it
+ * rejects a conformant current-source response. Swap back to the SDK
+ * projection once the SDK is regenerated from RC.3 schemas.
+ */
+function expectReliableReportingWireShape(response: unknown): void {
+  const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
+  expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+  expect(validation.valid).toBe(true);
+}
 
 const ACCOUNT_ID = 'acc_reporting_training';
 const BASE_REQUEST = {
@@ -55,7 +70,7 @@ describe('training-agent Core reporting reliability ledger', () => {
     expect(waiting.revisions).toEqual([]);
     expect(waiting.scope).toMatchObject({ scope_closed: true });
     expect(waiting).not.toHaveProperty('next_expected_at');
-    expect(GetReportingStatusResponseSchema.safeParse(waiting).success).toBe(true);
+    expectReliableReportingWireShape(waiting);
 
     advanceReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, 'delayed');
     const delayed = getReportingStatusForAccount({ ...BASE_REQUEST, view: 'summary' }, 'buyer:alpha', ACCOUNT_ID);
@@ -69,7 +84,7 @@ describe('training-agent Core reporting reliability ledger', () => {
       severity: 'delayed',
       reporting_obligation_id: prepared.reporting_obligation_id,
     });
-    expect(GetReportingStatusResponseSchema.safeParse(delayed).success).toBe(true);
+    expectReliableReportingWireShape(delayed);
   });
 
   it('treats a zero-row revision as a completed report, not a missing report', () => {
@@ -92,7 +107,7 @@ describe('training-agent Core reporting reliability ledger', () => {
       row_count: 0,
       control_totals: [],
     });
-    expect(GetReportingStatusResponseSchema.safeParse(periods).success).toBe(true);
+    expectReliableReportingWireShape(periods);
 
     const revision = getReportingStatusForAccount({
       ...BASE_REQUEST,
@@ -100,7 +115,7 @@ describe('training-agent Core reporting reliability ledger', () => {
       reporting_revision_id: published.reporting_revision_id,
     }, 'buyer:alpha', ACCOUNT_ID);
     expect(revision).toMatchObject({ view: 'revision', revision: { row_count: 0 } });
-    expect(GetReportingStatusResponseSchema.safeParse(revision).success).toBe(true);
+    expectReliableReportingWireShape(revision);
 
     advanceReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, 'delayed');
     const reread = getReportingStatusForAccount({
@@ -168,11 +183,31 @@ describe('training-agent Core reporting reliability ledger', () => {
   });
 
   it('binds a post-received restatement to the revision the caller read and publishes its grace boundary', () => {
-    prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
+    const prepared = prepareReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
     const received = publishZeroRowReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID);
 
     expect(() => restateAfterReceivedReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, 'reporting-revision.not-read'))
       .toThrow(/must name the revision this caller currently reports as received/);
+
+    // This seller advertises consumer_status_task, so the fixture refuses to
+    // restate into a vacuum: there must be a buyer read to overtake.
+    expect(() => restateAfterReceivedReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, received.reporting_revision_id))
+      .toThrow(/requires a current received consumer status/);
+    const recordedRead = syncReliableReportingStatusesForAccount({
+      statuses: [{
+        reporting_status_id: 'consumer-status.probe-received.0001',
+        delivery_config_id: prepared.delivery_config_id,
+        delivery_config_version: prepared.delivery_config_version,
+        report_definition_id: prepared.resolved_configuration.report_definition_id,
+        period: { ...prepared.period, source_timezone: 'UTC' },
+        reporting_obligation_id: prepared.reporting_obligation_id,
+        reporting_revision_id: received.reporting_revision_id,
+        observed_revision_content_sha256: received.revision_content_sha256,
+        consumer_status: 'received',
+        status_as_of: received.simulated_now,
+      }],
+    }, 'buyer:alpha', ACCOUNT_ID) as { results: Array<{ result: string }> };
+    expect(recordedRead.results[0]?.result).toBe('recorded');
 
     const restated = restateAfterReceivedReportingCoreLifecycleProbe('buyer:alpha', ACCOUNT_ID, received.reporting_revision_id);
     expect(restated).toMatchObject({
@@ -741,7 +776,7 @@ describe('training-agent Core reporting reliability ledger', () => {
         })],
       })],
     });
-    expect(GetReportingStatusResponseSchema.safeParse(response).success).toBe(true);
+    expectReliableReportingWireShape(response);
   });
 
   it('closes an empty configuration denominator even at an exact period boundary', () => {
@@ -829,7 +864,7 @@ describe('training-agent Core reporting reliability ledger', () => {
       errors: [{ code: 'NOT_FOUND' }],
     });
     expect(JSON.stringify(otherCaller)).not.toContain(prepared.reporting_obligation_id);
-    expect(GetReportingStatusResponseSchema.safeParse(otherCaller).success).toBe(true);
+    expectReliableReportingWireShape(otherCaller);
   });
 
   it('retains a superseded/deactivated generation and walks a stable resource cursor', () => {
@@ -851,7 +886,7 @@ describe('training-agent Core reporting reliability ledger', () => {
     expect(second.ledger_snapshot_id).toBe(first.ledger_snapshot_id);
     expect(second.periods).toEqual([]);
     expect(second.revisions).toHaveLength(1);
-    expect(GetReportingStatusResponseSchema.safeParse(second).success).toBe(true);
+    expectReliableReportingWireShape(second);
     const forged = getReportingStatusForAccount({
       ...BASE_REQUEST,
       view: 'periods',
@@ -884,6 +919,6 @@ describe('training-agent Core reporting reliability ledger', () => {
       period: { start: '2026-06-01T00:00:00.000Z', end: '2026-06-01T01:00:00.000Z' },
     }, 'buyer:alpha', ACCOUNT_ID);
     expect(old).toMatchObject({ status: 'failed', failure_kind: 'lookup_unavailable' });
-    expect(GetReportingStatusResponseSchema.safeParse(old).success).toBe(true);
+    expectReliableReportingWireShape(old);
   });
 });

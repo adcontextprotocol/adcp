@@ -93,6 +93,8 @@ import {
   type TrainingTaskRegistryScope,
 } from './task-registry-scope.js';
 import {
+  advancePastConsumerMismatchEscalationProbe,
+  advancePastConsumerStatusDeadlineProbe,
   advanceReportingCoreLifecycleProbe,
   omitReportingCoreObligationProbe,
   prepareReportingCoreLifecycleProbe,
@@ -1758,6 +1760,20 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Prepared a deliberately omitted elapsed obligation for buyer-side denominator reconciliation.',
       };
     }
+    if (operation === 'advance_past_status_deadline') {
+      return {
+        success: true,
+        simulated: advancePastConsumerStatusDeadlineProbe(ctx.principal, accountId),
+        message: 'Advanced past the buyer consumer-status deadline without recording any statement.',
+      };
+    }
+    if (operation === 'advance_past_escalation') {
+      return {
+        success: true,
+        simulated: advancePastConsumerMismatchEscalationProbe(ctx.principal, accountId),
+        message: 'Advanced past the open consumer-status mismatch escalation boundary.',
+      };
+    }
   } catch (error) {
     return {
       success: false,
@@ -1768,7 +1784,7 @@ async function handleReportingCoreLifecycleProbe(
   return {
     success: false,
     error: 'INVALID_PARAMS',
-    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, or omit_obligation',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, or advance_past_escalation',
   };
   }, account);
 }
