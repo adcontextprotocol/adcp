@@ -31,10 +31,17 @@ const mocks = vi.hoisted(() => ({
   checkCostCap: vi.fn(),
   epoch: vi.fn(),
   organizationAuthority: vi.fn(),
+  workosGetUser: vi.fn(),
 }));
 
 vi.mock('../../src/db/authorization-epoch-db.js', () => ({
   getExactCredentialAuthorizationEpoch: mocks.epoch,
+}));
+
+vi.mock('../../src/auth/workos-client.js', () => ({
+  getAuthorizationEnforcementWorkos: () => ({
+    userManagement: { getUser: mocks.workosGetUser },
+  }),
 }));
 
 vi.mock('../../src/utils/resolve-user-org-authorization.js', async (importOriginal) => ({
@@ -306,6 +313,10 @@ describe("Tavus session guidance route boundary", () => {
     mocks.getCommitteesLedByUser.mockResolvedValue([]);
     mocks.checkCostCap.mockResolvedValue({ ok: true, tier: 'member_free' });
     mocks.epoch.mockResolvedValue('4');
+    mocks.workosGetUser.mockImplementation(async (credentialId: string) => ({
+      id: credentialId,
+      email: 'ada@example.test',
+    }));
     mocks.organizationAuthority.mockResolvedValue({
       status: 'forbidden', complete: true, unavailableSources: [],
     });
@@ -833,6 +844,32 @@ describe("Tavus session guidance route boundary", () => {
       { id: 'authenticated-session-user', authWorkosUserId: 'authenticated-session-user' },
       'org_voice',
     );
+  });
+
+  it.each([
+    ['break-glass email removal', async () => ({
+      id: 'authenticated-session-user', email: 'ordinary@example.test',
+    })],
+    ['credential deletion before dispatch', async () => {
+      throw Object.assign(new Error('missing'), { status: 404 });
+    }],
+  ] as const)('Tavus mutation authority denies %s after capture', async (_label, changedCredential) => {
+    const response = await voiceTurn(mountApp());
+    expect(response.status).toBe(200);
+    const options = mocks.processMessageStream.mock.calls[0]?.[3] as {
+      captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<
+        (input: { toolName: string }) => Promise<unknown>
+      >;
+    };
+    const revalidate = await options.captureSideEffectAuthority({
+      mutationToolNames: ['save_brand'],
+    });
+    await expect(revalidate({ toolName: 'save_brand' }))
+      .resolves.toEqual({ allowed: true });
+    mocks.workosGetUser.mockImplementationOnce(changedCredential);
+    await expect(revalidate({ toolName: 'save_brand' }))
+      .resolves.toEqual({ allowed: false, status: 'access_denied' });
+    expect(mocks.workosGetUser).toHaveBeenCalledWith('authenticated-session-user');
   });
 
   it('completes live routing before opening the SSE stream', async () => {

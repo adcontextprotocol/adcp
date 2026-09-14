@@ -16,6 +16,12 @@ export type AddieMutationAuthorityDecision =
   | { allowed: true }
   | { allowed: false; status: 'access_denied' | 'recoverable_error' };
 
+export type AddieCredentialAuthorityDecision = 'authorized' | 'forbidden' | 'unavailable';
+
+export type AddieCredentialAuthorityLookup = (
+  credentialId: string,
+) => Promise<AddieCredentialAuthorityDecision>;
+
 export type AddieOrganizationAuthorityLookup = (
   credentialId: string,
   organizationId: string,
@@ -27,9 +33,10 @@ export interface AddieMutationAuthoritySnapshot {
   readonly epoch: string;
   readonly principal: Readonly<AAOAdminPrincipal>;
   readonly platformAdminMutationTools: ReadonlySet<string>;
-  readonly revalidateCredential?: (
-    credentialId: string,
-  ) => Promise<'authorized' | 'forbidden' | 'unavailable'>;
+  /** Authoritative WorkOS lifecycle and email proof. Always present. */
+  readonly revalidateCredentialLifecycle: AddieCredentialAuthorityLookup;
+  /** Optional surface binding proof, such as the live Slack mapping. */
+  readonly revalidateCredential?: AddieCredentialAuthorityLookup;
   readonly revalidatePlatformAdmin?: (
     credentialId: string,
   ) => Promise<'authorized' | 'forbidden' | 'unavailable'>;
@@ -44,6 +51,36 @@ export interface AddieOrganizationMutationAuthority {
   organizationId: string;
   minimumRole: MembershipRole;
   revalidate?: AddieOrganizationAuthorityLookup;
+}
+
+function workosStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  const status = candidate.status ?? candidate.statusCode;
+  return typeof status === 'number' ? status : undefined;
+}
+
+/**
+ * Re-read the exact credential from WorkOS at the dispatch boundary. Local
+ * webhook state and persisted epochs cannot detect provider deletion before
+ * its webhook arrives. Comparing the captured email also prevents a cached
+ * break-glass email from surviving an authoritative provider-side change.
+ */
+export async function revalidateExactCredentialLifecycle(
+  credentialId: string,
+  capturedEmail: string,
+): Promise<AddieCredentialAuthorityDecision> {
+  try {
+    const credential = await getAuthorizationEnforcementWorkos().userManagement.getUser(credentialId);
+    if (!credential || credential.id !== credentialId || typeof credential.email !== 'string') {
+      return 'unavailable';
+    }
+    return credential.email.trim().toLowerCase() === capturedEmail
+      ? 'authorized'
+      : 'forbidden';
+  } catch (error) {
+    return workosStatus(error) === 404 ? 'forbidden' : 'unavailable';
+  }
 }
 
 /** Freeze the exact selected organization and role used to assemble handlers. */
@@ -102,11 +139,16 @@ export async function revalidateExactOrganizationAuthority(
 export async function captureAddieMutationAuthority(input: {
   principal: AAOAdminPrincipal;
   platformAdminMutationTools: Iterable<string>;
+  revalidateCredentialLifecycle?: AddieCredentialAuthorityLookup;
   revalidateCredential?: AddieMutationAuthoritySnapshot['revalidateCredential'];
   revalidatePlatformAdmin?: AddieMutationAuthoritySnapshot['revalidatePlatformAdmin'];
   organizationAuthority?: AddieOrganizationMutationAuthority;
 }): Promise<AddieMutationAuthoritySnapshot> {
   const credentialId = input.principal.authWorkosUserId ?? input.principal.id;
+  const credentialEmail = input.principal.email?.trim().toLowerCase();
+  if (!credentialId || credentialId.trim() !== credentialId || !credentialEmail) {
+    throw new AAOAdminLookupUnavailableError();
+  }
   let epoch: string | null;
   try {
     epoch = await getExactCredentialAuthorizationEpoch(credentialId);
@@ -121,9 +163,11 @@ export async function captureAddieMutationAuthority(input: {
     principal: Object.freeze({
       id: credentialId,
       authWorkosUserId: credentialId,
-      email: input.principal.email,
+      email: credentialEmail,
     }),
     platformAdminMutationTools: new Set(input.platformAdminMutationTools),
+    revalidateCredentialLifecycle: input.revalidateCredentialLifecycle
+      ?? ((exactCredentialId) => revalidateExactCredentialLifecycle(exactCredentialId, credentialEmail)),
     revalidateCredential: input.revalidateCredential,
     revalidatePlatformAdmin: input.revalidatePlatformAdmin,
     organizationAuthority: input.organizationAuthority
@@ -150,6 +194,18 @@ export async function revalidateAddieMutationAuthority(
   }
   if (currentEpoch === null || currentEpoch !== snapshot.epoch) {
     return { allowed: false, status: 'access_denied' };
+  }
+
+  try {
+    const decision = await snapshot.revalidateCredentialLifecycle(snapshot.credentialId);
+    if (decision !== 'authorized') {
+      return {
+        allowed: false,
+        status: decision === 'unavailable' ? 'recoverable_error' : 'access_denied',
+      };
+    }
+  } catch {
+    return { allowed: false, status: 'recoverable_error' };
   }
 
   if (snapshot.revalidateCredential) {
@@ -188,11 +244,13 @@ export async function revalidateAddieMutationAuthority(
     try {
       if (snapshot.revalidatePlatformAdmin) {
         const decision = await snapshot.revalidatePlatformAdmin(snapshot.credentialId);
-        return decision === 'authorized'
-          ? { allowed: true }
-          : { allowed: false, status: decision === 'unavailable' ? 'recoverable_error' : 'access_denied' };
-      }
-      if (!(await isAuthenticatedUserAAOAdmin(snapshot.principal))) {
+        if (decision !== 'authorized') {
+          return {
+            allowed: false,
+            status: decision === 'unavailable' ? 'recoverable_error' : 'access_denied',
+          };
+        }
+      } else if (!(await isAuthenticatedUserAAOAdmin(snapshot.principal))) {
         return { allowed: false, status: 'access_denied' };
       }
     } catch (error) {
@@ -201,6 +259,17 @@ export async function revalidateAddieMutationAuthority(
       }
       return { allowed: false, status: 'recoverable_error' };
     }
+  }
+  // Every proof above can await an external authority source. Re-read the
+  // exact local epoch afterwards so a concurrent webhook or local authority
+  // writer cannot commit between the first epoch read and dispatch.
+  try {
+    currentEpoch = await getExactCredentialAuthorizationEpoch(snapshot.credentialId);
+  } catch {
+    return { allowed: false, status: 'recoverable_error' };
+  }
+  if (currentEpoch === null || currentEpoch !== snapshot.epoch) {
+    return { allowed: false, status: 'access_denied' };
   }
 
   return { allowed: true };
