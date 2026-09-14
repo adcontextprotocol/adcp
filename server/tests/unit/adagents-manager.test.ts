@@ -1712,6 +1712,37 @@ describe('AdAgentsManager', () => {
       expect(result.errors.some(e => e.message.includes('nested references not allowed'))).toBe(true);
     });
 
+    it.each([
+      { authoritative_location: 'https://cdn2.example.com/adagents.json' },
+      { authoritative_location: null },
+      { authoritative_location: {} },
+      { superseded_by: 'https://cdn2.example.com/adagents.json' },
+      { superseded_by: null },
+    ])('rejects pointer-bearing authoritative targets even with inline agents: %j', async pointer => {
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200, data: buf({ authoritative_location: 'https://cdn.example.com/adagents.json' }), headers: {},
+      }).mockResolvedValueOnce({
+        status: 200, data: buf({ authorized_agents: [], ...pointer }), headers: {},
+      });
+      const result = await manager.validateDomain('example.com');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.message.includes('nested references not allowed'))).toBe(true);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      { authoritative_location: null },
+      { authoritative_location: {} },
+      { authoritative_location: 'https://cdn.example.com/adagents.json', authorized_agents: [] },
+      { authoritative_location: 'https://cdn.example.com/adagents.json', superseded_by: 'https://other.example/' },
+    ])('refuses ambiguous publisher pointers without fetching their targets: %j', async manifest => {
+      mockedSafeFetch.mockResolvedValueOnce({ status: 200, data: buf(manifest), headers: {} });
+      const result = await manager.validateDomain('example.com');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.message.includes('URL-only reference'))).toBe(true);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('handles network errors fetching authoritative file', async () => {
       const referenceData = {
         authoritative_location: 'https://cdn.example.com/adagents.json',

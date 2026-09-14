@@ -662,6 +662,8 @@ Validators SHOULD also apply revocation **synchronously during manifest ingest**
 
 This last property is what makes pointer-swap distinct from a generic integrity failure: the whole point of the `authoritative_location` pattern is that publishers are *allowed* to change where they delegate, so the validator cannot treat any pointer change as adversarial without breaking legitimate delegation handoffs. The network-CDN threat is wide-and-shallow (one compromise, every publisher hijacked); the pointer-swap threat is narrow-and-deep (one publisher hijacked, but through a surface the network cannot monitor). Both are in scope.
 
+A validator MUST establish its baseline authoritative-location pin only after successfully fetching and validating a single-hop authoritative manifest. An unavailable target, invalid manifest, or chained pointer MUST NOT establish or replace that pin. A read-only check against an existing pin does not reserve authority; successful admission MUST atomically recheck the pin before committing it.
+
 Validators MUST treat a changed `authoritative_location` as a high-severity event, not a routine refresh. Concretely:
 
 - Validators MUST NOT auto-adopt a changed `authoritative_location`. Continue serving the previously cached authoritative file (subject to the 7-day cap above) while the change is under confirmation. This is the minimum normative floor; the SHOULDs below specify how confirmation is obtained.
