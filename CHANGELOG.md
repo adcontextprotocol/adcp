@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.2.0-rc.3
+
+### Minor Changes
+
+- f1848ee: Add a shared MediaBuy-level `frequency_cap` (one counter across every package) with `media_buy.aggregate_frequency_capping` seller capability, `Product.media_buy_support` participation, discovery via `required_media_buy_support` and `media_buy_frequency_cap`, the `update_media_buy_frequency_cap` action, and proposal-refinement removal. Scope is determined by field location; package caps are unchanged. `ACTION_NOT_ALLOWED.attempted_action` now references the structured action-id schema so it can name `update_media_buy_frequency_cap`; 3.1 SDKs that validate that field against the flat `media-buy-valid-action` enum should update.
+- d44756a: Add structured product frequency-cap constraints (`overlay_support.frequency_cap_support`) and constraint-aware discovery without changing the legacy `frequency_cap: true` boolean, plus package-qualified `update_frequency_caps` availability.
+- db1ee5f: Add request-only targeting and product-purchase input schemas for established
+  and compact create/update surfaces. Each targeting dimension now distinguishes
+  omission (inherit or preserve), a non-null replacement, and `null` (clear),
+  while discovery, capability, accepted-commercial-term, and readback schemas
+  remain strict and non-null.
+
+### Patch Changes
+
+- 8644cdf: Update the TypeScript SDK dependency and current 3.2 RC guidance, certification prompts, conformance metadata, and provenance assertions to `@adcp/sdk@14.0.0-rc.35`.
+- acab756: Harden the experimental Reliable Reporting consumer-status loop. Reserve `authoritative_party` on `reporting-delivery-config.json` (sellers MUST reject `consumer` with `UNSUPPORTED_FEATURE` until a later minor defines the buyer-deposited revision task) and relax the seller-authoritative billing-feed constraint accordingly. Give a `received` status made stale only by a seller restatement a bounded `delayed` grace window before it escalates. Make the buyer's posting deadline `expected_at + automated_recovery_window_seconds` and surface unmet deadlines through `obligation_counts.consumer_status_pending`, a count that never changes seller health. Add issue lifecycle fields (`opened_at`, `issue_state`, `external_ref`) with optional `consumer_mismatch_escalation_seconds` and `operations_contact` capability advertisement. Add the `content_mismatch` consumer status with a closed `mismatch_code` for contract-fact disagreements, which are explicitly not measurement disputes. Extend the `reporting_core_lifecycle_probe` controller with `restate_after_received` so the grace projection is graded live, and make the reference seller reject the reserved `authoritative_party` value so the normative MUST has working code behind it.
+- decd95f: Retire superseded 3.x beta prerelease artifacts from `dist/schemas`, `dist/compliance`, and `dist/protocol`, keeping only the `3.2.0-beta.11` schema bundle (frozen `3.2-beta` documentation selector), `3.2.0-beta.6` (the training agent's retained checkpoint), and `3.1.0-beta.7` (the TypeScript SDK side bundle). This removes about 2 GB from the repository and the runtime image, whose size gate the rc.3 release branch had started to exceed. Previously published beta URLs continue to be served from the artifact CDN on a best-effort basis; documentation now links to the `3.2.0-rc.2` bundle. The immutable-release-artifact guard now permits whole-tree deletion of tagged beta checkpoints while still rejecting in-place edits and any deletion of release-candidate or stable artifacts.
+- 8d50c0e: `scripts/run-storyboards-matrix.sh` snapshots the freshly built `dist/schemas/latest` into a temporary directory and runs every tenant against that copy, so a concurrent `npm run build:schemas` in the same tree can no longer abort a tenant with the SDK's schema-root version mismatch. The pre-push hook treats the local matrix as advisory: it is skipped when the working tree has uncommitted changes or when `ADCP_SKIP_STORYBOARD_MATRIX=1`, with the `training-agent-storyboards.yml` workflow as the authoritative gate.
+- 322e39c: Update the pinned Changesets release action to v2.1.2 and refresh its vendored contract fixture and release-workflow verification.
+
 ## 3.2.0-rc.2
 
 ### Minor Changes

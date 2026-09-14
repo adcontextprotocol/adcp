@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/media-buy-frequency-cap.json",
+  "title": "Media Buy Frequency Cap",
+  "description": "A MediaBuy-level maximum-impression cap. The counter is shared across participating packages for the declared per unit. Duration windows are rolling elapsed windows; campaign spans the MediaBuy flight. Aggregate suppression is not defined in 3.2 because suppress-only FrequencyCap values do not identify a counter entity.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/frequency-cap.json"
+    },
+    {
+      "required": [
+        "max_impressions"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "suppress"
+            ]
+          },
+          {
+            "required": [
+              "suppress_minutes"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
