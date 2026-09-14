@@ -2,10 +2,10 @@
   {
     "sdk": {"package":"@adcp/sdk","version":"14.0.0-rc.36"},
     "protocol": {
-      "version": "3.2.0-rc.1",
-      "wire_selector": "3.2-rc.1",
-      "sha256": "17b1b11cb90fa261420060fc2732deed5b0f1cfae2a8ebaf2cbb2d665630894e",
-      "manifest": "dist/schemas/3.2.0-rc.1/manifest.json"
+      "version": "3.2.0-rc.2",
+      "wire_selector": "3.2-rc.2",
+      "sha256": "1b71923d0db3ad92fcdf079060361b2bdde0136486cf306c6ac144fd8fef28c0",
+      "manifest": "dist/schemas/3.2.0-rc.2/manifest.json"
     },
     "summary": {
       "cases": 124,
@@ -15,12 +15,12 @@
       "schema_valid": 123,
       "schema_invalid": 1,
       "semantics_passed": 124,
-      "manifest_tools": 77,
+      "manifest_tools": 78,
       "advertised_tools": 3,
       "tools_with_fixtures": 2,
-      "tools_without_fixtures": 75,
-      "unsupported_request_generation": 20,
-      "union_alternatives_not_selected": 42,
+      "tools_without_fixtures": 76,
+      "unsupported_request_generation": 21,
+      "union_alternatives_not_selected": 43,
       "optional_request_branches": "not-generated; outside minimal required-property fixtures",
       "workflow_completion": "not-tested",
       "status": "findings"
