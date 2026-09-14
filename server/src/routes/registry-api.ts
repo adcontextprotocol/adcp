@@ -12918,6 +12918,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   });
 
   router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
+    const principal = captureRegistryPrincipal(req);
+    // The durable queue counts requested_by_user_id. Keep this route's
+    // reservation and release on that same exact credential, including across
+    // awaits; other crawl routes retain their existing rate-limit identities.
+    const rateLimitMemberId = principal.user?.id ?? 'anonymous';
+    if (!principal.user && !principal.staticAdmin) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     if (!isPublisherCrawlQueueEnabled()) {
       res.setHeader('Retry-After', '60');
       return res.status(503).json({
@@ -12928,14 +12936,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     }
     const rateLimitKey = req.body?.domain?.toLowerCase?.()?.trim?.() || '';
     try {
-      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rateLimitKey);
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rateLimitKey, undefined, rateLimitMemberId);
       if (!normalizedDomain) return;
-
-      const staticAdmin = isStaticAdminRequest(req);
-      if (!req.user && !staticAdmin) {
-        releaseCrawlRateLimit(req, rateLimitKey);
-        return res.status(401).json({ error: "Authentication required" });
-      }
 
       const crawlRequestId = randomUUID();
       try {
@@ -12943,14 +12945,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           id: crawlRequestId,
           domain: normalizedDomain,
           source: "api:crawl-request",
-          requesterType: staticAdmin ? 'static_admin' : 'user',
-          requestedByUserId: staticAdmin ? null : req.user!.id,
+          requesterType: principal.staticAdmin ? 'static_admin' : 'user',
+          requestedByUserId: principal.staticAdmin ? null : principal.user!.id,
           domainWindowMs: CRAWL_RATE_LIMIT_MS,
           requesterWindowMs: MEMBER_CRAWL_WINDOW_MS,
           requesterLimit: MEMBER_CRAWL_LIMIT,
         });
       } catch (error) {
-        releaseCrawlRateLimit(req, rateLimitKey);
+        releaseCrawlRateLimit(req, rateLimitKey, rateLimitMemberId);
         if (error instanceof CrawlRequestRateLimitError) {
           return res.status(429).json({
             error: error.scope === 'domain'
@@ -12972,7 +12974,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       logger.info(
         {
-          ...(staticAdmin ? req.staticAdminAuditDetails : {}),
+          ...(principal.staticAdmin ? req.staticAdminAuditDetails : {}),
           domain: normalizedDomain,
           crawl_request_id: crawlRequestId,
           crawl_status: "queued",
