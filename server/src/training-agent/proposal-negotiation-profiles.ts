@@ -13,6 +13,11 @@ import {
   defineProposalRefinementCapabilities,
 } from "@adcp/sdk/server";
 import type { ProposalNegotiationProfile } from "./types.js";
+import { mediaBuyFrequencyCapError } from "./frequency-caps.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 const TYPED_DIMENSIONS = [
   "total_budget",
@@ -52,6 +57,9 @@ export interface TrainingProposalPolicyContext {
     productId: string,
     source: CanonicalProposal
   ): ProposalPurchase | undefined;
+  /** Product declaration backing a purchase, used to decide whether a revised
+   * product mix can share the resulting root frequency cap. */
+  productForPurchase?(productId: string): unknown;
 }
 
 type Evaluation = ProposalEvaluationContext<
@@ -356,6 +364,41 @@ export function evaluateTrainingProposal(
   // Resolve membership first so every typed boundary is evaluated against
   // the exact purchase set that will be returned.
   const unsatisfiedProductChanges = applyProductChanges(terms, evaluation);
+  // Root frequency cap: omission inherits the source cap, so clearing is
+  // explicit through remove_media_buy_frequency_cap and replacement goes
+  // through criteria.media_buy_frequency_cap. The resulting product mix must
+  // share the resulting cap or the revision is unable, never clamped.
+  const refinementRecord = evaluation.refinement as unknown as Record<string, unknown>;
+  const criteriaRecord = isRecord(refinementRecord.criteria) ? refinementRecord.criteria : undefined;
+  const termsRecord = terms as unknown as Record<string, unknown>;
+  if (refinementRecord.remove_media_buy_frequency_cap === true) delete termsRecord.frequency_cap;
+  if (criteriaRecord && isRecord(criteriaRecord.media_buy_frequency_cap)) {
+    termsRecord.frequency_cap = structuredClone(criteriaRecord.media_buy_frequency_cap);
+  }
+  const rootCapError = isRecord(termsRecord.frequency_cap)
+    ? mediaBuyFrequencyCapError(
+        termsRecord.frequency_cap,
+        terms.purchases.map((purchase) => ({
+          productId: purchase.product_id,
+          product: evaluation.context.productForPurchase?.(purchase.product_id),
+          field: `purchases.${purchase.product_id}`,
+        })),
+        "criteria.media_buy_frequency_cap"
+      )
+    : undefined;
+  if (rootCapError) {
+    return unable(
+      sourceId,
+      { unsatisfied_constraints: ["media_buy_frequency_cap"] },
+      rootCapError.message,
+      {
+        unsatisfied_constraints: ["media_buy_frequency_cap"],
+        suggestions: [
+          "Remove the product that cannot share the MediaBuy frequency cap, or clear the cap with remove_media_buy_frequency_cap.",
+        ],
+      }
+    );
+  }
   const constraints = evaluation.refinement.constraints;
   if (
     constraints?.total_budget &&

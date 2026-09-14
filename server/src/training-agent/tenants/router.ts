@@ -20,6 +20,10 @@ import {
   resolveTrainingSalesRequestContext,
   salesCapabilityProjection,
 } from '../v6-sales-platform.js';
+import {
+  TRAINING_AGGREGATE_FREQUENCY_CAPPING,
+  TRAINING_PACKAGE_FREQUENCY_CAPPING,
+} from '../frequency-caps.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { TRAINING_ACCEPTED_GOVERNANCE_AGENTS } from '../account-handlers.js';
 import {
@@ -949,6 +953,14 @@ function projectTenantCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        // Package caps: independent counter per package within these
+        // seller-wide units; products inherit omitted structured fields from
+        // this declaration. Root MediaBuy caps are advertised separately as
+        // the complete executable domain (3.2+).
+        frequency_capping: structuredClone(TRAINING_PACKAGE_FREQUENCY_CAPPING),
+        ...(supportsGetProductsRejected(servedVersion) && {
+          aggregate_frequency_capping: structuredClone(TRAINING_AGGREGATE_FREQUENCY_CAPPING),
+        }),
         ...(acceptancePolicyDiscoveryCapability(servedVersion, 'sales') && {
           acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedVersion, 'sales'),
         }),

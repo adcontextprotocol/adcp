@@ -95,6 +95,7 @@ function evaluate(
     refinements?: ProposalRefinement[];
     index?: number;
     activeHoldCount?: number;
+    productForPurchase?: (productId: string) => unknown;
   } = {}
 ) {
   const profile = options.profile ?? "typed-negotiation";
@@ -104,6 +105,7 @@ function evaluate(
     now: NOW,
     activeHoldCount: options.activeHoldCount ?? 0,
     purchaseForProduct: (productId) => purchase(productId),
+    ...(options.productForPurchase && { productForPurchase: options.productForPurchase }),
   };
   const evaluation: ProposalEvaluationContext<
     CanonicalProposal,
@@ -695,5 +697,90 @@ describe("deterministic proposal negotiation profiles", () => {
         proposal_status: "draft",
       });
     }
+  });
+});
+
+describe("MediaBuy frequency cap refinement", () => {
+  const ROOT_CAP = { max_impressions: 3, per: "individuals", window: { interval: 1, unit: "campaign" } };
+  const SHARED_PRODUCT = {
+    product_id: "shared",
+    media_buy_support: {
+      frequency_cap: true,
+      frequency_cap_constraints: {
+        supported_per_units: ["individuals"],
+        max_impressions_constraints: { minimum: 1, maximum: 10 },
+        window_constraints: [{ unit: "campaign", allowed_intervals: [1] }],
+      },
+    },
+  };
+  const PRODUCTS: Record<string, unknown> = {
+    product_alpha: { ...SHARED_PRODUCT, product_id: "product_alpha" },
+    product_beta: { ...SHARED_PRODUCT, product_id: "product_beta" },
+    product_gamma: { product_id: "product_gamma" },
+  };
+  const productForPurchase = (productId: string) => PRODUCTS[productId];
+
+  function cappedSource(): CanonicalProposal {
+    const source = sourceProposal();
+    const commercialTerms = { ...source.commercial_terms, frequency_cap: ROOT_CAP } as CanonicalProposal["commercial_terms"];
+    return { ...source, commercial_terms: commercialTerms, terms_digest: proposalTermsDigest(commercialTerms) };
+  }
+
+  function termsOf(result: ReturnType<typeof evaluate>): Record<string, unknown> {
+    expect(result.outcome).toBe("revised");
+    const revised = result as Extract<typeof result, { outcome: "revised" }>;
+    return revised.proposals[0]!.commercial_terms as unknown as Record<string, unknown>;
+  }
+
+  it("inherits the root cap when the refinement omits it", () => {
+    const terms = termsOf(evaluate(
+      { proposal_id: "proposal_source_0001", action: "revise", constraints: { total_budget: { currency: "USD", min: 20_000, max: 60_000 } } },
+      { source: cappedSource(), productForPurchase },
+    ));
+    expect(terms.frequency_cap).toEqual(ROOT_CAP);
+  });
+
+  it("clears the root cap only through remove_media_buy_frequency_cap", () => {
+    const refinement = {
+      proposal_id: "proposal_source_0001",
+      action: "revise",
+      remove_media_buy_frequency_cap: true,
+    } as unknown as ProposalRefinement;
+    const terms = termsOf(evaluate(refinement, { source: cappedSource(), productForPurchase }));
+    expect(terms.frequency_cap).toBeUndefined();
+  });
+
+  it("replaces the root cap through criteria.media_buy_frequency_cap", () => {
+    const replacement = { ...ROOT_CAP, max_impressions: 5 };
+    const refinement = {
+      proposal_id: "proposal_source_0001",
+      action: "revise",
+      criteria: { media_buy_frequency_cap: replacement },
+    } as unknown as ProposalRefinement;
+    const terms = termsOf(evaluate(refinement, { source: cappedSource(), productForPurchase }));
+    expect(terms.frequency_cap).toEqual(replacement);
+  });
+
+  it("is unable when the revised product mix cannot share the resulting cap", () => {
+    const result = evaluate(
+      { proposal_id: "proposal_source_0001", action: "revise", product_changes: { product_gamma: "include" } },
+      { source: cappedSource(), productForPurchase },
+    );
+    expect(result.outcome).toBe("unable");
+    const unable = result as Extract<typeof result, { outcome: "unable" }>;
+    expect(unable.reason_code).toBe("constraint_unsatisfiable");
+    expect(unable.unsatisfied_constraints).toEqual(["media_buy_frequency_cap"]);
+    expect(unable.reason).toContain("product_gamma");
+  });
+
+  it("is unable when a replacement cap exceeds a participating product's constraints", () => {
+    const refinement = {
+      proposal_id: "proposal_source_0001",
+      action: "revise",
+      criteria: { media_buy_frequency_cap: { ...ROOT_CAP, max_impressions: 11 } },
+    } as unknown as ProposalRefinement;
+    const result = evaluate(refinement, { source: cappedSource(), productForPurchase });
+    expect(result.outcome).toBe("unable");
+    expect((result as Extract<typeof result, { outcome: "unable" }>).unsatisfied_constraints).toEqual(["media_buy_frequency_cap"]);
   });
 });

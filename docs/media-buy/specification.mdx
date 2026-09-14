@@ -242,7 +242,13 @@ creation, and a product declaring a non-empty list SHOULD also list
 `MediaBuy.available_actions` decides whether a live buy can change now. A
 root-cap change inside accepted commercial terms uses `control_media_buy` and
 applies immediately; a change the accepted terms do not permit returns
-`REQUOTE_REQUIRED` and goes through proposal refinement.
+`REQUOTE_REQUIRED` and goes through proposal refinement. As with package caps,
+a root-cap change on a buy whose `available_actions` omits
+`update_media_buy_frequency_cap` returns `ACTION_NOT_ALLOWED`, and that
+authorization check precedes the `UNSUPPORTED_FEATURE` capability check.
+`frequency_cap_constraints.mutable_fields` governs which fields of an existing
+root cap may change; clearing the cap, or setting one on an uncapped buy, is
+governed by the action alone.
 
 Cross-MediaBuy or cross-order counters require a separately identified grouping
 resource; they are not another value of `FrequencyCap.scope`.
