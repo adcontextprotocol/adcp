@@ -505,11 +505,11 @@ export function registerAllJobs(): void {
 
   jobScheduler.register({
     name: 'slack-auto-link',
-    description: 'Reconcile unmapped Slack users to website accounts by email',
+    description: 'Report contained Slack email identity matches',
     interval: { value: 24, unit: 'hours' },
     initialDelay: { value: 2, unit: 'minutes' },
     runner: autoLinkUnmappedSlackUsers,
-    shouldLogResult: (r) => r.linked > 0 || r.pending_org_prospects_set > 0 || r.errors > 0,
+    shouldLogResult: (r) => r.contained > 0 || r.linked > 0 || r.pending_org_prospects_set > 0 || r.errors > 0,
   });
 
   jobScheduler.register({

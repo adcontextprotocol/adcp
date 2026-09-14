@@ -19,6 +19,7 @@ import { invalidateAdminStatusCache, invalidateWebAdminStatusCache } from '../ad
 import { triageAndCreateProspect } from '../services/prospect-triage.js';
 import { sendWelcomeSocialPosts } from '../notifications/welcome-social-posts.js';
 import { sendMarketingOptInDM } from '../notifications/marketing-optin-dm.js';
+import { SlackEmailAutoLinkContainedError } from './email-auto-containment.js';
 
 const slackDb = new SlackDatabase();
 const addieDb = new AddieDatabase();
@@ -89,9 +90,9 @@ export interface SlackEventPayload {
 
 /**
  * Handle team_join event - new user joined workspace
- * Auto-adds them to our database and auto-maps by email if they have a web account
+ * Records new profiles; email identity matches are contained before any writes.
  */
-export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
+export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<'contained' | void> {
   const user = event.user;
 
   if (!user?.id) {
@@ -109,6 +110,13 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
     const displayName = user.profile?.display_name || user.profile?.display_name_normalized || null;
     const realName = user.profile?.real_name || user.real_name || null;
 
+    // A matched email must not carry profile, preference, prospect, or chapter
+    // writes past containment. The database seam rejects even without a row.
+    if (email && !user.is_bot) {
+      const outcome = await tryAutoMapByEmail(user.id, email);
+      if (outcome === 'contained') return outcome;
+    }
+
     // Upsert the user into our database
     await slackDb.upsertSlackUser({
       slack_user_id: user.id,
@@ -119,11 +127,6 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
       slack_is_deleted: user.deleted || false,
       slack_tz_offset: user.tz_offset ?? null,
     });
-
-    // Auto-map by email if they have a web account (skip bots)
-    if (email && !user.is_bot) {
-      await tryAutoMapByEmail(user.id, email);
-    }
 
     logger.info({ email }, 'New Slack user added');
 
@@ -210,7 +213,7 @@ export async function handleUserChange(event: SlackUserChangeEvent): Promise<voi
  * Try to auto-map a Slack user to a web user by email
  * Maps them if the email matches and neither account is already mapped
  */
-async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<void> {
+async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<'contained' | void> {
   try {
     const pool = getPool();
 
@@ -248,11 +251,12 @@ async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<vo
     }
 
     // Map the user
-    await slackDb.mapUser({
+    const mapped = await slackDb.mapUser({
       slack_user_id: slackUserId,
       workos_user_id: workosUserId,
       mapping_source: 'email_auto',
     });
+    if (!mapped) return;
 
     logger.info({ slackUserId, workosUserId, email }, 'Auto-mapped Slack user to web account by email');
 
@@ -293,6 +297,10 @@ async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<vo
     invalidateUnifiedUsersCache();
     invalidateMemberContextCache(slackUserId);
   } catch (error) {
+    if (error instanceof SlackEmailAutoLinkContainedError) {
+      logger.debug({ slackUserId, reason: error.code }, 'Slack email auto-link contained');
+      return 'contained';
+    }
     logger.error({ error, slackUserId, email }, 'Failed to auto-map Slack user by email');
   }
 }

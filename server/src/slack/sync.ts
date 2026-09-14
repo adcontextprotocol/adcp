@@ -3,7 +3,7 @@
  *
  * Handles syncing between Slack and website accounts:
  * - Fetches users from Slack workspace and syncs them to the database
- * - Auto-links accounts by email when users join (either direction)
+ * - Reports email-based account linking attempts as contained
  * - Syncs working group memberships based on Slack channel membership
  */
 
@@ -18,6 +18,7 @@ import { getPool } from '../db/client.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
 import type { SyncSlackUsersResult } from './types.js';
+import { SlackEmailAutoLinkContainedError } from './email-auto-containment.js';
 
 const slackDb = new SlackDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
@@ -50,8 +51,7 @@ async function roleForNewMember(orgId: string): Promise<'owner' | 'member'> {
  * 1. Fetches all users from Slack workspace
  * 2. Upserts each user into slack_user_mappings table
  *
- * Note: Auto-mapping by email is done via POST /api/admin/slack/auto-link-suggested
- * which has access to WorkOS user data for email matching.
+ * Email-based identity linking is disabled; profile sync never establishes a link.
  */
 export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
   if (!isSlackConfigured()) {
@@ -117,12 +117,7 @@ export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
       }
     }
 
-    // Note: auto_mapped will remain 0 here since bulk sync doesn't auto-map.
-    // Auto-mapping happens on:
-    // - team_join event (Slack user joins workspace)
-    // - user.created webhook (website user signs up)
-    // - organization_membership.created webhook (user joins org)
-    // For historical users, use POST /api/admin/slack/auto-link-suggested
+    // auto_mapped remains 0: profile sync does not establish identity links.
     if (result.new_users > 0) {
       logger.info(result, 'Slack user sync completed');
     } else {
@@ -594,6 +589,10 @@ export async function tryAutoLinkWebsiteUserToSlack(
       chapters_joined: chaptersJoined,
     };
   } catch (error) {
+    if (error instanceof SlackEmailAutoLinkContainedError) {
+      logger.debug({ workosUserId, reason: error.code }, 'Slack email auto-link contained');
+      return { linked: false, reason: error.code };
+    }
     logger.error({ error, workosUserId, email }, 'Failed to auto-link website user to Slack');
     return { linked: false, reason: 'error' };
   }
@@ -747,15 +746,12 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
   chapters_joined: number;
   organizations_assigned: number;
   pending_org_prospects_set: number;
+  contained: number;
   errors: number;
 }> {
-  // Ensure all current workspace members have rows before attempting to link.
-  // Users who joined before the team_join listener was active have no row otherwise.
-  const syncResult = await syncSlackUsers();
-  if (syncResult.errors.length > 0) {
-    logger.warn({ errors: syncResult.errors }, 'Slack user sync had errors; auto-link results may be incomplete');
-  }
-
+  // This pass is read-only when contained. Profile ingestion remains available
+  // through the separate Slack sync endpoint; do not refresh rows or backfill
+  // organization hints as a side effect of a refused identity link.
   // excludeOptedOut: false — opt-out applies to nudge notifications, not account linking.
   // Linking is a system operation; it doesn't send any messages.
   const unmappedSlack = await slackDb.getUnmappedUsers({
@@ -766,15 +762,11 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
   const aaoEmailToUserId = await buildAaoEmailToUserIdMap();
   const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
 
-  // Set pending_organization_id for unmapped Slack users whose email domain matches an org.
-  // This is a DB-only operation and is safe regardless of whether Slack is configured.
-  // It is idempotent and covers users who joined Slack before the listener was active.
-  const backfillResult = await slackDb.backfillPendingOrganizations();
-
   let linked = 0;
   let chaptersJoined = 0;
   let orgsAssigned = 0;
   let errors = 0;
+  let contained = 0;
 
   for (const slackUser of unmappedSlack) {
     if (!slackUser.slack_email) continue;
@@ -783,11 +775,12 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
     if (!workosUserId || mappedWorkosUserIds.has(workosUserId)) continue;
 
     try {
-      await slackDb.mapUser({
+      const mapped = await slackDb.mapUser({
         slack_user_id: slackUser.slack_user_id,
         workos_user_id: workosUserId,
         mapping_source: 'email_auto',
       });
+      if (!mapped) continue;
       linked++;
       mappedWorkosUserIds.add(workosUserId);
       // Clear cached admin status so Addie recognizes newly linked admins immediately.
@@ -799,6 +792,10 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
       const orgResult = await checkAndAssignOrganizationByDomain(workosUserId);
       if (orgResult?.assigned) orgsAssigned++;
     } catch (err) {
+      if (err instanceof SlackEmailAutoLinkContainedError) {
+        contained++;
+        continue;
+      }
       logger.error({ err, slackUserId: slackUser.slack_user_id, email: slackUser.slack_email }, 'Failed to auto-link user');
       errors++;
     }
@@ -813,7 +810,8 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
     linked,
     chapters_joined: chaptersJoined,
     organizations_assigned: orgsAssigned,
-    pending_org_prospects_set: backfillResult.usersLinked,
+    pending_org_prospects_set: 0,
+    contained,
     errors,
   };
 }
