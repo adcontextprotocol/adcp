@@ -191,16 +191,17 @@ function ghStub() {
     if (env.FAULT === "draft-lost-ack") process.exit(1);
   } else if (url.endsWith("/comments")) {
     if (env.FAULT === "hold-failure") process.exit(1);
-    const comments = fs.existsSync("comments.json")
-      ? JSON.parse(fs.readFileSync("comments.json", "utf8"))
-      : [];
+    const comments = JSON.parse(fs.readFileSync("comments.json", "utf8"));
     result = {
       id: comments.length + 1,
       body: args.find((arg) => arg.startsWith("body=")).slice(5),
       issue_url: "https://api.github.com" + url.replace(/\/comments$/, ""),
     };
     comments.push(result);
-    fs.writeFileSync("comments.json", JSON.stringify(comments));
+    // Each isolated fixture invokes this mock synchronously. Replace the
+    // initialized store atomically without an existence-check/write gap.
+    fs.writeFileSync("comments.next.json", JSON.stringify(comments), { flag: "wx" });
+    fs.renameSync("comments.next.json", "comments.json");
     if (env.FAULT === "hold-lost-ack") process.exit(1);
     if (env.FAULT === "hold-response") result.body = "not the hold";
     if (env.FAULT === "hold-wrong-issue")
@@ -284,6 +285,7 @@ function fixture(t, existing = true, pre = { mode: "pre", tag: "rc" }) {
     base: { ref: "main", repo: { full_name: "adcontextprotocol/adcp" } },
   };
   write("prs.json", JSON.stringify(existing ? [pr] : []));
+  write("comments.json", "[]");
   write("git-calls.jsonl", "");
   write("gh-calls.jsonl", "");
   for (const name of ["check-release-state.cjs", "fence-changesets.cjs"])
