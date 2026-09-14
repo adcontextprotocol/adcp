@@ -5957,6 +5957,94 @@
         "files": [],
         "requireAll": true
       }
+    },
+    {
+      "id": "bulk-fetch-includes-untyped-collection-fallback",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "hostInventoryPartnerDomains": null,
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails"
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "identifiers": [
+                    {
+                      "type": "publisher_channel_id",
+                      "value": "retro"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "collection_id": "web_channel",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "web"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv",
+              "name": "HostStream CTV",
+              "property_type": "ctv_app",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            },
+            {
+              "property_id": "web",
+              "name": "HostStream CTV",
+              "property_type": "website",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            }
+          ],
+          "authorized_agents": []
+        },
+        "hostInventoryPartnerDomainsByFile": {
+          "ads.txt": [
+            "channel-owner.example"
+          ],
+          "app-ads.txt": []
+        }
+      },
+      "expected": {
+        "files": [
+          "ads.txt",
+          "app-ads.txt"
+        ],
+        "requireAll": false
+      }
     }
   ],
   "inventory_partner_combination_vectors": [

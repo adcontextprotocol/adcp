@@ -395,6 +395,15 @@ export function supplyPathAdsTxtPolicy(input: SupplyPathInput): {
   files: Array<'ads.txt' | 'app-ads.txt'>;
   requireAll: boolean;
 } {
+  if (input.collectionId === undefined) {
+    const candidates = records(input.ownerManifest?.collections).filter(
+      c => typeof c.collection_id === 'string' && c.collection_id.length > 0
+    );
+    if (candidates.length) {
+      const policies = candidates.map(c => supplyPathAdsTxtPolicy({ ...input, collectionId: String(c.collection_id) }));
+      return { files: [...new Set(policies.flatMap(policy => policy.files))].sort(), requireAll: false };
+    }
+  }
   const collectionIds = new Set(
     records(input.ownerManifest?.collections)
       .filter(c => input.collectionId === undefined || c.collection_id === input.collectionId)
