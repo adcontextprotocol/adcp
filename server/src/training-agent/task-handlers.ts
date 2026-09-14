@@ -21670,6 +21670,20 @@ async function handleControlMediaBuyUnlocked(
       } as SellerManagedControlTaskRequired;
     }
     if (actionRejection) return actionRejection;
+    // Frequency caps check authorization, then product capability, and only
+    // then accepted commercial terms. Run the cap gate here, ahead of the
+    // accepted-envelope REQUOTE_REQUIRED checks below, so a cap that is both
+    // outside capability and outside accepted terms reports the capability
+    // failure. The legacy update path repeats the same pure check.
+    const frequencyCapRejection = frequencyCapMutationRejection(
+      mediaBuy,
+      args as unknown as UpdateMediaBuyArgs,
+      currentStatus,
+      productMap,
+      {},
+      servedAdcpVersion,
+    );
+    if (frequencyCapRejection) return frequencyCapRejection;
   }
   const acceptedCommercialTerms = mediaBuy?.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
   if (

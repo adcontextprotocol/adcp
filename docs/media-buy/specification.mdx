@@ -212,7 +212,10 @@ package. A missing action or a package outside that list returns
 `ACTION_NOT_ALLOWED`; a cap shape outside product capability, including a
 change to a field not listed in `mutable_fields`, returns
 `UNSUPPORTED_FEATURE`; a change outside accepted commercial terms returns
-`REQUOTE_REQUIRED`. Failure preserves state.
+`REQUOTE_REQUIRED`. These checks run in that order: `available_actions`
+authorization first, then product capability, then accepted commercial terms,
+so a request that fails more than one returns the earliest code. Failure
+preserves state.
 
 #### Shared MediaBuy caps
 
@@ -242,10 +245,12 @@ creation, and a product declaring a non-empty list SHOULD also list
 `MediaBuy.available_actions` decides whether a live buy can change now. A
 root-cap change inside accepted commercial terms uses `control_media_buy` and
 applies immediately; a change the accepted terms do not permit returns
-`REQUOTE_REQUIRED` and goes through proposal refinement. As with package caps,
-a root-cap change on a buy whose `available_actions` omits
-`update_media_buy_frequency_cap` returns `ACTION_NOT_ALLOWED`, and that
-authorization check precedes the `UNSUPPORTED_FEATURE` capability check.
+`REQUOTE_REQUIRED` and goes through proposal refinement. The same order
+applies to the root cap: a change on a buy whose `available_actions` omits
+`update_media_buy_frequency_cap` returns `ACTION_NOT_ALLOWED` before any
+capability check, a cap the seller-wide domain or a selected product cannot
+execute returns `UNSUPPORTED_FEATURE` before any commercial-terms check, and
+only then does a change outside accepted terms return `REQUOTE_REQUIRED`.
 `frequency_cap_constraints.mutable_fields` governs which fields of an existing
 root cap may change; clearing the cap, or setting one on an uncapped buy, is
 governed by the action alone.

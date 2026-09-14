@@ -376,6 +376,23 @@ describe('training agent frequency caps', () => {
       code: 'ACTION_NOT_ALLOWED',
       details: expect.objectContaining({ attempted_action: 'update_frequency_caps' }),
     });
+    // Authorization precedes capability: an out-of-range count on the
+    // create-only package still reports the missing action, not the shape.
+    const immutableOutOfRange = await control(createOnlyPkg!.package_id, cap(4));
+    expect(immutableOutOfRange.error).toMatchObject({
+      code: 'ACTION_NOT_ALLOWED',
+      details: expect.objectContaining({ attempted_action: 'update_frequency_caps' }),
+    });
+    const mixed = await callTool(server, 'control_media_buy', {
+      account: ACCOUNT,
+      media_buy_id: mediaBuyId,
+      revision,
+      packages: [
+        { package_id: mutablePkg!.package_id, targeting_overlay: { frequency_cap: cap(4) } },
+        { package_id: createOnlyPkg!.package_id, targeting_overlay: { frequency_cap: cap(2) } },
+      ],
+    });
+    expect(mixed.error).toMatchObject({ code: 'ACTION_NOT_ALLOWED' });
     const outOfRange = await control(mutablePkg!.package_id, cap(4));
     expect(outOfRange.error).toMatchObject({ code: 'UNSUPPORTED_FEATURE' });
     const fixedField = await control(mutablePkg!.package_id, cap(5, 'individuals', { interval: 7, unit: 'days' }));
@@ -500,7 +517,12 @@ describe('training agent frequency caps', () => {
       pricing_version: listed.result.pricing_version,
       frequency_cap: cap(3),
       purchases: [
-        { product_id: 'fc_legacy_shared', pricing_option_id: 'fc_legacy_shared_cpm', budget: 5000 },
+        {
+          product_id: 'fc_legacy_shared',
+          pricing_option_id: 'fc_legacy_shared_cpm',
+          budget: 5000,
+          targeting_overlay: { frequency_cap: cap(5) },
+        },
         { product_id: 'fc_companion_shared', pricing_option_id: 'fc_companion_shared_cpm', budget: 5000 },
       ],
       ...FLIGHT,
@@ -517,5 +539,26 @@ describe('training agent frequency caps', () => {
       account: ACCOUNT, media_buy_id: mediaBuyId, revision: buy.revision, frequency_cap: cap(2),
     });
     expect(requote.error).toMatchObject({ code: 'REQUOTE_REQUIRED', field: 'frequency_cap' });
+
+    // Package caps: capability precedes accepted terms. A cap the seller-wide
+    // domain cannot execute reports UNSUPPORTED_FEATURE even though it also
+    // differs from the accepted purchase; an executable change outside the
+    // accepted purchase is a REQUOTE_REQUIRED.
+    const bindings = data.purchase_bindings as Array<{ package_id: string }>;
+    const cappedPackageId = bindings[0]!.package_id;
+    const outsideCapability = await callTool(server, 'control_media_buy', {
+      account: ACCOUNT,
+      media_buy_id: mediaBuyId,
+      revision: buy.revision,
+      packages: [{ package_id: cappedPackageId, targeting_overlay: { frequency_cap: cap(5, 'custom') } }],
+    });
+    expect(outsideCapability.error).toMatchObject({ code: 'UNSUPPORTED_FEATURE' });
+    const outsideTerms = await callTool(server, 'control_media_buy', {
+      account: ACCOUNT,
+      media_buy_id: mediaBuyId,
+      revision: buy.revision,
+      packages: [{ package_id: cappedPackageId, targeting_overlay: { frequency_cap: cap(3) } }],
+    });
+    expect(outsideTerms.error).toMatchObject({ code: 'REQUOTE_REQUIRED' });
   });
 });
