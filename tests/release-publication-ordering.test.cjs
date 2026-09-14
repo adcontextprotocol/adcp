@@ -17,7 +17,8 @@ const step = (name) => steps.find((s) => s.name === name);
 const version = "3.2.0-rc.3";
 const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
 
-function fixture(t) {
+function fixture(t, fixtureVersion = version) {
+  const version = fixtureVersion;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "publication-order-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const write = (file, value) => {
@@ -62,6 +63,7 @@ function fixture(t) {
       tagName: `v${version}`,
       targetCommitish: source,
       isDraft: false,
+      isPrerelease: version.includes("-"),
       assets: ["", ".sha256", ".sig", ".crt"].map((s) => ({
         name: `${version}.tgz${s}`,
       })),
@@ -76,6 +78,7 @@ function fixture(t) {
     "git",
     common +
       `
+    if(args[0]==='push' && process.env.ADVANCE_PUSH) { log('branch push');change();process.exit(0); }
     if(args[0]==='ls-remote') {
       if(process.env.REMOTE_ERROR) process.exit(1);
       const ref=args.find(a=>a.startsWith('refs/heads/'));
@@ -104,7 +107,7 @@ function fixture(t) {
         const q=args[args.indexOf('--jq')+1];const name=q.match(/name == "([^"]+)"/)[1];console.log(r.assets.find(a=>a.name===name)?.name||'');
       } else console.log(JSON.stringify(r));
     } else if(args[1]==='create') {
-      log('github draft'); save({tagName:args[2],targetCommitish:process.env.RELEASE_SHA,isDraft:true,assets:[]});
+      log('github draft'); save({tagName:args[2],targetCommitish:process.env.RELEASE_SHA,isDraft:true,isPrerelease:args.includes('--prerelease'),assets:[]});
     } else if(args[1]==='upload') {
       const r=release(); if(!r.isDraft) throw Error('upload was publicly visible before staging completed');
       const name=path.basename(args[3]);r.assets.push({name});save(r);log('github upload '+name);
@@ -112,6 +115,7 @@ function fixture(t) {
     } else if(args[1]==='download') {
       const name=args[args.indexOf('--pattern')+1],dir=args[args.indexOf('--dir')+1];
       fs.copyFileSync('dist/protocol/'+name,path.join(dir,name));
+      if(process.env.DIFFERING_GITHUB_ASSET===name) fs.appendFileSync(path.join(dir,name),'different');
     } else if(args[1]==='edit') {
       const r=release();if(r.assets.length!==4) throw Error('incomplete release');r.isDraft=false;save(r);fs.writeFileSync('tag',process.env.RELEASE_SHA);log('github publish');
     } else throw Error('unexpected gh '+args);
@@ -449,3 +453,126 @@ test("#7508: stale sole-parent release omits a later changeset and rewrites rc.3
   );
   assert.equal(f.calls(), "");
 });
+
+for (const surface of ["schemas", "compliance", "partial-protocol"]) {
+  test(`the app gate rejects an unapproved ${surface}-only committed release`, (t) => {
+    const f = fixture(t);
+    for (const area of ["schemas", "compliance", "protocol"]) {
+      fs.rmSync(path.join(f.dir, "dist", area), { recursive: true });
+    }
+    const remaining =
+      surface === "partial-protocol"
+        ? `dist/protocol/${version}.tgz.sig`
+        : `dist/${surface}/${version}/index.json`;
+    f.write(remaining, "partial candidate");
+    f.write("tag", "");
+    const result = f.script("pending");
+    assert.notEqual(result.status, 0);
+    assert.equal(f.calls(), "");
+  });
+}
+
+for (const candidate of ["3.2.0-rc.3", "3.1.23"]) {
+  for (const draft of [true, false]) {
+    test(`rejects wrong prerelease metadata for ${candidate} (draft=${draft})`, (t) => {
+      const f = fixture(t, candidate);
+      const record = JSON.parse(
+        fs.readFileSync(path.join(f.dir, "release.json")),
+      );
+      record.isPrerelease = !candidate.includes("-");
+      record.isDraft = draft;
+      f.write("release.json", JSON.stringify(record));
+      const result = f.run("bash", [
+        "-c",
+        step("Upload protocol tarball to GitHub Release").run.replaceAll(
+          "${{ steps.release-artifacts.outputs.version }}",
+          candidate,
+        ),
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.notEqual(
+        f.upload(["--version", candidate, "--skip-latest"]).status,
+        0,
+      );
+      assert.equal(f.calls(), "");
+    });
+  }
+}
+
+for (const suffix of ["", ".sha256", ".sig", ".crt"]) {
+  test(`direct/stable R2 recovery rejects different GitHub ${suffix || "tarball"} bytes`, (t) => {
+    const f = fixture(t, "3.1.23");
+    const result = f.upload(["--version", "3.1.23", "--skip-latest"], {
+      DIFFERING_GITHUB_ASSET: `3.1.23.tgz${suffix}`,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /differs from the tagged local tuple/);
+    assert.equal(f.calls(), "");
+  });
+}
+
+test("a successful long Changesets push followed by drift stops before the PR API call", (t) => {
+  const f = fixture(t);
+  const installed = f.run("bash", [
+    "-c",
+    step("Fence Changesets mutations").run,
+  ]);
+  assert.equal(installed.status, 0, installed.stderr);
+  // GITHUB_PATH is applied to the next action exactly as Actions applies it.
+  const wrapperDirectory = fs
+    .readFileSync(path.join(f.dir, "github-path"), "utf8")
+    .trim();
+  const result = f.run(
+    "bash",
+    [
+      "-c",
+      'set -e\ngit push origin HEAD:changeset-release/main --force\nprintf "PR API write\\n" >> calls',
+    ],
+    {
+      PATH: `${wrapperDirectory}:${path.join(f.dir, "bin")}:${process.env.PATH}`,
+      ADVANCE_PUSH: "1",
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.equal(f.calls(), "branch push\n");
+});
+
+for (const mismatch of [false, true]) {
+  test(`stable recovery workflow validates GitHub bytes before R2 (mismatch=${mismatch})`, (t) => {
+    const f = fixture(t, "3.1.23");
+    const workflow = YAML.parse(
+      fs.readFileSync(
+        path.join(root, ".github/workflows/recover-protocol-cdn.yml"),
+        "utf8",
+      ),
+    );
+    f.write(
+      "temp/check-release-state.cjs",
+      fs.readFileSync(path.join(f.dir, "scripts/check-release-state.cjs")),
+    );
+    f.git("checkout", "--detach", f.source);
+    const upload = workflow.jobs.recover.steps.find(
+      (s) => s.name === "Upload only missing immutable R2 objects",
+    );
+    const result = f.run("bash", ["-c", upload.run], {
+      VERSION: "3.1.23",
+      BUCKET: "test",
+      R2_ACCOUNT_ID: "test",
+      ...(mismatch ? { DIFFERING_GITHUB_ASSET: "3.1.23.tgz.sig" } : {}),
+    });
+    if (mismatch) {
+      assert.notEqual(result.status, 0);
+      assert.equal(f.calls(), "");
+    } else {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(f.calls().trim().split("\n").length, 4);
+      assert.ok(
+        f
+          .calls()
+          .trim()
+          .split("\n")
+          .every((line) => line.startsWith("r2 put protocol/3.1.23.tgz")),
+      );
+    }
+  });
+}

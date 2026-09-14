@@ -273,8 +273,10 @@ For the 2026-09-14 `3.2.0-rc.3` incident, the recovery target is
 `e7d42cbe5d7b3d05c3fcdcaa6f568b08ba131439` received human approval at
 12:34:18 UTC. Release run `34844149713` was cancelled with zero jobs. Deploy
 `34845112730` exposed its R2 objects before a tag/GitHub Release; the independent
-incident audit found 2,092 matching objects of 2,093 committed paths. The JSONL
-workstream owns the omitted path/filter and full enumeration verification.
+incident audit found 2,092 matching schema/compliance objects of 2,093 paths
+(1,612 schemas and 481 compliance files). Four protocol files bring the full
+release inventory to 2,097. The JSONL workstream owns the omitted path/filter
+and schema/compliance enumeration verification.
 This version is externally exposed; absence of a GitHub Release is not
 permission to edit or retire its bytes.
 
@@ -312,8 +314,8 @@ The exact recovery sequence, requiring separate maintainer authorization, is:
    publishes `v3.2.0-rc.3` at **71f**, and conditionally fills missing rc.3 R2
    objects. It does not tag the later tested main or publish `latest`.
 4. Independently verify the tag target, prerelease flag, all four GitHub assets,
-   full 2,093-path CDN inventory and byte hashes (including JSONL), checksum and
-   Sigstore identity. Check deployment and docs/SDK readiness separately. If
+   all 2,093 schema/compliance paths (including JSONL) plus the four protocol
+   files, byte hashes, checksum and Sigstore identity (2,097 files total). Check deployment and docs/SDK readiness separately. If
    anything fails or main advances, record the partial state and repeat only
    through explicit recovery from the next verified current head.
 

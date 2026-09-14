@@ -2,6 +2,8 @@
 // Release/deploy fences. Remote failures are errors, never evidence of absence.
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const run = (command, args) =>
   execFileSync(command, args, {
@@ -69,12 +71,19 @@ function published(
   if (git("diff", "--name-only", target, "--", ...paths))
     throw new Error("Local release artifacts differ from the published tag.");
   const release = JSON.parse(
-    run("gh", ["release", "view", tag, "--json", "tagName,isDraft,assets"]),
+    run("gh", [
+      "release",
+      "view",
+      tag,
+      "--json",
+      "tagName,isDraft,isPrerelease,assets",
+    ]),
   );
   const names = release.assets.map((asset) => asset.name);
   if (
     release.tagName !== tag ||
     release.isDraft ||
+    release.isPrerelease !== version.includes("-") ||
     !["", ".sha256", ".sig", ".crt"].every((suffix) =>
       names.includes(`${version}.tgz${suffix}`),
     )
@@ -83,6 +92,34 @@ function published(
       `Release ${tag} is not published with the complete signed tuple.`,
     );
   }
+  // Names/digests alone do not prove that recovery preserves the published
+  // tuple. Compare all four assets, including signature and certificate bytes.
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "adcp-release-"));
+  try {
+    for (const suffix of ["", ".sha256", ".sig", ".crt"]) {
+      const name = `${version}.tgz${suffix}`;
+      git("cat-file", "-e", `${target}:dist/protocol/${name}`);
+      run("gh", [
+        "release",
+        "download",
+        tag,
+        "--pattern",
+        name,
+        "--dir",
+        temporary,
+      ]);
+      try {
+        run("cmp", ["-s", `dist/protocol/${name}`, path.join(temporary, name)]);
+      } catch {
+        throw new Error(
+          `GitHub release asset ${name} differs from the tagged local tuple.`,
+        );
+      }
+    }
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+  current();
 }
 
 function recovery(source) {
@@ -116,7 +153,14 @@ try {
   } else if (mode === "pending") {
     current();
     const version = JSON.parse(fs.readFileSync("package.json")).version;
-    if (fs.existsSync(`dist/protocol/${version}.tgz`)) published(version);
+    const surfaces = [
+      `dist/schemas/${version}`,
+      `dist/compliance/${version}`,
+      ...["", ".sha256", ".sig", ".crt"].map(
+        (suffix) => `dist/protocol/${version}.tgz${suffix}`,
+      ),
+    ];
+    if (surfaces.some((surface) => fs.existsSync(surface))) published(version);
   } else if (mode === "recovery") recovery(argument);
   else throw new Error("Expected current, published, pending, or recovery.");
 } catch (error) {

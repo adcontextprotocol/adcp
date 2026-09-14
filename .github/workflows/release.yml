@@ -338,9 +338,16 @@ jobs:
               "${release_args[@]}"
           fi
 
-          release_state="$(gh release view "$TAG" --json isDraft,targetCommitish)"
+          release_state="$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish)"
           if [ "$(jq -r '.isDraft' <<< "$release_state")" = true ] && [ "$(jq -r '.targetCommitish' <<< "$release_state")" != "$RELEASE_SHA" ]; then
             echo '::error::Existing draft targets a different release commit.'
+            exit 1
+          fi
+
+          expected_prerelease=false
+          if [[ "$VERSION" == *-* ]]; then expected_prerelease=true; fi
+          if [ "$(jq -r '.isPrerelease' <<< "$release_state")" != "$expected_prerelease" ]; then
+            echo '::error::Existing release prerelease status conflicts with the version.'
             exit 1
           fi
 
