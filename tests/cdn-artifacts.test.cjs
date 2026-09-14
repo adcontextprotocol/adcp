@@ -252,21 +252,30 @@ for (const skipLatest of [false, true]) {
   });
 }
 
-test('fenced JSONL recovery compares existing bytes and never overwrites them', { skip: !FENCED_PUBLICATION }, t => {
-  const { dir } = fixture(t, true);
-  const flags = ['--version', VERSIONS.at(-1), '--skip-latest'];
-  publish(dir, flags);
-  const repeated = publish(dir, flags);
-  assert.equal(repeated.uploads.length, 0);
-  assert.ok(repeated.calls.some(call => call.args[2]?.endsWith(ROWS)));
-  const objectsFile = path.join(dir, 'objects.json');
-  const objects = JSON.parse(fs.readFileSync(objectsFile, 'utf8'));
-  const key = `s3://test-bucket/compliance/${VERSIONS.at(-1)}/${ROWS}`;
-  objects[key].body = Buffer.from('existing divergent bytes').toString('base64');
-  fs.writeFileSync(objectsFile, JSON.stringify(objects));
-  assert.throws(() => publish(dir, flags), /Immutable object differs/);
-  assert.deepEqual(JSON.parse(fs.readFileSync(objectsFile, 'utf8')), objects);
-});
+for (const version of VERSIONS) {
+  test(`fenced ${version} recovery creates only the missing JSONL and preserves existing bytes`, { skip: !FENCED_PUBLICATION }, t => {
+    const { dir } = fixture(t, true);
+    const flags = ['--version', version, '--skip-latest'];
+    publish(dir, flags);
+    const objectsFile = path.join(dir, 'objects.json');
+    const complete = JSON.parse(fs.readFileSync(objectsFile, 'utf8'));
+    const key = `s3://test-bucket/compliance/${version}/${ROWS}`;
+    const missing = { ...complete };
+    delete missing[key];
+    fs.writeFileSync(objectsFile, JSON.stringify(missing));
+    const recovered = publish(dir, flags);
+    assert.deepEqual(recovered.uploads, [complete[key]]);
+    assert.equal(sha256(Buffer.from(recovered.uploads[0].body, 'base64')), ROWS_SHA);
+    assert.deepEqual(JSON.parse(fs.readFileSync(objectsFile, 'utf8')), complete);
+    const repeated = publish(dir, flags);
+    assert.equal(repeated.uploads.length, 0);
+    assert.ok(repeated.calls.some(call => call.args[2]?.endsWith(ROWS)));
+    complete[key].body = Buffer.from('existing divergent bytes').toString('base64');
+    fs.writeFileSync(objectsFile, JSON.stringify(complete));
+    assert.throws(() => publish(dir, flags), /Immutable object differs/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(objectsFile, 'utf8')), complete);
+  });
+}
 
 test('both dry-run modes enumerate JSONL without uploading', t => {
   for (const flag of ['--dry-run', '--aws-dry-run']) {

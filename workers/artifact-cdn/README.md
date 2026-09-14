@@ -185,6 +185,13 @@ Enumeration audit:
    four GitHub tuple files must match the unchanged tagged/local bytes. Missing
    or conflicting release authority requires a separately reviewed recovery plan.
 
+   Historical recovery authorization permits creation only of the one confirmed
+   missing JSONL key per version. The scoped helper enumerates the whole version;
+   `--version` alone does not enforce that one-key boundary. Require a complete
+   inventory proving all other objects exist unchanged and an execution boundary
+   enforcing the authorized key before proceeding. Any other missing object is a
+   stop for a separately reviewed recovery plan, not permission to expand recovery.
+
    Restore the four keys above from their existing committed blobs. Check the exact
    release commit and any required release approvals. Recheck remote objects:
    preserve matching objects, stop on differing bytes or an ambiguous read
