@@ -57,6 +57,22 @@ test('channel collections support publisher-scoped channel identifiers', async (
   assert.equal(validate(collection), true, JSON.stringify(validate.errors, null, 2));
 });
 
+test('collection ownership is explicit at the declaration while related collections remain local references', async () => {
+  const validate = await compile('/schemas/core/collection.json');
+  const collection = {
+    publisher_domain: 'channel-owner.example',
+    collection_id: 'retro_news',
+    name: 'Retro News',
+    related_collections: [{ collection_id: 'retro_extra', relationship: 'companion' }],
+  };
+  assert.equal(validate(collection), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(validate({ ...collection, publisher_domain: 'https://channel-owner.example' }), false);
+  assert.equal(validate({
+    ...collection,
+    related_collections: [{ ...collection.related_collections[0], publisher_domain: 'other.example' }],
+  }), false, 'related collections are not cross-publisher declarations');
+});
+
 test('collection distributions reject empty carriage records', async () => {
   const validate = await compile('/schemas/core/collection.json');
   const collection = {
