@@ -2,17 +2,32 @@ import express, { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type ValidatedApiKey } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
-import { mergeUsers } from '../db/user-merge-db.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
-import { getWorkos } from '../auth/workos-client.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
-import { isEmailUnavailable } from './account-linking-errors.js';
+import { EmailMutationError, getEmailMutationStatus, setPrimaryEmail } from '../services/email-mutation.js';
 
 const logger = createLogger('account-linking');
 
 const TOKEN_EXPIRY_HOURS = 24;
+
+async function sendEmailMutationFailure(res: Response, userId: string, error: unknown): Promise<Response> {
+  try {
+    const status = await getEmailMutationStatus(userId);
+    if (status.reconciliation_required) return res.status(503).json(status);
+    if ((error as { code?: unknown } | null)?.code === '55P03') {
+      return res.status(409).json({
+        error: 'credential_busy', retryable: true,
+        message: 'An email change is already in progress. Please retry.',
+      });
+    }
+  } catch { /* Status is unknown; do not invent a durable operation. */ }
+  return res.status(503).json({
+    error: 'Failed to update email', status_unknown: true,
+    message: 'We could not confirm the email change. Reload to check its status or contact support before trying again.',
+  });
+}
 
 // Rate limiter for sending verification emails (per authenticated user)
 const sendVerificationLimiter = rateLimit({
@@ -36,7 +51,7 @@ const verifyViewLimiter = rateLimit({
   validate: { keyGeneratorIpFallback: false },
 });
 
-// Rate limiter for verification execution (strict — destructive action)
+// Rate limiter for verification and email mutation execution
 const verifyExecuteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -57,8 +72,10 @@ export function createAccountLinkingRouter(): Router {
   // GET /api/me/linked-emails — list linked emails and pending tokens
   router.get('/', requireAuth, async (req: Request, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.authWorkosUserId ?? req.user!.id;
 
+      const mutationStatus = await getEmailMutationStatus(userId);
+      const credential = await query('SELECT email FROM users WHERE workos_user_id = $1', [userId]);
       const aliases = await query(
         `SELECT id, email, verified_at, created_at
          FROM user_email_aliases
@@ -76,12 +93,14 @@ export function createAccountLinkingRouter(): Router {
       );
 
       return res.json({
-        primary_email: req.user!.email,
+        credential_id: userId,
+        primary_email: credential.rows[0]?.email,
+        ...mutationStatus,
         aliases: aliases.rows,
         pending: pending.rows,
       });
-    } catch (error) {
-      logger.error({ error }, 'Failed to list linked emails');
+    } catch {
+      logger.error('Failed to list linked emails');
       return res.status(500).json({ error: 'Failed to list linked emails' });
     }
   });
@@ -89,7 +108,9 @@ export function createAccountLinkingRouter(): Router {
   // POST /api/me/linked-emails — initiate email link verification
   router.post('/', requireAuth, sendVerificationLimiter, async (req: Request, res: Response) => {
     try {
-      const userId = req.user!.id;
+      const userId = req.user!.authWorkosUserId ?? req.user!.id;
+      const mutationStatus = await getEmailMutationStatus(userId);
+      if (mutationStatus.reconciliation_required) return res.status(409).json(mutationStatus);
       const { email } = req.body;
 
       if (!email || typeof email !== 'string') {
@@ -108,7 +129,8 @@ export function createAccountLinkingRouter(): Router {
       }
 
       // Can't link your own email
-      if (normalizedEmail === req.user!.email.toLowerCase()) {
+      const credential = await query('SELECT email FROM users WHERE workos_user_id = $1', [userId]);
+      if (normalizedEmail === credential.rows[0]?.email.toLowerCase()) {
         return res.status(400).json({ error: 'This is already your primary email' });
       }
 
@@ -195,7 +217,7 @@ export function createAccountLinkingRouter(): Router {
         to: normalizedEmail,
         token,
         primaryUserName: primaryName,
-        primaryEmail: req.user!.email,
+        primaryEmail: credential.rows[0]?.email ?? req.user!.email,
       });
 
       logger.info(
@@ -209,139 +231,32 @@ export function createAccountLinkingRouter(): Router {
         status: 'verification_sent',
       });
     } catch (error) {
-      logger.error({ error }, 'Failed to initiate email link');
-      return res.status(500).json({ error: 'Failed to initiate email link' });
+      logger.error('Failed to initiate email link');
+      return sendEmailMutationFailure(res, req.user!.authWorkosUserId ?? req.user!.id, error);
     }
   });
 
-  // PUT /api/me/linked-emails/primary — swap a linked alias to be the primary email
+  // Email ownership and the provider mutation are scoped to the credential
+  // that authenticated, even when the session also carries a canonical person.
   router.put('/primary', requireAuth, verifyExecuteLimiter, async (req: Request, res: Response) => {
+    // Only a real member credential hydrated from the primary database can
+    // change email. Synthetic/API-key principals are not email credentials.
+    const snapshot = req.user?.authorizationSnapshot;
+    if ((req as Request & { apiKey?: ValidatedApiKey }).apiKey || !snapshot
+        || snapshot.authenticatedUserId !== (req.user!.authWorkosUserId ?? req.user!.id)) {
+      return res.status(403).json({ error: 'A member login is required to change primary email' });
+    }
+    const userId = snapshot.authenticatedUserId;
     try {
-      const userId = req.user!.id;
-      const { email } = req.body;
-
-      if (!email || typeof email !== 'string') {
-        return res.status(400).json({ error: 'Email is required' });
-      }
-
-      const normalizedEmail = email.trim().toLowerCase();
-      const currentPrimary = req.user!.email.toLowerCase();
-
-      if (normalizedEmail === currentPrimary) {
-        return res.status(400).json({ error: 'This is already your primary email' });
-      }
-
-      const oldPrimary = req.user!.email;
-
-      // Verify the alias exists before touching WorkOS so we don't change
-      // WorkOS state for an email the user hasn't actually verified.
-      const aliasRead = await query(
-        `SELECT email FROM user_email_aliases
-         WHERE workos_user_id = $1 AND LOWER(email) = $2 AND verified_at IS NOT NULL`,
-        [userId, normalizedEmail]
-      );
-      if (aliasRead.rows.length === 0) {
-        return res.status(404).json({ error: 'Email is not linked to your account' });
-      }
-      const aliasEmail: string = aliasRead.rows[0].email;
-
-      // WorkOS first (source of truth for auth). If WorkOS rejects, our DB is
-      // unchanged and we surface a clear error.
-      //
-      // If WorkOS accepts but the local swap below fails, `users.email` and
-      // `organization_memberships.email` will eventually re-sync via the
-      // user.updated webhook. `user_email_aliases` and `person_relationships`
-      // are NOT touched by the webhook, so a partial failure here can leave
-      // the alias list stale (new email remains as a verified alias, old
-      // primary is not recorded) and the relationship row's email lagging.
-      // UNIQUE(LOWER(email)) on aliases prevents anyone else from claiming
-      // the abandoned email; cleanup is manual.
-      try {
-        // Mutate the actually-signed-in WorkOS user's email, not the
-        // post-swap canonical. Email is per-credential.
-        const workosTargetUserId = req.user!.authWorkosUserId ?? userId;
-        await getWorkos().userManagement.updateUser({ userId: workosTargetUserId, email: aliasEmail });
-      } catch (workosError: any) {
-        if (isEmailUnavailable(workosError)) {
-          return res.status(409).json({ error: 'This email is already associated with another account in our auth system' });
-        }
-        throw workosError;
-      }
-
-      const pool = getPool();
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-
-        // Re-lock and re-verify in case the alias changed between the read
-        // above and now.
-        const alias = await client.query(
-          `SELECT email FROM user_email_aliases
-           WHERE workos_user_id = $1 AND LOWER(email) = $2 AND verified_at IS NOT NULL
-           FOR UPDATE`,
-          [userId, normalizedEmail]
-        );
-
-        if (alias.rows.length === 0) {
-          await client.query('ROLLBACK');
-          // WorkOS already points at the new email; the user.updated webhook
-          // will re-sync users.email and organization_memberships.email. The
-          // alias table will remain stale until manual cleanup.
-          logger.warn(
-            { userId, normalizedEmail },
-            'Alias disappeared between WorkOS update and DB swap; users.email will reconcile via webhook, aliases need manual cleanup'
-          );
-          return res.status(409).json({ error: 'Email link state changed; please refresh and try again' });
-        }
-
-        await client.query(
-          `UPDATE users SET email = $1, updated_at = NOW() WHERE workos_user_id = $2`,
-          [aliasEmail, userId]
-        );
-
-        await client.query(
-          `DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = $2`,
-          [userId, normalizedEmail]
-        );
-
-        await client.query(
-          `INSERT INTO user_email_aliases (workos_user_id, email)
-           VALUES ($1, $2)
-           ON CONFLICT DO NOTHING`,
-          [userId, oldPrimary]
-        );
-
-        await client.query(
-          `UPDATE organization_memberships SET email = $1, updated_at = NOW()
-           WHERE workos_user_id = $2
-             AND email IS DISTINCT FROM $1`,
-          [aliasEmail, userId]
-        );
-
-        await client.query(
-          `UPDATE person_relationships SET email = $1, updated_at = NOW()
-           WHERE workos_user_id = $2
-             AND email IS DISTINCT FROM $1`,
-          [aliasEmail, userId]
-        );
-
-        await client.query('COMMIT');
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
-      }
-
-      logger.info(
-        { userId, oldPrimary, newPrimary: aliasEmail },
-        'Primary email changed'
-      );
-
-      return res.json({ status: 'primary_updated', primary_email: aliasEmail });
-    } catch (error: any) {
-      logger.error({ error }, 'Failed to set primary email');
-      return res.status(500).json({ error: 'Failed to update primary email' });
+      const result = await setPrimaryEmail({
+        userId, email: req.body?.email, actorUserId: userId, operationId: req.body?.operation_id,
+      });
+      return res.json(result);
+    } catch (error) {
+      if (error instanceof EmailMutationError) return res.status(error.status).json(error.body);
+      // Provider exceptions may contain request headers, tokens, or bodies.
+      logger.error('Failed to set primary email');
+      return sendEmailMutationFailure(res, userId, error);
     }
   });
 
@@ -350,7 +265,7 @@ export function createAccountLinkingRouter(): Router {
 
 /**
  * Public verify endpoints — no auth required (opened from email inbox).
- * GET renders a confirmation page, POST executes the merge.
+ * GET renders a confirmation page, POST records a verified email alias.
  */
 export function handleEmailLinkVerification(app: {
   get: (path: string, ...handlers: any[]) => void;
@@ -395,13 +310,13 @@ export function handleEmailLinkVerification(app: {
         hasMerge: !!tokenRecord.target_workos_user_id,
         token: token as string,
       });
-    } catch (error) {
-      logger.error({ error }, 'Email link verification page failed');
+    } catch {
+      logger.error('Email link verification page failed');
       return renderVerifyPage(res, { success: false, message: 'Something went wrong. Please try again or contact support.' });
     }
   });
 
-  // POST /verify-email-link — execute the merge (protected by FOR UPDATE lock)
+  // POST /verify-email-link — verify the alias (protected by FOR UPDATE lock)
   app.post('/verify-email-link', express.urlencoded({ extended: false }), verifyExecuteLimiter, async (req: Request, res: Response) => {
     const { token } = req.body;
 
@@ -440,6 +355,12 @@ export function handleEmailLinkVerification(app: {
         );
         await client.query('COMMIT');
         return renderVerifyPage(res, { success: false, message: 'This verification link has expired. Please request a new one from your dashboard settings.' });
+      }
+
+      const mutationStatus = await getEmailMutationStatus(tokenRecord.primary_workos_user_id, client);
+      if (mutationStatus.reconciliation_required) {
+        await client.query('ROLLBACK');
+        return renderVerifyPage(res, { success: false, message: mutationStatus.message! });
       }
 
       // Mark token as processing (prevents concurrent attempts, but allows retry on failure)
@@ -493,8 +414,8 @@ export function handleEmailLinkVerification(app: {
         await query(
           `UPDATE email_link_tokens SET status = 'pending' WHERE id = $1`,
           [tokenRecord.id]
-        ).catch((resetErr) => {
-          logger.error({ error: resetErr, tokenId: tokenRecord.id }, 'Failed to reset token status after verify error — user cannot retry');
+        ).catch(() => {
+          logger.error({ tokenId: tokenRecord.id }, 'Failed to reset token status after verify error — user cannot retry');
         });
         throw verifyError;
       }
@@ -507,9 +428,9 @@ export function handleEmailLinkVerification(app: {
       );
 
       return renderVerifyPage(res, { success: true, message });
-    } catch (error: any) {
+    } catch {
       await client.query('ROLLBACK').catch(() => {});
-      logger.error({ error, errorMessage: error?.message, errorCode: error?.code }, 'Email link verification failed');
+      logger.error('Email link verification failed');
       return renderVerifyPage(res, { success: false, message: 'Something went wrong during verification. Please try again or contact support.' });
     } finally {
       client.release();
@@ -524,7 +445,7 @@ function escapeHtml(str: string): string {
 function renderConfirmPage(res: Response, opts: { targetEmail: string; hasMerge: boolean; token: string }): void {
   const mergeWarning = opts.hasMerge
     ? `<p style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; font-size: 13px; margin-top: 16px;">
-        An existing account was found with this email. Confirming will combine the two accounts so that signing in with either email leads to the same workspace.
+        An existing account was found with this email. These accounts remain separate. Please contact support for assistance.
       </p>`
     : '';
 

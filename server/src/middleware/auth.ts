@@ -1506,7 +1506,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 
   const decision = decideAAOAdminAccess(
     await isWebUserAAOAdmin(req.user.id),
-    req.user.email,
+    req.user.authorizationSnapshot,
   );
 
   if (!decision.isAdmin) {
@@ -1646,7 +1646,7 @@ export function createRequireWorkingGroupLeader(
     // isWebUserAAOAdmin fails closed to false when its membership lookup fails.
     const decision = decideAAOAdminAccess(
       await isWebUserAAOAdmin(req.user.id),
-      req.user.email,
+      req.user.authorizationSnapshot,
     );
 
     if (decision.isAdmin) {
@@ -1715,7 +1715,7 @@ export function createRequireWorkingGroupMember(
     // isWebUserAAOAdmin fails closed to false when its membership lookup fails.
     const decision = decideAAOAdminAccess(
       await isWebUserAAOAdmin(req.user.id),
-      req.user.email,
+      req.user.authorizationSnapshot,
     );
 
     if (decision.isAdmin) {

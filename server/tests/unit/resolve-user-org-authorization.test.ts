@@ -15,7 +15,7 @@ function snapshot(overrides: Partial<AuthorizationSnapshot> = {}): Authorization
   return {
     authenticatedUserId: AUTHENTICATED_ID, canonicalUserId: 'user_canonical',
     identityId: 'identity_linked', selectedOrganizationId: ORGANIZATION_ID, authorizationEpoch: '1',
-    credential: { email: 'sam@example.test', firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true },
+    credential: { email: 'sam@example.test', firstName: 'Sam', lastName: 'Adeyemi', emailVerified: true, emailMutationPending: false },
     credentialGrant: null, ...overrides,
   };
 }

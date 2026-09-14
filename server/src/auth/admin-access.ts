@@ -1,3 +1,5 @@
+import type { AuthorizationSnapshot } from '../db/user-authorization-snapshot-db.js';
+
 /**
  * Shared platform-admin authority vocabulary.
  *
@@ -17,7 +19,15 @@ export interface AAOAdminAccessDecision {
   mechanism: AAOAdminAccessMechanism | null;
 }
 
-export function isBreakGlassAdminEmail(email: string | null | undefined): boolean {
+/**
+ * Email-based authority comes only from this request's primary-DB snapshot.
+ * A pending intent can precede any epoch change, so epoch freshness alone is
+ * insufficient. Missing state and unverified credentials never grant access.
+ */
+export function isBreakGlassAdmin(snapshot: AuthorizationSnapshot | null | undefined): boolean {
+  if (!snapshot || snapshot.credential.emailMutationPending !== false
+      || snapshot.credential.emailVerified !== true) return false;
+  const email = snapshot.credential.email;
   if (!email) return false;
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) return false;
@@ -30,9 +40,9 @@ export function isBreakGlassAdminEmail(email: string | null | undefined): boolea
 /** Classify a membership result without duplicating break-glass interpretation. */
 export function decideAAOAdminAccess(
   isAdminByWorkingGroup: boolean,
-  email: string | null | undefined,
+  snapshot: AuthorizationSnapshot | null | undefined,
 ): AAOAdminAccessDecision {
   if (isAdminByWorkingGroup) return { isAdmin: true, mechanism: 'aao_admin_working_group' };
-  if (isBreakGlassAdminEmail(email)) return { isAdmin: true, mechanism: 'break_glass_admin_email' };
+  if (isBreakGlassAdmin(snapshot)) return { isAdmin: true, mechanism: 'break_glass_admin_email' };
   return { isAdmin: false, mechanism: null };
 }

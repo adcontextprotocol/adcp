@@ -15,6 +15,7 @@
  */
 
 import { createLogger } from '../logger.js';
+import type { AuthorizationSnapshot } from '../db/user-authorization-snapshot-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { getWebAdminStatusCache } from './admin-status-cache.js';
 import {
@@ -77,7 +78,7 @@ export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> 
  */
 export async function resolveWebUserAAOAdminAccess(
   workosUserId: string,
-  email: string | null | undefined,
+  snapshot: AuthorizationSnapshot | null | undefined,
 ): Promise<AAOAdminAccessDecision> {
-  return decideAAOAdminAccess(await isWebUserAAOAdmin(workosUserId), email);
+  return decideAAOAdminAccess(await isWebUserAAOAdmin(workosUserId), snapshot);
 }

@@ -17,7 +17,17 @@ import {
   isWebUserAAOAdmin,
   resolveWebUserAAOAdminAccess,
 } from '../../src/addie/admin-status-lookup.js';
-import { isBreakGlassAdminEmail } from '../../src/auth/admin-access.js';
+import { decideAAOAdminAccess, isBreakGlassAdmin } from '../../src/auth/admin-access.js';
+import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
+
+function snapshot(overrides: Partial<AuthorizationSnapshot['credential']> = {}): AuthorizationSnapshot {
+  return {
+    authenticatedUserId: 'user_no_membership', canonicalUserId: 'user_no_membership',
+    identityId: 'identity_admin_test', selectedOrganizationId: null, authorizationEpoch: '1',
+    credentialGrant: null,
+    credential: { email: 'BREAK-GLASS@example.test', emailVerified: true, emailMutationPending: false, firstName: null, lastName: null, ...overrides },
+  };
+}
 import {
   getSlackAdminStatusCache,
   getWebAdminStatusCache,
@@ -76,8 +86,40 @@ describe('site-admin access decisions', () => {
 
   it('identifies the environment-only break-glass mechanism separately', async () => {
     mocks.isMember.mockResolvedValue(false);
-    expect(isBreakGlassAdminEmail('BREAK-GLASS@example.test')).toBe(true);
-    await expect(resolveWebUserAAOAdminAccess('user_no_membership', 'break-glass@example.test'))
+    expect(isBreakGlassAdmin(snapshot())).toBe(true);
+    await expect(resolveWebUserAAOAdminAccess('user_no_membership', snapshot()))
       .resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
   });
+
+  it.each([true, undefined, null, 'false'])('denies unresolved or malformed mutation state %s', (emailMutationPending) => {
+    const state = snapshot({ emailMutationPending: emailMutationPending as boolean });
+    expect(isBreakGlassAdmin(state)).toBe(false);
+    expect(decideAAOAdminAccess(false, state)).toEqual({ isAdmin: false, mechanism: null });
+  });
+
+  it.each([undefined, null])('denies missing authoritative snapshot %s', (state) => {
+    expect(isBreakGlassAdmin(state)).toBe(false);
+  });
+
+  it('requires verified local email and never a provider email fallback', () => {
+    expect(isBreakGlassAdmin(snapshot({ emailVerified: false }))).toBe(false);
+    expect(isBreakGlassAdmin(snapshot({ email: 'ordinary@example.test' }))).toBe(false);
+    expect(isBreakGlassAdmin(snapshot({ email: null }))).toBe(false);
+  });
+
+  it('rechecks mutation state instead of caching an email-based admin grant', async () => {
+    mocks.isMember.mockResolvedValue(false);
+    await expect(resolveWebUserAAOAdminAccess('user_no_membership', snapshot()))
+      .resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
+    await expect(resolveWebUserAAOAdminAccess('user_no_membership', snapshot({ emailMutationPending: true })))
+      .resolves.toEqual({ isAdmin: false, mechanism: null });
+    await expect(resolveWebUserAAOAdminAccess('user_no_membership', snapshot()))
+      .resolves.toEqual({ isAdmin: true, mechanism: 'break_glass_admin_email' });
+  });
+
+  it('keeps independently granted working-group authority distinct from break glass', () => {
+    expect(decideAAOAdminAccess(true, snapshot({ emailMutationPending: true })))
+      .toEqual({ isAdmin: true, mechanism: 'aao_admin_working_group' });
+  });
+
 });

@@ -197,7 +197,7 @@ import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbou
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
+import { isBreakGlassAdmin } from "../auth/admin-access.js";
 import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
@@ -7359,14 +7359,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   async function isRegistryAdminRequest(req: Request): Promise<boolean> {
     if (isStaticAdminRequest(req)) return true;
-    const user = req.user as ({ id?: string; email?: string; isAdmin?: boolean } | undefined);
+    const user = req.user as ({ id?: string; email?: string; isAdmin?: boolean; authorizationSnapshot?: import("../db/user-authorization-snapshot-db.js").AuthorizationSnapshot } | undefined);
     if (!user) return false;
     if (user.isAdmin === true) return true;
 
     const devUser = isDevModeEnabled() ? getDevUser(req) : null;
     if (devUser?.isAdmin === true) return true;
 
-    if (isBreakGlassAdminEmail(user.email)) return true;
+    if (isBreakGlassAdmin(user.authorizationSnapshot)) return true;
     if (!user.id) return false;
     return isWebUserAAOAdmin(user.id);
   }

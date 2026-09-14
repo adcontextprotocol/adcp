@@ -676,14 +676,14 @@
   <!-- Link Email Modal -->
   <div id="linkEmailModal" class="modal-overlay">
     <div class="modal">
-      <h2>Link Another Email</h2>
+      <h2>Link another email</h2>
       <p style="color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-4);">
         Enter the email address you want to link. We'll send a verification email to confirm ownership.
         Existing accounts can't be combined through this form and require support assistance.
       </p>
       <div style="margin-bottom: var(--space-4);">
         <label for="linkEmailInput" style="font-size: var(--text-xs); font-weight: var(--font-medium); display: block; margin-bottom: var(--space-1);">Email address</label>
-        <input type="email" id="linkEmailInput" class="form-input" placeholder="you@example.com">
+        <input type="email" id="linkEmailInput" class="form-input" placeholder="you@example.com" disabled>
       </div>
       <div id="linkEmailWarning" role="alert" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-300); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4); font-size: var(--text-xs);">
         <span id="linkEmailWarningMessage"></span>
@@ -691,7 +691,7 @@
       </div>
       <div style="display: flex; gap: var(--space-2); justify-content: flex-end;">
         <button class="btn btn-ghost" id="linkEmailCancelBtn">Cancel</button>
-        <button class="btn btn-primary" id="linkEmailBtn">Send Verification</button>
+        <button class="btn btn-primary" id="linkEmailBtn" disabled>Send verification</button>
       </div>
     </div>
   </div>
@@ -989,11 +989,15 @@
           <h2 class="edit-section-title">Linked emails</h2>
           <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </summary>
-        <p class="edit-section-description">Link additional email addresses to consolidate duplicate accounts.</p>
+        <p class="edit-section-description">Link additional email addresses after verifying ownership. Existing accounts require support assistance.</p>
+        <div id="linkedEmailStatus" role="alert" style="display: none; margin-bottom: var(--space-4);">
+          <span id="linkedEmailStatusMessage"></span>
+          <a href="mailto:support@agenticadvertising.org">Email support</a>
+        </div>
         <div id="linkedEmailsList" style="margin-bottom: var(--space-4);">
           <p style="color: var(--color-text-muted); font-size: var(--text-xs);">Loading...</p>
         </div>
-        <button class="btn btn-ghost" id="openLinkEmailBtn">Link another email</button>
+        <button class="btn btn-ghost" id="openLinkEmailBtn" disabled>Link another email</button>
       </details>
 
       <!-- Notifications -->
@@ -1046,12 +1050,63 @@
     // ==========================================
     // Linked Emails
     // ==========================================
+    var linkedEmailStatusKnown = false;
+    var linkedEmailReconciliationRequired = false;
+    var linkedEmailMutationPending = false;
+    var linkedEmailLoadVersion = 0;
+    var linkedEmailCredentialId = null;
+    var linkedEmailReconciliationMessage = 'Your email change needs reconciliation. Contact support before making another email change.';
+
+    function canMutateLinkedEmails() {
+      return !!linkedEmailCredentialId && linkedEmailStatusKnown && !linkedEmailReconciliationRequired && !linkedEmailMutationPending;
+    }
+
+    function updateLinkedEmailControls() {
+      var disabled = !canMutateLinkedEmails();
+      document.querySelectorAll('.make-primary-btn, #openLinkEmailBtn, #linkEmailBtn, #linkEmailInput').forEach(function(control) {
+        control.disabled = disabled;
+      });
+    }
+
+    function showLinkedEmailStatus(message) {
+      document.getElementById('linkedEmailStatusMessage').textContent = message ? message + ' ' : '';
+      document.getElementById('linkedEmailStatus').style.display = message ? 'block' : 'none';
+    }
+
+    function applyLinkedEmailStatus(data, authoritative) {
+      if (data.reconciliation_required === true) {
+        linkedEmailReconciliationRequired = true;
+        linkedEmailStatusKnown = true;
+        showLinkedEmailStatus(data.message || linkedEmailReconciliationMessage);
+      } else if (data.status_unknown === true) {
+        linkedEmailStatusKnown = false;
+        showLinkedEmailStatus(data.message || 'Unable to confirm your email change. Reload to check its status or contact support.');
+      } else if (authoritative && data.reconciliation_required === false) {
+        linkedEmailReconciliationRequired = false;
+        linkedEmailStatusKnown = true;
+        showLinkedEmailStatus('');
+      }
+      updateLinkedEmailControls();
+    }
+
     async function loadLinkedEmails() {
+      var loadVersion = ++linkedEmailLoadVersion;
+      linkedEmailStatusKnown = false;
+      updateLinkedEmailControls();
       try {
         var response = await fetch('/api/me/linked-emails', { credentials: 'include' });
-        if (!response.ok) return;
         var data = await response.json();
+        if (loadVersion !== linkedEmailLoadVersion) return;
+        if (!response.ok) {
+          applyLinkedEmailStatus(data, false);
+          if (!linkedEmailReconciliationRequired) {
+            showLinkedEmailStatus(data.message || data.error || 'Unable to check email change status. Reload this page or contact support.');
+          }
+          return;
+        }
 
+        linkedEmailCredentialId = typeof data.credential_id === 'string' ? data.credential_id : null;
+        if (!linkedEmailCredentialId) throw new Error('Credential status unavailable');
         var container = document.getElementById('linkedEmailsList');
         var html = '';
 
@@ -1064,7 +1119,7 @@
           html += '<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">' +
             '<span style="font-size: var(--text-sm);">' + accountEscapeHtml(data.aliases[i].email) + '</span>' +
             '<span style="margin-left: 8px; font-size: var(--text-xs); background: var(--color-success-bg); color: var(--color-success-fg); padding: 2px 8px; border-radius: 4px;">Linked</span>' +
-            '<button class="btn btn-ghost make-primary-btn" data-email="' + accountEscapeHtml(data.aliases[i].email) + '" style="margin-left: auto; font-size: var(--text-xs); padding: 2px 8px;">Make primary</button>' +
+            '<button class="btn btn-ghost make-primary-btn" disabled data-email="' + accountEscapeHtml(data.aliases[i].email) + '" style="margin-left: auto; font-size: var(--text-xs); padding: 2px 8px;">Make primary</button>' +
             '</div>';
         }
 
@@ -1082,47 +1137,84 @@
             setPrimaryEmail(btn.dataset.email);
           });
         });
+        applyLinkedEmailStatus(data, true);
+        if (!linkedEmailStatusKnown) {
+          showLinkedEmailStatus('Unable to check email change status. Reload this page or contact support.');
+        }
       } catch (error) {
-        console.error('Failed to load linked emails:', error);
+        if (loadVersion !== linkedEmailLoadVersion) return;
+        if (!linkedEmailReconciliationRequired) {
+          showLinkedEmailStatus('Unable to check email change status. Reload this page or contact support.');
+        }
       }
     }
 
+    function primaryEmailOperation(email) {
+      var key = 'member-primary-email:' + linkedEmailCredentialId;
+      var saved = window.sessionStorage.getItem(key);
+      var operation = saved ? JSON.parse(saved) : null;
+      var normalizedEmail = email.trim().toLowerCase();
+      if (!operation || operation.email !== normalizedEmail) {
+        operation = { operation_id: window.crypto.randomUUID(), email: normalizedEmail };
+        // Persist before sending: retries after a lost response or page reload
+        // must use the same caller operation ID, never start a second mutation.
+        window.sessionStorage.setItem(key, JSON.stringify(operation));
+      }
+      return { key: key, id: operation.operation_id };
+    }
+
     async function setPrimaryEmail(email) {
+      if (!canMutateLinkedEmails()) return;
       if (!confirm('Make ' + email + ' your primary email? You will need to use this email to sign in.')) return;
 
-      var btns = document.querySelectorAll('.make-primary-btn');
-      btns.forEach(function(b) { b.disabled = true; });
+      linkedEmailMutationPending = true;
+      ++linkedEmailLoadVersion;
+      updateLinkedEmailControls();
 
       try {
+        var operation = primaryEmailOperation(email);
         var response = await fetch('/api/me/linked-emails/primary', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email }),
+          body: JSON.stringify({ email: email, operation_id: operation.id }),
           credentials: 'include'
         });
 
         var data = await response.json();
+        ++linkedEmailLoadVersion;
+        applyLinkedEmailStatus(data, false);
 
-        if (!response.ok) {
-          accountShowToast(data.error || 'Failed to update primary email', true);
+        if ((response.ok || data.reconciliation_required === false)
+            && data.reconciliation_required !== true && data.status_unknown !== true) {
+          window.sessionStorage.removeItem(operation.key);
+        }
+
+        if (!response.ok || linkedEmailReconciliationRequired || data.status_unknown === true) {
+          accountShowToast(data.message || (linkedEmailReconciliationRequired ? linkedEmailReconciliationMessage : data.error) || 'Failed to update primary email', true);
           return;
         }
 
         accountShowToast('Primary email updated to ' + email);
-        loadLinkedEmails();
+        await loadLinkedEmails();
       } catch (error) {
-        accountShowToast('Failed to update primary email', true);
+        ++linkedEmailLoadVersion;
+        linkedEmailStatusKnown = false;
+        var message = 'Unable to confirm your email change. Reload to check its status or contact support before retrying.';
+        showLinkedEmailStatus(message);
+        accountShowToast(message, true);
       } finally {
-        btns.forEach(function(b) { b.disabled = false; });
+        linkedEmailMutationPending = false;
+        updateLinkedEmailControls();
       }
     }
 
     function openLinkEmailModal() {
+      if (!canMutateLinkedEmails()) return;
       document.getElementById('linkEmailInput').value = '';
       document.getElementById('linkEmailWarning').style.display = 'none';
       document.getElementById('linkEmailWarningMessage').textContent = '';
-      document.getElementById('linkEmailBtn').disabled = false;
-      document.getElementById('linkEmailBtn').textContent = 'Send Verification';
+      document.getElementById('linkEmailBtn').textContent = 'Send verification';
+      updateLinkedEmailControls();
       document.getElementById('linkEmailModal').classList.add('show');
     }
 
@@ -1131,11 +1223,14 @@
     }
 
     async function sendLinkVerification() {
+      if (!canMutateLinkedEmails()) return;
       var email = document.getElementById('linkEmailInput').value.trim();
       if (!email) return;
 
       var btn = document.getElementById('linkEmailBtn');
-      btn.disabled = true;
+      linkedEmailMutationPending = true;
+      ++linkedEmailLoadVersion;
+      updateLinkedEmailControls();
       btn.textContent = 'Sending...';
 
       try {
@@ -1147,9 +1242,11 @@
         });
 
         var data = await response.json();
+        ++linkedEmailLoadVersion;
+        applyLinkedEmailStatus(data, false);
 
-        if (!response.ok) {
-          var message = data.message || data.error || 'Failed to send verification';
+        if (!response.ok || linkedEmailReconciliationRequired) {
+          var message = data.message || (linkedEmailReconciliationRequired ? linkedEmailReconciliationMessage : data.error) || 'Failed to send verification';
           accountShowToast(message, true);
           document.getElementById('linkEmailWarningMessage').textContent = message + ' ';
           document.getElementById('linkEmailWarning').style.display = 'block';
@@ -1158,12 +1255,17 @@
 
         closeLinkEmailModal();
         accountShowToast('Verification email sent! Check your inbox.');
-        loadLinkedEmails();
+        await loadLinkedEmails();
       } catch (error) {
-        accountShowToast('Failed to send verification', true);
+        ++linkedEmailLoadVersion;
+        linkedEmailStatusKnown = false;
+        var message = 'Unable to confirm your email change. Reload to check its status or contact support before retrying.';
+        showLinkedEmailStatus(message);
+        accountShowToast(message, true);
       } finally {
-        btn.disabled = false;
-        btn.textContent = 'Send Verification';
+        linkedEmailMutationPending = false;
+        updateLinkedEmailControls();
+        btn.textContent = 'Send verification';
       }
     }
 

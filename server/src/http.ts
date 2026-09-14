@@ -107,7 +107,7 @@ import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
 import { resolveWebUserAAOAdminAccess } from "./addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "./auth/admin-access.js";
+import { isBreakGlassAdmin } from "./auth/admin-access.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -1079,15 +1079,15 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean; isAdmin?: boolean } | null) {
+function buildAppConfig(user?: { authorizationSnapshot?: import("./db/user-authorization-snapshot-db.js").AuthorizationSnapshot; id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean; isAdmin?: boolean } | null) {
   // Trust a pre-resolved isAdmin (set by enrichUserWithAdmin / dev-user flag).
-  // Fall back to ADMIN_EMAILS for callers that haven't enriched yet.
+  // The fallback requires authoritative credential and mutation state.
   let isAdmin = false;
   if (user) {
     if (typeof user.isAdmin === 'boolean') {
       isAdmin = user.isAdmin;
     } else {
-      isAdmin = isBreakGlassAdminEmail(user.email);
+      isAdmin = isBreakGlassAdmin(user.authorizationSnapshot);
     }
   }
 
@@ -8635,7 +8635,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         // Match requireAdmin: working-group authority with an explicit,
         // environment-managed break-glass fallback.
-        const isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
+        const isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.authorizationSnapshot)).isAdmin;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;

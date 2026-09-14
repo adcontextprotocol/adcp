@@ -360,6 +360,7 @@ describe('db client checkout and health checks', () => {
             authorization_epoch: '11',
             email: 'sam@pinnacle.example',
             email_verified: true,
+            email_mutation_pending: false,
             first_name: 'Sam',
             last_name: 'Adeyemi',
             grant_id: null,

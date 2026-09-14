@@ -13,6 +13,8 @@ export interface AuthorizationSnapshot {
   readonly credential: Readonly<{
     email: string | null;
     emailVerified: boolean;
+    /** Durable intent must fence requests even before an epoch is advanced. */
+    emailMutationPending: boolean;
     firstName: string | null;
     lastName: string | null;
   }>;
@@ -41,6 +43,7 @@ interface SnapshotRow {
   authorization_epoch: string;
   email: string | null;
   email_verified: boolean;
+  email_mutation_pending: boolean;
   first_name: string | null;
   last_name: string | null;
   grant_id: string | null;
@@ -94,6 +97,9 @@ export async function loadAuthorizationSnapshot(
               binding.identity_id,
               COALESCE(epoch.epoch, 0)::text AS authorization_epoch,
               credential.email, credential.email_verified, credential.first_name, credential.last_name,
+              EXISTS (SELECT 1 FROM email_mutations mutation
+                       WHERE mutation.workos_user_id = credential.workos_user_id
+                         AND mutation.state IN ('pending', 'reconciliation_required')) AS email_mutation_pending,
               credential_grant.id AS grant_id,
               credential_grant.workos_organization_id AS grant_organization_id,
               credential_grant.role AS grant_role,
@@ -119,7 +125,7 @@ export async function loadAuthorizationSnapshot(
       [authenticatedUserId, organizationId],
     );
     const row = result.rows[0];
-    if (!row || row.in_recovery) {
+    if (!row || row.in_recovery !== false || typeof row.email_mutation_pending !== 'boolean') {
       throw new AuthorizationSnapshotUnavailableError();
     }
     if (!row.authenticated_user_id) return null;
@@ -147,6 +153,7 @@ export async function loadAuthorizationSnapshot(
       credential: Object.freeze({
         email: row.email,
         emailVerified: row.email_verified,
+        emailMutationPending: row.email_mutation_pending,
         firstName: row.first_name,
         lastName: row.last_name,
       }),
@@ -169,7 +176,9 @@ export function sameAuthorizationIdentity(
     && previous.identityId === current.identityId
     && previous.authorizationEpoch === current.authorizationEpoch
     && previous.credential.email === current.credential.email
-    && previous.credential.emailVerified === current.credential.emailVerified;
+    && previous.credential.emailVerified === current.credential.emailVerified
+    && typeof previous.credential.emailMutationPending === 'boolean'
+    && previous.credential.emailMutationPending === current.credential.emailMutationPending;
 }
 
 /** Compare equality, not epoch ordering: deletions and replay can move backwards. */

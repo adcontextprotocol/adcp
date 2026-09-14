@@ -41,7 +41,7 @@ import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/cl
 import { SlackDatabase } from "../db/slack-db.js";
 import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
 import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
-import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
+import { isBreakGlassAdmin } from "../auth/admin-access.js";
 import { getWorkos } from "../auth/workos-client.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 
@@ -1742,7 +1742,7 @@ export function createEventsRouter(): {
       if (!["published", "completed"].includes(event.status)) {
         const user = req.user;
         const isAdmin = !!user && (
-          isBreakGlassAdminEmail(user.email) ||
+          isBreakGlassAdmin(user.authorizationSnapshot) ||
           await isWebUserAAOAdmin(user.id)
         );
         if (!isAdmin) {

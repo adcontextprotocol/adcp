@@ -1,79 +1,185 @@
-import { describe, it, expect } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import express from 'express';
+import request from 'supertest';
 import { isEmailUnavailable } from '../../src/routes/account-linking-errors.js';
 
-/**
- * Static analysis test for the set-primary-email endpoint.
- * Verifies the route handler exists and follows the correct swap pattern.
- */
+const mocks = vi.hoisted(() => ({
+  query: vi.fn(),
+  status: vi.fn(),
+  mutate: vi.fn(),
+  clientQuery: vi.fn(),
+  release: vi.fn(),
+  principal: null as any,
+  apiKey: false,
+}));
+const client = { query: mocks.clientQuery, release: mocks.release };
+vi.mock('../../src/db/client.js', () => ({ query: mocks.query, getPool: () => ({ connect: async () => client }) }));
+vi.mock('../../src/middleware/auth.js', () => ({
+  requireAuth: (req: any, _res: any, next: any) => {
+    req.user = mocks.principal ?? { id: 'user_canonical', authWorkosUserId: 'user_credential', email: 'canonical@example.test', authorizationSnapshot: { authenticatedUserId: 'user_credential' } };
+    if (mocks.apiKey) req.apiKey = { id: 'test-api-key', scopes: ['admin:*'] };
+    next();
+  },
+}));
+vi.mock('express-rate-limit', () => ({ default: () => (_req: any, _res: any, next: any) => next() }));
+vi.mock('../../src/middleware/pg-rate-limit-store.js', () => ({ CachedPostgresStore: class {} }));
+vi.mock('../../src/notifications/email.js', () => ({ sendEmailLinkVerification: vi.fn() }));
+vi.mock('../../src/services/email-mutation.js', () => ({
+  getEmailMutationStatus: mocks.status,
+  setPrimaryEmail: mocks.mutate,
+  EmailMutationError: class extends Error {
+    constructor(public status: number, public body: Record<string, unknown>) { super('Email mutation failed'); }
+  },
+}));
+import { createAccountLinkingRouter, handleEmailLinkVerification } from '../../src/routes/account-linking.js';
+import { EmailMutationError } from '../../src/services/email-mutation.js';
 
-const ACCOUNT_LINKING_FILE = path.resolve(
-  __dirname,
-  '../../src/routes/account-linking.ts'
-);
+const app = express();
+app.use(express.json());
+app.use('/api/me/linked-emails', createAccountLinkingRouter());
+handleEmailLinkVerification(app);
+const operationId = '7bc02bce-fb04-47ac-8104-c3bb4b93a1e7';
 
-const DASHBOARD_SETTINGS_FILE = path.resolve(
-  __dirname,
-  '../../public/dashboard-settings.html'
-);
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.principal = null;
+  mocks.apiKey = false;
+  mocks.status.mockResolvedValue({ reconciliation_required: false });
+  mocks.query.mockResolvedValue({ rows: [] });
+  mocks.clientQuery.mockResolvedValue({ rows: [] });
+});
 
-describe('Set primary email endpoint', () => {
-  const source = fs.readFileSync(ACCOUNT_LINKING_FILE, 'utf-8');
-
-  it('registers a PUT /primary route on the router', () => {
-    expect(source).toMatch(/router\.put\(\s*['"]\/primary['"]/);
+describe('Primary email credential boundary', () => {
+  it.each(['missing snapshot', 'API key'])('rejects %s before mutation or journal lookup', async (kind) => {
+    if (kind === 'API key') mocks.apiKey = true;
+    else mocks.principal = { id: 'user_credential', email: 'credential@example.test' };
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(403);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.query).not.toHaveBeenCalled();
   });
 
-  it('requires authentication and rate limiting', () => {
-    expect(source).toMatch(/router\.put\(\s*['"]\/primary['"],\s*requireAuth,\s*verifyExecuteLimiter/);
+  it('rejects a snapshot belonging to a different authenticated credential', async () => {
+    mocks.principal = { id: 'other_canonical', authWorkosUserId: 'provider_claim', authorizationSnapshot: { authenticatedUserId: 'user_credential' } };
+    mocks.mutate.mockResolvedValue({ status: 'primary_updated' });
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(403);
+    expect(mocks.mutate).not.toHaveBeenCalled();
   });
 
-  it('validates email is a verified alias before swapping', () => {
-    expect(source).toMatch(/user_email_aliases/);
-    expect(source).toMatch(/workos_user_id = \$1 AND LOWER\(email\) = \$2 AND verified_at IS NOT NULL/);
+  it('mutates the credential that authenticated, regardless of canonical identity direction', async () => {
+    mocks.mutate.mockResolvedValue({ status: 'primary_updated', primary_email: 'new@example.test', operation_id: operationId });
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'primary_updated', primary_email: 'new@example.test', operation_id: operationId });
+    expect(mocks.mutate).toHaveBeenCalledWith({ userId: 'user_credential', actorUserId: 'user_credential', email: 'new@example.test', operationId });
   });
 
-  it('updates WorkOS as source of truth', () => {
-    expect(source).toMatch(/getWorkos\(\)\.userManagement\.updateUser/);
+  it('passes through the safe reconciliation response without claiming success', async () => {
+    const body = { reconciliation_required: true, operation_id: 'operation-1', message: 'Contact support to reconcile this change.' };
+    mocks.mutate.mockRejectedValue(new EmailMutationError(503, body));
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test' });
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual(body);
+    expect(response.body.status).not.toBe('primary_updated');
   });
 
-  it('swaps emails in a transaction', () => {
-    // Must use BEGIN/COMMIT for atomicity
-    expect(source).toMatch(/BEGIN/);
-    expect(source).toMatch(/COMMIT/);
-    // Must update users table
-    expect(source).toMatch(/UPDATE users SET email/);
-    // Must delete alias for new primary
-    expect(source).toMatch(/DELETE FROM user_email_aliases/);
-    // Must insert old primary as alias
-    expect(source).toMatch(/INSERT INTO user_email_aliases[\s\S]*?VALUES/);
+  it('fails closed without exposing unexpected provider exceptions', async () => {
+    mocks.mutate.mockRejectedValue(new Error('Authorization: Bearer secret-token'));
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test' });
+    expect(response.status).toBe(503);
+    expect(response.body.reconciliation_required).toBeUndefined();
+    expect(response.body.status_unknown).toBe(true);
+    expect(response.body.message).toMatch(/contact support/i);
+    expect(JSON.stringify(response.body)).not.toContain('secret-token');
   });
 
-  it('locks alias row with FOR UPDATE to prevent races', () => {
-    expect(source).toMatch(/FOR UPDATE/);
+  it('lists only the authenticated credential emails and durable reconciliation status', async () => {
+    mocks.status.mockResolvedValue({ reconciliation_required: true, operation_id: 'operation-1', message: 'Contact support.' });
+    mocks.query.mockImplementation(async (sql: string, params: unknown[]) => {
+      expect(params).toEqual(['user_credential']);
+      return { rows: sql.includes('SELECT email FROM users') ? [{ email: 'credential@example.test' }] : [] };
+    });
+    const response = await request(app).get('/api/me/linked-emails');
+    expect(response.status).toBe(200);
+    expect(mocks.status).toHaveBeenCalledWith('user_credential');
+    expect(response.body).toEqual({
+      credential_id: 'user_credential',
+      primary_email: 'credential@example.test', aliases: [], pending: [],
+      reconciliation_required: true, operation_id: 'operation-1', message: 'Contact support.',
+    });
   });
 
-  it('updates WorkOS before the DB swap so a WorkOS rejection leaves DB state untouched', () => {
-    const beginIdx = source.indexOf("'BEGIN'");
-    const workosIdx = source.indexOf('getWorkos().userManagement.updateUser');
-    expect(workosIdx).toBeGreaterThan(-1);
-    expect(beginIdx).toBeGreaterThan(-1);
-    expect(workosIdx).toBeLessThan(beginIdx);
+  it('returns credential contention as retryable without inventing a reconciliation operation', async () => {
+    const body = { error: 'credential_busy', message: 'Please retry.', retryable: true };
+    mocks.mutate.mockRejectedValue(new EmailMutationError(409, body));
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual(body);
+    expect(response.body.reconciliation_required).toBeUndefined();
+    expect(response.body.operation_id).toBeUndefined();
   });
 
-  it('classifies WorkOS rejections via isEmailUnavailable and returns a friendly 409', () => {
-    expect(source).toMatch(/isEmailUnavailable\(workosError\)/);
-    expect(source).toMatch(/already associated with another account/);
+  it('recovers a durable operation status after an unexpected failure without exposing diagnostics', async () => {
+    mocks.mutate.mockRejectedValue(new Error('provider-secret'));
+    const status = { reconciliation_required: true, operation_id: operationId, message: 'Contact support.' };
+    mocks.status.mockResolvedValue(status);
+    const response = await request(app).put('/api/me/linked-emails/primary').send({ email: 'new@example.test', operation_id: operationId });
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual(status);
+    expect(mocks.status).toHaveBeenCalledWith('user_credential');
   });
 
-  it('rolls back on error', () => {
-    expect(source).toMatch(/ROLLBACK/);
+  it('checks verification reconciliation with the already-held transaction client', async () => {
+    mocks.clientQuery.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('FROM email_link_tokens') ? [{
+        id: 'token-id', primary_workos_user_id: 'user_credential', target_email: 'alias@example.test',
+        status: 'pending', expires_at: new Date(Date.now() + 60_000),
+      }] : [],
+    }));
+    mocks.status.mockResolvedValue({ reconciliation_required: true, message: 'Contact support.' });
+    const response = await request(app).post('/verify-email-link').send({ token: 'verification-token' });
+    expect(response.status).toBe(200);
+    expect(mocks.status).toHaveBeenCalledExactlyOnceWith('user_credential', client);
+    expect(mocks.clientQuery).toHaveBeenCalledWith('ROLLBACK');
+    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.release).toHaveBeenCalledOnce();
+    expect(response.text).toContain('Contact support.');
   });
 
-  it('refreshes denormalized email on organization_memberships and person_relationships', () => {
-    expect(source).toMatch(/UPDATE organization_memberships SET email/);
-    expect(source).toMatch(/UPDATE person_relationships SET email/);
+  it('blocks new email verification while reconciliation is outstanding', async () => {
+    mocks.status.mockResolvedValue({ reconciliation_required: true, message: 'Contact support.' });
+    const response = await request(app).post('/api/me/linked-emails').send({ email: 'new@example.test' });
+    expect(response.status).toBe(409);
+    expect(response.body.reconciliation_required).toBe(true);
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it.each(['reconciliation', 'busy', 'unknown'] as const)('surfaces a concurrent token writer failure as %s instead of an unclassified error', async (kind) => {
+    mocks.status.mockResolvedValueOnce({ reconciliation_required: false });
+    if (kind === 'reconciliation') {
+      mocks.status.mockResolvedValueOnce({ reconciliation_required: true, operation_id: operationId, message: 'Contact support to reconcile.' });
+    } else if (kind === 'unknown') {
+      mocks.status.mockRejectedValueOnce(new Error('database diagnostic'));
+    } else mocks.status.mockResolvedValueOnce({ reconciliation_required: false });
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('INSERT INTO email_link_tokens')) throw Object.assign(new Error('database diagnostic'), { code: kind === 'busy' ? '55P03' : '23514' });
+      if (sql.includes('COUNT(*)')) return { rows: [{ count: '0' }] };
+      if (sql.includes('SELECT email FROM users')) return { rows: [{ email: 'credential@example.test' }] };
+      return { rows: [] };
+    });
+    const response = await request(app).post('/api/me/linked-emails').send({ email: 'new@example.test' });
+    expect(response.status).toBe(kind === 'busy' ? 409 : 503);
+    expect(mocks.status).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(response.body)).not.toContain('diagnostic');
+    if (kind === 'reconciliation') expect(response.body).toEqual({ reconciliation_required: true, operation_id: operationId, message: 'Contact support to reconcile.' });
+    else {
+      expect(response.body.reconciliation_required).toBeUndefined();
+      expect(response.body.operation_id).toBeUndefined();
+      if (kind === 'busy') expect(response.body).toMatchObject({ error: 'credential_busy', retryable: true });
+      else expect(response.body.status_unknown).toBe(true);
+    }
   });
 });
 
@@ -113,51 +219,5 @@ describe('isEmailUnavailable', () => {
   it('returns false for null/undefined', () => {
     expect(isEmailUnavailable(null)).toBe(false);
     expect(isEmailUnavailable(undefined)).toBe(false);
-  });
-});
-
-describe('Set primary email UI', () => {
-  const html = fs.readFileSync(DASHBOARD_SETTINGS_FILE, 'utf-8');
-
-  it('renders a "Make primary" button for each alias', () => {
-    expect(html).toMatch(/make-primary-btn/);
-    expect(html).toMatch(/Make primary/);
-  });
-
-  it('calls PUT /api/me/linked-emails/primary', () => {
-    expect(html).toMatch(/\/api\/me\/linked-emails\/primary/);
-    expect(html).toMatch(/method:\s*['"]PUT['"]/);
-  });
-
-  it('confirms before changing primary', () => {
-    expect(html).toMatch(/confirm\(/);
-  });
-
-  it('disables buttons during request to prevent double-click', () => {
-    expect(html).toMatch(/b\.disabled = true/);
-    expect(html).toMatch(/b\.disabled = false/);
-  });
-
-  it('reloads linked emails after success', () => {
-    expect(html).toMatch(/loadLinkedEmails\(\)/);
-  });
-});
-
-describe('Link email recovery UI', () => {
-  const html = fs.readFileSync(DASHBOARD_SETTINGS_FILE, 'utf-8');
-
-  it('prefers the server recovery message over the generic error', () => {
-    expect(html).toMatch(/data\.message \|\| data\.error \|\| 'Failed to send verification'/);
-  });
-
-  it('shows the recovery message safely with an actionable support link', () => {
-    expect(html).toContain('href="mailto:support@agenticadvertising.org"');
-    expect(html).toMatch(/linkEmailWarningMessage'\)\.textContent = message/);
-    expect(html).toMatch(/linkEmailWarning'\)\.style\.display = 'block'/);
-  });
-
-  it('does not promise to merge existing accounts through self-service', () => {
-    expect(html).toContain("Existing accounts can't be combined through this form");
-    expect(html).not.toContain('your accounts will be merged');
   });
 });

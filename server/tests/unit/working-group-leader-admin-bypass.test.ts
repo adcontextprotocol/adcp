@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
+import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
 
 /**
  * Focused unit tests for the site-admin bypass in the working-group leader
@@ -7,7 +8,8 @@ import type { Request, Response, NextFunction } from 'express';
  *
  * The bypass must recognize BOTH aao-admin working group membership (the
  * deployed primary authority, via isWebUserAAOAdmin) and the ADMIN_EMAILS
- * break-glass list — matching requireAdmin. A membership-lookup failure
+ * break-glass list using a verified, clear local credential snapshot — matching
+ * requireAdmin. A membership-lookup failure
  * degrades to non-admin (isWebUserAAOAdmin fails closed) without disabling a
  * valid break-glass grant.
  */
@@ -58,9 +60,30 @@ function createWorkingGroupDb(overrides?: {
   };
 }
 
-function createReqRes(email = 'user@example.test') {
+function createSnapshot(
+  email: string,
+  credential: Partial<AuthorizationSnapshot['credential']> = {},
+): AuthorizationSnapshot {
+  return {
+    authenticatedUserId: 'user_web',
+    canonicalUserId: 'user_web',
+    identityId: 'identity_web',
+    selectedOrganizationId: null,
+    authorizationEpoch: '1',
+    credential: {
+      email, emailVerified: true, emailMutationPending: false,
+      firstName: null, lastName: null, ...credential,
+    },
+    credentialGrant: null,
+  };
+}
+
+function createReqRes(
+  email = 'user@example.test',
+  snapshot: AuthorizationSnapshot | null = createSnapshot(email),
+) {
   const req = {
-    user: { id: 'user_web', email },
+    user: { id: 'user_web', email, authorizationSnapshot: snapshot ?? undefined },
     params: { slug: 'signals' },
   } as unknown as Request;
 
@@ -116,16 +139,33 @@ describe.each([
     expect(db.getWorkingGroupBySlug).not.toHaveBeenCalled();
   });
 
-  it('allows an ADMIN_EMAILS break-glass user', async () => {
+  it('allows verified local ADMIN_EMAILS authority despite a stale ordinary raw email', async () => {
     process.env.ADMIN_EMAILS = 'ops@example.test, admin@example.test';
     mocks.isWebUserAAOAdmin.mockResolvedValue(false);
     const db = createWorkingGroupDb();
-    const { req, res, next } = createReqRes('ADMIN@example.test');
+    const { req, res, next } = createReqRes('stale@example.test', createSnapshot('ADMIN@example.test'));
 
     await factory(db)(req, res, next);
 
     expect(next).toHaveBeenCalledOnce();
     expect(db.getWorkingGroupBySlug).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { state: 'pending reconciliation', snapshot: createSnapshot('admin@example.test', { emailMutationPending: true }) },
+    { state: 'unavailable snapshot', snapshot: null },
+    { state: 'unverified local email', snapshot: createSnapshot('admin@example.test', { emailVerified: false }) },
+    { state: 'stale raw admin email', snapshot: createSnapshot('member@example.test') },
+  ])('denies email-based bypass with $state', async ({ snapshot }) => {
+    process.env.ADMIN_EMAILS = 'admin@example.test';
+    const db = createWorkingGroupDb();
+    const { req, res, next } = createReqRes('admin@example.test', snapshot);
+
+    await factory(db)(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(403);
+    expect(db.getWorkingGroupBySlug).toHaveBeenCalledWith('signals');
   });
 
   it('denies an ordinary non-leader/non-member', async () => {
