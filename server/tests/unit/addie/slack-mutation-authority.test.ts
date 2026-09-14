@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ epoch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ epoch: vi.fn(), workosGetUser: vi.fn() }));
 
 vi.mock('../../../src/db/authorization-epoch-db.js', () => ({
   getExactCredentialAuthorizationEpoch: mocks.epoch,
+}));
+
+vi.mock('../../../src/auth/workos-client.js', () => ({
+  getAuthorizationEnforcementWorkos: () => ({
+    userManagement: { getUser: mocks.workosGetUser },
+  }),
 }));
 
 import { createAddieToolExecutor } from '../../../src/addie/model-providers/tool-orchestration.js';
@@ -20,6 +26,10 @@ describe('Slack exact-credential mutation authority', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.epoch.mockResolvedValue('4');
+    mocks.workosGetUser.mockImplementation(async (credentialId: string) => ({
+      id: credentialId,
+      email: `${credentialId}@example.test`,
+    }));
   });
 
   it('captures after assembly and blocks a remap committed during reservation', async () => {
@@ -30,6 +40,7 @@ describe('Slack exact-credential mutation authority', () => {
     }));
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
+      credentialEmail: 'credential_a@example.test',
       platformAdminMutationTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
@@ -60,9 +71,61 @@ describe('Slack exact-credential mutation authority', () => {
     });
   });
 
+  it.each([
+    ['break-glass email removal', 'email_changed', 'access_denied'],
+    ['WorkOS credential deletion', 'deleted', 'access_denied'],
+    ['WorkOS lifecycle outage', 'unavailable', 'recoverable_error'],
+  ] as const)('blocks Slack dispatch after %s during reservation', async (_label, nextState, status) => {
+    let providerState: 'current' | typeof nextState = 'current';
+    mocks.workosGetUser.mockImplementation(async (credentialId: string) => {
+      if (providerState === 'deleted') throw Object.assign(new Error('missing'), { status: 404 });
+      if (providerState === 'unavailable') throw Object.assign(new Error('timeout'), { status: 503 });
+      return {
+        id: credentialId,
+        email: providerState === 'email_changed'
+          ? 'ordinary@example.test'
+          : 'breakglass@example.test',
+      };
+    });
+    const revalidate = await captureSlackMutationAuthority({
+      assembledCredentialId: 'credential_a',
+      credentialEmail: 'breakglass@example.test',
+      platformAdminMutationTools: [mutationTool.name],
+      lookupCredential: vi.fn().mockResolvedValue({
+        status: 'authorized', credentialId: 'credential_a',
+      }),
+      // Deliberately remains stale-authorized: lifecycle proof must preempt it.
+      revalidatePlatformAdmin: vi.fn().mockResolvedValue('authorized'),
+    });
+    const handler = vi.fn();
+    const reserveSideEffect = vi.fn(async () => { providerState = nextState; });
+    const execute = createAddieToolExecutor(
+      [mutationTool],
+      new Map([[mutationTool.name, handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect,
+        revalidateSideEffectAuthority: revalidate,
+      },
+    );
+
+    const result = await execute({
+      type: 'tool_call', id: `call-${nextState}`, name: mutationTool.name, input: {},
+    }, 1);
+
+    expect(reserveSideEffect).toHaveBeenCalledOnce();
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({
+      dispatch_status: 'not_dispatched',
+      normalized_result: { status },
+    });
+  });
+
   it('denies an unmapped mutation without reserving or dispatching', async () => {
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
+      credentialEmail: 'credential_a@example.test',
       platformAdminMutationTools: [],
       lookupCredential: vi.fn().mockResolvedValue({ status: 'forbidden' }),
       revalidatePlatformAdmin: vi.fn(),
@@ -94,6 +157,7 @@ describe('Slack exact-credential mutation authority', () => {
       .mockResolvedValueOnce({ status: 'unavailable' });
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
+      credentialEmail: 'credential_a@example.test',
       platformAdminMutationTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
@@ -110,6 +174,7 @@ describe('Slack exact-credential mutation authority', () => {
     });
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
+      credentialEmail: 'credential_a@example.test',
       platformAdminMutationTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),

@@ -47,6 +47,7 @@ const threadMocks = vi.hoisted(() => ({
 }));
 
 const authEpochMocks = vi.hoisted(() => ({ getExact: vi.fn() }));
+const workosAuthorityMocks = vi.hoisted(() => ({ getUser: vi.fn() }));
 const certificationMocks = vi.hoisted(() => ({
   getProgress: vi.fn(),
   getActiveAttemptForModule: vi.fn(),
@@ -54,6 +55,12 @@ const certificationMocks = vi.hoisted(() => ({
 
 vi.mock('../../src/db/authorization-epoch-db.js', () => ({
   getExactCredentialAuthorizationEpoch: authEpochMocks.getExact,
+}));
+
+vi.mock('../../src/auth/workos-client.js', () => ({
+  getAuthorizationEnforcementWorkos: () => ({
+    userManagement: { getUser: workosAuthorityMocks.getUser },
+  }),
 }));
 
 vi.mock('../../src/addie/member-context.js', () => ({
@@ -375,6 +382,10 @@ describe('mounted Addie web-thread ownership', () => {
     });
     threadMocks.addMessageFeedback.mockReset().mockResolvedValue(true);
     authEpochMocks.getExact.mockReset().mockResolvedValue('0');
+    workosAuthorityMocks.getUser.mockReset().mockImplementation(async (credentialId: string) => ({
+      id: credentialId,
+      email: `${credentialId}@example.com`,
+    }));
     certificationMocks.getProgress.mockReset().mockResolvedValue([]);
     certificationMocks.getActiveAttemptForModule.mockReset().mockResolvedValue(null);
     memberContextMocks.getWebMemberContext.mockReset().mockImplementation(async (credentialId, selectedOrgId) => ({
@@ -430,6 +441,36 @@ describe('mounted Addie web-thread ownership', () => {
       message: expect.stringContaining('try again'),
     });
     expect(response.headers['retry-after']).toBeDefined();
+  });
+
+  it.each([
+    ['break-glass email removal', async () => ({ id: 'credential_admin', email: 'ordinary@example.com' })],
+    ['credential deletion before dispatch', async () => { throw Object.assign(new Error('missing'), { status: 404 }); }],
+  ] as const)('web mutation authority denies %s after tool assembly', async (_label, changedCredential) => {
+    chatClient.processMessage.mockImplementationOnce(async (...args: unknown[]) => {
+      const options = args[4] as {
+        captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<
+          (input: { toolName: string }) => Promise<unknown>
+        >;
+      };
+      const revalidate = await options.captureSideEffectAuthority({
+        mutationToolNames: ['schedule_meeting'],
+      });
+      await expect(revalidate({ toolName: 'schedule_meeting' }))
+        .resolves.toEqual({ allowed: true });
+      workosAuthorityMocks.getUser.mockImplementationOnce(changedCredential);
+      await expect(revalidate({ toolName: 'schedule_meeting' }))
+        .resolves.toEqual({ allowed: false, status: 'access_denied' });
+      return { text: 'Denied safely', tools_used: [], tool_executions: [] };
+    });
+
+    await request(app())
+      .post('/api/addie/chat')
+      .set('x-test-user-id', 'credential_admin')
+      .set('x-forwarded-for', '203.0.113.78')
+      .send({ message: 'Schedule a meeting' })
+      .expect(200);
+    expect(workosAuthorityMocks.getUser).toHaveBeenCalledWith('credential_admin');
   });
 
   it('emits a retryable stream error without executing chat on authorization outage', async () => {

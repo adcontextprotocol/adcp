@@ -22,6 +22,7 @@ import { verifyWorkOSJWT } from '../auth/workos-jwt.js';
 import { getAuthorizationUrl, refreshTokenRaw, authenticateWithCodeForTokens } from '../auth/workos-client.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
 import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
+import { withAuthorizationEpochBump } from '../db/authorization-epoch-db.js';
 
 const logger = createLogger('mcp-oauth');
 
@@ -265,9 +266,8 @@ export async function handleMCPOAuthCallback(
   // local DB"). A retry (re-SSO) recovers; a persistent failure indicates
   // a DB problem that operators need to investigate, not a per-user issue.
   try {
-    const { getPool } = await import('../db/client.js');
     const { user } = authResult;
-    await getPool().query(
+    await withAuthorizationEpochBump([user.id], (client) => client.query(
       `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
        ON CONFLICT (workos_user_id) DO UPDATE SET
@@ -278,7 +278,7 @@ export async function handleMCPOAuthCallback(
          workos_updated_at = EXCLUDED.workos_updated_at,
          updated_at = NOW()`,
       [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt],
-    );
+    ));
   } catch (upsertErr) {
     logger.error({ err: upsertErr }, 'MCP OAuth: Failed to upsert user on callback');
   }
