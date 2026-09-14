@@ -9,7 +9,7 @@ import { sendEmailLinkVerification } from '../notifications/email.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
 import { isEmailUnavailable } from './account-linking-errors.js';
-import { bumpAuthorizationEpochs } from '../db/authorization-epoch-db.js';
+import { bumpAuthorizationEpochs as bumpCredentialEpochs } from '../db/authorization-epoch-db.js';
 
 const logger = createLogger('account-linking');
 
@@ -326,7 +326,7 @@ export function createAccountLinkingRouter(): Router {
           [aliasEmail, userId]
         );
 
-        await bumpAuthorizationEpochs(client, [userId]);
+        await bumpCredentialEpochs(client, [userId]);
 
         await client.query('COMMIT');
       } catch (err) {
