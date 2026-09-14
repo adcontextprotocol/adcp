@@ -69,6 +69,7 @@ import {
   resolveReportingAccountDurably,
   syncReliableReportingReceiptsForAccount,
   syncReliableReportingStatusesForAccount,
+  TRAINING_REPORTING_ADVERTISED_WINDOWS,
   TRAINING_REPORTING_CORE_OFFERING,
   TRAINING_REPORTING_MANAGED_OFFERING,
   TRAINING_REPORTING_OPERATIONS_CONTACT,
@@ -462,12 +463,15 @@ export const TRAINING_SALES_CAPABILITIES = {
           typeof TRAINING_REPORTING_MANAGED_OFFERING,
           typeof TRAINING_REPORTING_RECONCILED_OFFERING,
         ],
-        automated_recovery_window_seconds: 7200,
+        // Both windows come from the ledger's own constants: the projection is
+        // required to use the exact value advertised here, so a duplicated
+        // literal would be a silent conformance break no test could catch.
+        automated_recovery_window_seconds: TRAINING_REPORTING_ADVERTISED_WINDOWS.automated_recovery_window_seconds,
         status_retention_days: 31,
         // Declaring an escalation clock requires publishing somewhere for the
         // escalation to land. Both values are inert human-facing metadata: no
         // training-agent path fetches the URL or treats either as an endpoint.
-        consumer_mismatch_escalation_seconds: 900,
+        consumer_mismatch_escalation_seconds: TRAINING_REPORTING_ADVERTISED_WINDOWS.consumer_mismatch_escalation_seconds,
         operations_contact: TRAINING_REPORTING_OPERATIONS_CONTACT,
         resource_retention_days: 31,
         authorization_revocation_seconds: 60,
@@ -1365,9 +1369,10 @@ export async function syncReportingStatusForCustomTool(
     ) as object;
   } catch (err) {
     if (err instanceof AdcpError) return adcpLegacyErrorPayload(err);
-    if (err instanceof Error) {
-      // Batch-level shape failures are correctable protocol validation
-      // failures, never transient service outages.
+    // Only the documented batch-level rejections become caller-facing
+    // validation failures. Anything else is an internal fault and must not be
+    // reported to the buyer as "fix your request", nor have its message echoed.
+    if (err instanceof Error && /^(At least one|A reporting consumer status batch|reporting_status_id|Every reporting_status_id)/.test(err.message)) {
       return adcpLegacyErrorPayload(new AdcpError('VALIDATION_ERROR', {
         recovery: 'correctable',
         message: err.message,

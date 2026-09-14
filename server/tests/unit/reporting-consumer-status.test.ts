@@ -154,10 +154,124 @@ describe('training-agent Reliable Reporting consumer status', () => {
     expect(mismatch.external_ref).toMatch(/^[A-Za-z0-9_.:-]{1,128}$/);
     expect((degraded as { consumer_statuses?: unknown[] }).consumer_statuses).toHaveLength(1);
 
-    // Repairing the obligation is a legitimate seller-side projection change:
-    // the two claims no longer conflict, so the issue is retired outright.
-    const repaired = prepareReportingCoreLifecycleProbe(PRINCIPAL, ACCOUNT_ID);
-    expect(repaired.reporting_obligation_id).toBe(prepared.reporting_obligation_id);
+    // A content filter selects what the caller wants to see. It must not be
+    // able to retire an open mismatch, and it must not hide an omitted period:
+    // the logical-key join is the whole reason that case exists.
+    const filtered = read({
+      view: 'periods',
+      period: omitted.omitted_period,
+      feed_purposes: ['pacing'],
+    });
+    expect(filtered.health).toBe('action_required');
+    expect(mismatchOf(filtered).issue_id).toBe(mismatch.issue_id);
+    // A media-buy selection has no denominator to match a chain with no
+    // obligation against, so that chain is excluded rather than fabricated.
+    const byMediaBuy = read({ view: 'periods', period: omitted.omitted_period, media_buy_ids: ['mb_probe'] });
+    expect(byMediaBuy.status).toBe('failed');
+  });
+
+  it('keeps an obligation_missing mismatch open after the seller repairs the obligation', () => {
+    // Repair makes the two claims disagree; it does not reconcile them. Only
+    // the consumer superseding its own statement can do that.
+    const { prepared, published } = publishedFixture();
+    const identity = chainIdentity(prepared);
+    expect(sync([{
+      reporting_status_id: 'consumer-status.repaired.0001',
+      ...identity,
+      consumer_status: 'obligation_missing',
+      status_as_of: published.simulated_now,
+    }])[0]?.result).toBe('recorded');
+
+    const disagreeing = read({ view: 'periods', period: prepared.period });
+    expect(disagreeing.periods?.[0]).toMatchObject({
+      production_status: 'published',
+      health: 'action_required',
+      current_consumer_status_id: 'consumer-status.repaired.0001',
+    });
+    expect(mismatchOf(disagreeing)).toMatchObject({
+      severity: 'action_required',
+      reporting_status_id: 'consumer-status.repaired.0001',
+    });
+
+    // The consumer agreeing is the retirement path, and it retires the issue
+    // rather than publishing it in a terminal state.
+    expect(sync([{
+      reporting_status_id: 'consumer-status.repaired.0002',
+      supersedes_reporting_status_id: 'consumer-status.repaired.0001',
+      ...identity,
+      reporting_obligation_id: prepared.reporting_obligation_id,
+      reporting_revision_id: published.reporting_revision_id,
+      observed_revision_content_sha256: published.revision_content_sha256,
+      consumer_status: 'received',
+      status_as_of: published.simulated_now,
+    }])[0]?.result).toBe('recorded');
+    const resolved = read({ view: 'periods', period: prepared.period });
+    expect(resolved.periods?.[0]).toMatchObject({ health: 'complete', issues: [] });
+    expect(issuesOf(resolved)).toEqual([]);
+  });
+
+  it('treats a negative statement against an overdue seller as corroboration, not a disagreement', () => {
+    const prepared = prepareReportingCoreLifecycleProbe(PRINCIPAL, ACCOUNT_ID);
+    advanceReportingCoreLifecycleProbe(PRINCIPAL, ACCOUNT_ID, 'action_required');
+    expect(sync([{
+      reporting_status_id: 'consumer-status.corroborating.0001',
+      ...chainIdentity(prepared),
+      reporting_obligation_id: prepared.reporting_obligation_id,
+      consumer_status: 'revision_missing',
+      status_as_of: '2026-08-01T04:05:00.000Z',
+    }])[0]?.result).toBe('recorded');
+
+    const corroborated = read({ view: 'periods', period: prepared.period });
+    // The seller's own REPORT_OVERDUE already degrades this view; opening a
+    // second, separately attributed issue over the same fact would double-count.
+    expect(issuesOf(corroborated).map(issue => issue.code)).toEqual(['REPORT_OVERDUE']);
+    expect(corroborated.periods?.[0]).toMatchObject({
+      health: 'action_required',
+      consumer_status_count: 1,
+      current_consumer_status_id: 'consumer-status.corroborating.0001',
+    });
+  });
+
+  it('fails a statement the ledger cannot evaluate without discarding its siblings', () => {
+    const { prepared, published } = publishedFixture();
+    const identity = chainIdentity(prepared);
+    const nextObligation = read({ view: 'periods' }).periods?.[1];
+    expect(nextObligation).toBeDefined();
+    const second = {
+      delivery_config_id: prepared.delivery_config_id,
+      delivery_config_version: prepared.delivery_config_version,
+      report_definition_id: prepared.resolved_configuration.report_definition_id,
+      period: { ...nextObligation!.period },
+      reporting_obligation_id: nextObligation!.reporting_obligation_id,
+    };
+    // A leap-second instant passes `date-time` format validation and fails
+    // Date.parse. It must fail as its own statement, not as the batch.
+    const results = sync([
+      {
+        reporting_status_id: 'consumer-status.leapsecond.0001',
+        ...identity,
+        reporting_obligation_id: prepared.reporting_obligation_id,
+        consumer_status: 'revision_missing',
+        status_as_of: '2026-08-01T23:59:60Z',
+      },
+      {
+        reporting_status_id: 'consumer-status.sibling.0001',
+        ...second,
+        consumer_status: 'revision_missing',
+        status_as_of: nextObligation!.expected_at,
+      },
+    ]);
+    expect(results.map(result => result.result)).toEqual(['failed', 'recorded']);
+    expect(read({ view: 'periods' }).pagination?.total_count).toBeGreaterThan(0);
+
+    // A malformed immutable identity has no per-statement result the response
+    // schema can carry, so it is an explicit batch rejection.
+    expect(() => sync([{
+      reporting_status_id: 'too-short',
+      ...identity,
+      consumer_status: 'obligation_missing',
+      status_as_of: published.simulated_now,
+    }])).toThrow(/Every reporting_status_id must be 16-255 characters/);
   });
 
   it('carries one issue_id and one opened_at from the grace window through escalation and past the grace deadline', () => {
@@ -390,6 +504,10 @@ describe('training-agent Reliable Reporting consumer status', () => {
     expect(retried?.result).toBe('unchanged');
     const [reused] = sync([{ ...first, consumer_status: 'unreadable', failure_code: 'transport_failed', observed_revision_content_sha256: undefined }]);
     expect(reused?.result).toBe('failed');
+    expect(reused && 'errors' in reused ? reused.errors[0] : undefined).toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+      recovery: 'correctable',
+    });
 
     // A second statement must name the exact current leaf.
     const [noSupersede] = sync([{ reporting_status_id: 'consumer-status.leaf.0002', ...received }]);
@@ -439,17 +557,44 @@ describe('training-agent Reliable Reporting consumer status', () => {
       expect(result && 'errors' in result ? result.errors[0]?.code : undefined, name).toBe(code);
     }
 
-    // A snapshot this caller actually was issued resolves.
+    // A snapshot this caller actually was issued resolves, and only with the
+    // exact ledger_as_of it was issued with.
     const issued = read({ view: 'summary' });
-    expect(sync([{
-      reporting_status_id: 'consumer-status.snapshot.0001',
+    const citing = {
       ...identity,
       reporting_obligation_id: prepared.reporting_obligation_id,
       consumer_status: 'revision_missing',
       status_as_of: published.simulated_now,
       seller_ledger_snapshot_id: issued.ledger_snapshot_id,
+    };
+    const [wrongAsOf] = sync([{
+      reporting_status_id: 'consumer-status.snapshot.skew',
+      ...citing,
+      seller_ledger_as_of: '2026-08-01T00:00:00.000Z',
+    }]);
+    expect(wrongAsOf?.result).toBe('failed');
+    expect(wrongAsOf && 'errors' in wrongAsOf ? wrongAsOf.errors[0]?.code : undefined)
+      .toBe('REFERENCE_NOT_FOUND');
+    expect(sync([{
+      reporting_status_id: 'consumer-status.snapshot.0001',
+      ...citing,
       seller_ledger_as_of: issued.ledger_as_of,
     }])[0]?.result).toBe('recorded');
+
+    // An unresolvable supersession pointer is an identifier failure; a pointer
+    // that resolves but is not the leaf is a compare-and-swap conflict.
+    const [unknownLeaf] = sync([{
+      reporting_status_id: 'consumer-status.snapshot.0002',
+      supersedes_reporting_status_id: 'consumer-status.never-existed.0001',
+      ...identity,
+      reporting_obligation_id: prepared.reporting_obligation_id,
+      consumer_status: 'revision_missing',
+      status_as_of: published.simulated_now,
+    }]);
+    expect(unknownLeaf && 'errors' in unknownLeaf ? unknownLeaf.errors[0] : undefined).toMatchObject({
+      code: 'REFERENCE_NOT_FOUND',
+      recovery: 'correctable',
+    });
   });
 
   it('refuses a negative statement before the obligation is even due', () => {
