@@ -1,3 +1,4 @@
+import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 /**
  * Public Registry API routes.
@@ -72,38 +73,11 @@ import {
   brandResolveCacheControl,
   type BrandResolutionOutcome,
 } from "../services/brand-resolution-cache-policy.js";
-import { verifySupplyPath, parseInventoryPartnerDomains } from "../services/supply-path-verifier.js";
+import { verifySupplyPath } from "../services/supply-path-verifier.js";
 import { canonicalizePublisherDomain } from "../services/publisher-domain.js";
-import { AAO_UA_VALIDATOR } from "../config/user-agents.js";
 
-/**
- * Union of inventorypartnerdomain= declarations from the host's
- * app-ads.txt and ads.txt. Returns null only when neither file could be
- * fetched — distinct from fetched-and-absent (empty array), which the
- * verifier treats as an explicit "not declared".
- */
-async function fetchHostInventoryPartnerDomains(hostDomain: string): Promise<string[] | null> {
-  const partners = new Set<string>();
-  let anyFetched = false;
-  for (const file of ["app-ads.txt", "ads.txt"]) {
-    try {
-      const response = await safeFetchAxiosLike(`https://${hostDomain}/${file}`, {
-        timeoutMs: 10000,
-        maxRedirects: 3,
-        headers: { Accept: "text/plain", "User-Agent": AAO_UA_VALIDATOR },
-      });
-      if (response.status === 200) {
-        anyFetched = true;
-        for (const partner of parseInventoryPartnerDomains(response.data.toString("utf-8"))) {
-          partners.add(partner);
-        }
-      }
-    } catch {
-      // Unreachable file — treated as unavailable unless the other resolves.
-    }
-  }
-  return anyFetched ? [...partners] : null;
-}
+import { fetchHostInventoryPartnerDomains } from '../services/supply-path-evidence.js';
+
 import {
   projectPublicComplianceNotices,
   type PublicComplianceNotice,
@@ -2093,7 +2067,7 @@ const VerifySupplyPathRequestSchema = z.object({
   owner_domain: z.string().min(1).openapi({ description: "Channel owner's publisher domain — where the canonical collection is declared." }),
   host_domain: z.string().min(1).openapi({ description: "Host publisher domain — where the carrying property (e.g. CTV app) is declared." }),
   agent_url: z.string().min(1).openapi({ description: "Sales agent URL the buyer would transact with. Canonicalized server-side." }),
-  collection_id: z.string().min(1).optional().openapi({ description: "Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals)." }),
+  collection_id: z.string().min(1).max(256).refine(value => value.trim().length > 0).optional().openapi({ description: "Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals)." }),
 });
 
 registry.registerPath({
@@ -2121,6 +2095,8 @@ registry.registerPath({
       content: {
         "application/json": {
           schema: z.object({
+            semantics_version: z.literal("1").openapi({ description: "Canonical supply-path evaluator semantics; pinned by the shared supply-path golden vectors." }),
+            resolved_collection_id: z.string().optional().openapi({ description: "Concrete collection chosen for the complete path, including domain-level inquiries." }),
             state: z.enum(["verified_owner_sold", "host_delegated", "owner_attested", "unverified"]),
             legs: z.object({
               owner_collection_declared: SupplyPathLegSchema,
@@ -10675,16 +10651,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     }
   });
 
-  router.post("/registry/verify/supply-path", async (req, res) => {
+  router.post("/registry/verify/supply-path", registryReadRateLimiter, async (req, res) => {
     try {
       const parsed = VerifySupplyPathRequestSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", issues: parsed.error.issues });
       }
-      const ownerDomain = canonicalizePublisherDomain(parsed.data.owner_domain);
-      const hostDomain = canonicalizePublisherDomain(parsed.data.host_domain);
-      if (!ownerDomain || !hostDomain) {
-        return res.status(400).json({ error: "owner_domain and host_domain must be valid publisher domains" });
+      const ownerDomain = supplyPathDomain(parsed.data.owner_domain);
+      const hostDomain = supplyPathDomain(parsed.data.host_domain);
+      if (!ownerDomain || !hostDomain || !supplyPathAgentIdentity(parsed.data.agent_url)) {
+        return res.status(400).json({ error: "owner_domain, host_domain, and agent_url must be valid publisher and HTTPS agent identities" });
       }
 
       const [ownerManifest, hostManifest] = await Promise.all([
@@ -10704,7 +10680,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         hostManifest,
         hostInventoryPartnerDomains: null,
       });
-      if (!verdict.legs.host_authorization.ok) {
+      if (verdict.legs.host_authorization.ok) {
+        verdict.legs.inventory_partner_domain = { ok: false, failure: 'not_evaluated' };
+      } else {
         verdict = verifySupplyPath({
           ownerDomain,
           hostDomain,
@@ -10712,7 +10690,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           collectionId: parsed.data.collection_id,
           ownerManifest,
           hostManifest,
-          hostInventoryPartnerDomains: await fetchHostInventoryPartnerDomains(hostDomain),
+          hostInventoryPartnerDomains: null,
+          hostInventoryPartnerDomainsByFile: await fetchHostInventoryPartnerDomains({ ownerDomain, hostDomain, agentUrl: parsed.data.agent_url, collectionId: parsed.data.collection_id, ownerManifest, hostManifest, hostInventoryPartnerDomains: null }),
         });
       }
 
