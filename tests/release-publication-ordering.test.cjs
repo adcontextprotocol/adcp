@@ -15,9 +15,10 @@ const deploy = YAML.parse(
 const steps = release.jobs.release.steps;
 const step = (name) => steps.find((s) => s.name === name);
 const version = "3.2.0-rc.3";
+const rowsPath = "test-vectors/reporting-reconciliation/rows.jsonl";
 const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
 
-function fixture(t, fixtureVersion = version) {
+function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   const version = fixtureVersion;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "publication-order-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -38,6 +39,16 @@ function fixture(t, fixtureVersion = version) {
   }
   for (const suffix of ["", ".sha256", ".sig", ".crt"])
     write(`dist/protocol/${version}.tgz${suffix}`, `signed${suffix}`);
+  if (includeReleaseHistory) {
+    for (let rc = 0; rc <= 3; rc++) {
+      const historical = `3.2.0-rc.${rc}`;
+      write(`dist/schemas/${historical}/index.json`, '{"release":true}');
+      write(`dist/compliance/${historical}/${rowsPath}`, '{"immutable":true}\n');
+      for (const suffix of ["", ".sha256", ".sig", ".crt"])
+        write(`dist/protocol/${historical}.tgz${suffix}`, `signed${suffix}`);
+    }
+    write(`dist/compliance/latest/${rowsPath}`, '{"development":true}\n');
+  }
   write("dist/protocol/latest.tgz", "development");
   for (const script of ["check-release-state.cjs", "backfill-cdn-artifacts.sh"])
     write(
@@ -195,12 +206,22 @@ const approval = (extra) =>
     },
   ]);
 
-test("app-only deploy publishes only development keys with no human release approval", (t) => {
-  const f = fixture(t);
-  const result = f.upload(["--latest-only"]);
+test("app-only deploy cannot backfill immutable JSONL or historical rc.0–rc.3 artifacts", (t) => {
+  const f = fixture(t, version, true);
+  for (let rc = 0; rc <= 3; rc++) {
+    const file = `dist/compliance/3.2.0-rc.${rc}/${rowsPath}`;
+    assert.equal(f.git("ls-files", file), file);
+  }
+  // Main's pre-fence deploy invocation must fail before any upload.
+  const bulk = f.upload(["--build-latest"]);
+  assert.notEqual(bulk.status, 0);
+  assert.match(bulk.stderr, /Live bulk backfill is disabled/);
+  assert.equal(f.calls(), "");
+  // The destination boundary holds independently of #7509's JSONL filter.
+  const result = f.upload(["--latest-only", "--build-latest"]);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(f.calls().includes("schemas/latest"));
-  assert.ok(!f.calls().includes(version));
+  assert.doesNotMatch(f.calls(), /3\.2\.0-rc\.[0-3]|r2 put /);
   assert.ok(
     f
       .calls()

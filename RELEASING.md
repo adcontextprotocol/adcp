@@ -204,6 +204,15 @@ commands.
 
 ### Publication authority and ordering
 
+For the 2026-09-14 incident, the publication fence in
+[#7510](https://github.com/adcontextprotocol/adcp/pull/7510) is a hard
+predecessor of the JSONL filter fix in
+[#7509](https://github.com/adcontextprotocol/adcp/pull/7509). The legacy deploy
+bulk upload would otherwise publish historical JSONL without recovery approval.
+Land the human-approved fence first; then rebase and requalify the JSONL fix on
+that main, including combined tests and human review. Neither merge authorizes
+historical backfill or incident recovery.
+
 Routine app deployment is authorized to rebuild and upload only
 `schemas/latest/**`, `compliance/latest/**`, and `protocol/latest.tgz*`.
 It uses `backfill-cdn-artifacts.sh --latest-only`; root version indexes and
