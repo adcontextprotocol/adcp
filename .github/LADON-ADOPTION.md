@@ -7,12 +7,35 @@ The existing review-workflow-modification gate remains unchanged: this mixed
 workflow/test/doc PR receives only the trusted base workflow's COMMENT if run
 while ready; it cannot review or approve its own adoption. Draft runs skip Ladon.
 
+## Full intended inventory
+
+The human-only rollout includes **five** Ladon consumers: actions itself,
+adcp, adcp-client, adcp-go and adcp-client-python. There are four separate
+external adoption PRs; actions' own workflow adopts the immutable pin and
+explicit false as part of human-reviewed #29. No approving consumer is accepted
+or excluded by this rollout. A new consumer requires an explicit inventory
+update and human review.
+
+The read-only organization audit in #29 (`node scripts/audit-ladon-consumers.cjs`)
+reconciles organization code search with all visible active repositories' exact
+default-branch workflow blobs. It fails on a sixth consumer, a missing expected
+consumer, wrong/floating/local pin, nonliteral or missing false input, incomplete
+search/API data or head movement. Run it after external adoption with
+`--actions-head EXACT_REVIEWED_ACTIONS_PR_HEAD` to inspect #29's proposed
+self-review workflow alongside the four live external consumers before any
+publication. This is explicitly a candidate report, not live enforcement.
+Without that option it checks all five live default branches and remains failed
+until actions' own change lands. Repeat the live audit afterward. Do not weaken
+the audit to make rollout CI green. A human administrator must also
+confirm full organization visibility; neither code search nor this read-only
+report configures protection.
+
 ## Immutable dependency contract
 
 | Dependency                                              | Commit                                     |
 | ------------------------------------------------------- | ------------------------------------------ |
-| Orchestrator / reviewed regression suite                | `85284cbc297875aa04b2d5afcf7ae833b29f329c` |
-| Nested setup and arbiter (including executable bundles) | `292a0da93b25c3e9ecfcf5a05763a4206c472c3a` |
+| Orchestrator / reviewed regression suite                | `3d180c9b365c201d4cd4cfd93d0c2a7e8790da70` |
+| Nested setup and arbiter (including executable bundles) | `02db55f54f39f93c683c2031887b735aea0ecba2` |
 | Nested reviewer                                         | `a64a17ba369122d6b3401f614a31df7b8607f043` |
 
 The single current Ladon invocation pins the orchestrator and explicitly sets
@@ -32,8 +55,10 @@ approvals, direct stale-reapproval shell execution, bots/authors and zero APPROV
 API calls in disabled mode. It inspects calls before any cleanup, so there is no
 transient approving write to race auto-merge in this pinned mode.
 
-The consumer's **configuration tests** reject an omitted input; the shared
-action deliberately retains its compatible default `'true'` for other users.
+The consumer's **configuration tests** reject an omitted input. The revised
+review/setup/arbiter manifests default to `'false'`; omission cannot enable
+approval. Explicit `'true'` is an opt-in compatibility path, forbidden by this
+rollout's inventory policy.
 Explicit invalid runtime values fail before posting. The base workflow's human
 modification gate protects changes to this invocation; the new unprivileged CI
 is a regression check, **not** the trusted human-approval status described below.
@@ -89,13 +114,13 @@ An escalation comment or an optional failed check does not enforce a merge hold.
    this pin cannot stop an in-flight older action. Do not race cleanup against
    auto-merge. No such cancellation/dismissal is performed by this PR.
 2. Obtain exact-head CI and independent audit, then actual human review of
-   **both** separate consumer PRs. Land both immutable pins through the audited
-   human procedure. Either consumer may land first; both precede actions
+   **all four** separate external consumer PRs. Land all four external immutable pins through the audited
+   human procedure. External consumers may land in any order; all four precede actions
    promotion. Do not loosen the workflow-modification gate for testing.
 3. Complete the administrator audit/controlled validation below before lifting
    the hold or merging actions #29. Merging actions/main invokes automatic tag
-   publication. **Do not merge #29 or move `ladon/review/v1` until both
-   human-reviewed consumer pins have landed and the effective human gate is
+   publication. **Do not merge #29 or move `ladon/review/v1` until all four
+   human-reviewed external consumer pins have landed and the effective human gate is
    verified.** Keep consumer SHA pins after promotion.
 4. Keep [Version Packages #2912](https://github.com/adcontextprotocol/adcp-client/pull/2912)
    quarantined Draft/auto-off. Its generated head advanced to
@@ -103,7 +128,7 @@ An escalation comment or an optional failed check does not enforce a merge hold.
    `55829081dae2673f73615af2a4f6f029cddff813` after #2913 merged externally.
    Coordinator evidence reports npm dist-tags still at rc.36 / latest 13.0.4,
    with no new package published. Maintain a **global release/merge hold**
-   until both consumer pins land and an authorized human configures and
+   until all four external consumer pins land and an authorized human configures and
    validates the actually required trusted human-approval gate. This work does
    not undo #2913's merge, authorize a release, or change either PR.
 

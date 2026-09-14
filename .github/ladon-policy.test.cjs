@@ -6,8 +6,8 @@ const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { test } = require("node:test");
 
-const REVIEW = "85284cbc297875aa04b2d5afcf7ae833b29f329c";
-const IMPLEMENTATION = "292a0da93b25c3e9ecfcf5a05763a4206c472c3a";
+const REVIEW = "3d180c9b365c201d4cd4cfd93d0c2a7e8790da70";
+const IMPLEMENTATION = "02db55f54f39f93c683c2031887b735aea0ecba2";
 const REVIEWER = "a64a17ba369122d6b3401f614a31df7b8607f043";
 const actions = resolve(
   process.env.LADON_ACTIONS_PATH || ".ladon-reviewed-actions",
@@ -26,8 +26,8 @@ const invocation = steps.find((step) => step.name === "Run Ladon");
 
 function validateInvocation(step) {
   assert.equal(step.uses, `adcontextprotocol/actions/ladon/review@${REVIEW}`);
-  // Omission is rejected here: the upstream action deliberately defaults true
-  // for compatibility. Never rely on that default in this consumer.
+  // Require an explicit policy even though the audited runtime defaults false.
+  // This rejects a partial migration or later regression in any invocation.
   assert.equal(step.with?.["auto-approve"], "false");
   assert.equal(step.if, "steps.workflow-mod.outputs.modified != 'true'");
   assert.equal(step["continue-on-error"], undefined);
@@ -193,6 +193,10 @@ test("ordinary source review proceeds only through the disabled invocation", () 
 test("reviewed checkout and every nested Ladon implementation are immutable and byte-identical", () => {
   assert.equal(git("-C", actions, "rev-parse", "HEAD"), REVIEW);
   const orchestrator = parse(read(join(actions, "ladon/review/action.yml")));
+  for (const name of ["review", "setup", "arbiter"]) {
+    const manifest = parse(read(join(actions, `ladon/${name}/action.yml`)));
+    assert.equal(manifest.inputs["auto-approve"].default, "false");
+  }
   const nested = collectInvocations(orchestrator, "review");
   assert.deepEqual(
     nested.map(({ step }) => step.uses),

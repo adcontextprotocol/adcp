@@ -95,7 +95,7 @@ jobs:
 
       - name: Run Ladon
         if: steps.workflow-mod.outputs.modified != 'true'
-        uses: adcontextprotocol/actions/ladon/review@85284cbc297875aa04b2d5afcf7ae833b29f329c
+        uses: adcontextprotocol/actions/ladon/review@3d180c9b365c201d4cd4cfd93d0c2a7e8790da70
         with:
           auto-approve: 'false'
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
