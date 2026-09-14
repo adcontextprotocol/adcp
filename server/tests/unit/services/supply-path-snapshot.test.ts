@@ -18,6 +18,7 @@ describe('registry cache authority provenance', () => {
     { expiresAt: new Date(0) }, { discoveryMethod: 'manager_domain' }, { discoveryMethod: 'community' },
     { resolvedUrl: 'https://other.example/adagents.json' },
     { discoveryMethod: 'authoritative_location', resolvedUrl: 'http://cdn.example/adagents.json' },
+    { discoveryMethod: 'authoritative_location', resolvedUrl: 'https://cdn.example/adagents.json#' },
   ])('refuses unauthoritative or stale evidence: %j', async patch => {
     const result = await supplyPathSnapshotEvidence(publisher, { ...snapshot(), ...patch }, new InMemoryStateStore());
     expect(result.manifest).toBeNull();

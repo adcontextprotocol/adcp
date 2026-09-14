@@ -36,6 +36,10 @@ describe('persistent supply-path authority state', () => {
     const store = new InMemoryStateStore();
     await expect(observeSupplyPathAuthority(host, { revoked_publisher_domains: ['owner.example', {}] }, pointer, store)).rejects.toThrow(/revocation evidence/);
     await expect(observeSupplyPathAuthority(host, {}, 'http://cdn.example/host.json', store)).rejects.toThrow(/authority/);
+    await expect(observeSupplyPathAuthority(host, {}, `${pointer}#`, store)).rejects.toThrow(/authority/);
+    await observeSupplyPathAuthority(host, revoked(), pointer, store);
+    await expect(approveSupplyPathAuthorityChange(host, `${pointer}#`, store)).rejects.toThrow(/authority/);
+    expect((await observeSupplyPathAuthority(host, {}, pointer, store)).revoked).toEqual(['owner.example']);
   });
 });
 
