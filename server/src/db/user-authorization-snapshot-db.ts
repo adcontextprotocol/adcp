@@ -57,7 +57,11 @@ async function querySnapshot(statement: string, parameters: [string, string | nu
     const remainingMs = deadlineMs - Date.now();
     if (remainingMs <= 0) throw new AuthorizationSnapshotUnavailableError();
     try {
-      const result = await queryWithTimeout<SnapshotRow>(statement, parameters, remainingMs);
+      const result = await queryWithTimeout<SnapshotRow>(statement, parameters, remainingMs, {
+        // querySnapshot owns the one retry so checkout and statement failures
+        // share this request's single absolute authorization budget.
+        retryTransientCheckout: false,
+      });
       if (Date.now() >= deadlineMs) throw new AuthorizationSnapshotUnavailableError();
       return result;
     } catch (error) {

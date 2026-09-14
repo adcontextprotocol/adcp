@@ -311,6 +311,116 @@ describe('db client checkout and health checks', () => {
     await db.closeDatabase();
   });
 
+  it('fails an exhausted snapshot pool at the absolute deadline and releases a late client', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const pg = mockPg();
+    let deliverClient!: (client: { query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> }) => void;
+    pg.poolConnect.mockReturnValue(new Promise((resolve) => {
+      deliverClient = resolve;
+    }));
+
+    const db = await import('../../src/db/client.js');
+    const snapshots = await import('../../src/db/user-authorization-snapshot-db.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const pending = snapshots.loadAuthorizationSnapshot('user_exhausted_pool', 'org_exhausted_pool');
+    const rejection = expect(pending).rejects.toBeInstanceOf(
+      snapshots.AuthorizationSnapshotUnavailableError,
+    );
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(pg.poolConnect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejection;
+
+    const lateClient = { query: vi.fn(), release: vi.fn() };
+    deliverClient(lateClient);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(lateClient.query).not.toHaveBeenCalled();
+    expect(lateClient.release).toHaveBeenCalledTimes(1);
+    expect(pg.poolConnect).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('retries one transient snapshot checkout with only the remaining absolute budget', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const pg = mockPg();
+    const release = vi.fn();
+    const query = vi.fn().mockImplementation(async (text: string) => {
+      if (text.includes('pg_catalog.pg_is_in_recovery')) {
+        return {
+          rows: [{
+            in_recovery: false,
+            authenticated_user_id: 'user_retry_checkout',
+            canonical_user_id: 'user_retry_checkout',
+            identity_id: 'fd3043f7-cb4f-43c7-9b81-22ac97576150',
+            authorization_epoch: '11',
+            email: 'sam@pinnacle.example',
+            email_verified: true,
+            first_name: 'Sam',
+            last_name: 'Adeyemi',
+            grant_id: null,
+            grant_organization_id: null,
+            grant_role: null,
+            grant_effective_from: null,
+            grant_effective_until: null,
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    pg.poolConnect
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(Date.now() + 700);
+        throw Object.assign(new Error('connection reset'), { code: 'ECONNRESET' });
+      })
+      .mockResolvedValueOnce({ query, release });
+
+    const db = await import('../../src/db/client.js');
+    const snapshots = await import('../../src/db/user-authorization-snapshot-db.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(snapshots.loadAuthorizationSnapshot('user_retry_checkout', 'org_retry_checkout'))
+      .resolves.toMatchObject({
+        authenticatedUserId: 'user_retry_checkout',
+        selectedOrganizationId: 'org_retry_checkout',
+        authorizationEpoch: '11',
+      });
+
+    expect(pg.poolConnect).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledWith(
+      "SELECT set_config('statement_timeout', $1, true)",
+      ['1300ms'],
+    );
+    expect(release).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('does not multiply snapshot retries inside pool checkout', async () => {
+    const pg = mockPg();
+    const unexpectedClient = { query: vi.fn(), release: vi.fn() };
+    pg.poolConnect
+      .mockRejectedValueOnce(Object.assign(new Error('first reset'), { code: 'ECONNRESET' }))
+      .mockRejectedValueOnce(Object.assign(new Error('second reset'), { code: 'ECONNRESET' }))
+      .mockResolvedValueOnce(unexpectedClient);
+
+    const db = await import('../../src/db/client.js');
+    const snapshots = await import('../../src/db/user-authorization-snapshot-db.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(snapshots.loadAuthorizationSnapshot('user_two_attempts', 'org_two_attempts'))
+      .rejects.toBeInstanceOf(snapshots.AuthorizationSnapshotUnavailableError);
+    expect(pg.poolConnect).toHaveBeenCalledTimes(2);
+    expect(unexpectedClient.query).not.toHaveBeenCalled();
+    expect(unexpectedClient.release).not.toHaveBeenCalled();
+
+    await db.closeDatabase();
+  });
+
   it('rolls back and releases the client after a timed query fails', async () => {
     const pg = mockPg();
     const release = vi.fn();
