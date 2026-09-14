@@ -18,6 +18,11 @@ const REGISTRY_RELEASE_SCOPED_PATHS = [
   /^mintlify-docs\/registry\//,
 ];
 
+const NORMATIVE_PROTOCOL_DOC_PATHS = new Set([
+  'docs/trusted-match/specification.mdx',
+  'docs/trusted-match/router-architecture.mdx',
+]);
+
 const PROTOCOL_SCOPED_PATHS = [
   /^static\/schemas\/source\//,
   /^static\/compliance\/source\//,
@@ -90,7 +95,8 @@ function isProtocolScopedPath(filePath) {
   const normalized = normalizePath(filePath);
   if (isChangesetFile(normalized)) return false;
   if (REGISTRY_RELEASE_SCOPED_PATHS.some(pattern => pattern.test(normalized))) return false;
-  return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
+  return NORMATIVE_PROTOCOL_DOC_PATHS.has(normalized)
+    || PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
 function hasProtocolScopedChanges(changes) {

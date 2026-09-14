@@ -1,0 +1,121 @@
+---
+title: "Trusted Match privacy and context-cache security"
+sidebarTitle: Trusted Match cache security
+description: "Breaking/security migration notice for the v3.1.22 TMP privacy corrections and the prospective AdCP 3.2 cache namespace."
+"og:title": "AdCP — Trusted Match privacy and cache security migration"
+---
+
+<Warning>
+**Experimental breaking/security notice published September 13, 2026;
+prospective AdCP 3.2 cache-namespace conformance is effective October 25,
+2026.** Source may merge during the notice window, but no immutable AdCP 3.2
+RC or GA containing the mandatory namespace enforcement may publish before
+that date. Published `3.2.0-rc.1` and `3.2.0-rc.2` remain immutable; RC.2
+includes the v3.1.22 privacy and request-partitioning corrections but not the
+prospective `cache_namespace` enforcement.
+</Warning>
+
+Version 3.1.22 already shipped two emergency privacy/security corrections to
+the experimental Trusted Match Protocol (TMP) surface:
+
+- [#7396](https://github.com/adcontextprotocol/adcp/pull/7396) prohibited
+  Context Match embeddings derived directly or indirectly from non-public
+  content attributable to one user or session and required privacy reduction
+  for corresponding keywords and summaries.
+- [#7397](https://github.com/adcontextprotocol/adcp/pull/7397) replaced the
+  placement-only Context Match cache key with request-aware partitioning by
+  `{provider_id, context_hash}`.
+
+Those changes were released as emergency corrections without the ordinary
+six-week experimental breaking-change notice. This notice records that
+governance exception; it does not rewrite v3.1.22, claim coordinated
+disclosure, or waive the notice period for the additional AdCP 3.2
+requirements.
+
+## Immediate safe operation
+
+Any Context Match router whose cache can be shared across different request
+bodies or different result-affecting authentication, authorization, tenant,
+provider configuration, endpoint, package-data, model, or rules contexts is
+affected. An affected implementation MUST bypass or disable cache lookup,
+in-flight request coalescing, and insertion until both of these controls are
+implemented:
+
+1. Request partitioning by the RFC 8785 JCS/SHA-256 `context_hash` introduced
+   in v3.1.22.
+2. A trusted `cache_namespace` that varies across every result-affecting
+   security and provider-evaluation context, with the lifecycle and warm-hit
+   authorization controls defined by the
+   [TMP caching contract](/docs/trusted-match/specification#caching).
+
+Do not wait for a provider response carrying `cache_ttl: 0`: that response
+cannot invalidate a warm hit that has already been served. Bypass caching when
+the router cannot establish the applicable evaluation context or coordinate
+its generation and invalidation.
+
+## Cache-key migration
+
+Before v3.1.22, the documented recommendation allowed placement-oriented
+partitioning:
+
+```text
+{property_rid, placement_id, provider_id}
+```
+
+Version 3.1.22 requires the request-aware key:
+
+```text
+{provider_id, context_hash}
+```
+
+For AdCP 3.2 conformance on and after October 25, 2026, the key becomes:
+
+```text
+{provider_id, cache_namespace, context_hash}
+```
+
+The `context_hash` calculation does not change: hash the RFC 8785 JCS encoding
+of the validated provider-forwarded request after removing only `$schema` and
+`request_id`; preserve array order and apply no additional normalization.
+`provider_id` remains the stable provider registration identity.
+
+Derive `cache_namespace` only from trusted router authentication,
+authorization, deployment, and provider-configuration state. It is an opaque,
+non-secret but sensitive equality value, not a caller parameter. It must not
+contain raw or directly encoded principal or tenant identifiers, derive from
+credentials, or incorporate viewer identity, user tokens, or Identity Match
+state. Authenticate and authorize the current publisher principal and property
+before every lookup and every warm return.
+
+Capture one evaluation context for lookup, in-flight coalescing, outbound
+endpoint and authentication selection, provider evaluation, and insertion.
+Never relabel an old in-flight result into a new namespace or reuse a generation
+while old entries or work can survive. Use a native tuple or unambiguous length
+framing/canonical structured encoding for the key.
+
+## Single-user context migration
+
+Before v3.1.22, an implementation could interpret the experimental surface as
+allowing an embedding, keyword list, or summary derived from non-public content
+attributable to one user or session. Starting with v3.1.22:
+
+- do not create or forward an embedding from that content, directly or through
+  an intermediate summary;
+- send keywords or summaries only after aggregation, thresholding, or another
+  documented privacy-reduction method prevents reconstruction of the source;
+- remove or reprocess stored single-user derivatives before using them in new
+  Context Match requests.
+
+This privacy correction and v3.1.22 request partitioning remain in force. The
+October 25 effective date applies only to the added AdCP 3.2
+`cache_namespace` conformance requirements.
+
+## Release timeline
+
+| Date | Release posture |
+|---|---|
+| September 13, 2026 | Notice published; v3.1.22 emergency corrections documented. |
+| September 13–October 24, 2026 | Source may carry the prospective namespace contract. Affected routers bypass caching until both partitions are implemented. No immutable 3.2 RC or GA may contain mandatory namespace enforcement. |
+| October 25, 2026 or later | Earliest date an immutable AdCP 3.2 release may enforce `{provider_id, cache_namespace, context_hash}`, subject to ordinary release approval. |
+
+This date is an eligibility floor, not a release commitment.

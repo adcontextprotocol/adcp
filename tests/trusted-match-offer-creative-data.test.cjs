@@ -126,12 +126,26 @@ test("ContextSignals keeps single-user derived data behind the publisher privacy
   );
 });
 
-test("Context Match caching partitions every result-affecting forwarded request", () => {
+test("Context Match caching partitions request and provider evaluation contexts", () => {
   const specification = read("docs/trusted-match/specification.mdx");
   const routerArchitecture = read("docs/trusted-match/router-architecture.mdx");
   const dataProtection = read("docs/trusted-match/data-protection-roles.mdx");
+  const migration = read(
+    "docs/reference/migration/trusted-match-context-cache.mdx"
+  );
 
-  assert.match(specification, /\{provider_id, context_hash\}/);
+  assert.match(
+    specification,
+    /\{provider_id, cache_namespace, context_hash\}/
+  );
+  assert.match(
+    specification,
+    /prospective\s+AdCP 3\.2 requirements effective October 25, 2026/
+  );
+  assert.match(
+    specification,
+    /MUST bypass cache lookup, in-flight\s+coalescing, and insertion for affected Context Match traffic/
+  );
   assert.doesNotMatch(
     specification,
     /recommended cache key is `\{property_rid, placement_id, provider_id\}`/
@@ -142,6 +156,78 @@ test("Context Match caching partitions every result-affecting forwarded request"
   assert.match(specification, /Array order is preserved/);
   assert.match(
     specification,
+    /Equality of `provider_id` and the forwarded request body alone is insufficient/
+  );
+  assert.match(
+    specification,
+    /`provider_id` is the stable provider registration identity and MUST NOT be overloaded/
+  );
+  assert.match(
+    specification,
+    /MUST differ across provider-side authenticated principals or tenants whenever their authorization, entitlements, or tenant data can affect the response/
+  );
+  assert.match(
+    specification,
+    /MUST also change whenever an authorization or entitlement revision, active-package data generation, provider endpoint replacement, provider configuration, deployed model, or targeting\/rules generation can affect the response/
+  );
+  assert.match(
+    specification,
+    /MUST select `cache_namespace` only from trusted authentication, authorization, deployment, and provider-configuration state/
+  );
+  assert.match(
+    specification,
+    /MUST NOT accept the namespace or any of its inputs from the caller or request body/
+  );
+  assert.match(
+    specification,
+    /MUST NOT include or be derived from viewer identity, user tokens, or Identity Match state/
+  );
+  assert.match(
+    specification,
+    /MUST authenticate the current request and authorize the current publisher principal for the requested property under current policy/
+  );
+  assert.match(
+    specification,
+    /authorization or entitlement revision, active-package data generation, provider endpoint replacement/
+  );
+  assert.match(
+    specification,
+    /MUST NOT contain raw or directly encoded principal or tenant identifiers and MUST NOT be derived from credentials/
+  );
+  assert.match(
+    specification,
+    /namespace and its derivation metadata are non-secret but sensitive/
+  );
+  assert.match(
+    specification,
+    /native tuple or encoded with unambiguous length framing or canonical structured encoding/
+  );
+  assert.match(
+    specification,
+    /bind cache lookup, in-flight request coalescing, outbound endpoint and authentication selection, provider evaluation, and cache insertion to that same context/
+  );
+  assert.match(
+    specification,
+    /MUST discard it for caching if the captured context is no longer current/
+  );
+  assert.match(
+    specification,
+    /Namespace generation values MUST NOT be reused while an entry or in-flight request from the prior use can survive/
+  );
+  assert.match(
+    specification,
+    /A changed context MUST NOT be able to reach entries under its prior namespace; an unchanged, concurrently supported context MAY continue/
+  );
+  assert.match(
+    specification,
+    /cannot coordinate generation change or invalidation with the provider, it MUST bypass cache lookup, coalescing, and insertion/
+  );
+  assert.match(
+    specification,
+    /A future response with `cache_ttl: 0` cannot invalidate an already-served warm hit/
+  );
+  assert.match(
+    specification,
     /MUST set the returned response's `request_id` to the current request's `request_id`/
   );
   assert.match(
@@ -149,6 +235,7 @@ test("Context Match caching partitions every result-affecting forwarded request"
     /`context_hash` and any retained hash preimage MUST NOT appear in logs, metric labels, or traces/
   );
   assert.match(routerArchitecture, /A placement-only key is unsafe/);
+  assert.match(routerArchitecture, /a body-only key is still unsafe/);
   assert.match(
     specification,
     /MAY prefix `context_hash` with `property_rid` for cache-store sharding/
@@ -158,7 +245,24 @@ test("Context Match caching partitions every result-affecting forwarded request"
     /`cache_ttl: 0` is appropriate for those placements/
   );
   assert.match(
-    dataProtection,
-    /one session's artifact, signals, geo, or package selection can determine the response served to another/
+    migration,
+    /breaking\/security notice published September 13, 2026/i
   );
+  assert.match(
+    migration,
+    /Version 3\.1\.22 already shipped two emergency privacy\/security corrections/
+  );
+  assert.match(
+    migration,
+    /MUST bypass or disable cache lookup,\s+in-flight request coalescing, and insertion until both of these controls are\s+implemented/
+  );
+  assert.match(
+    migration,
+    /The\s+October 25 effective date applies only to the added AdCP 3\.2\s+`cache_namespace` conformance requirements/
+  );
+  assert.match(
+    dataProtection,
+    /one session's artifact, signals, geo, package selection, or provider evaluation context can determine the response served to another/
+  );
+  assert.match(dataProtection, /Warm hits still require current authentication/);
 });
