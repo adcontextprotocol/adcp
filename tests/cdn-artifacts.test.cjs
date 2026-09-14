@@ -103,9 +103,11 @@ function gitStub() {
   const args = process.argv.slice(2);
   if (args[0] === 'ls-remote') {
     const ref = args.find(arg => arg.startsWith('refs/heads/') || arg.startsWith('refs/tags/'));
-    const allowed = ['refs/heads/main', ...JSON.parse(process.env.TEST_VERSIONS).map(v => `refs/tags/v${v}`)];
-    if (!allowed.includes(ref)) throw Error(`Unexpected remote ref: ${ref}`);
-    console.log(`${process.env.TESTED_SHA}\t${ref}`);
+    const targets = JSON.parse(process.env.TEST_RELEASE_TARGETS);
+    const version = Object.keys(targets).find(version => ref === `refs/tags/v${version}`);
+    const target = ref === 'refs/heads/main' ? process.env.TESTED_SHA : targets[version];
+    if (!target) throw Error(`Unexpected remote ref: ${ref}`);
+    console.log(`${target}\t${ref}`);
     return;
   }
   if (!['diff', 'ls-files', 'cat-file'].includes(args[0])) throw Error(`Unexpected git command: ${args}`);
@@ -122,6 +124,7 @@ function ghStub() {
   const names = ['tgz', 'tgz.sha256', 'tgz.sig', 'tgz.crt'].map(suffix => `${version}.${suffix}`);
   if (args[1] === 'view') {
     console.log(JSON.stringify({ tagName: `v${version}`, isDraft: false, isPrerelease: true,
+      targetCommitish: JSON.parse(process.env.TEST_RELEASE_TARGETS)[version],
       assets: names.map(name => ({ name })) }));
   } else if (args[1] === 'download') {
     const name = names.find(name => name === args[args.indexOf('--pattern') + 1]);
@@ -160,28 +163,47 @@ function fixture(t, publication = false) {
   write('dist/compliance/storyboard-runner-options.js', 'excluded runtime file');
   write('dist/schemas/index.json', '{}');
   write('dist/schemas/latest.json', '{}');
+  let authority;
   if (FENCED_PUBLICATION) {
-    write('package.json', JSON.stringify({ version: VERSIONS.at(-1) }));
-    const git = args => execFileSync(REAL_GIT, args, { cwd: dir, encoding: 'utf8' }).trim();
+    const git = args => execFileSync(REAL_GIT, args, { cwd: dir, encoding: 'utf8', env: {
+      ...process.env, GIT_AUTHOR_DATE: '2026-09-14T00:00:00Z', GIT_COMMITTER_DATE: '2026-09-14T00:00:00Z',
+      GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid',
+      GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
+    } }).trim();
+    const commit = message => git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+      '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', 'commit', '-qm', message]);
     git(['init', '-q']);
+    const targets = {};
+    // Historical tag targets are real, distinct commits. Later main retains
+    // their exact versioned trees while adding subsequent releases and latest.
+    for (const version of VERSIONS) {
+      write('package.json', JSON.stringify({ version }));
+      git(['add', 'package.json', `dist/compliance/${version}`, `dist/schemas/${version}`,
+        ...['tgz', 'tgz.sha256', 'tgz.sig', 'tgz.crt'].map(suffix => `dist/protocol/${version}.${suffix}`)]);
+      commit(`Approved fixture release ${version}`);
+      targets[version] = git(['rev-parse', 'HEAD']);
+    }
     git(['add', 'dist', 'package.json']);
-    git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null',
-      'commit', '-qm', 'Approved fixture release']);
-    write('tested-sha', git(['rev-parse', 'HEAD']));
+    commit('Later tested main with mutable artifacts');
+    authority = { testedSha: git(['rev-parse', 'HEAD']), targets };
+    write('authority.json', JSON.stringify(authority));
     executable('git', gitStub);
     executable('gh', ghStub);
     // A version-scoped publisher must use tracked assets, not every local file.
     if (publication) for (const version of VERSIONS) write(`dist/compliance/${version}/untracked.jsonl`, 'untracked');
   }
-  return { dir, write };
+  return { dir, write, authority };
 }
 
-function publish(dir, flags = []) {
+function publish(dir, flags = [], extraEnv = {}) {
   const log = path.join(dir, 'aws.jsonl');
   fs.writeFileSync(log, '');
-  const testedSha = FENCED_PUBLICATION ? fs.readFileSync(path.join(dir, 'tested-sha'), 'utf8') : undefined;
+  const release = FENCED_PUBLICATION ? JSON.parse(fs.readFileSync(path.join(dir, 'authority.json'), 'utf8')) : undefined;
+  const version = flags.includes('--version') ? flags[flags.indexOf('--version') + 1] : undefined;
   const authority = FENCED_PUBLICATION ? {
-    TESTED_SHA: testedSha, RELEASE_SHA: testedSha,
+    TESTED_SHA: release.testedSha,
+    ...(version ? { RELEASE_SHA: release.targets[version] } : {}),
+    TEST_RELEASE_TARGETS: JSON.stringify(release.targets),
     PUBLICATION_BRANCH: 'main', TEST_VERSIONS: JSON.stringify(VERSIONS), TEST_REAL_GIT: REAL_GIT,
     GH_TEST_LOG: path.join(dir, 'gh.jsonl'), RUNNER_TEMP: dir,
   } : {};
@@ -189,7 +211,7 @@ function publish(dir, flags = []) {
     '--bucket', 'test-bucket', '--endpoint', 'https://r2.invalid', ...flags], {
     cwd: dir,
     env: { PATH: `${dir}/bin:${process.env.PATH}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
-      AWS_TEST_LOG: log, AWS_TEST_OBJECTS: path.join(dir, 'objects.json'), ...authority },
+      AWS_TEST_LOG: log, AWS_TEST_OBJECTS: path.join(dir, 'objects.json'), ...authority, ...extraEnv },
     encoding: 'utf8',
   });
   const calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(JSON.parse);
@@ -254,8 +276,12 @@ for (const skipLatest of [false, true]) {
 
 for (const version of VERSIONS) {
   test(`fenced ${version} recovery creates only the missing JSONL and preserves existing bytes`, { skip: !FENCED_PUBLICATION }, t => {
-    const { dir } = fixture(t, true);
+    const { dir, authority } = fixture(t, true);
     const flags = ['--version', version, '--skip-latest'];
+    assert.equal(new Set(Object.values(authority.targets)).size, VERSIONS.length);
+    assert.ok(Object.values(authority.targets).every(target => target !== authority.testedSha));
+    assert.throws(() => publish(dir, flags, { RELEASE_SHA: authority.testedSha }), /does not identify the approved release commit/);
+    assert.equal(fs.readFileSync(path.join(dir, 'aws.jsonl'), 'utf8'), '', 'wrong historical target must stop before AWS');
     publish(dir, flags);
     const objectsFile = path.join(dir, 'objects.json');
     const complete = JSON.parse(fs.readFileSync(objectsFile, 'utf8'));
