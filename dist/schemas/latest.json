@@ -1,7 +1,7 @@
 {
-  "latest": "3.1.22",
-  "latest_stable": "3.1.22",
+  "latest": "3.1.23",
+  "latest_stable": "3.1.23",
   "channel": "stable",
-  "path": "/schemas/3.1.22/",
-  "index": "/schemas/3.1.22/index.json"
+  "path": "/schemas/3.1.23/",
+  "index": "/schemas/3.1.23/index.json"
 }
