@@ -310,6 +310,27 @@ function classifyMutationResult(toolName: string, text: string): ToolResultStatu
   return 'error';
 }
 
+/** Directory adapters serialize negative lookups as JSON, not error prefixes. */
+function classifyDirectoryResult(toolName: string, text: string): {
+  status: ToolResultStatus;
+  summary: string;
+} | null {
+  if (!['get_agent', 'get_member', 'lookup_domain', 'validate_agent'].includes(toolName)) return null;
+  let result: unknown;
+  try { result = JSON.parse(text); } catch { return null; }
+  if (!isRecord(result) || typeof result.error !== 'string' || !result.error.trim()) return null;
+  if (result.error.endsWith('not found or not visible to the caller')) {
+    return {
+      status: 'empty',
+      summary: 'No matching record is visible to you. This does not establish whether a private registration exists.',
+    };
+  }
+  return {
+    status: result.error.endsWith('is required') || result.error.endsWith('are required') ? 'invalid_input' : 'error',
+    summary: 'The directory lookup could not complete. Check the request and your access.',
+  };
+}
+
 /** Classify adapter-owned receipt headers, never failure prose inside results. */
 function classifyWorkflowFailure(toolName: string, text: string): ToolResultStatus | null {
   const firstLine = text.trim().split(/\r?\n/, 1)[0] || '';
@@ -344,7 +365,7 @@ function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
     };
   }
 
-  const classified = classifySearchResult(toolName, raw);
+  const classified = classifyDirectoryResult(toolName, raw) ?? classifySearchResult(toolName, raw);
   const mutationStatus = classifyMutationResult(toolName, raw);
   const workflowFailure = classifyWorkflowFailure(toolName, raw);
   const status = mutationStatus ?? workflowFailure ?? classified?.status ?? (legacyResultIndicatesFailure(raw) ? 'error' : 'ok');

@@ -423,7 +423,12 @@ describe('createMemberToolHandler', () => {
     );
   });
 
-  it('save_agent includes the selected organization name and id in Addie output', async () => {
+  it.each([
+    { configureAuthInDashboard: false, existing: false, listingFails: false },
+    { configureAuthInDashboard: true, existing: false, listingFails: false },
+    { configureAuthInDashboard: true, existing: true, listingFails: false },
+    { configureAuthInDashboard: true, existing: false, listingFails: true },
+  ])('save_agent registry write and credential handoff: %j', async ({ configureAuthInDashboard, existing, listingFails }) => {
     mockWorkosMemberships([
       { userId: 'user_123', organizationId: 'org_123', status: 'active' },
     ]);
@@ -432,7 +437,8 @@ describe('createMemberToolHandler', () => {
       verified_domain: 'example.com',
       agent_hostname: 'agent.example.com',
     });
-    vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl').mockResolvedValueOnce(null);
+    vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl').mockResolvedValueOnce(existing ? savedAgentContext({ has_oauth_client_credentials: true }) : null);
+    vi.spyOn(AgentContextDatabase.prototype, 'getById').mockResolvedValueOnce(savedAgentContext({ has_oauth_client_credentials: existing }));
     vi.spyOn(AgentContextDatabase.prototype, 'create').mockResolvedValueOnce(savedAgentContext());
     vi.spyOn(MemberDatabase.prototype, 'getProfileByOrgId').mockResolvedValueOnce({
       id: 'profile_123',
@@ -441,7 +447,10 @@ describe('createMemberToolHandler', () => {
       slug: 'example-org',
       agents: [],
     } as any);
-    vi.spyOn(MemberDatabase.prototype, 'updateProfile').mockResolvedValueOnce({} as any);
+    const profileWrite = vi.spyOn(MemberDatabase.prototype, 'updateProfile').mockResolvedValue({} as any);
+    if (listingFails) profileWrite.mockRejectedValueOnce(new Error('write unavailable'));
+    const saveToken = vi.spyOn(AgentContextDatabase.prototype, 'saveAuthToken');
+    const saveOAuth = vi.spyOn(AgentContextDatabase.prototype, 'saveOAuthClientCredentials');
     vi.spyOn(clientDb, 'query').mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
 
     const memberContext = {
@@ -465,9 +474,40 @@ describe('createMemberToolHandler', () => {
     const result = await handlers.get('save_agent')!({
       agent_url: 'https://agent.example.com/mcp',
       type: 'sales',
+      configure_auth_in_dashboard: configureAuthInDashboard,
     });
 
+    expect(saveToken).not.toHaveBeenCalled();
+    expect(saveOAuth).not.toHaveBeenCalled();
+    expect(profileWrite).toHaveBeenCalledWith('profile_123', expect.objectContaining({ agents: expect.arrayContaining([expect.objectContaining({ visibility: 'members_only', type: 'sales' })]) }));
+    if (listingFails) {
+      expect(result).toContain('Error: Agent connection details were saved, but the registry listing could not be saved.');
+      expect(result).not.toContain('Complete authentication securely');
+      return;
+    }
+    if (configureAuthInDashboard) {
+      expect(result).toContain('/dashboard/agents?org=org_123');
+      expect(result).toContain('OAuth client credentials (machine-to-machine)');
+      expect(result).toContain('did not verify authentication');
+      expect(result).toContain('Do not paste secrets into chat');
+    }
     expect(result).toContain('**Organization:** <untrusted_proposer_input>Example Org</untrusted_proposer_input> (org_123)');
+  });
+
+  it.each(['auth_token', 'auth_type', 'oauth_client_credentials'])('rejects credential submission with dashboard handoff: %s', async field => {
+    const create = vi.spyOn(AgentContextDatabase.prototype, 'create');
+    const verify = vi.spyOn(hostnameVerification, 'verifyAgentHostname');
+    const handlers = createMemberToolHandlers({
+      is_mapped: true, is_member: false, slack_linked: false,
+      workos_user: { workos_user_id: 'user_123', email: 'user@example.com' },
+    } as MemberContext);
+    const result = await handlers.get('save_agent')!({
+      agent_url: 'https://agent.example.com/mcp', type: 'sales',
+      configure_auth_in_dashboard: true, [field]: 'test-value',
+    });
+    expect(result).toContain('Error: configure_auth_in_dashboard cannot be combined with credentials');
+    expect(create).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
   });
 
   it('save_agent rejects conflicting explicit organization selectors', async () => {

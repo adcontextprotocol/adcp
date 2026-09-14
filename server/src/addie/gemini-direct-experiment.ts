@@ -202,6 +202,7 @@ export async function prepareGeminiDirectTurn(input: DirectToolContext & {
   const treatment = assignment.arm === 'gemini' && !exclusionReason;
   const direct = treatment ? createGeminiDirectTools(input.requestTools, input.client.getRegisteredTools?.() ?? [], input.isAdmin, {
     activeCertificationKind: input.activeCertificationKind,
+    activeAgentRegistration: input.activeAgentRegistration,
     sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
   }) : null;
   let candidate: AddieClaudeClient | undefined;

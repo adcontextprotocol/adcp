@@ -46,6 +46,7 @@ describe('createAddieToolExecutor', () => {
   it.each([
     ['list_github_issues', 'GitHub rejected the request while trying to list issues (422).', 'invalid_input'],
     ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
+    ['get_agent', '{"error":"url is required"}', 'invalid_input'],
   ])('marks %s adapter failures in provider results and persisted execution receipts', async (name, raw, status) => {
     const execute = createAddieToolExecutor([{ ...tool, name }], new Map([[name, async () => raw]]), {
       executionMode: 'evaluation', policy: () => ({ allowed: true }),
