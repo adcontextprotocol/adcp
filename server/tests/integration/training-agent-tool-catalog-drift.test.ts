@@ -163,6 +163,7 @@ describe('tool-catalog drift detection', () => {
       'preview_creative',
       'validate_input',
       'get_reporting_status',
+      'sync_reporting_status',
       'sync_reporting_receipts',
     ]) {
       expect(compatibilityCatalog).not.toContain(tool);

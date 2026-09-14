@@ -68,8 +68,10 @@ import {
   reportingStatusUnavailable,
   resolveReportingAccountDurably,
   syncReliableReportingReceiptsForAccount,
+  syncReliableReportingStatusesForAccount,
   TRAINING_REPORTING_CORE_OFFERING,
   TRAINING_REPORTING_MANAGED_OFFERING,
+  TRAINING_REPORTING_OPERATIONS_CONTACT,
   TRAINING_REPORTING_RECONCILED_OFFERING,
   validateReliableReportingResponse,
   withDurableReportingLedger,
@@ -449,6 +451,7 @@ export const TRAINING_SALES_CAPABILITIES = {
         reconciled_billing: true as const,
         configuration_task: 'sync_accounts' as const,
         status_task: 'get_reporting_status' as const,
+        consumer_status_task: 'sync_reporting_status' as const,
         receipt_task: 'sync_reporting_receipts' as const,
         offerings: [
           TRAINING_REPORTING_CORE_OFFERING,
@@ -461,6 +464,11 @@ export const TRAINING_SALES_CAPABILITIES = {
         ],
         automated_recovery_window_seconds: 7200,
         status_retention_days: 31,
+        // Declaring an escalation clock requires publishing somewhere for the
+        // escalation to land. Both values are inert human-facing metadata: no
+        // training-agent path fetches the URL or treats either as an endpoint.
+        consumer_mismatch_escalation_seconds: 900,
+        operations_contact: TRAINING_REPORTING_OPERATIONS_CONTACT,
         resource_retention_days: 31,
         authorization_revocation_seconds: 60,
       },
@@ -1301,6 +1309,71 @@ export async function reportingStatusForCustomTool(
     return await legacyGetReportingStatusHandler()(args as never, syntheticCtx as never) as object;
   } catch (err) {
     if (err instanceof AdcpError) return adcpLegacyErrorPayload(err);
+    throw err;
+  }
+}
+
+/**
+ * `sync_reporting_status` handler. The consumer principal comes only from
+ * authenticated transport, never from the payload, and every referenced
+ * configuration generation, obligation, revision, prior leaf, and snapshot is
+ * resolved inside the caller/account ledger lock.
+ */
+export async function syncReportingStatusForCustomTool(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<object> {
+  try {
+    const version = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
+    if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
+      throw new AdcpError('VERSION_UNSUPPORTED', {
+        recovery: 'correctable',
+        message: version.ok
+          ? 'Reliable Reporting consumer status is available only in AdCP 3.2 RC.1 and later.'
+          : version.message,
+        field: 'adcp_version',
+      });
+    }
+    if (!args.account) {
+      throw new AdcpError('ACCOUNT_NOT_FOUND', {
+        recovery: 'correctable',
+        message: 'Reporting consumer status requires a resolved account.',
+        field: 'account',
+      });
+    }
+    const principal = ctx.principal;
+    const reportingAccount = await resolveReportingAccountDurably(principal, args.account);
+    if (!reportingAccount) {
+      // Unknown and unauthorized accounts are indistinguishable by design.
+      throw new AdcpError('ACCOUNT_NOT_FOUND', {
+        recovery: 'correctable',
+        message: 'Reporting account was not found.',
+        field: 'account',
+      });
+    }
+    return await withDurableReportingLedger(
+      principal,
+      reportingAccount.accountId,
+      true,
+      () => syncReliableReportingStatusesForAccount(
+        args as unknown as Parameters<typeof syncReliableReportingStatusesForAccount>[0],
+        principal,
+        reportingAccount.accountId,
+      ),
+      reportingAccount.account,
+      reportingAccount.accountState,
+    ) as object;
+  } catch (err) {
+    if (err instanceof AdcpError) return adcpLegacyErrorPayload(err);
+    if (err instanceof Error) {
+      // Batch-level shape failures are correctable protocol validation
+      // failures, never transient service outages.
+      return adcpLegacyErrorPayload(new AdcpError('VALIDATION_ERROR', {
+        recovery: 'correctable',
+        message: err.message,
+        field: 'statuses',
+      }));
+    }
     throw err;
   }
 }

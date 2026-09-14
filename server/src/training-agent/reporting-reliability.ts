@@ -32,6 +32,10 @@ export type TrainingGetReportingStatusResponse = GetReportingStatusResponse & {
   changes_checkpoint?: string;
   adjustments?: unknown[];
   adjustment_receipts?: unknown[];
+  consumer_statuses?: unknown[];
+  obligation_counts?: GetReportingStatusResponse['obligation_counts'] & {
+    consumer_status_pending?: number;
+  };
   next_expected_at?: string;
 };
 
@@ -446,6 +450,10 @@ interface ReportingLedger {
   materializations: Array<Record<string, unknown>>;
   receipts: Array<Record<string, unknown>>;
   adjustmentReceipts: Array<Record<string, unknown>>;
+  /** Append-only authenticated consumer status history for this caller/account. */
+  consumerStatuses: Array<Record<string, unknown>>;
+  /** Bounded set of ledger snapshot identities this caller was actually issued. */
+  issuedSnapshotIds: string[];
   managedResourceReadable?: boolean;
   managedAccessRevoked?: boolean;
   /** Sandbox-only negative fixture: expected periods intentionally absent from the ledger. */
@@ -532,6 +540,8 @@ interface SerializedReportingLedger {
   materializations?: Array<Record<string, unknown>>;
   receipts?: Array<Record<string, unknown>>;
   adjustment_receipts?: Array<Record<string, unknown>>;
+  consumer_statuses?: Array<Record<string, unknown>>;
+  issued_snapshot_ids?: string[];
   managed_resource_readable?: boolean;
   managed_access_revoked?: boolean;
   suppressed_obligation_ids: string[];
@@ -554,6 +564,8 @@ function emptyLedger(): ReportingLedger {
     materializations: [],
     receipts: [],
     adjustmentReceipts: [],
+    consumerStatuses: [],
+    issuedSnapshotIds: [],
     suppressedObligationIds: new Set(),
     mediaBuyCandidates: new Map(),
     obligationMediaBuyIds: new Map(),
@@ -577,6 +589,8 @@ function serializeLedger(ledger: ReportingLedger): SerializedReportingLedger {
     materializations: structuredClone(ledger.materializations),
     receipts: structuredClone(ledger.receipts),
     adjustment_receipts: structuredClone(ledger.adjustmentReceipts),
+    consumer_statuses: structuredClone(ledger.consumerStatuses),
+    issued_snapshot_ids: [...ledger.issuedSnapshotIds],
     ...(ledger.managedResourceReadable !== undefined && { managed_resource_readable: ledger.managedResourceReadable }),
     ...(ledger.managedAccessRevoked !== undefined && { managed_access_revoked: ledger.managedAccessRevoked }),
     suppressed_obligation_ids: [...ledger.suppressedObligationIds],
@@ -607,6 +621,8 @@ function deserializeLedger(value: SerializedReportingLedger): ReportingLedger {
     materializations: structuredClone(value.materializations ?? []),
     receipts: structuredClone(value.receipts ?? []),
     adjustmentReceipts: structuredClone(value.adjustment_receipts ?? []),
+    consumerStatuses: structuredClone(value.consumer_statuses ?? []),
+    issuedSnapshotIds: [...(value.issued_snapshot_ids ?? [])],
     ...(value.managed_resource_readable !== undefined && { managedResourceReadable: value.managed_resource_readable }),
     ...(value.managed_access_revoked !== undefined && { managedAccessRevoked: value.managed_access_revoked }),
     suppressedObligationIds: new Set(value.suppressed_obligation_ids ?? []),
@@ -1078,24 +1094,10 @@ export function prepareReportingCoreLifecycleProbe(principal: string | undefined
   // caller/account so the returned obligation identity and subsequent status
   // read always describe the same fixture generation.
   const nextVersion = (ledgers.get(callerScope(principal, accountId))?.version ?? 0) + 1;
-  ledgers.set(callerScope(principal, accountId), {
-    version: nextVersion,
-    configs: new Map(),
-    history: [],
-    publishedRevisions: new Map(),
-    revisionContents: new Map(),
-    adjustments: new Map(),
-    materializations: [],
-    receipts: [],
-    adjustmentReceipts: [],
-    suppressedObligationIds: new Set(),
-    mediaBuyCandidates: new Map(),
-    obligationMediaBuyIds: new Map(),
-    obligationCoverage: new Map(),
-    pageSnapshots: new Map(),
-    pageCursors: new Map(),
-    accountRefs: [],
-  });
+  // One reset seam: every ledger field (including the consumer-status chain and
+  // the snapshot identities this caller was issued) is discarded, so a
+  // re-prepared fixture cannot inherit a stale buyer statement.
+  ledgers.set(callerScope(principal, accountId), { ...emptyLedger(), version: nextVersion });
   replaceReportingConfigurations(principal, accountId, [TRAINING_REPORTING_CORE_CONFIGURATION], activatedAt);
   const ledger = ledgerFor(principal, accountId);
   ledger.virtualNow = simulatedNow;
@@ -1338,6 +1340,12 @@ export function restateAfterReceivedReportingCoreLifecycleProbe(
   if (!alreadyRestated && current.reporting_revision_id !== receivedReportingRevisionId) {
     throw new Error('received_reporting_revision_id must name the revision this caller currently reports as received.');
   }
+  // This seller advertises consumer_status_task, so the fixture additionally
+  // requires the buyer-attributed read it claims to be overtaking. Without it
+  // there is no stale-received projection to grade, only a bare restatement.
+  if (!currentReceivedConsumerStatusForRevision(principal, accountId, receivedReportingRevisionId)) {
+    throw new Error('received_reporting_revision_id requires a current received consumer status from this caller naming that revision.');
+  }
   const restated = restateReportingCoreLifecycleProbeSnapshot(principal, accountId);
   const restatedRevision = ledger.publishedRevisions.get(obligation);
   if (!restatedRevision) throw new Error('The restated snapshot is not readable in the fixture ledger.');
@@ -1359,6 +1367,100 @@ export function restateAfterReceivedReportingCoreLifecycleProbe(
     restated_at: iso(restatedAtMs),
     stale_received_grace_deadline: iso(graceDeadlineMs),
     expected_mismatch_severity: advanceTo === 'past_grace' ? 'action_required' : 'delayed',
+    simulated_now: simulatedNow,
+  };
+}
+
+/**
+ * Park the virtual clock strictly past the buyer's consumer-status deadline —
+ * `expected_at` plus the advertised `automated_recovery_window_seconds` —
+ * without recording any statement. It makes the counted-silence projection
+ * gradable: `obligation_counts.consumer_status_pending` rises, and nothing
+ * else in the response moves.
+ */
+export function advancePastConsumerStatusDeadlineProbe(
+  principal: string | undefined,
+  accountId: string,
+): {
+  account_id: string;
+  delivery_config_id: string;
+  delivery_config_version: number;
+  reporting_obligation_id: string;
+  expected_at: string;
+  automated_recovery_window_seconds: number;
+  consumer_status_deadline: string;
+  simulated_now: string;
+} {
+  const ledger = ledgerFor(principal, accountId);
+  const first = [...ledger.configs.values()][0];
+  if (!first) throw new Error('Prepare the reporting_core_lifecycle_probe before advancing past the consumer status deadline.');
+  const periodEnd = '2026-08-01T01:00:00.000Z';
+  const { slaMs } = scheduleTiming(first.config.schedule);
+  const expectedAtMs = parseInstant(periodEnd) + slaMs;
+  const deadlineMs = expectedAtMs + RECOVERY_WINDOW_MS;
+  const simulatedNow = iso(deadlineMs + 1_000);
+  if (ledger.virtualNow !== simulatedNow) ledger.version += 1;
+  ledger.virtualNow = simulatedNow;
+  return {
+    account_id: accountId,
+    delivery_config_id: first.config.delivery_config_id,
+    delivery_config_version: first.config.delivery_config_version,
+    reporting_obligation_id: obligationId(accountId, first.config, periodEnd),
+    expected_at: iso(expectedAtMs),
+    automated_recovery_window_seconds: RECOVERY_WINDOW_MS / 1_000,
+    consumer_status_deadline: iso(deadlineMs),
+    simulated_now: simulatedNow,
+  };
+}
+
+/**
+ * Park the virtual clock strictly past the open mismatch's escalation boundary
+ * — its `opened_at` plus the advertised `consumer_mismatch_escalation_seconds`
+ * — and report both boundaries. When the open mismatch is a stale `received`,
+ * the returned grace deadline is still in the future, so a storyboard can
+ * grade that the escalation boundary *takes precedence over* the grace window
+ * rather than merely following it.
+ */
+export function advancePastConsumerMismatchEscalationProbe(
+  principal: string | undefined,
+  accountId: string,
+): {
+  account_id: string;
+  issue_id: string;
+  issue_opened_at: string;
+  consumer_mismatch_escalation_seconds: number;
+  consumer_mismatch_escalation_deadline: string;
+  expected_recommended_action: 'contact_buyer' | 'contact_seller' | 'contact_provider';
+  stale_received_grace_deadline?: string;
+  simulated_now: string;
+} {
+  const ledger = ledgerFor(principal, accountId);
+  const first = [...ledger.configs.values()][0];
+  if (!first) throw new Error('Prepare the reporting_core_lifecycle_probe before advancing past the escalation window.');
+  const nowMs = ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now();
+  const records = recordsFor(principal, accountId, [first], nowMs);
+  const projection = projectConsumerStatus(principal, accountId, ledger, [first], records, nowMs, undefined);
+  const open = projection.diagnoses[0];
+  if (!open) {
+    throw new Error('Record a conflicting consumer status before advancing past the escalation window.');
+  }
+  const openedAtMs = parseInstant(open.openedAt);
+  const escalationDeadlineMs = openedAtMs + CONSUMER_MISMATCH_ESCALATION_SECONDS * 1_000;
+  const simulatedNow = iso(Math.max(nowMs, escalationDeadlineMs) + 1_000);
+  if (ledger.virtualNow !== simulatedNow) ledger.version += 1;
+  ledger.virtualNow = simulatedNow;
+  return {
+    account_id: accountId,
+    issue_id: open.issueId,
+    // Re-emission never advances opened_at, so the window cannot be reset by
+    // polling: the boundary below is a property of the issue, not of the read.
+    issue_opened_at: open.openedAt,
+    consumer_mismatch_escalation_seconds: CONSUMER_MISMATCH_ESCALATION_SECONDS,
+    consumer_mismatch_escalation_deadline: iso(escalationDeadlineMs),
+    expected_recommended_action: contactActionFor(open.diagnosis.responsibleParty),
+    ...(open.diagnosis.staleReceivedGraceDeadlineMs !== undefined && {
+      stale_received_grace_deadline: iso(open.diagnosis.staleReceivedGraceDeadlineMs),
+    }),
     simulated_now: simulatedNow,
   };
 }
@@ -2470,6 +2572,671 @@ function commitRevisionContent(
   return committed;
 }
 
+// ─── Reliable Reporting consumer status ────────────────────────────────────
+//
+// Buyer-attributed operational status is a separate ledger from the seller's
+// obligations and revisions. It never satisfies production health or billing
+// reconciliation; it can only degrade the one authenticated caller/account
+// view that submitted it.
+
+/**
+ * Escalation commitment published alongside `operations_contact`. Fifteen
+ * minutes is deliberately shorter than the Core offering's `PT1H`
+ * `delivery_sla`, so the fixture can prove the escalation boundary *takes
+ * precedence over* the stale-received grace window instead of merely
+ * coinciding with it.
+ */
+const CONSUMER_MISMATCH_ESCALATION_SECONDS = 900;
+
+/** ASCII unit separator, the ledger's unambiguous composite-key delimiter. */
+const UNIT_SEPARATOR = String.fromCharCode(31);
+
+/** Most recent snapshot identities a caller may cite as evidence context. */
+const RETAINED_ISSUED_SNAPSHOT_IDS = 64;
+
+/**
+ * Per-caller/account resource limit on retained consumer status history. Append-
+ * only history plus caller-chosen IDs is otherwise an unbounded write surface,
+ * and one caller's churn must never be able to affect another.
+ */
+const MAX_RETAINED_CONSUMER_STATUSES = 1_000;
+
+/**
+ * Inert human escalation path. It is display metadata for an operator, never
+ * an AdCP endpoint: nothing in this module or the tenant router dereferences
+ * it, and the published URL is constrained to the hardened public-origin shape
+ * so never-dereference is true by construction.
+ */
+export const TRAINING_REPORTING_OPERATIONS_CONTACT = {
+  url: 'https://reporting-ops.example.org/reporting-issues',
+  email: 'reporting-ops@example.org',
+} as const;
+
+/** Documented tolerance for a consumer clock running ahead of the seller's. */
+const CONSUMER_STATUS_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+type ConsumerStatusValue = 'received' | 'obligation_missing' | 'revision_missing' | 'unreadable' | 'content_mismatch';
+
+interface ConsumerStatusRecord {
+  reporting_status_id: string;
+  supersedes_reporting_status_id?: string;
+  delivery_config_id: string;
+  delivery_config_version: number;
+  report_definition_id: string;
+  period: { start: string; end: string; source_timezone: string };
+  reporting_obligation_id?: string;
+  reporting_revision_id?: string;
+  observed_revision_content_sha256?: string;
+  consumer_status: ConsumerStatusValue;
+  status_as_of: string;
+  mismatch_code?: string;
+  failure_code?: 'access_denied' | 'resource_not_found' | 'integrity_mismatch' | 'reader_incompatible' | 'transport_failed';
+  consumer_commit_ref?: string;
+  seller_ledger_snapshot_id?: string;
+  seller_ledger_as_of?: string;
+  recorded_at: string;
+}
+
+type ConsumerChainIdentity = Pick<
+  ConsumerStatusRecord,
+  'delivery_config_id' | 'delivery_config_version' | 'report_definition_id' | 'period'
+>;
+
+/**
+ * Logical chain identity: authenticated caller/account (implied by the ledger
+ * key), configuration generation, report definition, and exact period. It is
+ * deliberately independent of any seller-issued obligation ID so an
+ * `obligation_missing` chain survives obligation repair without forking.
+ */
+function consumerChainKey(status: ConsumerChainIdentity): string {
+  return [
+    status.delivery_config_id,
+    String(status.delivery_config_version),
+    status.report_definition_id,
+    status.period.start,
+    status.period.end,
+  ].join(UNIT_SEPARATOR);
+}
+
+function consumerChain(ledger: ReportingLedger, chainKey: string): ConsumerStatusRecord[] {
+  return ledger.consumerStatuses.filter(
+    status => consumerChainKey(status as unknown as ConsumerChainIdentity) === chainKey,
+  ) as unknown as ConsumerStatusRecord[];
+}
+
+function currentConsumerLeaf(
+  ledger: ReportingLedger,
+  chainKey: string,
+): ConsumerStatusRecord | undefined {
+  const chain = consumerChain(ledger, chainKey);
+  const superseded = new Set(chain.flatMap(
+    status => (status.supersedes_reporting_status_id ? [status.supersedes_reporting_status_id] : []),
+  ));
+  return chain.find(status => !superseded.has(status.reporting_status_id));
+}
+
+interface EligibleConsumerPeriod {
+  startMs: number;
+  endMs: number;
+  expectedAtMs: number;
+  timeZone: string;
+}
+
+/**
+ * Derive the expected period identity independently of whether the seller ever
+ * committed its obligation. This is the rule that makes a missing first report
+ * addressable: the buyer names the configuration generation and the period, and
+ * the seller validates both from its own immutable accepted generation.
+ */
+function eligibleConsumerPeriod(
+  stored: StoredConfig,
+  periodStartMs: number,
+  periodEndMs: number,
+): EligibleConsumerPeriod | undefined {
+  const { periodMs, slaMs } = scheduleTiming(stored.config.schedule);
+  const daily = stored.config.schedule.period_duration === 'P1D';
+  const timeZone = stored.config.schedule.alignment === 'source_timezone'
+    ? stored.config.schedule.period_timezone ?? 'UTC'
+    : 'UTC';
+  const alignedStart = daily
+    ? civilDayStart(periodStartMs, timeZone) === periodStartMs
+    : periodStartMs % periodMs === 0;
+  const derivedEndMs = daily ? nextCivilDayStart(periodStartMs, timeZone) : periodStartMs + periodMs;
+  if (!alignedStart || derivedEndMs !== periodEndMs) return undefined;
+  // A generation owes a period it was active for at that period's start; a
+  // later deactivation still owes the period that had already begun.
+  const covered = stored.activeWindows.some(window => (
+    parseInstant(window.start) <= periodStartMs
+    && (window.end === undefined || parseInstant(window.end) > periodStartMs)
+  ));
+  if (!covered) return undefined;
+  return {
+    startMs: periodStartMs,
+    endMs: periodEndMs,
+    expectedAtMs: daily ? dailyDeadline(periodEndMs, stored.config.schedule) : periodEndMs + slaMs,
+    timeZone,
+  };
+}
+
+function consumerResponsibleParty(leaf: ConsumerStatusRecord): 'buyer' | 'seller' | 'provider' {
+  switch (leaf.consumer_status) {
+    case 'unreadable':
+      // A typed read failure is diagnosed, not guessed: only an incompatible
+      // reader is buyer-side, and only a transport failure is the provider's.
+      if (leaf.failure_code === 'reader_incompatible') return 'buyer';
+      if (leaf.failure_code === 'transport_failed') return 'provider';
+      return 'seller';
+    case 'received':
+      // The seller restated; the one bounded action left is the buyer's re-read.
+      return 'buyer';
+    default:
+      return 'seller';
+  }
+}
+
+function contactActionFor(
+  party: 'buyer' | 'seller' | 'provider',
+): 'contact_buyer' | 'contact_seller' | 'contact_provider' {
+  return party === 'buyer' ? 'contact_buyer' : party === 'seller' ? 'contact_seller' : 'contact_provider';
+}
+
+const CONSUMER_MISMATCH_MESSAGES: Record<ConsumerStatusValue, string> = {
+  obligation_missing: 'The authenticated consumer reports this expected period as absent from the seller ledger.',
+  revision_missing: 'The authenticated consumer reports no required revision was available for this obligation.',
+  unreadable: 'The authenticated consumer reports the named revision could not be consumed.',
+  content_mismatch: 'The authenticated consumer reports the consumed revision contradicts the accepted configuration generation.',
+  received: 'A seller restatement superseded the revision this consumer reported as received.',
+};
+
+interface ConsumerMismatchDiagnosis {
+  openedAtMs: number;
+  severity: 'delayed' | 'action_required';
+  responsibleParty: 'buyer' | 'seller' | 'provider';
+  recommendedAction: 'wait_for_retry' | 'contact_buyer' | 'contact_seller' | 'contact_provider';
+  staleReceivedGraceDeadlineMs?: number;
+}
+
+/**
+ * Compare the caller's current unsuperseded statement with the seller's own
+ * current projection. Absence of a statement is never a conflict, and a
+ * statement that agrees with the projection retires the issue rather than
+ * publishing it in a terminal state.
+ */
+function diagnoseConsumerMismatch(
+  ledger: ReportingLedger,
+  stored: StoredConfig,
+  leaf: ConsumerStatusRecord,
+  record: LedgerRecord | undefined,
+  nowMs: number,
+): ConsumerMismatchDiagnosis | undefined {
+  const published = record !== undefined
+    && ledger.publishedRevisions.get(record.obligation.reporting_obligation_id) !== undefined;
+  const recordedAtMs = parseInstant(leaf.recorded_at);
+  const chain = record ? retainedRevisionChain(ledger, record.obligation.reporting_obligation_id) : [];
+  const firstRevisionCreatedAtMs = chain.length > 0 ? parseInstant(chain[0]!.created_at) : undefined;
+  const escalate = (diagnosis: ConsumerMismatchDiagnosis): ConsumerMismatchDiagnosis => {
+    // An unattended mismatch is an escalation, not a retry. The window is
+    // measured from opened_at, so re-emission cannot reset it, and it wins
+    // outright when it overlaps the stale-received grace window.
+    const escalationDeadlineMs = diagnosis.openedAtMs + CONSUMER_MISMATCH_ESCALATION_SECONDS * 1_000;
+    if (nowMs < escalationDeadlineMs) return diagnosis;
+    return {
+      ...diagnosis,
+      severity: 'action_required',
+      recommendedAction: contactActionFor(diagnosis.responsibleParty),
+    };
+  };
+  const immediate = (openedAtMs: number): ConsumerMismatchDiagnosis => {
+    const responsibleParty = consumerResponsibleParty(leaf);
+    return escalate({
+      openedAtMs,
+      severity: 'action_required',
+      responsibleParty,
+      recommendedAction: contactActionFor(responsibleParty),
+    });
+  };
+  switch (leaf.consumer_status) {
+    case 'obligation_missing':
+      // Obligation repair is exactly the seller-side projection change that
+      // legitimately resolves this disagreement.
+      return record === undefined ? immediate(recordedAtMs) : undefined;
+    case 'revision_missing':
+    case 'unreadable':
+      if (!published || firstRevisionCreatedAtMs === undefined) return undefined;
+      return immediate(Math.max(recordedAtMs, firstRevisionCreatedAtMs));
+    case 'content_mismatch':
+      return record === undefined ? undefined : immediate(recordedAtMs);
+    case 'received': {
+      if (record === undefined) return undefined;
+      const current = ledger.publishedRevisions.get(record.obligation.reporting_obligation_id);
+      if (!current || current.reporting_revision_id === leaf.reporting_revision_id) return undefined;
+      const firstSuperseding = chain.find(
+        revision => revision.supersedes_reporting_revision_id === leaf.reporting_revision_id,
+      );
+      // A positive statement for a revision this seller never retained is not
+      // a bounded re-read window; it is an immediate disagreement.
+      if (!firstSuperseding) return immediate(recordedAtMs);
+      const { slaMs } = scheduleTiming(stored.config.schedule);
+      // Anchored to the FIRST supersession and to the issue, so restating on a
+      // timer cannot hold a genuinely unresolved mismatch below action_required.
+      const anchorMs = parseInstant(firstSuperseding.created_at);
+      const graceDeadlineMs = anchorMs + (slaMs > 0 ? slaMs : RECOVERY_WINDOW_MS);
+      const responsibleParty = consumerResponsibleParty(leaf);
+      return escalate({
+        openedAtMs: anchorMs,
+        severity: nowMs >= graceDeadlineMs ? 'action_required' : 'delayed',
+        responsibleParty,
+        recommendedAction: nowMs >= graceDeadlineMs ? contactActionFor(responsibleParty) : 'wait_for_retry',
+        staleReceivedGraceDeadlineMs: graceDeadlineMs,
+      });
+    }
+  }
+}
+
+/**
+ * Caller-scoped inert correlation text. It is derived from the authenticated
+ * caller/account so one seller-side incident cannot leak its blast radius
+ * between tenants through a shared ticket reference.
+ */
+function consumerMismatchExternalRef(
+  principal: string | undefined,
+  accountId: string,
+  issueId: string,
+): string {
+  return `ops.${createHash('sha256')
+    .update([callerScope(principal, accountId), issueId].join(UNIT_SEPARATOR))
+    .digest('hex')
+    .slice(0, 16)}`;
+}
+
+interface ConsumerStatusProjection {
+  records: LedgerRecord[];
+  standaloneIssues: Array<Record<string, unknown>>;
+  statuses: ConsumerStatusRecord[];
+  pending: number;
+  /** Open mismatches with their derived boundaries, for controller fixtures. */
+  diagnoses: Array<{ issueId: string; openedAt: string; diagnosis: ConsumerMismatchDiagnosis }>;
+}
+
+/**
+ * Join the caller's consumer-status ledger onto the seller projection for one
+ * read. Seller obligation/revision evidence is never rewritten: only this
+ * caller's view of health, its `issues[]`, and the visibility counters change.
+ */
+function projectConsumerStatus(
+  principal: string | undefined,
+  accountId: string,
+  ledger: ReportingLedger,
+  configs: StoredConfig[],
+  records: LedgerRecord[],
+  nowMs: number,
+  period: GetReportingStatusRequest['period'],
+): ConsumerStatusProjection {
+  const chainKeyForObligation = (obligation: ReportingObligation): string => consumerChainKey({
+    delivery_config_id: obligation.delivery_config_id,
+    delivery_config_version: obligation.delivery_config_version,
+    report_definition_id: obligation.report_definition_id,
+    period: obligation.period,
+  });
+  const storedByGeneration = new Map(configs.map(stored => [generationKey(stored.config), stored]));
+  const recordByChain = new Map(records.map(record => [chainKeyForObligation(record.obligation), record]));
+  const inRequestedPeriod = (startMs: number, endMs: number): boolean => {
+    if (!period) return true;
+    const filterStart = parseInstant(period.start);
+    const filterEnd = parseInstant(period.end);
+    return filterStart < filterEnd && startMs >= filterStart && endMs <= filterEnd;
+  };
+  const chainKeys = new Map<string, StoredConfig>();
+  const statuses: ConsumerStatusRecord[] = [];
+  for (const status of ledger.consumerStatuses as unknown as ConsumerStatusRecord[]) {
+    const stored = storedByGeneration.get(generationKey({
+      delivery_config_id: status.delivery_config_id,
+      delivery_config_version: status.delivery_config_version,
+    }));
+    if (!stored || status.report_definition_id !== stored.config.report_definition_id) continue;
+    if (!inRequestedPeriod(parseInstant(status.period.start), parseInstant(status.period.end))) continue;
+    chainKeys.set(consumerChainKey(status), stored);
+    statuses.push(status);
+  }
+  const standaloneIssues: Array<Record<string, unknown>> = [];
+  const issueByChain = new Map<string, Record<string, unknown>>();
+  const severityByChain = new Map<string, 'delayed' | 'action_required'>();
+  const diagnoses: ConsumerStatusProjection['diagnoses'] = [];
+  for (const [chainKey, stored] of chainKeys) {
+    const leaf = currentConsumerLeaf(ledger, chainKey);
+    if (!leaf) continue;
+    const record = recordByChain.get(chainKey);
+    const diagnosis = diagnoseConsumerMismatch(ledger, stored, leaf, record, nowMs);
+    if (!diagnosis) continue;
+    const openedAt = iso(diagnosis.openedAtMs);
+    const issueId = stableId('reporting-issue', [chainKey, 'CONSUMER_STATUS_MISMATCH', openedAt]);
+    const eligible = eligibleConsumerPeriod(
+      stored,
+      parseInstant(leaf.period.start),
+      parseInstant(leaf.period.end),
+    );
+    const issue: Record<string, unknown> = {
+      issue_id: issueId,
+      code: 'CONSUMER_STATUS_MISMATCH',
+      severity: diagnosis.severity,
+      // Fixed at first emission and carried unchanged through the severity
+      // change, so a consumer ages one work item instead of two.
+      opened_at: openedAt,
+      issue_state: 'open',
+      external_ref: consumerMismatchExternalRef(principal, accountId, issueId),
+      responsible_party: diagnosis.responsibleParty,
+      recommended_action: diagnosis.recommendedAction,
+      message: CONSUMER_MISMATCH_MESSAGES[leaf.consumer_status],
+      reporting_status_id: leaf.reporting_status_id,
+      ...(record && { reporting_obligation_id: record.obligation.reporting_obligation_id }),
+      delivery_config_id: leaf.delivery_config_id,
+      delivery_config_version: leaf.delivery_config_version,
+      feed_purpose: stored.config.feed_purpose,
+      period_start: leaf.period.start,
+      period_end: leaf.period.end,
+      ...(eligible && { expected_at: iso(eligible.expectedAtMs) }),
+    };
+    severityByChain.set(chainKey, diagnosis.severity);
+    diagnoses.push({ issueId, openedAt, diagnosis });
+    if (record) issueByChain.set(chainKey, issue);
+    else standaloneIssues.push(issue);
+  }
+  const projected = records.map(record => {
+    const chainKey = chainKeyForObligation(record.obligation);
+    const chain = consumerChain(ledger, chainKey);
+    const leaf = currentConsumerLeaf(ledger, chainKey);
+    const issue = issueByChain.get(chainKey);
+    const health = issue === undefined
+      ? record.obligation.health
+      : record.obligation.health === 'action_required' || severityByChain.get(chainKey) === 'action_required'
+        ? 'action_required'
+        : 'delayed';
+    return {
+      ...record,
+      obligation: {
+        ...record.obligation,
+        consumer_status_count: chain.length,
+        ...(leaf && { current_consumer_status_id: leaf.reporting_status_id }),
+        health,
+        issues: issue ? [...record.obligation.issues, issue] : record.obligation.issues,
+      } as unknown as ReportingObligation,
+    };
+  });
+  // Silence is a counted unknown only. It raises no issue, changes no health,
+  // and overlaps the health counts rather than partitioning them.
+  const pending = records.filter(record => {
+    const chainKey = chainKeyForObligation(record.obligation);
+    if (consumerChain(ledger, chainKey).length > 0) return false;
+    return nowMs >= parseInstant(record.obligation.expected_at) + RECOVERY_WINDOW_MS;
+  }).length;
+  return { records: projected, standaloneIssues, statuses, pending, diagnoses };
+}
+
+/**
+ * Retain the snapshot identities this caller was actually issued so a later
+ * `sync_reporting_status` citing `seller_ledger_snapshot_id` can be resolved
+ * rather than taken on faith. Bounded, and deliberately not a ledger version
+ * change: issuing a snapshot commits no immutable record.
+ */
+function rememberIssuedSnapshotId(ledger: ReportingLedger, snapshotId: string): void {
+  if (ledger.issuedSnapshotIds.includes(snapshotId)) return;
+  ledger.issuedSnapshotIds.push(snapshotId);
+  if (ledger.issuedSnapshotIds.length > RETAINED_ISSUED_SNAPSHOT_IDS) {
+    ledger.issuedSnapshotIds.splice(0, ledger.issuedSnapshotIds.length - RETAINED_ISSUED_SNAPSHOT_IDS);
+  }
+}
+
+interface ConsumerStatusFailure {
+  code: 'VALIDATION_ERROR' | 'CONFLICT' | 'REFERENCE_NOT_FOUND';
+  message: string;
+}
+
+/**
+ * Registered recovery classification per code. CONFLICT is transient because
+ * the caller re-reads its current leaf and retries; the other two are fixable
+ * in the request itself. Every unknown, unauthorized, cross-account, and
+ * cross-caller identifier resolves to the same indistinguishable result.
+ */
+const CONSUMER_STATUS_RECOVERY: Record<ConsumerStatusFailure['code'], 'transient' | 'correctable'> = {
+  CONFLICT: 'transient',
+  VALIDATION_ERROR: 'correctable',
+  REFERENCE_NOT_FOUND: 'correctable',
+};
+
+/**
+ * First-class handler body for `sync_reporting_status`.
+ *
+ * Every identity resolves within the authenticated caller and account; the
+ * consumer principal is never read from the payload. Results are per statement
+ * so one rejection cannot roll back a sibling that durably recorded.
+ */
+export function syncReliableReportingStatusesForAccount(
+  params: { statuses?: Array<Record<string, unknown>> },
+  principal: string | undefined,
+  accountId: string,
+): Record<string, unknown> {
+  const submitted = params.statuses ?? [];
+  if (submitted.length === 0) throw new Error('At least one reporting consumer status is required.');
+  if (submitted.length > 100) {
+    throw new Error('A reporting consumer status batch may contain at most 100 statuses.');
+  }
+  const submittedIds = submitted.map(status => status.reporting_status_id);
+  if (new Set(submittedIds).size !== submittedIds.length) {
+    throw new Error('reporting_status_id must be unique across the complete consumer status batch.');
+  }
+  const ledger = ledgerFor(principal, accountId);
+  const nowMs = ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now();
+  // A batch carries at most one statement per logical chain. Duplicate-chain
+  // entries are rejected without evaluating their supersession order at all,
+  // so a caller cannot smuggle an ordering assumption into one batch.
+  const chainCounts = new Map<string, number>();
+  for (const status of submitted) {
+    const identity = status as unknown as ConsumerChainIdentity;
+    const key = identity.period !== null && typeof identity.period === 'object'
+      ? consumerChainKey(identity)
+      : `unparsed:${String(status.reporting_status_id)}`;
+    chainCounts.set(key, (chainCounts.get(key) ?? 0) + 1);
+  }
+  const results: Array<Record<string, unknown>> = [];
+  let mutated = false;
+  const failed = (
+    status: Record<string, unknown>,
+    failure: ConsumerStatusFailure,
+  ): Record<string, unknown> => ({
+    result: 'failed',
+    reporting_status_id: status.reporting_status_id,
+    errors: [{
+      code: failure.code,
+      message: failure.message,
+      recovery: CONSUMER_STATUS_RECOVERY[failure.code],
+    }],
+  });
+  for (const status of submitted) {
+    const validation = validateSourceSchema('core/reporting-consumer-status.json', status);
+    if (!validation.valid || 'recorded_at' in status) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: `The consumer status statement does not satisfy reporting-consumer-status.json: ${validation.errors[0]?.message ?? 'recorded_at is seller-assigned'}.`,
+      }));
+      continue;
+    }
+    const candidate = structuredClone(status) as unknown as Omit<ConsumerStatusRecord, 'recorded_at'>;
+    const chainKey = consumerChainKey(candidate);
+    if ((chainCounts.get(chainKey) ?? 0) > 1) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'A batch may contain at most one statement for each logical consumer status chain.',
+      }));
+      continue;
+    }
+    const existing = ledger.consumerStatuses.find(
+      recorded => recorded.reporting_status_id === candidate.reporting_status_id,
+    );
+    if (existing) {
+      const { recorded_at: _recordedAt, ...storedContent } = existing;
+      results.push(canonicalize(storedContent) === canonicalize(status)
+        ? { result: 'unchanged', consumer_status: structuredClone(existing) }
+        : failed(status, {
+          code: 'CONFLICT',
+          message: 'The reporting_status_id is already bound to different immutable content.',
+        }));
+      continue;
+    }
+    const stored = ledger.history.find(entry => (
+      entry.config.delivery_config_id === candidate.delivery_config_id
+      && entry.config.delivery_config_version === candidate.delivery_config_version
+    ));
+    if (!stored || stored.config.report_definition_id !== candidate.report_definition_id) {
+      results.push(failed(status, {
+        code: 'REFERENCE_NOT_FOUND',
+        message: 'The referenced reporting configuration generation is unavailable for this account and caller.',
+      }));
+      continue;
+    }
+    const eligible = eligibleConsumerPeriod(
+      stored,
+      parseInstant(candidate.period.start),
+      parseInstant(candidate.period.end),
+    );
+    if (!eligible || candidate.period.source_timezone !== eligible.timeZone) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'period must name one exact eligible period derived from the accepted configuration generation.',
+      }));
+      continue;
+    }
+    if (candidate.seller_ledger_snapshot_id !== undefined
+      && !ledger.issuedSnapshotIds.includes(candidate.seller_ledger_snapshot_id)) {
+      results.push(failed(status, {
+        code: 'REFERENCE_NOT_FOUND',
+        message: 'The cited seller ledger snapshot is unavailable for this account and caller.',
+      }));
+      continue;
+    }
+    const statusAsOfMs = parseInstant(candidate.status_as_of);
+    if (statusAsOfMs > nowMs + CONSUMER_STATUS_CLOCK_SKEW_MS) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'status_as_of must not exceed the seller clock beyond its documented skew tolerance.',
+      }));
+      continue;
+    }
+    if ((candidate.consumer_status === 'obligation_missing' || candidate.consumer_status === 'revision_missing')
+      && statusAsOfMs < eligible.expectedAtMs) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'obligation_missing and revision_missing are valid only at or after the obligation expected_at.',
+      }));
+      continue;
+    }
+    const obligationIdValue = obligationId(accountId, stored.config, candidate.period.end);
+    const obligationExists = !ledger.suppressedObligationIds.has(obligationIdValue)
+      && eligible.endMs < nowMs;
+    if (candidate.reporting_obligation_id !== undefined
+      && (candidate.reporting_obligation_id !== obligationIdValue || !obligationExists)) {
+      results.push(failed(status, {
+        code: 'REFERENCE_NOT_FOUND',
+        message: 'The referenced reporting obligation is unavailable for this account and caller.',
+      }));
+      continue;
+    }
+    const namedRevision = candidate.reporting_revision_id === undefined
+      ? undefined
+      : ledger.revisionContents.get(candidate.reporting_revision_id)?.revision;
+    if (candidate.reporting_revision_id !== undefined
+      && (!namedRevision
+        || namedRevision.account_id !== accountId
+        || namedRevision.report_definition_id !== stored.config.report_definition_id
+        || namedRevision.period.start !== candidate.period.start
+        || namedRevision.period.end !== candidate.period.end)) {
+      results.push(failed(status, {
+        code: 'REFERENCE_NOT_FOUND',
+        message: 'The referenced reporting revision is unavailable for this account and caller.',
+      }));
+      continue;
+    }
+    // received and content_mismatch both name the exact bytes the consumer
+    // read, so the seller can prove which content the statement describes.
+    if (namedRevision
+      && candidate.observed_revision_content_sha256 !== undefined
+      && candidate.observed_revision_content_sha256.toLowerCase()
+        !== namedRevision.revision_content_sha256.toLowerCase()) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'observed_revision_content_sha256 must equal the named revision exact Core revision binding.',
+      }));
+      continue;
+    }
+    if (candidate.consumer_status === 'content_mismatch'
+      && ledger.publishedRevisions.get(obligationIdValue)?.reporting_revision_id !== candidate.reporting_revision_id) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'content_mismatch is valid only against the revision the seller currently requires for this period.',
+      }));
+      continue;
+    }
+    const current = currentConsumerLeaf(ledger, chainKey);
+    if (current && candidate.supersedes_reporting_status_id !== current.reporting_status_id) {
+      results.push(failed(status, {
+        code: 'CONFLICT',
+        message: 'A replacement statement must name this consumer current status leaf exactly.',
+      }));
+      continue;
+    }
+    if (!current && candidate.supersedes_reporting_status_id !== undefined) {
+      results.push(failed(status, {
+        code: 'CONFLICT',
+        message: 'supersedes_reporting_status_id names a status that is not this consumer current leaf.',
+      }));
+      continue;
+    }
+    if (current && statusAsOfMs < parseInstant(current.status_as_of)) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: 'status_as_of must not precede the superseded statement status_as_of.',
+      }));
+      continue;
+    }
+    if (ledger.consumerStatuses.length >= MAX_RETAINED_CONSUMER_STATUSES) {
+      results.push(failed(status, {
+        code: 'VALIDATION_ERROR',
+        message: `This account has reached its retained consumer status limit of ${MAX_RETAINED_CONSUMER_STATUSES} statements.`,
+      }));
+      continue;
+    }
+    const recorded = { ...structuredClone(status), recorded_at: iso(nowMs) };
+    ledger.consumerStatuses.push(recorded);
+    mutated = true;
+    results.push({ result: 'recorded', consumer_status: structuredClone(recorded) });
+  }
+  if (mutated) ledger.version += 1;
+  const response = { status: 'completed', results };
+  const validation = validateSourceSchema('media-buy/sync-reporting-status-response.json', response);
+  if (!validation.valid) {
+    throw new Error(`Invalid Reliable Reporting consumer status response: ${JSON.stringify(validation.errors)}`);
+  }
+  return response;
+}
+
+/**
+ * Current `received` leaf naming an exact revision. The `restate_after_received`
+ * controller fixture uses it to refuse to restate into a vacuum once this
+ * seller advertises `consumer_status_task`.
+ */
+export function currentReceivedConsumerStatusForRevision(
+  principal: string | undefined,
+  accountId: string,
+  reportingRevisionId: string,
+): { reporting_status_id: string } | undefined {
+  const ledger = ledgerFor(principal, accountId);
+  for (const status of ledger.consumerStatuses as unknown as ConsumerStatusRecord[]) {
+    if (status.consumer_status !== 'received' || status.reporting_revision_id !== reportingRevisionId) continue;
+    const leaf = currentConsumerLeaf(ledger, consumerChainKey(status));
+    if (leaf?.reporting_status_id === status.reporting_status_id) return leaf;
+  }
+  return undefined;
+}
+
 function unavailable(view: GetReportingStatusRequest['view']): TrainingGetReportingStatusResponse {
   return {
     status: 'failed',
@@ -2507,7 +3274,8 @@ type PageResource =
   | { kind: 'adjustment'; adjustment: TrainingReportingAdjustment }
   | { kind: 'materialization'; materialization: Record<string, unknown> }
   | { kind: 'receipt'; receipt: Record<string, unknown> }
-  | { kind: 'adjustment_receipt'; adjustmentReceipt: Record<string, unknown> };
+  | { kind: 'adjustment_receipt'; adjustmentReceipt: Record<string, unknown> }
+  | { kind: 'consumer_status'; consumerStatus: Record<string, unknown> };
 interface StoredPageSnapshot {
   scope: string;
   nowMs: number;
@@ -2665,7 +3433,22 @@ export function getReportingStatusForAccount(
       || params.media_buy_ids.some(id => record.obligation.media_buy_ids.includes(id)))
     .filter(record => !params.feed_purposes || params.feed_purposes.includes(record.obligation.feed_purpose))
     .filter(record => !params.finality || params.finality.includes(record.obligation.required_finality));
-  let deltaRecords = records;
+  // Join the authenticated caller's separately attributed consumer status onto
+  // the seller projection. It can only degrade this one caller/account view.
+  const consumerProjection = projectConsumerStatus(
+    principal,
+    accountId,
+    ledger,
+    configs,
+    records,
+    nowMs,
+    params.period,
+  );
+  const projectedRecords = consumerProjection.records;
+  let deltaRecords = projectedRecords;
+  // Consumer status is an immutable ledger record kind, so it advances the same
+  // checkpoint and disappears from the same current-checkpoint empty delta.
+  let deltaStatuses = consumerProjection.statuses;
   if (request.changes_after) {
     const match = /^reporting_change_(\d+)_([a-f0-9]{16})$/.exec(request.changes_after);
     const scopeFingerprint = createHash('sha256').update(checkpointScope).digest('hex').slice(0, 16);
@@ -2675,7 +3458,10 @@ export function getReportingStatusForAccount(
     // This training implementation may replay older immutable records, but a
     // current checkpoint always produces an empty delta. Production sellers
     // can retain per-record commit ordinals to avoid the safe replay.
-    if (Number(match[1]) === ledger.version) deltaRecords = [];
+    if (Number(match[1]) === ledger.version) {
+      deltaRecords = [];
+      deltaStatuses = [];
+    }
   }
   if (params.view === 'revision') {
     const revision = params.reporting_revision_id
@@ -2685,6 +3471,11 @@ export function getReportingStatusForAccount(
     const revisionResources: PageResource[] = [
       ...[...ledger.adjustments.values()].filter(adjustment => adjustment.adjusts_reporting_revision_id === revision.reporting_revision_id)
         .map(adjustment => ({ kind: 'adjustment' as const, adjustment })),
+      // Only this caller's statements, and only those naming the requested
+      // revision: no unrelated status may ride along on an exact read.
+      ...ledger.consumerStatuses
+        .filter(consumerStatus => consumerStatus.reporting_revision_id === revision.reporting_revision_id)
+        .map(consumerStatus => ({ kind: 'consumer_status' as const, consumerStatus })),
       ...ledger.adjustmentReceipts.filter(receipt => receipt.adjusts_reporting_revision_id === revision.reporting_revision_id)
         .map(adjustmentReceipt => ({ kind: 'adjustment_receipt' as const, adjustmentReceipt })),
       ...ledger.materializations.filter(materialization => materialization.reporting_revision_id === revision.reporting_revision_id)
@@ -2700,6 +3491,7 @@ export function getReportingStatusForAccount(
       account_id: accountId,
       revision,
     };
+    rememberIssuedSnapshotId(ledger, String(revisionCommon.ledger_snapshot_id));
     const revisionSnapshot = snapshot?.resources ?? revisionResources;
     const offset = snapshot?.offset ?? 0;
     const page = revisionSnapshot.slice(offset, offset + (params.pagination?.max_results ?? 100));
@@ -2708,6 +3500,7 @@ export function getReportingStatusForAccount(
       ...revisionCommon,
       adjustments: page.filter((item): item is Extract<PageResource, { kind: 'adjustment' }> => item.kind === 'adjustment').map(item => item.adjustment),
       adjustment_receipts: page.filter((item): item is Extract<PageResource, { kind: 'adjustment_receipt' }> => item.kind === 'adjustment_receipt').map(item => item.adjustmentReceipt),
+      consumer_statuses: page.filter((item): item is Extract<PageResource, { kind: 'consumer_status' }> => item.kind === 'consumer_status').map(item => item.consumerStatus),
       materializations: page.filter((item): item is Extract<PageResource, { kind: 'materialization' }> => item.kind === 'materialization').map(item => item.materialization),
       receipts: page.filter((item): item is Extract<PageResource, { kind: 'receipt' }> => item.kind === 'receipt').map(item => item.receipt),
       pagination: {
@@ -2717,7 +3510,12 @@ export function getReportingStatusForAccount(
       },
     } as TrainingGetReportingStatusResponse;
   }
-  const issues = records.flatMap(record => record.obligation.issues);
+  const issues = [
+    ...projectedRecords.flatMap(record => record.obligation.issues),
+    // A mismatch the seller has no obligation for still has to be readable:
+    // an omitted expected period is exactly what this loop exists to surface.
+    ...consumerProjection.standaloneIssues,
+  ];
   const periodEnd = params.period ? parseInstant(params.period.end) : floorHour(nowMs);
   const periodStart = params.period
     ? parseInstant(params.period.start)
@@ -2725,10 +3523,21 @@ export function getReportingStatusForAccount(
       ? Math.max(retainedPeriodBoundaryMs, Math.min(...configs.map(config => floorHour(parseInstant(config.activatedAt) + HOUR_MS - 1))))
       : floorHour(nowMs) - HOUR_MS;
   const scopeClosed = configs.length === 0 || periodEnd < nowMs;
-  const recordHealth = records.length === 0 && !scopeClosed ? 'waiting' : worstHealth(records);
+  const recordHealth = projectedRecords.length === 0 && !scopeClosed
+    ? 'waiting'
+    : worstHealth(projectedRecords);
   // An open scope with all current obligations reconciled is healthy, not
   // complete; complete is reserved for a closed scope.
-  const health = recordHealth === 'complete' && !scopeClosed ? 'healthy' : recordHealth;
+  const projectedHealth = recordHealth === 'complete' && !scopeClosed ? 'healthy' : recordHealth;
+  const standaloneSeverity = consumerProjection.standaloneIssues
+    .some(issue => issue.severity === 'action_required')
+    ? 'action_required' as const
+    : consumerProjection.standaloneIssues.length > 0 ? 'delayed' as const : undefined;
+  const health = standaloneSeverity === 'action_required' || projectedHealth === 'action_required'
+    ? 'action_required'
+    : standaloneSeverity === 'delayed' || projectedHealth === 'delayed'
+      ? 'delayed'
+      : projectedHealth;
   const scope = {
     period_start: iso(periodStart),
     period_end: iso(periodEnd),
@@ -2747,14 +3556,17 @@ export function getReportingStatusForAccount(
     ledger_retained_from: iso(retainedFromMs),
     coverage_complete: periodStart >= retainedPeriodBoundaryMs,
   };
-  const coverage = aggregateCoverage(records, iso(nowMs));
+  const coverage = aggregateCoverage(projectedRecords, iso(nowMs));
   const counts = {
-    total: records.length,
-    waiting: records.filter(record => record.obligation.health === 'waiting').length,
+    total: projectedRecords.length,
+    waiting: projectedRecords.filter(record => record.obligation.health === 'waiting').length,
     healthy: 0,
-    delayed: records.filter(record => record.obligation.health === 'delayed').length,
-    action_required: records.filter(record => record.obligation.health === 'action_required').length,
-    complete: records.filter(record => record.obligation.health === 'complete').length,
+    delayed: projectedRecords.filter(record => record.obligation.health === 'delayed').length,
+    action_required: projectedRecords.filter(record => record.obligation.health === 'action_required').length,
+    complete: projectedRecords.filter(record => record.obligation.health === 'complete').length,
+    // Visibility over this caller's own silence. It overlaps the health counts
+    // rather than partitioning them and never changes any of them.
+    consumer_status_pending: consumerProjection.pending,
   };
   const common = {
     status: 'completed' as const,
@@ -2765,12 +3577,15 @@ export function getReportingStatusForAccount(
     scope,
     health,
     coverage,
-    data_through: records.filter(record => record.revision).at(-1)?.obligation.period.end ?? null,
+    data_through: projectedRecords.filter(record => record.revision).at(-1)?.obligation.period.end ?? null,
     ...(!scopeClosed && nextExpectedAt(configs, nowMs) && { next_expected_at: nextExpectedAt(configs, nowMs) }),
     obligation_counts: counts,
     issues,
   };
-  if (params.view === 'summary') return common as GetReportingStatusResponse;
+  if (params.view === 'summary') {
+    rememberIssuedSnapshotId(ledger, common.ledger_snapshot_id);
+    return common as GetReportingStatusResponse;
+  }
   const filtered = params.health
     ? deltaRecords.filter(record => params.health?.includes(record.obligation.health))
     : deltaRecords;
@@ -2794,10 +3609,22 @@ export function getReportingStatusForAccount(
         .map(adjustmentReceipt => ({ kind: 'adjustment_receipt' as const, adjustmentReceipt })),
     ];
   });
-  const resources = snapshot?.resources ?? currentResources;
+  // Consumer status joins the same flat union so it shares one snapshot,
+  // cursor, and checkpoint ordering with every other immutable record kind.
+  // It attaches by logical period key, not by obligation ID, so an
+  // obligation_missing chain stays readable when the seller omitted the period.
+  const consumerStatusResources: PageResource[] = deltaStatuses
+    .filter(status => !params.health || filtered.some(record => (
+      record.obligation.delivery_config_id === status.delivery_config_id
+      && record.obligation.delivery_config_version === status.delivery_config_version
+      && record.obligation.period.end === status.period.end
+    )))
+    .map(status => ({ kind: 'consumer_status' as const, consumerStatus: status as unknown as Record<string, unknown> }));
+  const resources = snapshot?.resources ?? [...currentResources, ...consumerStatusResources];
   const scopeFingerprint = createHash('sha256').update(checkpointScope).digest('hex').slice(0, 16);
   const currentChangesCheckpoint = `reporting_change_${ledger.version}_${scopeFingerprint}`;
   const responseCommon = snapshot?.common ?? { ...common, changes_checkpoint: currentChangesCheckpoint };
+  rememberIssuedSnapshotId(ledger, String(responseCommon.ledger_snapshot_id));
   const offset = snapshot?.offset ?? 0;
   const page = resources.slice(offset, offset + (params.pagination?.max_results ?? 100));
   const hasMore = offset + page.length < resources.length;
@@ -2812,6 +3639,9 @@ export function getReportingStatusForAccount(
     adjustment_receipts: page
       .filter((item): item is Extract<PageResource, { kind: 'adjustment_receipt' }> => item.kind === 'adjustment_receipt')
       .map(item => item.adjustmentReceipt),
+    consumer_statuses: page
+      .filter((item): item is Extract<PageResource, { kind: 'consumer_status' }> => item.kind === 'consumer_status')
+      .map(item => item.consumerStatus),
     materializations: page
       .filter((item): item is Extract<PageResource, { kind: 'materialization' }> => item.kind === 'materialization')
       .map(item => item.materialization),
