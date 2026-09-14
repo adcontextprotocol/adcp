@@ -135,7 +135,7 @@ export async function upsertOrganizationMembership(
     }
     return guarded.value;
   }
-  const db = externalClient ?? getPool();
+  const db = externalClient;
 
   const result = await db.query<{ role: string }>(
     `INSERT INTO organization_memberships (
