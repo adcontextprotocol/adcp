@@ -147,8 +147,52 @@ export function withDatabaseDeadline<T>(
   return queryDeadline.run({ deadlineMs, readOnly: options.readOnly ?? true }, work);
 }
 
-function databaseDeadlineExceededError(): Error & { code: '57014' } {
-  return Object.assign(new Error('Database query deadline exceeded'), { code: '57014' as const });
+export class DatabaseQueryDeadlineExceededError extends Error {
+  readonly code = '57014' as const;
+  readonly retryable = true as const;
+
+  constructor() {
+    super('Database query deadline exceeded');
+    this.name = 'DatabaseQueryDeadlineExceededError';
+  }
+}
+
+function databaseDeadlineExceededError(): DatabaseQueryDeadlineExceededError {
+  return new DatabaseQueryDeadlineExceededError();
+}
+
+/**
+ * Await one client operation for no longer than the caller's absolute
+ * deadline. Promise.race keeps observing a late rejection, while callers
+ * destroy the client because a late result leaves its protocol/transaction
+ * state unknowable.
+ */
+async function clientOperationBeforeDeadline<T>(
+  operation: () => Promise<T>,
+  deadlineMs: number,
+): Promise<T> {
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) throw databaseDeadlineExceededError();
+
+  const pending = Promise.resolve().then(operation);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(databaseDeadlineExceededError()), remainingMs);
+  });
+
+  try {
+    return await Promise.race([pending, deadline]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+function isDefinitivePostgresError(error: unknown): boolean {
+  if (!(error instanceof Error) || error instanceof DatabaseQueryDeadlineExceededError) return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string'
+    && /^[0-9A-Z]{5}$/.test(code)
+    && !isTransientConnectionError(error);
 }
 
 /**
@@ -216,11 +260,11 @@ export async function queryWithTimeout<T extends QueryResultRow = any>(
   text: string,
   params: any[] | undefined,
   timeoutMs: number,
-  options: { retryTransientCheckout?: boolean } = {},
+  options: { retryTransientCheckout?: boolean; deadlineMs?: number } = {},
 ): Promise<QueryResult<T>> {
   const inheritedDeadline = queryDeadline.getStore();
   const deadlineMs = Math.min(
-    Date.now() + timeoutMs,
+    options.deadlineMs ?? Date.now() + timeoutMs,
     inheritedDeadline?.deadlineMs ?? Number.POSITIVE_INFINITY,
   );
   const client = await getClientBeforeDeadline(
@@ -228,31 +272,69 @@ export async function queryWithTimeout<T extends QueryResultRow = any>(
     options.retryTransientCheckout ?? true,
   );
   let transactionStarted = false;
+  let clientStateUncertain = false;
+
+  const run = async <R>(
+    operation: () => Promise<R>,
+    phase: 'begin' | 'configuration' | 'statement' | 'commit' | 'rollback',
+  ): Promise<R> => {
+    try {
+      return await clientOperationBeforeDeadline(operation, deadlineMs);
+    } catch (error) {
+      // A client-side deadline can win while pg is still processing any query.
+      // Connection-style failures have no trustworthy server acknowledgement.
+      // COMMIT failures are always ambiguous: the transaction may be durable
+      // even though its acknowledgement never reached this process.
+      if (error instanceof DatabaseQueryDeadlineExceededError
+          || !isDefinitivePostgresError(error)
+          || phase === 'commit'
+          || phase === 'rollback') {
+        clientStateUncertain = true;
+      }
+      throw error;
+    }
+  };
+
   try {
     const effectiveTimeoutMs = deadlineMs - Date.now();
     if (effectiveTimeoutMs <= 0) {
       throw databaseDeadlineExceededError();
     }
-    await client.query(inheritedDeadline?.readOnly === false ? 'BEGIN' : 'BEGIN READ ONLY');
+    await run(
+      () => client.query(inheritedDeadline?.readOnly === false ? 'BEGIN' : 'BEGIN READ ONLY'),
+      'begin',
+    );
     transactionStarted = true;
-    await client.query("SELECT set_config('statement_timeout', $1, true)", [
-      `${effectiveTimeoutMs}ms`,
-    ]);
-    await client.query("SELECT set_config('lock_timeout', $1, true)", [
-      `${Math.min(effectiveTimeoutMs, 2_000)}ms`,
-    ]);
-    const result = await client.query<T>(text, params);
-    await client.query('COMMIT');
+    await run(
+      () => client.query("SELECT set_config('statement_timeout', $1, true)", [
+        `${effectiveTimeoutMs}ms`,
+      ]),
+      'configuration',
+    );
+    await run(
+      () => client.query("SELECT set_config('lock_timeout', $1, true)", [
+        `${Math.min(effectiveTimeoutMs, 2_000)}ms`,
+      ]),
+      'configuration',
+    );
+    const result = await run(() => client.query<T>(text, params), 'statement');
+    await run(() => client.query('COMMIT'), 'commit');
+    transactionStarted = false;
     return result;
   } catch (error) {
-    if (transactionStarted) {
-      await client.query('ROLLBACK').catch((rollbackError) => {
+    // Never queue ROLLBACK behind an operation that may still be in flight.
+    // If the prior outcome is definite, cleanup must still finish inside the
+    // same deadline before this client can be considered reusable.
+    if (transactionStarted && !clientStateUncertain) {
+      await run(() => client.query('ROLLBACK'), 'rollback').catch((rollbackError) => {
         logger.warn({ err: rollbackError }, 'Timed query rollback failed');
       });
+      if (!clientStateUncertain) transactionStarted = false;
     }
     throw error;
   } finally {
-    client.release();
+    if (clientStateUncertain || transactionStarted) client.release(true);
+    else client.release();
   }
 }
 

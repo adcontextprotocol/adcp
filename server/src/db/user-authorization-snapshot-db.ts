@@ -27,6 +27,8 @@ export interface AuthorizationSnapshot {
 
 /** Distinct from a missing credential or denied organization access. */
 export class AuthorizationSnapshotUnavailableError extends Error {
+  readonly retryable = true as const;
+
   constructor(message = 'Authorization snapshot unavailable') {
     super(message);
     this.name = 'AuthorizationSnapshotUnavailableError';
@@ -61,6 +63,7 @@ async function querySnapshot(statement: string, parameters: [string, string | nu
         // querySnapshot owns the one retry so checkout and statement failures
         // share this request's single absolute authorization budget.
         retryTransientCheckout: false,
+        deadlineMs,
       });
       if (Date.now() >= deadlineMs) throw new AuthorizationSnapshotUnavailableError();
       return result;

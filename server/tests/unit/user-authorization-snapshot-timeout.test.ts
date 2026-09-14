@@ -65,8 +65,14 @@ describe('authorization snapshot query deadline and connection retry', () => {
     expect(boundedQuery).toHaveBeenCalledTimes(2);
     const [first, second] = boundedQuery.mock.calls;
     expect(first[2]).toBe(2_000);
-    expect(first[3]).toEqual({ retryTransientCheckout: false });
-    expect(second).toEqual([first[0], first[1], 1_300, { retryTransientCheckout: false }]);
+    expect(first[3]).toEqual({
+      retryTransientCheckout: false,
+      deadlineMs: Date.parse('2026-01-01T00:00:02Z'),
+    });
+    expect(second).toEqual([first[0], first[1], 1_300, {
+      retryTransientCheckout: false,
+      deadlineMs: first[3]?.deadlineMs,
+    }]);
     expect(first[1]).toEqual([USER_ID, ORGANIZATION_ID]);
   });
 
