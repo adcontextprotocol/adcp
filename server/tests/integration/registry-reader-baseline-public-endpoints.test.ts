@@ -22,7 +22,7 @@
  * `endpoint-` prefix to keep us from colliding with the sibling baseline
  * files or any parallel registry-* test.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Pool } from 'pg';
 
@@ -33,6 +33,10 @@ vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
   process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'true';
+  // Exercise HTTP admission/polling without background workers draining the
+  // real queue or starting unrelated outbound repository indexing.
+  process.env.FLY_PROCESS_GROUP = 'web';
+  process.env.SKIP_REPO_INDEX = 'true';
 });
 
 // Bypass WorkOS auth — the registry feed requires `requireAuth`. Stamp
@@ -45,24 +49,33 @@ vi.hoisted(() => {
 // `setOptAuthUser(...)` — that lets us exercise the auth × scope filter
 // matrix without rebuilding the route's dependency graph.
 const DEFAULT_TEST_USER_ID = 'user_test_registry_baseline_endpoints';
+type TestAuthUser = { id: string; authWorkosUserId?: string; email: string; isAdmin?: boolean };
+type TestAuthRequest = {
+  user?: TestAuthUser;
+  headers?: Record<string, unknown>;
+  isStaticAdminApiKey?: boolean;
+};
 const authState = vi.hoisted(() => ({
   optAuthUser: null as { id: string; email: string } | null,
   requireAuthUser: {
     id: 'user_test_registry_baseline_endpoints',
     email: 'registry-baseline@test.com',
-  } as { id: string; email: string; isAdmin?: boolean } | null,
+  } as TestAuthUser | null,
+  currentRequest: null as TestAuthRequest | null,
 }));
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     '../../src/middleware/auth.js'
   );
   const requireAuthPass = (
-    req: { user: unknown; headers?: Record<string, unknown>; isStaticAdminApiKey?: boolean },
+    req: TestAuthRequest,
     res: { status: (code: number) => { json: (body: unknown) => void } },
     next: () => void,
   ) => {
+    authState.currentRequest = req;
     if (req.headers?.authorization === 'Bearer static-admin-test') {
       req.isStaticAdminApiKey = true;
+      if (authState.requireAuthUser) req.user = authState.requireAuthUser;
       next();
       return;
     }
@@ -91,7 +104,7 @@ function setOptAuthUser(user: { id: string; email: string } | null) {
   authState.optAuthUser = user;
 }
 
-function setRequireAuthUser(user: { id: string; email: string; isAdmin?: boolean } | null) {
+function setRequireAuthUser(user: TestAuthUser | null) {
   authState.requireAuthUser = user;
 }
 
@@ -120,6 +133,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 import { FederatedIndexService } from '../../src/federated-index.js';
 import { CrawlerService } from '../../src/crawler.js';
+import * as urlSecurity from '../../src/utils/url-security.js';
 
 // `endpoint-` prefix scopes this file's fixtures away from the sibling
 // baseline files (prop-, auth-, mcp-) so concurrent file execution can't
@@ -431,6 +445,202 @@ describe('Registry reader baseline — public endpoints', () => {
         });
         statusLookup.mockRestore();
       }
+    });
+  });
+
+  describe('/registry/crawl-request exact credential provenance', () => {
+    const PRIMARY_ID = 'user_endpoint_crawl_primary';
+    const SECONDARY_ID = 'user_endpoint_crawl_secondary';
+    const crawlDomain = (name: string) => `endpoint-crawl-${name}${DOMAIN_SUFFIX}`;
+    let domainValidation: ReturnType<typeof vi.spyOn<typeof urlSecurity, 'validateCrawlDomain'>>;
+
+    function useCredential(id: string) {
+      // Auth canonicalizes app-state identity while retaining the credential
+      // that actually authenticated. Both credentials share PRIMARY_ID here.
+      setRequireAuthUser({ id: PRIMARY_ID, authWorkosUserId: id, email: `${id}@example.com` });
+    }
+
+    async function clearCrawlFixtures() {
+      await pool.query('DELETE FROM publisher_crawl_requests WHERE publisher_domain LIKE $1', [crawlDomain('%')]);
+      await pool.query(
+        `DELETE FROM identities WHERE id IN (
+           SELECT identity_id FROM identity_workos_users WHERE workos_user_id = ANY($1::text[])
+         )`,
+        [[PRIMARY_ID, SECONDARY_ID]],
+      );
+      await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1::text[])', [[PRIMARY_ID, SECONDARY_ID]]);
+    }
+
+    async function storedRequest(id: string) {
+      const result = await pool.query(
+        'SELECT * FROM publisher_crawl_requests WHERE id = $1', [id],
+      );
+      expect(result.rows).toHaveLength(1);
+      return result.rows[0];
+    }
+
+    beforeEach(async () => {
+      await clearCrawlFixtures();
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email) VALUES ($1, $2), ($3, $4)`,
+        [PRIMARY_ID, `${PRIMARY_ID}@example.com`, SECONDARY_ID, `${SECONDARY_ID}@example.com`],
+      );
+      const bindings = await pool.query<{ workos_user_id: string; identity_id: string }>(
+        'SELECT workos_user_id, identity_id FROM identity_workos_users WHERE workos_user_id = ANY($1::text[])',
+        [[PRIMARY_ID, SECONDARY_ID]],
+      );
+      const primaryIdentity = bindings.rows.find(row => row.workos_user_id === PRIMARY_ID)!.identity_id;
+      const secondaryIdentity = bindings.rows.find(row => row.workos_user_id === SECONDARY_ID)!.identity_id;
+      await pool.query(
+        'UPDATE identity_workos_users SET identity_id = $1, is_primary = false WHERE workos_user_id = $2',
+        [primaryIdentity, SECONDARY_ID],
+      );
+      await pool.query('DELETE FROM identities WHERE id = $1', [secondaryIdentity]);
+      // The file-wide auth/CSRF/Stripe seams remain in place; DNS validation
+      // is also stubbed here. Admission, requester limits, persistence,
+      // status reads, and admin authorization use PostgreSQL.
+      domainValidation = vi.spyOn(urlSecurity, 'validateCrawlDomain').mockImplementation(async domain => domain);
+    });
+
+    afterEach(async () => {
+      vi.restoreAllMocks();
+      process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'true';
+      setRequireAuthUser({ id: DEFAULT_TEST_USER_ID, email: 'registry-baseline@test.com' });
+      authState.currentRequest = null;
+      await clearCrawlFixtures();
+    });
+
+    it.each([PRIMARY_ID, SECONDARY_ID])('persists %s and permits only that linked credential to read its request', async credentialId => {
+      useCredential(credentialId);
+      const domain = crawlDomain(credentialId === PRIMARY_ID ? 'primary' : 'secondary');
+      const admitted = await request(app).post('/api/registry/crawl-request').send({ domain });
+      expect(admitted.status).toBe(202);
+      expect(await storedRequest(admitted.body.crawl_request_id)).toMatchObject({
+        publisher_domain: domain,
+        requester_type: 'user',
+        requested_by_user_id: credentialId,
+      });
+
+      const statusPath = `/api/registry/crawl-request/${admitted.body.crawl_request_id}`;
+      const owner = await request(app).get(statusPath);
+      expect(owner.status).toBe(200);
+      expect(owner.headers['cache-control']).toBe('private, no-store');
+      expect(owner.body).toMatchObject({ crawl_request_id: admitted.body.crawl_request_id, domain, status: 'queued' });
+
+      useCredential(credentialId === PRIMARY_ID ? SECONDARY_ID : PRIMARY_ID);
+      const other = await request(app).get(statusPath);
+      const missing = await request(app).get('/api/registry/crawl-request/99999999-9999-4999-8999-999999999999');
+      expect(other.status).toBe(404);
+      expect(other.body).toEqual(missing.body);
+    });
+
+    it('retains requester identity and authority when request state mutates across awaits', async () => {
+      useCredential(SECONDARY_ID);
+      domainValidation.mockImplementationOnce(async domain => {
+        await Promise.resolve();
+        Object.assign(authState.currentRequest!.user!, { id: PRIMARY_ID, authWorkosUserId: PRIMARY_ID, isAdmin: true });
+        authState.currentRequest!.isStaticAdminApiKey = true;
+        return domain;
+      });
+      const admitted = await request(app).post('/api/registry/crawl-request').send({ domain: crawlDomain('mutated') });
+      expect(admitted.status).toBe(202);
+      expect(await storedRequest(admitted.body.crawl_request_id)).toMatchObject({
+        requester_type: 'user', requested_by_user_id: SECONDARY_ID,
+      });
+
+      const read = CrawlerService.prototype.getPublisherCrawlRequest;
+      vi.spyOn(CrawlerService.prototype, 'getPublisherCrawlRequest').mockImplementation(async function (this: CrawlerService, id) {
+        const row = await read.call(this, id);
+        Object.assign(authState.currentRequest!.user!, {
+          id: SECONDARY_ID,
+          authWorkosUserId: authState.currentRequest!.user!.authWorkosUserId === SECONDARY_ID ? PRIMARY_ID : SECONDARY_ID,
+          isAdmin: true,
+        });
+        authState.currentRequest!.isStaticAdminApiKey = true;
+        return row;
+      });
+      const statusPath = `/api/registry/crawl-request/${admitted.body.crawl_request_id}`;
+      useCredential(SECONDARY_ID);
+      expect((await request(app).get(statusPath)).status).toBe(200);
+      useCredential(PRIMARY_ID);
+      expect((await request(app).get(statusPath)).status).toBe(404);
+    });
+
+    it.each([false, true])('persists static-admin/null with stamped user present: %s despite later mutation', async stampedUser => {
+      setRequireAuthUser(stampedUser ? { id: 'admin_api_key', email: 'static@example.com' } : null);
+      domainValidation.mockImplementationOnce(async domain => {
+        await Promise.resolve();
+        authState.currentRequest!.isStaticAdminApiKey = false;
+        authState.currentRequest!.user = { id: SECONDARY_ID, email: `${SECONDARY_ID}@example.com` };
+        return domain;
+      });
+      const admitted = await request(app).post('/api/registry/crawl-request')
+        .set('Authorization', 'Bearer static-admin-test')
+        .send({ domain: crawlDomain(`static-${stampedUser}`) });
+      expect(admitted.status).toBe(202);
+      expect(await storedRequest(admitted.body.crawl_request_id)).toMatchObject({
+        requester_type: 'static_admin', requested_by_user_id: null,
+      });
+      const statusPath = `/api/registry/crawl-request/${admitted.body.crawl_request_id}`;
+      setRequireAuthUser(null);
+      expect((await request(app).get(statusPath).set('Authorization', 'Bearer static-admin-test')).status).toBe(200);
+      useCredential(SECONDARY_ID);
+      expect((await request(app).get(statusPath)).status).toBe(404);
+    });
+
+    it('enforces durable hourly quota per exact credential without charging its linked credential', async () => {
+      await pool.query(
+        `INSERT INTO publisher_crawl_requests
+           (id, publisher_domain, source, requester_type, requested_by_user_id, status)
+         SELECT gen_random_uuid(), $1 || n || $2, 'api:crawl-request', 'user', $3, 'completed'
+           FROM generate_series(1, 30) AS n`,
+        ['endpoint-crawl-quota-', DOMAIN_SUFFIX, SECONDARY_ID],
+      );
+      useCredential(SECONDARY_ID);
+      const exhausted = await request(app).post('/api/registry/crawl-request').send({ domain: crawlDomain('quota-new') });
+      expect(exhausted.status).toBe(429);
+      expect(exhausted.body.error).toBe('Hourly crawl request limit exceeded');
+
+      // The rejected reservation is released, including its domain key.
+      useCredential(PRIMARY_ID);
+      const admitted = await request(app).post('/api/registry/crawl-request').send({ domain: crawlDomain('quota-new') });
+      expect(admitted.status).toBe(202);
+      expect(await storedRequest(admitted.body.crawl_request_id)).toMatchObject({ requested_by_user_id: PRIMARY_ID });
+      const counts = await pool.query(
+        `SELECT requested_by_user_id, COUNT(*)::int AS count FROM publisher_crawl_requests
+         WHERE requested_by_user_id = ANY($1::text[]) GROUP BY requested_by_user_id ORDER BY requested_by_user_id`,
+        [[PRIMARY_ID, SECONDARY_ID]],
+      );
+      expect(counts.rows).toEqual([
+        { requested_by_user_id: PRIMARY_ID, count: 1 },
+        { requested_by_user_id: SECONDARY_ID, count: 30 },
+      ]);
+    });
+
+    it('leaves no durable work on denial, disabled rollout, or unavailable admission and allows retry', async () => {
+      const domain = crawlDomain('retry');
+      const admission = vi.spyOn(CrawlerService.prototype, 'enqueuePublisherCrawlRequest');
+      setRequireAuthUser(null);
+      expect((await request(app).post('/api/registry/crawl-request').send({ domain })).status).toBe(401);
+      useCredential(SECONDARY_ID);
+      process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'false';
+      expect((await request(app).post('/api/registry/crawl-request').send({ domain })).status).toBe(503);
+      expect(domainValidation).not.toHaveBeenCalled();
+      expect(admission).not.toHaveBeenCalled();
+
+      process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'true';
+      admission.mockRejectedValueOnce(new Error('database unavailable'));
+      const unavailable = await request(app).post('/api/registry/crawl-request').send({ domain });
+      expect(unavailable.status).toBe(503);
+      expect(unavailable.body.code).toBe('crawl_queue_unavailable');
+      const rows = await pool.query('SELECT id FROM publisher_crawl_requests WHERE publisher_domain = $1', [domain]);
+      expect(rows.rows).toEqual([]);
+
+      const retried = await request(app).post('/api/registry/crawl-request').send({ domain });
+      expect(retried.status).toBe(202);
+      expect(await storedRequest(retried.body.crawl_request_id)).toMatchObject({
+        requester_type: 'user', requested_by_user_id: SECONDARY_ID,
+      });
     });
   });
 
