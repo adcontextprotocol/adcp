@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "attempted_action": {
-      "$ref": "/schemas/enums/media-buy-valid-action.json",
+      "$ref": "/schemas/core/media-buy-available-action-id.json",
       "description": "The action the request mapped to, per the normative action-to-field mapping in update_media_buy task-reference."
     },
     "reason": {

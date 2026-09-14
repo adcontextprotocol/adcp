@@ -35,6 +35,7 @@ import { emitAccountNotificationWebhook } from './webhooks.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
+  UnsupportedReportingFeatureError,
   bindReportingAccountDurably,
   clearReportingReliabilityStore,
   listReportingAccountsDurably,
@@ -667,7 +668,12 @@ function sanitizeNotificationConfigs(configs: NotificationConfigState[]): Array<
   }));
 }
 
-function validationFailure(input: SyncAccountInput, field: string, message: string): Record<string, unknown> {
+function validationFailure(
+  input: SyncAccountInput,
+  field: string,
+  message: string,
+  code = 'VALIDATION_ERROR',
+): Record<string, unknown> {
   return {
     ...(input.account
       ? { account: input.account }
@@ -679,19 +685,29 @@ function validationFailure(input: SyncAccountInput, field: string, message: stri
         }),
     action: 'failed',
     status: 'rejected',
-    errors: [{ code: 'VALIDATION_ERROR', field, message }],
+    errors: [{ code, field, message }],
   };
 }
 
-function reportingConfigurationsAreValid(input: SyncAccountInput): string | undefined {
+/**
+ * A configuration that names a reserved-but-unimplemented capability is a
+ * well-formed request for something this seller does not offer, so it answers
+ * UNSUPPORTED_FEATURE rather than VALIDATION_ERROR.
+ */
+function reportingConfigurationsAreValid(
+  input: SyncAccountInput,
+): { message: string; code: string } | undefined {
   if (input.reporting_delivery_configs === undefined) return undefined;
   if (!Array.isArray(input.reporting_delivery_configs)) {
-    return 'reporting_delivery_configs must be an array';
+    return { message: 'reporting_delivery_configs must be an array', code: 'VALIDATION_ERROR' };
   }
   try {
     validateReportingConfigurations(input.reporting_delivery_configs);
   } catch (error) {
-    return error instanceof Error ? error.message : 'reporting_delivery_configs is invalid';
+    return {
+      message: error instanceof Error ? error.message : 'reporting_delivery_configs is invalid',
+      code: error instanceof UnsupportedReportingFeatureError ? error.code : 'VALIDATION_ERROR',
+    };
   }
   return undefined;
 }
@@ -1601,7 +1617,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       nextAccountState.syncedAt = now;
       const reportingConfigError = reportingConfigurationsAreValid(input);
       if (reportingConfigError) {
-        results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError));
+        results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError.message, reportingConfigError.code));
         continue;
       }
       let reportingCandidates: ReportingMediaBuyCandidate[] | undefined;
@@ -1853,7 +1869,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     }
     const reportingConfigError = reportingConfigurationsAreValid(input);
     if (reportingConfigError) {
-      results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError));
+      results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError.message, reportingConfigError.code));
       continue;
     }
     let reportingCandidates: ReportingMediaBuyCandidate[] | undefined;

@@ -133,9 +133,11 @@ import {
 } from "../services/interaction-analyzer.js";
 import {
   listEscalations,
+  countEscalations,
   getEscalation,
   updateEscalationStatus,
   buildResolutionNotificationMessage,
+  type EscalationCategory,
   type EscalationStatus,
 } from "../../db/escalation-db.js";
 import { guardEscalationResolution } from "../../services/escalation-resolution-guard.js";
@@ -1710,19 +1712,16 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // ============================================
   {
     name: "list_escalations",
-    description: `List escalations that need admin attention, or look up a specific escalation by ID.
-
-Use escalation_id to get details on a specific escalation (any status).
-Use status filter to browse escalations (defaults to open).`,
+    description: "List escalations (default: open), with total_count and next_offset. Use escalation_id for full details at any status.",
     usage_hints:
-      "Use escalation_id for a specific lookup. Use status=open to browse unresolved escalations.",
+      "Show every returned ticket; distinguish total matches from the page shown. Use next_offset for more records.",
     input_schema: {
       type: "object" as const,
       properties: {
         escalation_id: {
           type: "number",
           description:
-            "Look up a specific escalation by ID (ignores status filter)",
+            "Full details for one ID; ignores list filters",
         },
         status: {
           type: "string",
@@ -1735,7 +1734,7 @@ Use status filter to browse escalations (defaults to open).`,
             "expired",
           ],
           description:
-            "Filter by status (default: open). Ignored when escalation_id is provided.",
+            "Status filter (default: open); ignored for ID lookups",
         },
         category: {
           type: "string",
@@ -1748,7 +1747,14 @@ Use status filter to browse escalations (defaults to open).`,
           ],
           description: "Filter by category",
         },
-        limit: { type: "number", description: "Max results (default: 10)" },
+        limit: {
+          type: "integer", minimum: 1, maximum: 25,
+          description: "Page size (default: 10)",
+        },
+        offset: {
+          type: "integer", minimum: 0,
+          description: "Skip matches (default: 0); use next_offset to continue",
+        },
       },
       required: [],
     },
@@ -10057,67 +10063,42 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const status = (input.status as EscalationStatus) || "open";
-      const category = input.category as string | undefined;
-      const limit = (input.limit as number) || 10;
-
-      const escalations = await listEscalations({
-        status,
-        category: category as
-          | "capability_gap"
-          | "needs_human_action"
-          | "complex_request"
-          | "sensitive_topic"
-          | "other"
-          | undefined,
-        limit,
-      });
-
-      if (escalations.length === 0) {
-        return `📭 No ${status} escalations found.`;
+      const category = input.category as EscalationCategory | undefined;
+      const limit = input.limit ?? 10;
+      const offset = input.offset ?? 0;
+      if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > 25) {
+        return "❌ limit must be an integer between 1 and 25.";
+      }
+      if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0) {
+        return "❌ offset must be a non-negative safe integer.";
       }
 
-      const priorityEmoji: Record<string, string> = {
-        urgent: "🚨",
-        high: "⚠️",
-        normal: "",
-        low: "",
+      const [escalations, totalCount] = await Promise.all([
+        listEscalations({ status, category, limit, offset }),
+        countEscalations({ status, category }),
+      ]);
+      // Keep the whole page below the shared tool-context cap. Full requests,
+      // contact details and resolution history remain in the ID lookup above.
+      const compact = (value: string, max: number): string => {
+        const line = value.replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim();
+        return line.length > max ? `${line.slice(0, max - 1)}…` : line;
       };
-
-      let response = `## ${
-        status.charAt(0).toUpperCase() + status.slice(1)
-      } Escalations (${escalations.length})\n\n`;
-
-      for (const esc of escalations) {
-        const emoji = priorityEmoji[esc.priority] || "";
-        response += `### ${emoji} #${esc.id}: ${esc.summary}\n`;
-        response += `**Category**: ${esc.category} | **Priority**: ${esc.priority}\n`;
-        if (esc.user_display_name) {
-          response += `**User**: ${esc.user_display_name}`;
-          if (esc.slack_user_id) {
-            response += ` (<@${esc.slack_user_id}>)`;
-          }
-          response += "\n";
-        }
-        if (esc.original_request) {
-          response += `**Request**: ${esc.original_request.substring(0, 150)}${
-            esc.original_request.length > 150 ? "..." : ""
-          }\n`;
-        }
-        if (esc.addie_context) {
-          response += `**Why escalated**: ${esc.addie_context.substring(
-            0,
-            150,
-          )}${esc.addie_context.length > 150 ? "..." : ""}\n`;
-        }
-        response += `**Created**: ${new Date(
-          esc.created_at,
-        ).toLocaleDateString()}\n`;
-        response += "\n";
-      }
-
-      response += `\n---\nUse \`resolve_escalation\` with the escalation ID to mark as resolved after handling.`;
-
-      return response;
+      const nextOffset = offset + escalations.length;
+      return JSON.stringify({
+        status_filter: status,
+        category_filter: category ?? null,
+        total_count: totalCount,
+        returned_count: escalations.length,
+        offset,
+        next_offset: escalations.length > 0 && nextOffset < totalCount ? nextOffset : null,
+        escalations: escalations.map(esc => ({
+          id: esc.id,
+          priority: esc.priority,
+          category: esc.category,
+          summary: compact(esc.summary, 160),
+          requester: esc.user_display_name ? compact(esc.user_display_name, 80) : null,
+        })),
+      });
     } catch (error) {
       logger.error({ error }, "Error listing escalations");
       return "❌ Failed to list escalations.";

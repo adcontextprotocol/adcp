@@ -339,7 +339,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ completeness, is_authoritative: false, badge_eligible: false,
       badge_eligible_adcp_versions: [], diagnostics: [],
-      provenance: { sdk_version: '14.0.0-rc.33', test_session_id: expect.any(String), agent_build_version: null },
+      provenance: { sdk_version: '14.0.0-rc.35', test_session_id: expect.any(String), agent_build_version: null },
     });
     expect(complyMock.mock.calls[0][1].test_session_id).toBe(res.body.provenance.test_session_id);
     const db = new ComplianceDatabase();
@@ -757,7 +757,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         expect(history.body.runs).toEqual([]);
         const diagnostics = await request(app).get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics`);
         expect(diagnostics.body).toMatchObject({ completeness: 'timed_out', is_authoritative: false,
-          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: '14.0.0-rc.33', agent_build_version: null } });
+          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: '14.0.0-rc.35', agent_build_version: null } });
       }
     } finally {
       revokeBadges.mockRestore();

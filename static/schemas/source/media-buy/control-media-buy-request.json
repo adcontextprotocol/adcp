@@ -75,6 +75,13 @@
       "minimum": 0,
       "description": "Replace the hard aggregate daily cap; null removes it. Numeric changes apply immediately with current-cap-day spend counted and do not redistribute purchase caps."
     },
+    "frequency_cap": {
+      "description": "Replace the shared MediaBuy frequency cap; null removes it. The change applies immediately without resetting counters: qualifying prior exposures still count in the resulting active window. Sellers MUST reject the complete mutation with UNSUPPORTED_FEATURE, before any change, if the cap is outside declared constraints or any active package cannot participate in the resulting shared counter, and MUST NOT clamp it. Requires update_media_buy_frequency_cap in available_actions.",
+      "anyOf": [
+        { "$ref": "/schemas/core/media-buy-frequency-cap.json" },
+        { "type": "null" }
+      ]
+    },
     "budget_cap_timezone": {
       "type": ["string", "null"],
       "minLength": 1,
@@ -129,6 +136,7 @@
     { "required": ["canceled"] },
     { "required": ["total_budget"] },
     { "required": ["daily_budget_cap"] },
+    { "required": ["frequency_cap"] },
     { "required": ["budget_cap_timezone"] },
     { "required": ["budget_allocation"] },
     { "required": ["pacing"] },
@@ -150,6 +158,7 @@
             { "required": ["paused"] },
             { "required": ["total_budget"] },
             { "required": ["daily_budget_cap"] },
+            { "required": ["frequency_cap"] },
             { "required": ["budget_cap_timezone"] },
             { "required": ["budget_allocation"] },
             { "required": ["pacing"] },

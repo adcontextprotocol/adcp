@@ -22,6 +22,11 @@ Per-purchase flight dates, `measurement_terms`, and `performance_standards` may 
   "pricing_version": "pricing-42",
   "daily_budget_cap": 5000,
   "budget_cap_timezone": "America/New_York",
+  "frequency_cap": {
+    "max_impressions": 5,
+    "per": "individuals",
+    "window": { "interval": 7, "unit": "days" }
+  },
   "purchases": [
     {
       "product_id": "product_display_standard",
@@ -35,9 +40,25 @@ Per-purchase flight dates, `measurement_terms`, and `performance_standards` may 
 }
 ```
 
-The media-buy `daily_budget_cap` is a hard aggregate ceiling and does not allocate its value among purchases. A purchase-level cap is an optional subordinate ceiling, not a reservation. Every cap shares the accepted media-buy `budget_cap_timezone`; sellers reject undeclared scopes with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
+The root `frequency_cap` uses one counter across all purchases. A
+`targeting_overlay.frequency_cap` inside a purchase instead owns an independent
+package counter; when both exist, both must permit delivery. Every selected
+product must advertise aggregate participation through
+`media_buy_support.frequency_cap`. Sellers reject an unadvertised aggregate cap
+or an incompatible product mix atomically with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature)
+before any mutation, and never clamp it. Buyers send the root field only when the seller advertises
+`aggregate_frequency_capping`; root caps are max-impression-only in 3.2.
+
+The media-buy `daily_budget_cap` is a hard aggregate ceiling and does not allocate its value among purchases. A purchase-level budget cap is an optional subordinate ceiling, not a reservation. Every budget cap shares the accepted media-buy `budget_cap_timezone`; sellers reject undeclared budget-cap scopes with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
 
 Success returns the MediaBuy identity and an `accepted_proposal` snapshot. Its typed `commercial_terms` preserve the exact feed and pricing versions, product and format selections, catalogs, budgets, targeting, flight, billing, and reporting commitments; `terms_digest` binds that envelope for governance and audit. The separate `purchase_bindings[]` maps each zero-based purchase position to its seller-assigned `package_id`, which SDKs use for later creative assignment without placing execution IDs inside the immutable digest. The seller creates this snapshot even though the buyer did not negotiate first, giving every MediaBuy the same commercial history for later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals).
+
+Each purchase uses request-only `ProductPurchaseInput`. Its
+`targeting_overlay` has three states per dimension: omission inherits the
+selected product's configured/default value, a non-null value replaces it, and
+`null` explicitly suppresses it. A clear cannot remove inherent product scope.
+The accepted proposal uses strict `ProductPurchase`; it records the resolved
+effective targeting with cleared dimensions omitted and never carries `null`.
 
 A completed purchase MAY include `warnings[]` for non-blocking observations at commitment, such as a material inventory shortfall forecast. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before commitment. Warnings never appear on failed or submitted arms.
 

@@ -78,6 +78,10 @@
           "description": "Accepted hard aggregate daily spend ceiling, denominated in currency. Sellers MUST echo it whenever the request set an aggregate daily cap.",
           "minimum": 0
         },
+        "frequency_cap": {
+          "$ref": "/schemas/core/media-buy-frequency-cap.json",
+          "description": "Accepted shared MediaBuy frequency cap. Sellers MUST echo it whenever the request or executed proposal set one."
+        },
         "budget_cap_timezone": {
           "type": "string",
           "description": "Accepted IANA timezone shared by every aggregate and package daily cap. Sellers MUST echo it whenever any daily cap is set on the media buy."

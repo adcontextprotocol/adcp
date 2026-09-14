@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-discovery-criteria.json",
   "title": "Product Discovery Criteria",
-  "description": "Structured criteria shared by product listing and proposal requests. Offer filters decide which commercial offers may be returned; targeting_overlay constrains deliverable inventory; required_overlay_support requires package-level targeting capability for values the buyer will supply later; acceptance_context supplies facts for advisory seller-policy preflight.",
+  "description": "Structured criteria shared by product listing and proposal requests. Offer filters decide which commercial offers may be returned; targeting_overlay constrains deliverable inventory; required_overlay_support requires package-level targeting capability; required_media_buy_support requires participation in shared MediaBuy controls; acceptance_context supplies facts for advisory seller-policy preflight.",
   "type": "object",
   "properties": {
     "product_ids": {
@@ -20,9 +20,17 @@
       "$ref": "/schemas/core/targeting.json",
       "description": "Concrete delivery constraints the buyer expects to carry into create_media_buy. Returned product pricing and forecasts MUST reflect the effective targeting. A product that cannot apply the request exactly is omitted or returned as a distinct configured product with sparse Product.targeting_resolution modifications; absence of that resolution means exact acceptance."
     },
+    "media_buy_frequency_cap": {
+      "$ref": "/schemas/core/media-buy-frequency-cap.json",
+      "description": "Concrete aggregate max-impression cap expected at the MediaBuy root. Every returned product must participate in one shared counter for this exact value. Proposals carry it in commercial_terms.frequency_cap."
+    },
     "required_overlay_support": {
       "$ref": "/schemas/core/targeting-overlay-requirements.json",
       "description": "Minimum product-scoped targeting dimensions the buyer must be able to select independently on packages later. This requests capability, not current values, value-specific availability, a forecast for every later value, or one product per value."
+    },
+    "required_media_buy_support": {
+      "$ref": "/schemas/core/media-buy-support-requirements.json",
+      "description": "Minimum product participation in shared MediaBuy-level controls. For frequency caps, every returned product is promising composability in one aggregate seller counter for each requested per unit."
     },
     "outcome_target": {
       "allOf": [{ "$ref": "/schemas/media-buy/outcome-target.json" }],

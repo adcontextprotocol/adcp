@@ -81,6 +81,21 @@
       "minimum": 1,
       "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable."
     },
+    "consumer_mismatch_escalation_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum interval after a CONSUMER_STATUS_MISMATCH issue's opened_at during which the seller may keep that issue at a non-escalated recommended_action. After it, the issue MUST be action_required with a contact_ recommended_action naming the diagnosed responsible_party. Declaring it requires operations_contact so the escalation has a destination. Absence means the seller publishes no escalation commitment; it never means an unbounded one."
+    },
+    "operations_contact": {
+      "type": "object",
+      "description": "Optional non-secret human escalation path for reporting issues the protocol cannot resolve. It is display metadata for an operator, not an AdCP endpoint: agents MUST NOT dereference, probe, or send protocol traffic to these values, and they carry no authorization. Required when consumer_mismatch_escalation_seconds is advertised.",
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "maxLength": 2048, "description": "HTTPS page a human uses to open or track a reporting issue, such as a support portal or status page. Same hardened origin shape as the offering document URIs: never an IP literal, userinfo URL, loopback host, AdCP task endpoint, webhook target, or credentialed link." },
+        "email": { "type": "string", "format": "email", "maxLength": 254, "description": "Monitored operations mailbox for reporting escalations. A role address, not an individual." }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
     "reliability_statistics": {
       "type": "array",
       "items": { "$ref": "/schemas/core/reporting-reliability-statistics.json" },
@@ -114,6 +129,10 @@
     {
       "if": { "required": ["consumer_status_task"] },
       "then": { "required": ["reliable_reporting_version", "revision_content_task"] }
+    },
+    {
+      "if": { "required": ["consumer_mismatch_escalation_seconds"] },
+      "then": { "required": ["consumer_status_task", "operations_contact"] }
     },
     {
       "if": { "properties": { "reliable_reporting_version": { "const": "1.0" } }, "required": ["reliable_reporting_version"] },
@@ -256,6 +275,7 @@
     "unique_offerings": "offering_id values MUST be unique. Each installed configuration MUST exactly match one offering's feed, report_definition_id, reporting profile, schedule, requested finality, reconciliation mode, pattern, transport, orchestration, destination mode, and every applicable provider, access_mode, format, producer_identity, and reader-compatibility constraint.",
     "tier_boundaries": "Core is the only required tier and MUST be implementable with no destination, materialization, manifest, billing receipt code, bespoke webhook, or Managed external-materialization canonicalization code or contract; every Core revision nevertheless requires fixed RFC 8785/JCS revision-binding canonicalization. Core sellers expose get_reporting_status. A seller advertising consumer_status_task additionally accepts sync_reporting_status through ordinary task transport; the active migration notice makes that field mandatory only in the next eligible minor after the notice window. An offering without method is delivered through existing get_media_buy_delivery and reporting_webhook transports. An offering whose method names file_transfer, dataset_share, or warehouse_materialization is valid only when managed_delivery is true. An offering with reconciliation_mode consumer_receipt must declare a managed method and reconciled_billing. Reconciled Billing receipt acceptance means only matching digest/version/row-count/control-total evidence, never invoice/price/fee approval, dispute waiver, posting authorization, or payment due; rejection means evidence discrepancy only. readiness_notification requires managed_delivery; status_notification and ledger_notification are optional Core-compatible invalidations. A seller with no outbound reporting push still passes Core conformance.",
     "product_applicability": "This seller-wide catalog declares possible atomic combinations, not universal applicability to every product. Product.reporting_capabilities.reporting_delivery_offering_ids declares product/package eligibility; sync_accounts validation applies account-specific constraints, including exact upstream calendar compatibility; reporting obligations freeze effective media-buy coverage.",
+    "consumer_status_escalation": "consumer_mismatch_escalation_seconds requires both consumer_status_task and operations_contact; operations_contact MAY be advertised alone by a seller that publishes a contact without committing to a clock. The window is measured from the issue's opened_at, not from the current poll, so re-emission cannot reset it. operations_contact is inert human-facing metadata: agents surface it to an operator and MUST NOT fetch the url, send protocol requests to it, or treat either value as a credential, a callback, or evidence of agent identity. Publishing a contact does not shorten any seller obligation, and omitting one does not excuse an unresolved mismatch. The url is constrained to the same hardened public-origin shape as the offering document URIs so that never-dereference is true by construction rather than by assertion.",
     "reliability_statistics": "Each reliability_statistics offering_id MUST name exactly one offerings entry and occur at most once. Counts and percentiles follow reporting-reliability-statistics.json; a long declared delivery_sla never substitutes for disclosure of observed publication delay and adjustment behavior.",
     "reliable_reporting_discovery": "Reliable Reporting 1.0 is supported if and only if reliable_reporting_version is 1.0, supported is true, and the enclosing capability document contains media_buy.reporting_delivery in experimental_features. Such sellers use reporting-definition contract 1.1 and implement checkpoint/adjustment fields even though those fields remain schema-optional for compatibility with the preceding experimental managed-reporting shape. managed_delivery and reconciled_billing then identify optional tiers; offering and product applicability still determine whether a concrete feed is available."
   },

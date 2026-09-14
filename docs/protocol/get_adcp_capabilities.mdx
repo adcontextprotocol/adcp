@@ -564,6 +564,57 @@ This capability is about parse and validation support, never commercial willingn
 
 `timezone_basis: "account"` uses the selected `Account.timezone`, allowing two accounts on the same seller to have different cap days. `timezone_basis: "fixed"` requires `fixed_timezone` and uses that feature-specific boundary for every buy. A buyer override is media-buy-level and applies to every cap on that buy. The accepted effective timezone is echoed as `budget_cap_timezone`; DST transition dates remain one calendar day carrying the full cap. Billing and reporting timezones remain independently explicit and MUST NOT be inferred from the cap basis.
 
+#### frequency_capping
+
+`frequency_capping` retains its legacy meaning: the seller honors package-level
+caps, with an independent counter per package, and rejects caps it cannot
+enforce rather than silently dropping them. A cap with one counter shared
+across every package in a MediaBuy is advertised by the separate, additive
+`aggregate_frequency_capping` object, so older buyers never mistake a root-only
+seller for one that accepts package caps.
+
+```json
+{
+  "media_buy": {
+    "frequency_capping": {
+      "supported_per_units": ["individuals", "households"],
+      "supported_window_units": ["hours", "days", "campaign"]
+    },
+    "aggregate_frequency_capping": {
+      "supported_control_modes": ["max_impressions"],
+      "supported_per_units": ["individuals", "households"],
+      "max_impressions_constraints": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "window_constraints": [
+        { "unit": "hours", "minimum_interval": 1, "maximum_interval": 24 },
+        { "unit": "days", "allowed_intervals": [1, 7, 30] },
+        { "unit": "campaign", "allowed_intervals": [1] }
+      ]
+    }
+  }
+}
+```
+
+Package execution requires either broad
+`Product.overlay_support.frequency_cap: true` or structured
+`Product.overlay_support.frequency_cap_support`. Product constraints may narrow
+but never broaden seller-wide support: omitted per units inherit
+`supported_per_units`, and omitted window or suppression constraints inherit
+`supported_window_units` with no interval restriction. Each count or duration
+constraint is either an exact preset list or an inclusive range.
+`mutable_fields` distinguishes count updates from window or entity changes, and
+`[]` means create-only.
+
+Aggregate execution requires `Product.media_buy_support.frequency_cap: true` on
+every selected product, and every product's resolved `supported_per_units` must
+include the root cap's `per` value. The seller-wide aggregate object must
+declare its complete executable domain; product detail may only inherit or
+narrow it. Root caps are max-impression-only in 3.2; package caps may also use
+suppression. Scope is determined by field location, not by a `FrequencyCap`
+discriminator.
+
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
 

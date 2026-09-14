@@ -1934,7 +1934,7 @@
         },
         "frequency_capping": {
           "type": "object",
-          "description": "Frequency capping capabilities. Presence of this object indicates the seller honors targeting.frequency_cap on packages and MUST reject caps it cannot enforce rather than silently dropping them. Buyers SHOULD inspect supported_per_units and supported_window_units before submitting caps; sellers without these sub-fields populated MAY accept any reach-unit / duration-unit combination they can enforce. Per-product overrides (for sellers with mixed addressable/non-addressable inventory) are a likely follow-up — file a separate RFC if needed.",
+          "description": "Seller-wide package frequency-capping infrastructure. Presence means the seller honors targeting_overlay.frequency_cap on packages, with an independent counter per package, and MUST reject caps it cannot enforce rather than silently dropping them. Product.overlay_support is the binding per-product declaration. A cap whose single counter spans every package in a MediaBuy is advertised separately through aggregate_frequency_capping.",
           "properties": {
             "supported_per_units": {
               "type": "array",
@@ -1956,6 +1956,10 @@
             }
           },
           "additionalProperties": true
+        },
+        "aggregate_frequency_capping": {
+          "$ref": "/schemas/core/media-buy-frequency-cap-capability.json",
+          "description": "Seller-wide support for a maximum-impression cap whose single counter is shared across every package in a MediaBuy. Presence is required before a buyer sends a root frequency_cap. Products additionally declare media_buy_support.frequency_cap and any narrower constraints."
         },
         "budget_capping": {
           "type": "object",

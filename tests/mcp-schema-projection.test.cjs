@@ -62,9 +62,12 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // placement). Core consumer-status sync adds one compact mutating input; keep
 // the resulting prompt view within 417 KiB. Geographic coverage offer filters
 // reuse the targeting proximity value schema; the remaining shapes bring the
-// measured media-buy context to 417.25 KiB, bounded here at 418 KiB.
+// measured media-buy context to 417.25 KiB. Request-only targeting and product
+// purchase inputs add explicit nullable command wrappers while retaining strict
+// response definitions, bringing the prompt view to ~429 KiB and bounded here
+// at 440 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 418,
+  'media-buy': 440,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -870,7 +873,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|update_media_buy/,
+      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }
   }

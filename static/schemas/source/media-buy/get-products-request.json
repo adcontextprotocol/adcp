@@ -169,9 +169,17 @@
       "$ref": "/schemas/core/targeting.json",
       "description": "Concrete delivery constraints the buyer expects to carry into create_media_buy. Buyers SHOULD use this field instead of putting equivalent exact targeting only in brief prose. Sellers evaluate these constraints during discovery and scope returned pricing and forecasts to the effective targeting. If a product cannot honor the request exactly, the seller may omit it or return a request-scoped configured product with Product targeting_resolution modifications. Absence of Product targeting_resolution means exact acceptance of this structured overlay; it does not confirm how targeting in the brief was interpreted. On refine, presence is complete replacement state for returned configurations; when omitted, each referenced product's bound targeting remains in force."
     },
+    "media_buy_frequency_cap": {
+      "$ref": "/schemas/core/media-buy-frequency-cap.json",
+      "description": "Concrete aggregate max-impression cap intended for the MediaBuy root. Every returned product must participate in one shared counter for this exact value. Legacy proposals echo it as proposals[].frequency_cap; direct buyers repeat it at purchase."
+    },
     "required_overlay_support": {
       "$ref": "/schemas/core/targeting-overlay-requirements.json",
       "description": "Minimum product-scoped targeting dimensions the buyer must be able to set independently on packages later. This requests selectable capability, not current targeting values, value-specific availability or forecasts, and not one product per possible value. A requirement true matches support true or any valid support object; an object requirement matches support true or an object containing every requested boolean and requested array subset. The backward-compatible daypart_targets support true is the exception: it satisfies inventory_local requirements only, not iana requirements. Unrequested object fields and numeric limits do not participate. Missing or unknown requirement fields do not match. Seller limit fields are response-only and cannot be requested here. On refine, presence is complete replacement state; when omitted, each referenced product's bound future-support requirements remain in force."
+    },
+    "required_media_buy_support": {
+      "$ref": "/schemas/core/media-buy-support-requirements.json",
+      "description": "Minimum product participation in shared MediaBuy-level controls. For a frequency cap, every returned product must be composable in one seller-maintained aggregate counter for every requested per unit. On refine, presence is complete replacement state."
     },
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
@@ -180,7 +188,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, list_applications MUST be included when a property or collection list is in the effective targeting, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not either decision receipt. Response-level brief targeting confirmation is not a projected product field.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, media_buy_support MUST be included when required_media_buy_support or media_buy_frequency_cap was requested, list_applications MUST be included when a property or collection list is in the effective targeting, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not either decision receipt. Response-level brief targeting confirmation is not a projected product field.",
       "minItems": 1,
       "items": {
         "anyOf": [
@@ -198,6 +206,7 @@
               "included_signals",
               "signal_targeting_options",
               "overlay_support",
+              "media_buy_support",
               "targeting_resolution",
               "collections",
               "collection_targeting_allowed",
@@ -230,7 +239,7 @@
     },
     "if_wholesale_feed_version": {
       "type": "string",
-      "description": "Opaque wholesale_feed_version token returned by a prior wholesale-mode get_products response from this agent. Only valid when buying_mode is wholesale. When provided, the seller compares against its current wholesale product feed version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, wholesale_feed_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog) for cache_scope: 'public'; that tuple plus account identity for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/wholesale-feed-webhooks.md for the full sync pattern."
+      "description": "Opaque wholesale_feed_version token returned by a prior wholesale-mode get_products response from this agent. Only valid when buying_mode is wholesale. When provided, the seller compares against its current wholesale product feed version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, wholesale_feed_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, targeting_overlay, media_buy_frequency_cap, required_overlay_support, required_media_buy_support, deprecated property_list, catalog) for cache_scope: 'public'; that tuple plus account identity for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/wholesale-feed-webhooks.md for the full sync pattern."
     },
     "if_pricing_version": {
       "type": "string",

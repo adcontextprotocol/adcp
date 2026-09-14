@@ -1,0 +1,369 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1reporting-consumer-status.json"
+          },
+          {
+            "not": {
+              "required": [
+                "recorded_at"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "required": [
+    "account",
+    "idempotency_key",
+    "statuses"
+  ],
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id"
+          ]
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "sandbox": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:core/reporting-consumer-status.json": {
+      "type": "object",
+      "properties": {
+        "reporting_status_id": {
+          "type": "string"
+        },
+        "supersedes_reporting_status_id": {
+          "type": "string"
+        },
+        "delivery_config_id": {
+          "type": "string"
+        },
+        "delivery_config_version": {
+          "type": "integer"
+        },
+        "report_definition_id": {
+          "type": "string"
+        },
+        "period": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "string"
+            },
+            "end": {
+              "type": "string"
+            },
+            "source_timezone": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "source_timezone"
+          ]
+        },
+        "reporting_obligation_id": {
+          "type": "string"
+        },
+        "reporting_revision_id": {
+          "type": "string"
+        },
+        "observed_revision_content_sha256": {
+          "type": "string"
+        },
+        "consumer_status": {
+          "enum": [
+            "received",
+            "obligation_missing",
+            "revision_missing",
+            "unreadable"
+          ]
+        },
+        "status_as_of": {
+          "type": "string"
+        },
+        "failure_code": {
+          "enum": [
+            "access_denied",
+            "resource_not_found",
+            "integrity_mismatch",
+            "reader_incompatible",
+            "transport_failed"
+          ]
+        },
+        "consumer_commit_ref": {
+          "type": "string"
+        },
+        "seller_ledger_snapshot_id": {
+          "type": "string"
+        },
+        "seller_ledger_as_of": {
+          "type": "string"
+        },
+        "recorded_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reporting_status_id",
+        "delivery_config_id",
+        "delivery_config_version",
+        "report_definition_id",
+        "period",
+        "consumer_status",
+        "status_as_of"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "received"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "observed_revision_content_sha256"
+            ],
+            "not": {
+              "required": [
+                "failure_code"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "obligation_missing"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reporting_obligation_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "reporting_revision_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "revision_missing"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reporting_revision_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "failure_code"
+            ],
+            "not": {
+              "required": [
+                "observed_revision_content_sha256"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "seller_ledger_snapshot_id"
+            ]
+          },
+          "then": {
+            "required": [
+              "seller_ledger_as_of"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "seller_ledger_as_of"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

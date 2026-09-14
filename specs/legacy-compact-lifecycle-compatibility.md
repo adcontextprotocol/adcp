@@ -58,6 +58,32 @@ every 3.2 `product-discovery-criteria` field. Unsupported structured criteria
 MUST be rejected by JSON Pointer before calling the legacy peer; they MUST NOT
 be dropped into prose.
 
+### Targeting mutation compatibility
+
+Native 3.2 create and update requests use a request-only targeting schema with
+three states per replaceable dimension: omitted inherits on create or preserves
+on update, non-null replaces, and `null` clears. Discovery, capability,
+commercial-snapshot, and package-readback schemas stay strict and non-null;
+cleared dimensions are omitted from effective state.
+
+Released 3.0 and 3.1 targeting overlays do not have this nested patch contract.
+An adapter projecting a 3.2 update to those versions MUST first obtain the
+authoritative effective targeting state, apply every supplied 3.2 dimension
+atomically, omit dimensions explicitly cleared with `null`, and send the
+complete legacy replacement. It MUST reject before dispatch when authoritative
+state cannot be obtained or when the result cannot be represented exactly.
+Locally cached state is not authoritative merely because it came from an
+earlier successful write.
+
+Released 2.5 uses a different targeting vocabulary. An adapter MAY map a
+supported 3.2 geography clear to the corresponding 2.5 explicit empty-list
+representation only when the served 2.5 contract defines that representation
+as clearing the same constraint. There is no lossless 2.5 representation for
+3.2 `audience_include` or `audience_exclude`; adapters MUST reject those paths
+as unsupported rather than dropping them. SDK convenience APIs must preserve
+the JSON distinction between an absent member and a member whose value is
+`null`.
+
 ## Legacy request preservation on a 3.2 seller
 
 An advertised legacy facade serves the requested legacy contract. The raw

@@ -35,6 +35,24 @@ if (!globalWithBaseline[ENV_BASELINE_KEY]) {
   Object.assign(process.env, baseline);
 }
 
+// Developer shells (Conductor's `.env.local`, local `.env` files) commonly
+// export dev-login and break-glass admin credentials. `server/src/middleware/
+// auth.ts` reads these at module load: DEV_USER_EMAIL + DEV_USER_ID flip
+// `DEV_MODE_ENABLED`, which bypasses the WorkOS session path every auth
+// unit test exercises, and ADMIN_API_KEY / ADMIN_EMAILS widen platform-admin
+// checks. CI never sets them, so a suite that passes there fails locally
+// (#7478). Scrub them so the unit suite behaves the same in every shell;
+// files that exercise these boundaries set them explicitly in `vi.hoisted()`.
+for (const key of [
+  'DEV_USER_EMAIL',
+  'DEV_USER_ID',
+  'ALLOW_DEV_MODE_IN_PROD',
+  'ADMIN_API_KEY',
+  'ADMIN_EMAILS',
+]) {
+  delete process.env[key];
+}
+
 process.env.REVENUE_TRACKING_DISABLED = 'true';
 process.env.NODE_ENV = 'test';
 
