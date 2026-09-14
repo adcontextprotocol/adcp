@@ -158,12 +158,14 @@ Enumeration audit:
 ### Recovery and deployment handoff
 
 1. Obtain human review and land the JSONL fix before recovery. Coordinate
-   publication with `conductor/fix-release-publication-gate`; this change
+   publication with [the publication gate PR #7510](https://github.com/adcontextprotocol/adcp/pull/7510);
+   require independent combined validation and old-writer quiescence. This change
    performs no live deployment, release, tag, signing, workflow rerun, or R2
    mutation.
-2. Once both fixes are present, the coordinated recovery path is an explicit
-   `release.yml` workflow dispatch on current tested main, using the original
-   approved `RELEASE_SHA` for each version. The original release commits are:
+2. Once both fixes are present, rc.3 recovery uses an explicitly authorized
+   `release.yml` workflow dispatch on current tested main, using its original
+   approved `RELEASE_SHA`. This dispatch requires main's package version still
+   to match rc.3. The original release commits are:
 
    | Version | Release commit |
    | --- | --- |
@@ -172,10 +174,23 @@ Enumeration audit:
    | `3.2.0-rc.2` | `929ceb16090b2f11ad20348b889780097173b00a` |
    | `3.2.0-rc.3` | `71f9cd5414454e94ccfef87ce25777ead6fad228` |
 
+   Older rc.0–rc.2 cannot use that dispatch. After separate explicit maintainer
+   authorization, run the scoped helper from fresh verified current main for
+   each version independently: set `TESTED_SHA` to that tested main SHA,
+   `PUBLICATION_BRANCH=main`, and `RELEASE_SHA` to the original approved tag
+   target above, then invoke `backfill-cdn-artifacts.sh --version VERSION
+   --skip-latest` with the normal bucket/endpoint configuration. Do not use
+   `--build-latest` or rerun an old-code workflow. Each original tag and published
+   GitHub prerelease must already exist with the correct target/metadata, and all
+   four GitHub tuple files must match the unchanged tagged/local bytes. Missing
+   or conflicting release authority requires a separately reviewed recovery plan.
+
    Restore the four keys above from their existing committed blobs. Check the exact
    release commit and any required release approvals. Recheck remote objects:
    preserve matching objects, stop on differing bytes or an ambiguous read
-   failure, and upload only confirmed missing objects. Do not regenerate
+   failure, and create only confirmed missing objects with `If-None-Match: *`.
+   Audit all committed schema/compliance and protocol paths for each version
+   after its publication, including any partial attempt. Do not regenerate
    artifacts, overwrite immutable bytes, or use an unrestricted bulk backfill
    as a substitute for approved recovery.
 3. Set the JSONL MIME type and immutable cache policy above. The fencing work's

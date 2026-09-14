@@ -23,6 +23,10 @@ const TYPES = {
   txt: 'text/plain; charset=utf-8',
 };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+// The JSONL fix can land before or after the publication gate. Only the test
+// fixture adapts; production must never regain live unscoped bulk publication.
+const FENCED_PUBLICATION = fs.existsSync(path.join(ROOT, 'scripts/check-release-state.cjs'));
+const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
 
 // Execute the real shell publisher with an isolated AWS boundary. Apply AWS's
 // ordered include/exclude globs to actual nested files, recording upload bytes
@@ -32,8 +36,37 @@ function awsStub() {
   const path = require('node:path');
   const args = process.argv.slice(2);
   const [service, operation, source, destination] = args;
-  if (service !== 's3' || !['sync', 'cp'].includes(operation)) process.exit(2);
   const value = flag => args[args.indexOf(flag) + 1];
+  const uploads = [];
+  const record = () => fs.appendFileSync(process.env.AWS_TEST_LOG, JSON.stringify({ args, uploads }) + '\n');
+  const objects = JSON.parse(fs.readFileSync(process.env.AWS_TEST_OBJECTS, 'utf8'));
+  if (service === 's3api') {
+    const key = `s3://${value('--bucket')}/${value('--key')}`;
+    if (operation === 'head-object') {
+      record();
+      if (!Object.hasOwn(objects, key)) {
+        console.error('An error occurred (404) when calling HeadObject');
+        process.exit(1);
+      }
+    } else if (operation === 'put-object') {
+      if (value('--if-none-match') !== '*') throw Error('Unconditional immutable write');
+      if (Object.hasOwn(objects, key)) throw Error('PreconditionFailed');
+      const upload = { key, body: fs.readFileSync(value('--body')).toString('base64'),
+        contentType: value('--content-type'), cacheControl: value('--cache-control') };
+      objects[key] = upload;
+      fs.writeFileSync(process.env.AWS_TEST_OBJECTS, JSON.stringify(objects));
+      uploads.push(upload);
+      record();
+    } else throw Error(`Unexpected s3api operation: ${operation}`);
+    return;
+  }
+  if (service !== 's3' || !['sync', 'cp'].includes(operation)) throw Error(`Unexpected AWS command: ${args}`);
+  if (operation === 'cp' && source.startsWith('s3://')) {
+    if (!Object.hasOwn(objects, source)) throw Error(`Missing fixture object: ${source}`);
+    fs.writeFileSync(destination, Buffer.from(objects[source].body, 'base64'));
+    record();
+    return;
+  }
   const filters = [];
   for (let i = 4; i < args.length; i++) {
     if (args[i] === '--include' || args[i] === '--exclude') {
@@ -42,28 +75,63 @@ function awsStub() {
       filters.push({ include, regex: new RegExp(`^${regex}$`) });
     }
   }
-  const uploads = [];
-  function visit(file, relative = '') {
-    const stat = fs.lstatSync(file);
-    if (stat.isSymbolicLink()) return;
-    if (stat.isDirectory()) {
-      for (const name of fs.readdirSync(file)) visit(path.join(file, name), relative ? `${relative}/${name}` : name);
-    } else {
-      let included = true;
-      for (const filter of filters) if (filter.regex.test(relative)) included = filter.include;
-      if (included && !args.includes('--dryrun')) uploads.push({
-        key: relative ? `${destination}/${relative}` : destination,
-        body: fs.readFileSync(file).toString('base64'),
-        contentType: value('--content-type'),
-        cacheControl: value('--cache-control'),
-      });
+  function upload(file, relative = '') {
+    let included = true;
+    for (const filter of filters) if (filter.regex.test(relative)) included = filter.include;
+    if (included && !args.includes('--dryrun')) uploads.push({
+      key: relative ? `${destination}/${relative}` : destination,
+      body: fs.readFileSync(file).toString('base64'),
+      contentType: value('--content-type'),
+      cacheControl: value('--cache-control'),
+    });
+  }
+  function visit(directory, prefix = '') {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) visit(file, relative);
+      else if (entry.isFile()) upload(file, relative);
     }
   }
-  visit(source);
-  fs.appendFileSync(process.env.AWS_TEST_LOG, JSON.stringify({ args, uploads }) + '\n');
+  if (operation === 'sync' || args.includes('--recursive')) visit(source);
+  else upload(source);
+  record();
 }
 
-function fixture(t) {
+// Fake only remote authority; local tracked-file and tuple comparisons use git.
+function gitStub() {
+  const args = process.argv.slice(2);
+  if (args[0] === 'ls-remote') {
+    const ref = args.find(arg => arg.startsWith('refs/heads/') || arg.startsWith('refs/tags/'));
+    const allowed = ['refs/heads/main', ...JSON.parse(process.env.TEST_VERSIONS).map(v => `refs/tags/v${v}`)];
+    if (!allowed.includes(ref)) throw Error(`Unexpected remote ref: ${ref}`);
+    console.log(`${process.env.TESTED_SHA}\t${ref}`);
+    return;
+  }
+  if (!['diff', 'ls-files', 'cat-file'].includes(args[0])) throw Error(`Unexpected git command: ${args}`);
+  const result = require('node:child_process').spawnSync(process.env.TEST_REAL_GIT, args, { stdio: 'inherit' });
+  process.exit(result.status ?? 1);
+}
+
+function ghStub() {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const args = process.argv.slice(2);
+  const version = JSON.parse(process.env.TEST_VERSIONS).find(v => `v${v}` === args[2]);
+  if (args[0] !== 'release' || !version) throw Error(`Unexpected gh command: ${args}`);
+  const names = ['tgz', 'tgz.sha256', 'tgz.sig', 'tgz.crt'].map(suffix => `${version}.${suffix}`);
+  if (args[1] === 'view') {
+    console.log(JSON.stringify({ tagName: `v${version}`, isDraft: false, isPrerelease: true,
+      assets: names.map(name => ({ name })) }));
+  } else if (args[1] === 'download') {
+    const name = names.find(name => name === args[args.indexOf('--pattern') + 1]);
+    if (!name) throw Error('Unexpected release asset');
+    fs.copyFileSync(path.join('dist/protocol', name), path.join(args[args.indexOf('--dir') + 1], name));
+  } else throw Error(`Unexpected release operation: ${args[1]}`);
+  fs.appendFileSync(process.env.GH_TEST_LOG, JSON.stringify(args) + '\n');
+}
+
+function fixture(t, publication = false) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-cdn-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const write = (name, bytes) => {
@@ -71,44 +139,84 @@ function fixture(t) {
     fs.writeFileSync(path.join(dir, name), bytes);
   };
   write('scripts/verify-cdn-artifacts-cutover.mjs', fs.readFileSync(path.join(ROOT, 'scripts/verify-cdn-artifacts-cutover.mjs')));
-  write('bin/aws', `#!${process.execPath}\n(${awsStub.toString()})();\n`);
-  fs.chmodSync(path.join(dir, 'bin/aws'), 0o755);
+  const executable = (name, stub) => {
+    write(`bin/${name}`, `#!${process.execPath}\n(${stub.toString()})();\n`);
+    fs.chmodSync(path.join(dir, 'bin', name), 0o755);
+  };
+  executable('aws', awsStub);
+  write('objects.json', '{}');
+  write('gh.jsonl', '');
   for (const version of [...VERSIONS, 'latest']) {
     const sourceVersion = version === 'latest' ? VERSIONS.at(-1) : version;
     // Reuse the immutable regression fixtures, without a second checked-in copy.
     write(`dist/compliance/${version}/${ROWS}`, fs.readFileSync(path.join(ROOT, `dist/compliance/${sourceVersion}/${ROWS}`)));
     write(`dist/compliance/${version}/index.json`, JSON.stringify({ version }));
+    write(`dist/schemas/${version}/index.json`, '{}');
+    for (const suffix of ['tgz', 'tgz.sha256', 'tgz.sig', 'tgz.crt']) write(`dist/protocol/${version}.${suffix}`, 'fixture');
     for (const ext of Object.keys(TYPES).filter(ext => ext !== 'jsonl')) {
       write(`dist/compliance/${version}/nested directory/file.${ext}`, 'fixture\n');
     }
   }
   write('dist/compliance/storyboard-runner-options.js', 'excluded runtime file');
-  write('dist/schemas/3.2.0-rc.3/index.json', '{}');
-  write('dist/schemas/latest/index.json', '{}');
   write('dist/schemas/index.json', '{}');
   write('dist/schemas/latest.json', '{}');
-  for (const version of ['3.2.0-rc.3', 'latest']) {
-    for (const suffix of ['tgz', 'tgz.sha256', 'tgz.sig', 'tgz.crt']) write(`dist/protocol/${version}.${suffix}`, 'fixture');
+  if (FENCED_PUBLICATION) {
+    write('package.json', JSON.stringify({ version: VERSIONS.at(-1) }));
+    const git = args => execFileSync(REAL_GIT, args, { cwd: dir, encoding: 'utf8' }).trim();
+    git(['init', '-q']);
+    git(['add', 'dist', 'package.json']);
+    git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null',
+      'commit', '-qm', 'Approved fixture release']);
+    write('tested-sha', git(['rev-parse', 'HEAD']));
+    executable('git', gitStub);
+    executable('gh', ghStub);
+    // A version-scoped publisher must use tracked assets, not every local file.
+    if (publication) for (const version of VERSIONS) write(`dist/compliance/${version}/untracked.jsonl`, 'untracked');
   }
   return { dir, write };
 }
 
 function publish(dir, flags = []) {
   const log = path.join(dir, 'aws.jsonl');
+  fs.writeFileSync(log, '');
+  const testedSha = FENCED_PUBLICATION ? fs.readFileSync(path.join(dir, 'tested-sha'), 'utf8') : undefined;
+  const authority = FENCED_PUBLICATION ? {
+    TESTED_SHA: testedSha, RELEASE_SHA: testedSha,
+    PUBLICATION_BRANCH: 'main', TEST_VERSIONS: JSON.stringify(VERSIONS), TEST_REAL_GIT: REAL_GIT,
+    GH_TEST_LOG: path.join(dir, 'gh.jsonl'), RUNNER_TEMP: dir,
+  } : {};
   const stdout = execFileSync('bash', [path.join(ROOT, 'scripts/backfill-cdn-artifacts.sh'),
     '--bucket', 'test-bucket', '--endpoint', 'https://r2.invalid', ...flags], {
     cwd: dir,
-    env: { PATH: `${dir}/bin:${process.env.PATH}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', AWS_TEST_LOG: log },
+    env: { PATH: `${dir}/bin:${process.env.PATH}`, AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test',
+      AWS_TEST_LOG: log, AWS_TEST_OBJECTS: path.join(dir, 'objects.json'), ...authority },
     encoding: 'utf8',
   });
-  const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse) : [];
+  const calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(JSON.parse);
   return { stdout, calls, uploads: calls.flatMap(call => call.uploads) };
 }
 
 for (const skipLatest of [false, true]) {
   test(`publishes every compliance extension with exact bytes and cache policy (skip latest: ${skipLatest})`, t => {
-    const { dir } = fixture(t);
-    const { calls, uploads } = publish(dir, skipLatest ? ['--skip-latest'] : []);
+    const { dir } = fixture(t, true);
+    const results = FENCED_PUBLICATION
+      ? [...VERSIONS.map(version => publish(dir, ['--version', version, '--skip-latest'])),
+        ...(skipLatest ? [] : [publish(dir, ['--latest-only'])])]
+      : [publish(dir, skipLatest ? ['--skip-latest'] : [])];
+    const calls = results.flatMap(result => result.calls);
+    const uploads = results.flatMap(result => result.uploads);
+    if (FENCED_PUBLICATION) {
+      for (const [i, result] of results.entries()) {
+        const prefix = i < VERSIONS.length ? VERSIONS[i] : 'latest';
+        assert.ok(result.uploads.length > 0);
+        assert.ok(result.uploads.every(upload => upload.key.includes(`/${prefix}/`) || upload.key.includes(`/${prefix}.`)));
+      }
+      const ghCalls = fs.readFileSync(path.join(dir, 'gh.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+      for (const version of VERSIONS) {
+        assert.equal(ghCalls.filter(args => args[1] === 'view' && args[2] === `v${version}`).length, 1);
+        assert.equal(ghCalls.filter(args => args[1] === 'download' && args[2] === `v${version}`).length, 4);
+      }
+    }
     const compliance = uploads.filter(upload => upload.key.includes('/compliance/'));
     for (const version of VERSIONS) {
       const row = compliance.filter(upload => upload.key === `s3://test-bucket/compliance/${version}/${ROWS}`);
@@ -126,21 +234,39 @@ for (const skipLatest of [false, true]) {
       assert.ok(!call.args.includes('--delete'));
       if (call.args[1] === 'sync') assert.ok(call.args.includes('--size-only'));
       if (call.args.includes('--recursive')) assert.ok(!call.args.includes('--size-only'));
-      assert.ok(call.args.includes('--no-guess-mime-type'));
+      if (call.args[0] === 's3' && call.uploads.length) assert.ok(call.args.includes('--no-guess-mime-type'));
+      if (call.args[1] === 'put-object') assert.equal(call.args[call.args.indexOf('--if-none-match') + 1], '*');
     }
     // Existing schema pointers and protocol tuple semantics must stay intact.
     for (const upload of uploads.filter(upload => !upload.key.includes('/compliance/'))) {
       const key = upload.key.replace('s3://test-bucket/', '');
-      const immutable = key === 'schemas/3.2.0-rc.3/index.json' || key === 'protocol/3.2.0-rc.3.tgz';
+      const immutable = VERSIONS.some(version => key.startsWith(`schemas/${version}/`)
+        || (FENCED_PUBLICATION ? key.startsWith(`protocol/${version}.`) : key === `protocol/${version}.tgz`));
       assert.equal(upload.cacheControl, immutable ? IMMUTABLE : REVALIDATE, key);
     }
     assert.equal(uploads.some(upload => upload.key.includes('/latest')), !skipLatest);
-    assert.equal(uploads.some(upload => upload.key.endsWith('/schemas/index.json')), !skipLatest);
+    assert.equal(uploads.some(upload => upload.key.endsWith('/schemas/index.json')), !FENCED_PUBLICATION && !skipLatest);
     if (!skipLatest) {
       assert.equal(uploads.filter(upload => upload.key === `s3://test-bucket/compliance/latest/${ROWS}`).length, 1);
     }
   });
 }
+
+test('fenced JSONL recovery compares existing bytes and never overwrites them', { skip: !FENCED_PUBLICATION }, t => {
+  const { dir } = fixture(t, true);
+  const flags = ['--version', VERSIONS.at(-1), '--skip-latest'];
+  publish(dir, flags);
+  const repeated = publish(dir, flags);
+  assert.equal(repeated.uploads.length, 0);
+  assert.ok(repeated.calls.some(call => call.args[2]?.endsWith(ROWS)));
+  const objectsFile = path.join(dir, 'objects.json');
+  const objects = JSON.parse(fs.readFileSync(objectsFile, 'utf8'));
+  const key = `s3://test-bucket/compliance/${VERSIONS.at(-1)}/${ROWS}`;
+  objects[key].body = Buffer.from('existing divergent bytes').toString('base64');
+  fs.writeFileSync(objectsFile, JSON.stringify(objects));
+  assert.throws(() => publish(dir, flags), /Immutable object differs/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(objectsFile, 'utf8')), objects);
+});
 
 test('both dry-run modes enumerate JSONL without uploading', t => {
   for (const flag of ['--dry-run', '--aws-dry-run']) {
@@ -169,10 +295,21 @@ test('all committed semver compliance extensions are supported, including every 
 
 async function verify(t, dir, versions, change = () => {}) {
   const requested = [];
+  // Build responses from trusted fixture paths before accepting requests.
+  // A request only selects a map entry; it never becomes a filesystem path.
+  const responses = new Map();
+  function preload(directory, prefix = '') {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      const url = `${prefix}/${encodeURIComponent(entry.name)}`;
+      if (entry.isDirectory()) preload(file, url);
+      else if (entry.isFile()) responses.set(url, fs.readFileSync(file));
+    }
+  }
+  preload(path.join(dir, 'dist'));
   const server = http.createServer((req, res) => {
     requested.push(req.url);
-    const local = path.join(dir, 'dist', decodeURIComponent(req.url));
-    let body = fs.existsSync(local) && fs.statSync(local).isFile() ? fs.readFileSync(local) : Buffer.from('{}');
+    let body = responses.get(req.url) ?? Buffer.from('{}');
     res.setHeader('content-type', TYPES[path.extname(req.url).slice(1)] ?? 'application/json');
     res.setHeader('cache-control', IMMUTABLE);
     const replacement = change(req, res, body);
