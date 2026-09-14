@@ -96,39 +96,17 @@ describe('current user organization resolution', () => {
     });
   });
 
-  it('refreshes WorkOS memberships after verified-domain auto-link succeeds', async () => {
-    const listOrganizationMemberships = vi.fn()
-      .mockResolvedValueOnce({ data: [] })
-      .mockResolvedValueOnce({
-        data: [{
-          organizationId: 'org_linked',
-          role: { slug: 'member' },
-          status: 'active',
-        }],
-      });
-    const workos = {
-      userManagement: { listOrganizationMemberships },
-      organizations: {
-        getOrganization: vi.fn().mockResolvedValue({ name: 'Linked Org' }),
-      },
-    } as any;
-
+  it('does not invoke provisioning while resolving a read', async () => {
+    const autoLinkByVerifiedDomain = vi.fn().mockResolvedValue(true);
+    const listOrganizationMemberships = vi.fn().mockResolvedValue({ data: [] });
     const organizations = await getCurrentUserOrganizations({
-      userId: 'user_123',
-      email: 'user@example.com',
-      workos,
-      orgDb: { getOrganization: vi.fn().mockResolvedValue({ is_personal: false }) },
-      autoLinkByVerifiedDomain: vi.fn().mockResolvedValue(true),
+      userId: 'user_exact', email: 'member@acme.test',
+      workos: { userManagement: { listOrganizationMemberships } } as any,
+      orgDb: { getOrganization: vi.fn() }, autoLinkByVerifiedDomain,
     });
-
-    expect(listOrganizationMemberships).toHaveBeenCalledTimes(2);
-    expect(organizations).toEqual([{
-      id: 'org_linked',
-      name: 'Linked Org',
-      role: 'member',
-      status: 'active',
-      is_personal: false,
-    }]);
+    expect(organizations).toEqual([]);
+    expect(listOrganizationMemberships).toHaveBeenCalledTimes(1);
+    expect(autoLinkByVerifiedDomain).not.toHaveBeenCalled();
   });
 
   it('normalizes missing or blank membership roles to member', () => {

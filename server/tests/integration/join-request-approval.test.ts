@@ -125,6 +125,8 @@ describe('Join Request Approval', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    listOrganizationMemberships.mockReset();
+    mockCreateOrganizationMembership.mockReset();
     mockCreateOrganizationMembership.mockResolvedValue({ id: 'om_test_new' });
     // Re-establish after clearAllMocks: handler calls workos!.userManagement.listOrganizationMemberships
     // via the new WorkOS() instance; the mock must return admin membership for test user.
@@ -157,7 +159,7 @@ describe('Join Request Approval', () => {
     await pool.query('DELETE FROM organization_join_requests WHERE workos_organization_id = $1', [TEST_ORG_ID]);
   });
 
-  it('returns 409 when creating a join request for a pending WorkOS invitation', async () => {
+  it('denies inline join onboarding even with a pending provider invitation', async () => {
     listOrganizationMemberships.mockResolvedValueOnce({
       data: [{
         id: 'om_pending',
@@ -171,9 +173,9 @@ describe('Join Request Approval', () => {
     const response = await request(app)
       .post('/api/join-requests')
       .send({ organization_id: TEST_ORG_ID })
-      .expect(409);
+      .expect(403);
 
-    expect(response.body.error).toBe('Pending invitation exists');
+    expect(response.body.error).toBe('organization_onboarding_disabled');
     expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
   });
 
@@ -192,9 +194,9 @@ describe('Join Request Approval', () => {
     const response = await request(app)
       .post('/api/join-requests')
       .send({ organization_id: TEST_ORG_ID })
-      .expect(409);
+      .expect(403);
 
-    expect(response.body.error).toBe('Pending invitation exists');
+    expect(response.body.error).toBe('organization_onboarding_disabled');
 
     const result = await pool.query(
       `SELECT id FROM organization_join_requests

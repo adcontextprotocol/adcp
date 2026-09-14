@@ -57,7 +57,6 @@ import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { autoLinkByVerifiedDomain } from "./db/membership-db.js";
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
@@ -171,7 +170,7 @@ import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { resolveEscalationsForPerspective } from "./db/escalation-db.js";
 import { serveHtmlWithMetaTags, injectMetaTagsIntoHtml, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
-import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
+import { notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
@@ -775,14 +774,6 @@ Disallow: /
 Sitemap: ${baseUrl}/sitemap.xml
 Llms-txt: ${baseUrl}/llms.txt
 `;
-}
-
-function isPendingWorkOSMembershipError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const candidate = error as { code?: unknown; message?: unknown };
-  return candidate.code === 'cannot_reactivate_pending_organization_membership' ||
-    (typeof candidate.message === 'string' &&
-      candidate.message.includes('Pending organization memberships cannot be reactivated'));
 }
 
 /**
@@ -8622,7 +8613,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             email: user.email,
             workos,
             orgDb,
-            autoLinkByVerifiedDomain,
           });
         } catch (error) {
           if (error instanceof CurrentUserOrganizationsUnavailableError) {
@@ -9152,337 +9142,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // POST /api/join-requests - Request to join an organization
-    this.app.post('/api/join-requests', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { organization_id } = req.body;
-
-        if (!organization_id) {
-          return res.status(400).json({
-            error: 'Missing parameter',
-            message: 'organization_id is required',
-          });
-        }
-
-        const joinRequestDb = new JoinRequestDatabase();
-
-        // Check if user is already a member
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: organization_id,
-          statuses: ['active', 'inactive', 'pending'],
-        });
-
-        if (memberships.data.length > 0) {
-          if (memberships.data.some(m => m.status === 'pending')) {
-            return res.status(409).json({
-              error: 'Pending invitation exists',
-              message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
-            });
-          }
-          return res.status(400).json({
-            error: 'Already a member',
-            message: 'You are already a member of this organization',
-          });
-        }
-
-        // Check if user's email domain is verified for this org - auto-approve if so
-        const userDomain = user.email.split('@')[1]?.toLowerCase();
-        if (userDomain) {
-          const pool = getPool();
-          const verifiedDomainResult = await pool.query(
-            `SELECT domain FROM organization_domains
-             WHERE workos_organization_id = $1 AND verified = true AND LOWER(domain) = $2`,
-            [organization_id, userDomain]
-          );
-
-          if (verifiedDomainResult.rows.length > 0) {
-            // Domain is verified - auto-add user to organization
-            // If org has no admin/owner yet, promote this user to owner
-            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
-              organizationId: organization_id,
-              statuses: ['active', 'inactive', 'pending'],
-              limit: 100,
-            });
-            const hasAdmin = existingMembers.data.some((m) => {
-              const role = m.role?.slug;
-              return role === 'admin' || role === 'owner';
-            });
-            const roleSlug = hasAdmin ? 'member' : 'owner';
-
-            let membership: any;
-            try {
-              membership = await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
-                organizationId: organization_id,
-                roleSlug,
-              });
-            } catch (membershipError) {
-              if (isPendingWorkOSMembershipError(membershipError)) {
-                return res.status(409).json({
-                  error: 'Pending invitation exists',
-                  message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
-                });
-              }
-              throw membershipError;
-            }
-
-            // Get org name for response
-            let orgName = 'Organization';
-            try {
-              const org = await workos!.organizations.getOrganization(organization_id);
-              orgName = org.name;
-            } catch {
-              // Org may not exist
-            }
-
-            logger.info({
-              userId: user.id,
-              orgId: organization_id,
-              domain: userDomain,
-              role: roleSlug,
-            }, 'User auto-added to organization via verified domain');
-
-            // Mirror membership locally so it's visible immediately
-            const pool2 = getPool();
-            await pool2.query(`
-              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
-              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
-              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
-            `, [user.id, organization_id, user.email, roleSlug]);
-
-            // Record audit log
-            await orgDb.recordAuditLog({
-              workos_organization_id: organization_id,
-              workos_user_id: user.id,
-              action: 'member_added',
-              resource_type: 'membership',
-              resource_id: membership.id,
-              details: {
-                user_email: user.email,
-                method: 'verified_domain_auto_join',
-                domain: userDomain,
-                role: roleSlug,
-              },
-            });
-
-            return res.status(201).json({
-              success: true,
-              message: roleSlug === 'owner'
-                ? `You've been added as the owner of ${orgName}`
-                : `You have been added to ${orgName}`,
-              auto_joined: true,
-              membership: {
-                id: membership.id,
-                organization_id: organization_id,
-                organization_name: orgName,
-                role: roleSlug,
-              },
-            });
-          }
-        }
-
-        // Check for existing pending request
-        const existingRequest = await joinRequestDb.getPendingRequest(user.id, organization_id);
-        if (existingRequest) {
-          return res.status(400).json({
-            error: 'Request already pending',
-            message: 'You already have a pending request to join this organization',
-            request_id: existingRequest.id,
-          });
-        }
-
-        // Get user's full details from WorkOS for name
-        let firstName: string | undefined;
-        let lastName: string | undefined;
-        try {
-          const workosUser = await workos!.userManagement.getUser(user.id);
-          firstName = workosUser.firstName || undefined;
-          lastName = workosUser.lastName || undefined;
-        } catch (err) {
-          logger.warn({ err, userId: user.id }, 'Failed to get user details from WorkOS');
-        }
-
-        const joinRequestInput = {
-          workos_user_id: user.id,
-          user_email: user.email,
-          first_name: firstName,
-          last_name: lastName,
-          workos_organization_id: organization_id,
-        };
-
-        // Get org name for response
-        let orgName = 'Organization';
-        try {
-          const org = await workos!.organizations.getOrganization(organization_id);
-          orgName = org.name;
-        } catch {
-          // Org may not exist
-        }
-
-        const createAndAuditJoinRequest = async () => {
-          const request = await joinRequestDb.createRequest(joinRequestInput);
-
-          logger.info({
-            userId: user.id,
-            orgId: organization_id,
-            requestId: request.id,
-          }, 'Join request created');
-
-          await orgDb.recordAuditLog({
-            workos_organization_id: organization_id,
-            workos_user_id: user.id,
-            action: 'join_request_created',
-            resource_type: 'join_request',
-            resource_id: request.id,
-            details: {
-              user_email: user.email,
-              first_name: firstName,
-              last_name: lastName,
-            },
-          });
-
-          return request;
-        };
-
-        // Check if org has any existing members
-        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-          organizationId: organization_id,
-          statuses: ['active', 'inactive', 'pending'],
-        });
-
-        // If org has no members (e.g., prospect org) AND user's email domain matches,
-        // auto-approve as owner. Domain check prevents unauthorized org claims.
-        if (orgMemberships.data.length === 0) {
-          const userDomain = user.email.split('@')[1]?.toLowerCase();
-          const pool = getPool();
-          const orgDomainResult = await pool.query(
-            `SELECT domain FROM organization_domains WHERE workos_organization_id = $1
-             UNION
-             SELECT email_domain FROM organizations WHERE workos_organization_id = $1 AND email_domain IS NOT NULL`,
-            [organization_id]
-          );
-          const orgDomains = orgDomainResult.rows.map((r: { domain?: string; email_domain?: string }) =>
-            (r.domain || r.email_domain)?.toLowerCase()
-          );
-
-          if (userDomain && orgDomains.includes(userDomain)) {
-            logger.info({
-              userId: user.id,
-              orgId: organization_id,
-              domain: userDomain,
-            }, 'Ownerless org with matching domain — auto-approving join request as owner');
-
-            // Add user as owner
-            try {
-              await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
-                organizationId: organization_id,
-                roleSlug: 'owner',
-              });
-            } catch (membershipError) {
-              if (isPendingWorkOSMembershipError(membershipError)) {
-                return res.status(409).json({
-                  error: 'Pending invitation exists',
-                  message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
-                });
-              }
-              throw membershipError;
-            }
-
-            const request = await createAndAuditJoinRequest();
-
-            // Mark join request as approved
-            await joinRequestDb.approveRequest(request.id, user.id);
-
-            // Record audit log
-            await orgDb.recordAuditLog({
-              workos_organization_id: organization_id,
-              workos_user_id: user.id,
-              action: 'join_request_auto_approved',
-              resource_type: 'join_request',
-              resource_id: request.id,
-              details: {
-                reason: 'First member of ownerless organization with matching email domain',
-                role: 'owner',
-                domain: userDomain,
-              },
-            });
-
-            return res.status(201).json({
-              success: true,
-              message: `You've been added as the owner of ${orgName}`,
-              request: {
-                id: request.id,
-                organization_id: organization_id,
-                organization_name: orgName,
-                status: 'approved',
-                created_at: request.created_at,
-                auto_approved: true,
-              },
-            });
-          }
-
-          logger.info({
-            userId: user.id,
-            orgId: organization_id,
-            userDomain,
-            orgDomains,
-          }, 'Ownerless org but domain mismatch — treating as normal join request');
-        }
-
-        const request = await createAndAuditJoinRequest();
-
-        // Org has members — notify admins via Slack group DM (fire-and-forget)
-        (async () => {
-          try {
-            const adminEmails: string[] = [];
-            for (const membership of orgMemberships.data) {
-              if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
-                try {
-                  const adminUser = await workos!.userManagement.getUser(membership.userId);
-                  if (adminUser.email) {
-                    adminEmails.push(adminUser.email);
-                  }
-                } catch {
-                  // Skip if can't fetch user
-                }
-              }
-            }
-
-            if (adminEmails.length > 0) {
-              await notifyJoinRequest({
-                orgId: organization_id,
-                orgName,
-                adminEmails,
-                requesterEmail: user.email,
-                requesterFirstName: firstName,
-                requesterLastName: lastName,
-              });
-            }
-          } catch (err) {
-            logger.warn({ err, orgId: organization_id }, 'Failed to notify admins of join request');
-          }
-        })();
-
-        res.status(201).json({
-          success: true,
-          message: `Request to join ${orgName} submitted`,
-          request: {
-            id: request.id,
-            organization_id: organization_id,
-            organization_name: orgName,
-            status: request.status,
-            created_at: request.created_at,
-          },
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Create join request error:');
-        res.status(500).json({
-          error: 'Failed to create join request',
-        });
-      }
+    // Neither a pending request nor a domain match may transfer a sibling's
+    // proof to the canonical user. Restore through the explicit consent flow.
+    this.app.post('/api/join-requests', requireAuth, async (_req, res) => {
+      return res.status(403).json({
+        error: 'organization_onboarding_disabled',
+        message: 'Organization join onboarding is temporarily unavailable.',
+      });
     });
 
     // DELETE /api/join-requests/:requestId - Cancel a pending join request

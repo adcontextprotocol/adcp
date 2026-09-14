@@ -29,13 +29,12 @@ import {
   removeWorkosDomainAndReselectPrimary,
 } from '../db/organization-domains-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { getWorkos, getOwnerlessPromotionWorkos } from '../auth/workos-client.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
-import { isFreeEmailDomain } from '../utils/email-domain.js';
 import { notifyBrandClaimOpportunity } from '../notifications/registry.js';
 import { getNudgeDismissal, recordNudgeDismissal } from '../db/user-nudges-db.js';
 import { getCompanyDomain } from '../utils/email-domain.js';
@@ -48,10 +47,6 @@ import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
   consumeInvitationSeatType,
-  findSuccessorForPromotion,
-  setMembershipRole,
-  autoLinkByVerifiedDomain,
-  resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
 import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
 
@@ -193,10 +188,21 @@ async function notifyAdminsOfRefusedMembership(input: {
   }
 }
 
+class MembershipUserSourceUnavailableError extends Error {}
+
 async function upsertMembership(
   membership: OrganizationMembershipData,
   user?: UserData
 ): Promise<void> {
+  if (membership.status !== 'active') {
+    logger.info(
+      { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
+      'Removing non-active organization membership from local cache',
+    );
+    await deleteInactiveMembershipCache(membership);
+    return;
+  }
+
   // If we don't have user data, fetch it from WorkOS
   let userData = user;
   if (!userData) {
@@ -213,32 +219,15 @@ async function upsertMembership(
       };
     } catch (error) {
       logger.error({ error, userId: membership.user_id }, 'Failed to fetch user from WorkOS');
-      return;
+      throw new MembershipUserSourceUnavailableError('Membership user source unavailable');
     }
   }
 
-  if (membership.status !== 'active') {
-    logger.info(
-      { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
-      'Removing non-active organization membership from local cache',
-    );
-    await deleteInactiveMembershipCache(membership);
-    return;
+  if (userData.id !== membership.user_id) {
+    throw new MembershipUserSourceUnavailableError('Membership user source did not match the event subject');
   }
 
   const incomingRole = membership.role?.slug || 'member';
-
-  // Resolve final role against WorkOS BEFORE we touch local. If we need to
-  // auto-promote this user (ownerless-org safety net), push the change to
-  // WorkOS first and only then write the resolved role locally. WorkOS is
-  // the source of truth — local must never get ahead of it.
-  const resolution = await resolveRoleWithWorkosFirstPromote({
-    workos: getOwnerlessPromotionWorkos(),
-    membershipId: membership.id,
-    userId: membership.user_id,
-    organizationId: membership.organization_id,
-    incomingRole,
-  });
 
   // Consume any pending seat_type + provisioning_source staged by the
   // endpoint that triggered this membership creation. Falls back to defaults
@@ -284,61 +273,11 @@ async function upsertMembership(
     email: userData.email,
     first_name: userData.first_name,
     last_name: userData.last_name,
-    role: resolution.role,
+    role: incomingRole,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
     provisioning_source: provisioningSource,
   });
-
-  // Audit-log both outcomes of the ownerless-org auto-promote path so future
-  // role-drift questions have a paper trail in registry_audit_log (and we
-  // don't have to grep production logs to reconstruct what happened).
-  if (resolution.promoted) {
-    logger.info({
-      membershipId: membership.id,
-      userId: membership.user_id,
-      orgId: membership.organization_id,
-    }, 'Auto-promoted member to owner in WorkOS — org had no other admin/owner');
-    try {
-      await orgDb.recordAuditLog({
-        workos_organization_id: membership.organization_id,
-        workos_user_id: membership.user_id,
-        action: 'membership_auto_promoted_to_owner',
-        resource_type: 'membership',
-        resource_id: membership.id,
-        details: {
-          email: userData.email,
-          previous_role: incomingRole,
-          new_role: 'owner',
-          reason: 'ownerless_org_safety_net',
-        },
-      });
-    } catch (auditErr) {
-      logger.warn({ err: auditErr, membershipId: membership.id },
-        'Failed to write audit log for auto-promotion');
-    }
-  } else if (resolution.promotionError !== undefined) {
-    const err = resolution.promotionError;
-    const errMessage = err instanceof Error ? err.message : String(err);
-    try {
-      await orgDb.recordAuditLog({
-        workos_organization_id: membership.organization_id,
-        workos_user_id: membership.user_id,
-        action: 'membership_auto_promote_failed',
-        resource_type: 'membership',
-        resource_id: membership.id,
-        details: {
-          email: userData.email,
-          attempted_role: 'owner',
-          fallback_role: resolution.role,
-          error: errMessage,
-        },
-      });
-    } catch (auditErr) {
-      logger.warn({ err: auditErr, membershipId: membership.id },
-        'Failed to write audit log for auto-promotion failure');
-    }
-  }
 
   // Set primary_organization_id if not already set (prefer paying orgs).
   // Best-effort — same rationale as upsertUser: a transient backfill failure
@@ -358,7 +297,7 @@ async function upsertMembership(
  *
  * WorkOS membership.updated events can mark a membership inactive. That should
  * remove local access immediately, but it must not run owner-succession logic:
- * promotion is reserved for explicit organization_membership.deleted events.
+ * ordinary membership events never authorize owner recovery.
  */
 async function deleteInactiveMembershipCache(membership: OrganizationMembershipData): Promise<void> {
   const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
@@ -385,52 +324,9 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
     role: deletedRole,
   }, 'Deleted organization membership');
 
-  // If an admin/owner was removed, check if the org still has one.
-  // Promote the longest-tenured remaining member to prevent ownerless orgs.
-  if (deletedRole === 'admin' || deletedRole === 'owner') {
-    try {
-      const target = await findSuccessorForPromotion(membership.organization_id);
-      if (!target) return;
+  // Owner recovery requires an explicit authenticated, consented operation.
+  // A deletion event cannot authorize a grant to a remaining member.
 
-      // Promote in WorkOS first, then mirror locally
-      let promotedInWorkos = false;
-      if (target.workos_membership_id) {
-        await getWorkos().userManagement.updateOrganizationMembership(
-          target.workos_membership_id,
-          { roleSlug: 'owner' }
-        );
-        promotedInWorkos = true;
-      } else {
-        // No cached membership ID — look it up from WorkOS
-        const memberships = await getWorkos().userManagement.listOrganizationMemberships({
-          organizationId: membership.organization_id,
-          userId: target.workos_user_id,
-        });
-        if (memberships.data.length > 0) {
-          await getWorkos().userManagement.updateOrganizationMembership(
-            memberships.data[0].id,
-            { roleSlug: 'owner' }
-          );
-          promotedInWorkos = true;
-        } else {
-          logger.warn({
-            orgId: membership.organization_id,
-            userId: target.workos_user_id,
-          }, 'Successor has no WorkOS membership — cannot promote, org may be ownerless');
-        }
-      }
-      if (promotedInWorkos) {
-        await setMembershipRole(target.workos_user_id, membership.organization_id, 'owner');
-        logger.info({
-          orgId: membership.organization_id,
-          promotedUserId: target.workos_user_id,
-          previousOwnerId: membership.user_id,
-        }, 'Promoted longest-tenured member to owner after admin/owner removal');
-      }
-    } catch (err) {
-      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote successor after owner removal');
-    }
-  }
 }
 
 /**
@@ -1039,23 +935,6 @@ export function createWorkOSWebhooksRouter(): Router {
                 'Auto-linked new website user to Slack account'
               );
             }
-            // Auto-provision into a verified-domain org if one matches.
-            // Verified email is the trust gate: skip when WorkOS hasn't confirmed it yet
-            // (the /api/me/* paths will retry after the user signs in and the email verifies).
-            if (user.email_verified) {
-              try {
-                const linked = await autoLinkByVerifiedDomain(getWorkos(), user.id, user.email);
-                if (linked) {
-                  logger.info(
-                    { userId: user.id, email: user.email, orgId: linked.organizationId, role: linked.role },
-                    'Auto-provisioned new user into verified-domain organization'
-                  );
-                }
-              } catch (linkErr) {
-                logger.warn({ err: linkErr, userId: user.id, email: user.email },
-                  'Failed to auto-provision new user into verified-domain organization');
-              }
-            }
             // Fire-and-forget prospect triage + brand research for business emails.
             if (user.email) {
               const domain = user.email.split('@')[1];
@@ -1244,6 +1123,9 @@ export function createWorkOSWebhooksRouter(): Router {
         const eventType = req.body?.event || 'unknown';
         const errMsg = error instanceof Error ? error.message : String(error);
         logger.error({ error, durationMs, event: eventType }, 'Error processing WorkOS webhook');
+        if (error instanceof MembershipUserSourceUnavailableError) {
+          return res.status(503).json({ error: 'Membership user source temporarily unavailable' });
+        }
         notifySystemError({ source: 'workos-webhook', errorMessage: `Failed to process ${eventType}: ${errMsg}` });
         return res.status(500).json({ error: 'Internal error' });
       }

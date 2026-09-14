@@ -1,0 +1,378 @@
+/** Private containment regression: mounted production routes, real auth id-swap and PostgreSQL. */
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import request from 'supertest';
+
+const mocks = vi.hoisted(() => {
+  process.env.WORKOS_WEBHOOK_SECRET = 'private-containment-test-secret';
+  return {
+    sessions: new Map<string, any>(),
+    sendInvitation: vi.fn(), listUsers: vi.fn(), list: vi.fn(), getUser: vi.fn(), create: vi.fn(), update: vi.fn(),
+    createOrg: vi.fn(), invoice: vi.fn(), products: vi.fn(), coupon: vi.fn(),
+    slackSync: vi.fn(), slackConfigured: false,
+  };
+});
+vi.mock('@workos-inc/node', () => ({ WorkOS: class {
+  userManagement = {
+    loadSealedSession: ({ sessionData }: any) => ({ authenticate: async () => ({
+      authenticated: true, user: mocks.sessions.get(sessionData), accessToken: 'test-access',
+    }) }),
+    listOrganizationMemberships: mocks.list,
+    sendInvitation: mocks.sendInvitation, listUsers: mocks.listUsers,
+    getUser: mocks.getUser,
+    createOrganizationMembership: mocks.create,
+    updateOrganizationMembership: mocks.update,
+  };
+  organizations = {
+    createOrganization: mocks.createOrg,
+    getOrganization: vi.fn(async (id: string) => ({ id, name: 'Acme Containment' })),
+  };
+  webhooks = { constructEvent: vi.fn().mockResolvedValue({}) };
+} }));
+vi.mock('../../src/middleware/csrf.js', () => ({ csrfProtection: (_req: any, _res: any, next: any) => next() }));
+vi.mock('../../src/middleware/rate-limit.js', async (original) => {
+  const actual = await original<typeof import('../../src/middleware/rate-limit.js')>();
+  const pass = (_req: any, _res: any, next: any) => next();
+  return { ...actual, orgCreationRateLimiter: pass, brandCreationRateLimiter: pass,
+    memberProfileBootstrapRateLimiter: pass };
+});
+vi.mock('../../src/billing/stripe-client.js', async (original) => ({
+  ...await original<typeof import('../../src/billing/stripe-client.js')>(),
+  createAndSendInvoice: mocks.invoice, getProductsForCustomer: mocks.products,
+  createCoupon: mocks.coupon,
+}));
+vi.mock('../../src/addie/error-notifier.js', () => ({ notifySystemError: vi.fn() }));
+vi.mock('../../src/slack/client.js', async (original) => ({
+  ...await original<typeof import('../../src/slack/client.js')>(),
+  isSlackConfigured: () => mocks.slackConfigured, getSlackUsers: mocks.slackSync, getUserChannels: vi.fn().mockResolvedValue([]),
+}));
+
+import { HTTPServer } from '../../src/http.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { runMigrations } from '../../src/db/migrate.js';
+import { invalidateSessionsForUsers } from '../../src/middleware/auth.js';
+import { autoLinkByVerifiedDomain, upsertOrganizationMembership } from '../../src/db/membership-db.js';
+import { checkAndAssignOrganizationByDomain, autoAddVerifiedDomainUsersAsMembers,
+  autoLinkUnmappedSlackUsers } from '../../src/slack/sync.js';
+import { handleUserChange } from '../../src/slack/events.js';
+import type { Pool } from 'pg';
+
+const A = 'user_containment_a';
+const B = 'user_containment_b';
+const ORG = 'org_containment';
+const TOKEN = 'private-containment-token';
+const routes: Array<[string, Record<string, unknown>]> = [
+  ['/api/organizations', { organization_name: 'Acme Containment', is_personal: false }],
+  [`/api/organizations/${ORG}/claim`, {}],
+  ['/api/join-requests', { organization_id: ORG }],
+  ['/api/me/agents', { url: 'https://agent.containment.test/mcp', type: 'sales' }],
+  [`/api/invite/${TOKEN}/accept`, { agreement_version: '999.0', billingAddress: {
+    line1: '1 Example St', city: 'Example', state: 'EX', postal_code: '10000', country: 'US',
+  } }],
+];
+let pool: Pool;
+let app: HTTPServer['app'];
+let sessionNumber = 0;
+function cookie(id = B, emailVerified: boolean | 'missing' = true, email = 'b@containment.test') {
+  const key = `containment-${++sessionNumber}`;
+  mocks.sessions.set(key, { id, email, ...(emailVerified === 'missing' ? {} : { emailVerified }), firstName: 'Test', lastName: 'Subject',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  return `wos-session=${key}`;
+}
+async function snapshot() {
+  const results = await Promise.all([
+    pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = ANY($1) ORDER BY workos_user_id, workos_organization_id', [[A, B]]),
+    pool.query('SELECT * FROM registry_audit_log WHERE workos_user_id = ANY($1) ORDER BY id', [[A, B]]),
+    pool.query('SELECT * FROM authorization_epochs WHERE workos_user_id = ANY($1) ORDER BY workos_user_id', [[A, B]]),
+    pool.query('SELECT * FROM membership_invites WHERE token = $1', [TOKEN]),
+    pool.query('SELECT * FROM organizations WHERE workos_organization_id LIKE $1 ORDER BY workos_organization_id', [ORG + '%']),
+    pool.query('SELECT * FROM organization_domains WHERE workos_organization_id LIKE $1 ORDER BY id', [ORG + '%']),
+    pool.query('SELECT * FROM member_profiles WHERE workos_organization_id LIKE $1 ORDER BY id', [ORG + '%']),
+    pool.query('SELECT * FROM invitation_seat_types WHERE workos_organization_id = $1 ORDER BY workos_invitation_id', [ORG]),
+    pool.query('SELECT * FROM user_agreement_acceptances WHERE workos_user_id = ANY($1) ORDER BY id', [[A, B]]),
+    pool.query('SELECT * FROM organization_join_requests WHERE workos_user_id = ANY($1) ORDER BY id', [[A, B]]),
+  ]);
+  return results.map(r => r.rows);
+}
+async function link(primary: string, sibling: string) {
+  await pool.query('UPDATE identity_workos_users SET is_primary = false WHERE workos_user_id = $1', [sibling]);
+  await pool.query(`UPDATE identity_workos_users SET identity_id =
+    (SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1)
+    WHERE workos_user_id = $2`, [primary, sibling]);
+  await pool.query('UPDATE identity_workos_users SET is_primary = true WHERE workos_user_id = $1', [primary]);
+  invalidateSessionsForUsers([A, B]);
+}
+function expectNoProviders() {
+  for (const spy of [mocks.create, mocks.update, mocks.createOrg, mocks.sendInvitation, mocks.invoice, mocks.coupon, mocks.products]) {
+    expect(spy).not.toHaveBeenCalled();
+  }
+}
+
+beforeAll(async () => {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString || !/^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):\d+\/adcp_test$/.test(connectionString)) {
+    throw new Error('This suite requires an explicit loopback adcp_test database');
+  }
+  pool = initializeDatabase({ connectionString });
+  await runMigrations();
+  app = new HTTPServer({ backgroundServices: 'refresh-only' }).app;
+  await pool.query(`INSERT INTO agreements (version, text, effective_date, agreement_type)
+    VALUES ('999.0', 'Containment test agreement', '2099-01-01', 'membership') ON CONFLICT DO NOTHING`);
+}, 60000);
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  mocks.slackConfigured = false;
+  delete process.env.ADMIN_EMAILS;
+  invalidateSessionsForUsers([A, B]);
+  await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = ANY($1)', [[A, B]]);
+  await pool.query('DELETE FROM registry_audit_log WHERE workos_user_id = ANY($1)', [[A, B]]);
+  await pool.query('DELETE FROM organization_join_requests WHERE workos_user_id = ANY($1)', [[A, B]]);
+  await pool.query('DELETE FROM membership_invites WHERE token = $1', [TOKEN]);
+  await pool.query('DELETE FROM certification_expectations WHERE workos_organization_id = $1', [ORG]);
+  await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id = $1', [ORG]);
+  await pool.query("DELETE FROM slack_user_mappings WHERE slack_user_id = 'U_CONTAINMENT'");
+  await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [[A, B]]);
+  await pool.query(`INSERT INTO users (workos_user_id, email, email_verified) VALUES ($1, 'a@unrelated.test', true), ($2, 'b@containment.test', true)`, [A, B]);
+  await pool.query(`INSERT INTO organizations (workos_organization_id, name, is_personal, email_domain, subscription_status)
+    VALUES ($1, 'Acme Containment', false, 'containment.test', NULL)
+    ON CONFLICT (workos_organization_id) DO UPDATE SET subscription_status = NULL, prospect_status = NULL`, [ORG]);
+  await pool.query(`INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source)
+    VALUES ($1, 'containment.test', true, true, 'workos') ON CONFLICT (domain) DO UPDATE SET verified = true`, [ORG]);
+  await pool.query(`INSERT INTO membership_invites (token, workos_organization_id, lookup_key, contact_email, invited_by_user_id, expires_at)
+    VALUES ($1, $2, 'test-tier', 'b@containment.test', $3, NOW() + interval '1 day')`, [TOKEN, ORG, A]);
+  mocks.sendInvitation.mockResolvedValue({ id: 'inv_containment', email: 'b@containment.test', state: 'pending',
+    expiresAt: new Date(Date.now() + 86400000).toISOString(), acceptInvitationUrl: 'https://example.test/accept' });
+  mocks.listUsers.mockResolvedValue({ data: [] });
+  mocks.list.mockResolvedValue({ data: [] });
+  mocks.getUser.mockImplementation(async (id: string) => ({ id, email: id === B ? 'b@containment.test' : 'a@unrelated.test', emailVerified: true }));
+  mocks.create.mockResolvedValue({ id: 'om_containment', role: { slug: 'member' }, status: 'active' });
+  mocks.update.mockResolvedValue({});
+  mocks.createOrg.mockResolvedValue({ id: `${ORG}_new`, name: 'Acme New' });
+  mocks.products.mockResolvedValue([{ lookup_key: 'test-tier', amount_cents: 100 }]);
+  mocks.invoice.mockResolvedValue({ invoiceId: 'in_test', invoiceUrl: 'https://example.test/invoice' });
+});
+afterAll(async () => {
+  await pool.query("DELETE FROM agreements WHERE version = '999.0' AND text = 'Containment test agreement'");
+  await closeDatabase();
+});
+
+describe('mounted implicit onboarding containment', () => {
+  it.each(routes)('invalid auth remains 401 on %s', async (path, body) => {
+    expect((await request(app).post(path).send(body)).status).toBe(401);
+    expectNoProviders();
+  });
+  it.each(routes)('linked B proof never grants canonical A via %s', async (path, body) => {
+    await link(A, B);
+    const before = await snapshot();
+    const res = await request(app).post(path).set('Cookie', cookie()).send(body);
+    expectNoProviders();
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(await snapshot()).toEqual(before);
+  });
+  it.each([true, false, 'missing'] as const)('verification %s cannot enable suspended grants', async (verified) => {
+    for (const [path, body] of routes) {
+      const res = await request(app).post(path).set('Cookie', cookie(B, verified)).send(body);
+      expect(res.status).toBe(403);
+    }
+    expectNoProviders();
+  });
+  it.each([' B@CONTAINMENT.TEST ', 'b@子.test', 'alias@containment.test', 'a@unrelated.test'])('token email %s does not bypass denial', async (email) => {
+    const before = await snapshot();
+    const [path, body] = routes[4];
+    expect((await request(app).post(path).set('Cookie', cookie(B, true, email)).send(body)).status).toBe(403);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it.each(['revoked', 'expired', 'accepted', 'pending'])('token status %s remains side-effect free', async (status) => {
+    if (status === 'revoked') await pool.query('UPDATE membership_invites SET revoked_at = NOW() WHERE token = $1', [TOKEN]);
+    if (status === 'accepted') await pool.query('UPDATE membership_invites SET accepted_at = NOW(), accepted_by_user_id = $2 WHERE token = $1', [TOKEN, B]);
+    if (status === 'expired') await pool.query("UPDATE membership_invites SET expires_at = NOW() - interval '1 day' WHERE token = $1", [TOKEN]);
+    const before = await snapshot();
+    const [path, body] = routes[4];
+    const results = await Promise.all([A, B].map(id => request(app).post(path).set('Cookie', cookie(id)).send(body)));
+    expect(results.map(r => r.status)).toEqual([403, 403]);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it('opposite linked direction, concurrent independent sessions and unlink preserve zero transferred authority', async () => {
+    await link(B, A);
+    const before = await snapshot();
+    const requests = routes.flatMap(([path, body]) => [A, B].map(id =>
+      request(app).post(path).set('Cookie', cookie(id)).send(body)));
+    expect((await Promise.all(requests)).every(r => r.status === 403)).toBe(true);
+    await pool.query('DELETE FROM identity_workos_users WHERE workos_user_id = $1', [A]);
+    invalidateSessionsForUsers([A, B]);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it('source outages do not enable disabled onboarding or trigger downstream calls', async () => {
+    mocks.list.mockRejectedValue(new Error('required source unavailable'));
+    mocks.getUser.mockRejectedValue(new Error('required source unavailable'));
+    const before = await snapshot();
+    for (const [path, body] of routes) expect((await request(app).post(path).set('Cookie', cookie()).send(body)).status).toBe(403);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it.each([0, 1, 2])('does not infer a primary/sole org from %s historical memberships', async (count) => {
+    for (let i = 0; i < count; i++) await pool.query(`INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role)
+      VALUES ($1, $2, 'b@containment.test', 'owner')`, [B, `${ORG}_${i}`]);
+    const before = await snapshot();
+    const res = await request(app).post('/api/me/agents').set('Cookie', cookie()).send(routes[3][1]);
+    expect(res.status).toBe(403);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it('explicit agent organization denies canonical sibling membership and reports provider outage as 503', async () => {
+    await link(A, B);
+    mocks.list.mockResolvedValue({ data: [{ userId: A, organizationId: ORG, status: 'active', role: { slug: 'owner' } }] });
+    expect((await request(app).post('/api/me/agents').query({ org: ORG }).set('Cookie', cookie()).send(routes[3][1])).status).toBe(403);
+    expect(mocks.list).toHaveBeenCalledWith({ userId: B, organizationId: ORG, statuses: ['active'] });
+    mocks.list.mockRejectedValue(new Error('outage'));
+    expect((await request(app).post('/api/me/agents').query({ org: ORG }).set('Cookie', cookie()).send(routes[3][1])).status).toBe(503);
+    expectNoProviders();
+  });
+  it.each([
+    ['get', '/api/me', {}], ['get', '/api/me/member-profile', {}],
+    ['post', '/api/me/member-profile', { display_name: 'Acme', slug: 'acme-containment' }],
+    ['post', '/api/me/member-profile', { organization_name: 'Acme', company_type: 'adtech', corporate_domain: 'containment.test' }],
+    ['put', '/api/me/member-profile', { display_name: 'Acme' }],
+  ] as const)('%s %s does not auto-link a verified domain', async (method, path, body) => {
+    await pool.query("UPDATE organizations SET subscription_status = 'active' WHERE workos_organization_id = $1", [ORG]);
+    const before = await snapshot();
+    const res = await request(app)[method](path).set('Cookie', cookie()).send(body);
+    expect(res.status).toBeLessThan(500);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it('linked unverified B cannot stamp a verified domain on canonical A existing organization', async () => {
+    await link(A, B);
+    await pool.query('UPDATE organization_domains SET verified = false WHERE workos_organization_id = $1', [ORG]);
+    mocks.list.mockResolvedValue({ data: [{ userId: A, organizationId: ORG, status: 'active', role: { slug: 'owner' } }] });
+    const before = await snapshot();
+    const res = await request(app).post('/api/me/member-profile').set('Cookie', cookie(B, false)).send({
+      organization_name: 'Acme', company_type: 'adtech', corporate_domain: 'containment.test',
+    });
+    expect(res.status).toBe(403);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it('Slack scheduled/admin/event profile synchronization creates no organization authority', async () => {
+    mocks.slackConfigured = true;
+    const slackUser = { id: 'U_CONTAINMENT', is_bot: false, deleted: false,
+      profile: { email: 'b@containment.test', real_name: 'Profile Only' } };
+    mocks.slackSync.mockResolvedValue([slackUser]);
+    process.env.ADMIN_EMAILS = 'b@containment.test';
+    const before = await snapshot();
+    const sync = await request(app).post('/api/admin/slack/sync').set('Cookie', cookie()).send({});
+    expect(sync.status).toBe(200);
+    expect(sync.body.total_synced).toBe(1);
+    const mapped = await request(app).post('/api/admin/slack/users/U_CONTAINMENT/link')
+      .set('Cookie', cookie()).send({ workos_user_id: B });
+    expect(mapped.status).toBe(200);
+    expect(mapped.body.organization_assignment).toEqual({ assigned: false });
+    expect((await autoAddVerifiedDomainUsersAsMembers()).added).toBe(0);
+    await handleUserChange({ type: 'user_change', user: { ...slackUser,
+      profile: { ...slackUser.profile, real_name: 'Updated Profile Only' } } });
+    expect((await pool.query("SELECT slack_real_name FROM slack_user_mappings WHERE slack_user_id = 'U_CONTAINMENT'")).rows[0].slack_real_name).toBe('Updated Profile Only');
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it.each([true, false])('Slack/domain bulk writers never grant, even verified=%s', async (verified) => {
+    await pool.query('UPDATE organization_domains SET verified = $2 WHERE workos_organization_id = $1', [ORG, verified]);
+    const before = await snapshot();
+    expect(await checkAndAssignOrganizationByDomain(B)).toEqual({ assigned: false });
+    expect(await autoAddVerifiedDomainUsersAsMembers()).toEqual({ added: 0, skipped: 0, errors: 0 });
+    expect((await autoLinkUnmappedSlackUsers()).organizations_assigned).toBe(0);
+    expect(await autoLinkByVerifiedDomain({ userManagement: { createOrganizationMembership: mocks.create } } as any, B, 'b@containment.test')).toBeNull();
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it.each(['invited', 'admin_added', 'webhook'])('common membership consumer preserves member for staged source %s', async (source) => {
+    await pool.query(`INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+      VALUES ($1, $2, 'b@containment.test', 'community_only', $3)`, [source, ORG, source]);
+    const res = await request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test-verified-at-provider-boundary').send({
+      id: `evt_${source}`, event: 'organization_membership.created', created_at: new Date().toISOString(),
+      data: { id: 'om_containment', user_id: B, organization_id: ORG, status: 'active', role: { slug: 'member' } },
+    });
+    expect(res.status).toBe(200);
+    const rows = await pool.query('SELECT workos_user_id, role FROM organization_memberships WHERE workos_organization_id = $1', [ORG]);
+    expect(rows.rows).toEqual([{ workos_user_id: B, role: 'member' }]);
+    expectNoProviders();
+  });
+  it.each(['members/by-email', 'invitations', 'certification-invites'])('%s producer followed by acceptance never synthesizes owner', async (producer) => {
+    await pool.query(`INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, seat_type)
+      VALUES ($1, $2, 'a@unrelated.test', 'admin', 'contributor')`, [A, ORG]);
+    mocks.list.mockImplementation(async ({ userId }: any) => ({ data: userId === A ? [{
+      id: 'om_admin', userId: A, organizationId: ORG, status: 'active', role: { slug: 'admin' },
+    }] : [] }));
+    const invitation = await request(app).post(`/api/organizations/${ORG}/${producer}`)
+      .set('Cookie', cookie(A, true, 'a@unrelated.test'))
+      .send(producer === 'certification-invites' ? { emails: ['b@containment.test'] } : { email: 'b@containment.test', role: 'member' });
+    expect(invitation.status, JSON.stringify(invitation.body)).toBe(producer === 'members/by-email' ? 201 : 200);
+    expect(mocks.sendInvitation).toHaveBeenCalledTimes(1);
+    expect(mocks.sendInvitation.mock.calls[0][0]).toMatchObject({ email: 'b@containment.test', organizationId: ORG });
+    if (producer !== 'certification-invites') expect(mocks.sendInvitation.mock.calls[0][0].roleSlug).toBe('member');
+    // The inviter leaves before the recipient accepts. The provider delivers
+    // member, so an ownerless local roster must not turn that role into owner.
+    await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = $1', [A]);
+    mocks.list.mockResolvedValue({ data: [] });
+    mocks.sendInvitation.mockClear();
+    const accepted = await request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test').send({
+      id: `evt_producer_${producer}`, event: 'organization_membership.created', created_at: new Date().toISOString(),
+      data: { id: 'om_containment', user_id: B, organization_id: ORG, status: 'active', role: { slug: 'member' } },
+    });
+    expect(accepted.status).toBe(200);
+    expect((await pool.query('SELECT workos_user_id, role FROM organization_memberships WHERE workos_organization_id = $1', [ORG])).rows)
+      .toEqual([{ workos_user_id: B, role: 'member' }]);
+    expectNoProviders();
+  });
+  it('owner deletion does not promote an ordinary invite recipient', async () => {
+    for (const [id, role] of [[A, 'owner'], [B, 'member']]) await pool.query(`INSERT INTO organization_memberships
+      (workos_user_id, workos_organization_id, workos_membership_id, email, role) VALUES ($1, $2, $3, $4, $5)`,
+      [id, ORG, `om_${id}`, `${id}@containment.test`, role]);
+    const res = await request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test-verified-at-provider-boundary').send({
+      id: 'evt_delete', event: 'organization_membership.deleted', created_at: new Date().toISOString(),
+      data: { id: `om_${A}`, user_id: A, organization_id: ORG, status: 'inactive', role: { slug: 'owner' } },
+    });
+    expect(res.status).toBe(200);
+    expect((await pool.query('SELECT role FROM organization_memberships WHERE workos_user_id = $1', [B])).rows).toEqual([{ role: 'member' }]);
+    expectNoProviders();
+  });
+  it.each(['outage', 'wrong subject'])('active membership %s fails with 503 before writes', async (condition) => {
+    if (condition === 'outage') mocks.getUser.mockRejectedValue(new Error('required source unavailable'));
+    else mocks.getUser.mockResolvedValue({ id: A, email: 'a@unrelated.test' });
+    const before = await snapshot();
+    const res = await request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test').send({
+      id: 'evt_source', event: 'organization_membership.updated', created_at: new Date().toISOString(),
+      data: { id: 'om_containment', user_id: B, organization_id: ORG, status: 'active', role: { slug: 'member' } },
+    });
+    expect(res.status).toBe(503);
+    expect(await snapshot()).toEqual(before);
+    expectNoProviders();
+  });
+  it('inactive membership removes access during user-source outage without promoting', async () => {
+    await pool.query(`INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role)
+      VALUES ($1, $2, 'b@containment.test', 'owner')`, [B, ORG]);
+    mocks.getUser.mockRejectedValue(new Error('unavailable'));
+    const res = await request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test').send({
+      id: 'evt_inactive', event: 'organization_membership.updated', created_at: new Date().toISOString(),
+      data: { id: 'om_containment', user_id: B, organization_id: ORG, status: 'inactive', role: { slug: 'owner' } },
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.getUser).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = $1', [B])).rows).toEqual([]);
+    expectNoProviders();
+  });
+  it('BEFORE RETURN NULL membership trigger aborts success', async () => {
+    await pool.query(`CREATE FUNCTION containment_suppress() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`);
+    await pool.query(`CREATE TRIGGER containment_suppress BEFORE INSERT ON organization_memberships FOR EACH ROW EXECUTE FUNCTION containment_suppress()`);
+    try {
+      await expect(upsertOrganizationMembership({ user_id: B, organization_id: ORG, membership_id: 'om_suppressed', email: 'b@containment.test',
+        first_name: null, last_name: null, role: 'member', seat_type: 'community_only', has_explicit_seat_type: false })).rejects.toThrow('exactly one row');
+    } finally {
+      await pool.query('DROP TRIGGER containment_suppress ON organization_memberships');
+      await pool.query('DROP FUNCTION containment_suppress()');
+    }
+  });
+});
