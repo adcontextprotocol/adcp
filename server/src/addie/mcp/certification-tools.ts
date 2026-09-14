@@ -27,6 +27,7 @@ import { getPool } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
+import { TOOL_CATALOG } from '../../training-agent/tenants/tool-catalog.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { stripe } from '../../billing/stripe-client.js';
@@ -56,10 +57,9 @@ function formatCheckpointItems(items: string[]): string {
 /**
  * Format a tenant-URL block for injection into Sage prompts. Single-tenant
  * modules collapse to `agent_url: "..."` (one URL — Sage uses it). Multi-
- * tenant emits a primary URL plus an internal sibling map gated behind an
- * explicit error trigger, so Sage doesn't enumerate URLs to the learner
- * and only switches when a tool call actually fails. Empty pinning falls
- * through to the legacy `/mcp` alias.
+ * tenant emits a proactive per-tool routing table built from TOOL_CATALOG
+ * so Sage sends each tool call to the correct tenant URL without an error
+ * round-trip. Empty pinning falls through to the legacy `/mcp` alias.
  *
  * Tone matches the rest of `buildCertificationContext`: imperative,
  * agent-only-context, no docs prose. The "Internal" tag is load-bearing —
@@ -72,14 +72,30 @@ export function formatTenantBlock(tenants: ModuleTenantUrls): string {
   if (tenants.ids.length <= 1) {
     return `agent_url: "${tenants.primary}"`;
   }
-  const siblings = tenants.ids
-    .map((id, i) => `  - ${id} → ${tenants.all[i]}`)
+
+  // ponytail: proactive routing replaces reactive sibling-switch that broke on non-string errors
+  const tenantToUrl = new Map(tenants.ids.map((id, i) => [id, tenants.all[i]]));
+  const urlToTools = new Map<string, string[]>();
+
+  for (const [tool, toolTenants] of Object.entries(TOOL_CATALOG)) {
+    const serving = toolTenants.filter(t => tenantToUrl.has(t));
+    if (serving.length === 0) continue;
+    const targetId = serving.includes(tenants.ids[0]) ? tenants.ids[0] : serving[0];
+    const url = tenantToUrl.get(targetId)!;
+    const list = urlToTools.get(url) || [];
+    list.push(tool);
+    urlToTools.set(url, list);
+  }
+
+  const routingLines = [...urlToTools.entries()]
+    .map(([url, tools]) => `  - ${url}: ${tools.join(', ')}`)
     .join('\n');
+
   return [
     `agent_url (primary): "${tenants.primary}"`,
-    `**Internal — do not narrate to the learner**: this module also has tools on sibling agents. Default to the primary for every call. Only switch if a tool call returns an "unknown tool" or "not found" error — then GET \`/.well-known/adagents.json\` on the primary, read \`_training_agent_tenants\`, pick the sibling that owns the tool, retry. Do not enumerate siblings to the learner.`,
-    `Siblings (for sibling-switch lookups only):`,
-    siblings,
+    `**Internal — do not narrate to the learner**: this module spans multiple agents. Route each tool call to its assigned URL below. Do not default to the primary for tools assigned elsewhere. Do not enumerate URLs or agent names to the learner.`,
+    `Tool routing:`,
+    routingLines,
   ].join('\n');
 }
 
