@@ -8410,6 +8410,24 @@ paths:
                   sources:
                     type: object
                     properties:
+                      owner_fetched_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      host_fetched_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                      owner_resolved_url:
+                        type:
+                          - string
+                          - "null"
+                      host_resolved_url:
+                        type:
+                          - string
+                          - "null"
                       owner_adagents_url:
                         type: string
                       host_adagents_url:
@@ -8418,6 +8436,10 @@ paths:
                         type: boolean
                         description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement."
                     required:
+                      - owner_fetched_at
+                      - host_fetched_at
+                      - owner_resolved_url
+                      - host_resolved_url
                       - owner_adagents_url
                       - host_adagents_url
                       - cached

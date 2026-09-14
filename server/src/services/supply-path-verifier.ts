@@ -55,12 +55,23 @@ function coversCollection(entry: Record<string, unknown>, owner: string, id: str
 }
 
 /** Resolve one entry at a time: separate grants are alternatives, never merged across collection scopes. */
-function propertyScope(entry: Record<string, unknown>, host: string, manifest: SupplyPathManifest): Set<string> {
+function propertyScope(
+  entry: Record<string, unknown>,
+  host: string,
+  manifest: SupplyPathManifest,
+  requirePublisher = false
+): Set<string> {
   if (revoked(manifest, host)) return new Set();
+  if (
+    !['property_ids', 'property_tags', 'publisher_properties', 'inline_properties'].includes(
+      String(entry.authorization_type)
+    )
+  )
+    return new Set();
   if (entry.authorization_type === 'publisher_properties') {
     if (!Array.isArray(entry.publisher_properties) || entry.publisher_properties.length === 0) return new Set();
     const properties = records(manifest.properties).filter(
-      p => p.publisher_domain === undefined || domain(p.publisher_domain) === host
+      p => (p.publisher_domain === undefined && !requirePublisher) || domain(p.publisher_domain) === host
     );
     const ids = new Set<string>();
     try {
@@ -92,13 +103,20 @@ function propertyScope(entry: Record<string, unknown>, host: string, manifest: S
   if (entry.authorization_type === 'property_ids' && !strings(entry.property_ids)) return new Set();
   if (entry.authorization_type === 'property_tags' && !strings(entry.property_tags)) return new Set();
   // Reuse discovery's discriminator, missing-selector, and revocation semantics.
+  if (manifest.properties !== undefined && (!Array.isArray(manifest.properties) || !manifest.properties.every(record)))
+    return new Set();
+  if (
+    entry.authorization_type === 'inline_properties' &&
+    (!Array.isArray(entry.properties) || !entry.properties.every(record))
+  )
+    return new Set();
   const result = resolveAgentProperties(
     { ...manifest, authorized_agents: [entry as unknown as AuthorizedAgent] } as AdAgentsJson,
     String(entry.url)
   );
   return new Set(
     result.properties
-      .filter(p => p.publisher_domain === undefined || domain(p.publisher_domain) === host)
+      .filter(p => (p.publisher_domain === undefined && !requirePublisher) || domain(p.publisher_domain) === host)
       .map(p => p.property_id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0)
   );
@@ -222,7 +240,11 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
     );
   };
   const collectionLeg: SupplyPathLegs['owner_collection_declared'] = { ok: false };
-  const declared = records(ownerManifest?.collections);
+  const declared = records(ownerManifest?.collections).filter(
+    c =>
+      (c.publisher_domain === undefined && !input.requireExplicitOwnerPublisherDomain) ||
+      domain(c.publisher_domain) === owner
+  );
   const targets = declared.filter(c => c.collection_id === input.collectionId && typeof c.collection_id === 'string');
   if (!ownerManifest) collectionLeg.failure = 'manifest_not_found';
   else if (owner && isRevoked('owner', owner)) collectionLeg.failure = 'publisher_revoked';
@@ -272,7 +294,9 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
       carriage.property_ids_unmatched = claimed;
     } else {
       const properties = records(hostManifest.properties).filter(
-        p => p.publisher_domain === undefined || domain(p.publisher_domain) === host
+        p =>
+          (p.publisher_domain === undefined && !input.requireExplicitHostPublisherDomain) ||
+          domain(p.publisher_domain) === host
       );
       const counts = new Map<unknown, number>();
       for (const property of properties) counts.set(property.property_id, (counts.get(property.property_id) ?? 0) + 1);
@@ -290,6 +314,7 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
           e =>
             agentIdentity(e.url) === agent &&
             owner &&
+            (!input.requireExplicitOwnerPublisherDomain || e.collections !== undefined) &&
             coversCollection(e, owner, input.collectionId) &&
             !unsupportedConstraints(e).length
         )
@@ -314,7 +339,7 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
         collectionLeg.ok &&
         covered.find(e => {
           if (unsupportedConstraints(e).length) return false;
-          const scope = propertyScope(e, host, hostManifest);
+          const scope = propertyScope(e, host, hostManifest, input.requireExplicitHostPublisherDomain);
           const required = input.requiredHostPropertyIds ?? claimed;
           if (
             input.requiredHostPropertyIds &&
@@ -414,7 +439,12 @@ export function supplyPathAdsTxtPolicy(input: SupplyPathInput): {
       )
   );
   const requested = input.requiredHostPropertyIds ? new Set(input.requiredHostPropertyIds) : collectionIds;
-  const properties = records(input.hostManifest?.properties).filter(p => requested.has(String(p.property_id)));
+  const properties = records(input.hostManifest?.properties).filter(
+    p =>
+      requested.has(String(p.property_id)) &&
+      ((p.publisher_domain === undefined && !input.requireExplicitHostPublisherDomain) ||
+        domain(p.publisher_domain) === domain(input.hostDomain))
+  );
   const files = new Set<'ads.txt' | 'app-ads.txt'>();
   for (const property of properties) {
     if (property.property_type === 'website') files.add('ads.txt');
