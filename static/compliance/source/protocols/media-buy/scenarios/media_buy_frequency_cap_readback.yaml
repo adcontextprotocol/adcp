@@ -217,12 +217,15 @@ phases:
             - product_id: "frequency_capped_display_q2"
               budget: 7500
               pricing_option_id: "auction_cpm"
+              bid_price: 3.00
             - product_id: "frequency_capped_display_companion_q2"
               budget: 7500
               pricing_option_id: "companion_auction_cpm"
+              bid_price: 3.00
             - product_id: "frequency_capped_display_uncapped_q2"
               budget: 7500
               pricing_option_id: "uncapped_auction_cpm"
+              bid_price: 3.00
           idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_non_participating"
         validations:
           - check: error_code
@@ -250,9 +253,11 @@ phases:
             - product_id: "frequency_capped_display_q2"
               budget: 7500
               pricing_option_id: "auction_cpm"
+              bid_price: 3.00
             - product_id: "frequency_capped_display_household_q2"
               budget: 7500
               pricing_option_id: "household_auction_cpm"
+              bid_price: 3.00
           idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_wrong_per_unit"
         validations:
           - check: error_code
@@ -278,9 +283,11 @@ phases:
             - product_id: "frequency_capped_display_companion_q2"
               budget: 7500
               pricing_option_id: "companion_auction_cpm"
+              bid_price: 3.00
             - product_id: "frequency_capped_display_q2"
               budget: 7500
               pricing_option_id: "auction_cpm"
+              bid_price: 3.00
           idempotency_key: "$generate:uuid_v4#media_buy_frequency_cap_readback_create"
         context_outputs:
           - name: media_buy_id

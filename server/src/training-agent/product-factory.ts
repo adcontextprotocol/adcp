@@ -836,6 +836,9 @@ function buildProduct(
     },
     overlay_support: {
       geo_countries: true,
+      // Broad legacy package-cap promise within the seller-wide
+      // media_buy.frequency_capping limits, including update support.
+      frequency_cap: true,
     },
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
@@ -850,6 +853,14 @@ function buildProduct(
     ...(installments && { installments }),
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
   };
+
+  // Every catalog product can join one counter shared across a MediaBuy so
+  // brief-mode discovery with required_media_buy_support or an exact
+  // media_buy_frequency_cap returns the demonstration catalog. Constraints
+  // are inherited from media_buy.aggregate_frequency_capping. The published
+  // SDK product type predates media_buy_support, so assign through the record
+  // view; the wire value is schema-tested against the source product schema.
+  (product as unknown as Record<string, unknown>).media_buy_support = { frequency_cap: true };
 
   // Populate inline product cards from the product's own data.
   const primaryPricing = effectivePricing[0];

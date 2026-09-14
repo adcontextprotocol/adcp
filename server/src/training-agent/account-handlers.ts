@@ -490,6 +490,30 @@ export function sandboxBrandDomainForAccountId(
   return account?.sandbox === true ? account.brand.domain.toLowerCase() : undefined;
 }
 
+/** Resolve a principal-owned account id to its natural identity regardless
+ * of sandbox status. Callers that need the sandbox guarantee use
+ * sandboxAccountRefForId; this variant lets read and mutation paths recognize
+ * that an opaque id and a natural reference name the same synced account. */
+export function accountRefForId(
+  accountId: string,
+  principal: string | undefined,
+): AccountRef | undefined {
+  const account = findAccountByIdAcrossSessions(accountId, principal);
+  if (!account) return undefined;
+  return {
+    brand: {
+      domain: account.brand.domain.toLowerCase(),
+      ...(account.brand.brand_id && { brand_id: account.brand.brand_id }),
+      ...(account.brand.countries && { countries: [...account.brand.countries] }),
+    },
+    operator: account.operator.toLowerCase(),
+    ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
+    ...(account.currency && { currency: account.currency }),
+    ...(account.timezone && { timezone: account.timezone }),
+    ...(account.sandbox && { sandbox: true }),
+  };
+}
+
 /** Resolve a principal-owned account id to its complete sandbox identity. */
 export function sandboxAccountRefForId(
   accountId: string,
