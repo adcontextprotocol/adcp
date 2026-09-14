@@ -48,6 +48,17 @@ describe('WorkOS client request budgets', () => {
     });
   });
 
+  it('bounds exact credential enforcement to five seconds without SDK retries', async () => {
+    const { getAuthorizationEnforcementWorkos } = await import('../../src/auth/workos-client.js');
+    expect(getAuthorizationEnforcementWorkos()).toBe(getAuthorizationEnforcementWorkos());
+    expect(mocks.constructWorkOS).toHaveBeenCalledTimes(1);
+    expect(mocks.constructWorkOS).toHaveBeenCalledWith('sk_test_timeout', {
+      clientId: 'client_test_timeout',
+      timeout: 5_000,
+      maxRetries: 0,
+    });
+  });
+
   it('makes one SDK attempt when retries are disabled', async () => {
     const { WorkOS } = await vi.importActual<typeof import('@workos-inc/node')>(
       '@workos-inc/node',

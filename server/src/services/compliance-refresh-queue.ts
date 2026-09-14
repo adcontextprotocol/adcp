@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { createLogger } from '../logger.js';
 import {
   ComplianceRefreshRequestsDatabase,
@@ -16,7 +17,9 @@ const RETENTION_MS = 7 * 24 * 60 * 60_000;
 function stableFailureMessage(code: string): string {
   switch (code) {
     case 'authorization_provenance_missing':
-      return 'Refresh requester authorization provenance is unavailable';
+      return 'Authenticated credential provenance is missing; submit a new refresh';
+    case 'authorization_unavailable':
+      return 'Refresh authorization is temporarily unavailable';
     case 'authorization_revoked':
       return 'Authorization changed before the refresh started';
     case 'monitoring_paused':
@@ -33,6 +36,7 @@ function stableFailureMessage(code: string): string {
 function stableFailureCode(code: unknown): string {
   return code === 'authorization_revoked'
     || code === 'authorization_provenance_missing'
+    || code === 'authorization_unavailable'
     || code === 'monitoring_paused'
     || code === 'probe_failed'
     || code === 'compliance_failed'
@@ -41,9 +45,14 @@ function stableFailureCode(code: unknown): string {
     : 'refresh_failed';
 }
 
+export interface ComplianceRefreshExecutionLease {
+  assertValid(): void;
+  setCompletionGuard(guard: (client: PoolClient) => Promise<void>): void;
+}
+
 export type ComplianceRefreshExecutor = (
   request: ClaimedComplianceRefreshRequest,
-  lease: { assertValid(): void },
+  lease: ComplianceRefreshExecutionLease,
 ) => Promise<Record<string, unknown>>;
 
 export class ComplianceRefreshQueue {
@@ -172,12 +181,29 @@ export class ComplianceRefreshQueue {
           throw error;
         }
       };
-      const result = await this.execute(request, { assertValid });
+      let completionGuard: ((client: PoolClient) => Promise<void>) | undefined;
+      const result = await this.execute(request, {
+        assertValid,
+        setCompletionGuard(guard) {
+          if (completionGuard || typeof guard !== 'function') {
+            throw Object.assign(new Error('Refresh completion authorization is unavailable'), {
+              code: 'authorization_unavailable',
+            });
+          }
+          completionGuard = guard;
+        },
+      });
       if (!leaseValid || Date.now() >= leaseExpiresAt) {
         logger.warn({ operationId: request.id }, 'Compliance refresh completed after losing its lease');
         return 'lostLease';
       }
-      const recorded = await this.db.markSucceeded(request.id, request.lease_token, result);
+      if (!completionGuard) {
+        throw Object.assign(new Error('Refresh completion authorization is unavailable'), {
+          code: 'authorization_unavailable',
+        });
+      }
+      assertValid();
+      const recorded = await this.db.markSucceeded(request.id, request.lease_token, result, completionGuard);
       if (!recorded) return 'lostLease';
       logger.info(
         { operationId: request.id, agentUrl: request.agent_url, attempts: request.attempts },
@@ -185,6 +211,9 @@ export class ComplianceRefreshQueue {
       );
       return 'succeeded';
     } catch (error) {
+      // A timed-out probe may still have an awaited local continuation. Stop
+      // its next authorization checkpoint before persisting this failure.
+      leaseValid = false;
       const rawCode = error && typeof error === 'object' && 'code' in error
         && typeof error.code === 'string'
         ? error.code
@@ -194,7 +223,7 @@ export class ComplianceRefreshQueue {
         return 'lostLease';
       }
       const code = stableFailureCode(rawCode);
-      if (code === 'badge_update_failed') {
+      if (code === 'badge_update_failed' || code === 'authorization_unavailable') {
         const requeued = await this.db.requeueAfterFailure(
           request.id,
           request.lease_token,
@@ -216,6 +245,7 @@ export class ComplianceRefreshQueue {
       );
       return 'failed';
     } finally {
+      leaseValid = false;
       clearInterval(heartbeat);
       await executionFence.release();
     }
