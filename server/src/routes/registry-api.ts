@@ -200,7 +200,7 @@ import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import { isBreakGlassAdminEmail } from "../auth/admin-access.js";
 import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
-import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
+import { resolveCallerOrgId, sendCallerOrganizationAuthError } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
 import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
@@ -6050,6 +6050,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         id: saved.id,
       });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ error }, "Failed to save property");
       return res.status(500).json({ error: "Failed to save property" });
     }
@@ -6091,6 +6092,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           `Origin verification binds this domain to your organization.`,
       });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ error }, 'Failed to issue domain claim');
       return res.status(500).json({ error: 'Failed to issue domain claim' });
     }
@@ -6131,6 +6133,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
       return res.json(outcome);
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ error }, 'Origin verification failed');
       return res.status(500).json({ error: 'Origin verification failed' });
     }
@@ -6783,6 +6786,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       res.json({ agents: enriched, count: enriched.length });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ err: error, path: req.path }, "Failed to list agents");
       res.status(500).json({ error: "Failed to list agents" });
     }
@@ -9644,6 +9648,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         agents,
       });
     } catch (error) {
+      if (sendCallerOrganizationAuthError(error, res)) return;
       logger.error({ err: error, path: req.path }, "Operator lookup failed");
       res.status(500).json({ error: "Operator lookup failed" });
     }
