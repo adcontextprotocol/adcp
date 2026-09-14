@@ -64,6 +64,6 @@ export async function approveSupplyPathAuthorityChange(authority: string, locati
 
 function validateLocation(location: string): URL {
   const parsed = new URL(location);
-  if (location.length > 8192 || parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash || (parsed.port && parsed.port !== '443')) throw new TypeError('Invalid publisher authority');
+  if (location.length > 8192 || parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.href.includes('#') || (parsed.port && parsed.port !== '443')) throw new TypeError('Invalid publisher authority');
   return parsed;
 }

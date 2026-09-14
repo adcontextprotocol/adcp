@@ -604,6 +604,10 @@ export class AdAgentsManager {
           });
           return null;
         }
+        if (parsedUrl.href.includes('#')) {
+          result.errors.push({ field: 'authoritative_location', message: 'Authoritative location must not contain a URL fragment', severity: 'error' });
+          return null;
+        }
       } catch {
         result.errors.push({
           field: 'authoritative_location',

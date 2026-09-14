@@ -23,7 +23,7 @@ export async function supplyPathSnapshotEvidence(publisher: string, snapshot: Su
       // Corrupt cache provenance cannot establish authority. Still load held denials below.
     }
   }
-  const secure = resolved !== null && resolved.protocol === 'https:' && !resolved.username && !resolved.password && !resolved.hash && (!resolved.port || resolved.port === '443');
+  const secure = resolved !== null && resolved.protocol === 'https:' && !resolved.username && !resolved.password && !resolved.href.includes('#') && (!resolved.port || resolved.port === '443');
   const trustedSource = secure && (snapshot.discoveryMethod === 'authoritative_location' || (snapshot.discoveryMethod === 'direct' && resolved?.origin === origin));
   const age = snapshot.fetchedAt ? Date.now() - snapshot.fetchedAt.getTime() : Infinity;
   const fresh = age >= 0 && age <= 7 * 86400000 && (!snapshot.expiresAt || snapshot.expiresAt.getTime() > Date.now());

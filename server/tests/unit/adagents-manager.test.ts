@@ -1680,6 +1680,16 @@ describe('AdAgentsManager', () => {
       expect(result.errors.some(e => e.field === 'authoritative_location' && e.message.includes('File not found'))).toBe(true);
     });
 
+    it('refuses an empty URL fragment before fetching the authoritative target', async () => {
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200, data: buf({ authoritative_location: 'https://cdn.example.com/adagents.json#' }), headers: {},
+      });
+      const result = await manager.validateDomain('example.com');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.message.includes('URL fragment'))).toBe(true);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('prevents nested URL references (infinite loop protection)', async () => {
       const referenceData1 = {
         authoritative_location: 'https://cdn.example.com/adagents.json',
