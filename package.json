@@ -55,7 +55,7 @@
     "test:get-creative-features-contract": "node --test --test-force-exit --test-timeout=30000 tests/get-creative-features-idempotency.test.cjs",
     "test:composed": "node tests/composed-schema-validation.test.cjs && npm run test:get-creative-features-contract",
     "test:rejection-arm-mutex": "node tests/rejection-arm-mutual-exclusion.test.cjs",
-    "test:migrations": "node tests/migration-validation.test.cjs",
+    "test:migrations": "node tests/migration-validation.test.cjs && node scripts/generate-email-normalization.mjs --check",
     "test:governance-jws-vectors": "node scripts/generate-governance-jws-vectors.mjs --check && node --test --test-force-exit --test-timeout=30000 tests/governance-authorization-jws-vectors.test.cjs",
     "test:hmac-vectors": "node --test --test-force-exit --test-timeout=30000 tests/webhook-hmac-vectors.test.cjs",
     "test:hmac-signer-conformance": "node --test --test-force-exit --test-timeout=30000 tests/webhook-hmac-signer-conformance.test.cjs",
