@@ -283,6 +283,8 @@ To see the seller responses your agent must handle, you can inspect the test sel
 
 ```bash
 # Inspects the test SELLER's get_products response — the shape your buyer agent must parse.
+# The CLI passes adcp_version through, so "3.2-rc.1" reaches the seller even
+# though @adcp/sdk@14.0.0-rc.36 embeds 3.2.0-rc.2 for its own validation.
 npx @adcp/sdk@14.0.0-rc.36 test-mcp get_products '{"adcp_version":"3.2-rc.1","idempotency_key":"550e8400-e29b-41d4-a716-446655442065","buying_mode":"brief","brief":"your campaign brief"}'
 ```
 
