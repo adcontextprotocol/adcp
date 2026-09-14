@@ -86,7 +86,12 @@ describe('formatTenantBlock', () => {
     );
     expect(block).toContain(`agent_url (primary): "${BASE}/creative/mcp"`);
     // SI tools must route to /si, not primary.
-    expect(block).toMatch(new RegExp(`${BASE}/si/mcp:.*si_initiate_session`));
-    expect(block).toMatch(new RegExp(`${BASE}/si/mcp:.*si_send_message`));
+    expect(block).toContain(`${BASE}/si/mcp`);
+    expect(block).toContain('si_initiate_session');
+    expect(block).toContain('si_send_message');
+    // si_* tools must NOT appear on the primary creative line
+    const lines = block.split('\n');
+    const creativeLine = lines.find(l => l.includes(`${BASE}/creative/mcp`));
+    expect(creativeLine).not.toContain('si_initiate_session');
   });
 });
