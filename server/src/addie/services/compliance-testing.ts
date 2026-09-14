@@ -1,4 +1,5 @@
 import { complianceRunProvenance, type ComplianceRunProvenance } from '../../compliance/run-provenance.js';
+import { heartbeatRunCompleteness } from '../../compliance/run-publication.js';
 /**
  * Compliance testing — thin adapter over @adcp/sdk's compliance module.
  *
@@ -1344,6 +1345,9 @@ export function complianceResultToDbInput(
   triggeredBy: TriggeredBy = 'manual',
   storyboardIds?: string[],
 ): RecordComplianceRunInput {
+  const completeness = triggeredBy === 'heartbeat'
+    ? heartbeatRunCompleteness(result.completeness)
+    : result.completeness ?? 'complete';
   const gradedResult = normalizeGradedTracks(result);
   const selectedStoryboardIds = storyboardIds?.length ? storyboardIds
     : result.bundle_results?.length
@@ -1389,10 +1393,14 @@ export function complianceResultToDbInput(
     observations_json: result.observations,
     triggered_by: triggeredBy,
     provenance_json: redactForDiagnostics(
-      (result as ComplianceResult & { hosted_provenance?: ComplianceRunProvenance }).hosted_provenance ?? complianceRunProvenance(result),
+      {
+        ...((result as ComplianceResult & { hosted_provenance?: ComplianceRunProvenance }).hosted_provenance ?? complianceRunProvenance(result)),
+        ...(triggeredBy === 'heartbeat' ? { reported_completeness: result.completeness ?? null } : {}),
+      },
     ) as ComplianceRunProvenance,
-    completeness: result.completeness ?? 'complete',
-    is_authoritative: result.completeness !== 'timed_out' && result.overall_status !== 'auth_required' && !storyboardIds?.length,
+    completeness,
+    is_authoritative: (triggeredBy === 'heartbeat' ? completeness === 'complete' : result.completeness !== 'timed_out')
+      && result.overall_status !== 'auth_required' && !storyboardIds?.length,
     storyboard_statuses: deriveStoryboardStatuses(result, selectedStoryboardIds),
     replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),

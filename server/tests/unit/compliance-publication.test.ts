@@ -17,6 +17,30 @@ function result(steps: unknown[], completeness: 'complete' | 'timed_out' = 'comp
 }
 
 describe('hosted compliance publication policy', () => {
+  it.each([undefined, null, 'budget_exhausted', 'partial', 'not_completed', 'future_value', '', true, 1, {}, ['complete']])(
+    '#7404 Bug 3: heartbeat completeness %j is audit-only even with passing tracks', completeness => {
+      const sdkResult = { ...result([{ passed: true }]), completeness } as unknown as ComplianceResult;
+      const input = complianceResultToDbInput(sdkResult, agentUrl, 'production', 'heartbeat');
+      expect(input).toMatchObject({ completeness: 'not_completed', is_authoritative: false });
+      expect(input.provenance_json?.reported_completeness).toEqual(completeness ?? null);
+    },
+  );
+
+  it.each(['manual', 'owner_test'] as const)('preserves absent-completeness compatibility for %s', trigger => {
+    const sdkResult = result([{ passed: true }]);
+    delete sdkResult.completeness;
+    expect(complianceResultToDbInput(sdkResult, agentUrl, 'production', trigger))
+      .toMatchObject({ completeness: 'complete', is_authoritative: true });
+    expect(complianceResultToDbInput(sdkResult, agentUrl, 'production', trigger, ['first']))
+      .toMatchObject({ completeness: 'complete', is_authoritative: false, replace_storyboard_statuses: false });
+  });
+
+  it('redacts malformed completeness provenance before persistence', () => {
+    const sdkResult = { ...result([{ passed: true }]), completeness: { token: 'private-value' } } as unknown as ComplianceResult;
+    const input = complianceResultToDbInput(sdkResult, agentUrl, 'production', 'heartbeat');
+    expect(input.provenance_json?.reported_completeness).toEqual({ token: '[redacted]' });
+  });
+
   it('uses completeness even when a timed-out run says passing and has no observations', () => {
     const input = complianceResultToDbInput(result([{ passed: true }], 'timed_out'), agentUrl, 'production');
     expect(input).toMatchObject({ completeness: 'timed_out', is_authoritative: false });
