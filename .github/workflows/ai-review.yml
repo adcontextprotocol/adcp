@@ -1,14 +1,19 @@
 name: AI PR Review (Ladon)
 
 # Ladon reviews every non-draft, non-dependabot PR. The engine lives in
-# adcontextprotocol/actions (ladon/), consumed here by floating major tag. This
+# adcontextprotocol/actions (ladon/), pinned to a reviewed commit. This
 # workflow handles the pull_request_target security posture (trusted base-SHA
 # checkout only; the PR head is never fetched, checked out, or executed - setup
 # reads head content via the GitHub API), the review-workflow-modification gate,
-# and invoking the composite. Reviews post as the AAO Secretariat App.
+# and invoking the composite. Reviews post as the AAO Secretariat App as
+# automated findings; human approval must be enforced separately.
 #
 # pull_request_target (not pull_request) is required on a public repo so that PRs
 # from forks can access the App token and Anthropic key.
+
+# HUMAN MERGE HOLD: this pin prevents bot approval, not author self-merge.
+# Keep older runs/approvals quarantined until the effective human gate is audited.
+# See .github/LADON-ADOPTION.md before lifting the hold or promoting actions tags.
 
 on:
   pull_request_target:
@@ -90,8 +95,9 @@ jobs:
 
       - name: Run Ladon
         if: steps.workflow-mod.outputs.modified != 'true'
-        uses: adcontextprotocol/actions/ladon/review@ladon/review/v1
+        uses: adcontextprotocol/actions/ladon/review@85284cbc297875aa04b2d5afcf7ae833b29f329c
         with:
+          auto-approve: 'false'
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           app-id: ${{ secrets.SECRETARIAT_APP_ID }}
           app-private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
