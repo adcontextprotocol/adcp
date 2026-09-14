@@ -251,7 +251,9 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
 }
 
 function git(args) {
-  return execFileSync('git', args, { encoding: 'utf8' });
+  // Large artifact retirements produce multi-megabyte name-status diffs; Node's
+  // default 1 MiB maxBuffer would fail with ENOBUFS.
+  return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
 function readFileAtHead(filePath) {
