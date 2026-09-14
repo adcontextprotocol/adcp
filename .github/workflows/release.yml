@@ -353,6 +353,13 @@ jobs:
           fi
 
           release_state="$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish)"
+          jq -e '(.isDraft | type) == "boolean"' <<< "$release_state" >/dev/null
+          if [ "$(jq -r '.isDraft' <<< "$release_state")" = false ]; then
+            # Published releases are immutable: a retry only verifies authority
+            # and bytes. Missing assets require a separate recovery plan.
+            node scripts/check-release-state.cjs published "$VERSION"
+            exit 0
+          fi
           if [ "$(jq -r '.isDraft' <<< "$release_state")" = true ] && [ "$(jq -r '.targetCommitish' <<< "$release_state")" != "$RELEASE_SHA" ]; then
             echo '::error::Existing draft targets a different release commit.'
             exit 1

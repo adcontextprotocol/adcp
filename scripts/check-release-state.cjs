@@ -283,7 +283,6 @@ function approval() {
       [
         "write:write",
         "write:maintain",
-        "maintain:maintain",
         "admin:admin",
       ].includes(role)
     )

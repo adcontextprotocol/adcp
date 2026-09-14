@@ -452,6 +452,29 @@ for (const kind of ["extra", "duplicate"])
     );
   });
 
+for (const kind of ["complete", "missing", "different bytes", "malformed draft flag"])
+  test(`published release reuse performs no GitHub writes: ${kind}`, (t) => {
+    const f = fixture(t);
+    const release = JSON.parse(fs.readFileSync(path.join(f.dir, "release.json")));
+    if (kind === "missing") release.assets.pop();
+    if (kind === "malformed draft flag") release.isDraft = "false";
+    f.write("release.json", JSON.stringify(release));
+    const before = fs.readFileSync(path.join(f.dir, "release.json"), "utf8");
+    const result = f.run("bash", [
+      "-c",
+      step("Upload protocol tarball to GitHub Release").run.replaceAll(
+        "${{ steps.release-artifacts.outputs.version }}",
+        version,
+      ),
+    ], kind === "different bytes" ? { DIFFERING_GITHUB_ASSET: `${version}.tgz` } : {});
+    if (kind === "complete") assert.equal(result.status, 0, result.stderr);
+    else assert.notEqual(result.status, 0);
+    if (kind === "missing") assert.match(result.stderr, /complete signed tuple/);
+    if (kind === "different bytes") assert.match(result.stderr, /differs from the tagged local tuple/);
+    assert.equal(f.calls(), "");
+    assert.equal(fs.readFileSync(path.join(f.dir, "release.json"), "utf8"), before);
+  });
+
 for (const [name, env] of [
   [
     "outside User with public read access",
@@ -491,6 +514,10 @@ for (const [name, env] of [
   [
     "contradictory role",
     { PERMISSION_RESPONSE: permissionResponse("write", "read") },
+  ],
+  [
+    "unsupported maintain permission value",
+    { PERMISSION_RESPONSE: permissionResponse("maintain", "maintain") },
   ],
   [
     "missing permission",
