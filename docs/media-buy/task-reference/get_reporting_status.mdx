@@ -5,11 +5,12 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 ---
 
 <Warning>
-**Reliable Reporting 1.0 is published through `3.2.0-rc.2` and remains
-experimental.** RC.2 publishes the opt-in consumer-status sync and readback.
-Sellers implementing that extension advertise `consumer_status_task`; it becomes
-required Core only in the next eligible minor after the notice window. Sellers declare
-`media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
+**Reliable Reporting 1.0 is published through `3.2.0-rc.3` and remains
+experimental.** RC.2 publishes the opt-in consumer-status sync and readback;
+RC.3 adds its hardening. Sellers implementing that extension advertise
+`consumer_status_task`; it becomes required Core only in the next eligible minor
+after the notice window. Sellers declare `media_buy.reporting_delivery` in
+`get_adcp_capabilities.experimental_features`.
 </Warning>
 
 `get_reporting_status` is the authoritative status surface for AdCP 3.2
@@ -18,9 +19,9 @@ usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-refe
 as the reporting-data API.
 
 {/* The stable /schemas/v3 alias does not expose this prerelease-only task yet. */}
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/get-reporting-status-request.json)
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-request.json)
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/media-buy/get-reporting-status-response.json)
 
 <Note>
 **What landed when.** RC.0 supports the `summary`, `periods`, and `revision`
@@ -29,14 +30,11 @@ pagination. RC.1 adds incremental `changes_after` repair and its checkpoint,
 post-official `adjustments[]` and `adjustment_receipts[]`, and their
 correction/reconciliation semantics. `3.2.0-rc.2` adds `consumer_statuses[]` for
 sellers advertising `consumer_status_task` and includes those immutable records
-in flat pagination and `changes_after` checkpoints. Do not infer a later
-tier's additions from an earlier baseline.
-
-Not in any published bundle yet — these ship in the next prerelease:
-`obligation_counts.consumer_status_pending`, issue `opened_at` / `issue_state` /
-`external_ref`, and the `consumer_mismatch_escalation_seconds` and
-`operations_contact` capability fields. Validate those against the development
-bundle served from `/schemas/latest/` rather than the rc.2 pin above.
+in flat pagination and `changes_after` checkpoints. `3.2.0-rc.3` adds the
+consumer-status hardening: `obligation_counts.consumer_status_pending`, issue
+`opened_at` / `issue_state` / `external_ref`, and the
+`consumer_mismatch_escalation_seconds` and `operations_contact` capability
+fields. Do not infer a later tier's additions from an earlier baseline.
 </Note>
 
 ## Views
