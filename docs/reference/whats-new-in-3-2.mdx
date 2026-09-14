@@ -267,6 +267,9 @@ timezone for a synchronized schedule; products declare the supported modes throu
 is limited or create-only declare exact constraints through
 `overlay_support.frequency_cap_support` instead of the broad legacy boolean,
 and buyers preflight them with `required_overlay_support.frequency_cap_support`.
+A root `frequency_cap` on the MediaBuy adds one counter shared across every
+package, advertised through `media_buy.aggregate_frequency_capping` and
+product `media_buy_support`; scope is determined by field location.
 See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
 
 ### Commercial terms and controls are explicit

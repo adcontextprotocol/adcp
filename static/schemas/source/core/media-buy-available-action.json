@@ -13,7 +13,7 @@
   "type": "object",
   "properties": {
     "action": {
-      "$ref": "/schemas/enums/media-buy-valid-action.json",
+      "$ref": "/schemas/core/media-buy-available-action-id.json",
       "description": "The action identifier."
     },
     "mode": {
@@ -37,7 +37,7 @@
     },
     "applicable_package_ids": {
       "type": "array",
-      "description": "For a package-scoped action, the exact packages currently eligible. Omission means every relevant package.",
+      "description": "For a package-scoped action, the exact packages currently eligible. Omission means every relevant package. Root actions omit this field.",
       "items": { "$ref": "/schemas/core/applicable-package-id.json" },
       "minItems": 1,
       "uniqueItems": true

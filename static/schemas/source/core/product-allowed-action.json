@@ -11,8 +11,8 @@
   "type": "object",
   "properties": {
     "action": {
-      "$ref": "/schemas/enums/media-buy-valid-action.json",
-      "description": "The action identifier."
+      "$ref": "/schemas/core/media-buy-available-action-id.json",
+      "description": "The action identifier. Accepts every legacy valid_actions value plus structured-only actions such as update_media_buy_frequency_cap."
     },
     "modes": {
       "type": "array",

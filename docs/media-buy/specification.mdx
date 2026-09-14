@@ -125,16 +125,24 @@ Pick the field by what you are doing:
 | Role | You want to | Use |
 |---|---|---|
 | Buyer | Cap one package with its own counter | `packages[].targeting_overlay.frequency_cap` (or `purchases[]` on `buy_products`); require any package-cap support with `required_overlay_support.frequency_cap: true` |
-| Buyer | Keep a package cap editable after creation | `required_overlay_support.frequency_cap_support.mutable_fields` at discovery; whether a live buy can change now is `MediaBuy.available_actions` |
+| Buyer | Cap the whole buy with one shared counter | root `frequency_cap` on the create, update, or buy request; require support with `required_media_buy_support` |
+| Buyer | Keep a cap editable after creation | `required_overlay_support.frequency_cap_support.mutable_fields` for package caps and `required_media_buy_support.frequency_cap_constraints.mutable_fields` for the root cap at discovery; whether a live buy can change now is `MediaBuy.available_actions` |
+| Buyer | Change the root cap on a live buy | `control_media_buy` with `frequency_cap` (`null` clears it); requires `update_media_buy_frequency_cap` in `available_actions` |
+| Buyer | Add a product to a buy that has a root cap | `update_media_buy.new_packages`; every added product must participate in the shared counter or the whole update is rejected |
 | Seller | Say a product accepts package caps as it always has | `Product.overlay_support.frequency_cap: true` |
 | Seller | Say a product accepts package caps only within limits, or create-only | `Product.overlay_support.frequency_cap_support` |
+| Seller | Say a product can join one counter shared across the buy | `Product.media_buy_support.frequency_cap: true`, plus seller-wide `media_buy.aggregate_frequency_capping` |
 
-A cap nested in a package `targeting_overlay` owns an independent counter for
-that package. Repeating the same package cap on every package does not create
-a shared counter across the buy; one counter across the buy is a
-MediaBuy-level control specified separately. `FrequencyCap` defines no `scope`
-discriminator, and unknown extension fields cannot change the scope
-established by field location.
+Scope is determined by field location. A cap nested in a package
+`targeting_overlay` owns an independent counter for that package. A root
+`frequency_cap` on a MediaBuy request, accepted commercial terms, or MediaBuy
+state owns one counter shared across every package. `FrequencyCap` therefore
+defines no `scope` discriminator; unknown extension fields remain accepted but
+cannot change the scope established by location. When both levels are present,
+an impression is eligible only when both caps permit it. Repeating the same
+package cap on every package does not create a shared counter.
+
+#### Package caps
 
 The legacy package capability remains
 `Product.overlay_support.frequency_cap: true`, with its existing broad meaning
@@ -204,9 +212,50 @@ package. A missing action or a package outside that list returns
 `ACTION_NOT_ALLOWED`; a cap shape outside product capability, including a
 change to a field not listed in `mutable_fields`, returns
 `UNSUPPORTED_FEATURE`; a change outside accepted commercial terms returns
-`REQUOTE_REQUIRED`. Failure preserves state. Changing a cap never resets its
-counter: prior qualifying exposures in the resulting active window continue to
-count. Successful creates, updates, and reads echo the applied package cap.
+`REQUOTE_REQUIRED`. Failure preserves state.
+
+#### Shared MediaBuy caps
+
+Aggregate support is advertised separately as
+`media_buy.aggregate_frequency_capping`; the legacy `media_buy.frequency_capping`
+object continues to mean package support. Participation is product-scoped as
+`Product.media_buy_support.frequency_cap: true`, optionally narrowed by
+`frequency_cap_constraints`. Every selected product must advertise
+participation and must support the root cap's `per` value; a product mix that
+does not is rejected atomically. Discovery uses `required_media_buy_support`
+when the value is not yet known, and `media_buy_frequency_cap` when the exact
+aggregate value must be executable; the exact value alone suffices because it
+implies participation. In 3.2, root caps are max-impression caps only: duration
+windows are rolling, `campaign` spans the MediaBuy flight, and the units are
+the same as package caps (a weekly window is seven `days`). Suppression remains
+package-only because its legacy value does not identify a counter entity.
+
+A root cap outside the seller-wide capability or any selected product's
+resolved constraints, or a product mix that cannot share it, is rejected with
+`UNSUPPORTED_FEATURE` before any mutation; sellers MUST NOT silently drop,
+soften, or clamp it. A create, update, or buy response that does not echo the
+root cap means the seller did not apply it; buyers MUST treat the buy as
+uncapped and MUST NOT assume the cap is enforced. `media_buy_support.frequency_cap_constraints.mutable_fields`
+declares whether a product's implementation can change the root cap after
+creation, and a product declaring a non-empty list SHOULD also list
+`update_media_buy_frequency_cap` in its `allowed_actions` template;
+`MediaBuy.available_actions` decides whether a live buy can change now. A
+root-cap change inside accepted commercial terms uses `control_media_buy` and
+applies immediately; a change the accepted terms do not permit returns
+`REQUOTE_REQUIRED` and goes through proposal refinement.
+
+Cross-MediaBuy or cross-order counters require a separately identified grouping
+resource; they are not another value of `FrequencyCap.scope`.
+
+Changing a cap never resets its counter. Prior qualifying exposures in the
+resulting active window continue to count. Adding or removing a package also
+does not reset or subtract aggregate history. A package addition or proposal
+revision whose resulting product mix cannot enforce the root cap is rejected
+atomically; the check applies to the state the request would produce, so an
+update that clears the root cap and adds packages in one request adds them
+uncapped. Proposal refinement uses `remove_media_buy_frequency_cap: true` to
+clear a cap because omission inherits it. Successful creates, updates, and reads
+echo root and package caps at their separate locations.
 
 ### Product identity absence and reach reporting (experimental)
 
@@ -219,8 +268,8 @@ seller using this experimental surface lists `media_buy.product_identity` in
 undeclared, not proof of identifier availability.
 
 When `persistent_identifier` is `false`, the product MUST NOT declare
-`overlay_support.frequency_cap` or `overlay_support.frequency_cap_support`. A
-seller that cannot enforce a requested cap
+`overlay_support.frequency_cap`, `overlay_support.frequency_cap_support`, or
+`media_buy_support.frequency_cap`. A seller that cannot enforce a requested cap
 rejects it under the exact-apply-or-reject rule; it never accepts and ignores it.
 
 Delivery for such a product MUST NOT report `reach_unit` as `devices`,

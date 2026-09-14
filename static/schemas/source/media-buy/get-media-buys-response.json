@@ -107,6 +107,10 @@
             "description": "Current hard aggregate spend ceiling per calendar day, denominated in media_buy.currency. It bounds total spend without allocating or reserving package spend.",
             "minimum": 0
           },
+          "frequency_cap": {
+            "$ref": "/schemas/core/media-buy-frequency-cap.json",
+            "description": "Current hard MediaBuy-level cap. Sellers MUST echo it whenever set, separately from package targeting-overlay caps."
+          },
           "budget_cap_timezone": {
             "type": "string",
             "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set on the media buy."

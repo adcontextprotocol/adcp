@@ -85,11 +85,16 @@ test("get_products accepts real targeting and future overlay support", async () 
   assert.equal(validate(payload), true, errors(validate));
 });
 
-test("frequency cap detail preserves the legacy boolean", async () => {
-  const [validateSupport, validateRequirements, validateCanonicalProduct] = await Promise.all([
+test("frequency cap detail preserves the legacy boolean and separates aggregate support", async () => {
+  const [validateSupport, validateRequirements, validateMediaBuySupport,
+    validateMediaBuyRequirements, validateCanonicalProduct,
+    validateMediaBuyCapability] = await Promise.all([
     compile("/schemas/core/targeting-overlay-support.json"),
     compile("/schemas/core/targeting-overlay-requirements.json"),
+    compile("/schemas/core/media-buy-support.json"),
+    compile("/schemas/core/media-buy-support-requirements.json"),
     compile("/schemas/core/canonical-product.json"),
+    compile("/schemas/core/media-buy-frequency-cap-capability.json"),
   ]);
 
   const constraints = {
@@ -147,13 +152,79 @@ test("frequency cap detail preserves the legacy boolean", async () => {
     "an empty structured requirement requests any positive old or new support form"
   );
   assert.equal(
+    validateMediaBuySupport({
+      frequency_cap: true,
+      frequency_cap_constraints: constraints,
+    }),
+    true,
+    errors(validateMediaBuySupport)
+  );
+  assert.equal(
+    validateMediaBuySupport({
+      frequency_cap: true,
+      frequency_cap_constraints: { supported_control_modes: ["suppress"] },
+    }),
+    false,
+    "aggregate support is max-impressions-only in 3.2"
+  );
+  assert.equal(
+    validateMediaBuySupport({ frequency_cap: true }),
+    true,
+    "bare participation is a complete aggregate declaration; constraints are optional"
+  );
+  assert.equal(
+    validateMediaBuySupport({ frequency_cap_constraints: constraints }),
+    false,
+    "constraints cannot appear without positive participation"
+  );
+  assert.equal(
+    validateMediaBuySupport({ ext: { vendor: true } }),
+    false,
+    "extension-only media-buy support is not a positive capability"
+  );
+  assert.equal(
+    validateMediaBuySupport({ future_shared_control: true }),
+    true,
+    "unknown future media-buy capabilities remain forward compatible"
+  );
+  assert.equal(
+    validateMediaBuyRequirements({ frequency_cap: true }),
+    true,
+    errors(validateMediaBuyRequirements)
+  );
+  assert.equal(
+    validateMediaBuyCapability({ supported_per_units: ["individuals"] }),
+    false,
+    "seller-wide aggregate capability cannot leave its executable domain implicit"
+  );
+  assert.equal(
+    validateMediaBuyCapability({
+      supported_control_modes: ["max_impressions"],
+      supported_per_units: ["individuals"],
+      max_impressions_constraints: { minimum: 1, maximum: 10 },
+      window_constraints: [{ unit: "campaign", allowed_intervals: [1] }],
+    }),
+    true,
+    errors(validateMediaBuyCapability)
+  );
+  assert.equal(
     validateCanonicalProduct({
       product_id: "prod_video",
       name: "Streaming video",
-      overlay_support: { frequency_cap_support: constraints },
+      media_buy_support: { frequency_cap: true },
     }),
     true,
     errors(validateCanonicalProduct)
+  );
+  assert.equal(
+    validateCanonicalProduct({
+      product_id: "prod_unaddressable",
+      name: "Unaddressable placement",
+      identity: { persistent_identifier: false },
+      media_buy_support: { frequency_cap: true },
+    }),
+    false,
+    "identity-absence products cannot promise aggregate frequency counting"
   );
   assert.equal(
     validateCanonicalProduct({
@@ -231,6 +302,222 @@ test("frequency cap detail preserves the legacy boolean", async () => {
     /mutable_fields: \[\] is create-only and never matches a non-empty list/,
     "create-only products are excluded from mutability requirements"
   );
+});
+
+test("frequency cap scope is determined by request location", async () => {
+  const [validateGetProducts, validateBuy, validateControl, validateUpdate,
+    validateMediaBuyCap, validateRefinement, validateAvailableAction] = await Promise.all([
+    compile("/schemas/media-buy/get-products-request.json"),
+    compile("/schemas/media-buy/buy-products-request.json"),
+    compile("/schemas/media-buy/control-media-buy-request.json"),
+    compile("/schemas/media-buy/update-media-buy-request.json"),
+    compile("/schemas/core/media-buy-frequency-cap.json"),
+    compile("/schemas/media-buy/proposal-refinement.json"),
+    compile("/schemas/core/media-buy-available-action.json"),
+  ]);
+  const cap = {
+    max_impressions: 3,
+    per: "individuals",
+    window: { interval: 7, unit: "days" },
+  };
+  const frequencyCapSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "frequency-cap.json"), "utf8")
+  );
+  assert.equal(
+    Object.hasOwn(frequencyCapSchema.properties, "scope"),
+    false,
+    "FrequencyCap has no normative scope discriminator; field location defines scope"
+  );
+  const validateFrequencyCap = await compile("/schemas/core/frequency-cap.json");
+  assert.equal(
+    validateFrequencyCap({ ...cap, scope: "media_buy" }),
+    true,
+    "previously accepted extension-shaped fields stay valid but do not define scope"
+  );
+  assert.equal(validateMediaBuyCap(cap), true, errors(validateMediaBuyCap));
+  assert.equal(
+    validateMediaBuyCap({ suppress: { interval: 1, unit: "hours" } }),
+    false,
+    "3.2 aggregate caps require an explicit per unit through max_impressions"
+  );
+
+  assert.equal(
+    validateGetProducts({
+      buying_mode: "wholesale",
+      media_buy_frequency_cap: cap,
+      required_media_buy_support: { frequency_cap: true },
+    }),
+    true,
+    errors(validateGetProducts)
+  );
+  assert.equal(
+    validateBuy({
+      idempotency_key: "550e8400-e29b-41d4-a716-446655441900",
+      account: { account_id: "account_123" },
+      brand: { domain: "acme.example" },
+      feed_version: "feed-1",
+      frequency_cap: cap,
+      purchases: [{
+        product_id: "prod_video",
+        pricing_option_id: "cpm_usd",
+        targeting_overlay: { frequency_cap: cap },
+      }],
+      start_time: "asap",
+      end_time: "2027-01-01T00:00:00Z",
+    }),
+    true,
+    errors(validateBuy)
+  );
+  assert.equal(
+    validateControl({
+      idempotency_key: "550e8400-e29b-41d4-a716-446655441901",
+      account: { account_id: "account_123" },
+      media_buy_id: "buy_123",
+      revision: 2,
+      frequency_cap: cap,
+    }),
+    true,
+    errors(validateControl)
+  );
+  assert.equal(
+    validateControl({
+      idempotency_key: "550e8400-e29b-41d4-a716-446655441902",
+      account: { account_id: "account_123" },
+      media_buy_id: "buy_123",
+      revision: 3,
+      frequency_cap: null,
+    }),
+    true,
+    errors(validateControl)
+  );
+  assert.equal(
+    validateUpdate({
+      idempotency_key: "550e8400-e29b-41d4-a716-446655441903",
+      account: { account_id: "account_123" },
+      media_buy_id: "buy_123",
+      frequency_cap: cap,
+    }),
+    true,
+    errors(validateUpdate)
+  );
+  assert.equal(
+    validateRefinement({
+      proposal_id: "proposal_123",
+      action: "revise",
+      remove_media_buy_frequency_cap: true,
+    }),
+    true,
+    errors(validateRefinement)
+  );
+  assert.equal(
+    validateRefinement({
+      proposal_id: "proposal_123",
+      action: "revise",
+      remove_media_buy_frequency_cap: true,
+      criteria: { media_buy_frequency_cap: cap },
+    }),
+    false,
+    "a refinement cannot replace and remove the root cap simultaneously"
+  );
+
+  const getMediaBuys = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "get-media-buys-response.json"), "utf8")
+  );
+  assert.equal(
+    getMediaBuys.properties.media_buys.items.properties.frequency_cap.$ref,
+    "/schemas/core/media-buy-frequency-cap.json",
+    "readback exposes the root cap separately from package targeting"
+  );
+
+  const capabilities = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "protocol", "get-adcp-capabilities-response.json"), "utf8")
+  );
+  const mediaBuyCapabilities = capabilities.properties.media_buy.properties;
+  assert.equal(
+    Object.hasOwn(mediaBuyCapabilities.frequency_capping.properties, "supported_scopes"),
+    false,
+    "the legacy capability remains package-only"
+  );
+  assert.equal(
+    Object.hasOwn(mediaBuyCapabilities, "aggregate_frequency_capping"),
+    true,
+    "aggregate infrastructure is independently discoverable"
+  );
+
+  const validActions = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "enums", "media-buy-valid-action.json"), "utf8")
+  );
+  assert.deepEqual(
+    validActions.enumMetadata.update_frequency_caps.update_fields,
+    ["packages[].targeting_overlay.frequency_cap"]
+  );
+  assert.equal(
+    validActions.enum.includes("update_media_buy_frequency_cap"),
+    false,
+    "the deprecated flat valid_actions surface remains unchanged"
+  );
+  const availableActionId = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "media-buy-available-action-id.json"), "utf8")
+  );
+  assert.deepEqual(
+    availableActionId.enumMetadata.update_media_buy_frequency_cap.update_fields,
+    ["frequency_cap"]
+  );
+  assert.equal(
+    validateAvailableAction({
+      action: "update_frequency_caps",
+      mode: "self_serve",
+      applicable_package_ids: ["pkg_mutable"],
+    }),
+    true,
+    errors(validateAvailableAction)
+  );
+  assert.equal(
+    validateAvailableAction({
+      action: "update_media_buy_frequency_cap",
+      mode: "self_serve",
+    }),
+    true,
+    errors(validateAvailableAction)
+  );
+  const validateAllowedAction = await compile("/schemas/core/product-allowed-action.json");
+  assert.equal(
+    validateAllowedAction({ action: "update_media_buy_frequency_cap", modes: ["self_serve"] }),
+    true,
+    errors(validateAllowedAction)
+  );
+  assert.equal(
+    validateAllowedAction({ action: "update_frequency_caps", modes: ["self_serve"] }),
+    true,
+    "legacy valid_actions values remain accepted in product allowed_actions"
+  );
+  assert.equal(
+    validateAllowedAction({ action: "not_an_action", modes: ["self_serve"] }),
+    false,
+    "product allowed_actions still reject unknown identifiers"
+  );
+  const actionNotAllowed = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "error-details", "action-not-allowed.json"), "utf8")
+  );
+  assert.equal(
+    actionNotAllowed.properties.attempted_action.$ref,
+    "/schemas/core/media-buy-available-action-id.json",
+    "ACTION_NOT_ALLOWED can identify structured-only media-buy actions"
+  );
+
+  const proposal = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "proposal.json"), "utf8")
+  );
+  assert.equal(
+    proposal.properties.frequency_cap.$ref,
+    "/schemas/core/media-buy-frequency-cap.json",
+    "legacy proposals expose the authoritative aggregate cap before execution"
+  );
+  const updateSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "update-media-buy-request.json"), "utf8")
+  );
+  assert.match(updateSchema.properties.new_packages.description, /root frequency_cap/);
+  assert.match(updateSchema.properties.new_packages.description, /rejects atomically/);
 });
 
 test("split discovery tasks carry targeting through shared criteria", async () => {
@@ -886,8 +1173,8 @@ test("wholesale cache scope includes targeting-aware discovery inputs everywhere
   for (const surface of [requestSchema, responseSchema, taskReference]) {
     assert.match(
       surface,
-      /buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog/,
-      "wholesale version cache keys must distinguish concrete and future targeting"
+      /buying_mode, filters, targeting_overlay, media_buy_frequency_cap, required_overlay_support, required_media_buy_support, deprecated property_list, catalog/,
+      "wholesale version cache keys must distinguish package and aggregate frequency-cap criteria"
     );
   }
 });

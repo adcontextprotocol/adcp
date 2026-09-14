@@ -47,7 +47,11 @@ testable: true
 }
 ```
 
-Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete delivery constraints that must be reflected in pricing and forecasts, and `required_overlay_support` identifies dimensions the buyer must be able to choose later. Keep goals, semantic audience meaning, and requirements without a structured AdCP field in `brief`.
+Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete package delivery constraints, and `required_overlay_support` identifies package dimensions the buyer must be able to choose later. `required_media_buy_support` and `media_buy_frequency_cap` separately request aggregate-counter participation and preflight an exact shared cap. Keep goals and requirements without a structured AdCP field in `brief`.
+
+When refining an accepted proposal, omitted criteria inherit. Set
+`remove_media_buy_frequency_cap: true` on the refinement to negotiate a draft
+that clears the root cap; supplying `criteria.media_buy_frequency_cap` replaces it.
 
 ## Reverse forecasting with outcome_target
 
