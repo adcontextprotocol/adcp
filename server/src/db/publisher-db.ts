@@ -1230,10 +1230,12 @@ export class PublisherDatabase {
         `INSERT INTO publishers
            (domain, adagents_json, source_type, last_validated, expires_at,
             last_http_status, last_response_bytes, resolved_url,
-            discovery_method, manager_domain)
-         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6, $7, $8)
+            discovery_method, manager_domain, supply_path_provenance)
+         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6, $7, $8,
+           CASE WHEN $9::text IS NOT NULL THEN jsonb_build_object('resolved_url', $9::text, 'discovery_method', $7::text, 'fetched_at', NOW(), 'expires_at', $3::timestamptz) ELSE NULL END)
          ON CONFLICT (domain) DO UPDATE SET
            adagents_json = EXCLUDED.adagents_json,
+           supply_path_provenance = EXCLUDED.supply_path_provenance,
            source_type = 'adagents_json',
            last_validated = NOW(),
            expires_at = EXCLUDED.expires_at,
@@ -1254,6 +1256,7 @@ export class PublisherDatabase {
           truncateResolvedUrl(input.resolvedUrl),
           input.discoveryMethod ?? null,
           input.managerDomain ?? null,
+          typeof input.resolvedUrl === 'string' && input.resolvedUrl.length <= 8192 ? input.resolvedUrl : null,
         ]
       );
 
@@ -1490,6 +1493,26 @@ export class PublisherDatabase {
     } finally {
       client.release();
     }
+  }
+
+  /** Manifest-bound successful-fetch provenance; last-attempt diagnostics are never authority evidence. */
+  async getSupplyPathSnapshot(domain: string): Promise<import('../services/supply-path-snapshot.js').SupplyPathSnapshot> {
+    const result = await query<{
+      adagents_json: AdagentsManifest | null;
+      supply_path_provenance: { resolved_url?: string; discovery_method?: string; fetched_at?: string; expires_at?: string } | null;
+    }>(
+      "SELECT CASE WHEN source_type = 'adagents_json' THEN adagents_json ELSE NULL END AS adagents_json, supply_path_provenance FROM publishers WHERE domain = $1 LIMIT 1",
+      [canonicalizePublisherDomain(domain)],
+    );
+    const row = result.rows[0];
+    const provenance = row?.supply_path_provenance;
+    return {
+      manifest: provenance ? row?.adagents_json ?? null : null,
+      resolvedUrl: provenance?.resolved_url ?? null,
+      discoveryMethod: provenance?.discovery_method ?? null,
+      fetchedAt: provenance?.fetched_at ? new Date(provenance.fetched_at) : null,
+      expiresAt: provenance?.expires_at ? new Date(provenance.expires_at) : null,
+    };
   }
 
   /**

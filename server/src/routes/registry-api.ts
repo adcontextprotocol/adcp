@@ -1,3 +1,5 @@
+import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
+import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 /**
@@ -2110,6 +2112,10 @@ registry.registerPath({
             agent_url: z.string(),
             collection_id: z.string().optional(),
             sources: z.object({
+              owner_fetched_at: z.string().datetime().nullable(),
+              host_fetched_at: z.string().datetime().nullable(),
+              owner_resolved_url: z.string().nullable(),
+              host_resolved_url: z.string().nullable(),
               owner_adagents_url: z.string(),
               host_adagents_url: z.string(),
               cached: z.boolean().openapi({ description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement." }),
@@ -10663,36 +10669,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "owner_domain, host_domain, and agent_url must be valid publisher and HTTPS agent identities" });
       }
 
-      const [ownerManifest, hostManifest] = await Promise.all([
-        publisherDb.getCachedAdagentsJson(ownerDomain),
-        publisherDb.getCachedAdagentsJson(hostDomain),
+      const [ownerSnapshot, hostSnapshot] = await Promise.all([
+        publisherDb.getSupplyPathSnapshot(ownerDomain), publisherDb.getSupplyPathSnapshot(hostDomain),
       ]);
-
-      // First pass without ads.txt — the fetch is only needed when the
-      // enforcement-grade host leg fails and the ladder falls through to
-      // host_delegated.
-      let verdict = verifySupplyPath({
-        ownerDomain,
-        hostDomain,
-        agentUrl: parsed.data.agent_url,
-        collectionId: parsed.data.collection_id,
-        ownerManifest,
-        hostManifest,
-        hostInventoryPartnerDomains: null,
-      });
+      const [owner, host] = await Promise.all([
+        supplyPathSnapshotEvidence(ownerDomain, ownerSnapshot),
+        supplyPathSnapshotEvidence(hostDomain, hostSnapshot),
+      ]);
+      const input: SupplyPathInput = {
+        ownerDomain, hostDomain, agentUrl: parsed.data.agent_url, collectionId: parsed.data.collection_id,
+        ownerManifest: owner.manifest, hostManifest: host.manifest, hostInventoryPartnerDomains: null,
+        heldRevocations: { owner: owner.held, host: host.held }, requireExplicitHostPublisherDomain: host.explicitPublisher, requireExplicitOwnerPublisherDomain: owner.explicitPublisher,
+      };
+      let verdict = verifySupplyPath(input);
       if (verdict.legs.host_authorization.ok) {
-        verdict.legs.inventory_partner_domain = { ok: false, failure: 'not_evaluated' };
+        verdict = verifySupplyPath({ ...input, inventoryPartnerDomainEvaluated: false });
       } else if (verdict.legs.host_authorization.failure !== 'evaluation_limit_exceeded') {
-        verdict = verifySupplyPath({
-          ownerDomain,
-          hostDomain,
-          agentUrl: parsed.data.agent_url,
-          collectionId: parsed.data.collection_id,
-          ownerManifest,
-          hostManifest,
-          hostInventoryPartnerDomains: null,
-          hostInventoryPartnerDomainsByFile: await fetchHostInventoryPartnerDomains({ ownerDomain, hostDomain, agentUrl: parsed.data.agent_url, collectionId: parsed.data.collection_id, ownerManifest, hostManifest, hostInventoryPartnerDomains: null }),
-        });
+        verdict = verifySupplyPath({ ...input, hostInventoryPartnerDomainsByFile: await fetchHostInventoryPartnerDomains(input) });
       }
 
       res.json({
@@ -10705,6 +10698,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           owner_adagents_url: `https://${ownerDomain}/.well-known/adagents.json`,
           host_adagents_url: `https://${hostDomain}/.well-known/adagents.json`,
           cached: true,
+          owner_fetched_at: ownerSnapshot.fetchedAt?.toISOString() ?? null,
+          host_fetched_at: hostSnapshot.fetchedAt?.toISOString() ?? null,
+          owner_resolved_url: ownerSnapshot.resolvedUrl,
+          host_resolved_url: hostSnapshot.resolvedUrl,
         },
         checked_at: new Date().toISOString(),
       });

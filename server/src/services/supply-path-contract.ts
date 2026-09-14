@@ -79,6 +79,10 @@ export interface SupplyPathInput {
   collectionId?: string;
   /** Optional concrete product scope, resolved from the host manifest. Empty means unresolved. */
   requiredHostPropertyIds?: string[];
+  /** Cross-origin authoritative documents must explicitly attribute every host property. */
+  requireExplicitHostPublisherDomain?: boolean;
+  /** Cross-origin owner catalogs must explicitly attribute collections and owner agent grants. */
+  requireExplicitOwnerPublisherDomain?: boolean;
   ownerManifest: SupplyPathManifest | null;
   hostManifest: SupplyPathManifest | null;
   /**
