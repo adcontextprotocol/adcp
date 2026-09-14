@@ -29,8 +29,11 @@ jobs:
           node-version: "24"
           cache: "npm"
 
+      - name: Test CI install retry
+        run: node --test .github/scripts/npm-ci.test.cjs
+
       - name: Install dependencies
-        run: npm ci
+        run: node .github/scripts/npm-ci.mjs
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
 
@@ -109,7 +112,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: node .github/scripts/npm-ci.mjs
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
 
@@ -146,7 +149,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: node .github/scripts/npm-ci.mjs
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
 
@@ -214,7 +217,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: node .github/scripts/npm-ci.mjs
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
 
