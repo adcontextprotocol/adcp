@@ -27,7 +27,8 @@ const PROTOCOL_SCOPED_PATHS = [
   /^dist\/protocol\/[^/]+[.]tgz(?:[.](?:sha256|sig|crt))?$/,
   /^scripts\/(?:build-schemas|build-compliance|build-protocol-tarball|sign-protocol-tarball|update-schema-versions|verify-version-sync|patch-3-0-compat-bundle)[.](?:cjs|mjs|sh)$/,
   /^scripts\/run-storyboards-(?:[^/]+[.]sh|isolated[.]mjs)$/,
-  /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
+  // Publication orchestration is operational; protocol generators above remain scoped.
+  /^[.]github\/workflows\/training-agent-storyboards[.]yml$/,
 ];
 
 const CHANGESET_POLICY_CODE_PATHS = new Set([
