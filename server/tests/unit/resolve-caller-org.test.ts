@@ -19,26 +19,8 @@ const validateWorkOSApiKeyMock = vi.fn();
 const jwtVerifyMock = vi.fn();
 const decodeJwtMock = vi.fn();
 const dbQueryMock = vi.fn();
-const ConflictingOrganizationSelectionErrorMock = vi.hoisted(() => (
-  class ConflictingOrganizationSelectionError extends Error {}
-));
-
-vi.mock('../../src/middleware/auth.js', () => ({
-  ConflictingOrganizationSelectionError: ConflictingOrganizationSelectionErrorMock,
-  selectedOrganizationForAuthentication: (req: Record<string, unknown>, providerOrg: string) => {
-    const headers = req.headers as Record<string, unknown> | undefined;
-    const query = req.query as Record<string, unknown> | undefined;
-    const body = req.body as Record<string, unknown> | undefined;
-    const params = req.params as Record<string, unknown> | undefined;
-    const supplied = [providerOrg, headers?.['x-organization-id'], query?.org,
-      query?.organization_id, query?.organizationId, body?.organization_id,
-      body?.organizationId, params?.orgId, params?.organizationId]
-      .filter((value) => value !== undefined);
-    if (new Set(supplied).size > 1) {
-      throw new ConflictingOrganizationSelectionErrorMock();
-    }
-    return providerOrg;
-  },
+vi.mock('../../src/middleware/auth.js', async () => ({
+  ...await import('../../src/auth/organization-selection.js'),
   validateWorkOSApiKey: (...args: unknown[]) => validateWorkOSApiKeyMock(...args),
 }));
 
@@ -158,10 +140,13 @@ describe('resolveCallerOrgId', () => {
   it.each([
     ['header', { headers: { 'x-organization-id': 'org_other' } }],
     ['query org', { query: { org: 'org_other' } }],
+    ['query org_id', { query: { org_id: 'org_other' } }],
     ['query organization_id', { query: { organization_id: 'org_other' } }],
     ['query organizationId', { query: { organizationId: 'org_other' } }],
+    ['body org_id', { body: { org_id: 'org_other' } }],
     ['body organization_id', { body: { organization_id: 'org_other' } }],
     ['body organizationId', { body: { organizationId: 'org_other' } }],
+    ['route org_id', { params: { org_id: 'org_other' } }],
     ['route orgId', { params: { orgId: 'org_other' } }],
     ['route organizationId', { params: { organizationId: 'org_other' } }],
   ] as const)('rejects an API-key provider conflict from %s without caller fallback', async (_location, selectors) => {
@@ -310,6 +295,9 @@ describe('resolveCallerOrgId', () => {
   it.each([
     ['headers', 'x-organization-id'],
     ['query', 'organizationId'],
+    ['query', 'org_id'],
+    ['body', 'org_id'],
+    ['params', 'org_id'],
     ['body', 'organizationId'],
     ['params', 'organizationId'],
   ] as const)('retains an original %s selector conflict across JWT verification', async (location, field) => {
@@ -375,12 +363,14 @@ describe('resolveCallerOrgId', () => {
     expect(validateWorkOSApiKeyMock).not.toHaveBeenCalled();
   });
 
-  it('does not substitute raw bearer authority for an authenticated user missing a snapshot', async () => {
-    jwtVerifyMock.mockResolvedValue({ payload: { org_id: 'org_other' } });
+  it('uses verified bearer authority independently of an attached cookie user without a snapshot', async () => {
+    decodeJwtMock.mockReturnValueOnce({ iss: ISS });
+    jwtVerifyMock.mockResolvedValue({ payload: { org_id: 'org_bearer' } });
 
-    expect(await resolveCallerOrgId(reqWith('Bearer eyJabc.def.ghi', { id: 'user_session' }))).toBeNull();
-    expect(jwtVerifyMock).not.toHaveBeenCalled();
+    expect(await resolveCallerOrgId(reqWith('Bearer eyJabc.def.ghi', { id: 'user_session' }))).toBe('org_bearer');
+    expect(jwtVerifyMock).toHaveBeenCalledTimes(1);
     expect(validateWorkOSApiKeyMock).not.toHaveBeenCalled();
+    expect(dbQueryMock).not.toHaveBeenCalled();
   });
 
   // ── Unauthenticated / malformed ────────────────────────────────

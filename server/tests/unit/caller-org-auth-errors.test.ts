@@ -168,7 +168,7 @@ it('does not let spoofed authorization headers replace an invalid selected beare
   expect(mocks.listAllAgents).not.toHaveBeenCalled();
 });
 
-it.each([undefined, 'Basic dXNlcjpwYXNz'])('preserves cookie-only resolution when no Bearer is selected: %s', async (authorization) => {
+it.each([undefined, 'Basic dXNlcjpwYXNz'])('denies cookie authority without explicit organization provenance: %s', async (authorization) => {
   mocks.issueDomainClaim.mockResolvedValue({ token: 'claim_cookie', lockedToOrgId: null });
   const claim = request(application)
     .post('/api/properties/hosted/example.test/claim')
@@ -177,9 +177,9 @@ it.each([undefined, 'Basic dXNlcjpwYXNz'])('preserves cookie-only resolution whe
 
   const response = await claim.send({});
 
-  expect(response.status).toBe(200);
-  expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('primary_organization_id'), ['cookie_user']);
-  expect(mocks.issueDomainClaim).toHaveBeenCalledWith('example.test', 'org_cookie');
+  expect(response.status).toBe(403);
+  expect(mocks.query).not.toHaveBeenCalled();
+  expect(mocks.issueDomainClaim).not.toHaveBeenCalled();
   expect(mocks.jwtVerify).not.toHaveBeenCalled();
   expect(mocks.validateApiKey).not.toHaveBeenCalled();
 });
