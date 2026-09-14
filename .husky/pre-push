@@ -53,11 +53,24 @@ CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
 
 STORYBOARD_PATHS='^(server/src/training-agent/|server/src/services/hosted-compliance-version\.ts|server/tests/manual/run-storyboards\.ts|static/compliance/source/|dist/compliance/|scripts/build-compliance\.cjs|scripts/overlay-compliance-cache\.sh|scripts/run-storyboards-matrix\.sh|scripts/run-storyboards-3-0-compat\.sh|package\.json|package-lock\.json)'
 
+# The storyboard matrix is a local advisory pre-flight; the
+# training-agent-storyboards.yml workflow is the authoritative gate. It runs
+# the training agent from the working tree, so it only grades the pushed ref
+# when the tree is clean. With uncommitted changes it would grade something
+# other than what is being pushed, so skip it and say so (#7478).
 if echo "$CHANGED" | grep -Eq "$STORYBOARD_PATHS"; then
-  echo "🔍 Training-agent or compliance source changed — running storyboard matrix (~3min)..."
-  bash scripts/run-storyboards-matrix.sh || exit 1
-  echo "🔍 Verifying 3.0 storyboard compatibility..."
-  bash scripts/run-storyboards-3-0-compat.sh || exit 1
+  if [ "${ADCP_SKIP_STORYBOARD_MATRIX:-}" = "1" ]; then
+    echo "⏭  ADCP_SKIP_STORYBOARD_MATRIX=1 — skipping local storyboard matrix (CI is authoritative)"
+  elif [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    echo "⏭  Working tree has uncommitted changes — skipping local storyboard matrix."
+    echo "   The matrix grades the working tree, not the pushed ref; CI (training-agent-storyboards.yml) is authoritative."
+    echo "   Commit or stash to run it against HEAD, or run: bash scripts/run-storyboards-matrix.sh"
+  else
+    echo "🔍 Training-agent or compliance source changed — running storyboard matrix (~3min, advisory; CI is authoritative)..."
+    bash scripts/run-storyboards-matrix.sh || exit 1
+    echo "🔍 Verifying 3.0 storyboard compatibility..."
+    bash scripts/run-storyboards-3-0-compat.sh || exit 1
+  fi
 else
   echo "⏭  No training-agent or compliance changes — skipping storyboard matrix"
 fi
