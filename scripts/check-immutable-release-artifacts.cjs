@@ -58,6 +58,17 @@ function parseNameStatus(output) {
     });
 }
 
+const RETIRED_PRERELEASE_RE = /-beta\.\d+$/;
+
+/**
+ * Beta checkpoints are superseded once a release candidate exists. Deleting a
+ * whole beta artifact tree is allowed so the repository and runtime image can
+ * retire it; editing it in place, or deleting rc/stable artifacts, still fails.
+ */
+function isRetiredPrereleaseDeletion(status, version) {
+  return String(status).startsWith('D') && RETIRED_PRERELEASE_RE.test(version);
+}
+
 function findImmutableArtifactViolations(changes, hasPathAtBase, isReleasedVersion = () => true) {
   const violations = [];
 
@@ -69,6 +80,7 @@ function findImmutableArtifactViolations(changes, hasPathAtBase, isReleasedVersi
       const existedAtBase = artifact.probePaths.some(hasPathAtBase);
       if (!existedAtBase) continue;
       if (!isReleasedVersion(artifact.version)) continue;
+      if (isRetiredPrereleaseDeletion(change.status, artifact.version)) continue;
 
       violations.push({
         status: change.status,
@@ -82,7 +94,9 @@ function findImmutableArtifactViolations(changes, hasPathAtBase, isReleasedVersi
 }
 
 function git(args) {
-  return execFileSync('git', args, { encoding: 'utf8' });
+  // Large artifact retirements produce multi-megabyte name-status diffs; Node's
+  // default 1 MiB maxBuffer would fail with ENOBUFS.
+  return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
 function pathExistsAtRef(ref, repoPath) {
@@ -117,6 +131,7 @@ function formatViolationMessage(violations) {
     ...violations.map(v => `  - ${v.status} ${v.path}`),
     '',
     'Do not patch existing versioned dist artifacts in-place.',
+    'Only whole-tree deletions of superseded beta checkpoints are permitted.',
     'Change the source files, add a changeset, and ship a new versioned artifact through Version Packages (`npm run version`).',
     'Mutable development outputs such as dist/*/latest are allowed; existing dist/*/<semver> releases are not.',
   ];
@@ -148,6 +163,7 @@ if (require.main === module) {
 
 module.exports = {
   findImmutableArtifactViolations,
+  isRetiredPrereleaseDeletion,
   formatViolationMessage,
   parseImmutableArtifactPath,
   parseNameStatus,

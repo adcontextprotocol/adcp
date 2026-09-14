@@ -256,9 +256,14 @@ describe('wrapper contract', () => {
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc.4');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).requested).toBe('3.1-beta.5');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).version).toBe('3.1.0-beta.5');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.1-beta.5');
+    // 3.1.0-beta.7 is the only 3.1 beta bundle still hosted; exact pins to it
+    // resolve to that bundle whether or not the agent also advertises 3.0.
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.7']).version).toBe('3.1.0-beta.7');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).version).toBe('3.1.0-beta.7');
+    // Retired beta checkpoints are no longer hosted, so an agent pinned only to
+    // one falls back to the canonical 3.0 target instead of being upgraded.
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).requested).toBe('3.0');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc.4');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
     expect(selectHostedComplianceTargetForSupportedVersions(undefined).requested).toBe('3.0');
