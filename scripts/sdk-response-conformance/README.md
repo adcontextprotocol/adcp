@@ -17,7 +17,7 @@ bash scripts/sdk-response-conformance/run.sh .context/sdk-response-conformance
 Follow the repository's Docker requirement for local execution. CI installs these runtimes on an ephemeral runner. The driver commands can also run independently against the same prepared plan:
 
 ```sh
-node scripts/probe-sdk-response-conformance.cjs prepare 3.2.0-rc.1 > .context/plan.json
+node scripts/probe-sdk-response-conformance.cjs prepare 3.2.0-rc.2 > .context/plan.json
 node scripts/sdk-response-conformance/typescript.cjs .context/plan.json > .context/typescript.json
 python3 scripts/sdk-response-conformance/python.py .context/plan.json > .context/python.json
 # Run go run . with the absolute plan path from scripts/sdk-response-conformance/go.
@@ -30,7 +30,7 @@ The report exits **1 for findings or skipped cases**, **2 for a harness failure*
 
 - **Inventory:** exactly the selected immutable release's canonical manifest, joined with each configured server's `tools/list`. Historical copies and MCP projections are not counted as extra tools. Tools without business/state fixtures and failed request generation have explicit reasons.
 - **Requests:** deterministic required-property candidates, local `$ref` resolution, recorded union choices and unselected alternatives, bounded recursion, then AJV validation before dispatch. Conditional/pattern constraints that the generator cannot satisfy are reported, not bypassed. Optional request branches remain explicitly untested. The only request override is `get_products.buying_mode = wholesale`; add named fixtures for accounts, authentication, identifiers and continuations as coverage grows.
-- **Versions:** the SHA-256 covers the canonical JSON files by sorted relative path and content hash, excluding generated MCP/bundled projections. A release such as `3.2.0-rc.1` uses the published wire selector `3.2-rc.1`. The controlled server fixture selects the immutable artifact; the response or SDK handler context provides the served selector. No request pin is copied into served-version evidence. An absent or unavailable served contract makes validation provisional, not a claim that a legacy peer is invalid merely for omitting version metadata.
+- **Versions:** the SHA-256 covers the canonical JSON files by sorted relative path and content hash, excluding generated MCP/bundled projections. A release such as `3.2.0-rc.2` uses the published wire selector `3.2-rc.2`. The controlled server fixture selects the immutable artifact; the response or SDK handler context provides the served selector. No request pin is copied into served-version evidence. An absent or unavailable served contract makes validation provisional, not a claim that a legacy peer is invalid merely for omitting version metadata.
 - **Responses:** capture the actual MCP result and validate against the served release. Tool errors use the published `core/error.json` and MCP binding; they are never checked as successful task payloads. Published error-code metadata separately checks recovery semantics. Extension-code overrides exercise all three recovery values without asserting that standard classifications may be changed arbitrarily.
 - **Transport:** TypeScript uses `createAdcpServer`'s supported low-level `legacy/v5` entry with `mcpToolProfile: all`, so retained and compact discovery are visible. Python uses `create_mcp_server` with typed task exceptions built from the actual `adcp_error` helper. Its public MCP request API captures output before the client's output-schema validator can throw it away; that validator still runs and its errors are retained. Go uses `Register`, `ProductsResponse`, and the `NewError` → `Errorf` path. SDK self-validation is disabled where configurable so an invalid response remains observable; independent release-schema validation is always on.
 - **Limits:** no A2A coverage, nonempty catalog translation, live-partner evidence, purchase execution or continuation replay. The generator is a bounded fixture builder, not a general constraint solver. Go's current `Register` does not expose `ListProducts`, and its product/error helpers provide no served-version evidence.
@@ -42,6 +42,16 @@ With `@adcp/sdk@14.0.0-rc.36`, `adcp==8.0.0b14`, and Go `adcp/v3@v3.2.1`, there 
 - TypeScript: error defaults and overrides agree; `list_products` gains `adcp_version`, which the raw pinned response schema forbids. This is a schema/envelope inconsistency, related to the prior [SDK normalization fix #2594](https://github.com/adcontextprotocol/adcp-client/issues/2594); it is not a claim that the fixed SDK client still rejects the response. The probe deliberately retains the raw artifact result instead of silently stripping fields or patching an immutable schema.
 - Python: 84 default recovery classifications differ from the published metadata; native listing gains `status: completed`, rejected both by the raw pinned schema and the MCP client's advertised-output validator.
 - Go: [#530](https://github.com/adcontextprotocol/adcp-go/issues/530) reproduces with six invalid recovery values and 110 incorrect classifications. The catalog helper also omits required `status`. All 123 dispatched cases lack served-version evidence, so their selected-artifact checks remain provisional. Missing metadata is an evidence limitation, not automatically a fatal protocol error.
+
+> **Baseline pending regeneration.** The probe's default release moved to
+> `3.2.0-rc.2` because `@adcp/sdk@14.0.0-rc.36` no longer bundles `3.2.0-rc.1`.
+> The TypeScript and Go legs run clean at `3.2.0-rc.2`, but `adcp==8.0.0b14`
+> raises `no bundled AdCP schemas are available for adcp_version='3.2.0-rc.2'`,
+> so a full three-language report cannot be produced yet and
+> `known-findings.json` still records the `3.2.0-rc.1` evidence. Regenerate it
+> from a real run once a Python `adcp` build embeds `3.2.0-rc.2`. Do not
+> hand-edit the baseline to match: `check-baseline.cjs` deep-equals the whole
+> report, so an edited baseline asserts measurements nobody took.
 
 `known-findings.json` is an explicit regression baseline, **not an allowlist that makes the conformance report pass**. The CI job checks that exact SDK pins, artifact digest, coverage counts, findings and skips still match the reviewed evidence. It uploads raw observations and reports and publishes their counts. New defects, resolved defects, changed coverage or SDK/artifact pins require a deliberate baseline update and review. The ordinary report continues to exit 1 while findings remain. Do not weaken schemas or hide failures to make the baseline green.
 

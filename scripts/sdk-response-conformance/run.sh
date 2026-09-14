@@ -3,7 +3,7 @@ set -euo pipefail
 # Run from the repository root. Dependencies: npm ci, pinned requirements.txt,
 # Go from go/go.mod. No partner credentials or external agent URLs are used.
 output_dir=${1:-.context/sdk-response-conformance}
-release=${2:-3.2.0-rc.1}
+release=${2:-3.2.0-rc.2}
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 node scripts/probe-sdk-response-conformance.cjs prepare "$release" > "$output_dir/plan.json" || exit 2

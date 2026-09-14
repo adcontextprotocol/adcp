@@ -5,7 +5,7 @@ const { prepare, assess } = require('./sdk-response-conformance/lib.cjs');
 const [command, ...args] = process.argv.slice(2);
 try {
   if (command === 'prepare') {
-    const plan = prepare(args[0] || '3.2.0-rc.1');
+    const plan = prepare(args[0] || '3.2.0-rc.2');
     process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
   } else if (command === 'report') {
     const [planFile, ...runs] = args;
