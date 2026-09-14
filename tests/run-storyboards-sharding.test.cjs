@@ -521,3 +521,10 @@ test('creative child task errors propagate exact failed and skipped counts throu
   assert.match(result.stdout, /^  steps: 6 passed \| 1 failed \| 1 skipped \| 0 not applicable$/m);
   assert.match(result.stdout, /^  healthy_after\s+✓/m);
 });
+
+test('registered storyboard suite runs the fail-closed operational changeset scope regressions', () => {
+  const result = spawnSync(process.execPath, [path.join(REPO_ROOT, 'tests/changeset-protocol-scope.test.cjs')], {
+    cwd: REPO_ROOT, encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+});
