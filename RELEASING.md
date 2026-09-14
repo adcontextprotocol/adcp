@@ -206,11 +206,12 @@ commands.
 
 For the 2026-09-14 incident, the publication fence in
 [#7510](https://github.com/adcontextprotocol/adcp/pull/7510) is a hard
-predecessor of the JSONL filter fix in
-[#7509](https://github.com/adcontextprotocol/adcp/pull/7509). The legacy deploy
-bulk upload would otherwise publish historical JSONL without recovery approval.
-Land the human-approved fence first; then rebase and requalify the JSONL fix on
-that main, including combined tests and human review. Neither merge authorizes
+predecessor of both the JSONL filter fix in
+[#7509](https://github.com/adcontextprotocol/adcp/pull/7509) and the curated
+3.1.22/3.1.23 artifacts in [#7507](https://github.com/adcontextprotocol/adcp/pull/7507).
+The legacy deploy bulk upload would otherwise expose those historical artifacts
+without recovery approval. Land the human-approved fence first; then rebase and
+requalify each dependent PR on that main, including combined tests and human review. Neither merge authorizes
 historical backfill or incident recovery.
 
 Routine app deployment is authorized to rebuild and upload only
@@ -222,8 +223,13 @@ assets also blocks app deployment. This can delay app-only fixes while a
 release needs recovery.
 
 Only the release workflow publishes a new immutable version. It verifies the
-current tested branch, the original merged release PR's final-head human
-approval, and the committed signed tuple. It stages the four GitHub assets in
+current tested branch, the original merged release PR's final-head maintainer
+approval, and the committed signed tuple. Approval must come from a non-author
+human with current repository write, maintain, or admin permission. Every
+candidate approver is checked through GitHub's collaborator-permission API;
+missing, failed, ambiguous, or unsupported permission responses stop publication.
+Public review ability and author association are not sufficient authority.
+It stages the four GitHub assets in
 a draft, publishes the tag/release targeting the original release merge, then
 uploads that version alone with `--version VERSION --skip-latest`. Changesets
 only prepares release PRs; it has no independent tag/publish command. Missing
@@ -233,10 +239,47 @@ Release runs use `queue: max` without in-progress cancellation. GitHub permits
 100 pending runs; this is not an unlimited or guaranteed delivery queue. Old
 runs fail their current-branch fence. A later push with a stranded committed
 version fails explicitly, including an app-only push, and must use the recovery
-procedure below before Changesets advances the package again. The git pre-push
-hook rechecks freshness after Changesets' long version/build/sign operation,
-before its branch push. A wrapper checks again after the push, before the
-subsequent PR write.
+procedure below before Changesets advances the package again.
+
+Before Changesets runs, its fence resolves exactly zero or one open Version
+Packages PR and captures the prior branch OID (or confirmed absence). An existing
+PR must match that ref; it is synchronously marked Draft, verified, and given a
+HOLD comment before generation. An orphan ref, missing ref for an existing PR,
+ambiguous lookup, or failed quarantine stops the run. The pinned action's single
+push shape is replaced with an explicit lease on the captured OID. Fetch/push
+URLs must identify this repository; writes use the captured URL and reject URL
+rewrites. The HOLD comment's identity, issue, and body are read back before any
+push. API/read commands have a 60-second bound; pushes have a 10-minute bound,
+with process-group termination and read-back reconciliation on timeout. Freshness is
+checked before and after that push, and again after the action's PR API calls.
+
+Drift, push errors (including lost acknowledgements), or an incomplete action
+trigger restoration of the captured ref with a second lease expecting only the
+recorded new OID. Only a ref created by this transaction from confirmed absence
+may be deleted. Restoration is read back and verified; a lost lease preserves
+the third-party ref. Existing PRs stay Draft with HOLD/reconciliation evidence.
+API outages fail closed and retain the transaction's prior/new/observed OIDs in
+the Actions log, job summary, and attempted artifact upload; they are not reported
+as verified quarantine. A retry only reconciles recorded state, never repeats a
+push. Successful changes remain Draft (`pr-draft: always`) for a later human
+Ready transition and exact-head review.
+
+Changesets receives a fresh App token after setup, with preparation and action
+bounds of 10 and 40 minutes. An `always()` step mints a separate reconciliation
+token. Git recovery uses that token through temporary command-scoped headers,
+never an expired checkout credential. Failed refresh leaves explicit unverified
+reconciliation evidence; it does not fall back to stale credentials.
+
+An App-token push synchronously changes an already-open release PR, even if
+the post-push check fails. Publication therefore also checks immutable Git
+provenance: the approved final head must be one commit based on the release
+merge's exact first parent, and its entire tree must equal the released tree.
+A two-parent merge must name that approved head as its second parent. A stale
+or altered merge is quarantined even with trusted approval and bypassed or
+non-strict branch checks. Regenerate the release PR from current verified main
+and obtain new final-head maintainer review before merging. Do not transplant
+old approvals, replay an old workflow, or treat an existing PR as unchanged
+just because the later PR API call was skipped.
 
 Freshness is checked again before external writes and after uploads. GitHub
 refs, GitHub Releases, and R2 have no shared transaction: a branch can move
@@ -245,7 +288,8 @@ its push/PR requests; it does not lock main. An in-flight request can finish
 after main moves. Such a failure requires inspection and explicit recovery;
 never treat a previous verification or a queued run as current authority.
 
-GitHub assets are staged privately in a draft before release publication. R2
+GitHub assets are staged privately in a draft before release publication. Exactly
+the four signed tuple assets are required; extras and duplicates are rejected. R2
 publication is **progressive, with per-object atomicity only**: conditional
 `If-None-Match: *` writes create missing objects, and existing objects must
 match byte-for-byte, including signatures and certificates. A failed upload
@@ -271,7 +315,8 @@ After the corrected workflow is merged, an authorized maintainer can dispatch
 with `release_commit` set to the original approved release merge. The dispatch
 re-runs the existing verification jobs on current main, verifies that the
 release merge is an ancestor, requires the same package version and unchanged
-versioned artifacts, rechecks original final-head human approval, and fences
+versioned artifacts, rechecks original final-head maintainer permission and
+merge provenance, and fences
 every publication phase. It never silently repairs from an unrelated push.
 A new main commit during the attempt requires another explicit dispatch and
 verification of the new head. If a later package version has already landed,
@@ -289,6 +334,15 @@ and schema/compliance enumeration verification.
 This version is externally exposed; absence of a GitHub Release is not
 permission to edit or retire its bytes.
 
+**rc.3 recovery is quarantined.** The reviewed head `e7d42cbe` has parent
+`decd95f6303ba08d8d482c93078adad0770a4bf3`, but release merge `71f9cd54` has
+parent `eb3cbd605fc11be6e398c5b83f4e53d332a8e365`; their trees also differ.
+The intervening base changes include a protocol changeset, compliance source,
+and storyboard tooling. The original final-head review does not establish
+approval of the exact 71f tree. The provenance gate rejects ordinary dispatch
+for 71f; the previously proposed dispatch-only recovery is withdrawn. There
+is no grandfather exception or provenance override in this patch.
+
 The stale `eb3cbd605fc11be6e398c5b83f4e53d332a8e365` release run
 `34842463221` subsequently created #7508 at
 `102916bb28c156b1710f031aa28e4655bcf71cdc`, tree
@@ -299,34 +353,38 @@ display obscures that omission. The coordinator marked it Draft, disabled
 auto-merge, and posted a
 [HOLD](https://github.com/adcontextprotocol/adcp/pull/7508#issuecomment-5664735087).
 It is not a recovery candidate. Do not merge, close, replace, or otherwise
-mutate it without coordinating with that owner; retain the original approved
+mutate it without coordinating with that owner; retain the original committed
 71f release artifacts. The fencing regression tests cover this stale-parent
 shape, missing later changeset, and conflicting rc.3 bytes.
 
-The exact recovery sequence, requiring separate maintainer authorization, is:
+The safe incident handoff, requiring separate maintainer authorization, is:
 
-1. Review and merge the ordering fix and JSONL filter fix through normal human
-   review. Coordinate #7502/#7503's immutability guard and documentation claims;
+1. Review and land the ordering fix first, then rebase/requalify and review the
+   JSONL fix. Coordinate #7502/#7503's immutability guard and documentation claims;
    this patch changes no release content. Account for every existing release
    and deploy run using the old workflow, including `34842463221` and
    `34847610745`, before enabling recovery. New workflow code does not fence
    runs that already loaded the old code. Maintainers must quiesce those old
    writers and reserve a quiet publication window.
-2. Recheck current main, original approval, ancestry, exact package version,
+2. Recheck current main, original review and current reviewer permission, the
+   reviewed-head and merge-parent/tree relationship, ancestry, package version,
    the full committed rc.3 tree, checksum, Sigstore identity, tag and release
    state, and every existing R2 object's bytes. Any conflicting tag, release
    asset, or R2 bytes is a stop; do not overwrite, delete, regenerate, roll
    back, or retag. Preserve already exposed bytes and record discrepancies.
-3. Dispatch `release.yml` on that current main with `release_commit` equal to
-   `71f9cd5414454e94ccfef87ce25777ead6fad228`. Let all original verification and
-   human-approval checks run. It stages/reuses the identical four assets,
-   publishes `v3.2.0-rc.3` at **71f**, and conditionally fills missing rc.3 R2
-   objects. It does not tag the later tested main or publish `latest`.
-4. Independently verify the tag target, prerelease flag, all four GitHub assets,
+3. **Stop at the 71f provenance mismatch.** Obtain a separately reviewed plan
+   binding fresh maintainer authority to the exact original 71f tree and its
+   already exposed bytes. No such exception or recovery execution is authorized
+   here. Do not rerun/dispatch the ordinary workflow expecting to bypass the
+   gate, regenerate artifacts, retarget the original merge, or overwrite R2.
+   Any future approved recovery must retain tag target 71f, stage its unchanged
+   signed tuple before release/R2 publication, and enforce conditional writes.
+4. After a separately approved recovery, independently verify the tag target,
+   prerelease flag, all four GitHub assets,
    all 2,093 schema/compliance paths (including JSONL) plus the four protocol
    files, byte hashes, checksum and Sigstore identity (2,097 files total). Check deployment and docs/SDK readiness separately. If
-   anything fails or main advances, record the partial state and repeat only
-   through explicit recovery from the next verified current head.
+   anything fails or main advances, record the partial state and stop for
+   explicit reauthorization on the next verified current head.
 
 These are recovery instructions, not a record of operations performed. The
 ordering-fix work must not publish, delete, roll back, tag, release, deploy,

@@ -40,10 +40,16 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   for (const suffix of ["", ".sha256", ".sig", ".crt"])
     write(`dist/protocol/${version}.tgz${suffix}`, `signed${suffix}`);
   if (includeReleaseHistory) {
-    for (let rc = 0; rc <= 3; rc++) {
-      const historical = `3.2.0-rc.${rc}`;
+    for (const historical of [
+      "3.1.22",
+      "3.1.23",
+      ...[0, 1, 2, 3].map((rc) => `3.2.0-rc.${rc}`),
+    ]) {
       write(`dist/schemas/${historical}/index.json`, '{"release":true}');
-      write(`dist/compliance/${historical}/${rowsPath}`, '{"immutable":true}\n');
+      write(
+        `dist/compliance/${historical}/${rowsPath}`,
+        '{"immutable":true}\n',
+      );
       for (const suffix of ["", ".sha256", ".sig", ".crt"])
         write(`dist/protocol/${historical}.tgz${suffix}`, `signed${suffix}`);
     }
@@ -58,6 +64,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   git("init", "-q");
   git("config", "user.name", "Test");
   git("config", "user.email", "test@example.invalid");
+  git("commit", "--allow-empty", "-qm", "Prior main");
   git("add", ".");
   git("commit", "-qm", "Approved release");
   const source = git("rev-parse", "HEAD");
@@ -68,6 +75,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   write("remote", head);
   write("tag", source);
   write("calls", "");
+  write("permission-calls", "");
   write(
     "release.json",
     JSON.stringify({
@@ -84,12 +92,11 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     write(`bin/${name}`, `#!/usr/bin/env node\n${code}`);
     fs.chmodSync(path.join(dir, "bin", name), 0o755);
   };
-  const common = `const fs=require('node:fs'),path=require('node:path');const args=process.argv.slice(2);const read=f=>fs.readFileSync(f,'utf8');const log=s=>fs.appendFileSync('calls',s+'\\n');const change=()=>fs.writeFileSync('remote','f'.repeat(40));`;
+  const common = `const fs=require('node:fs'),path=require('node:path');const args=process.argv.slice(2);const read=f=>fs.readFileSync(f,'utf8');const log=s=>fs.appendFileSync('calls',s+'\\n');const change=()=>fs.writeFileSync('remote',process.env.ADVANCE_TO||'f'.repeat(40));`;
   executable(
     "git",
     common +
       `
-    if(args[0]==='push' && process.env.ADVANCE_PUSH) { log('branch push');change();process.exit(0); }
     if(args[0]==='ls-remote') {
       if(process.env.REMOTE_ERROR) process.exit(1);
       const ref=args.find(a=>a.startsWith('refs/heads/'));
@@ -108,9 +115,15 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     const save=r=>fs.writeFileSync('release.json',JSON.stringify(r));
     if(args[0]==='api') {
       const url=args.find(a=>a.startsWith('/repos/'));
-      if(url.includes('/commits/')) console.log(JSON.stringify([{number:1,merged_at:'2026-09-14',base:{ref:'main'}}]));
-      else if(url.endsWith('/reviews')) console.log(process.env.REVIEWS||'[]');
-      else console.log(JSON.stringify({head:{sha:'a'.repeat(40)},merge_commit_sha:process.env.RELEASE_SHA,user:{login:'author'}}));
+      const output=value=>console.log(JSON.stringify(args.includes('--slurp')?[value]:value));
+      if(url.includes('/commits/')) { if(process.env.PULLS_ERROR) process.exit(1); output(JSON.parse(process.env.ASSOCIATED_PRS||'[{"number":1,"merged_at":"2026-09-14","base":{"ref":"main"}}]')); }
+      else if(url.endsWith('/reviews')) output(JSON.parse(process.env.REVIEWS||'[]'));
+      else if(url.includes('/collaborators/')) {
+        fs.appendFileSync('permission-calls',url+'\\n');
+        if(process.env.PERMISSION_ERROR && (!process.env.PERMISSION_ERROR_LOGIN || url.includes('/'+process.env.PERMISSION_ERROR_LOGIN+'/'))) {console.error(process.env.PERMISSION_ERROR);process.exit(1);}
+        console.log(process.env.PERMISSION_RESPONSE||JSON.stringify({permission:'write',role_name:'write',user:{id:123,login:'reviewer',type:'User'}}));
+        if(process.env.ADVANCE_PERMISSION) change();
+      } else output(JSON.parse(process.env.MERGED_PR||JSON.stringify({number:1,head:{sha:process.env.RELEASE_SHA},merged:true,merge_commit_sha:process.env.RELEASE_SHA,base:{ref:'main',repo:{full_name:'adcontextprotocol/adcp'}},user:{id:456,login:'author',type:'User'}})));
     } else if(args[1]==='view') {
       if(!fs.existsSync('release.json')) process.exit(1);
       const r=release();
@@ -195,18 +208,19 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   };
 }
 const immutable = ["--version", version, "--skip-latest"];
-const approval = (extra) =>
+const approval = (head, extra = {}) =>
   JSON.stringify([
     {
-      user: { type: "User", login: "reviewer" },
+      id: 1,
+      user: { id: 123, type: "User", login: "reviewer" },
       state: "APPROVED",
-      commit_id: "a".repeat(40),
+      commit_id: head,
       submitted_at: "2026-09-14",
       ...extra,
     },
   ]);
 
-test("app-only deploy cannot backfill immutable JSONL or historical rc.0–rc.3 artifacts", (t) => {
+test("app-only deploy cannot backfill #7507 stable artifacts or #7509 immutable rc.0–rc.3 JSONL", (t) => {
   const f = fixture(t, version, true);
   for (let rc = 0; rc <= 3; rc++) {
     const file = `dist/compliance/3.2.0-rc.${rc}/${rowsPath}`;
@@ -217,11 +231,12 @@ test("app-only deploy cannot backfill immutable JSONL or historical rc.0–rc.3 
   assert.notEqual(bulk.status, 0);
   assert.match(bulk.stderr, /Live bulk backfill is disabled/);
   assert.equal(f.calls(), "");
-  // The destination boundary holds independently of #7509's JSONL filter.
+  // The destination boundary holds independently of #7509's JSONL filter
+  // and #7507's curated stable artifact additions.
   const result = f.upload(["--latest-only", "--build-latest"]);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(f.calls().includes("schemas/latest"));
-  assert.doesNotMatch(f.calls(), /3\.2\.0-rc\.[0-3]|r2 put /);
+  assert.doesNotMatch(f.calls(), /3\.2\.0-rc\.[0-3]|3\.1\.2[23]|r2 put /);
   assert.ok(
     f
       .calls()
@@ -264,11 +279,7 @@ test("main advances during a long app deploy after its successful pre-deploy gat
 });
 test("old run cannot update Changesets after verification/versioning or enter publication", (t) => {
   const f = fixture(t);
-  const install = f.run("bash", ["-c", step("Fence Changesets mutations").run]);
-  assert.equal(install.status, 0, install.stderr);
   f.write("remote", "f".repeat(40));
-  const hook = f.run("sh", [path.join(f.dir, "temp/release-hooks/pre-push")]);
-  assert.notEqual(hook.status, 0);
   assert.notEqual(f.script("current").status, 0);
   assert.equal(f.calls(), "");
 });
@@ -300,11 +311,12 @@ test("queued committed release survives later pushes; lost/manual cancellations 
     0,
   );
 });
-for (const [name, reviews] of [
-  ["none", "[]"],
-  ["bot", approval({ user: { type: "Bot", login: "bot" } })],
-  ["stale", approval({ commit_id: "b".repeat(40) })],
-  ["dismissed", approval({ state: "DISMISSED" })],
+for (const [name, overrides] of [
+  ["none", null],
+  ["bot", { user: { id: 123, type: "Bot", login: "bot" } }],
+  ["stale", { commit_id: "b".repeat(40) }],
+  ["dismissed", { state: "DISMISSED" }],
+  ["author", { user: { id: 456, type: "User", login: "author" } }],
 ])
   test(`no ${name} approval can publish`, (t) => {
     const f = fixture(t);
@@ -314,7 +326,7 @@ for (const [name, reviews] of [
         "-c",
         step("Require human approval for committed release artifacts").run,
       ],
-      { REVIEWS: reviews },
+      { REVIEWS: overrides ? approval(f.source, overrides) : "[]" },
     );
     assert.notEqual(r.status, 0);
     assert.equal(f.calls(), "");
@@ -327,14 +339,15 @@ test("approved publication stages complete GitHub tuple before release and scope
     "bash",
     [
       "-c",
-      step("Require human approval for committed release artifacts").run +
+      "set -e\n" +
+        step("Require human approval for committed release artifacts").run +
         "\n" +
         step("Upload protocol tarball to GitHub Release").run.replaceAll(
           "${{ steps.release-artifacts.outputs.version }}",
           version,
         ),
     ],
-    { REVIEWS: approval() },
+    { REVIEWS: approval(f.source) },
   );
   assert.equal(r.status, 0, r.stderr);
   const upload = f.upload(immutable);
@@ -346,6 +359,223 @@ test("approved publication stages complete GitHub tuple before release and scope
   assert.ok(calls.slice(6).every((c) => c.includes(version)));
   assert.equal(f.upload(immutable).status, 0, "identical retries skip objects");
   assert.equal(f.calls(), calls.join("\n") + "\n");
+});
+
+const permissionResponse = (permission, role = permission, user = {}) =>
+  JSON.stringify({
+    permission,
+    role_name: role,
+    user: { id: 123, login: "reviewer", type: "User", ...user },
+  });
+
+for (const [name, values] of [
+  ["zero associated PRs", { ASSOCIATED_PRS: "[]" }],
+  [
+    "multiple associated merged PRs",
+    {
+      ASSOCIATED_PRS: JSON.stringify(
+        [1, 2].map((number) => ({
+          number,
+          merged_at: "2026-09-14",
+          base: { ref: "main" },
+        })),
+      ),
+    },
+  ],
+  [
+    "duplicate associated PR",
+    {
+      ASSOCIATED_PRS: JSON.stringify(
+        [1, 1].map((number) => ({
+          number,
+          merged_at: "2026-09-14",
+          base: { ref: "main" },
+        })),
+      ),
+    },
+  ],
+  ["malformed associated PR", { ASSOCIATED_PRS: "[null]" }],
+  ["malformed associated page", { ASSOCIATED_PRS: "{}" }],
+  ["associated PR API outage", { PULLS_ERROR: "1" }],
+])
+  test(`approval fails closed on ${name}`, (t) => {
+    const f = fixture(t);
+    const result = f.script("approval", {
+      REVIEWS: approval(f.source),
+      ...values,
+    });
+    assert.notEqual(result.status, 0);
+    assert.equal(f.calls(), "");
+    assert.equal(
+      fs.readFileSync(path.join(f.dir, "permission-calls"), "utf8"),
+      "",
+    );
+  });
+
+for (const kind of ["extra", "duplicate", "missing", "malformed"])
+  test(`published authority requires exactly four signed assets: ${kind}`, (t) => {
+    const f = fixture(t);
+    const file = path.join(f.dir, "release.json");
+    const release = JSON.parse(fs.readFileSync(file));
+    if (kind === "extra") release.assets.push({ name: "unreviewed.txt" });
+    if (kind === "duplicate") release.assets.push(release.assets[0]);
+    if (kind === "missing") release.assets.pop();
+    if (kind === "malformed") release.assets = {};
+    fs.writeFileSync(file, JSON.stringify(release));
+    assert.notEqual(f.upload(immutable).status, 0);
+    assert.equal(f.calls(), "");
+  });
+
+for (const kind of ["extra", "duplicate"])
+  test(`a staged release with ${kind} assets cannot become public`, (t) => {
+    const f = fixture(t);
+    const release = JSON.parse(
+      fs.readFileSync(path.join(f.dir, "release.json")),
+    );
+    release.isDraft = true;
+    release.assets.push(
+      kind === "extra" ? { name: "unexpected.txt" } : release.assets[0],
+    );
+    f.write("release.json", JSON.stringify(release));
+    const result = f.run("bash", [
+      "-c",
+      step("Upload protocol tarball to GitHub Release").run.replaceAll(
+        "${{ steps.release-artifacts.outputs.version }}",
+        version,
+      ),
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.equal(f.calls(), "");
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(f.dir, "release.json"))).isDraft,
+      true,
+    );
+  });
+
+for (const [name, env] of [
+  [
+    "outside User with public read access",
+    { PERMISSION_RESPONSE: permissionResponse("read") },
+  ],
+  ["triage", { PERMISSION_RESPONSE: permissionResponse("read", "triage") }],
+  ["no repository access", { PERMISSION_RESPONSE: permissionResponse("none") }],
+  ["missing collaborator", { PERMISSION_ERROR: "HTTP 404 Not Found" }],
+  ["permission denied", { PERMISSION_ERROR: "HTTP 403 Forbidden" }],
+  ["lookup timeout", { PERMISSION_ERROR: "Request timed out" }],
+  ["malformed response", { PERMISSION_RESPONSE: "not JSON" }],
+  [
+    "missing identity",
+    { PERMISSION_RESPONSE: '{"permission":"admin","role_name":"admin"}' },
+  ],
+  ["ambiguous array", { PERMISSION_RESPONSE: "[]" }],
+  [
+    "different identity",
+    { PERMISSION_RESPONSE: permissionResponse("admin", "admin", { id: 999 }) },
+  ],
+  [
+    "different login",
+    {
+      PERMISSION_RESPONSE: permissionResponse("admin", "admin", {
+        login: "another",
+      }),
+    },
+  ],
+  [
+    "bot identity",
+    {
+      PERMISSION_RESPONSE: permissionResponse("admin", "admin", {
+        type: "Bot",
+      }),
+    },
+  ],
+  [
+    "contradictory role",
+    { PERMISSION_RESPONSE: permissionResponse("write", "read") },
+  ],
+  [
+    "missing permission",
+    { PERMISSION_RESPONSE: permissionResponse(undefined, "write") },
+  ],
+  ["main drift during permission lookup", { ADVANCE_PERMISSION: "1" }],
+]) {
+  test(`approval fails closed for ${name}`, (t) => {
+    const f = fixture(t);
+    const result = f.run(
+      "bash",
+      [
+        "-c",
+        "set -e\n" +
+          step("Require human approval for committed release artifacts").run +
+          '\nprintf "publication attempted\\n" >> calls',
+      ],
+      { REVIEWS: approval(f.source), ...env },
+    );
+    assert.notEqual(result.status, 0);
+    assert.equal(f.calls(), "");
+    assert.match(
+      fs.readFileSync(path.join(f.dir, "permission-calls"), "utf8"),
+      /\/collaborators\/reviewer\/permission/,
+    );
+  });
+}
+
+for (const [permission, role] of [
+  ["write", "write"],
+  ["write", "maintain"],
+  ["admin", "admin"],
+]) {
+  test(`current ${role} maintainer approval authorizes matching release provenance`, (t) => {
+    const f = fixture(t);
+    const result = f.script("approval", {
+      REVIEWS: approval(f.source),
+      PERMISSION_RESPONSE: permissionResponse(permission, role),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /1 trusted maintainer approval/);
+  });
+}
+
+test("a later dismissed review invalidates the same maintainer's prior approval", (t) => {
+  const f = fixture(t);
+  const approved = JSON.parse(approval(f.source))[0];
+  const dismissed = {
+    ...approved,
+    id: 2,
+    state: "DISMISSED",
+    submitted_at: "2026-09-15",
+  };
+  const result = f.script("approval", {
+    REVIEWS: JSON.stringify([dismissed, approved]),
+  });
+  assert.notEqual(result.status, 0);
+  assert.equal(
+    fs.readFileSync(path.join(f.dir, "permission-calls"), "utf8"),
+    "",
+  );
+});
+
+test("a trusted approval does not hide a second reviewer's failed permission lookup", (t) => {
+  const f = fixture(t);
+  const trusted = JSON.parse(approval(f.source))[0];
+  const outside = {
+    ...trusted,
+    id: 2,
+    user: { id: 124, type: "User", login: "outside" },
+  };
+  const result = f.script("approval", {
+    REVIEWS: JSON.stringify([trusted, outside]),
+    PERMISSION_ERROR_LOGIN: "outside",
+    PERMISSION_ERROR: "HTTP 404 Not Found",
+  });
+  assert.notEqual(result.status, 0);
+  assert.equal(
+    fs
+      .readFileSync(path.join(f.dir, "permission-calls"), "utf8")
+      .trim()
+      .split("\n").length,
+    2,
+  );
+  assert.equal(f.calls(), "");
 });
 for (const [name, env] of [
   ["drift during put", { ADVANCE_AWS: "1" }],
@@ -532,30 +762,178 @@ for (const suffix of ["", ".sha256", ".sig", ".crt"]) {
   });
 }
 
-test("a successful long Changesets push followed by drift stops before the PR API call", (t) => {
+test("an existing PR updated by a stale push cannot publish even after trusted approval and merge", (t) => {
   const f = fixture(t);
-  const installed = f.run("bash", [
-    "-c",
-    step("Fence Changesets mutations").run,
-  ]);
-  assert.equal(installed.status, 0, installed.stderr);
-  // GITHUB_PATH is applied to the next action exactly as Actions applies it.
-  const wrapperDirectory = fs
-    .readFileSync(path.join(f.dir, "github-path"), "utf8")
-    .trim();
+  const pr = {
+    head: { sha: f.source },
+    merged: false,
+    merge_commit_sha: null,
+    base: { ref: "main", repo: { full_name: "adcontextprotocol/adcp" } },
+    user: { id: 456, login: "release-bot[bot]", type: "Bot" },
+  };
+  f.write("existing-pr.json", JSON.stringify(pr));
+
+  f.git("checkout", "-qb", "generated", f.head);
+  const next = "3.2.0-rc.4";
+  f.write("package.json", JSON.stringify({ version: next }));
+  for (const area of ["schemas", "compliance"])
+    f.write(`dist/${area}/${next}/index.json`, '{"newRelease":true}');
+  for (const suffix of ["", ".sha256", ".sig", ".crt"])
+    f.write(`dist/protocol/${next}.tgz${suffix}`, `signed${suffix}`);
+  f.git("add", "package.json", "dist");
+  f.git("commit", "-qm", "Version Packages");
+  const generated = f.git("rev-parse", "HEAD");
+  f.git("checkout", "--detach", f.head);
+  f.write(".changeset/another.md", "Changeset arriving during the push");
+  f.git("add", ".changeset/another.md");
+  f.git("commit", "-qm", "Main advances");
+  const advanced = f.git("rev-parse", "HEAD");
+  f.git("checkout", "generated");
+
+  // Simulate the already-observed historical unfenced update. The new leased
+  // wrapper is separately fault-tested against a real bare Git remote.
+  f.git("checkout", "--detach", advanced);
+  f.git("merge", "--squash", generated);
+  f.git("commit", "-qm", "Merge the stale existing release PR");
+  const merged = f.git("rev-parse", "HEAD");
+  f.write("remote", merged);
   const result = f.run(
     "bash",
     [
       "-c",
-      'set -e\ngit push origin HEAD:changeset-release/main --force\nprintf "PR API write\\n" >> calls',
+      "set -e\n" +
+        step("Require human approval for committed release artifacts").run +
+        '\nprintf "publication attempted\\n" >> calls',
     ],
     {
-      PATH: `${wrapperDirectory}:${path.join(f.dir, "bin")}:${process.env.PATH}`,
-      ADVANCE_PUSH: "1",
+      TESTED_SHA: merged,
+      GITHUB_SHA: merged,
+      RELEASE_SHA: merged,
+      MERGED_PR: JSON.stringify({
+        ...pr,
+        head: { sha: generated },
+        number: 1,
+        merged: true,
+        merge_commit_sha: merged,
+      }),
+      REVIEWS: approval(generated),
     },
   );
   assert.notEqual(result.status, 0);
-  assert.equal(f.calls(), "branch push\n");
+  assert.match(result.stderr, /Quarantined release/);
+  assert.match(
+    fs.readFileSync(path.join(f.dir, "permission-calls"), "utf8"),
+    /reviewer\/permission/,
+  );
+  assert.equal(f.calls(), "");
+});
+
+for (const kind of ["squash", "merge"]) {
+  test(`trusted approval accepts an unchanged generated head merged on its exact base (${kind})`, (t) => {
+    const f = fixture(t);
+    f.git("checkout", "--detach", `${f.source}^`);
+    if (kind === "squash") {
+      f.git("merge", "--squash", f.source);
+      f.git("commit", "-qm", "Squash approved release");
+    } else f.git("merge", "--no-ff", "-m", "Merge approved release", f.source);
+    const merged = f.git("rev-parse", "HEAD");
+    f.write("remote", merged);
+    const result = f.script("approval", {
+      TESTED_SHA: merged,
+      RELEASE_SHA: merged,
+      MERGED_PR: JSON.stringify({
+        head: { sha: f.source },
+        number: 1,
+        merged: true,
+        merge_commit_sha: merged,
+        base: { ref: "main", repo: { full_name: "adcontextprotocol/adcp" } },
+        user: { id: 456, login: "release-bot[bot]", type: "Bot" },
+      }),
+      REVIEWS: approval(f.source),
+    });
+    assert.equal(result.status, 0, result.stderr);
+  });
+}
+
+test("matching base alone cannot authorize a merge tree changed after review", (t) => {
+  const f = fixture(t);
+  f.write(`dist/schemas/${version}/index.json`, "unreviewed change");
+  f.git("add", `dist/schemas/${version}/index.json`);
+  const tree = f.git("write-tree");
+  const merged = f.git(
+    "commit-tree",
+    tree,
+    "-p",
+    `${f.source}^`,
+    "-m",
+    "Altered merge",
+  );
+  f.write("remote", merged);
+  const result = f.run(
+    "node",
+    ["scripts/check-release-state.cjs", "provenance", f.source],
+    { TESTED_SHA: merged, RELEASE_SHA: merged },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Quarantined release/);
+});
+
+test("same-version recovery cannot bypass the quarantined rc.3 merge provenance", (t) => {
+  // Real incident: approved e7d42cbe parent=decd95f6; 71f9cd54 parent=eb3cbd60.
+  const f = fixture(t);
+  const merged = f.git(
+    "commit-tree",
+    `${f.source}^{tree}`,
+    "-p",
+    f.head,
+    "-m",
+    "Release merged after its generation base advanced",
+  );
+  f.write("remote", merged);
+  const env = { TESTED_SHA: merged, RELEASE_SHA: merged };
+  const recovered = f.run(
+    "node",
+    ["scripts/check-release-state.cjs", "recovery", merged],
+    env,
+  );
+  assert.equal(recovered.status, 0, recovered.stderr);
+  const authorized = f.script("approval", {
+    ...env,
+    MERGED_PR: JSON.stringify({
+      head: { sha: f.source },
+      number: 1,
+      merged: true,
+      merge_commit_sha: merged,
+      base: { ref: "main", repo: { full_name: "adcontextprotocol/adcp" } },
+      user: { id: 456, login: "release-bot[bot]", type: "Bot" },
+    }),
+    REVIEWS: approval(f.source),
+  });
+  assert.notEqual(authorized.status, 0);
+  assert.match(authorized.stderr, /Quarantined release/);
+  assert.equal(f.calls(), "");
+});
+
+test("a multi-parent generated head cannot substitute for fresh release generation", (t) => {
+  const f = fixture(t);
+  const head = f.git(
+    "commit-tree",
+    `${f.source}^{tree}`,
+    "-p",
+    `${f.source}^`,
+    "-p",
+    f.source,
+    "-m",
+    "Merge base into an old generated head",
+  );
+  f.write("remote", head);
+  const result = f.run(
+    "node",
+    ["scripts/check-release-state.cjs", "provenance", head],
+    { TESTED_SHA: head, RELEASE_SHA: head },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Quarantined release/);
 });
 
 for (const mismatch of [false, true]) {

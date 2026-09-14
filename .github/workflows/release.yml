@@ -180,75 +180,56 @@ jobs:
             echo "No committed release artifacts detected for ${VERSION}."
           fi
 
-      # Branch rules can be bypassed by repository administrators and GitHub
-      # Apps. Before publishing committed artifacts, independently verify that
-      # the merged release PR received a human approval on its final head SHA.
+      # Public human reviews are not publication authority. Recheck current
+      # collaborator access and the reviewed head's exact merge provenance,
+      # independently of branch-rule bypass or non-strict required checks.
       - name: Require human approval for committed release artifacts
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
+        run: node scripts/check-release-state.cjs approval
 
-          pulls="$(gh api \
-            -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}/pulls")"
-          pr_number="$(jq -r \
-            --arg base "${GITHUB_REF_NAME}" \
-            '[.[] | select(.merged_at != null and .base.ref == $base)] | sort_by(.merged_at) | last | .number // empty' \
-            <<< "${pulls}")"
-
-          if [ -z "${pr_number}" ]; then
-            echo "::error::Release artifact commit ${RELEASE_SHA} is not associated with a merged PR targeting ${GITHUB_REF_NAME}."
-            exit 1
-          fi
-
-          pr="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
-          head_sha="$(jq -r '.head.sha' <<< "${pr}")"
-          test "$(jq -r '.merge_commit_sha' <<< "$pr")" = "$RELEASE_SHA"
-          author="$(jq -r '.user.login' <<< "${pr}")"
-          reviews="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews" | jq -s 'add')"
-          approved_count="$(jq \
-            --arg head "${head_sha}" \
-            '[.[] | select(.user.type == "User")]
-            | sort_by(.user.login, .submitted_at)
-            | group_by(.user.login)
-            | map(last)
-            | map(select(.state == "APPROVED" and .commit_id == $head))
-            | length' \
-            <<< "${reviews}")"
-
-          if [ "${approved_count}" -lt 1 ]; then
-            echo "::error::Release PR #${pr_number} by ${author} has no human approval on final head ${head_sha}. Refusing to publish artifacts."
-            exit 1
-          fi
-
-          echo "Release PR #${pr_number} has ${approved_count} human approval(s) on final head ${head_sha}."
+      - name: Mint Changesets mutation token
+        id: changesets-token
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'false'
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
 
       - name: Fence Changesets mutations
         if: steps.release-artifacts.outputs.has_release_artifacts != 'true'
+        timeout-minutes: 10
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.changesets-token.outputs.token }}
         run: |
           set -euo pipefail
-          node scripts/check-release-state.cjs pending
           # Changesets builds for minutes before pushing. Its pinned git-CLI
           # path honors pre-push and propagates a failed push before PR writes.
           mkdir -p "$RUNNER_TEMP/release-hooks"
           cp scripts/check-release-state.cjs "$RUNNER_TEMP/release-hooks/check.cjs"
+          cp scripts/fence-changesets.cjs "$RUNNER_TEMP/release-hooks/fence.cjs"
+          command -v git > "$RUNNER_TEMP/release-hooks/git-path"
+          node "$RUNNER_TEMP/release-hooks/fence.cjs" prepare
           # shellcheck disable=SC2016
           printf '#!/bin/sh\nnode "$RUNNER_TEMP/release-hooks/check.cjs" current\n' > "$RUNNER_TEMP/release-hooks/pre-push"
           chmod +x "$RUNNER_TEMP/release-hooks/pre-push"
           git config core.hooksPath "$RUNNER_TEMP/release-hooks"
-          # Also recheck after a long git push, so Changesets stops before its
-          # subsequent GitHub PR API request if main moved during the push.
-          command -v git > "$RUNNER_TEMP/release-hooks/git-path"
+          # Only the pinned action's push shape may mutate the captured ref.
+          # The helper leases it, then restores/quarantines on drift or error.
           cat > "$RUNNER_TEMP/release-hooks/git" <<'SH'
           #!/bin/sh
           real_git=$(cat "$RUNNER_TEMP/release-hooks/git-path")
+          # Permit only the pinned producer's two read-only identity probes.
+          # Other global options must not route around the leased push path.
+          if [ "$#" -eq 4 ] && [ "$1" = -c ] && [ "$2" = user.useConfigOnly=true ] && [ "$3" = var ]; then
+            case "$4" in GIT_AUTHOR_IDENT|GIT_COMMITTER_IDENT) exec "$real_git" "$@";; esac
+          fi
+          case "$1" in -*) echo 'Unsupported Git global options in release action' >&2; exit 1;; esac
           if [ "$1" = push ]; then
-            "$real_git" "$@" || exit $?
-            node "$RUNNER_TEMP/release-hooks/check.cjs" current
+            exec node "$RUNNER_TEMP/release-hooks/fence.cjs" push "$@"
           else
             exec "$real_git" "$@"
           fi
@@ -259,6 +240,7 @@ jobs:
       - name: Create Release Pull Request or Tag Release
         if: steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
+        timeout-minutes: 40
         # v2 understands the Changesets v3 `.changeset/pre/` archive. This is
         # v2.1.2, pinned to the contract verified at:
         # https://github.com/changesets/action/blob/ae32849d5ba541f9ae29e40e22a623bc13562f51/action.yml
@@ -267,14 +249,44 @@ jobs:
         # compliance artifacts exceed GitHub's API payload limit.
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          github-token: ${{ steps.app-token.outputs.token }}
+          github-token: ${{ steps.changesets-token.outputs.token }}
           version-script: npm run version
           commit-message: 'Version Packages'
           pr-title: 'Version Packages'
+          pr-draft: always
           create-github-releases: false
           push-with-git-cli: true
         env:
           HUSKY: '0'
+          GH_TOKEN: ${{ steps.changesets-token.outputs.token }}
+
+      - name: Mint Changesets reconciliation token
+        id: reconciliation-token
+        if: always() && steps.release-artifacts.outputs.has_release_artifacts == 'false' && steps.changesets-token.outcome == 'success'
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
+      - name: Reconcile Changesets transaction
+        if: always() && steps.release-artifacts.outputs.has_release_artifacts == 'false'
+        env:
+          GH_TOKEN: ${{ steps.reconciliation-token.outputs.token }}
+          CHANGESETS_OUTCOME: ${{ steps.changesets.outcome }}
+        run: |
+          if [ -f "$RUNNER_TEMP/release-hooks/state.json" ]; then
+            node "$RUNNER_TEMP/release-hooks/fence.cjs" finalize
+          fi
+
+      - name: Retain Changesets reconciliation evidence
+        if: always() && steps.release-artifacts.outputs.has_release_artifacts == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: changesets-transaction-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-hooks/state.json
+          if-no-files-found: ignore
 
       - name: Require committed signed protocol tarball
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
@@ -380,6 +392,8 @@ jobs:
           upload_asset_if_missing "${TARBALL}.sha256"
           upload_asset_if_missing "${TARBALL}.sig"
           upload_asset_if_missing "${TARBALL}.crt"
+          gh release view "$TAG" --json assets | jq -e --arg v "$VERSION" \
+            '([.assets[].name] | sort) == (["", ".sha256", ".sig", ".crt"] | map($v + ".tgz" + .) | sort)' >/dev/null
           node scripts/check-release-state.cjs current
           gh release edit "$TAG" --draft=false
           node scripts/check-release-state.cjs published "$VERSION"

@@ -79,11 +79,15 @@ function published(
       "tagName,isDraft,isPrerelease,assets",
     ]),
   );
-  const names = release.assets.map((asset) => asset.name);
+  const names = Array.isArray(release?.assets)
+    ? release.assets.map((asset) => asset?.name)
+    : [];
   if (
     release.tagName !== tag ||
-    release.isDraft ||
+    release.isDraft !== false ||
     release.isPrerelease !== version.includes("-") ||
+    names.length !== 4 ||
+    new Set(names).size !== 4 ||
     !["", ".sha256", ".sig", ".crt"].every((suffix) =>
       names.includes(`${version}.tgz${suffix}`),
     )
@@ -144,6 +148,173 @@ function recovery(source) {
     );
 }
 
+function provenance(source, head) {
+  if (!shaPattern.test(source || "") || !shaPattern.test(head || ""))
+    throw new Error(
+      "Release provenance requires exact merge and reviewed head SHAs.",
+    );
+  const generated = git("rev-list", "--parents", "-n", "1", head).split(" ");
+  const merged = git("rev-list", "--parents", "-n", "1", source).split(" ");
+  if (
+    generated.length !== 2 ||
+    ![2, 3].includes(merged.length) ||
+    generated[1] !== merged[1] ||
+    (merged.length === 3 && merged[2] !== head) ||
+    git("rev-parse", `${head}^{tree}`) !== git("rev-parse", `${source}^{tree}`)
+  ) {
+    throw new Error(
+      "Quarantined release: the reviewed generated head must have the merge's exact base parent and released tree. A stale existing PR update cannot authorize publication; see RELEASING.md.",
+    );
+  }
+}
+
+function approval() {
+  const tested = current();
+  const source = process.env.RELEASE_SHA;
+  const repository = process.env.GITHUB_REPOSITORY;
+  const branch = process.env.PUBLICATION_BRANCH || process.env.GITHUB_REF_NAME;
+  if (
+    !shaPattern.test(source || "") ||
+    !/^[\w.-]+\/[\w.-]+$/.test(repository || "")
+  )
+    throw new Error("Approval requires an exact release SHA and repository.");
+  git("merge-base", "--is-ancestor", source, tested);
+  const api = (endpoint, paginate = false) => {
+    const value = JSON.parse(
+      run("gh", [
+        "api",
+        ...(paginate ? ["--paginate", "--slurp"] : []),
+        `/repos/${repository}${endpoint}`,
+      ]),
+    );
+    if (!paginate) return value;
+    if (!Array.isArray(value) || !value.every(Array.isArray))
+      throw new Error("Ambiguous paginated approval response.");
+    return value.flat();
+  };
+  const associated = api(`/commits/${source}/pulls`, true);
+  if (
+    !associated.every(
+      (pr) =>
+        pr &&
+        Number.isSafeInteger(pr.number) &&
+        pr.number > 0 &&
+        typeof pr.base?.ref === "string" &&
+        (pr.merged_at === null ||
+          (typeof pr.merged_at === "string" &&
+            Number.isFinite(Date.parse(pr.merged_at)))),
+    )
+  )
+    throw new Error("Malformed associated release PR response.");
+  const pulls = associated.filter(
+    (pr) => pr.merged_at && pr.base?.ref === branch,
+  );
+  if (
+    pulls.length !== 1 ||
+    !Number.isSafeInteger(pulls[0].number) ||
+    pulls[0].number < 1
+  )
+    throw new Error(
+      "Release commit must identify exactly one merged release PR.",
+    );
+  const pr = api(`/pulls/${pulls[0].number}`);
+  const head = pr.head?.sha;
+  const identity = (user) =>
+    Number.isSafeInteger(user?.id) &&
+    user.id > 0 &&
+    typeof user.login === "string" &&
+    /^[a-z0-9][a-z0-9-]{0,38}(?:\[bot\])?$/i.test(user.login);
+  if (
+    pr.number !== pulls[0].number ||
+    pr.merged !== true ||
+    pr.merge_commit_sha !== source ||
+    pr.base?.ref !== branch ||
+    pr.base.repo?.full_name !== repository ||
+    !shaPattern.test(head || "") ||
+    !identity(pr.user)
+  )
+    throw new Error("Ambiguous merged release PR identity.");
+
+  const reviews = api(`/pulls/${pulls[0].number}/reviews`, true);
+  if (
+    new Set(reviews.map((review) => review?.id)).size !== reviews.length ||
+    !reviews.every(
+      (review) =>
+        identity(review.user) &&
+        Number.isSafeInteger(review.id) &&
+        review.id > 0 &&
+        typeof review.submitted_at === "string" &&
+        Number.isFinite(Date.parse(review.submitted_at)),
+    )
+  )
+    throw new Error("Ambiguous release review identity or ordering.");
+  const latest = new Map();
+  reviews.sort(
+    (a, b) =>
+      Date.parse(a.submitted_at) - Date.parse(b.submitted_at) || a.id - b.id,
+  );
+  for (const review of reviews) latest.set(review.user.id, review);
+  let trusted = 0;
+  for (const review of latest.values()) {
+    const user = review.user;
+    if (
+      review.state !== "APPROVED" ||
+      review.commit_id !== head ||
+      user.type !== "User" ||
+      user.id === pr.user.id ||
+      user.login.toLowerCase() === pr.user.login.toLowerCase()
+    )
+      continue;
+    // Current effective access, not public-review ability or author_association.
+    // GitHub maps maintain to permission=write and triage to permission=read.
+    // https://docs.github.com/en/rest/collaborators/collaborators#get-repository-permissions-for-a-user
+    const access = api(
+      `/collaborators/${encodeURIComponent(user.login)}/permission`,
+    );
+    if (
+      !identity(access?.user) ||
+      access.user.id !== user.id ||
+      access.user.type !== "User" ||
+      access.user.login.toLowerCase() !== user.login.toLowerCase()
+    )
+      throw new Error("Ambiguous collaborator permission identity.");
+    const role = `${access.permission}:${access.role_name}`;
+    if (
+      [
+        "write:write",
+        "write:maintain",
+        "maintain:maintain",
+        "admin:admin",
+      ].includes(role)
+    )
+      trusted++;
+    else if (!["read:read", "read:triage", "none:none"].includes(role))
+      throw new Error("Ambiguous or unsupported collaborator permission.");
+  }
+  if (!trusted)
+    throw new Error(
+      "Release PR has no current write/maintain/admin non-author approval on its final head.",
+    );
+
+  // An App push updates an already-open PR before the post-push fence runs.
+  // Validate immutable commit provenance again at publication, even if an
+  // administrator merged that stale update through non-strict branch rules.
+  try {
+    git("cat-file", "-e", `${head}^{commit}`);
+  } catch {
+    git("fetch", "--no-tags", "origin", `refs/pull/${pulls[0].number}/head`);
+    if (git("rev-parse", "FETCH_HEAD") !== head)
+      throw new Error(
+        "Fetched release PR head differs from its approval record.",
+      );
+  }
+  provenance(source, head);
+  current();
+  console.log(
+    `Release PR #${pulls[0].number} has ${trusted} trusted maintainer approval(s) and matching merge provenance.`,
+  );
+}
+
 try {
   const [mode, argument] = process.argv.slice(2);
   if (mode === "current") current();
@@ -162,10 +333,17 @@ try {
     ];
     if (surfaces.some((surface) => fs.existsSync(surface))) published(version);
   } else if (mode === "recovery") recovery(argument);
-  else throw new Error("Expected current, published, pending, or recovery.");
+  else if (mode === "approval") approval();
+  else if (mode === "provenance") {
+    current();
+    provenance(process.env.RELEASE_SHA, argument);
+  } else
+    throw new Error(
+      "Expected current, published, pending, recovery, approval, or provenance.",
+    );
 } catch (error) {
   console.error(
-    `::error::${error.message}\nPublication stopped. A missing/incomplete release must be recovered explicitly from its original approved merge on current tested main; see RELEASING.md. Do not rerun an obsolete workflow.`,
+    `::error::${error.message}\nPublication stopped. Recovery requires current tested main and original release authority; provenance mismatches remain quarantined pending a separately reviewed plan. See RELEASING.md. Do not rerun an obsolete workflow.`,
   );
   process.exitCode = 1;
 }
