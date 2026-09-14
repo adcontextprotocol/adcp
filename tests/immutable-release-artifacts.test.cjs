@@ -16,6 +16,16 @@ function hasBasePath(paths) {
 assert.deepStrictEqual(parseImmutableArtifactPath('dist/compliance/latest/index.json'), null);
 
 assert.deepStrictEqual(
+  parseImmutableArtifactPath('.\\dist\\schemas\\3.2.0-beta.11\\index.json'),
+  {
+    kind: 'schemas',
+    version: '3.2.0-beta.11',
+    releaseRoot: 'dist/schemas/3.2.0-beta.11',
+    probePaths: ['dist/schemas/3.2.0-beta.11'],
+  }
+);
+
+assert.deepStrictEqual(
   parseImmutableArtifactPath('dist/compliance/3.0.14/universal/idempotency.yaml'),
   {
     kind: 'compliance',
@@ -26,10 +36,14 @@ assert.deepStrictEqual(
 );
 
 assert.deepStrictEqual(
-  parseNameStatus('M\tdist/compliance/3.0.14/index.json\nR100\tdist/docs/3.0.14/a.md\tdist/docs/3.0.14/b.md\n'),
+  parseNameStatus(
+    'M\tdist/compliance/3.0.14/index.json\nD\tdist/schemas/3.0.14/index.json\nR100\tdist/docs/3.0.14/a.md\tdist/docs/3.0.14/b.md\nC100\tsource.tgz\tdist/protocol/3.0.14.tgz\n'
+  ),
   [
     { status: 'M', paths: ['dist/compliance/3.0.14/index.json'] },
+    { status: 'D', paths: ['dist/schemas/3.0.14/index.json'] },
     { status: 'R100', paths: ['dist/docs/3.0.14/a.md', 'dist/docs/3.0.14/b.md'] },
+    { status: 'C100', paths: ['source.tgz', 'dist/protocol/3.0.14.tgz'] },
   ]
 );
 
@@ -84,14 +98,34 @@ violations = findImmutableArtifactViolations(
 assert.deepStrictEqual(violations, [], 'Deleting artifacts for an untagged aborted release is allowed');
 
 violations = findImmutableArtifactViolations(
-  [
-    { status: 'D', paths: ['dist/schemas/3.2.0-beta.3/index.json'] },
-    { status: 'D', paths: ['dist/compliance/3.2.0-beta.3/index.json'] },
-    { status: 'D', paths: ['dist/protocol/3.2.0-beta.3.tgz'] },
-  ],
-  hasBasePath(['dist/schemas/3.2.0-beta.3', 'dist/compliance/3.2.0-beta.3', 'dist/protocol/3.2.0-beta.3.tgz'])
+  [{ status: 'D', paths: ['dist/schemas/3.1.1/index.json'] }],
+  hasBasePath(['dist/schemas/3.1.1'])
 );
-assert.deepStrictEqual(violations, [], 'Retiring a tagged beta checkpoint by deleting its artifacts is allowed');
+assert.strictEqual(violations.length, 1, 'Deleting a tagged stable artifact must fail');
+
+violations = findImmutableArtifactViolations(
+  [{ status: 'D', paths: ['dist/schemas/3.2.0-beta.11/index.json'] }],
+  hasBasePath(['dist/schemas/3.2.0-beta.11'])
+);
+assert.strictEqual(violations.length, 1, 'Deleting one file from a tagged beta schema must fail');
+
+violations = findImmutableArtifactViolations(
+  [{ status: 'D', paths: ['dist/compliance/3.2.0-beta.11/index.json'] }],
+  hasBasePath(['dist/compliance/3.2.0-beta.11'])
+);
+assert.strictEqual(violations.length, 1, 'Deleting one file from tagged beta compliance must fail');
+
+violations = findImmutableArtifactViolations(
+  [{ status: 'D', paths: ['dist/protocol/3.2.0-beta.11.tgz'] }],
+  hasBasePath(['dist/protocol/3.2.0-beta.11.tgz'])
+);
+assert.strictEqual(violations.length, 1, 'Deleting a tagged beta protocol tarball must fail');
+
+violations = findImmutableArtifactViolations(
+  [{ status: 'D', paths: ['dist/protocol/3.2.0-beta.11.tgz.sig'] }],
+  hasBasePath(['dist/protocol/3.2.0-beta.11.tgz'])
+);
+assert.strictEqual(violations.length, 1, 'Deleting a tagged beta protocol sidecar must fail');
 
 violations = findImmutableArtifactViolations(
   [{ status: 'D', paths: ['dist/schemas/3.2.0-rc.1/index.json'] }],
