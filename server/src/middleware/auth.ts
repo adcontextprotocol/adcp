@@ -14,6 +14,7 @@ import { getBearerToken, getWorkOSApiKeyToken, isWorkOSApiKeyFormat } from './ap
 import { verifyWorkOSJWT, looksLikeJWT, isInvalidWorkOSJWTError, WorkOSJWTUnavailableError } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { loadAuthorizationSnapshot, AuthorizationSnapshotUnavailableError } from '../db/user-authorization-snapshot-db.js';
+import { ConflictingOrganizationSelectionError, selectedOrganizationForAuthentication } from '../auth/organization-selection.js';
 import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
@@ -777,25 +778,7 @@ export function invalidateSessionsForUsers(workosUserIds: string[]): void {
 }
 
 class InvalidAuthorizationCredentialError extends Error {}
-export class ConflictingOrganizationSelectionError extends Error {}
-
-/** Every explicit selector must agree with the authenticated provider selection.
- * Request fields cannot switch an organization-bound credential to another org.
- * Neither memberships nor caches pick an organization. */
-export function selectedOrganizationForAuthentication(req: Request, providerOrg?: string): string | null {
-  const selectors = [
-    providerOrg,
-    req.headers['x-organization-id'], req.query?.org, req.query?.organization_id, req.query?.organizationId,
-    req.body?.organization_id, req.body?.organizationId,
-    req.params?.orgId, req.params?.organizationId,
-  ].filter((value) => value !== undefined);
-  if (selectors.some((value) => typeof value !== 'string' || !value.trim())) {
-    throw new ConflictingOrganizationSelectionError();
-  }
-  const ids = new Set(selectors.map((value) => (value as string).trim()));
-  if (ids.size > 1) throw new ConflictingOrganizationSelectionError();
-  return ids.values().next().value ?? null;
-}
+export { ConflictingOrganizationSelectionError, selectedOrganizationForAuthentication } from '../auth/organization-selection.js';
 
 /** Hydrate a new request object; never mutate the provider object in a cache. */
 async function hydrateAuthenticatedUser(user: WorkOSUser, organizationId: string | null): Promise<WorkOSUser> {
