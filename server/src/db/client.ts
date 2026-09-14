@@ -147,8 +147,65 @@ export function withDatabaseDeadline<T>(
   return queryDeadline.run({ deadlineMs, readOnly: options.readOnly ?? true }, work);
 }
 
+function databaseDeadlineExceededError(): Error & { code: '57014' } {
+  return Object.assign(new Error('Database query deadline exceeded'), { code: '57014' as const });
+}
+
 /**
- * Execute one query with server-enforced statement and lock deadlines.
+ * Check out a pooled client without allowing pool saturation to outlive the
+ * caller's absolute deadline. A client delivered after the timer wins is
+ * released immediately so a timed-out request cannot leak a pool slot.
+ */
+async function checkoutClientBeforeDeadline(deadlineMs: number): Promise<PoolClient> {
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) throw databaseDeadlineExceededError();
+
+  const checkout = getPool().connect();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      reject(databaseDeadlineExceededError());
+    }, remainingMs);
+  });
+
+  try {
+    return await Promise.race([checkout, deadline]);
+  } catch (error) {
+    if (timedOut) {
+      void checkout.then(
+        (lateClient) => lateClient.release(),
+        () => undefined,
+      );
+    }
+    throw error;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+async function getClientBeforeDeadline(
+  deadlineMs: number,
+  retryTransientCheckout: boolean,
+): Promise<PoolClient> {
+  const attempts = retryTransientCheckout ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await checkoutClientBeforeDeadline(deadlineMs);
+    } catch (error) {
+      if (attempt === attempts - 1 || !isTransientConnectionError(error) || Date.now() >= deadlineMs) {
+        throw error;
+      }
+      console.warn('Transient DB connection error, retrying client checkout:', (error as Error).message);
+    }
+  }
+  throw databaseDeadlineExceededError();
+}
+
+/**
+ * Execute one query with deadline-bounded pool checkout plus server-enforced
+ * statement and lock deadlines.
  *
  * Use this for public read paths whose inputs can select unusually large
  * registry fan-outs. The transaction-local settings ensure PostgreSQL stops
@@ -159,18 +216,22 @@ export async function queryWithTimeout<T extends QueryResultRow = any>(
   text: string,
   params: any[] | undefined,
   timeoutMs: number,
+  options: { retryTransientCheckout?: boolean } = {},
 ): Promise<QueryResult<T>> {
   const inheritedDeadline = queryDeadline.getStore();
   const deadlineMs = Math.min(
     Date.now() + timeoutMs,
     inheritedDeadline?.deadlineMs ?? Number.POSITIVE_INFINITY,
   );
-  const client = await getClient();
+  const client = await getClientBeforeDeadline(
+    deadlineMs,
+    options.retryTransientCheckout ?? true,
+  );
   let transactionStarted = false;
   try {
     const effectiveTimeoutMs = deadlineMs - Date.now();
     if (effectiveTimeoutMs <= 0) {
-      throw Object.assign(new Error('Database query deadline exceeded'), { code: '57014' });
+      throw databaseDeadlineExceededError();
     }
     await client.query(inheritedDeadline?.readOnly === false ? 'BEGIN' : 'BEGIN READ ONLY');
     transactionStarted = true;
