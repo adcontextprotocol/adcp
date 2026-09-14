@@ -1,357 +1,441 @@
 /**
- * Owner-sold supply-path verifier.
- *
- * Computes the verification state of one owner-sold carriage path — a
- * channel owner's sales agent selling the owner's collection on a host
- * property — by joining the owner's and host's adagents.json manifests
- * plus the host's ads.txt/app-ads.txt inventorypartnerdomain lines.
- *
- * The states are the ladder defined in
- * docs/media-buy/product-discovery/collections-and-installments.mdx
- * ("Verification states"):
- *
- *   verified_owner_sold — the host's adagents.json authorizes the agent
- *     for the host property, narrowed by the owner's collection selector
- *     (exact or bulk grant). Enforcement-grade.
- *   host_delegated — no collection-scoped host entry, but the host's
- *     ads.txt names the owner via inventorypartnerdomain= and the
- *     owner's own adagents.json names the agent and the collection.
- *   owner_attested — only the owner's distribution[] asserts carriage.
- *     Discovery data; MUST NOT be treated as sales authorization.
- *   unverified — none of the above.
- *
- * The verdict is deliberately evidence-bearing: every leg reports what
- * was checked and why it failed, so callers can reproduce the conclusion
- * from the authoritative files and fix the failing leg (most early
- * failures are cross-file typos, not policy).
+ * Pure, fail-closed implementation of the adcp#6897 verification ladder.
+ * Inputs are evidence, never seller-supplied verdicts. Each collection is
+ * evaluated independently so domain-level queries cannot join unrelated legs.
  */
+import { resolveAgentProperties } from '@adcp/sdk';
+import {
+  parsePublisherPropertySelector,
+  expandPublisherPropertySelector,
+} from '@adcp/sdk';
+import type { AdAgentsJson, AuthorizedAgent } from '@adcp/sdk';
+import type { SupplyPathInput, SupplyPathLegs, SupplyPathManifest, SupplyPathVerdict } from './supply-path-contract.js';
+import { agentIdentity, domain, record, records, strings } from './supply-path-input.js';
 
-import { canonicalizePublisherDomain } from './publisher-domain.js';
-import { entryPropertyScope } from './carriage-confirmation.js';
-import { canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from '../db/publisher-db.js';
+export const SUPPLY_PATH_STATES = ['unverified', 'owner_attested', 'host_delegated', 'verified_owner_sold'] as const;
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type SupplyPathState =
-  | 'verified_owner_sold'
-  | 'host_delegated'
-  | 'owner_attested'
-  | 'unverified';
-
-export type OwnerCollectionFailure =
-  | 'manifest_not_found'
-  | 'no_collections_declared'
-  | 'collection_not_declared';
-
-export type OwnerCarriageFailure =
-  | 'collection_leg_failed'
-  | 'no_distribution_for_host'
-  | 'property_ids_unresolved'
-  | 'host_manifest_not_found';
-
-export type OwnerAgentFailure =
-  | 'manifest_not_found'
-  | 'agent_not_declared_by_owner';
-
-export type HostAuthorizationFailure =
-  | 'manifest_not_found'
-  | 'no_agent_entry'
-  | 'collection_scope_mismatch'
-  | 'property_scope_mismatch';
-
-export interface Leg<F extends string> {
-  ok: boolean;
-  failure?: F;
-  detail?: string;
-}
-
-export interface SupplyPathLegs {
-  /** Owner's adagents.json declares the collection (kind noted in detail). */
-  owner_collection_declared: Leg<OwnerCollectionFailure>;
-  /** The collection's distribution[] names the host, and any property_ids resolve in the host manifest. */
-  owner_distribution_carriage: Leg<OwnerCarriageFailure> & {
-    property_ids_matched?: string[];
-    property_ids_unmatched?: string[];
-  };
-  /** Owner's own adagents.json lists the sales agent. */
-  owner_agent_declared: Leg<OwnerAgentFailure>;
-  /** Host adagents.json authorizes the agent for the property, collection-scoped. */
-  host_authorization: Leg<HostAuthorizationFailure> & {
-    matched_entry?: {
-      url: string;
-      authorization_type?: string;
-      delegation_type?: string;
-      collections?: Array<{ publisher_domain: string; collection_ids?: string[] }>;
-    };
-  };
-  /** Host ads.txt / app-ads.txt names the owner via inventorypartnerdomain=. */
-  inventory_partner_domain: Leg<'not_declared' | 'ads_txt_unavailable'>;
-}
-
-export interface SupplyPathVerdict {
-  state: SupplyPathState;
-  legs: SupplyPathLegs;
-}
-
-export interface SupplyPathInput {
-  /** Canonicalized owner (channel publisher) domain. */
-  ownerDomain: string;
-  /** Canonicalized host (carrying property publisher) domain. */
-  hostDomain: string;
-  /** Seller agent URL as the buyer sees it. */
-  agentUrl: string;
-  /** Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals). */
-  collectionId?: string;
-  ownerManifest: AdagentsManifest | null;
-  hostManifest: AdagentsManifest | null;
-  /**
-   * inventorypartnerdomain values from the host's ads.txt/app-ads.txt,
-   * already canonicalized. null = the files could not be fetched (distinct
-   * from fetched-and-absent, which is an empty array).
-   */
-  hostInventoryPartnerDomains: string[] | null;
-}
-
-// ─── ads.txt parsing ─────────────────────────────────────────────────────────
-
-/**
- * Extract inventorypartnerdomain= values from ads.txt content
- * (IAB ads.txt 1.1 §3.2 variable). Comments after '#' are stripped;
- * values are canonicalized publisher domains.
- */
-export function parseInventoryPartnerDomains(adsTxtContent: string): string[] {
+export function parseInventoryPartnerDomains(content: string): string[] {
   const partners = new Set<string>();
-  for (const line of adsTxtContent.split(/\r?\n/)) {
+  for (const line of content.split(/\r?\n/)) {
     const match = line.trim().match(/^inventorypartnerdomain\s*=\s*([A-Za-z0-9.-]+)\s*(?:#.*)?$/i);
-    if (match?.[1]) {
-      const canonical = canonicalizePublisherDomain(match[1]);
-      if (canonical) partners.add(canonical);
-    }
+    const value = match ? domain(match[1]) : null;
+    if (value) partners.add(value);
   }
   return [...partners];
 }
 
-// ─── Verification ────────────────────────────────────────────────────────────
-
-interface CollectionRecord extends Record<string, unknown> {
-  collection_id?: unknown;
-  kind?: unknown;
-  distribution?: unknown;
+function revoked(manifest: SupplyPathManifest, publisher: string): boolean {
+  if (manifest.revoked_publisher_domains === undefined) return false;
+  if (!Array.isArray(manifest.revoked_publisher_domains)) return true;
+  return manifest.revoked_publisher_domains.some(
+    item =>
+      !domain(record(item) ? item.publisher_domain : item) ||
+      domain(record(item) ? item.publisher_domain : item) === publisher
+  );
 }
 
-function ownerCollections(manifest: AdagentsManifest): CollectionRecord[] {
-  return Array.isArray(manifest.collections)
-    ? (manifest.collections as CollectionRecord[]).filter((c) => c && typeof c === 'object')
-    : [];
+function coversCollection(entry: Record<string, unknown>, owner: string, id: string | undefined): boolean {
+  // Absent is an unconstrained property grant; present malformed is never broad.
+  if (entry.collections === undefined) return true;
+  if (!Array.isArray(entry.collections) || entry.collections.length === 0) return false;
+  if (
+    !entry.collections.every(
+      selector =>
+        record(selector) &&
+        domain(selector.publisher_domain) &&
+        (selector.collection_ids === undefined || strings(selector.collection_ids))
+    )
+  )
+    return false;
+  return entry.collections.some(
+    selector =>
+      domain(selector.publisher_domain) === owner &&
+      (selector.collection_ids === undefined || (id !== undefined && selector.collection_ids.includes(id)))
+  );
 }
 
-function hostPropertyIds(manifest: AdagentsManifest): Set<string> {
-  const ids = new Set<string>();
-  for (const property of Array.isArray(manifest.properties) ? manifest.properties : []) {
-    const id = (property as { property_id?: unknown } | null)?.property_id;
-    if (typeof id === 'string' && id.length > 0) ids.add(id);
-  }
-  return ids;
-}
-
-/** Does the entry's collections constraint cover (ownerDomain, collectionId)? */
-function entryCoversCollection(
-  entry: AdagentsAuthorizedAgent,
-  ownerDomain: string,
-  collectionId: string | undefined,
-): boolean {
-  // No constraint = every collection (a plain property grant is broader
-  // than a collection-narrowed one).
-  if (!Array.isArray(entry.collections) || entry.collections.length === 0) return true;
-  return entry.collections.some((selector) => {
-    if (!selector || typeof selector !== 'object') return false;
-    const domain = typeof selector.publisher_domain === 'string'
-      ? canonicalizePublisherDomain(selector.publisher_domain)
-      : null;
-    if (domain !== ownerDomain) return false;
-    if (selector.collection_ids === undefined) return true; // bulk grant
-    if (!Array.isArray(selector.collection_ids)) return false;
-    if (collectionId === undefined) return selector.collection_ids.length > 0;
-    return selector.collection_ids.includes(collectionId);
-  });
-}
-
-export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
-  const { ownerDomain, hostDomain, collectionId } = input;
-  const agentCanonical = canonicalizeAgentUrl(input.agentUrl);
-
-  // ── Leg 1: owner declares the collection ──────────────────────────────────
-  const ownerCollectionLeg: SupplyPathLegs['owner_collection_declared'] = { ok: false };
-  let targetCollections: CollectionRecord[] = [];
-  if (!input.ownerManifest) {
-    ownerCollectionLeg.failure = 'manifest_not_found';
-  } else {
-    const declared = ownerCollections(input.ownerManifest);
-    if (collectionId !== undefined) {
-      targetCollections = declared.filter((c) => c.collection_id === collectionId);
-      if (targetCollections.length > 0) {
-        ownerCollectionLeg.ok = true;
-        const kind = targetCollections[0].kind;
-        if (typeof kind === 'string') ownerCollectionLeg.detail = `kind: ${kind}`;
-      } else {
-        ownerCollectionLeg.failure = 'collection_not_declared';
-        ownerCollectionLeg.detail =
-          `owner declares ${declared.length} collection(s); none has collection_id "${collectionId}"`;
-      }
-    } else if (declared.length > 0) {
-      targetCollections = declared;
-      ownerCollectionLeg.ok = true;
-      ownerCollectionLeg.detail = `owner declares ${declared.length} collection(s)`;
-    } else {
-      ownerCollectionLeg.failure = 'no_collections_declared';
-    }
-  }
-
-  // ── Leg 2: the collection's distribution names the host ───────────────────
-  const carriageLeg: SupplyPathLegs['owner_distribution_carriage'] = { ok: false };
-  if (!ownerCollectionLeg.ok) {
-    carriageLeg.failure = 'collection_leg_failed';
-  } else {
-    const hostEntries = targetCollections.flatMap((collection) =>
-      (Array.isArray(collection.distribution) ? collection.distribution : []).filter(
-        (entry: unknown) =>
-          !!entry && typeof entry === 'object'
-          && typeof (entry as { publisher_domain?: unknown }).publisher_domain === 'string'
-          && canonicalizePublisherDomain((entry as { publisher_domain: string }).publisher_domain) === hostDomain,
-      ) as Array<{ property_ids?: unknown }>,
+/** Resolve one entry at a time: separate grants are alternatives, never merged across collection scopes. */
+function propertyScope(entry: Record<string, unknown>, host: string, manifest: SupplyPathManifest): Set<string> {
+  if (revoked(manifest, host)) return new Set();
+  if (entry.authorization_type === 'publisher_properties') {
+    if (!Array.isArray(entry.publisher_properties) || entry.publisher_properties.length === 0) return new Set();
+    const properties = records(manifest.properties).filter(
+      p => p.publisher_domain === undefined || domain(p.publisher_domain) === host
     );
-    if (hostEntries.length === 0) {
-      carriageLeg.failure = 'no_distribution_for_host';
-    } else {
-      const claimed = [...new Set(hostEntries.flatMap((entry) =>
-        Array.isArray(entry.property_ids)
-          ? entry.property_ids.filter((id): id is string => typeof id === 'string')
-          : []))];
-      if (claimed.length === 0) {
-        // Identifier-only carriage: asserted, nothing to cross-resolve.
-        carriageLeg.ok = true;
-        carriageLeg.detail = 'carriage asserted without host property_ids (identifiers only)';
-      } else if (!input.hostManifest) {
-        carriageLeg.failure = 'host_manifest_not_found';
-        carriageLeg.property_ids_unmatched = claimed;
-      } else {
-        const known = hostPropertyIds(input.hostManifest);
-        carriageLeg.property_ids_matched = claimed.filter((id) => known.has(id));
-        carriageLeg.property_ids_unmatched = claimed.filter((id) => !known.has(id));
-        if (carriageLeg.property_ids_matched.length > 0) {
-          carriageLeg.ok = true;
-        } else {
-          // Dangling cross-file references MUST be treated as unverified
-          // carriage (spec: programmed channels and owner-sold carriage).
-          carriageLeg.failure = 'property_ids_unresolved';
+    const ids = new Set<string>();
+    try {
+      for (const raw of entry.publisher_properties) {
+        const selector = parsePublisherPropertySelector(raw);
+        if ('property_ids' in selector && !strings(selector.property_ids)) return new Set();
+        if ('property_tags' in selector && !strings(selector.property_tags)) return new Set();
+        for (const single of expandPublisherPropertySelector(selector)) {
+          if (domain(single.publisher_domain) !== host) continue;
+          for (const property of properties) {
+            if (typeof property.property_id !== 'string') continue;
+            if (
+              single.selection_type === 'all' ||
+              (single.selection_type === 'by_id' && single.property_ids.includes(property.property_id)) ||
+              (single.selection_type === 'by_tag' &&
+                strings(property.tags) &&
+                property.tags.some(t => single.property_tags.includes(t)))
+            ) {
+              ids.add(property.property_id);
+            }
+          }
         }
       }
+    } catch {
+      return new Set();
+    }
+    return ids;
+  }
+  if (entry.authorization_type === 'property_ids' && !strings(entry.property_ids)) return new Set();
+  if (entry.authorization_type === 'property_tags' && !strings(entry.property_tags)) return new Set();
+  // Reuse discovery's discriminator, missing-selector, and revocation semantics.
+  const result = resolveAgentProperties(
+    { ...manifest, authorized_agents: [entry as unknown as AuthorizedAgent] } as AdAgentsJson,
+    String(entry.url)
+  );
+  return new Set(
+    result.properties
+      .filter(p => p.publisher_domain === undefined || domain(p.publisher_domain) === host)
+      .map(p => p.property_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  );
+}
+
+export function isUnqualifiedPropertySelector(value: unknown): boolean {
+  return (
+    record(value) &&
+    Object.keys(value).every(key =>
+      ['publisher_domain', 'publisher_domains', 'selection_type', 'property_ids', 'property_tags'].includes(key)
+    )
+  );
+}
+
+const UNDERSTOOD_GRANT_FIELDS = new Set([
+  'url',
+  'authorized_for',
+  'authorization_type',
+  'property_ids',
+  'property_tags',
+  'properties',
+  'publisher_properties',
+  'collections',
+  'delegation_type',
+  'exclusive',
+  'signing_keys',
+  'encryption_keys',
+  'last_updated',
+]);
+function unsupportedConstraints(entry: Record<string, unknown>): string[] {
+  // Unknown extensions may narrow authorization. They need a reviewed semantic
+  // version before this context-free verifier can safely accept the entry.
+  const unknown = Object.keys(entry).filter(key => !UNDERSTOOD_GRANT_FIELDS.has(key));
+  for (const selector of records(entry.collections)) {
+    unknown.push(
+      ...Object.keys(selector)
+        .filter(key => !['publisher_domain', 'collection_ids'].includes(key))
+        .map(key => `collections[].${key}`)
+    );
+  }
+  for (const selector of records(entry.publisher_properties)) {
+    unknown.push(
+      ...Object.keys(selector)
+        .filter(
+          key =>
+            !['publisher_domain', 'publisher_domains', 'selection_type', 'property_ids', 'property_tags'].includes(key)
+        )
+        .map(key => `publisher_properties[].${key}`)
+    );
+  }
+  return unknown;
+}
+
+/** Bound nested input and worst-case selector work before any traversal. */
+function nodeCost(value: unknown): number {
+  const stack = [value];
+  let cost = 0;
+  while (stack.length) {
+    const item = stack.pop();
+    if (++cost > 32768) return Infinity;
+    if (typeof item === 'string' && item.length > 8192) return Infinity;
+    if (Array.isArray(item)) {
+      if (item.length > 1024) return Infinity;
+      stack.push(...item);
+    } else if (record(item)) {
+      const values = Object.values(item);
+      if (values.length > 1024) return Infinity;
+      stack.push(...values);
     }
   }
+  return cost;
+}
 
-  // ── Leg 3: owner's own file names the sales agent ─────────────────────────
-  const ownerAgentLeg: SupplyPathLegs['owner_agent_declared'] = { ok: false };
-  if (!input.ownerManifest) {
-    ownerAgentLeg.failure = 'manifest_not_found';
-  } else {
-    const listed = (Array.isArray(input.ownerManifest.authorized_agents)
-      ? input.ownerManifest.authorized_agents
-      : []
-    ).some((entry) => typeof entry?.url === 'string' && canonicalizeAgentUrl(entry.url) === agentCanonical);
-    if (listed) ownerAgentLeg.ok = true;
-    else ownerAgentLeg.failure = 'agent_not_declared_by_owner';
-  }
-
-  // ── Leg 4: host authorization (the enforcement-grade leg) ─────────────────
-  const hostLeg: SupplyPathLegs['host_authorization'] = { ok: false };
-  if (!input.hostManifest) {
-    hostLeg.failure = 'manifest_not_found';
-  } else {
-    const agentEntries = (Array.isArray(input.hostManifest.authorized_agents)
-      ? input.hostManifest.authorized_agents
-      : []
-    ).filter((entry) => typeof entry?.url === 'string' && canonicalizeAgentUrl(entry.url) === agentCanonical);
-    if (agentEntries.length === 0) {
-      hostLeg.failure = 'no_agent_entry';
-    } else {
-      const collectionCovered = agentEntries.filter((entry) =>
-        entryCoversCollection(entry, ownerDomain, collectionId));
-      if (collectionCovered.length === 0) {
-        hostLeg.failure = 'collection_scope_mismatch';
-        hostLeg.detail =
-          `${agentEntries.length} entr${agentEntries.length === 1 ? 'y' : 'ies'} for this agent; ` +
-          `none has a collections selector covering ${ownerDomain}` +
-          (collectionId !== undefined ? `:${collectionId}` : '');
-      } else {
-        // Property scope: only checkable when the owner's carriage map
-        // names host property_ids. When it does, at least one claimed
-        // property must be reachable by the entry's scope.
-        const claimed = carriageLeg.property_ids_matched ?? [];
-        const matched = collectionCovered.find((entry) => {
-          if (claimed.length === 0) return true;
-          const scope = entryPropertyScope(entry, hostDomain, input.hostManifest!);
-          if (scope === null) return true; // publisher-wide
-          return claimed.some((id) => scope.has(id));
-        });
-        if (matched) {
-          hostLeg.ok = true;
-          hostLeg.matched_entry = {
-            url: matched.url ?? input.agentUrl,
-            authorization_type: matched.authorization_type,
-            delegation_type: (matched as { delegation_type?: string }).delegation_type,
-            collections: Array.isArray(matched.collections)
-              ? matched.collections.map((selector) => ({
-                publisher_domain: String(selector.publisher_domain),
-                ...(Array.isArray(selector.collection_ids)
-                  ? { collection_ids: selector.collection_ids.filter((id): id is string => typeof id === 'string') }
-                  : {}),
-              }))
-              : undefined,
-          };
-        } else {
-          hostLeg.failure = 'property_scope_mismatch';
-          hostLeg.detail =
-            `collection scope matches, but no entry authorizes the carried host propert` +
-            `${claimed.length === 1 ? 'y' : 'ies'} [${claimed.join(', ')}]`;
-        }
-      }
-    }
-  }
-
-  // ── Leg 5: inventorypartnerdomain (interim host-side evidence) ────────────
-  const partnerLeg: SupplyPathLegs['inventory_partner_domain'] = { ok: false };
-  if (input.hostInventoryPartnerDomains === null) {
-    partnerLeg.failure = 'ads_txt_unavailable';
-  } else if (input.hostInventoryPartnerDomains.includes(ownerDomain)) {
-    partnerLeg.ok = true;
-  } else {
-    partnerLeg.failure = 'not_declared';
-  }
-
-  // ── State ladder ───────────────────────────────────────────────────────────
-  // verified requires BOTH sides: the host grant's collection selector is a
-  // reference into the owner's adagents.json, and a dangling reference
-  // (owner file missing or collection undeclared) fails closed like any
-  // other cross-file mismatch.
-  let state: SupplyPathState = 'unverified';
-  if (hostLeg.ok && ownerCollectionLeg.ok) {
-    state = 'verified_owner_sold';
-  } else if (partnerLeg.ok && ownerAgentLeg.ok && ownerCollectionLeg.ok) {
-    state = 'host_delegated';
-  } else if (ownerCollectionLeg.ok && (carriageLeg.ok || carriageLeg.failure === 'property_ids_unresolved' || carriageLeg.failure === 'host_manifest_not_found')) {
-    // The owner asserts carriage on this host, with no host-side
-    // corroboration. Discovery-only.
-    state = 'owner_attested';
-  }
-
+function limitVerdict(): SupplyPathVerdict {
+  const failure = { ok: false, failure: 'evaluation_limit_exceeded' as const };
   return {
-    state,
+    semantics_version: '1',
+    state: 'unverified',
     legs: {
-      owner_collection_declared: ownerCollectionLeg,
-      owner_distribution_carriage: carriageLeg,
-      owner_agent_declared: ownerAgentLeg,
-      host_authorization: hostLeg,
-      inventory_partner_domain: partnerLeg,
+      owner_collection_declared: { ...failure },
+      owner_distribution_carriage: { ...failure },
+      owner_agent_declared: { ...failure },
+      host_authorization: { ...failure },
+      inventory_partner_domain: { ...failure },
     },
   };
 }
+
+export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
+  const total = nodeCost(input);
+  if (!Number.isFinite(total)) return limitVerdict();
+  const grants = nodeCost(input.hostManifest?.authorized_agents);
+  const properties = nodeCost(input.hostManifest?.properties);
+  const collections = records(input.ownerManifest?.collections).length;
+  if (!Number.isFinite(total) || grants * properties + Math.max(1, collections) * total * 4 > 4_000_000) {
+    return limitVerdict();
+  }
+  // Bulk inquiry is existential over complete individual paths, not a union
+  // of owner collection A's carriage and collection B's host authorization.
+  if (input.collectionId === undefined) {
+    const collections = records(input.ownerManifest?.collections).filter(
+      c => typeof c.collection_id === 'string' && c.collection_id.length > 0
+    );
+    if (collections.length) {
+      const verdicts = collections.map(c => verifySupplyPath({ ...input, collectionId: c.collection_id as string }));
+      return verdicts.reduce((best, next) =>
+        SUPPLY_PATH_STATES.indexOf(next.state) > SUPPLY_PATH_STATES.indexOf(best.state) ? next : best
+      );
+    }
+  }
+  const owner = domain(input.ownerDomain);
+  const host = domain(input.hostDomain);
+  const agent = agentIdentity(input.agentUrl);
+  const ownerManifest = record(input.ownerManifest) ? input.ownerManifest : null;
+  const hostManifest = record(input.hostManifest) ? input.hostManifest : null;
+  const isRevoked = (role: 'owner' | 'host', publisher: string): boolean => {
+    const manifest = role === 'owner' ? ownerManifest : hostManifest;
+    return (
+      (manifest !== null && revoked(manifest, publisher)) ||
+      (input.heldRevocations?.[role] ?? []).some(value => domain(value) === publisher)
+    );
+  };
+  const collectionLeg: SupplyPathLegs['owner_collection_declared'] = { ok: false };
+  const declared = records(ownerManifest?.collections);
+  const targets = declared.filter(c => c.collection_id === input.collectionId && typeof c.collection_id === 'string');
+  if (!ownerManifest) collectionLeg.failure = 'manifest_not_found';
+  else if (owner && isRevoked('owner', owner)) collectionLeg.failure = 'publisher_revoked';
+  else if (!input.collectionId && !declared.length) collectionLeg.failure = 'no_collections_declared';
+  else if (!owner || !input.collectionId?.trim() || targets.length !== 1) {
+    collectionLeg.failure = 'collection_not_declared';
+    collectionLeg.detail = `owner declares ${declared.length} collection(s); none has an unambiguous collection_id "${input.collectionId}"`;
+  } else {
+    collectionLeg.ok = true;
+    if (typeof targets[0]!.kind === 'string') collectionLeg.detail = `kind: ${targets[0]!.kind}`;
+  }
+
+  const carriage: SupplyPathLegs['owner_distribution_carriage'] = { ok: false };
+  const entries = collectionLeg.ok
+    ? records(targets[0]!.distribution).filter(e => domain(e.publisher_domain) === host)
+    : [];
+  let claimed: string[] = [];
+  if (!collectionLeg.ok) carriage.failure = 'collection_leg_failed';
+  else if (!host || !entries.length) carriage.failure = 'no_distribution_for_host';
+  else {
+    const valid = entries.every(
+      e =>
+        Object.keys(e).every(key => ['publisher_domain', 'property_ids', 'identifiers'].includes(key)) &&
+        (e.property_ids === undefined || strings(e.property_ids)) &&
+        (e.identifiers === undefined ||
+          (Array.isArray(e.identifiers) &&
+            e.identifiers.length > 0 &&
+            e.identifiers.every(
+              i =>
+                record(i) &&
+                typeof i.type === 'string' &&
+                i.type.length > 0 &&
+                typeof i.value === 'string' &&
+                i.value.length > 0
+            ))) &&
+        (e.property_ids !== undefined || e.identifiers !== undefined)
+    );
+    claimed = [...new Set(entries.flatMap(e => (strings(e.property_ids) ? e.property_ids : [])))];
+    if (!valid) {
+      carriage.failure = 'property_ids_unresolved';
+      carriage.detail = 'Malformed distribution constraints';
+    } else if (!claimed.length) {
+      carriage.ok = true;
+      carriage.detail = 'carriage asserted without host property_ids (identifiers only)';
+    } else if (!hostManifest) {
+      carriage.failure = 'host_manifest_not_found';
+      carriage.property_ids_unmatched = claimed;
+    } else {
+      const properties = records(hostManifest.properties).filter(
+        p => p.publisher_domain === undefined || domain(p.publisher_domain) === host
+      );
+      const counts = new Map<unknown, number>();
+      for (const property of properties) counts.set(property.property_id, (counts.get(property.property_id) ?? 0) + 1);
+      const known = new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
+      carriage.property_ids_matched = claimed.filter(id => known.has(id));
+      carriage.property_ids_unmatched = claimed.filter(id => !known.has(id));
+      carriage.ok = carriage.property_ids_unmatched.length === 0;
+      if (!carriage.ok) carriage.failure = 'property_ids_unresolved';
+    }
+  }
+  const ownerAgent: SupplyPathLegs['owner_agent_declared'] = !ownerManifest
+    ? { ok: false, failure: 'manifest_not_found' }
+    : agent &&
+        records(ownerManifest.authorized_agents).some(
+          e =>
+            agentIdentity(e.url) === agent &&
+            owner &&
+            coversCollection(e, owner, input.collectionId) &&
+            !unsupportedConstraints(e).length
+        )
+      ? { ok: true }
+      : { ok: false, failure: 'agent_not_declared_by_owner' };
+
+  const hostLeg: SupplyPathLegs['host_authorization'] = { ok: false };
+  if (!hostManifest) hostLeg.failure = 'manifest_not_found';
+  else {
+    const agents = agent ? records(hostManifest.authorized_agents).filter(e => agentIdentity(e.url) === agent) : [];
+    const covered =
+      owner && !isRevoked('host', owner) && !(host && isRevoked('owner', host))
+        ? agents.filter(e => e.collections !== undefined && coversCollection(e, owner, input.collectionId))
+        : [];
+    if (!agents.length) hostLeg.failure = 'no_agent_entry';
+    else if (!covered.length) hostLeg.failure = 'collection_scope_mismatch';
+    else {
+      const matched =
+        host &&
+        !isRevoked('host', host) &&
+        carriage.ok &&
+        collectionLeg.ok &&
+        covered.find(e => {
+          if (unsupportedConstraints(e).length) return false;
+          const scope = propertyScope(e, host, hostManifest);
+          const required = input.requiredHostPropertyIds ?? claimed;
+          if (
+            input.requiredHostPropertyIds &&
+            (!required.length || (claimed.length && !required.every(id => claimed.includes(id))))
+          )
+            return false;
+          // With identifier-only owner carriage, the host must affirmatively
+          // bind the collection to its own property scope.
+          if (!claimed.length) return false;
+          return required.length ? required.every(id => scope.has(id)) : scope.size > 0;
+        });
+      if (!matched) {
+        const constraints = [...new Set(covered.flatMap(unsupportedConstraints))].sort();
+        hostLeg.failure = covered.every(e => unsupportedConstraints(e).length)
+          ? 'unsupported_constraints'
+          : 'property_scope_mismatch';
+        hostLeg.detail = constraints.length
+          ? `Unevaluated grant fields: ${constraints.join(', ')}`
+          : 'No grant proves the complete carried property scope';
+      } else {
+        hostLeg.ok = true;
+        hostLeg.matched_entry = {
+          url: String(matched.url),
+          ...(typeof matched.authorization_type === 'string' ? { authorization_type: matched.authorization_type } : {}),
+          ...(typeof matched.delegation_type === 'string' ? { delegation_type: matched.delegation_type } : {}),
+          ...(Array.isArray(matched.collections)
+            ? {
+                collections: matched.collections.map(s => ({
+                  publisher_domain: String(s.publisher_domain),
+                  ...(s.collection_ids !== undefined ? { collection_ids: [...s.collection_ids] } : {}),
+                })),
+              }
+            : {}),
+        };
+      }
+    }
+  }
+  const partners = input.hostInventoryPartnerDomainsByFile
+    ? inventoryPartnersForInput(input)
+    : input.hostInventoryPartnerDomains;
+  const partner: SupplyPathLegs['inventory_partner_domain'] =
+    input.inventoryPartnerDomainEvaluated === false
+      ? { ok: false, failure: 'not_evaluated' }
+      : partners === null
+        ? { ok: false, failure: 'ads_txt_unavailable' }
+        : owner && partners.some(d => domain(d) === owner)
+          ? { ok: true }
+          : { ok: false, failure: 'not_declared' };
+  const attested = collectionLeg.ok && entries.length > 0;
+  const state =
+    hostLeg.ok && collectionLeg.ok && carriage.ok
+      ? 'verified_owner_sold'
+      : partner.ok &&
+          ownerAgent.ok &&
+          collectionLeg.ok &&
+          !((owner && isRevoked('host', owner)) || (host && isRevoked('host', host))) &&
+          !(host && isRevoked('owner', host))
+        ? 'host_delegated'
+        : attested
+          ? 'owner_attested'
+          : 'unverified';
+  return {
+    semantics_version: '1',
+    ...(collectionLeg.ok ? { resolved_collection_id: input.collectionId } : {}),
+    state,
+    legs: {
+      owner_collection_declared: collectionLeg,
+      owner_distribution_carriage: carriage,
+      owner_agent_declared: ownerAgent,
+      host_authorization: hostLeg,
+      inventory_partner_domain: partner,
+    },
+  };
+}
+
+/** Choose applicable IAB files from the carried host properties, never from catalog channel identifiers. */
+export function supplyPathAdsTxtPolicy(input: SupplyPathInput): {
+  files: Array<'ads.txt' | 'app-ads.txt'>;
+  requireAll: boolean;
+} {
+  const collectionIds = new Set(
+    records(input.ownerManifest?.collections)
+      .filter(c => input.collectionId === undefined || c.collection_id === input.collectionId)
+      .flatMap(c =>
+        records(c.distribution)
+          .filter(d => domain(d.publisher_domain) === domain(input.hostDomain))
+          .flatMap(d => (strings(d.property_ids) ? d.property_ids : []))
+      )
+  );
+  const requested = input.requiredHostPropertyIds ? new Set(input.requiredHostPropertyIds) : collectionIds;
+  const properties = records(input.hostManifest?.properties).filter(p => requested.has(String(p.property_id)));
+  const files = new Set<'ads.txt' | 'app-ads.txt'>();
+  for (const property of properties) {
+    if (property.property_type === 'website') files.add('ads.txt');
+    if (property.property_type === 'mobile_app' || property.property_type === 'ctv_app') files.add('app-ads.txt');
+  }
+  // Unknown surfaces have no applicable typed evidence. Without a host
+  // manifest, the canonical interim path can only inspect domain-level files.
+  if (!input.hostManifest || !properties.length) return { files: ['app-ads.txt', 'ads.txt'], requireAll: false };
+  return { files: [...files].sort(), requireAll: true };
+}
+
+export function combineInventoryPartnerDomains(contents: Array<string | null>, requireAll: boolean): string[] | null {
+  if (!contents.length || (requireAll && contents.some(c => c === null))) return null;
+  const fetched = contents.filter((c): c is string => c !== null).map(parseInventoryPartnerDomains);
+  if (!fetched.length) return null;
+  return requireAll
+    ? fetched[0]!.filter(d => fetched.every(domains => domains.includes(d)))
+    : [...new Set(fetched.flat())];
+}
+
+/** Select parsed IAB evidence for one complete path; called after bulk inquiry expansion. */
+export function inventoryPartnersForInput(input: SupplyPathInput): string[] | null {
+  const policy = supplyPathAdsTxtPolicy(input);
+  const values = policy.files.map(file => input.hostInventoryPartnerDomainsByFile?.[file] ?? null);
+  if (!values.length || (policy.requireAll && values.some(value => value === null))) return null;
+  const fetched = values.filter((value): value is string[] => value !== null);
+  if (!fetched.length) return null;
+  return policy.requireAll
+    ? fetched[0]!.filter(domain => fetched.every(value => value.includes(domain)))
+    : [...new Set(fetched.flat())];
+}
+
+export type { SupplyPathInput, SupplyPathLegs, SupplyPathManifest, SupplyPathVerdict } from './supply-path-contract.js';
