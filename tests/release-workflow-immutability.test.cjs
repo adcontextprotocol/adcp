@@ -241,7 +241,7 @@ assert(
 );
 
 assert(
-  approvalGate.includes('/commits/${GITHUB_SHA}/pulls') &&
+  approvalGate.includes('/commits/${RELEASE_SHA}/pulls') &&
     approvalGate.includes('.base.ref == $base') &&
     approvalGate.includes('.merged_at != null'),
   'The approval gate must resolve the merged PR associated with the release commit and branch.'
@@ -281,10 +281,9 @@ assert.deepStrictEqual(
     with: {
       'github-token': '${{ steps.app-token.outputs.token }}',
       'version-script': 'npm run version',
-      'publish-script': 'npx --no-install changeset git-tag',
       'commit-message': 'Version Packages',
       'pr-title': 'Version Packages',
-      'create-github-releases': true,
+      'create-github-releases': false,
       'push-with-git-cli': true,
     },
     env: {
@@ -359,3 +358,6 @@ for (const { line, source } of forwardMergeWorkflows) {
 }
 
 console.log('Release and forward-merge workflow checks passed.');
+
+// Keep the behavioral publication regressions in the existing release gate.
+require('./release-publication-ordering.test.cjs');

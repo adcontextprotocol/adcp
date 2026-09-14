@@ -28,17 +28,16 @@ workflows keep the bucket fresh:
 
 Automation after these are set:
 
-- `release.yml` uploads the newly published versioned artifacts after a real
-  Changesets publish. Main-line releases also update mutable `latest`; release
-  branches such as `3.0.x` use `--skip-latest` so they cannot move global
-  `latest` backward.
+- `release.yml` uploads only the approved version after publishing its signed
+  GitHub Release, using `--version VERSION --skip-latest`. See `RELEASING.md`
+  for freshness fences, progressive visibility, and explicit recovery.
 - `deploy.yml` rebuilds and uploads mutable `latest` artifacts after the Fly
   deploy, machine-image check, tenant smoke, and console cleanup all pass.
 
 1. Refresh mutable artifacts in R2.
 
    ```sh
-   npm run backfill:cdn-artifacts -- --bucket adcp-artifacts --quiet
+   npm run backfill:cdn-artifacts -- --bucket adcp-artifacts --latest-only --quiet
    ```
 
 2. Verify the shadow Worker against current production.

@@ -243,6 +243,14 @@ jobs:
       # alone can come from the previous release and must never turn an aborted
       # release command into a green deployment. The convergence gate below
       # remains mandatory to prove every machine received one image and config.
+      # Fly also serves dist: do not expose a committed candidate via the app.
+      - name: Require committed version to have a complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          PUBLICATION_BRANCH: main
+        run: node scripts/check-release-state.cjs pending
+
       - name: Deploy
         id: deploy
         env:
@@ -495,6 +503,8 @@ jobs:
 
       - name: Publish latest artifacts to R2
         env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          PUBLICATION_BRANCH: main
           ADCP_ARTIFACT_R2_BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
@@ -505,7 +515,7 @@ jobs:
             echo "::error::Missing R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY secret."
             exit 1
           fi
-          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --build-latest --quiet
+          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --build-latest --latest-only --quiet
 
       # On any failure (hard or fallback-with-degraded-gates), snapshot Fly
       # state so the next-turn investigator doesn't have to fetch it
