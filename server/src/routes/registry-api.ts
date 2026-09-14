@@ -10682,7 +10682,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       });
       if (verdict.legs.host_authorization.ok) {
         verdict.legs.inventory_partner_domain = { ok: false, failure: 'not_evaluated' };
-      } else {
+      } else if (verdict.legs.host_authorization.failure !== 'evaluation_limit_exceeded') {
         verdict = verifySupplyPath({
           ownerDomain,
           hostDomain,

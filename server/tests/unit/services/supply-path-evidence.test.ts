@@ -22,3 +22,11 @@ describe('registry supply-path IAB fetching', () => {
     expect(await fetchHostInventoryPartnerDomains(input)).toEqual({ 'app-ads.txt': null });
   });
 });
+
+it('includes identifier-only fallback files when another bulk candidate is a website', async () => {
+  const fixture = corpus.ads_txt_policy_vectors.find((v: { id: string }) => v.id === 'bulk-fetch-includes-untyped-collection-fallback').input;
+  safeFetch.mockReset();
+  safeFetch.mockImplementation(async (url: string) => ({ status: 200, headers: { 'content-type': 'text/plain' }, data: Buffer.from(url.endsWith('/app-ads.txt') ? 'inventorypartnerdomain=channel-owner.example' : '') }));
+  expect(await fetchHostInventoryPartnerDomains(fixture)).toEqual({ 'ads.txt': [], 'app-ads.txt': ['channel-owner.example'] });
+  expect(safeFetch).toHaveBeenCalledTimes(2);
+});
