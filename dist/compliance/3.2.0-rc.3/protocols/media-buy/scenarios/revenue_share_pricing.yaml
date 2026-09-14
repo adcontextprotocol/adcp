@@ -1,0 +1,342 @@
+id: media_buy_seller/revenue_share_pricing
+version: "1.0.0"
+title: "Revenue-share pricing and settlement"
+category: media_buy_seller
+summary: "Verifies contingent revenue-share discovery, commitment without a bid, commissionable-value delivery, and formula-checked usage reconciliation."
+track: media_buy
+introduced_in: "3.1"
+required_tools:
+  - sync_accounts
+  - sync_event_sources
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - report_usage
+  - comply_test_controller
+
+narrative: |
+  Affiliate and content-commerce products may charge a percentage of settled
+  attributed transaction value. The seller exposes a revenue_share pricing
+  option, the buyer registers the declared event source and creates a package
+  without bid_price, and the seller reports both analytics conversion_value and
+  the narrower commissionable_value used for billing.
+
+  The selected rate is 4%. A final commissionable value of USD 112,500 produces
+  USD 4,500 spend. The same values are submitted through report_usage so the
+  seller can verify the commission arithmetic and budget cap.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - revenue_share_pricing
+  examples:
+    - "Affiliate networks selling content-commerce partnerships"
+    - "Publishers selling percentage-of-sale performance placements"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner seeds one affiliate product with a 4% revenue-share option and a
+    60-day commission-lock measurement window. The seller supports the
+    contingent pricing_structures filter and extended delivery simulation.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "affiliate_content_commerce"
+      name: "Pinnacle content commerce"
+      description: "Performance placements priced on settled attributed purchase value."
+      delivery_type: "guaranteed"
+      channels: ["affiliate"]
+      format_ids:
+        - id: "display_300x250"
+      reporting_capabilities:
+        available_metrics:
+          - conversions
+          - conversion_value
+          - commissionable_value
+          - spend
+        measurement_windows:
+          - window_id: "commission_locked_60d"
+            description: "Attributed purchases after the 60-day return and cancellation window"
+            duration_days: 60
+            expected_availability_days: 67
+            is_guarantee_basis: true
+  pricing_options:
+    - product_id: "affiliate_content_commerce"
+      pricing_option_id: "affiliate_purchase_4pct"
+      pricing_model: "revenue_share"
+      event_type: "purchase"
+      event_source_id: "affiliate_attribution"
+      commission_rate: 0.04
+      currency: "USD"
+      commission_basis_description: "Net merchandise value after discounts, excluding tax and shipping; returns removed before commission lock."
+
+phases:
+  - id: setup
+    title: "Establish the account and attribution source"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return an active account for the buyer and brand.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#revenue_share_pricing_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: sync_event_sources
+        title: "Register affiliate attribution"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Register the event_source_id declared by the pricing option so the
+          seller has an authoritative purchase-event binding.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "affiliate_attribution"
+              name: "Affiliate attribution"
+              event_types: ["purchase"]
+              allowed_domains: ["acmeoutdoor.example"]
+          idempotency_key: "$generate:uuid_v4#revenue_share_pricing_sync_event_sources"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_value
+            path: "event_sources[0].event_source_id"
+            value: "affiliate_attribution"
+            description: "Seller returns the registered attribution source"
+
+  - id: discovery
+    title: "Discover contingent pricing"
+    steps:
+      - id: get_revenue_share_products
+        title: "Filter for contingent products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return the seeded affiliate product and only its revenue_share option.
+          The option exposes its event source, rate, currency, and commission basis.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#revenue_share_pricing_discovery_get_revenue_share_products"
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            pricing_structures: ["contingent"]
+          fields:
+            - product_id
+            - name
+            - channels
+            - pricing_options
+            - reporting_capabilities
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "affiliate_content_commerce"
+            description: "The affiliate product is returned"
+          - check: field_value
+            path: "products[0].pricing_options[0].pricing_model"
+            value: "revenue_share"
+            description: "The returned option uses revenue-share pricing"
+          - check: field_value
+            path: "products[0].pricing_options[0].commission_rate"
+            value: 0.04
+            description: "The commission rate is a decimal proportion"
+          - check: field_value
+            path: "products[0].pricing_options[0].event_source_id"
+            value: "affiliate_attribution"
+            description: "The billing event source is explicit"
+
+  - id: commitment
+    title: "Commit a revenue-share package without a bid"
+    steps:
+      - id: create_revenue_share_buy
+        title: "Create revenue-share media buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the package without bid_price. Budget is the maximum payable
+          commission, not attributed transaction value.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "asap"
+          end_time: "2099-08-31T23:59:59Z"
+          packages:
+            - product_id: "affiliate_content_commerce"
+              pricing_option_id: "affiliate_purchase_4pct"
+              budget: 10000
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "pinnacle-measurement.example"
+                  measurement_window: "commission_locked_60d"
+                  finalization_deadline_hours: 168
+          idempotency_key: "$generate:uuid_v4#revenue_share_pricing_create_media_buy"
+        context_outputs:
+          - key: "media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media buy ID"
+          - check: field_absent
+            path: "packages[0].bid_price"
+            description: "Contingent pricing does not produce a bid price"
+
+  - id: settlement
+    title: "Report and reconcile settled commission"
+    steps:
+      - id: simulate_locked_commission
+        title: "Inject final commission-lock delivery"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          Record final attributed values and USD 4,500 spend for a 4% rate on
+          USD 112,500 commissionable value.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            conversions: 320
+            conversion_value: 125000
+            commissionable_value: 112500
+            reported_spend:
+              amount: 4500
+              currency: "USD"
+            is_final: true
+            finalized_at: "2099-10-08T18:00:00Z"
+            measurement_window: "commission_locked_60d"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Final commission delivery simulation succeeds"
+
+      - id: get_locked_commission
+        title: "Verify final commissionable value and spend"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Return the settled commissionable value and spend with finality and
+          measurement-window metadata.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids: ["$context.media_buy_id"]
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].pricing_model"
+            value: "revenue_share"
+            description: "Package retains the revenue-share pricing model"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].commissionable_value"
+            value: 112500
+            description: "Package reports the settled commission basis"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].spend"
+            value: 4500
+            description: "Spend equals 4% of commissionable value"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: true
+            description: "Commission-lock delivery is final"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "commission_locked_60d"
+            description: "Delivery identifies the commission-lock window"
+
+      - id: report_revenue_share_usage
+        title: "Submit formula-verifiable usage"
+        task: report_usage
+        schema_ref: "account/report-usage-request.json"
+        response_schema_ref: "account/report-usage-response.json"
+        doc_ref: "/accounts/tasks/report_usage"
+        stateful: true
+        expected: |
+          Accept the record after verifying vendor_cost equals the selected
+          commission rate multiplied by commissionable_value and remains within budget.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#revenue_share_pricing_report_usage"
+          reporting_period:
+            start: "2099-07-01T00:00:00Z"
+            end: "2099-08-31T23:59:59Z"
+          usage:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              media_buy_id: "$context.media_buy_id"
+              pricing_option_id: "affiliate_purchase_4pct"
+              conversions: 320
+              conversion_value: 125000
+              commissionable_value: 112500
+              vendor_cost: 4500
+              currency: "USD"
+              final: true
+              finalized_at: "2099-10-08T18:00:00Z"
+              measurement_window: "commission_locked_60d"
+        validations:
+          - check: response_schema
+            description: "Response matches report-usage-response.json schema"
+          - check: field_value
+            path: "accepted"
+            value: 1
+            description: "Formula-valid revenue-share usage is accepted"

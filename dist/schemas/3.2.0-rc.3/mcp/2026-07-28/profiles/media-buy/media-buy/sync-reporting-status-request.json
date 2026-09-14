@@ -1,0 +1,536 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/mcp/2026-07-28/profiles/media-buy/media-buy/sync-reporting-status-request.json",
+  "x-status": "experimental",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1reporting-consumer-status.json"
+          },
+          {
+            "not": {
+              "required": [
+                "recorded_at"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "idempotency_key",
+    "statuses"
+  ],
+  "x-adcp-validation": {
+    "batch_identity": "reporting_status_id values MUST be unique within the batch. A batch MUST contain at most one statement for each logical chain identified by authenticated consumer, account, configuration generation, report definition, and period; sellers reject every duplicate-chain entry in that batch without evaluating their supersession order. Every configuration generation, report definition, optional obligation, optional revision, superseded status, and seller ledger snapshot MUST resolve within the authenticated caller and account or fail with the same unavailable result used for unknown, unauthorized, cross-account, and cross-caller identifiers.",
+    "partial_results": "Each status is independent. One failed result does not roll back successfully recorded statuses; retries use the same status IDs and content.",
+    "buyer_duty": "When the seller advertises consumer_status_task, a buyer using that Reliable Reporting configuration MUST automate this task: report a failed consumption promptly after its bounded retry/give-up window expires, report each later state change, and post a current status for every elapsed expected period no later than that period's expected_at plus the seller's advertised automated_recovery_window_seconds. That deadline, not scope close, is the buyer's duty; a still-retrying buyer posts revision_missing or unreadable by the deadline and supersedes it later rather than staying silent. A buyer MUST also have a current status for every elapsed expected period before closing that reporting scope. Until the field becomes required Core in the next eligible minor, its absence means the buyer retains status locally and does not infer a reverse endpoint. Seller production health never depends on receiving buyer status, and missing buyer feedback never excuses a seller obligation: a missed deadline is counted in the seller's obligation_counts.consumer_status_pending and creates no issue and no health change."
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/reporting-consumer-status.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "reporting_status_id": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+          "x-entity": "reporting_consumer_status"
+        },
+        "supersedes_reporting_status_id": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+          "x-entity": "reporting_consumer_status"
+        },
+        "delivery_config_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "x-entity": "reporting_delivery_config"
+        },
+        "delivery_config_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "report_definition_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_definition"
+        },
+        "period": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "source_timezone": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "source_timezone"
+          ],
+          "additionalProperties": false
+        },
+        "reporting_obligation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_obligation"
+        },
+        "reporting_revision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_revision"
+        },
+        "observed_revision_content_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "consumer_status": {
+          "type": "string",
+          "enum": [
+            "received",
+            "obligation_missing",
+            "revision_missing",
+            "unreadable",
+            "content_mismatch"
+          ]
+        },
+        "status_as_of": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mismatch_code": {
+          "type": "string",
+          "enum": [
+            "scope_media_buy_missing",
+            "coverage_short",
+            "metric_missing",
+            "schema_nonconformant",
+            "currency_mismatch",
+            "period_mismatch"
+          ]
+        },
+        "failure_code": {
+          "type": "string",
+          "enum": [
+            "access_denied",
+            "resource_not_found",
+            "integrity_mismatch",
+            "reader_incompatible",
+            "transport_failed"
+          ]
+        },
+        "consumer_commit_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9_.:-]{1,512}$"
+        },
+        "seller_ledger_snapshot_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "seller_ledger_as_of": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time",
+          "readOnly": true
+        }
+      },
+      "required": [
+        "reporting_status_id",
+        "delivery_config_id",
+        "delivery_config_version",
+        "report_definition_id",
+        "period",
+        "consumer_status",
+        "status_as_of"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "received"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "observed_revision_content_sha256"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "obligation_missing"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reporting_obligation_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "reporting_revision_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "revision_missing"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reporting_revision_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "failure_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "failure_code"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "observed_revision_content_sha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "mismatch_code"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "consumer_status": {
+                "const": "content_mismatch"
+              }
+            },
+            "required": [
+              "consumer_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reporting_obligation_id",
+              "reporting_revision_id",
+              "observed_revision_content_sha256",
+              "mismatch_code"
+            ],
+            "not": {
+              "required": [
+                "failure_code"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "seller_ledger_snapshot_id"
+            ]
+          },
+          "then": {
+            "required": [
+              "seller_ledger_as_of"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "seller_ledger_as_of"
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "attribution": "The consumer principal comes only from authenticated transport and is never asserted in the payload. Sellers disclose a status only to the same authenticated consumer that submitted it. A consumer status never overwrites or becomes authoritative seller obligation, revision, materialization, receipt, or adjustment evidence. The one reserved carve-out is a configuration generation declaring reporting-delivery-config authoritative_party: consumer, where a later minor will define a separate buyer-deposited revision task rather than change the meaning of this statement; no released version defines that task, so in 3.2 sellers reject that value with UNSUPPORTED_FEATURE and this attribution rule has no exception (see https://github.com/adcontextprotocol/adcp/issues/7440).",
+        "expected_period": "The configuration generation and report_definition_id MUST resolve for the authenticated caller/account, and period MUST be one exact eligible period derived from that immutable generation. obligation_missing and revision_missing are valid only when status_as_of is at or after the obligation's expected_at; content_mismatch is valid only against a revision the seller currently requires for that period. The seller MUST accept obligation_missing without a seller-issued obligation or revision ID when this independently derivable identity is valid.",
+        "revision_binding": "For received, unreadable, or content_mismatch, reporting_revision_id and reporting_obligation_id MUST match the same configuration generation, report definition, and period. received requires the consumer to recompute the Core revision binding and submit the matching revision_content_sha256; it does not assert matching Managed materialization evidence, billing control totals, canonical billing evidence, invoice approval, or dispute waiver. content_mismatch requires the same recomputed binding so the disagreement names the exact bytes the consumer read, and its mismatch_code MUST identify a fact the accepted configuration generation already fixed — denominator membership, coverage, promised metrics, the pinned profile schema, the pinned metric units, or the half-open period. A consumer MUST NOT use content_mismatch to dispute how many impressions the seller counted; that is a measurement disagreement, handled by measurement_terms and makegood_policy rather than by this operational loop.",
+        "immutability": "reporting_status_id is immutable. Exact retries are unchanged; reuse with different content is an idempotency conflict. Each consumer has exactly one current leaf per account, configuration generation, report definition, and period. This logical key remains the chain identity when an obligation_missing statement predates a repaired seller obligation; the seller attaches that chain to the later obligation and never resets or forks it. If a leaf already exists, a new statement MUST name that exact leaf in supersedes_reporting_status_id; omission, a stale leaf, or any attempt to fork the chain fails atomically with a conflict. The new statement becomes current only after that comparison succeeds.",
+        "retention_and_limits": "Superseded statements remain readable as append-only history for at least the advertised status_retention_days. After that retention boundary, sellers MAY prune expired superseded statements while retaining enough chain metadata to reject ID reuse and stale supersession. Sellers apply ordinary authenticated task rate limits and per-caller/account resource limits to pathological status churn without allowing one caller to affect another.",
+        "snapshot_provenance": "When seller_ledger_snapshot_id is present, the seller MUST resolve it and require seller_ledger_as_of to exactly match the issued snapshot for this authenticated caller, account, and applicable filter scope. Unknown, unauthorized, cross-account, cross-caller, expired, or mismatched snapshot identities fail with the same unavailable result.",
+        "time": "status_as_of MUST be no earlier than the superseded statement's status_as_of and no later than recorded_at except for the seller's documented clock-skew tolerance. Sellers reject unreasonable future timestamps and retain the submitted value as consumer-attributed evidence rather than rewriting it."
+      },
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Submit the authenticated consumer's operational reporting status for expected configuration periods. This is a batched idempotent append-only sync over seller-hosted task transport, not a webhook registration, measurement-data feed, or billing receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or consumer principal."
+}

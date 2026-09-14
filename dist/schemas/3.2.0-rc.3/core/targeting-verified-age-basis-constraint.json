@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/targeting-verified-age-basis-constraint.json",
+  "title": "Targeting Verified Age Basis Constraint",
+  "description": "A legal verification requirement always narrows demographic targeting. When the buyer supplies accepted_bases and age_restriction requires verification, verified must be accepted; otherwise the constraints have an empty intersection and the request is invalid.",
+  "if": {
+    "properties": {
+      "age_restriction": {
+        "properties": {
+          "verification_required": {
+            "const": true
+          }
+        },
+        "required": [
+          "verification_required"
+        ]
+      },
+      "demographics": {
+        "properties": {
+          "age": {
+            "required": [
+              "accepted_bases"
+            ]
+          }
+        },
+        "required": [
+          "age"
+        ]
+      }
+    },
+    "required": [
+      "demographics",
+      "age_restriction"
+    ]
+  },
+  "then": {
+    "properties": {
+      "demographics": {
+        "properties": {
+          "age": {
+            "properties": {
+              "accepted_bases": {
+                "contains": {
+                  "const": "verified"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
