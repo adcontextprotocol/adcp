@@ -32,10 +32,8 @@ Automation after these are set:
   Changesets publish. Main-line releases also update mutable `latest`; release
   branches such as `3.0.x` use `--skip-latest` so they cannot move global
   `latest` backward.
-- `deploy.yml` rebuilds mutable `latest` artifacts after the Fly deploy,
-  machine-image check, tenant smoke, and console cleanup all pass. Its current
-  bulk helper also syncs committed versioned artifacts; see the separate
-  release-ordering follow-up below.
+- `deploy.yml` rebuilds and uploads mutable `latest` artifacts after the Fly
+  deploy, machine-image check, tenant smoke, and console cleanup all pass.
 
 1. Refresh mutable artifacts in R2.
 
@@ -130,9 +128,10 @@ Each committed blob is 156 bytes with SHA-256
 The implementation workspace independently confirmed the complete Git
 inventory and digests. Its HTTP probes received an environment-level 403
 for both JSONL and existing indexes, so the public 404 status is attributed
-to the independent audit, not those probes. The rc.3 audit downloaded all
-2,093 committed artifact paths: 2,092 matched SHA-256 and this JSONL was the
-sole missing object.
+to the independent audit, not those probes. The rc.3 audit covered all
+2,093 committed schema/compliance paths (1,612 schemas and 481 compliance):
+2,092 matched SHA-256 and this JSONL was the sole missing object. The protocol
+tarball and its three sidecars are four additional files.
 
 Enumeration audit:
 
@@ -158,18 +157,29 @@ Enumeration audit:
 
 ### Recovery and deployment handoff
 
-1. Obtain human review of the exact fix head and coordinate with the release
-   fencing work before enabling publication. This change authorizes no live
-   deployment, release, tag, signing, workflow rerun, or R2 mutation.
-2. Use the approved publication/recovery path from that follow-up to restore
-   the four keys above from their existing committed blobs. Check the exact
+1. Obtain human review and land the JSONL fix before recovery. Coordinate
+   publication with `conductor/fix-release-publication-gate`; this change
+   performs no live deployment, release, tag, signing, workflow rerun, or R2
+   mutation.
+2. Once both fixes are present, the coordinated recovery path is an explicit
+   `release.yml` workflow dispatch on current tested main, using the original
+   approved `RELEASE_SHA` for each version. The original release commits are:
+
+   | Version | Release commit |
+   | --- | --- |
+   | `3.2.0-rc.0` | `0a3672608d323c615e7ea73c9e8a62306510cb76` |
+   | `3.2.0-rc.1` | `a42e86df500b176c8d9d1d6640dc7edbf2eb21a6` |
+   | `3.2.0-rc.2` | `929ceb16090b2f11ad20348b889780097173b00a` |
+   | `3.2.0-rc.3` | `71f9cd5414454e94ccfef87ce25777ead6fad228` |
+
+   Restore the four keys above from their existing committed blobs. Check the exact
    release commit and any required release approvals. Recheck remote objects:
    preserve matching objects, stop on differing bytes or an ambiguous read
    failure, and upload only confirmed missing objects. Do not regenerate
    artifacts, overwrite immutable bytes, or use an unrestricted bulk backfill
    as a substitute for approved recovery.
-3. Set the JSONL MIME type and immutable cache policy above. A routine
-   `--latest-only` deployment, if introduced by the fencing work, will not
+3. Set the JSONL MIME type and immutable cache policy above. The fencing work's
+   `--latest-only` routine deployment will not
    repair the four pinned versions. Refresh mutable JSONL only through the
    ordinary authorized latest publication path, using revalidation caching.
    Correct upload metadata is sufficient for the existing Worker to serve
