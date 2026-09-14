@@ -107,24 +107,88 @@ describe('Gemini Direct production integration', () => {
       receipt([call('resolve_escalation', { escalation_id: 583 })], 'resolve'),
       receipt([{ text: 'Escalation 583 was resolved.' }], 'answer'),
     ]);
-    const list = vi.fn().mockResolvedValue('{"escalations":[{"id":583,"status":"open"}]}');
-    const resolve = vi.fn().mockResolvedValue('{"status":"resolved","escalation_id":583}');
-    const reserve = vi.fn();
+    const authorityEvents: string[] = [];
+    const list = vi.fn().mockImplementation(async () => {
+      authorityEvents.push('handler:list_escalations');
+      return '{"escalations":[{"id":583,"status":"open"}]}';
+    });
+    const resolve = vi.fn().mockImplementation(async () => {
+      authorityEvents.push('handler:resolve_escalation');
+      return '{"status":"resolved","escalation_id":583}';
+    });
+    const reserve = vi.fn().mockImplementation(async () => {
+      authorityEvents.push('reserve:resolve_escalation');
+    });
+    const revalidateToolAuthority = vi.fn().mockImplementation(async ({ toolName }: { toolName: string }) => {
+      authorityEvents.push(`revalidate:${toolName}`);
+      return { allowed: true as const };
+    });
+    const captureToolAuthority = vi.fn().mockImplementation(async ({ authorityToolNames }: { authorityToolNames: readonly string[] }) => {
+      authorityEvents.push(`capture:${authorityToolNames.filter((name) =>
+        name === 'list_escalations' || name === 'resolve_escalation').join(',')}`);
+      return revalidateToolAuthority;
+    });
     const requestTools = {
       tools: ['list_escalations', 'resolve_escalation'].map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
       handlers: new Map([['list_escalations', list], ['resolve_escalation', resolve]]),
     };
-    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' }, { reserveSideEffect: reserve });
+    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' }, {
+      reserveSideEffect: reserve,
+      captureToolAuthority,
+    });
     expect(result.response?.model_execution).toMatchObject({ provider: 'google', fallback_reason: null });
     expect(list).toHaveBeenCalledExactlyOnceWith({ status: 'open' });
     expect(resolve).toHaveBeenCalledExactlyOnceWith({ escalation_id: 583 });
     expect(reserve).toHaveBeenCalledExactlyOnceWith({ toolName: 'resolve_escalation', parameters: { escalation_id: 583 } });
+    expect(captureToolAuthority).toHaveBeenCalledExactlyOnceWith({
+      authorityToolNames: expect.arrayContaining(['list_escalations', 'resolve_escalation']),
+    });
+    expect(authorityEvents).toEqual([
+      'capture:list_escalations,resolve_escalation',
+      'revalidate:list_escalations',
+      'handler:list_escalations',
+      'revalidate:resolve_escalation',
+      'reserve:resolve_escalation',
+      'revalidate:resolve_escalation',
+      'handler:resolve_escalation',
+    ]);
     expect(f.getControlTools).not.toHaveBeenCalled();
     expect(f.control).not.toHaveBeenCalled();
     expect(JSON.stringify(f.dispatch.mock.calls)).not.toContain('handoff_to_addie');
     const outcome = mocks.query.mock.calls.filter(([sql]) => sql.startsWith('UPDATE addie_chat_experiment_turns')).at(-1)?.[1];
     expect(outcome[3]).toBe(0);
     expect(outcome[7]).toBeNull();
+  });
+
+  it.each([
+    ['revoked', { allowed: false as const, status: 'access_denied' as const }],
+    ['authority unavailable', { allowed: false as const, status: 'recoverable_error' as const }],
+  ])('blocks a sensitive admin read on Gemini when exact-credential authority is %s', async (_label, decision) => {
+    const f = fixture([
+      receipt([call('list_escalations', { status: 'open' })]),
+      receipt([{ text: 'The escalation list was not read.' }], 'answer'),
+    ]);
+    const list = vi.fn();
+    const revalidateToolAuthority = vi.fn().mockResolvedValue(decision);
+    const captureToolAuthority = vi.fn().mockResolvedValue(revalidateToolAuthority);
+    const result = await run({ ...f.input, requestTools: {
+      tools: [{ name: 'list_escalations', description: 'List escalations', input_schema: { type: 'object', properties: {} } }],
+      handlers: new Map([['list_escalations', list]]),
+    }, modelPreference: 'gemini' }, { captureToolAuthority });
+
+    expect(captureToolAuthority).toHaveBeenCalledExactlyOnceWith({
+      authorityToolNames: expect.arrayContaining(['list_escalations']),
+    });
+    expect(revalidateToolAuthority).toHaveBeenCalledExactlyOnceWith({
+      toolName: 'list_escalations', parameters: { status: 'open' },
+    });
+    expect(list).not.toHaveBeenCalled();
+    expect(result.response?.tool_executions[0]).toMatchObject({
+      tool_name: 'list_escalations', is_error: true, blocked_by_policy: true,
+      normalized_result: { status: decision.status },
+    });
+    expect(f.getControlTools).not.toHaveBeenCalled();
+    expect(f.control).not.toHaveBeenCalled();
   });
 
   it('includes the Luna router cost in a complete Sonnet comparison record', async () => {

@@ -69,6 +69,12 @@ import {
   type SlackCredentialAuthorityDecision,
 } from './slack-mutation-authority.js';
 import {
+  enforceExplicitPlatformAdminToolRequest,
+  PLATFORM_ADMIN_TOOL_PERMISSION_DENIED_MESSAGE,
+  PlatformAdminToolPermissionDeniedError,
+} from './admin-tool-boundary.js';
+import { AAOAdminLookupUnavailableError } from './admin-status-lookup.js';
+import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
@@ -280,10 +286,10 @@ const slackAuthorityDb = new SlackDatabase();
 export function slackMutationAuthorityOptions(
   slackUserId: string,
   memberContext: MemberContext | null,
-): Pick<ProcessMessageOptions, 'captureSideEffectAuthority'> {
+): Pick<ProcessMessageOptions, 'captureToolAuthority'> {
   return {
-    captureSideEffectAuthority: async ({ mutationToolNames }) => {
-      const platformAdminMutationTools = mutationToolNames
+    captureToolAuthority: async ({ authorityToolNames }) => {
+      const platformAdminTools = authorityToolNames
         .filter((name) => PLATFORM_ADMIN_TOOL_NAMES.has(name));
       const lookupCredential = async (): Promise<SlackCredentialAuthorityDecision> => {
         try {
@@ -298,7 +304,7 @@ export function slackMutationAuthorityOptions(
       return captureSlackMutationAuthority({
         assembledCredentialId: memberContext?.workos_user?.workos_user_id,
         credentialEmail: memberContext?.workos_user?.email,
-        platformAdminMutationTools,
+        platformAdminTools,
         organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
         lookupCredential,
         revalidatePlatformAdmin: async (capturedCredentialId) => {
@@ -726,6 +732,19 @@ let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
 let claudeClient: AddieClaudeClient | null = null;
+
+const SLACK_ROUTING_UNAVAILABLE_MESSAGE =
+  "I'm sorry, I can't process that request right now. Please try again.";
+
+function slackRoutingFailureMessage(error: unknown): string {
+  if (error instanceof PlatformAdminToolPermissionDeniedError) {
+    return PLATFORM_ADMIN_TOOL_PERMISSION_DENIED_MESSAGE;
+  }
+  if (error instanceof AAOAdminLookupUnavailableError) {
+    return error.message;
+  }
+  return SLACK_ROUTING_UNAVAILABLE_MESSAGE;
+}
 
 /** Return the initialized channel client used by production orchestration. */
 export function getChannelClaudeClient(): AddieClaudeClient | null {
@@ -1290,7 +1309,10 @@ async function createUserScopedTools(
   // Add billing tools for private conversations. Public channels retain only
   // the read-only membership lookup used by certification paywall guidance;
   // routing still filters it out unless certification selected that tool.
-  const isPublicChannel = threadContext?.viewing_channel_is_private === false;
+  // Only an explicitly verified DM/private channel may receive the private
+  // surface. Missing or malformed channel privacy is public-safe by default.
+  const isPublicChannel = directoryAudience !== 'dm'
+    && threadContext?.viewing_channel_is_private !== true;
   const requestBillingTools = isPublicChannel
     ? BILLING_TOOLS.filter((tool) => tool.name === 'find_membership_products')
     : BILLING_TOOLS;
@@ -1602,6 +1624,8 @@ export async function selectRoutedDirectSlackTools(input: {
   threadMessages?: string[];
   isPublicChannel?: boolean;
 }): Promise<RoutedDirectSlackTools> {
+  const isPublicChannel = input.source !== 'dm' && input.isPublicChannel !== false;
+  if (!isPublicChannel) enforceExplicitPlatformAdminToolRequest(input);
   let plan: ExecutionPlan | null = null;
   const routerAvailable = input.router !== null;
   const routingContext: RoutingContext = {
@@ -1626,7 +1650,7 @@ export async function selectRoutedDirectSlackTools(input: {
     routerAvailable,
     source: input.source,
     isAdmin: input.isAAOAdmin,
-    isPublicChannel: input.isPublicChannel,
+    isPublicChannel,
     activeCertificationKind: input.activeCertificationKind,
     sponsoredIntelligenceContextKind: input.sponsoredIntelligenceContextKind,
     isToolAvailable: (name) => (
@@ -1670,14 +1694,21 @@ export async function selectRoutedDirectSlackTools(input: {
   };
 }
 
-async function selectRoutedToolsForSlackResponse(
+type SlackResponseToolSelectionDependencies = {
+  createUserScopedTools?: typeof createUserScopedTools;
+  router?: Pick<AddieRouter, 'quickMatch' | 'route'> | null;
+  hasRegisteredTools?: (toolNames: string[]) => boolean;
+};
+
+export async function selectRoutedToolsForSlackResponse(
   messageText: string,
   source: 'dm' | 'mention' | 'channel',
   memberContext: MemberContext | null,
   slackUserId: string,
   threadId: string,
   threadContext?: ThreadContext | null,
-  options?: { isThread?: boolean; activeCertificationKind?: ActiveCertificationKind | null; threadMessages?: string[] }
+  options?: { isThread?: boolean; activeCertificationKind?: ActiveCertificationKind | null; threadMessages?: string[] },
+  dependencies?: SlackResponseToolSelectionDependencies,
 ): Promise<{
   tools: RequestTools;
   isAAOAdmin: boolean;
@@ -1688,13 +1719,20 @@ async function selectRoutedToolsForSlackResponse(
   requiresDepth: boolean;
   confidence: ConfidenceTier;
 }> {
-  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await (
+    dependencies?.createUserScopedTools ?? createUserScopedTools
+  )(
     memberContext,
     slackUserId,
     threadId,
     threadContext,
     source,
   );
+  const activeRouter = dependencies && 'router' in dependencies
+    ? dependencies.router ?? null
+    : addieRouter;
+  const isPublicChannel = source !== 'dm'
+    && threadContext?.viewing_channel_is_private !== true;
 
   // Direct DMs and mentions use the provider-neutral bounded policy. Keep the
   // established channel selection below untouched because channel response
@@ -1709,14 +1747,14 @@ async function selectRoutedToolsForSlackResponse(
       isThread: options?.isThread,
       isAAOAdmin: userIsAdmin,
       requestTools: userTools,
-      router: addieRouter,
-      hasRegisteredTools: claudeClient
+      router: activeRouter,
+      hasRegisteredTools: dependencies?.hasRegisteredTools ?? (claudeClient
         ? (toolNames) => claudeClient!.hasRegisteredTools(toolNames)
-        : undefined,
+        : undefined),
       activeCertificationKind: options?.activeCertificationKind,
       sponsoredIntelligenceContextKind: hasCachedSiSession(threadId) ? 'session' : null,
       threadMessages: options?.threadMessages,
-      isPublicChannel: threadContext?.viewing_channel_is_private === false,
+      isPublicChannel,
     });
     return {
       ...directTools,
@@ -1724,7 +1762,18 @@ async function selectRoutedToolsForSlackResponse(
     };
   }
 
-  if (!addieRouter) {
+  // Active replies in private channel threads retain the legacy routed tool
+  // selection below, but explicit reserved admin requests must still stop at
+  // the same principal-aware boundary as DMs and mentions. Explicitly public
+  // channels continue through the established read-only withholding policy.
+  if (!isPublicChannel) {
+    enforceExplicitPlatformAdminToolRequest({
+      message: messageText,
+      isAAOAdmin: userIsAdmin,
+    });
+  }
+
+  if (!activeRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
     const fallbackSets = selectSlackToolSets({
       routerAvailable: false,
@@ -1739,7 +1788,7 @@ async function selectRoutedToolsForSlackResponse(
       userTools,
       fallbackSets,
       userIsAdmin,
-      threadContext?.viewing_channel_is_private === false,
+      isPublicChannel,
     );
     return {
       tools: filteredTools,
@@ -1749,7 +1798,7 @@ async function selectRoutedToolsForSlackResponse(
       allowedToolNames: getToolsForSets(
         fallbackSets,
         userIsAdmin,
-        threadContext?.viewing_channel_is_private === false,
+        isPublicChannel,
       ),
       requiresPrecision: false,
       requiresDepth: false,
@@ -1767,7 +1816,7 @@ async function selectRoutedToolsForSlackResponse(
     threadMessages: options?.threadMessages,
   };
 
-  const plan = addieRouter.quickMatch(routingContext) ?? await addieRouter.route(routingContext);
+  const plan = activeRouter.quickMatch(routingContext) ?? await activeRouter.route(routingContext);
   const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
     : [];
@@ -1786,7 +1835,7 @@ async function selectRoutedToolsForSlackResponse(
     userTools,
     selectedSets,
     userIsAdmin,
-    threadContext?.viewing_channel_is_private === false
+    isPublicChannel
   );
 
   logger.debug(
@@ -1817,7 +1866,7 @@ async function selectRoutedToolsForSlackResponse(
     allowedToolNames: getToolsForSets(
       selectedSets,
       userIsAdmin,
-      threadContext?.viewing_channel_is_private === false,
+      isPublicChannel,
     ),
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
@@ -2114,7 +2163,7 @@ async function handleUserMessage({
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for assistant DM');
     try {
-      await say("I'm sorry, I can't process that request right now. Please try again.");
+      await say(slackRoutingFailureMessage(error));
     } catch (deliveryError) {
       logger.error({ error: deliveryError }, 'Addie Bolt: Failed to send assistant DM routing error');
     }
@@ -2951,7 +3000,7 @@ export async function handleAppMention({
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for mention');
     try {
       await say({
-        text: "I'm sorry, I can't process that request right now. Please try again.",
+        text: slackRoutingFailureMessage(error),
         thread_ts: threadTs,
       });
     } catch (deliveryError) {
@@ -4300,7 +4349,7 @@ async function handleDirectMessage(
     try {
       await boltApp.client.chat.postMessage({
         channel: channelId,
-        text: "I'm sorry, I can't process that request right now. Please try again.",
+        text: slackRoutingFailureMessage(error),
         thread_ts: event.thread_ts || event.ts,
       });
     } catch (deliveryError) {
@@ -4495,7 +4544,17 @@ async function handleDirectMessage(
  *
  * This is similar to DM handling but with thread context included.
  */
-async function handleActiveThreadReply({
+type ActiveThreadReplyHandlerDependencies = {
+  claudeClient?: AddieClaudeClient;
+  postMessage?: (message: { channel: string; text: string; thread_ts: string }) => Promise<unknown>;
+  buildChannelContext?: typeof buildChannelContext;
+  getMemberContext?: typeof getMemberContext;
+  buildRequestContext?: typeof buildRequestContext;
+  selectRoutedTools?: typeof selectRoutedToolsForSlackResponse;
+  buildCurrentChannelCostOptions?: typeof buildCurrentChannelCostOptions;
+};
+
+export async function handleActiveThreadReply({
   event,
   context,
   channelId,
@@ -4515,8 +4574,12 @@ async function handleActiveThreadReply({
   startTime: number;
   threadService: ReturnType<typeof getThreadService>;
   slackThreadMessages: Awaited<ReturnType<typeof getThreadReplies>>;
-}): Promise<void> {
-  if (!claudeClient || !boltApp) {
+}, dependencies?: ActiveThreadReplyHandlerDependencies): Promise<void> {
+  const activeClaudeClient = dependencies?.claudeClient ?? claudeClient;
+  const postMessage = dependencies?.postMessage ?? (boltApp
+    ? (message) => boltApp!.client.chat.postMessage(message)
+    : null);
+  if (!activeClaudeClient || !postMessage) {
     logger.warn('Addie Bolt: Not initialized for active thread reply');
     return;
   }
@@ -4530,10 +4593,17 @@ async function handleActiveThreadReply({
   // Fetch channel context (includes working group if channel is linked to one)
   let channelContext: ThreadContext | undefined;
   try {
-    channelContext = await buildChannelContext(channelId);
+    channelContext = await (dependencies?.buildChannelContext ?? buildChannelContext)(channelId);
   } catch (error) {
     logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context for active thread reply');
   }
+  channelContext = {
+    ...(channelContext ?? {}),
+    viewing_channel_id: channelContext?.viewing_channel_id ?? channelId,
+    // Unknown privacy is not evidence of a private channel. Carry the
+    // public marker through prompt construction as well as tool selection.
+    viewing_channel_is_private: channelContext?.viewing_channel_is_private === true,
+  };
 
   // Build thread context from the messages already fetched (avoid duplicate API call)
   const MAX_THREAD_CONTEXT_MESSAGES = 25;
@@ -4616,7 +4686,7 @@ async function handleActiveThreadReply({
   // Get member context
   let memberContext: MemberContext | null = null;
   try {
-    memberContext = await getMemberContext(userId);
+    memberContext = await (dependencies?.getMemberContext ?? getMemberContext)(userId);
   } catch (error) {
     logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for active thread reply');
   }
@@ -4658,7 +4728,9 @@ async function handleActiveThreadReply({
   }
 
   // Build per-request context for system prompt (pass channelContext so public channel guard is included)
-  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId, channelContext);
+  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await (
+    dependencies?.buildRequestContext ?? buildRequestContext
+  )(userId, channelContext);
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
@@ -4701,7 +4773,7 @@ async function handleActiveThreadReply({
 
   let routedTools: Awaited<ReturnType<typeof selectRoutedToolsForSlackResponse>>;
   try {
-    routedTools = await selectRoutedToolsForSlackResponse(
+    routedTools = await (dependencies?.selectRoutedTools ?? selectRoutedToolsForSlackResponse)(
       inputValidation.sanitized,
       'channel',
       memberContext,
@@ -4713,9 +4785,9 @@ async function handleActiveThreadReply({
   } catch (error) {
     logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Router unavailable for active thread reply');
     try {
-      await boltApp?.client.chat.postMessage({
+      await postMessage({
         channel: channelId,
-        text: "I'm sorry, I can't process that request right now. Please try again.",
+        text: slackRoutingFailureMessage(error),
         thread_ts: threadTs,
       });
     } catch (deliveryError) {
@@ -4761,14 +4833,18 @@ async function handleActiveThreadReply({
     slackUserId: userId,
     ...slackMutationAuthorityOptions(userId, memberContext),
     threadId: thread.thread_id,
-    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
+    ...(await (dependencies?.buildCurrentChannelCostOptions ?? buildCurrentChannelCostOptions)(
+      memberContext,
+      userId,
+      channelId,
+    )),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
+    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
         await reserveToolIntentCheckpoint(threadService, {
@@ -4808,7 +4884,7 @@ async function handleActiveThreadReply({
     ? activeThreadSlackText
     : "I'm sorry, I encountered an error. Please try again.";
   try {
-    await boltApp.client.chat.postMessage({
+    await postMessage({
       channel: channelId,
       text: activeThreadOutgoing,
       thread_ts: threadTs, // Reply in the thread
@@ -5129,6 +5205,11 @@ async function handleChannelMessage({
     } catch (error) {
       logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context');
     }
+    channelContext = {
+      ...(channelContext ?? {}),
+      viewing_channel_id: channelContext?.viewing_channel_id ?? channelId,
+      viewing_channel_is_private: channelContext?.viewing_channel_is_private === true,
+    };
 
     // Fetch member context, admin status, and thread messages (if in a thread) in parallel
     const threadRepliesPromise = isInThread && event.thread_ts

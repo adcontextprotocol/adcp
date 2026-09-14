@@ -177,14 +177,14 @@ const VOICE_PRINCIPAL = {
   email: 'ada@example.test',
 };
 
-function voiceTurn(app: express.Express) {
+function voiceTurn(app: express.Express, spokenMessage = SPOKEN_MESSAGE) {
   return request(app)
     .post('/api/addie/v1/chat/completions')
     .set('Authorization', 'Bearer test-llm-secret')
     .send({
       messages: [
         { role: 'system', content: voiceSystemContext() },
-        { role: 'user', content: SPOKEN_MESSAGE },
+        { role: 'user', content: spokenMessage },
       ],
     });
 }
@@ -607,6 +607,43 @@ describe("Tavus session guidance route boundary", () => {
     },
   );
 
+  it.each(['list_escalations', 'resolve_escalation'])(
+    'denies an explicit non-admin Tavus %s request before cost, routing, or model dispatch',
+    async (toolName) => {
+      mocks.getWebMemberContext.mockResolvedValueOnce({
+        is_mapped: true,
+        is_member: true,
+        slack_linked: false,
+        workos_user: {
+          workos_user_id: 'authenticated-session-user',
+          email: 'ada@example.test',
+        },
+        organization: {
+          workos_organization_id: 'org_owned',
+          name: 'Owned organization',
+          subscription_status: 'active',
+          is_personal: false,
+          membership_tier: 'company_standard',
+        },
+        org_membership: { role: 'owner', member_count: 2, joined_at: null },
+      });
+      const router = { quickMatch: vi.fn().mockReturnValue(null), route: vi.fn() };
+
+      const response = await voiceTurn(mountApp(router), toolName);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toMatchObject({
+        error: 'platform_admin_permission_denied',
+      });
+      expect(mocks.checkCostCap).not.toHaveBeenCalled();
+      expect(router.quickMatch).not.toHaveBeenCalled();
+      expect(router.route).not.toHaveBeenCalled();
+      expect(mocks.processMessageStream).not.toHaveBeenCalled();
+      expect(mocks.listEscalations).not.toHaveBeenCalled();
+      expect(mocks.resolveEscalation).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['credential_leader', 'canonical_member', true],
     ['credential_member', 'canonical_leader', false],
@@ -826,13 +863,13 @@ describe("Tavus session guidance route boundary", () => {
     }));
     expect(response.status).toBe(200);
     const options = mocks.processMessageStream.mock.calls[0]?.[3] as {
-      captureSideEffectAuthority?: (input: { mutationToolNames: string[] }) => Promise<
+      captureToolAuthority?: (input: { authorityToolNames: string[] }) => Promise<
         (input: { toolName: string; parameters: Record<string, unknown> }) => Promise<unknown>
       >;
     };
-    expect(options.captureSideEffectAuthority).toBeTypeOf('function');
-    const revalidate = await options.captureSideEffectAuthority!({
-      mutationToolNames: ['create_payment_link'],
+    expect(options.captureToolAuthority).toBeTypeOf('function');
+    const revalidate = await options.captureToolAuthority!({
+      authorityToolNames: ['create_payment_link'],
     });
     await expect(revalidate({ toolName: 'create_payment_link', parameters: {} }))
       .resolves.toEqual({ allowed: true });
@@ -857,12 +894,12 @@ describe("Tavus session guidance route boundary", () => {
     const response = await voiceTurn(mountApp());
     expect(response.status).toBe(200);
     const options = mocks.processMessageStream.mock.calls[0]?.[3] as {
-      captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<
+      captureToolAuthority: (input: { authorityToolNames: string[] }) => Promise<
         (input: { toolName: string }) => Promise<unknown>
       >;
     };
-    const revalidate = await options.captureSideEffectAuthority({
-      mutationToolNames: ['save_brand'],
+    const revalidate = await options.captureToolAuthority({
+      authorityToolNames: ['save_brand'],
     });
     await expect(revalidate({ toolName: 'save_brand' }))
       .resolves.toEqual({ allowed: true });

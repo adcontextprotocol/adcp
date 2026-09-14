@@ -21,6 +21,11 @@ const mutationTool: AddieTool = {
   description: 'Create issue',
   input_schema: { type: 'object', properties: {} },
 };
+const sensitiveReadTool: AddieTool = {
+  name: 'list_escalations',
+  description: 'List escalations',
+  input_schema: { type: 'object', properties: {} },
+};
 
 describe('Slack exact-credential mutation authority', () => {
   beforeEach(() => {
@@ -32,6 +37,42 @@ describe('Slack exact-credential mutation authority', () => {
     }));
   });
 
+  it.each([
+    ['platform-admin revocation', 'forbidden', 'access_denied'],
+    ['platform-admin source outage', 'unavailable', 'recoverable_error'],
+  ] as const)('blocks a sensitive read after %s between capture and dispatch', async (_label, decision, status) => {
+    const revalidatePlatformAdmin = vi.fn()
+      .mockResolvedValueOnce('authorized')
+      .mockResolvedValueOnce(decision);
+    const revalidate = await captureSlackMutationAuthority({
+      assembledCredentialId: 'credential_a',
+      credentialEmail: 'credential_a@example.test',
+      platformAdminTools: [sensitiveReadTool.name],
+      lookupCredential: vi.fn().mockResolvedValue({
+        status: 'authorized', credentialId: 'credential_a',
+      }),
+      revalidatePlatformAdmin,
+    });
+    const handler = vi.fn();
+    const execute = createAddieToolExecutor(
+      [sensitiveReadTool],
+      new Map([[sensitiveReadTool.name, handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        revalidateToolAuthority: revalidate,
+      },
+    );
+
+    const result = await execute({
+      type: 'tool_call', id: `read-${decision}`, name: sensitiveReadTool.name, input: {},
+    }, 1);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution.normalized_result?.status).toBe(status);
+    expect(revalidatePlatformAdmin).toHaveBeenCalledTimes(2);
+  });
+
   it('captures after assembly and blocks a remap committed during reservation', async () => {
     let mappedCredential = 'credential_a';
     const lookupCredential = vi.fn(async () => ({
@@ -41,7 +82,7 @@ describe('Slack exact-credential mutation authority', () => {
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
       credentialEmail: 'credential_a@example.test',
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
     });
@@ -54,7 +95,7 @@ describe('Slack exact-credential mutation authority', () => {
         executionMode: 'production',
         policy: () => ({ allowed: true }),
         reserveSideEffect,
-        revalidateSideEffectAuthority: revalidate,
+        revalidateToolAuthority: revalidate,
       },
     );
 
@@ -90,7 +131,7 @@ describe('Slack exact-credential mutation authority', () => {
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
       credentialEmail: 'breakglass@example.test',
-      platformAdminMutationTools: [mutationTool.name],
+      platformAdminTools: [mutationTool.name],
       lookupCredential: vi.fn().mockResolvedValue({
         status: 'authorized', credentialId: 'credential_a',
       }),
@@ -106,7 +147,7 @@ describe('Slack exact-credential mutation authority', () => {
         executionMode: 'production',
         policy: () => ({ allowed: true }),
         reserveSideEffect,
-        revalidateSideEffectAuthority: revalidate,
+        revalidateToolAuthority: revalidate,
       },
     );
 
@@ -126,7 +167,7 @@ describe('Slack exact-credential mutation authority', () => {
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
       credentialEmail: 'credential_a@example.test',
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       lookupCredential: vi.fn().mockResolvedValue({ status: 'forbidden' }),
       revalidatePlatformAdmin: vi.fn(),
     });
@@ -139,7 +180,7 @@ describe('Slack exact-credential mutation authority', () => {
         executionMode: 'production',
         policy: () => ({ allowed: true }),
         reserveSideEffect,
-        revalidateSideEffectAuthority: revalidate,
+        revalidateToolAuthority: revalidate,
       },
     );
 
@@ -158,7 +199,7 @@ describe('Slack exact-credential mutation authority', () => {
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
       credentialEmail: 'credential_a@example.test',
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
     });
@@ -175,7 +216,7 @@ describe('Slack exact-credential mutation authority', () => {
     const revalidate = await captureSlackMutationAuthority({
       assembledCredentialId: 'credential_a',
       credentialEmail: 'credential_a@example.test',
-      platformAdminMutationTools: [],
+      platformAdminTools: [],
       lookupCredential,
       revalidatePlatformAdmin: vi.fn(),
     });

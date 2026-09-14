@@ -74,6 +74,70 @@ describe('createAddieToolExecutor', () => {
     });
   });
 
+  it.each([
+    ['revoked', { allowed: false as const, status: 'access_denied' as const }],
+    ['authority outage', { allowed: false as const, status: 'recoverable_error' as const }],
+  ])('blocks a sensitive admin read before handler dispatch when authority is %s', async (_label, decision) => {
+    const listTool: AddieTool = { ...tool, name: 'list_escalations' };
+    const handler = vi.fn();
+    const revalidateToolAuthority = vi.fn().mockResolvedValue(decision);
+    const execute = createAddieToolExecutor(
+      [listTool],
+      new Map([[listTool.name, handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        revalidateToolAuthority,
+      },
+    );
+
+    const result = await execute({ ...call(), name: listTool.name }, 1);
+
+    expect(revalidateToolAuthority).toHaveBeenCalledOnce();
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      blocked_by_policy: true,
+      normalized_result: { status: decision.status },
+    });
+  });
+
+  it('dispatches a sensitive admin read only after its final authority proof', async () => {
+    const listTool: AddieTool = { ...tool, name: 'list_escalations' };
+    const handler = vi.fn().mockResolvedValue('[]');
+    const revalidateToolAuthority = vi.fn().mockResolvedValue({ allowed: true });
+    const execute = createAddieToolExecutor(
+      [listTool],
+      new Map([[listTool.name, handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        revalidateToolAuthority,
+      },
+    );
+
+    const result = await execute({ ...call(), name: listTool.name }, 1);
+
+    expect(revalidateToolAuthority).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledOnce();
+    expect(result.execution.is_error).toBe(false);
+  });
+
+  it('fails a sensitive admin read retryably when no authority barrier was captured', async () => {
+    const listTool: AddieTool = { ...tool, name: 'list_escalations' };
+    const handler = vi.fn();
+    const execute = createAddieToolExecutor(
+      [listTool],
+      new Map([[listTool.name, handler]]),
+      { executionMode: 'production', policy: () => ({ allowed: true }) },
+    );
+
+    const result = await execute({ ...call(), name: listTool.name }, 1);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.execution.normalized_result?.status).toBe('recoverable_error');
+  });
+
   it('blocks a duplicate external mutation before a continuation can dispatch it twice', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
     const handler = vi.fn().mockResolvedValue(githubIssueCreatedResult({
@@ -153,7 +217,7 @@ describe('createAddieToolExecutor', () => {
     // The executor and handler were assembled while this credential was an
     // admin. Revocation advances the persisted epoch before the model's tool
     // call reaches the shared mutation boundary.
-    const revalidateSideEffectAuthority = vi.fn().mockResolvedValue({
+    const revalidateToolAuthority = vi.fn().mockResolvedValue({
       allowed: false,
       status: 'access_denied',
     });
@@ -161,12 +225,12 @@ describe('createAddieToolExecutor', () => {
       executionMode: 'production',
       policy: () => ({ allowed: true }),
       reserveSideEffect,
-      revalidateSideEffectAuthority,
+      revalidateToolAuthority,
     });
 
     const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
 
-    expect(revalidateSideEffectAuthority).toHaveBeenCalledOnce();
+    expect(revalidateToolAuthority).toHaveBeenCalledOnce();
     expect(reserveSideEffect).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
     expect(result.execution).toMatchObject({
@@ -184,7 +248,7 @@ describe('createAddieToolExecutor', () => {
       executionMode: 'production',
       policy: () => ({ allowed: true }),
       reserveSideEffect,
-      revalidateSideEffectAuthority: vi.fn().mockRejectedValue(new Error('epoch store unavailable')),
+      revalidateToolAuthority: vi.fn().mockRejectedValue(new Error('epoch store unavailable')),
     });
 
     const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
@@ -211,14 +275,14 @@ describe('createAddieToolExecutor', () => {
       signalReservationStarted();
       await reservationRelease;
     });
-    const revalidateSideEffectAuthority = vi.fn(async () => revoked
+    const revalidateToolAuthority = vi.fn(async () => revoked
       ? { allowed: false as const, status: 'access_denied' as const }
       : { allowed: true as const });
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
       executionMode: 'production',
       policy: () => ({ allowed: true }),
       reserveSideEffect,
-      revalidateSideEffectAuthority,
+      revalidateToolAuthority,
     });
 
     const pending = execute({ ...call(), name: 'create_github_issue' }, 1);
@@ -227,7 +291,7 @@ describe('createAddieToolExecutor', () => {
     releaseReservation();
     const result = await pending;
 
-    expect(revalidateSideEffectAuthority).toHaveBeenCalledTimes(2);
+    expect(revalidateToolAuthority).toHaveBeenCalledTimes(2);
     expect(reserveSideEffect).toHaveBeenCalledOnce();
     expect(handler).not.toHaveBeenCalled();
     expect(result.execution).toMatchObject({

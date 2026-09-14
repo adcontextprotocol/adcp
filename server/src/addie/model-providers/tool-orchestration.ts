@@ -36,6 +36,7 @@ import {
   type ModelTurnAction,
   type ModelTurnLoopState,
 } from './model-turn.js';
+import { isSensitivePlatformAdminReadTool } from '../admin-tool-boundary.js';
 
 const logger = createLogger('addie-tool-orchestration');
 const definitionSnapshots = new WeakMap<AddieTool, AddieTool>();
@@ -100,10 +101,10 @@ export interface AddieToolExecutorOptions {
   }) => void | Promise<void>;
   /**
    * Revalidates request-time exact-credential authority immediately before a
-   * live mutation reservation/dispatch boundary. Unavailable checks are
-   * returned as recoverable failures; no reservation or handler runs.
+   * protected read or live mutation reservation/dispatch boundary. Unavailable
+   * checks are returned as recoverable failures; no reservation or handler runs.
    */
-  revalidateSideEffectAuthority?: (request: {
+  revalidateToolAuthority?: (request: {
     toolName: string;
     parameters: Record<string, unknown>;
   }) => Promise<{ allowed: true } | {
@@ -732,41 +733,52 @@ export function createAddieToolExecutor(
       return failureResult(call, sequence, options.executionMode, normalized, 0, true);
     }
 
-    if (sideEffectKey) {
-      const revalidateMutationAuthority = async (
-        phase: 'before_reservation' | 'after_reservation',
-      ): Promise<AddieToolCallResult | null> => {
-        if (!operationalExecution || !options.revalidateSideEffectAuthority) return null;
-        let authority: Awaited<ReturnType<NonNullable<typeof options.revalidateSideEffectAuthority>>>;
+    const revalidateDispatchAuthority = async (
+      phase: 'before_read_dispatch' | 'before_reservation' | 'after_reservation',
+    ): Promise<AddieToolCallResult | null> => {
+      if (!operationalExecution) return null;
+      let authority: Awaited<ReturnType<NonNullable<typeof options.revalidateToolAuthority>>>;
+      if (!options.revalidateToolAuthority) {
+        if (phase !== 'before_read_dispatch') return null;
+        authority = { allowed: false, status: 'recoverable_error' };
+      } else {
         try {
-          authority = await options.revalidateSideEffectAuthority({
+          authority = await options.revalidateToolAuthority({
             toolName: call.name,
             parameters: call.input,
           });
         } catch {
           authority = { allowed: false, status: 'recoverable_error' };
         }
-        if (!authority.allowed) {
-          const recoverable = authority.status === 'recoverable_error';
-          const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
-            status: authority.status,
-            model_context: recoverable
-              ? 'Error: Authorization is temporarily unavailable. The external action was not run; please try again.'
-              : 'Error: Credential authority changed before the external action could run.',
-            user_summary: recoverable
-              ? 'Authorization is temporarily unavailable. The action was not run; please try again.'
-              : 'Your authorization changed before the action could run. The action was not run.',
-          }));
-          logger.warn(
-            { event: 'addie_mutation_authority_rejected', toolName: call.name, status: authority.status, phase },
-            'Addie: Refusing mutation after exact-credential authority revalidation',
-          );
-          return failureResult(call, sequence, options.executionMode, normalized, 0, true);
-        }
-        return null;
-      };
+      }
+      if (!authority.allowed) {
+        const recoverable = authority.status === 'recoverable_error';
+        const protectedRead = phase === 'before_read_dispatch';
+        const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+          status: authority.status,
+          model_context: recoverable
+            ? `Error: Authorization is temporarily unavailable. The ${protectedRead ? 'sensitive read' : 'external action'} was not run; please try again.`
+            : `Error: Credential authority changed before the ${protectedRead ? 'sensitive read' : 'external action'} could run.`,
+          user_summary: recoverable
+            ? `Authorization is temporarily unavailable. The ${protectedRead ? 'read' : 'action'} was not run; please try again.`
+            : `Your authorization changed before the ${protectedRead ? 'read' : 'action'} could run. The ${protectedRead ? 'read' : 'action'} was not run.`,
+        }));
+        logger.warn(
+          { event: 'addie_dispatch_authority_rejected', toolName: call.name, status: authority.status, phase },
+          'Addie: Refusing protected tool after exact-credential authority revalidation',
+        );
+        return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+      }
+      return null;
+    };
 
-      const preReservationRejection = await revalidateMutationAuthority('before_reservation');
+    if (isSensitivePlatformAdminReadTool(call.name)) {
+      const readRejection = await revalidateDispatchAuthority('before_read_dispatch');
+      if (readRejection) return readRejection;
+    }
+
+    if (sideEffectKey) {
+      const preReservationRejection = await revalidateDispatchAuthority('before_reservation');
       if (preReservationRejection) return preReservationRejection;
       if (operationalExecution && !options.reserveSideEffect) {
         const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
@@ -799,7 +811,7 @@ export function createAddieToolExecutor(
       // during reservation cannot dispatch. Mark the ordinary result checkpoint
       // as a proven non-dispatch so it settles the unknown-outcome reservation
       // without falsely recording the mutation as successful.
-      const postReservationRejection = await revalidateMutationAuthority('after_reservation');
+      const postReservationRejection = await revalidateDispatchAuthority('after_reservation');
       if (postReservationRejection) {
         postReservationRejection.execution.dispatch_status = 'not_dispatched';
         return postReservationRejection;

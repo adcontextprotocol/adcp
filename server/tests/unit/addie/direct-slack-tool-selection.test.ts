@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
-import { handleAppMention, selectRoutedDirectSlackTools } from '../../../src/addie/bolt-app.js';
+import {
+  handleActiveThreadReply,
+  handleAppMention,
+  selectRoutedDirectSlackTools,
+  selectRoutedToolsForSlackResponse,
+} from '../../../src/addie/bolt-app.js';
 import { AAOAdminLookupUnavailableError } from '../../../src/addie/admin-status-lookup.js';
+import {
+  PLATFORM_ADMIN_TOOL_PERMISSION_DENIED_MESSAGE,
+  PlatformAdminToolPermissionDeniedError,
+} from '../../../src/addie/admin-tool-boundary.js';
 import {
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 } from '../../../src/addie/slack-tool-selection.js';
@@ -46,10 +55,11 @@ async function select(input: {
   requestTools?: { tools: AddieTool[]; handlers: Map<string, () => Promise<string>> };
   hasRegisteredTools?: (names: string[]) => boolean;
   activeCertificationKind?: 'learning' | 'assessment' | 'mixed';
+  message?: string;
 }) {
   const router = input.router === undefined ? routerFor(input.toolSets ?? ['member_billing']) : input.router;
   return selectRoutedDirectSlackTools({
-    message: 'Test direct Slack request',
+    message: input.message ?? 'Test direct Slack request',
     source: input.source ?? 'dm',
     memberContext: null,
     threadId: 'thread-1',
@@ -66,6 +76,33 @@ async function select(input: {
 }
 
 describe('direct Slack Addie response tool routing', () => {
+  it.each(['list_escalations', 'resolve_escalation'])(
+    'rejects an explicit non-admin private Slack %s request before routing',
+    async (toolName) => {
+      const router = routerFor(['admin_escalations']);
+
+      await expect(select({ router, message: toolName }))
+        .rejects.toMatchObject({ code: 'platform_admin_permission_denied', statusCode: 403 });
+      expect(router.quickMatch).not.toHaveBeenCalled();
+      expect(router.route).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps explicit reserved admin names withheld on public Slack', async () => {
+    const router = routerFor(['admin_escalations']);
+    const selected = await select({
+      router,
+      source: 'mention',
+      isPublicChannel: true,
+      message: 'list_escalations',
+    });
+
+    expect(router.route).toHaveBeenCalledOnce();
+    expect(selected.allowedToolNames).not.toEqual(expect.arrayContaining([
+      'list_escalations', 'resolve_escalation',
+    ]));
+  });
+
   it.each(['dm', 'mention'] as const)('uses the bounded selector at the %s response seam', async (source) => {
     const router = routerFor(['member_billing']);
     const selected = await select({
@@ -284,10 +321,301 @@ describe('direct Slack Addie response tool routing', () => {
     expect(buildCurrentChannelCostOptions).not.toHaveBeenCalled();
     expect(logInteraction).not.toHaveBeenCalled();
     expect(responseDelivery).toHaveBeenCalledWith({
-      text: "I'm sorry, I can't process that request right now. Please try again.",
+      text: 'Administrator authorization is temporarily unavailable. Please try again.',
       thread_ts: '1',
     });
   });
+
+  it('returns deterministic permission denial for a private explicit admin-tool mention without model or cost dispatch', async () => {
+    const modelDispatch = vi.fn();
+    const responseDelivery = vi.fn();
+    const selectRoutedTools = vi.fn().mockRejectedValue(new PlatformAdminToolPermissionDeniedError());
+    const buildCurrentChannelCostOptions = vi.fn();
+    const logInteraction = vi.fn();
+    const threadService = {
+      getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+      getThreadMessages: vi.fn().mockResolvedValue([]),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await handleAppMention({
+      event: { channel: 'C_PRIVATE', ts: '1', user: 'U_TEST', text: '<@B_ADDIE> list_escalations' },
+      context: { botUserId: 'B_ADDIE' },
+      say: responseDelivery,
+    } as never, {
+      claudeClient: { processMessage: modelDispatch } as never,
+      resolveChannelContext: vi.fn().mockResolvedValue({
+        viewing_channel_name: 'private-test',
+        viewing_channel_is_private: true,
+      }),
+      getChannelHistory: vi.fn().mockResolvedValue({ messages: [], has_more: false }),
+      getMemberContext: vi.fn().mockResolvedValue(null),
+      buildRequestContext: vi.fn().mockResolvedValue({
+        requestContext: 'test request context',
+        memberContext: null,
+        activeCertificationKind: undefined,
+      }),
+      getThreadService: vi.fn(() => threadService as never),
+      selectRoutedTools,
+      buildCurrentChannelCostOptions,
+      logInteraction,
+    });
+
+    expect(modelDispatch).not.toHaveBeenCalled();
+    expect(buildCurrentChannelCostOptions).not.toHaveBeenCalled();
+    expect(logInteraction).not.toHaveBeenCalled();
+    expect(responseDelivery).toHaveBeenCalledWith({
+      text: PLATFORM_ADMIN_TOOL_PERMISSION_DENIED_MESSAGE,
+      thread_ts: '1',
+    });
+  });
+
+  it.each([
+    ['forbidden', false, PLATFORM_ADMIN_TOOL_PERMISSION_DENIED_MESSAGE],
+    ['unavailable', 'unavailable', 'Administrator authorization is temporarily unavailable. Please try again.'],
+  ] as const)(
+    'stops an active private-channel list request as %s before router, model, handler, or cost dispatch',
+    async (_label, adminDecision, expectedMessage) => {
+      const router = routerFor(['admin_escalations']);
+      const modelDispatch = vi.fn();
+      const listHandler = vi.fn().mockResolvedValue('{}');
+      const buildCostOptions = vi.fn();
+      const responseDelivery = vi.fn().mockResolvedValue(undefined);
+      const createUserScopedTools = adminDecision === 'unavailable'
+        ? vi.fn().mockRejectedValue(new AAOAdminLookupUnavailableError())
+        : vi.fn().mockResolvedValue({
+          tools: {
+            tools: [tools.find((tool) => tool.name === 'list_escalations')!],
+            handlers: new Map([['list_escalations', listHandler]]),
+          },
+          isAAOAdmin: false,
+        });
+      const selectWithBoundary: typeof selectRoutedToolsForSlackResponse = (
+        message,
+        source,
+        memberContext,
+        slackUserId,
+        threadId,
+        threadContext,
+        options,
+      ) => selectRoutedToolsForSlackResponse(
+        message,
+        source,
+        memberContext,
+        slackUserId,
+        threadId,
+        threadContext,
+        options,
+        { createUserScopedTools: createUserScopedTools as never, router },
+      );
+      const threadService = {
+        getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'active-thread-1' }),
+        getThreadMessages: vi.fn().mockResolvedValue([]),
+        addMessage: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await handleActiveThreadReply({
+        event: { channel: 'C_PRIVATE', ts: '2', user: 'U_TEST', text: 'list_escalations', thread_ts: '1' },
+        context: { botUserId: 'B_ADDIE' },
+        channelId: 'C_PRIVATE',
+        userId: 'U_TEST',
+        messageText: 'list_escalations',
+        threadTs: '1',
+        startTime: Date.now(),
+        threadService: threadService as never,
+        slackThreadMessages: [],
+      }, {
+        claudeClient: { processMessage: modelDispatch } as never,
+        postMessage: responseDelivery,
+        buildChannelContext: vi.fn().mockResolvedValue({
+          viewing_channel_name: 'private-test',
+          viewing_channel_is_private: true,
+        }),
+        getMemberContext: vi.fn().mockResolvedValue(null),
+        buildRequestContext: vi.fn().mockResolvedValue({
+          requestContext: 'test request context',
+          memberContext: null,
+          activeCertificationKind: null,
+        }),
+        selectRoutedTools: selectWithBoundary,
+        buildCurrentChannelCostOptions: buildCostOptions,
+      });
+
+      expect(router.quickMatch).not.toHaveBeenCalled();
+      expect(router.route).not.toHaveBeenCalled();
+      expect(modelDispatch).not.toHaveBeenCalled();
+      expect(listHandler).not.toHaveBeenCalled();
+      expect(buildCostOptions).not.toHaveBeenCalled();
+      expect(responseDelivery).toHaveBeenCalledWith({
+        channel: 'C_PRIVATE',
+        text: expectedMessage,
+        thread_ts: '1',
+      });
+    },
+  );
+
+  it.each([
+    ['private', true, true],
+    ['public', false, false],
+  ] as const)(
+    'keeps the active %s-channel admin list surface correctly scoped',
+    async (_label, isPrivate, expectListTool) => {
+      const router = routerFor(['admin_escalations']);
+      const listTool = tools.find((tool) => tool.name === 'list_escalations')!;
+      const listHandler = vi.fn().mockResolvedValue('{}');
+
+      const selected = await selectRoutedToolsForSlackResponse(
+        'list_escalations',
+        'channel',
+        null,
+        'U_ADMIN',
+        'active-thread-admin',
+        {
+          viewing_channel_name: `${_label}-test`,
+          viewing_channel_is_private: isPrivate,
+        },
+        { isThread: true },
+        {
+          createUserScopedTools: vi.fn().mockResolvedValue({
+            tools: {
+              tools: [listTool],
+              handlers: new Map([['list_escalations', listHandler]]),
+            },
+            isAAOAdmin: true,
+          }),
+          router,
+        },
+      );
+
+      expect(router.route).toHaveBeenCalledOnce();
+      expect(selected.tools.tools.some((tool) => tool.name === 'list_escalations'))
+        .toBe(expectListTool);
+      expect(selected.tools.handlers.has('list_escalations')).toBe(expectListTool);
+      expect(listHandler).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['admin', true, 'undefined', undefined],
+    ['non-admin', false, 'undefined', undefined],
+    ['admin', true, 'null', null],
+    ['non-admin', false, 'null', null],
+    ['admin', true, 'lookup error', 'error'],
+    ['non-admin', false, 'lookup error', 'error'],
+  ] as const)(
+    'uses the public-safe active channel surface for %s when privacy is %s',
+    async (_role, isAdmin, _privacyLabel, privacy) => {
+      const router = routerFor(['admin_escalations']);
+      const listTool = tools.find((tool) => tool.name === 'list_escalations')!;
+      const resolveTool = tools.find((tool) => tool.name === 'resolve_escalation')!;
+      const listHandler = vi.fn().mockResolvedValue('{}');
+      const resolveHandler = vi.fn().mockResolvedValue('{}');
+      const createUserScopedTools = vi.fn().mockResolvedValue({
+        tools: {
+          tools: [listTool, resolveTool],
+          handlers: new Map([
+            ['list_escalations', listHandler],
+            ['resolve_escalation', resolveHandler],
+          ]),
+        },
+        isAAOAdmin: isAdmin,
+      });
+      const selectWithBoundary: typeof selectRoutedToolsForSlackResponse = (
+        message,
+        source,
+        memberContext,
+        slackUserId,
+        threadId,
+        threadContext,
+        options,
+      ) => selectRoutedToolsForSlackResponse(
+        message,
+        source,
+        memberContext,
+        slackUserId,
+        threadId,
+        threadContext,
+        options,
+        { createUserScopedTools: createUserScopedTools as never, router },
+      );
+      let selectedTools: { tools: AddieTool[]; handlers: Map<string, unknown> } | undefined;
+      let selectedRequestContext = '';
+      const modelDispatch = vi.fn().mockImplementation(async (
+        _message,
+        _history,
+        requestTools,
+        _rules,
+        processOptions,
+      ) => {
+        selectedTools = requestTools;
+        selectedRequestContext = processOptions.requestContext;
+        return {
+          text: 'Please ask me in a direct message for administrative escalation details.',
+          tools_used: [],
+          tool_executions: [],
+          model_execution: {
+            source: 'local', requested_provider: 'anthropic', requested_model: 'test', reason: 'empty_response',
+          },
+        };
+      });
+      const responseDelivery = vi.fn().mockResolvedValue(undefined);
+      const buildChannelContext = privacy === 'error'
+        ? vi.fn().mockRejectedValue(new Error('privacy lookup failed'))
+        : vi.fn().mockResolvedValue({
+            viewing_channel_name: 'unverified-channel',
+            viewing_channel_is_private: privacy,
+          });
+      const buildRequestContext = vi.fn().mockImplementation(async (_userId, context) => {
+        expect(context.viewing_channel_is_private).toBe(false);
+        return {
+          requestContext: 'PUBLIC-SAFE: do not disclose sensitive data; direct the requester to a DM.',
+          memberContext: null,
+          activeCertificationKind: null,
+        };
+      });
+      const threadService = {
+        getOrCreateThread: vi.fn().mockResolvedValue({ thread_id: 'active-unverified' }),
+        getThreadMessages: vi.fn().mockResolvedValue([]),
+        addMessage: vi.fn().mockResolvedValue(undefined),
+      };
+
+      await handleActiveThreadReply({
+        event: { channel: 'C_UNVERIFIED', ts: '2', user: 'U_TEST', text: 'list_escalations', thread_ts: '1' },
+        context: { botUserId: 'B_ADDIE' },
+        channelId: 'C_UNVERIFIED',
+        userId: 'U_TEST',
+        messageText: 'list_escalations',
+        threadTs: '1',
+        startTime: Date.now(),
+        threadService: threadService as never,
+        slackThreadMessages: [],
+      }, {
+        claudeClient: { processMessage: modelDispatch } as never,
+        postMessage: responseDelivery,
+        buildChannelContext: buildChannelContext as never,
+        getMemberContext: vi.fn().mockResolvedValue(null),
+        buildRequestContext,
+        selectRoutedTools: selectWithBoundary,
+        buildCurrentChannelCostOptions: vi.fn().mockResolvedValue({}),
+      });
+
+      expect(router.route).toHaveBeenCalledOnce();
+      expect(selectedTools?.tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining([
+        'list_escalations', 'resolve_escalation',
+      ]));
+      expect([...(selectedTools?.handlers.keys() ?? [])]).not.toEqual(expect.arrayContaining([
+        'list_escalations', 'resolve_escalation',
+      ]));
+      expect(selectedRequestContext).toContain('PUBLIC-SAFE');
+      expect(listHandler).not.toHaveBeenCalled();
+      expect(resolveHandler).not.toHaveBeenCalled();
+      expect(responseDelivery).toHaveBeenCalledWith({
+        channel: 'C_UNVERIFIED',
+        text: 'Please ask me in a direct message for administrative escalation details.',
+        thread_ts: '1',
+      });
+    },
+  );
 
   it('fails closed to the audited public surface when mention privacy is unknown', async () => {
     const selected = await select({
