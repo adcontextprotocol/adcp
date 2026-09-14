@@ -29,6 +29,24 @@ const mocks = vi.hoisted(() => ({
   },
   getCommitteesLedByUser: vi.fn(),
   checkCostCap: vi.fn(),
+  epoch: vi.fn(),
+  organizationAuthority: vi.fn(),
+  workosGetUser: vi.fn(),
+}));
+
+vi.mock('../../src/db/authorization-epoch-db.js', () => ({
+  getExactCredentialAuthorizationEpoch: mocks.epoch,
+}));
+
+vi.mock('../../src/auth/workos-client.js', () => ({
+  getAuthorizationEnforcementWorkos: () => ({
+    userManagement: { getUser: mocks.workosGetUser },
+  }),
+}));
+
+vi.mock('../../src/utils/resolve-user-org-authorization.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/utils/resolve-user-org-authorization.js')>(),
+  resolveUserOrgAuthorization: mocks.organizationAuthority,
 }));
 
 vi.mock("express-rate-limit", () => ({
@@ -278,7 +296,15 @@ describe("Tavus session guidance route boundary", () => {
     mocks.getMessagesByClientRequestId.mockResolvedValue([]);
     mocks.renewClientTurnLease.mockResolvedValue(true);
     mocks.setClientTurnStatus.mockResolvedValue(true);
-    mocks.getWebMemberContext.mockResolvedValue(null);
+    mocks.getWebMemberContext.mockResolvedValue({
+      is_mapped: true,
+      is_member: false,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'authenticated-session-user',
+        email: 'ada@example.test',
+      },
+    });
     mocks.isWebUserAdmin.mockResolvedValue(false);
     mocks.captureVoiceAuthorization.mockResolvedValue(VOICE_AUTHORIZATION);
     mocks.resolveVoiceAuthorization.mockResolvedValue({ status: 'authorized', principal: VOICE_PRINCIPAL });
@@ -286,6 +312,14 @@ describe("Tavus session guidance route boundary", () => {
     mocks.resolveEscalation.mockResolvedValue('Resolved');
     mocks.getCommitteesLedByUser.mockResolvedValue([]);
     mocks.checkCostCap.mockResolvedValue({ ok: true, tier: 'member_free' });
+    mocks.epoch.mockResolvedValue('4');
+    mocks.workosGetUser.mockImplementation(async (credentialId: string) => ({
+      id: credentialId,
+      email: 'ada@example.test',
+    }));
+    mocks.organizationAuthority.mockResolvedValue({
+      status: 'forbidden', complete: true, unavailableSources: [],
+    });
     mocks.processMessageStream.mockImplementation(async function* () {
       yield { type: "text", text: "Publishers can use AdCP programmatically." };
       yield {
@@ -550,14 +584,13 @@ describe("Tavus session guidance route boundary", () => {
       ) === 'user_admin');
       mocks.getWebMemberContext.mockResolvedValue({
         is_mapped: true,
-        workos_user: { workos_user_id: canonicalId, email: 'canonical@example.test' },
-        organization: { role: 'owner' },
+        workos_user: { workos_user_id: authenticatedId, email: 'authenticated@example.test' },
         slack_user: { slack_user_id: 'linked-slack-admin' },
       });
 
       const result = await buildVoiceRequestTools(canonicalId, THREAD_ID, principal);
 
-      expect(mocks.getWebMemberContext).toHaveBeenCalledWith(canonicalId, undefined, principal);
+      expect(mocks.getWebMemberContext).toHaveBeenCalledWith(authenticatedId, undefined, principal);
       expect(mocks.isWebUserAdmin).toHaveBeenCalledWith(principal);
       expect(result.isAAOAdmin).toBe(authorized);
       for (const name of ['list_escalations', 'resolve_escalation']) {
@@ -579,6 +612,12 @@ describe("Tavus session guidance route boundary", () => {
     ['credential_member', 'canonical_leader', false],
   ] as const)('assembles voice meeting tools from authenticated %s instead of linked %s', async (credential, canonical, allowed) => {
     const principal = { id: canonical, authWorkosUserId: credential };
+    mocks.getWebMemberContext.mockResolvedValue({
+      is_mapped: true,
+      is_member: false,
+      slack_linked: false,
+      workos_user: { workos_user_id: credential, email: `${credential}@example.test` },
+    });
     mocks.getCommitteesLedByUser.mockImplementation(async (userId: string) => userId.endsWith('_leader')
       ? [{ id: 'wg_led', committee_type: 'working_group' }] : []);
 
@@ -746,6 +785,91 @@ describe("Tavus session guidance route boundary", () => {
     expect(options.allowedToolNames).toContain('create_payment_link');
     expect(requestTools.tools.map((tool) => tool.name)).toContain('create_payment_link');
     expect([...requestTools.handlers.keys()]).toContain('create_payment_link');
+  });
+
+  it('wires exact voice credential and selected-org authority into the final stream dispatch', async () => {
+    mocks.getWebMemberContext.mockResolvedValue({
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'authenticated-session-user',
+        email: 'ada@example.test',
+      },
+      organization: {
+        workos_organization_id: 'org_voice',
+        name: 'Voice organization',
+        subscription_status: 'active',
+        is_personal: false,
+        membership_tier: 'company_standard',
+      },
+      org_membership: { role: 'admin', member_count: 2, joined_at: null },
+    });
+    mocks.organizationAuthority
+      .mockResolvedValueOnce({
+        status: 'authorized',
+        membership: { organizationId: 'org_voice', role: 'admin', source: 'workos' },
+        complete: true,
+        unavailableSources: [],
+      })
+      .mockResolvedValueOnce({ status: 'forbidden', complete: true, unavailableSources: [] });
+
+    const response = await voiceTurn(mountApp({
+      quickMatch: () => null,
+      route: vi.fn().mockResolvedValue({
+        action: 'respond',
+        tool_sets: ['member_billing'],
+        confidence: 'high',
+        reason: 'billing',
+        decision_method: 'llm',
+      }),
+    }));
+    expect(response.status).toBe(200);
+    const options = mocks.processMessageStream.mock.calls[0]?.[3] as {
+      captureSideEffectAuthority?: (input: { mutationToolNames: string[] }) => Promise<
+        (input: { toolName: string; parameters: Record<string, unknown> }) => Promise<unknown>
+      >;
+    };
+    expect(options.captureSideEffectAuthority).toBeTypeOf('function');
+    const revalidate = await options.captureSideEffectAuthority!({
+      mutationToolNames: ['create_payment_link'],
+    });
+    await expect(revalidate({ toolName: 'create_payment_link', parameters: {} }))
+      .resolves.toEqual({ allowed: true });
+    await expect(revalidate({ toolName: 'create_payment_link', parameters: {} }))
+      .resolves.toEqual({ allowed: false, status: 'access_denied' });
+    expect(mocks.epoch).toHaveBeenCalledWith('authenticated-session-user');
+    expect(mocks.organizationAuthority).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: 'authenticated-session-user', authWorkosUserId: 'authenticated-session-user' },
+      'org_voice',
+    );
+  });
+
+  it.each([
+    ['break-glass email removal', async () => ({
+      id: 'authenticated-session-user', email: 'ordinary@example.test',
+    })],
+    ['credential deletion before dispatch', async () => {
+      throw Object.assign(new Error('missing'), { status: 404 });
+    }],
+  ] as const)('Tavus mutation authority denies %s after capture', async (_label, changedCredential) => {
+    const response = await voiceTurn(mountApp());
+    expect(response.status).toBe(200);
+    const options = mocks.processMessageStream.mock.calls[0]?.[3] as {
+      captureSideEffectAuthority: (input: { mutationToolNames: string[] }) => Promise<
+        (input: { toolName: string }) => Promise<unknown>
+      >;
+    };
+    const revalidate = await options.captureSideEffectAuthority({
+      mutationToolNames: ['save_brand'],
+    });
+    await expect(revalidate({ toolName: 'save_brand' }))
+      .resolves.toEqual({ allowed: true });
+    mocks.workosGetUser.mockImplementationOnce(changedCredential);
+    await expect(revalidate({ toolName: 'save_brand' }))
+      .resolves.toEqual({ allowed: false, status: 'access_denied' });
+    expect(mocks.workosGetUser).toHaveBeenCalledWith('authenticated-session-user');
   });
 
   it('completes live routing before opening the SSE stream', async () => {

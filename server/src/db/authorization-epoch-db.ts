@@ -13,10 +13,30 @@
  */
 
 import type { Pool, PoolClient } from 'pg';
-import { query } from './client.js';
+import { getClient, query } from './client.js';
 
 /** Anything that can run a parameterized statement — pool or in-transaction client. */
 type Queryable = Pick<Pool | PoolClient, 'query'>;
+
+/** Run one local authority mutation and its exact-credential bump atomically. */
+export async function withAuthorizationEpochBump<T>(
+  workosUserIds: string[],
+  mutation: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const result = await mutation(client);
+    await bumpAuthorizationEpochs(client, workosUserIds);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 /**
  * Bump the authorization epoch for each credential, in the caller's
@@ -67,4 +87,26 @@ export async function getAuthorizationFingerprint(
     [ids],
   );
   return result.rows[0]?.fingerprint ?? '';
+}
+
+/**
+ * Read one exact credential's persisted authorization epoch while also
+ * proving that the local credential still exists. Unlike the aggregate
+ * fingerprint helper, an existing credential with no epoch row is distinct
+ * from a deleted credential (`"0"` versus `null`). Long-running Addie turns
+ * use this value to reject authority captured before a grant, revocation, or
+ * credential deletion.
+ */
+export async function getExactCredentialAuthorizationEpoch(
+  workosUserId: string,
+): Promise<string | null> {
+  const result = await query<{ epoch: string }>(
+    `SELECT COALESCE(ae.epoch, 0)::text AS epoch
+       FROM users u
+       LEFT JOIN authorization_epochs ae
+         ON ae.workos_user_id = u.workos_user_id
+      WHERE u.workos_user_id = $1`,
+    [workosUserId],
+  );
+  return result.rows[0]?.epoch ?? null;
 }

@@ -8,6 +8,7 @@
 
 import { Router, type Request } from "express";
 import { WorkOS } from "@workos-inc/node";
+import type { PoolClient } from "pg";
 import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import {
@@ -22,7 +23,7 @@ import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, ge
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
-import { deleteOrganizationMembership } from "../db/membership-db.js";
+import { deleteOrganizationMembership, setMembershipRole } from "../db/membership-db.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -48,6 +49,13 @@ import { performCreateOrganization } from "../services/organization-bootstrap.js
 import { collectWorkOSPages } from "../services/workos-pagination.js";
 import { canManageOrganizationBilling } from "../billing/billing-authorization.js";
 import { getAuthorizationEnforcementWorkos } from "../auth/workos-client.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
+import { bumpAuthorizationEpochs } from "../db/authorization-epoch-db.js";
+import {
+  evaluateUserOrgRoleAuthorization,
+  resolveUserOrgAuthorization,
+  type MembershipRole,
+} from "../utils/resolve-user-org-authorization.js";
 import {
   evaluateOrganizationAuthorizationCanary,
   ORGANIZATION_AUTHORIZATION_BOUNDARIES,
@@ -77,8 +85,19 @@ const orgDb = new OrganizationDatabase();
  * Create organization routes
  * Returns a router for API routes (/api/organizations/*)
  */
-export function createOrganizationsRouter(): Router {
+export function createOrganizationsRouter(
+  credentialGrantWorkos?: WorkOS | null,
+): Router {
   const router = Router();
+
+  const resolveCredentialGrantWorkos = (): WorkOS | null => {
+    if (credentialGrantWorkos !== undefined) return credentialGrantWorkos;
+    try {
+      return getAuthorizationEnforcementWorkos();
+    } catch {
+      return null;
+    }
+  };
 
   // =========================================================================
   // ORGANIZATION SEARCH & DISCOVERY
@@ -3192,12 +3211,7 @@ export function createOrganizationsRouter(): Router {
 
       await workos!.userManagement.updateOrganizationMembership(membershipId, { roleSlug: role });
 
-      await pool.query(
-        `UPDATE organization_memberships
-         SET role = $1, updated_at = NOW()
-         WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-        [role, orgId, targetUserId],
-      );
+      await setMembershipRole(targetUserId, orgId, role);
 
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
@@ -3354,6 +3368,10 @@ export function createOrganizationsRouter(): Router {
           { roleSlug: role }
         );
         updatedRole = updatedMembership.role?.slug || 'member';
+        // Mirror the provider-authoritative role through the transactional
+        // local writer so this exact credential's persisted authorization
+        // epoch moves before the successful response is observable.
+        await setMembershipRole(membership.userId, orgId, updatedRole);
       }
 
       // Update seat_type in local DB if requested
@@ -4147,6 +4165,254 @@ export function createOrganizationsRouter(): Router {
     } catch (error) {
       logger.error({ err: error }, 'Deny seat upgrade request error');
       res.status(500).json({ error: 'Failed to deny seat upgrade request' });
+    }
+  });
+
+  async function authorizeCredentialGrantActor(
+    principal: NonNullable<Request['user']>,
+    orgId: string,
+    minimumRole: MembershipRole,
+    client?: PoolClient,
+  ) {
+    const resolution = await resolveUserOrgAuthorization(
+      resolveCredentialGrantWorkos(),
+      principal,
+      orgId,
+      client,
+    );
+    return evaluateUserOrgRoleAuthorization(resolution, minimumRole);
+  }
+
+  async function lockExactCredentialAuthorizationEpoch(
+    client: PoolClient,
+    workosUserId: string,
+  ): Promise<boolean> {
+    await client.query(
+      `INSERT INTO authorization_epochs (workos_user_id, epoch)
+       SELECT workos_user_id, 0 FROM users WHERE workos_user_id = $1
+       ON CONFLICT (workos_user_id) DO NOTHING`,
+      [workosUserId],
+    );
+    const locked = await client.query(
+      `SELECT epoch FROM authorization_epochs
+        WHERE workos_user_id = $1
+        FOR UPDATE`,
+      [workosUserId],
+    );
+    return locked.rowCount === 1;
+  }
+
+  // Organization-approved authority for one exact credential. Identity links
+  // never supply either the actor or target authorization input.
+  router.post('/:orgId/credential-grants', requireAuth, async (req, res) => {
+    const { orgId } = req.params;
+    const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+    const targetCredentialId = typeof req.body?.workos_user_id === 'string'
+      ? req.body.workos_user_id.trim()
+      : '';
+    const role = (req.body?.role ?? 'member') as MembershipRole;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : null;
+    const effectiveUntil = req.body?.effective_until;
+
+    if (!/^user_[A-Za-z0-9_-]+$/.test(targetCredentialId) || targetCredentialId.length > 255) {
+      return res.status(400).json({ error: 'A valid workos_user_id is required' });
+    }
+    if (!['member', 'admin', 'owner'].includes(role)) {
+      return res.status(400).json({ error: 'role must be member, admin, or owner' });
+    }
+    let effectiveUntilDate: Date | null = null;
+    if (effectiveUntil !== undefined && effectiveUntil !== null) {
+      if (typeof effectiveUntil !== 'string') {
+        return res.status(400).json({ error: 'effective_until must be an ISO timestamp' });
+      }
+      effectiveUntilDate = new Date(effectiveUntil);
+      if (!Number.isFinite(effectiveUntilDate.getTime()) || effectiveUntilDate.getTime() <= Date.now()) {
+        return res.status(400).json({ error: 'effective_until must be in the future' });
+      }
+    }
+
+    const initialAuthority = await authorizeCredentialGrantActor(req.user!, orgId, 'admin');
+    if (initialAuthority.status === 'unavailable') {
+      return res.status(503).json({ error: 'organization_authorization_unavailable', retryable: true });
+    }
+    if (initialAuthority.status !== 'authorized') {
+      return res.status(403).json({ error: 'Only organization owners and admins can grant credential access' });
+    }
+    if (role === 'owner' && initialAuthority.membership.role !== 'owner') {
+      return res.status(403).json({ error: 'Only an organization owner can grant owner access' });
+    }
+
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const target = await client.query(
+        'SELECT 1 FROM users WHERE workos_user_id = $1 FOR UPDATE',
+        [targetCredentialId],
+      );
+      if (target.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Credential not found' });
+      }
+      const active = await client.query(
+        `SELECT 1 FROM organization_credential_grants
+          WHERE workos_organization_id = $1 AND workos_user_id = $2 AND revoked_at IS NULL
+          FOR UPDATE`,
+        [orgId, targetCredentialId],
+      );
+      if (active.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'An active credential grant already exists' });
+      }
+
+      if (!await lockExactCredentialAuthorizationEpoch(client, actorCredentialId)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Authenticated credential no longer exists' });
+      }
+
+      const currentAuthority = await authorizeCredentialGrantActor(req.user!, orgId, 'admin', client);
+      if (currentAuthority.status === 'unavailable') {
+        await client.query('ROLLBACK');
+        return res.status(503).json({ error: 'organization_authorization_unavailable', retryable: true });
+      }
+      if (currentAuthority.status !== 'authorized') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      if (role === 'owner' && currentAuthority.membership.role !== 'owner') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only an organization owner can grant owner access' });
+      }
+
+      const grant = await client.query<{ id: string }>(
+        `INSERT INTO organization_credential_grants (
+           workos_organization_id, workos_user_id, role,
+           granted_by_workos_user_id, reason, effective_until
+         ) VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [orgId, targetCredentialId, role, actorCredentialId, reason, effectiveUntilDate],
+      );
+      if (grant.rowCount !== 1 || !grant.rows[0]?.id) {
+        throw new Error('Credential grant did not persist exactly one row');
+      }
+      await bumpAuthorizationEpochs(client, [targetCredentialId]);
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1',
+        [actorCredentialId],
+      );
+      const audit = await client.query<{ id: string }>(
+        `INSERT INTO registry_audit_log (
+           workos_organization_id, workos_user_id, action, resource_type, resource_id, details
+         ) VALUES ($1, $2, 'credential_grant_created', 'credential_grant', $3, $4)
+         RETURNING id`,
+        [orgId, actorCredentialId, grant.rows[0].id, JSON.stringify({
+          authenticated_credential_id: actorCredentialId,
+          resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
+          canonical_user_id: req.user!.id,
+          target_credential_id: targetCredentialId,
+          role,
+          effective_until: effectiveUntilDate?.toISOString() ?? null,
+        })],
+      );
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) {
+        throw new Error('Credential grant audit did not persist exactly one row');
+      }
+      await client.query('COMMIT');
+      return res.status(201).json({
+        grant_id: grant.rows[0].id,
+        workos_user_id: targetCredentialId,
+        role,
+      });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      logger.error({ error, orgId, targetCredentialId }, 'Failed to create credential grant');
+      return res.status(500).json({ error: 'Failed to create credential grant' });
+    } finally {
+      client.release();
+    }
+  });
+
+  router.delete('/:orgId/credential-grants/:grantId', requireAuth, async (req, res) => {
+    const { orgId, grantId } = req.params;
+    const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+    const initialAuthority = await authorizeCredentialGrantActor(req.user!, orgId, 'admin');
+    if (initialAuthority.status === 'unavailable') {
+      return res.status(503).json({ error: 'organization_authorization_unavailable', retryable: true });
+    }
+    if (initialAuthority.status !== 'authorized') {
+      return res.status(403).json({ error: 'Only organization owners and admins can revoke credential access' });
+    }
+
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const grant = await client.query<{ workos_user_id: string; role: MembershipRole }>(
+        `SELECT workos_user_id, role
+           FROM organization_credential_grants
+          WHERE id = $1 AND workos_organization_id = $2 AND revoked_at IS NULL
+          FOR UPDATE`,
+        [grantId, orgId],
+      );
+      if (!grant.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Active credential grant not found' });
+      }
+
+      if (!await lockExactCredentialAuthorizationEpoch(client, actorCredentialId)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Authenticated credential no longer exists' });
+      }
+
+      const currentAuthority = await authorizeCredentialGrantActor(req.user!, orgId, 'admin', client);
+      if (currentAuthority.status === 'unavailable') {
+        await client.query('ROLLBACK');
+        return res.status(503).json({ error: 'organization_authorization_unavailable', retryable: true });
+      }
+      if (currentAuthority.status !== 'authorized') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      if (grant.rows[0].role === 'owner' && currentAuthority.membership.role !== 'owner') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only an organization owner can revoke owner access' });
+      }
+
+      const revoked = await client.query<{ workos_user_id: string }>(
+        `UPDATE organization_credential_grants
+            SET revoked_at = NOW(), revoked_by_workos_user_id = $1, updated_at = NOW()
+          WHERE id = $2 AND workos_organization_id = $3 AND revoked_at IS NULL
+          RETURNING workos_user_id`,
+        [actorCredentialId, grantId, orgId],
+      );
+      if (revoked.rowCount !== 1) throw new Error('Credential grant revocation lost its locked row');
+      const targetCredentialId = revoked.rows[0].workos_user_id;
+      await bumpAuthorizationEpochs(client, [targetCredentialId]);
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1',
+        [actorCredentialId],
+      );
+      const audit = await client.query<{ id: string }>(
+        `INSERT INTO registry_audit_log (
+           workos_organization_id, workos_user_id, action, resource_type, resource_id, details
+         ) VALUES ($1, $2, 'credential_grant_revoked', 'credential_grant', $3, $4)
+         RETURNING id`,
+        [orgId, actorCredentialId, grantId, JSON.stringify({
+          authenticated_credential_id: actorCredentialId,
+          resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
+          canonical_user_id: req.user!.id,
+          target_credential_id: targetCredentialId,
+        })],
+      );
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) {
+        throw new Error('Credential grant revocation audit did not persist exactly one row');
+      }
+      await client.query('COMMIT');
+      return res.json({ revoked: true, grant_id: grantId });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      logger.error({ error, orgId, grantId }, 'Failed to revoke credential grant');
+      return res.status(500).json({ error: 'Failed to revoke credential grant' });
+    } finally {
+      client.release();
     }
   });
 

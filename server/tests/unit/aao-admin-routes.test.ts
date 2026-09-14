@@ -77,6 +77,7 @@ describe('AAO site-admin mutation routes', () => {
     expect(mocks.grant).toHaveBeenCalledWith({
       targetUserId: 'user_target',
       actorUserId: 'admin_1',
+      actorCanonicalUserId: 'admin_1',
       actorAuthorizationMechanism: 'break_glass_admin_email',
       reason: 'Coverage rotation',
     });

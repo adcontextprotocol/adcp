@@ -13,6 +13,7 @@ export interface StoredToolCall {
   duration_ms?: number;
   is_error?: boolean;
   result_status?: string;
+  dispatch_status?: 'not_dispatched';
   github_issue_receipt?: unknown;
 }
 
@@ -37,6 +38,7 @@ export function storedToolCall(execution: ToolExecution): StoredToolCall {
     duration_ms: execution.duration_ms,
     is_error: execution.is_error,
     ...(execution.normalized_result && { result_status: execution.normalized_result.status }),
+    ...(execution.dispatch_status && { dispatch_status: execution.dispatch_status }),
     ...(execution.github_issue_receipt && { github_issue_receipt: execution.github_issue_receipt }),
   };
 }
@@ -147,6 +149,7 @@ export function blockCheckpointedToolReplays(
     checkpoints
       // Failed reads may be retried. A mutation with an error has an
       // ambiguous external outcome, so it is never automatically replayed.
+      .filter((call) => call.dispatch_status !== 'not_dispatched')
       .filter((call) => call.is_error !== true || isSideEffectTool(call.name))
       .map((call) => isSideEffectTool(call.name)
         ? sideEffectReplayKey(call.name, call.input)

@@ -35,6 +35,7 @@ import {
 import type { MembershipTier } from "../../db/organization-db.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { WorkingGroupDatabase } from "../../db/working-group-db.js";
+import { setMembershipRole } from '../../db/membership-db.js';
 import { getPool, escapeLikePattern } from "../../db/client.js";
 import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
 import { MemberDatabase } from "../../db/member-db.js";
@@ -8037,12 +8038,7 @@ Use add_committee_leader to assign a leader.`;
       );
 
       // Update local cache
-      await pool.query(
-        `UPDATE organization_memberships
-         SET role = $1, updated_at = NOW()
-         WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-        [role, orgId, userId],
-      );
+      await setMembershipRole(userId, orgId, role);
 
       logger.info(
         { orgId, userId, oldRole: currentRole, newRole: role },

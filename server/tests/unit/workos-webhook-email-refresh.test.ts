@@ -25,4 +25,15 @@ describe('updateUserAcrossMemberships denormalized email refresh', () => {
   it('refreshes person_relationships.email from the webhook payload', () => {
     expect(source).toMatch(/UPDATE person_relationships SET email = \$1/);
   });
+
+  it('transactionally bumps the exact credential epoch for user upserts', () => {
+    const upsert = source.match(/async function upsertUser[\s\S]*?logger\.info\(\{ userId: user\.id/)?.[0];
+    expect(upsert).toContain('withAuthorizationEpochBump([user.id]');
+  });
+
+  it('makes credential deletion and epoch disappearance one transaction', () => {
+    const deletion = source.match(/async function deleteUser[\s\S]*?logger\.info\(\{ userId \}/)?.[0];
+    expect(deletion).toContain('withAuthorizationEpochBump([userId]');
+    expect(deletion).toContain('DELETE FROM users');
+  });
 });

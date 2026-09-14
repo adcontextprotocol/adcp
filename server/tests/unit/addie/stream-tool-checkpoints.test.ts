@@ -82,6 +82,32 @@ describe('stream tool checkpoints', () => {
     expect(checkpoint.tool_calls).toEqual([expect.objectContaining({ result_status: 'ok' })]);
   });
 
+  it('persists and leaves retryable an executor-proven non-dispatch', async () => {
+    const checkpoint = buildToolResultCheckpoint({
+      threadId: 'thread-1',
+      execution: {
+        ...execution,
+        is_error: true,
+        dispatch_status: 'not_dispatched',
+        normalized_result: { status: 'recoverable_error', user_summary: 'Try again.', source: 'structured' },
+      },
+      requestedModel: 'claude-sonnet-5',
+    });
+    expect(checkpoint.tool_calls).toEqual([expect.objectContaining({
+      dispatch_status: 'not_dispatched',
+      result_status: 'recoverable_error',
+    })]);
+
+    const delegate = vi.fn().mockReturnValue({ allowed: true });
+    const policy = blockCheckpointedToolReplays(checkpoint.tool_calls ?? [], delegate)!;
+    expect(await policy({
+      toolName: execution.tool_name,
+      input: execution.parameters,
+      executionMode: 'production',
+    })).toEqual({ allowed: true });
+    expect(delegate).toHaveBeenCalledOnce();
+  });
+
   it('preserves a typed GitHub receipt for the same client-request retry', () => {
     const checkpoint = buildToolResultCheckpoint({
       threadId: 'thread-1',

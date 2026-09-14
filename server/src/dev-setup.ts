@@ -2,6 +2,7 @@ import { createLogger } from "./logger.js";
 import { getPool } from "./db/client.js";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { DEV_USERS } from "./middleware/auth.js";
+import { withAuthorizationEpochBump } from './db/authorization-epoch-db.js';
 
 const logger = createLogger("dev-setup");
 
@@ -261,7 +262,6 @@ async function seedDevUsers(): Promise<void> {
 }
 
 async function seedDevMemberships(): Promise<void> {
-  const pool = getPool();
   const memberships = [
     // Admin user in their default org
     { userId: 'user_dev_admin_001', orgId: 'org_dev_company_001', membershipId: 'mem_dev_admin_001', email: 'admin@test.local', firstName: 'Admin', lastName: 'Tester', role: 'owner' },
@@ -278,12 +278,12 @@ async function seedDevMemberships(): Promise<void> {
 
   for (const m of memberships) {
     try {
-      await pool.query(
+      await withAuthorizationEpochBump([m.userId], (client) => client.query(
         `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, seat_type)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'contributor')
          ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
         [m.userId, m.orgId, m.membershipId, m.email, m.firstName, m.lastName, m.role]
-      );
+      ));
     } catch (error) {
       logger.debug({ userId: m.userId, orgId: m.orgId }, 'Dev membership seed skipped');
     }

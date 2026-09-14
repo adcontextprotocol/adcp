@@ -205,7 +205,8 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
+vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/addie/mcp/admin-tools.js')>(),
   isWebUserAAOAdmin: vi.fn().mockImplementation(() => Promise.resolve(mockState.isCallerAAOAdmin)),
 }));
 
@@ -232,8 +233,12 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
   }, 60000);
 
   afterAll(async () => {
+    await pool.query('DROP TRIGGER IF EXISTS reject_role_epoch_bump ON authorization_epochs');
+    await pool.query('DROP FUNCTION IF EXISTS reject_role_epoch_bump()');
     await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM authorization_epochs WHERE workos_user_id = ANY($1)', [[TARGET_MEMBER_USER_ID, TARGET_OWNER_USER_ID]]);
+    await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [[TARGET_MEMBER_USER_ID, TARGET_OWNER_USER_ID]]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await server?.stop();
     await closeDatabase();
@@ -254,6 +259,18 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
     );
     await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DROP TRIGGER IF EXISTS reject_role_epoch_bump ON authorization_epochs');
+    await pool.query('DROP FUNCTION IF EXISTS reject_role_epoch_bump()');
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email)
+       VALUES ($1, 'target-member@example.com'), ($2, 'target-owner@example.com')
+       ON CONFLICT (workos_user_id) DO UPDATE SET email = EXCLUDED.email`,
+      [TARGET_MEMBER_USER_ID, TARGET_OWNER_USER_ID],
+    );
+    await pool.query(
+      'DELETE FROM authorization_epochs WHERE workos_user_id = ANY($1)',
+      [[TARGET_MEMBER_USER_ID, TARGET_OWNER_USER_ID]],
+    );
 
     // Seat the target member and target owner in the local cache so Path 3 fires.
     await pool.query(
@@ -422,6 +439,11 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
     it('admin can demote another admin to member', async () => {
       mockState.callerRole = 'admin';
       mockState.targetMemberCurrentRole = 'admin';
+      await pool.query(
+        `UPDATE organization_memberships SET role = 'admin'
+         WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [TARGET_MEMBER_USER_ID, TEST_ORG_ID],
+      );
 
       const response = await request(app)
         .patch(`/api/organizations/${TEST_ORG_ID}/members/${TARGET_MEMBERSHIP_ID}`)
@@ -429,6 +451,60 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      await expect(pool.query(
+        `SELECT role FROM organization_memberships
+         WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [TARGET_MEMBER_USER_ID, TEST_ORG_ID],
+      )).resolves.toMatchObject({ rows: [{ role: 'member' }] });
+      await expect(pool.query(
+        'SELECT epoch::text FROM authorization_epochs WHERE workos_user_id = $1',
+        [TARGET_MEMBER_USER_ID],
+      )).resolves.toMatchObject({ rows: [{ epoch: '1' }] });
+    });
+
+    it('rolls back the local role when its exact epoch bump fails', async () => {
+      mockState.callerRole = 'admin';
+      mockState.targetMemberCurrentRole = 'admin';
+      await pool.query(
+        `UPDATE organization_memberships SET role = 'admin'
+         WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [TARGET_MEMBER_USER_ID, TEST_ORG_ID],
+      );
+      await pool.query(`
+        CREATE FUNCTION reject_role_epoch_bump() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.workos_user_id = '${TARGET_MEMBER_USER_ID}' THEN
+            RAISE EXCEPTION 'epoch bump unavailable';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      await pool.query(`
+        CREATE TRIGGER reject_role_epoch_bump
+        BEFORE INSERT OR UPDATE ON authorization_epochs
+        FOR EACH ROW EXECUTE FUNCTION reject_role_epoch_bump()
+      `);
+
+      try {
+        await request(app)
+          .patch(`/api/organizations/${TEST_ORG_ID}/members/${TARGET_MEMBERSHIP_ID}`)
+          .send({ role: 'member' })
+          .expect(500);
+      } finally {
+        await pool.query('DROP TRIGGER IF EXISTS reject_role_epoch_bump ON authorization_epochs');
+        await pool.query('DROP FUNCTION IF EXISTS reject_role_epoch_bump()');
+      }
+
+      await expect(pool.query(
+        `SELECT role FROM organization_memberships
+         WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+        [TARGET_MEMBER_USER_ID, TEST_ORG_ID],
+      )).resolves.toMatchObject({ rows: [{ role: 'admin' }] });
+      await expect(pool.query(
+        'SELECT epoch FROM authorization_epochs WHERE workos_user_id = $1',
+        [TARGET_MEMBER_USER_ID],
+      )).resolves.toMatchObject({ rowCount: 0 });
     });
   });
 

@@ -54,6 +54,7 @@ import {
   resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
 import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
+import { bumpAuthorizationEpochs, withAuthorizationEpochBump } from '../db/authorization-epoch-db.js';
 
 const orgDb = new OrganizationDatabase();
 
@@ -444,7 +445,7 @@ async function upsertUser(user: UserData): Promise<void> {
     pool, user.id, user.first_name, user.last_name,
   );
 
-  await pool.query(
+  await withAuthorizationEpochBump([user.id], (client) => client.query(
     `INSERT INTO users (
       workos_user_id,
       email,
@@ -472,7 +473,7 @@ async function upsertUser(user: UserData): Promise<void> {
       user.created_at,
       user.updated_at,
     ]
-  );
+  ));
 
   // Close the user.created vs organization_membership.created race: if a
   // membership webhook fired first, its backfill UPDATE was a no-op because
@@ -502,10 +503,10 @@ async function upsertUser(user: UserData): Promise<void> {
 async function deleteUser(userId: string): Promise<void> {
   const pool = getPool();
 
-  await pool.query(
+  await withAuthorizationEpochBump([userId], (client) => client.query(
     `DELETE FROM users WHERE workos_user_id = $1`,
     [userId]
-  );
+  ));
 
   logger.info({ userId }, 'Deleted user');
 }
@@ -551,12 +552,10 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
  * Delete all memberships for a user
  */
 async function deleteUserMemberships(userId: string): Promise<void> {
-  const pool = getPool();
-
-  const result = await pool.query(
+  const result = await withAuthorizationEpochBump([userId], (client) => client.query(
     `DELETE FROM organization_memberships WHERE workos_user_id = $1`,
     [userId]
-  );
+  ));
 
   logger.info({
     userId,
@@ -1426,7 +1425,7 @@ export async function backfillUsers(): Promise<{
       processedUserIds.add(user.id);
 
       try {
-        await pool.query(
+        await withAuthorizationEpochBump([user.id], (client) => client.query(
           `INSERT INTO users (
             workos_user_id, email, first_name, last_name,
             email_verified, workos_created_at, workos_updated_at,
@@ -1441,7 +1440,7 @@ export async function backfillUsers(): Promise<{
             updated_at = NOW()`,
           [user.id, user.email, user.firstName, user.lastName,
            user.emailVerified, user.createdAt, user.updatedAt]
-        );
+        ));
         result.usersCreated++;
       } catch (userError) {
         logger.warn({ error: userError, userId: user.id }, 'Backfill: failed to upsert user');
@@ -1549,6 +1548,7 @@ export async function backfillUsers(): Promise<{
             try {
               await client.query('BEGIN');
               await client.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [row.workos_user_id]);
+              await bumpAuthorizationEpochs(client, [row.workos_user_id]);
               await client.query(`DELETE FROM users WHERE workos_user_id = $1`, [row.workos_user_id]);
               await client.query('COMMIT');
               result.usersRemoved++;

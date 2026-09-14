@@ -347,6 +347,45 @@ describe('Addie provider delivery runtime', () => {
     }));
   });
 
+  it('captures mutation authority from the final filtered tool assembly', async () => {
+    mocks.createMessage.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'Prepared answer.' }],
+      usage: { input_tokens: 12, output_tokens: 4 },
+    });
+    const createIssue = {
+      name: 'create_github_issue',
+      description: 'Create an issue',
+      input_schema: { type: 'object' as const, properties: {} },
+    };
+    const requestTools = {
+      tools: [...githubIssueTools.tools, createIssue],
+      handlers: new Map([
+        ...githubIssueTools.handlers,
+        ['create_github_issue', vi.fn().mockResolvedValue('{}')],
+      ]),
+    };
+    const captureSideEffectAuthority = vi.fn().mockResolvedValue(vi.fn());
+    const client = new AddieClaudeClient('unused', AddieModelConfig.chat);
+
+    await client.processMessage('read only', [], requestTools, undefined, {
+      uncapped: true,
+      allowedToolNames: ['get_github_issue'],
+      captureSideEffectAuthority,
+    });
+    expect(captureSideEffectAuthority).not.toHaveBeenCalled();
+
+    await client.processMessage('create it', [], requestTools, undefined, {
+      uncapped: true,
+      allowedToolNames: ['create_github_issue'],
+      captureSideEffectAuthority,
+    });
+    expect(captureSideEffectAuthority).toHaveBeenCalledOnce();
+    expect(captureSideEffectAuthority).toHaveBeenCalledWith({
+      mutationToolNames: ['create_github_issue'],
+    });
+  });
+
   it('does not change models after any streamed delta was received', async () => {
     mocks.streamMessage.mockReturnValue(makeThrowingStream(exhaustedError(), true));
 

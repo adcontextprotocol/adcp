@@ -18,6 +18,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import {
   bumpAuthorizationEpochs,
   getAuthorizationFingerprint,
+  withAuthorizationEpochBump,
 } from '../../src/db/authorization-epoch-db.js';
 import { mergeUsers } from '../../src/db/user-merge-db.js';
 import { promoteSecondaryIfPrimaryDeleted } from '../../src/db/identity-db.js';
@@ -72,6 +73,57 @@ describe('Authorization epoch (migration 565)', () => {
 
     await bumpAuthorizationEpochs(pool, [userId]);
     expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:2`);
+  });
+
+  it('commits a credential email refresh and its epoch bump atomically', async () => {
+    const userId = await insertUser('email_refresh');
+
+    await withAuthorizationEpochBump([userId], (client) => client.query(
+      `UPDATE users SET email = $2, updated_at = NOW() WHERE workos_user_id = $1`,
+      [userId, 'refreshed@authz-epoch.test'],
+    ));
+
+    const user = await pool.query<{ email: string }>(
+      `SELECT email FROM users WHERE workos_user_id = $1`,
+      [userId],
+    );
+    expect(user.rows[0]?.email).toBe('refreshed@authz-epoch.test');
+    expect(await getAuthorizationFingerprint([userId])).toBe(`${userId}:1`);
+  });
+
+  it('rolls back a credential email refresh when its epoch bump fails', async () => {
+    const userId = await insertUser('email_refresh_rollback');
+    const functionName = 'reject_credential_email_epoch_bump';
+    try {
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION ${functionName}() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.workos_user_id = '${userId}' THEN
+            RAISE EXCEPTION 'epoch bump unavailable';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER ${functionName}
+          BEFORE INSERT OR UPDATE ON authorization_epochs
+          FOR EACH ROW EXECUTE FUNCTION ${functionName}();
+      `);
+
+      await expect(withAuthorizationEpochBump([userId], (client) => client.query(
+        `UPDATE users SET email = $2, updated_at = NOW() WHERE workos_user_id = $1`,
+        [userId, 'must-rollback@authz-epoch.test'],
+      ))).rejects.toThrow('epoch bump unavailable');
+
+      const user = await pool.query<{ email: string }>(
+        `SELECT email FROM users WHERE workos_user_id = $1`,
+        [userId],
+      );
+      expect(user.rows[0]?.email).toBe('email_refresh_rollback@authz-epoch.test');
+      expect(await getAuthorizationFingerprint([userId])).toBe('');
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${functionName} ON authorization_epochs`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`);
+    }
   });
 
   it('ignores credentials with no users row instead of failing the transaction', async () => {

@@ -72,6 +72,8 @@ export interface ToolExecution {
   duration_ms: number;
   sequence: number;
   blocked_by_policy?: true;
+  /** Proves a durable mutation reservation was followed by no handler dispatch. */
+  dispatch_status?: 'not_dispatched';
   normalized_result?: ToolResultPresentation;
   /** Present only when the application handler produced a verified GitHub receipt. */
   github_issue_receipt?: GithubIssueCreationReceipt;
@@ -96,6 +98,18 @@ export interface AddieToolExecutorOptions {
     toolName: string;
     parameters: Record<string, unknown>;
   }) => void | Promise<void>;
+  /**
+   * Revalidates request-time exact-credential authority immediately before a
+   * live mutation reservation/dispatch boundary. Unavailable checks are
+   * returned as recoverable failures; no reservation or handler runs.
+   */
+  revalidateSideEffectAuthority?: (request: {
+    toolName: string;
+    parameters: Record<string, unknown>;
+  }) => Promise<{ allowed: true } | {
+    allowed: false;
+    status: 'access_denied' | 'recoverable_error';
+  }>;
 }
 
 export interface AddieToolCallResult {
@@ -719,6 +733,41 @@ export function createAddieToolExecutor(
     }
 
     if (sideEffectKey) {
+      const revalidateMutationAuthority = async (
+        phase: 'before_reservation' | 'after_reservation',
+      ): Promise<AddieToolCallResult | null> => {
+        if (!operationalExecution || !options.revalidateSideEffectAuthority) return null;
+        let authority: Awaited<ReturnType<NonNullable<typeof options.revalidateSideEffectAuthority>>>;
+        try {
+          authority = await options.revalidateSideEffectAuthority({
+            toolName: call.name,
+            parameters: call.input,
+          });
+        } catch {
+          authority = { allowed: false, status: 'recoverable_error' };
+        }
+        if (!authority.allowed) {
+          const recoverable = authority.status === 'recoverable_error';
+          const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+            status: authority.status,
+            model_context: recoverable
+              ? 'Error: Authorization is temporarily unavailable. The external action was not run; please try again.'
+              : 'Error: Credential authority changed before the external action could run.',
+            user_summary: recoverable
+              ? 'Authorization is temporarily unavailable. The action was not run; please try again.'
+              : 'Your authorization changed before the action could run. The action was not run.',
+          }));
+          logger.warn(
+            { event: 'addie_mutation_authority_rejected', toolName: call.name, status: authority.status, phase },
+            'Addie: Refusing mutation after exact-credential authority revalidation',
+          );
+          return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+        }
+        return null;
+      };
+
+      const preReservationRejection = await revalidateMutationAuthority('before_reservation');
+      if (preReservationRejection) return preReservationRejection;
       if (operationalExecution && !options.reserveSideEffect) {
         const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
           status: 'error',
@@ -744,6 +793,16 @@ export function createAddieToolExecutor(
           'Addie: Refusing mutation after durable outcome reservation failure',
         );
         return failureResult(call, sequence, options.executionMode, normalized, 0, true);
+      }
+      // Reservation may block on storage. Re-prove authority after it settles,
+      // at the final boundary before handler entry, so a revocation committed
+      // during reservation cannot dispatch. Mark the ordinary result checkpoint
+      // as a proven non-dispatch so it settles the unknown-outcome reservation
+      // without falsely recording the mutation as successful.
+      const postReservationRejection = await revalidateMutationAuthority('after_reservation');
+      if (postReservationRejection) {
+        postReservationRejection.execution.dispatch_status = 'not_dispatched';
+        return postReservationRejection;
       }
       // Record before dispatch so a provider continuation or recovery never
       // resubmits an action whose handler outcome is ambiguous.

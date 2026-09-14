@@ -59,6 +59,7 @@ import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
 import { autoLinkByVerifiedDomain } from "./db/membership-db.js";
+import { withAuthorizationEpochBump as withCredentialEpochBump } from './db/authorization-epoch-db.js';
 import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
@@ -7755,7 +7756,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const { firstName, lastName } = await resolveUserNameWithFallbacks(
             pool, user.id, user.firstName, user.lastName,
           );
-          await pool.query(
+          await withCredentialEpochBump([user.id], (client) => client.query(
             `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
              ON CONFLICT (workos_user_id) DO UPDATE SET
@@ -7766,7 +7767,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                workos_updated_at = EXCLUDED.workos_updated_at,
                updated_at = NOW()`,
             [user.id, user.email, firstName, lastName, user.emailVerified, user.createdAt, user.updatedAt]
-          );
+          ));
         } catch (upsertError) {
           logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
         }
@@ -9247,12 +9248,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             }, 'User auto-added to organization via verified domain');
 
             // Mirror membership locally so it's visible immediately
-            const pool2 = getPool();
-            await pool2.query(`
+            await withCredentialEpochBump([user.id], (client) => client.query(`
               INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
               VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
               ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
-            `, [user.id, organization_id, user.email, roleSlug]);
+            `, [user.id, organization_id, user.email, roleSlug]));
 
             // Record audit log
             await orgDb.recordAuditLog({

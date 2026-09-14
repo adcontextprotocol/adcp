@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.hoisted(() => {
+  delete process.env.DEV_USER_EMAIL;
+  delete process.env.DEV_USER_ID;
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'sk_test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
   process.env.WORKOS_COOKIE_PASSWORD =

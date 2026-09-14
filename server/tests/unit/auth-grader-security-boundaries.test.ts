@@ -345,7 +345,7 @@ describe('hosted auth grader security boundaries', () => {
     const webSource = readFileSync(join(process.cwd(), 'server/src/routes/addie-chat.ts'), 'utf8');
     const slackSource = readFileSync(join(process.cwd(), 'server/src/addie/bolt-app.ts'), 'utf8');
 
-    expect(webSource).toContain('createAuthGraderToolHandlers(userId)');
+    expect(webSource).toContain('createAuthGraderToolHandlers(credentialUserId)');
     expect(slackSource).toContain(
       'memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`',
     );
