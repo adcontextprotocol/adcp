@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../types.js';
 
 interface McpEnvelope {
   result?: {
@@ -30,36 +35,17 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<McpEnvelope> {
-  const headers = {
-    accept: 'application/json',
-    authorization: `Bearer ${bearer}`,
-    'content-type': 'application/json',
-  };
-  await fetch(baseUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: id * 100,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-03-26',
-        clientInfo: { name: 'account-change-transport-test', version: '1' },
-        capabilities: {},
-      },
-    }),
-  });
-  const response = await fetch(baseUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id,
-      method: 'tools/call',
-      params: { name, arguments: args },
-    }),
-  });
-  return JSON.parse(await response.text()) as McpEnvelope;
+  const client = new Client({ name: `account-change-transport-test-${id}`, version: '1' });
+  try {
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(baseUrl), {
+        requestInit: { headers: { authorization: `Bearer ${bearer}` } },
+      }),
+    );
+    return { result: CallToolResultSchema.parse(await client.callTool({ name, arguments: args })) };
+  } finally {
+    await client.close();
+  }
 }
 
 describe('v6 /sales/mcp account change cursor recovery', () => {
@@ -147,5 +133,65 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
       cursor: replacement?.cursor,
     })).result?.structuredContent;
     expect(resumed).toMatchObject({ status: 'completed', changes: [], has_more: false });
+  }, 60_000);
+
+  it('repairs the shared creative to the status recorded by a separate controller request', async () => {
+    const bearer = 'account-change-transport-token';
+    const account = { account_id: 'acc_luma_shared' };
+    const adcp_version = TRAINING_AGENT_CURRENT_ADCP_VERSION;
+    const creativeId = randomUUID();
+    const capabilities = (await callTool(server.baseUrl, bearer, 20, 'get_adcp_capabilities', { adcp_version })).result?.structuredContent;
+    expect(capabilities?.account?.change_feed?.supported).toBe(true);
+    expect(capabilities?.creative?.has_creative_library).toBe(true);
+    const initial = (await callTool(server.baseUrl, bearer, 21, 'list_account_changes', {
+      adcp_version, account, starting_position: 'latest',
+    })).result?.structuredContent;
+    expect(initial?.status, JSON.stringify(initial)).toBe('completed');
+    const seed = (await callTool(server.baseUrl, bearer, 22, 'comply_test_controller', {
+      adcp_version, account: { ...account, sandbox: true }, scenario: 'seed_creative',
+      params: {
+        creative_id: creativeId,
+        fixture: {
+          name: 'Shared account display baseline',
+          status: 'approved',
+          format_kind: 'image',
+          manifest: {
+            format_kind: 'image',
+            assets: {
+              image: {
+                asset_type: 'image',
+                url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-300x250.png',
+                width: 300,
+                height: 250,
+              },
+            },
+          },
+        },
+      },
+    })).result?.structuredContent;
+    expect(seed?.success).toBe(true);
+    const approved = (await callTool(server.baseUrl, bearer, 23, 'list_creatives', {
+      adcp_version, account, filters: { creative_ids: [creativeId] },
+    })).result?.structuredContent;
+    expect(approved?.creatives).toEqual([expect.objectContaining({ creative_id: creativeId, status: 'approved' })]);
+
+    // Each call uses a new HTTP client/request; the controller must update the
+    // shared snapshot even after session state has been serialized and read back.
+    const update = (await callTool(server.baseUrl, bearer, 24, 'comply_test_controller', {
+      adcp_version, account: { ...account, sandbox: true }, scenario: 'force_creative_status',
+      params: { creative_id: creativeId, status: 'rejected', rejection_reason: 'Connected platform rejected the creative.' },
+    })).result?.structuredContent;
+    expect(update).toMatchObject({ success: true, previous_state: 'approved', current_state: 'rejected' });
+    const feed = (await callTool(server.baseUrl, bearer, 25, 'list_account_changes', {
+      adcp_version, account, cursor: initial?.cursor,
+    })).result?.structuredContent;
+    expect(feed?.changes).toEqual([
+      expect.objectContaining({ action: 'created', resource: expect.objectContaining({ resource_id: creativeId }) }),
+      expect.objectContaining({ action: 'status_changed', resource: expect.objectContaining({ resource_id: creativeId }), repair: { task: 'list_creatives' } }),
+    ]);
+    const repaired = (await callTool(server.baseUrl, bearer, 26, 'list_creatives', {
+      adcp_version, account, filters: { creative_ids: [creativeId] },
+    })).result?.structuredContent;
+    expect(repaired?.creatives).toEqual([expect.objectContaining({ creative_id: creativeId, status: 'rejected' })]);
   }, 60_000);
 });

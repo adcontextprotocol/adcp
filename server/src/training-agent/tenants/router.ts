@@ -1030,6 +1030,8 @@ function projectTenantCapabilities(
         canonical_catalog_version: '3.1',
       };
       if (supportsAccountChangeFeed(servedVersion)) {
+        // Account change invalidations are repaired through this creative library.
+        structured.creative.has_creative_library = true;
         const account = structured.account && typeof structured.account === 'object'
           ? structured.account
           : {};
