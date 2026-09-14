@@ -4,6 +4,7 @@ import {
   selectRoutedWebTools,
 } from '../../../src/routes/addie-chat.js';
 import { getToolsForSets } from '../../../src/addie/tool-sets.js';
+import { resolveWebCertificationContext } from '../../../src/addie/web-certification-context.js';
 
 const tools: AddieTool[] = [
   { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object', properties: {} } },
@@ -60,6 +61,32 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
+  it.each([
+    ['learning', 'get_learner_progress', {}, ['checkpoint_teaching_progress', 'complete_certification_module']],
+    ['assessment', 'test_out_modules', { module_ids: ['A1', 'A2', 'A3'] }, ['test_out_modules']],
+  ] as const)('retains executable %s tools when follow-up routing drifts to knowledge', async (kind, name, input, required) => {
+    const context = resolveWebCertificationContext(
+      kind === 'learning' ? [{ module_id: 'A2B', status: 'in_progress', addie_thread_id: 'old-chat' }] : [],
+      [{ role: 'assistant', delivery_status: 'completed', tool_calls: [
+        { name, input, result: 'Handled result', is_error: false, result_status: 'ok' },
+      ] }], 'new-chat', 'thread-1',
+    );
+    const names = getToolsForSets([`certification_${kind}`, 'knowledge', 'illustrations'], false, false);
+    const selected = await selectRoutedWebTools({
+      message: 'Here are my answers', memberContext: null, threadId: 'thread-1', isAAOAdmin: false,
+      activeCertificationKind: context.kind, router: routerFor(['knowledge']),
+      requestTools: {
+        tools: required.map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
+        handlers: new Map(required.map(name => [name, vi.fn(async () => 'Saved')])),
+      },
+      globalToolNames: names.filter(name => !(required as readonly string[]).includes(name)),
+    });
+    expect(selected.allowedToolNames).toEqual(expect.arrayContaining([...required]));
+    expect([...selected.requestTools.handlers.keys()]).toEqual(expect.arrayContaining([...required]));
+    expect(selected.selectedToolSets).toContain(`certification_${kind}`);
+    expect(selected.allowedToolNames).not.toContain('resolve_escalation');
+  });
+
   it.each([
     ['admin_escalations', true, ['list_escalations', 'resolve_escalation']],
     ['agent_storyboards', false, ['recommend_storyboards', 'get_storyboard_detail', 'run_storyboard', 'run_storyboard_step']],

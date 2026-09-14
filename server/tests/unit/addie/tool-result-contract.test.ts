@@ -13,6 +13,30 @@ import {
 } from '../../../src/addie/tool-result-contract.js';
 
 describe('Addie tool result contract', () => {
+  it.each([
+    ['call_adcp_task', '**Task failed:** `get_products`\n\n**Error:** Invalid get_products request at buying_mode: Invalid input', 'error'],
+    ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
+    ['get_adcp_capabilities', '**Error:** Agent URL must use HTTPS protocol.', 'error'],
+    ['ask_about_adcp_task', '**Error:** question is required.', 'error'],
+    ['list_github_issues', 'GitHub rejected the request while trying to list issues (422).', 'invalid_input'],
+    ['get_github_issue', 'GitHub authentication is unavailable (403) while trying to read issue #123.', 'access_denied'],
+    ['list_github_issues', 'GitHub rate limit hit while trying to list issues. Retry after soon.', 'recoverable_error'],
+  ])('classifies the %s adapter failure as %s', (name, raw, status) => {
+    const result = normalizeToolResult(name, raw);
+    expect(result.status).toBe(status);
+    expect(isToolResultError(result.status)).toBe(true);
+    expect(result.model_context).toBe(raw);
+    expect(result.presentation.source).toBe('classified');
+  });
+
+  it.each([
+    ['call_adcp_task', '**Task:** `get_products`\n**Status:** Success\n\n**Task failed:** is quoted inside a successful response.'],
+    ['list_github_issues', '## GitHub Issues (1)\n\nGitHub rejected the request while trying to list issues (422).'],
+    ['get_doc', '**Error:** is a documented heading, not an adapter receipt.'],
+  ])('does not treat failure text inside successful %s content as a failure', (name, raw) => {
+    expect(normalizeToolResult(name, raw).status).toBe('ok');
+  });
+
   it.each(TOOL_RESULT_STATUSES)('preserves the %s status', (status) => {
     const normalized = normalizeToolResult('typed_tool', {
       status,
