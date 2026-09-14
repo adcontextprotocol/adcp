@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   checkPlatformBan: vi.fn(),
   invalidateMembershipCache: vi.fn(),
   resolveEffectiveMembership: vi.fn(),
-  getAdminWorkingGroupBySlug: vi.fn(),
+  getAdminWorkingGroupIdBySlug: vi.fn(),
   isAdminGroupMember: vi.fn(),
   poolQuery: vi.fn(),
   getWebConversations: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock('../../src/db/client.js', async (importOriginal) => ({
 
 vi.mock('../../src/db/working-group-db.js', () => ({
   WorkingGroupDatabase: class WorkingGroupDatabase {
-    getWorkingGroupBySlug = mocks.getAdminWorkingGroupBySlug;
+    getWorkingGroupIdBySlug = mocks.getAdminWorkingGroupIdBySlug;
     isMember = mocks.isAdminGroupMember;
   },
 }));
@@ -124,10 +124,7 @@ describe('Addie real global-admin boundary', () => {
     mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: true });
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
     mocks.checkPlatformBan.mockResolvedValue({ banned: false });
-    mocks.getAdminWorkingGroupBySlug.mockResolvedValue({
-      id: 'wg_aao_admin',
-      slug: 'aao-admin',
-    });
+    mocks.getAdminWorkingGroupIdBySlug.mockResolvedValue('wg_aao_admin');
     mocks.isAdminGroupMember.mockResolvedValue(true);
     mocks.poolQuery.mockImplementation((sql: string) => {
       if (sql.includes('FROM users')) {
@@ -252,7 +249,7 @@ describe('Addie real global-admin boundary', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ conversations: [], total: 0 });
-    expect(mocks.getAdminWorkingGroupBySlug).toHaveBeenCalledWith('aao-admin');
+    expect(mocks.getAdminWorkingGroupIdBySlug).toHaveBeenCalledWith('aao-admin');
     expect(mocks.isAdminGroupMember).toHaveBeenCalledWith(
       'wg_aao_admin',
       'user_sso_admin',

@@ -230,13 +230,13 @@ export async function resolveSlackUserAAOAdminAccess(
     return { status: "forbidden", reason: "unmapped" };
   }
 
-  let adminGroup: Awaited<ReturnType<WorkingGroupDatabase["getWorkingGroupBySlug"]>>;
+  let adminGroupId: Awaited<ReturnType<WorkingGroupDatabase["getWorkingGroupIdBySlug"]>>;
   try {
-    adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+    adminGroupId = await wgDb.getWorkingGroupIdBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
   } catch (error) {
     return { status: "unavailable", stage: "authority_group", cause: error };
   }
-  if (!adminGroup) {
+  if (!adminGroupId) {
     return {
       status: "unavailable",
       stage: "authority_group",
@@ -246,7 +246,7 @@ export async function resolveSlackUserAAOAdminAccess(
 
   let isAdmin: boolean;
   try {
-    isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
+    isAdmin = await wgDb.isMember(adminGroupId, mapping.workos_user_id);
   } catch (error) {
     return { status: "unavailable", stage: "membership", cause: error };
   }
@@ -255,7 +255,7 @@ export async function resolveSlackUserAAOAdminAccess(
     slackUserId,
     workosUserId: mapping.workos_user_id,
     isAdmin,
-    adminGroupId: adminGroup.id,
+    adminGroupId,
   }, "Admin status check result");
   return isAdmin
     ? { status: "authorized", workosUserId: mapping.workos_user_id }

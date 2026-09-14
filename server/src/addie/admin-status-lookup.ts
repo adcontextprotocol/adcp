@@ -54,12 +54,12 @@ export class AAOAdminLookupUnavailableError extends Error {
 /** Typed membership lookup used by the authenticated-principal boundary. */
 async function lookupWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
   try {
-    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
-    if (!adminGroup) {
+    const adminGroupId = await wgDb.getWorkingGroupIdBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+    if (!adminGroupId) {
       throw new Error('Platform administrator authority group is missing');
     }
 
-    const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
+    const isAdmin = await wgDb.isMember(adminGroupId, workosUserId);
     logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
     return isAdmin;
   } catch (error) {

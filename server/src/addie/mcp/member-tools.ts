@@ -40,7 +40,6 @@ import {
 } from '../../utils/basic-auth-credentials.js';
 export { normalizeBasicAuthForStorage } from '../../utils/basic-auth-credentials.js';
 import { createEscalation } from '../../db/escalation-db.js';
-import { SlackDatabase } from '../../db/slack-db.js';
 import {
   createAccountLinkCorrelation,
   type AccountLinkOriginInput,
@@ -138,7 +137,6 @@ import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import { resolvePrimaryOrganization } from '../../db/users-db.js';
-import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
 import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
@@ -322,8 +320,6 @@ const agentSnapshotDb = new AgentSnapshotDatabase();
 const adagentsValidator = new AgentValidator();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
-const wgDb = new WorkingGroupDatabase();
-const slackDb = new SlackDatabase();
 const brandDb = new BrandDatabase();
 
 /**
