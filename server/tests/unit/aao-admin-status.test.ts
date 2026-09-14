@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  getWorkingGroupBySlug: vi.fn(),
+  getWorkingGroupIdBySlug: vi.fn(),
   isMember: vi.fn(),
   getBySlackUserId: vi.fn(),
 }));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
   WorkingGroupDatabase: class WorkingGroupDatabase {
-    getWorkingGroupBySlug = mocks.getWorkingGroupBySlug;
+    getWorkingGroupIdBySlug = mocks.getWorkingGroupIdBySlug;
     isMember = mocks.isMember;
   },
 }));
@@ -34,7 +34,7 @@ describe('site-admin access decisions', () => {
     vi.clearAllMocks();
     invalidateAllAdminStatusCaches();
     process.env.ADMIN_EMAILS = ' break-glass@example.test , other@example.test ';
-    mocks.getWorkingGroupBySlug.mockResolvedValue({ id: 'wg_aao_admin' });
+    mocks.getWorkingGroupIdBySlug.mockResolvedValue('wg_aao_admin');
     mocks.isMember.mockResolvedValue(true);
     mocks.getBySlackUserId.mockResolvedValue({ workos_user_id: 'user_admin' });
   });
@@ -97,15 +97,15 @@ describe('site-admin access decisions', () => {
     await expect(slackAdmin.isSlackUserAAOAdmin('slack_admin')).rejects.toMatchObject({
       code: 'admin_authorization_unavailable', statusCode: 503,
     });
-    expect(mocks.getWorkingGroupBySlug).not.toHaveBeenCalled();
+    expect(mocks.getWorkingGroupIdBySlug).not.toHaveBeenCalled();
   });
 
   it.each([
     ['missing', null],
     ['unavailable', new Error('authority group database unavailable')],
   ] as const)('reports a %s Slack authority group as retryable', async (_label, failure) => {
-    if (failure instanceof Error) mocks.getWorkingGroupBySlug.mockRejectedValue(failure);
-    else mocks.getWorkingGroupBySlug.mockResolvedValue(failure);
+    if (failure instanceof Error) mocks.getWorkingGroupIdBySlug.mockRejectedValue(failure);
+    else mocks.getWorkingGroupIdBySlug.mockResolvedValue(failure);
     const slackAdmin = await import('../../src/addie/mcp/admin-tools.js');
 
     await expect(slackAdmin.resolveSlackUserAAOAdminAccess('slack_admin')).resolves.toMatchObject({
@@ -174,7 +174,7 @@ describe('site-admin access decisions', () => {
   });
 
   it('treats a missing authority group as unavailable', async () => {
-    mocks.getWorkingGroupBySlug.mockResolvedValue(null);
+    mocks.getWorkingGroupIdBySlug.mockResolvedValue(null);
     await expect(resolveWebUserAAOAdminAccess({ id: 'user_admin' })).rejects.toBeInstanceOf(AAOAdminLookupUnavailableError);
     expect(mocks.isMember).not.toHaveBeenCalled();
   });
