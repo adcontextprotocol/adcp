@@ -8,8 +8,9 @@ description: "Tell a seller whether expected reporting was received, omitted, mi
 `sync_reporting_status` is an additive, opt-in Reliable Reporting extension
 published in `3.2.0-rc.2` and hardened in `3.2.0-rc.3`. RC.1 implementations do
 not expose it. Sellers that implement it advertise `consumer_status_task`; the
-active breaking-change notice makes it required Core only in the next eligible
-minor after October 24, 2026.
+task stays opt-in until the active breaking-change notice window closes on
+October 24, 2026, and becomes required Core only in the next eligible minor
+after that date.
 </Warning>
 
 `sync_reporting_status` closes the operational loop between what a seller says

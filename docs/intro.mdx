@@ -9,11 +9,13 @@ description: "AdCP is an open agentic advertising standard. Follow Alex's team f
 <img src="/images/walkthrough/adcp-01-fragmentation.png" alt="Alex stands arms crossed in a war room of mismatched screens and tangled cables, surveying the chaos — her team hunched over laptops in the background" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
 <Info>
-AdCP 3.2 is in release candidate. RC.1 is the current signed protocol bundle;
+AdCP 3.2 is in release candidate. RC.3 is the current signed protocol bundle;
 it combines the proposal-to-operation lifecycle, an experimental
-authenticated-principal connection layer, and experimental Reliable Reporting
-1.0. The TypeScript, Python, and Go SDKs now publish exact RC.1 pairings for
-staging integration tests. Keep production traffic on 3.1 until 3.2 reaches GA.
+authenticated-principal connection layer, a hardened experimental Reliable
+Reporting consumer-status loop, and shared MediaBuy-level frequency caps. No
+SDK embeds RC.3 yet — test it from its signed bundle, or run SDK-backed
+staging tests against the checkpoint your SDK embeds. Keep production traffic
+on 3.1 until 3.2 reaches GA.
 See
 [what's new in 3.2](/docs/reference/whats-new-in-3-2) and the
 [prerelease program](/docs/reference/3-2-beta) before testing.
