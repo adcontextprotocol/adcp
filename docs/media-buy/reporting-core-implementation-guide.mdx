@@ -9,10 +9,12 @@ Reliable Reporting is experimental in 3.2. `reporting.core` is its required
 tier; `managed_delivery` and `reconciled_billing` are separately advertised
 optional tiers.
 
-The consumer-status loop is additive and opt-in in current source. Sellers
-advertise `consumer_status_task` only when implemented. The active notice makes
-it required Core in the next eligible minor after October 24, 2026; RC.1 and the
-current public training seller remain unchanged.
+The consumer-status loop is additive and opt-in. It is published in
+`3.2.0-rc.2` and hardened in `3.2.0-rc.3`, and it stays opt-in until the notice
+window closes on October 24, 2026. Sellers advertise `consumer_status_task`
+only when implemented. The active notice makes it required Core in the next
+eligible minor after that date; RC.1 and the current public training seller
+remain unchanged.
 </Warning>
 
 Every buyer eventually asks one question: **"do I have definitive reporting
@@ -299,7 +301,8 @@ digest is intentionally retained).
   received.
 
 Reliable Reporting 1.0 is published in the RC wire bundles; the consumer-status
-loop lands in `3.2.0-rc.2`. The public training sales agent serves whichever
+loop is published in `3.2.0-rc.2` and hardened in `3.2.0-rc.3`. The public
+training sales agent serves whichever
 prerelease contract its deployment advertises, which may trail the newest
 published bundle. Read the advertised version from
 `get_adcp_capabilities` and put that exact negotiated value on every

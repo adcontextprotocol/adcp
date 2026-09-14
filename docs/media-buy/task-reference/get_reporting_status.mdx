@@ -6,11 +6,12 @@ description: "Check Reliable Reporting health, enumerate expected periods and re
 
 <Warning>
 **Reliable Reporting 1.0 is published through `3.2.0-rc.3` and remains
-experimental.** RC.2 publishes the opt-in consumer-status sync and readback;
-RC.3 adds its hardening. Sellers implementing that extension advertise
-`consumer_status_task`; it becomes required Core only in the next eligible minor
-after the notice window. Sellers declare `media_buy.reporting_delivery` in
-`get_adcp_capabilities.experimental_features`.
+experimental.** RC.2 publishes the opt-in consumer-status sync and readback and
+RC.3 hardens it. Sellers implementing that extension advertise
+`consumer_status_task`; it stays opt-in until the notice window closes on
+October 24, 2026, and becomes required Core only in the next eligible minor
+after that date. Sellers declare
+`media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
 </Warning>
 
 `get_reporting_status` is the authoritative status surface for AdCP 3.2
