@@ -21,11 +21,13 @@ const buildTrackCoverageGapNote = context.buildTrackCoverageGapNote as (
 
 const blockerHelperStart = dashboardSource.indexOf('function pickStoryboardBlockingReason');
 const blockerHelperEnd = dashboardSource.indexOf('function finiteCount', blockerHelperStart);
+const gradingProfileStart = dashboardSource.indexOf('function renderGradingProfileComparisons');
 const verificationPanelStart = dashboardSource.indexOf('function renderVerificationPanel');
 const verificationPanelEnd = dashboardSource.indexOf('function timeAgo', verificationPanelStart);
 if (
   blockerHelperStart < 0 ||
   blockerHelperEnd < 0 ||
+  gradingProfileStart < 0 ||
   verificationPanelStart < 0 ||
   verificationPanelEnd < 0
 ) {
@@ -35,8 +37,10 @@ if (
 const verificationContext = vm.createContext({
   buildNoticesSectionHtml: () => '',
   escapeHtml: (value: unknown) => String(value),
+  timeAgo: () => '2h ago',
 });
 vm.runInContext(dashboardSource.slice(blockerHelperStart, blockerHelperEnd), verificationContext);
+vm.runInContext(dashboardSource.slice(gradingProfileStart, verificationPanelStart), verificationContext);
 vm.runInContext(dashboardSource.slice(verificationPanelStart, verificationPanelEnd), verificationContext);
 
 type StoryboardStatus = { status?: string | null };
@@ -47,6 +51,9 @@ const renderVerificationPanel = verificationContext.renderVerificationPanel as (
   complianceStatus: Record<string, unknown> | null,
   agentUrl: string,
   hasAuth: boolean,
+) => string;
+const renderGradingProfileComparisons = verificationContext.renderGradingProfileComparisons as (
+  complianceStatus: Record<string, unknown> | null,
 ) => string;
 
 describe('dashboard track coverage-gap guidance', () => {
@@ -243,5 +250,69 @@ describe('dashboard verification blocker guidance', () => {
     expect(html).toContain('<code>get_adcp_capabilities</code>');
     expect(html).toContain('Badge issuance also requires an API-access membership tier');
     expect(html).not.toContain('before it can earn AAO Verified (Spec)');
+  });
+});
+
+describe('dashboard grading profile comparison', () => {
+  const currentComparison = {
+    scope: 'agent',
+    availability: 'current',
+    selected_profile: 'legacy',
+    compliance_bundle_version: '3.1.20',
+    assessed_at: '2026-09-15T10:00:00.000Z',
+    source_tested_at: '2026-09-15T09:59:00.000Z',
+    source_run_id: '11111111-1111-4111-8111-111111111111',
+    evaluator_policy_version: 'verification-profiles-v3',
+    requested_compliance_target: '3.1',
+    profiles: {
+      legacy: { available: true, status: 'passing', observed_status: 'passing', explanation: 'Legacy passed.' },
+      spec: { available: true, status: 'partial', observed_status: 'partial', explanation: 'One bundle is incomplete.' },
+      sandbox: { available: true, status: 'passing', observed_status: 'passing', explanation: 'Observable behavior passed.' },
+    },
+    evidence: {
+      selected_storyboard_count: 12,
+      observed_failure_count: 0,
+      flat_failure_count: 0,
+      controller_gap_phase_count: 2,
+      sandbox_unresolved_bundle_count: 0,
+    },
+  };
+
+  it('renders agent-wide scope, all profiles, and source provenance', () => {
+    const html = renderGradingProfileComparisons({ grading_profile_comparisons: [currentComparison] });
+    expect(html).toContain('Agent-wide grading preview · 3.1.20');
+    expect(html).toContain('Legacy · Current');
+    expect(html).toContain('One bundle is incomplete.');
+    expect(html).toContain('11111111-1111-4111-8111-111111111111');
+    expect(html).toContain('verification-profiles-v3');
+    expect(html).toContain('0 run-level failure records');
+    expect(html).toContain('not an exact badge-role grade');
+  });
+
+  it('never renders a stale observed pass as Passed', () => {
+    const stale = structuredClone(currentComparison);
+    stale.availability = 'stale';
+    stale.profiles.legacy = {
+      available: false,
+      status: null,
+      observed_status: 'passing',
+      explanation: 'The latest comparison is stale.',
+    };
+    const html = renderGradingProfileComparisons({ grading_profile_comparisons: [stale] });
+    expect(html).toContain('Unavailable');
+    expect(html).toContain('Historical observation: passing');
+    expect(html).not.toContain('>Passed<');
+  });
+
+  it('renders missing evidence as explicitly pending', () => {
+    const html = renderGradingProfileComparisons({
+      grading_profile_comparisons: [{
+        availability: 'pending',
+        profiles: null,
+        unavailable_reason: 'No current-policy comparison is available yet.',
+      }],
+    });
+    expect(html).toContain('Agent-wide grading preview');
+    expect(html).toContain('No current-policy comparison is available yet.');
   });
 });

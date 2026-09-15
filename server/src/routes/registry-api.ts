@@ -55,6 +55,11 @@ import {
   selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
 } from "../addie/services/compliance-testing.js";
+import { getLatestVerificationProfileAssessment } from "../db/verification-profile-shadow-db.js";
+import {
+  sandboxProfileAssessmentReasons,
+  VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
+} from "../services/verification-profile-shadow.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from "../services/badge-issuance.js";
@@ -3560,7 +3565,7 @@ registry.registerPath({
   operationId: "getAgentCompliance",
   summary: "Get agent compliance detail",
   description:
-    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, and timestamps.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
+    "Returns detailed compliance status for a single agent, including track-level results, storyboard counts, timestamps, and an owner-only read-only agent-wide grading-profile comparison. The comparison is not an exact badge-role grade. Reading it never contacts the agent or changes public badge state.\n\nIf the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -6949,6 +6954,141 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         serializeStoryboardStatus(s, { includeDiagnostics }),
       );
 
+      // Phase 1 of owner-selectable grading profiles is comparison-only.
+      // Reuse the same heartbeat evidence and keep Legacy authoritative; no
+      // read on this path contacts the agent or changes public trust state.
+      let gradingProfileComparisons: Array<Record<string, unknown>> = [];
+      if (includeDiagnostics) {
+        try {
+          const assessment = await getLatestVerificationProfileAssessment(
+            agentUrl,
+            VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
+          );
+          if (!assessment) {
+            gradingProfileComparisons = [{
+              scope: 'agent',
+              availability: 'pending',
+              unavailable_reason: 'No current-policy comparison is available yet. The next completed heartbeat will create one.',
+              selected_profile: 'legacy',
+              selection_enabled: false,
+              compliance_bundle_version: status.adcp_version ?? null,
+              profiles: null,
+            }];
+          } else {
+            const ageMs = Date.now() - new Date(assessment.evaluated_at).getTime();
+            const staleAfterMs = Math.max(24, (metadata?.check_interval_hours ?? 12) * 2) * 60 * 60 * 1000;
+            const assessedAt = new Date(assessment.evaluated_at);
+            const sourceTestedAt = new Date(assessment.source_tested_at);
+            const sourceIsLatest = status.last_run_id !== null
+              && assessment.source_run_id === status.last_run_id;
+            const datesInvalid = !Number.isFinite(ageMs)
+              || Number.isNaN(assessedAt.getTime())
+              || Number.isNaN(sourceTestedAt.getTime());
+            const stale = !sourceIsLatest || datesInvalid || ageMs > staleAfterMs;
+            const specReasons = [
+              assessment.observed_failure_count > 0
+                ? `${assessment.observed_failure_count} observed failure${assessment.observed_failure_count === 1 ? '' : 's'}`
+                : null,
+              assessment.failing_bundle_count > 0
+                ? `${assessment.failing_bundle_count} failing evidence bundle${assessment.failing_bundle_count === 1 ? '' : 's'}`
+                : null,
+              assessment.flat_failure_count > 0
+                ? `${assessment.flat_failure_count} run-level failure record${assessment.flat_failure_count === 1 ? '' : 's'}`
+                : null,
+              assessment.incomplete_bundle_count > 0
+                ? `${assessment.incomplete_bundle_count} incomplete evidence bundle${assessment.incomplete_bundle_count === 1 ? '' : 's'}`
+                : null,
+              assessment.controller_gap_phase_count > 0
+                ? `${assessment.controller_gap_phase_count} controller-gap phase${assessment.controller_gap_phase_count === 1 ? '' : 's'}`
+                : null,
+              assessment.unattributed_failure_count > 0
+                ? `${assessment.unattributed_failure_count} unattributed failure${assessment.unattributed_failure_count === 1 ? '' : 's'}`
+                : null,
+              !assessment.bundle_evidence_present ? 'bundle evidence is missing' : null,
+              !assessment.run_complete ? 'the source run is incomplete' : null,
+            ].filter((reason): reason is string => reason !== null);
+            const sandboxReasons = sandboxProfileAssessmentReasons(assessment);
+            const staleExplanation = !sourceIsLatest
+              ? 'A newer authoritative compliance run exists without a matching comparison. This older result is historical evidence and cannot count as a pass.'
+              : datesInvalid
+                ? 'The comparison has invalid freshness timestamps, so its observed result is historical evidence and cannot count as a pass.'
+                : 'The latest comparison is stale, so its observed result is shown only as historical evidence and cannot count as a pass.';
+            const outcome = (
+              observedStatus: string | null,
+              eligible: boolean,
+              explanation: string,
+            ) => ({
+              available: eligible && !stale,
+              status: eligible && !stale ? observedStatus : null,
+              observed_status: observedStatus,
+              explanation: !eligible ? explanation : stale ? staleExplanation : explanation,
+            });
+            gradingProfileComparisons = [{
+              scope: 'agent',
+              availability: stale ? 'stale' : 'current',
+              unavailable_reason: stale ? staleExplanation : null,
+              selected_profile: 'legacy',
+              selection_enabled: false,
+              source_run_id: assessment.source_run_id,
+              evaluator_policy_version: assessment.policy_version,
+              requested_compliance_target: assessment.requested_compliance_target,
+              compliance_bundle_version: assessment.adcp_version,
+              assessed_at: Number.isNaN(assessedAt.getTime()) ? null : assessedAt.toISOString(),
+              source_tested_at: Number.isNaN(sourceTestedAt.getTime()) ? null : sourceTestedAt.toISOString(),
+              stale,
+              incomplete: assessment.proposed_spec_status === 'partial'
+                || assessment.proposed_sandbox_status === 'partial'
+                || (assessment.sandbox_eligible && assessment.proposed_sandbox_status === null),
+              public_impact: 'None. Legacy remains authoritative during read-only comparison.',
+              profiles: {
+                legacy: outcome(
+                  assessment.current_public_status,
+                  true,
+                  'Current production grading and badge behavior.',
+                ),
+                spec: outcome(
+                  assessment.proposed_spec_status,
+                  true,
+                  assessment.proposed_spec_status === 'passing'
+                    ? 'The run is complete and all required evidence passes strict grading.'
+                    : `${assessment.proposed_spec_status === 'failing' ? 'Strict grading failed' : 'Strict grading is incomplete'}: ${specReasons.join('; ') || 'required evidence is unresolved'}.`,
+                ),
+                sandbox: outcome(
+                  assessment.proposed_sandbox_status,
+                  assessment.sandbox_eligible,
+                  !assessment.sandbox_eligible
+                    ? 'Sandbox grading is available only for production lifecycle agents.'
+                    : assessment.proposed_sandbox_status === 'passing'
+                      ? 'Observable production behavior passes; only catalog-proven controller gaps are excluded.'
+                      : `Sandbox grading ${assessment.proposed_sandbox_status === 'failing' ? 'failed' : 'is incomplete'}: ${sandboxReasons.join('; ') || 'required evidence is unresolved'}.`,
+                ),
+              },
+              evidence: {
+                run_complete: assessment.run_complete,
+                bundle_evidence_present: assessment.bundle_evidence_present,
+                selected_storyboard_count: assessment.selected_storyboard_count,
+                controller_gap_phase_count: assessment.controller_gap_phase_count,
+                observed_failure_count: assessment.observed_failure_count,
+                flat_failure_count: assessment.flat_failure_count,
+                unattributed_failure_count: assessment.unattributed_failure_count,
+                sandbox_unresolved_bundle_count: assessment.sandbox_unresolved_bundle_count,
+              },
+            }];
+          }
+        } catch (err) {
+          logger.warn({ err, agentUrl }, "Verification profile comparison query failed");
+          gradingProfileComparisons = [{
+            scope: 'agent',
+            availability: 'temporarily_unavailable',
+            unavailable_reason: 'Comparison evidence is temporarily unavailable. Legacy remains authoritative.',
+            selected_profile: 'legacy',
+            selection_enabled: false,
+            compliance_bundle_version: status.adcp_version ?? null,
+            profiles: null,
+          }];
+        }
+      }
+
       res.json({
         agent_url: agentUrl,
         requested_compliance_target: status.requested_compliance_target ?? null,
@@ -7022,6 +7162,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           verified_protocol_version: b.verified_protocol_version,
           badge_url: `/api/registry/agents/${encodedUrl}/badge/${b.role}.svg`,
         })),
+        // Owner/admin-only comparisons. Anonymous and cross-org callers get
+        // the same key with an empty list so ownership cannot be inferred
+        // from response shape.
+        grading_profile_comparisons: gradingProfileComparisons,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get compliance status");

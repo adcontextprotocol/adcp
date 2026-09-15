@@ -4509,6 +4509,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VerificationBadge"
+        grading_profile_comparisons:
+          type: array
+          items:
+            $ref: "#/components/schemas/GradingProfileComparison"
+          description: Owner/admin-only read-only agent-wide comparison of Legacy, Spec, and Sandbox grading from one source run. Empty for other viewers. This is not an exact badge-role result. Legacy remains authoritative while selection_enabled is false; reading this field never contacts the agent.
       required:
         - agent_url
         - status
@@ -4623,6 +4628,203 @@ components:
         - verified_specialisms
         - verification_modes
         - verified_protocol_version
+    GradingProfileComparison:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - agent
+          description: The current evaluator produces an agent-wide result. It must not be interpreted as an exact badge-role grade.
+        availability:
+          type: string
+          enum:
+            - current
+            - stale
+            - pending
+            - temporarily_unavailable
+        unavailable_reason:
+          type:
+            - string
+            - "null"
+        selected_profile:
+          type: string
+          enum:
+            - legacy
+        selection_enabled:
+          type: boolean
+          enum:
+            - false
+        source_run_id:
+          type: string
+          format: uuid
+        evaluator_policy_version:
+          type: string
+        requested_compliance_target:
+          type:
+            - string
+            - "null"
+        compliance_bundle_version:
+          type:
+            - string
+            - "null"
+        assessed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        source_tested_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        stale:
+          type: boolean
+        incomplete:
+          type: boolean
+        public_impact:
+          type: string
+        profiles:
+          type:
+            - object
+            - "null"
+          properties:
+            legacy:
+              type: object
+              properties:
+                available:
+                  type: boolean
+                status:
+                  type:
+                    - string
+                    - "null"
+                  enum:
+                    - passing
+                    - partial
+                    - failing
+                    - null
+                observed_status:
+                  type:
+                    - string
+                    - "null"
+                  enum:
+                    - passing
+                    - partial
+                    - failing
+                    - null
+                explanation:
+                  type: string
+              required:
+                - available
+                - status
+                - observed_status
+                - explanation
+            spec:
+              type: object
+              properties:
+                available:
+                  type: boolean
+                status:
+                  type:
+                    - string
+                    - "null"
+                  enum:
+                    - passing
+                    - partial
+                    - failing
+                    - null
+                observed_status:
+                  type:
+                    - string
+                    - "null"
+                  enum:
+                    - passing
+                    - partial
+                    - failing
+                    - null
+                explanation:
+                  type: string
+              required:
+                - available
+                - status
+                - observed_status
+                - explanation
+            sandbox:
+              type: object
+              properties:
+                available:
+                  type: boolean
+                status:
+                  type:
+                    - string
+                    - "null"
+                  enum:
+                    - passing
+                    - partial
+                    - failing
+                    - null
+                observed_status:
+                  type:
+                    - string
+                    - "null"
+                  enum:
+                    - passing
+                    - partial
+                    - failing
+                    - null
+                explanation:
+                  type: string
+              required:
+                - available
+                - status
+                - observed_status
+                - explanation
+          required:
+            - legacy
+            - spec
+            - sandbox
+        evidence:
+          type: object
+          properties:
+            run_complete:
+              type: boolean
+            bundle_evidence_present:
+              type: boolean
+            selected_storyboard_count:
+              type: integer
+              minimum: 0
+            controller_gap_phase_count:
+              type: integer
+              minimum: 0
+            observed_failure_count:
+              type: integer
+              minimum: 0
+            flat_failure_count:
+              type: integer
+              minimum: 0
+            unattributed_failure_count:
+              type: integer
+              minimum: 0
+            sandbox_unresolved_bundle_count:
+              type: integer
+              minimum: 0
+          required:
+            - run_complete
+            - bundle_evidence_present
+            - selected_storyboard_count
+            - controller_gap_phase_count
+            - observed_failure_count
+            - flat_failure_count
+            - unattributed_failure_count
+            - sandbox_unresolved_bundle_count
+      required:
+        - scope
+        - availability
+        - unavailable_reason
+        - selected_profile
+        - selection_enabled
+        - compliance_bundle_version
+        - profiles
     AgentVerification:
       type: object
       properties:
@@ -11060,7 +11262,7 @@ paths:
       operationId: getAgentCompliance
       summary: Get agent compliance detail
       description: |-
-        Returns detailed compliance status for a single agent, including track-level results, storyboard counts, and timestamps.
+        Returns detailed compliance status for a single agent, including track-level results, storyboard counts, timestamps, and an owner-only read-only agent-wide grading-profile comparison. The comparison is not an exact badge-role grade. Reading it never contacts the agent or changes public badge state.
 
         If the agent has opted out of compliance monitoring, returns a minimal response with `status: opted_out`.
       tags:

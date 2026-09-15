@@ -33,14 +33,19 @@ AAO continuously re-evaluates your agent's conformance on an approximately **1-h
 
 The heartbeat is not a registry crawl. A crawl re-reads your `adagents.json` or capability snapshot and updates registry metadata. The heartbeat runs protocol storyboards against your live endpoint and determines your verification status. The two are independent operations.
 
-### Verified (Spec) vs Verified (Sandbox)
+### Grading profiles and verification modes
 
-Both qualifiers run the same storyboards on the same ~1h heartbeat. The difference is where the runner targets:
+The agent dashboard can compare three grading profiles from the same completed heartbeat evidence:
 
-| Qualifier | Runner targets | What it attests |
-|---|---|---|
-| **(Spec)** | Any endpoint you register — test deployment, local dev, sandbox-only stack | AdCP wire format and protocol semantics are correct |
-| **(Sandbox)** | Your registered **production** `agent_url`, using natural-key references with `sandbox: true` or preverified sandbox `account_id` references | Your production code path keeps sandbox accounts isolated with zero real-world side effects |
+| Grading profile | Meaning |
+|---|---|
+| **Legacy** | The current production grading and badge behavior. This remains authoritative during the read-only comparison rollout. |
+| **Spec** | Strict v3 grading. Required evidence must be complete; missing or ambiguous evidence never counts as a pass. |
+| **Sandbox** | Production-lifecycle grading that excludes only catalog-proven compliance-controller gaps. All ambiguous gaps and failures observable on the production endpoint still fail closed. |
+
+This comparison is passive. Opening the dashboard does not contact your agent, enqueue another compliance run, or change its badge. The first rollout phase presents an **agent-wide preview** from one source run, including the concrete compliance bundle, evaluator policy, assessment time, and stale or incomplete evidence. It is not an exact badge-role grade and cannot be selected. Legacy continues to control every public registry and badge result while the role-specific data model and Sandbox exception catalog are reviewed.
+
+Grading profiles are separate from badge `verification_modes`. Modes such as `spec` and `live` describe what kind of verification evidence a badge carries; `live` remains an independent signal. The Legacy grading profile is a compatibility policy, not a verification mode and not a replacement for `live`.
 
 See [AAO Verified](/docs/building/verification/aao-verified) for complete eligibility and attestation details.
 
@@ -52,7 +57,7 @@ The agent dashboard at [agenticadvertising.org/dashboard/agents](https://agentic
 |---|---|---|
 | **Active** | All storyboards are passing on the current heartbeat. Your AAO Verified badge is live and auto-renewing. | No action needed. Monitor for regressions after deploys. |
 | **Degraded** | At least one storyboard started failing. The badge **continues to render** while a 48-hour grace period runs. | Investigate immediately — check the comply report, reproduce locally with `@adcp/sdk/testing`, and fix the regression before the grace period expires. |
-| **Revoked** | 48 hours of continuous storyboard failure elapsed without recovery. The qualifier has dropped from the badge. (Sandbox), if separately held, is unaffected — the two axes are independent. | Fix the underlying conformance issue, then wait for the next heartbeat cycle to restore the badge automatically. |
+| **Revoked** | 48 hours of continuous storyboard failure elapsed without recovery. The verification qualifier has dropped from the badge. | Fix the underlying conformance issue, then wait for the next heartbeat cycle to restore the badge automatically. |
 | **Recovery** | Storyboards are passing again after a prior failure. The badge qualifier reissues automatically. | No action needed beyond confirming the fix is stable. |
 
 <Note>

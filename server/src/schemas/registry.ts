@@ -828,6 +828,47 @@ export const VerificationBadgeSchema = z
   })
   .openapi("VerificationBadge");
 
+const GradingProfileOutcomeSchema = z.object({
+  available: z.boolean(),
+  status: z.enum(['passing', 'partial', 'failing']).nullable(),
+  observed_status: z.enum(['passing', 'partial', 'failing']).nullable(),
+  explanation: z.string(),
+});
+
+export const GradingProfileComparisonSchema = z.object({
+  scope: z.literal('agent').openapi({
+    description: 'The current evaluator produces an agent-wide result. It must not be interpreted as an exact badge-role grade.',
+  }),
+  availability: z.enum(['current', 'stale', 'pending', 'temporarily_unavailable']),
+  unavailable_reason: z.string().nullable(),
+  selected_profile: z.literal('legacy'),
+  selection_enabled: z.literal(false),
+  source_run_id: z.string().uuid().optional(),
+  evaluator_policy_version: z.string().optional(),
+  requested_compliance_target: z.string().nullable().optional(),
+  compliance_bundle_version: z.string().nullable(),
+  assessed_at: z.string().datetime().nullable().optional(),
+  source_tested_at: z.string().datetime().nullable().optional(),
+  stale: z.boolean().optional(),
+  incomplete: z.boolean().optional(),
+  public_impact: z.string().optional(),
+  profiles: z.object({
+    legacy: GradingProfileOutcomeSchema,
+    spec: GradingProfileOutcomeSchema,
+    sandbox: GradingProfileOutcomeSchema,
+  }).nullable(),
+  evidence: z.object({
+    run_complete: z.boolean(),
+    bundle_evidence_present: z.boolean(),
+    selected_storyboard_count: z.number().int().nonnegative(),
+    controller_gap_phase_count: z.number().int().nonnegative(),
+    observed_failure_count: z.number().int().nonnegative(),
+    flat_failure_count: z.number().int().nonnegative(),
+    unattributed_failure_count: z.number().int().nonnegative(),
+    sandbox_unresolved_bundle_count: z.number().int().nonnegative(),
+  }).optional(),
+}).openapi('GradingProfileComparison');
+
 export const AgentComplianceDetailSchema = z
   .object({
     provenance: ComplianceRunProvenanceSchema.nullable().optional(),
@@ -894,6 +935,9 @@ export const AgentComplianceDetailSchema = z
       .openapi({ description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')." }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
+    grading_profile_comparisons: z.array(GradingProfileComparisonSchema).optional().openapi({
+      description: "Owner/admin-only read-only agent-wide comparison of Legacy, Spec, and Sandbox grading from one source run. Empty for other viewers. This is not an exact badge-role result. Legacy remains authoritative while selection_enabled is false; reading this field never contacts the agent.",
+    }),
   })
   .openapi("AgentComplianceDetail");
 
