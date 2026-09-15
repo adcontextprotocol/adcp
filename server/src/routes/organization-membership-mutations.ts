@@ -53,12 +53,21 @@ function expectMember(tx: Mutation, member: OrganizationMembership): void {
   });
 }
 
-function expectInvitation(tx: Mutation, invitation: Invitation, expectedState = invitation.state): void {
-  const { id, organizationId, email } = invitation;
+function expectInvitation(
+  tx: Mutation,
+  invitation: Invitation,
+  expectedState = invitation.state,
+  requireOpen = false,
+): void {
+  const { id, organizationId, email, expiresAt } = invitation;
   tx.expectTarget(id, async () => {
     const current = await tx.workos.userManagement.getInvitation(id);
-    if (current.id !== id || current.organizationId !== organizationId || current.email !== email || current.state !== expectedState
-      || (expectedState === 'pending' && Date.parse(current.expiresAt) <= Date.now())) conflict('Invitation changed; retry the request');
+    const currentExpiry = Date.parse(current.expiresAt);
+    if (current.id !== id || current.organizationId !== organizationId || current.email !== email
+      || current.expiresAt !== expiresAt || current.state !== expectedState
+      || (requireOpen && (current.state !== 'pending' || !Number.isFinite(currentExpiry) || currentExpiry <= Date.now()))) {
+      conflict('Invitation changed; retry the request');
+    }
   });
 }
 
@@ -146,16 +155,21 @@ async function sendInvitation(tx: Mutation, email: string, role: Role): Promise<
     await tx.workos.userManagement.revokeInvitation(created.id);
   });
   if (invitation.organizationId !== tx.orgId || invitation.email.toLowerCase() !== email || invitation.state !== 'pending') throw new MembershipMutationError(503, 'Provider invitation does not match the request');
-  expectInvitation(tx, invitation);
+  expectInvitation(tx, invitation, 'pending', true);
   return invitation;
 }
 
-async function pendingInvitation(tx: Mutation, id: string): Promise<Invitation> {
+async function invitationForMutation(tx: Mutation, id: string): Promise<{ invitation: Invitation; open: boolean }> {
   const invitation = await tx.readProvider(() => tx.workos.userManagement.getInvitation(id));
   if (invitation.id !== id || invitation.organizationId !== tx.orgId) notFound('Invitation not found');
-  if (invitation.state !== 'pending' || Date.parse(invitation.expiresAt) <= Date.now()) conflict('Invitation is not pending');
-  expectInvitation(tx, invitation);
-  return invitation;
+  const expiry = Date.parse(invitation.expiresAt);
+  if (!Number.isFinite(expiry)) conflict('Invitation changed; retry the request');
+  const open = invitation.state === 'pending' && expiry > Date.now();
+  const terminal = invitation.state === 'expired' || invitation.state === 'revoked'
+    || (invitation.state === 'pending' && expiry <= Date.now());
+  if (!open && !terminal) conflict('Invitation is not pending or expired');
+  expectInvitation(tx, invitation, invitation.state, open);
+  return { invitation, open };
 }
 
 function invitationReply(invitation: Invitation): Record<string, unknown> {
@@ -226,30 +240,43 @@ export function registerOrganizationMembershipMutations(router: Router): void {
   }));
 
   router.delete('/:orgId/invitations/:invitationId', requireAuth, handler('admin', false, async (tx, req) => {
-    const invitation = await pendingInvitation(tx, req.params.invitationId);
+    const { invitation, open } = await invitationForMutation(tx, req.params.invitationId);
     const stages = await tx.rows('SELECT workos_invitation_id FROM invitation_seat_types WHERE workos_invitation_id = $1 AND workos_organization_id = $2', [invitation.id, tx.orgId]);
-    await tx.providerWrite('revoke_invitation', { invitation_id: invitation.id }, () => tx.workos.userManagement.revokeInvitation(invitation.id));
-    expectInvitation(tx, invitation, 'revoked');
+    if (open) {
+      await tx.providerWrite('revoke_invitation', { invitation_id: invitation.id }, () => tx.workos.userManagement.revokeInvitation(invitation.id));
+      expectInvitation(tx, invitation, 'revoked');
+    }
     await tx.local([], async () => {
       await tx.write('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1 AND workos_organization_id = $2', [invitation.id, tx.orgId], stages.length);
-      await tx.audit('invitation_revoked', 'invitation', invitation.id, { email: invitation.email });
+      await tx.audit(open ? 'invitation_revoked' : 'invitation_reservation_released', 'invitation', invitation.id, {
+        email: invitation.email,
+        provider_state: invitation.state,
+        expired: !open,
+      });
     });
     return { body: { success: true, message: 'Invitation revoked successfully' } };
   }));
 
   router.post('/:orgId/invitations/:invitationId/resend', requireAuth, handler('admin', false, async (tx, req) => {
-    const old = await pendingInvitation(tx, req.params.invitationId);
+    const { invitation: old, open } = await invitationForMutation(tx, req.params.invitationId);
     const stages = await tx.rows<{ seat_type: SeatType }>('SELECT seat_type FROM invitation_seat_types WHERE workos_invitation_id = $1 AND workos_organization_id = $2', [old.id, tx.orgId]);
     const seat = stages[0]?.seat_type ?? 'community_only';
     await tx.requireTeam();
     if (!stages.length) await tx.seatAvailable(seat);
-    await tx.providerWrite('revoke_invitation', { invitation_id: old.id }, () => tx.workos.userManagement.revokeInvitation(old.id));
-    expectInvitation(tx, old, 'revoked');
+    if (open) {
+      await tx.providerWrite('revoke_invitation', { invitation_id: old.id }, () => tx.workos.userManagement.revokeInvitation(old.id));
+      expectInvitation(tx, old, 'revoked');
+    }
     const invitation = await sendInvitation(tx, old.email.toLowerCase(), 'member');
     await tx.local([], async () => {
       await tx.write('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1 AND workos_organization_id = $2', [old.id, tx.orgId], stages.length);
       await stageInvitation(tx, invitation, old.email, seat);
-      await tx.audit('invitation_resent', 'invitation', invitation.id, { email: old.email, old_invitation_id: old.id, seat_type: seat });
+      await tx.audit('invitation_resent', 'invitation', invitation.id, {
+        email: old.email,
+        old_invitation_id: old.id,
+        old_provider_state: old.state,
+        seat_type: seat,
+      });
     });
     return { body: { success: true, invitation: invitationReply(invitation) } };
   }));

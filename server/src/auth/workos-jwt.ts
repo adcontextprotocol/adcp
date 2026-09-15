@@ -7,7 +7,7 @@
  * token issued by the MCP OAuth flow works across both surfaces.
  */
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('workos-jwt');
@@ -51,9 +51,12 @@ export function isInvalidWorkOSJWTError(err: unknown): boolean {
     || err.name === 'JWSInvalid'
     || err.name === 'JWTInvalid'
     || err.name === 'JWSSignatureVerificationFailed'
+    || err.name === 'JWKSNoMatchingKey'
     || code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED'
+    || code === 'ERR_JWKS_NO_MATCHING_KEY'
     || code === 'ERR_JOSE_ALG_NOT_ALLOWED'
     || code === 'ERR_JOSE_NOT_SUPPORTED'
+    || code === 'ERR_WORKOS_TOKEN_INVALID_KID'
     || code === 'ERR_WORKOS_TOKEN_APPLICATION_MISMATCH';
 }
 
@@ -106,6 +109,10 @@ export function looksLikeJWT(token: string): boolean {
  * signature verification against our shared JWKS.
  */
 export async function verifyWorkOSJWT(token: string): Promise<VerifiedWorkOSToken> {
+  const protectedHeader = decodeProtectedHeader(token);
+  if (protectedHeader.kid !== undefined && typeof protectedHeader.kid !== 'string') {
+    throw Object.assign(new Error('Token key id must be a string'), { code: 'ERR_WORKOS_TOKEN_INVALID_KID' });
+  }
   const jwksInstance = getJWKS();
 
   const { payload } = await jwtVerify(token, jwksInstance);

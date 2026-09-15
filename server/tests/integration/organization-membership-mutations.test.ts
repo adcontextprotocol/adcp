@@ -114,6 +114,19 @@ function barrier() {
   const resumed = new Promise<void>(resolve => { release = resolve; });
   return { arrived, release, hook: async () => { reached(); await resumed; } };
 }
+async function waitForDatabaseLock(queryFragment: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const result = await pool.query(
+      `SELECT 1 FROM pg_stat_activity
+       WHERE datname = current_database() AND pid <> pg_backend_pid()
+         AND wait_event_type = 'Lock' AND query ILIKE '%' || $1 || '%'`,
+      [queryFragment],
+    );
+    if (result.rowCount) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for blocked database query containing ${queryFragment}`);
+}
 type Family = { name: string; method: 'post' | 'patch' | 'delete'; path: () => string; body?: () => object };
 const families: Family[] = [
   { name: 'join approve', method: 'post', path: () => `/join-requests/${joinId}/approve` },
@@ -264,10 +277,11 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
       await noEffects();
     } finally { spy.mockRestore(); }
   });
-  for (const selector of ['header','query','body','token']) it(`denies conflicting ${selector} organization`,async()=>{
+  for (const selector of ['header','query','query-org','body','token']) it(`denies conflicting ${selector} organization`,async()=>{
     let r=request(app).post(`/api/organizations/${org}/invitations`).set('Cookie',await cookie(A,selector==='token'?otherOrg:org));
     if(selector==='header')r=r.set('X-Organization-Id',otherOrg);
     if(selector==='query')r=r.query({organizationId:otherOrg});
+    if(selector==='query-org')r=r.query({org:otherOrg});
     const response=await r.send({email:'invitee@membership-mutation.example.test',...(selector==='body'?{org_id:otherOrg}:{})});
     expect(response.status).toBe(403); await noEffects(); expect(state.reads).toEqual([]);
   });
@@ -348,6 +362,106 @@ describe('mounted real cookie/JWT organization membership mutation fence', () =>
     await member(A,'admin');
     const response=await request(app).post(`/api/organizations/${org}/invitations`).set('Cookie',await cookie()).send({email:'invitee@membership-mutation.example.test',role:'owner'});
     expect(response.status).toBe(403);await noEffects();
+  });
+  it('expired invitation release is provider-confirmed, exact, audited, and does not call revoke', async () => {
+    state.invitations.get('inv_existing').state = 'expired';
+    state.invitations.get('inv_existing').expiresAt = new Date(Date.now() - 1000).toISOString();
+    await pool.query(`INSERT INTO invitation_seat_types
+      (workos_invitation_id,workos_organization_id,email,seat_type,source)
+      VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
+    const response = await call(families[4], await cookie());
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(state.writes).toEqual([]);
+    expect((await pool.query('SELECT 1 FROM invitation_seat_types WHERE workos_invitation_id=$1 AND workos_organization_id=$2', ['inv_existing', org])).rowCount).toBe(0);
+    expect((await pool.query('SELECT action,details FROM registry_audit_log WHERE resource_id=$1', ['inv_existing'])).rows)
+      .toEqual([expect.objectContaining({ action: 'invitation_reservation_released', details: expect.objectContaining({ provider_state: 'expired', expired: true }) })]);
+  });
+  it('expired invitation resend atomically replaces the exact seat reservation without revoke', async () => {
+    state.invitations.get('inv_existing').state = 'expired';
+    state.invitations.get('inv_existing').expiresAt = new Date(Date.now() - 1000).toISOString();
+    await pool.query(`INSERT INTO invitation_seat_types
+      (workos_invitation_id,workos_organization_id,email,seat_type,source)
+      VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
+    const response = await call(families[5], await cookie());
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(state.writes).toEqual(['send_invitation']);
+    expect((await pool.query(`SELECT workos_invitation_id,seat_type FROM invitation_seat_types
+      WHERE workos_organization_id=$1`, [org])).rows)
+      .toEqual([{ workos_invitation_id: response.body.invitation.id, seat_type: 'community_only' }]);
+    expect((await pool.query('SELECT action FROM registry_audit_log WHERE resource_id=$1', [response.body.invitation.id])).rows)
+      .toEqual([{ action: 'invitation_resent' }]);
+  });
+  it('accepted invitation cannot release or replace a seat reservation', async () => {
+    state.invitations.get('inv_existing').state = 'accepted';
+    await pool.query(`INSERT INTO invitation_seat_types
+      (workos_invitation_id,workos_organization_id,email,seat_type,source)
+      VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
+    for (const family of [families[4], families[5]]) {
+      state.writes = [];
+      const response = await call(family, await cookie());
+      expect(response.status).toBe(409);
+      expect(state.writes).toEqual([]);
+      expect((await pool.query('SELECT 1 FROM invitation_seat_types WHERE workos_invitation_id=$1 AND workos_organization_id=$2', ['inv_existing', org])).rowCount).toBe(1);
+      expect((await pool.query('SELECT 1 FROM registry_audit_log WHERE resource_id=$1', ['inv_existing'])).rowCount).toBe(0);
+    }
+  });
+  it('expired resend keeps its seat reserved while a concurrent invitation waits', async () => {
+    state.invitations.get('inv_existing').state = 'expired';
+    state.invitations.get('inv_existing').expiresAt = new Date(Date.now() - 1000).toISOString();
+    await pool.query("UPDATE organizations SET membership_tier=NULL,subscription_status=NULL WHERE workos_organization_id=$1", [org]);
+    await pool.query("UPDATE organization_memberships SET seat_type='contributor' WHERE workos_organization_id=$1", [org]);
+    await pool.query(`INSERT INTO invitation_seat_types
+      (workos_invitation_id,workos_organization_id,email,seat_type,source)
+      VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
+    const gate = barrier();
+    state.afterWrite = gate.hook;
+    const resend = call(families[5], await cookie()).then(response => response);
+    await gate.arrived;
+    const concurrent = request(app).post(`/api/organizations/${org}/invitations`).set('Cookie', await cookie())
+      .send({ email: 'concurrent@membership-mutation.example.test', seat_type: 'community_only' }).then(response => response);
+    await waitForDatabaseLock('pg_advisory_xact_lock');
+    expect((await pool.query('SELECT workos_invitation_id FROM invitation_seat_types WHERE workos_organization_id=$1', [org])).rows)
+      .toEqual([{ workos_invitation_id: 'inv_existing' }]);
+    gate.release();
+    expect((await resend).status).toBe(200);
+    const denied = await concurrent;
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe('Seat limit reached');
+    expect(state.writes).toEqual(['send_invitation']);
+    expect((await pool.query('SELECT COUNT(*)::int AS count FROM invitation_seat_types WHERE workos_organization_id=$1', [org])).rows[0].count).toBe(1);
+  });
+  it('expired reservation rowCount mismatch rolls back without audit or provider calls', async () => {
+    state.invitations.get('inv_existing').state = 'expired';
+    state.invitations.get('inv_existing').expiresAt = new Date(Date.now() - 1000).toISOString();
+    await pool.query(`INSERT INTO invitation_seat_types
+      (workos_invitation_id,workos_organization_id,email,seat_type,source)
+      VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
+    await pool.query('CREATE OR REPLACE FUNCTION membership_test_stage_delete_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$');
+    await pool.query('CREATE TRIGGER membership_test_stage_delete BEFORE DELETE ON invitation_seat_types FOR EACH ROW EXECUTE FUNCTION membership_test_stage_delete_fn()');
+    try {
+      const response = await call(families[4], await cookie());
+      expect(response.status).toBe(409);
+      expect(state.writes).toEqual([]);
+      expect((await pool.query('SELECT 1 FROM invitation_seat_types WHERE workos_invitation_id=$1', ['inv_existing'])).rowCount).toBe(1);
+      expect((await pool.query('SELECT 1 FROM registry_audit_log WHERE resource_id=$1', ['inv_existing'])).rowCount).toBe(0);
+    } finally {
+      await pool.query('DROP TRIGGER membership_test_stage_delete ON invitation_seat_types');
+      await pool.query('DROP FUNCTION membership_test_stage_delete_fn()');
+    }
+  });
+  it('expired reservation release requires audit and rolls back when audit is suppressed', async () => {
+    state.invitations.get('inv_existing').state = 'expired';
+    state.invitations.get('inv_existing').expiresAt = new Date(Date.now() - 1000).toISOString();
+    await pool.query(`INSERT INTO invitation_seat_types
+      (workos_invitation_id,workos_organization_id,email,seat_type,source)
+      VALUES ('inv_existing',$1,'existing@membership-mutation.example.test','community_only','invited')`, [org]);
+    await pool.query('CREATE OR REPLACE FUNCTION membership_test_audit_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$');
+    await pool.query('CREATE TRIGGER membership_test_audit BEFORE INSERT ON registry_audit_log FOR EACH ROW EXECUTE FUNCTION membership_test_audit_fn()');
+    const response = await call(families[4], await cookie());
+    expect(response.status).toBe(409);
+    expect(state.writes).toEqual([]);
+    expect((await pool.query('SELECT 1 FROM invitation_seat_types WHERE workos_invitation_id=$1', ['inv_existing'])).rowCount).toBe(1);
+    expect((await pool.query('SELECT 1 FROM registry_audit_log WHERE resource_id=$1', ['inv_existing'])).rowCount).toBe(0);
   });
   it('resend rejection preserves honest revoked upstream state',async()=>{
     state.afterWrite=async()=>{state.rejectWrite=Object.assign(new Error('reject'),{status:422});};

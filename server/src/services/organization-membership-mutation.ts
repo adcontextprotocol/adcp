@@ -43,21 +43,27 @@ type CancellationSnapshot = Pick<Snapshot,
 export type MutationReply = { status?: number; body: Record<string, unknown> };
 type Effect = { action: string; target: Record<string, unknown>; id?: string; outcome: 'succeeded' | 'unknown'; compensate?: () => Promise<void> };
 
-/** All selectors are assertions about the one explicit route organization. */
-function selectedOrganization(req: Request): string {
-  const org = req.params.orgId;
-  if (typeof org !== 'string' || !org.trim()) mutationDenied('An organization must be selected');
+/** All selectors are assertions about one already-resolved explicit organization. */
+export function assertOrganizationSelectors(req: Request, org: string): void {
   const selectors: unknown[] = [req.headers['x-organization-id'], req.headers['x-org-id']];
-  for (const source of [req.query, req.body]) {
-    for (const key of ['organization_id', 'organizationId', 'org_id', 'orgId']) {
-      if (source && Object.hasOwn(source, key)) selectors.push(source[key]);
-    }
+  for (const key of ['organization_id', 'organizationId', 'org_id', 'orgId', 'org']) {
+    if (req.query && Object.hasOwn(req.query, key)) selectors.push(req.query[key]);
+  }
+  for (const key of ['organization_id', 'organizationId', 'org_id', 'orgId']) {
+    if (req.body && Object.hasOwn(req.body, key)) selectors.push(req.body[key]);
   }
   for (const value of selectors) {
     if (value !== undefined && (typeof value !== 'string' || value !== org)) {
       mutationDenied('Organization selectors do not agree');
     }
   }
+}
+
+/** Resolve the mandatory route selector, then check every redundant selector. */
+function selectedOrganization(req: Request): string {
+  const org = req.params.orgId;
+  if (typeof org !== 'string' || !org.trim()) mutationDenied('An organization must be selected');
+  assertOrganizationSelectors(req, org);
   return org;
 }
 
@@ -419,11 +425,7 @@ export async function cancelJoinRequestForExactCredential(req: Request, requestI
     }
     const orgId = row.workos_organization_id;
     if (verified?.orgId && verified.orgId !== orgId) mutationDenied('Organization selectors do not agree');
-    for (const value of [req.headers['x-organization-id'], req.headers['x-org-id'],
-      req.query.organization_id, req.query.organizationId, req.query.org_id, req.query.orgId,
-      req.body?.organization_id, req.body?.organizationId, req.body?.org_id, req.body?.orgId]) {
-      if (value !== undefined && (typeof value !== 'string' || value !== orgId)) mutationDenied('Organization selectors do not agree');
-    }
+    assertOrganizationSelectors(req, orgId);
 
     const snapshot = await readCancellationSnapshot(db, actorId, orgId);
     if (snapshot.banned) mutationDenied('Account suspended');

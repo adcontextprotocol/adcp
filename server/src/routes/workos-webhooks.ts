@@ -46,6 +46,7 @@ import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
 import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
+  deleteExactOrganizationMembership,
   consumeInvitationSeatType,
   type ProvisioningSource,
 } from '../db/membership-db.js';
@@ -191,47 +192,55 @@ async function notifyAdminsOfRefusedMembership(input: {
 
 class MembershipUserSourceUnavailableError extends Error {}
 
+interface ProviderOrganizationMembership {
+  id: string;
+  userId: string;
+  organizationId: string;
+  status: 'active' | 'pending' | 'inactive';
+  role?: { slug: string } | null;
+}
+
+/** Read the provider's current exact membership while the local org lock is held.
+ * Webhook payloads are delivery hints, not an ordering or version authority.
+ */
+async function currentProviderMembership(event: OrganizationMembershipData): Promise<ProviderOrganizationMembership | null> {
+  const rows = new Map<string, ProviderOrganizationMembership>();
+  const cursors = new Set<string>();
+  let after: string | undefined;
+  try {
+    do {
+      const page = await getWorkos().userManagement.listOrganizationMemberships({
+        userId: event.user_id,
+        organizationId: event.organization_id,
+        statuses: ['active'],
+        limit: 100,
+        after,
+      });
+      for (const row of page.data as ProviderOrganizationMembership[]) {
+        if (row.userId === event.user_id && row.organizationId === event.organization_id && row.status === 'active') {
+          rows.set(row.id, row);
+        }
+      }
+      after = page.listMetadata?.after ?? undefined;
+      if (after && cursors.has(after)) throw new Error('Provider membership pagination repeated a cursor');
+      if (after) cursors.add(after);
+    } while (after);
+  } catch (error) {
+    logger.error({ error, membershipId: event.id, userId: event.user_id, orgId: event.organization_id }, 'Failed to read current membership from WorkOS');
+    throw new MembershipUserSourceUnavailableError('Membership authority source unavailable');
+  }
+  if (rows.size > 1) throw new MembershipUserSourceUnavailableError('Membership authority source is ambiguous');
+  return rows.values().next().value ?? null;
+}
+
 async function upsertMembership(
   membership: OrganizationMembershipData,
   user?: UserData
-): Promise<void> {
-  if (membership.status !== 'active') {
-    logger.info(
-      { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
-      'Removing non-active organization membership from local cache',
-    );
-    await deleteInactiveMembershipCache(membership);
-    return;
-  }
-
-  // If we don't have user data, fetch it from WorkOS
-  let userData = user;
-  if (!userData) {
-    try {
-      const workosUser = await getWorkos().userManagement.getUser(membership.user_id);
-      userData = {
-        id: workosUser.id,
-        email: workosUser.email,
-        first_name: workosUser.firstName,
-        last_name: workosUser.lastName,
-        email_verified: workosUser.emailVerified,
-        created_at: workosUser.createdAt,
-        updated_at: workosUser.updatedAt,
-      };
-    } catch (error) {
-      logger.error({ error, userId: membership.user_id }, 'Failed to fetch user from WorkOS');
-      throw new MembershipUserSourceUnavailableError('Membership user source unavailable');
-    }
-  }
-
-  if (userData.id !== membership.user_id) {
-    throw new MembershipUserSourceUnavailableError('Membership user source did not match the event subject');
-  }
-
-  const incomingRole = membership.role?.slug || 'member';
-
+): Promise<boolean> {
   const client = await getPool().connect();
   let refusedSeat: { seatType: SeatType; reason: string } | undefined;
+  let userData = user;
+  let current: ProviderOrganizationMembership | null = null;
   try {
     await client.query('BEGIN');
 
@@ -244,17 +253,61 @@ async function upsertMembership(
     );
     if (org.rowCount !== 1) throw new Error('Membership organization not found');
 
+    current = await currentProviderMembership(membership);
+    if (!current) {
+      const deletedRole = await deleteExactOrganizationMembership(
+        membership.user_id,
+        membership.organization_id,
+        membership.id,
+        client,
+      );
+      logger.info({
+        membershipId: membership.id,
+        userId: membership.user_id,
+        orgId: membership.organization_id,
+        role: deletedRole,
+        eventStatus: membership.status,
+      }, 'Deleted exact inactive organization membership from local cache');
+      await client.query('COMMIT');
+      return false;
+    }
+
+    // Fetch the user only after the provider has confirmed the current active
+    // membership. A stale delete therefore cannot turn a user-source outage
+    // into a failure before exact membership cleanup.
+    if (!userData) {
+      try {
+        const workosUser = await getWorkos().userManagement.getUser(current.userId);
+        userData = {
+          id: workosUser.id,
+          email: workosUser.email,
+          first_name: workosUser.firstName,
+          last_name: workosUser.lastName,
+          email_verified: workosUser.emailVerified,
+          created_at: workosUser.createdAt,
+          updated_at: workosUser.updatedAt,
+        };
+      } catch (error) {
+        logger.error({ error, userId: current.userId }, 'Failed to fetch user from WorkOS');
+        throw new MembershipUserSourceUnavailableError('Membership user source unavailable');
+      }
+    }
+    if (userData.id !== current.userId) {
+      throw new MembershipUserSourceUnavailableError('Membership user source did not match the current membership');
+    }
+    const incomingRole = current.role?.slug || 'member';
+
     // A provider update/replay for a row already mirrored locally is not a new
     // seat allocation. Lock and preserve that seat while still mirroring the
     // provider role, even when the organization is currently at capacity.
     const existing = await client.query<{ seat_type: string | null; provisioning_source: ProvisioningSource | null }>(
       `SELECT seat_type, provisioning_source FROM organization_memberships
         WHERE workos_organization_id = $1 AND workos_user_id = $2 FOR UPDATE`,
-      [membership.organization_id, membership.user_id],
+      [current.organizationId, current.userId],
     );
     const existingMembership = existing.rows[0];
 
-    const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email, client);
+    const consumed = await consumeInvitationSeatType(current.organizationId, userData.email, client);
     const hasExplicitSeatType = consumed !== null || existingMembership !== undefined;
     const preservedSeat = existingMembership?.seat_type === 'contributor' ? 'contributor' : 'community_only';
     const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor'
@@ -264,18 +317,18 @@ async function upsertMembership(
     // Unstaged provider writes have no reservation, so perform the ordinary cap
     // check while holding the same organization lock used by management writes.
     if (!consumed && !existingMembership) {
-      const availability = await canAddSeat(membership.organization_id, seatType, client);
+      const availability = await canAddSeat(current.organizationId, seatType, client);
       if (!availability.allowed) {
         refusedSeat = { seatType, reason: availability.reason ?? 'Seat cap reached' };
         await client.query('ROLLBACK');
-        return;
+        return false;
       }
     }
 
     await upsertOrganizationMembership({
-      user_id: membership.user_id,
-      organization_id: membership.organization_id,
-      membership_id: membership.id,
+      user_id: current.userId,
+      organization_id: current.organizationId,
+      membership_id: current.id,
       email: userData.email,
       first_name: userData.first_name,
       last_name: userData.last_name,
@@ -284,6 +337,12 @@ async function upsertMembership(
       has_explicit_seat_type: hasExplicitSeatType,
       provisioning_source: provisioningSource,
     }, client);
+    const confirmed = await currentProviderMembership(membership);
+    if (!confirmed || confirmed.id !== current.id || confirmed.userId !== current.userId
+      || confirmed.organizationId !== current.organizationId || confirmed.status !== current.status
+      || confirmed.role?.slug !== current.role?.slug) {
+      throw new MembershipUserSourceUnavailableError('Membership authority changed during synchronization');
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -293,14 +352,14 @@ async function upsertMembership(
     if (refusedSeat) {
       logger.warn({
         orgId: membership.organization_id,
-        userId: membership.user_id,
-        email: userData.email,
+        userId: current?.userId,
+        email: userData?.email,
         seatType: refusedSeat.seatType,
         reason: refusedSeat.reason,
       }, 'Refusing to mirror webhook-driven membership: org over seat cap');
       void notifyAdminsOfRefusedMembership({
         orgId: membership.organization_id,
-        newUserEmail: userData.email,
+        newUserEmail: userData?.email ?? membership.user_id,
         seatType: refusedSeat.seatType,
         reason: refusedSeat.reason,
       });
@@ -311,50 +370,14 @@ async function upsertMembership(
   // Best-effort — same rationale as upsertUser: a transient backfill failure
   // shouldn't fail the membership webhook. Integrity invariant catches drift.
   try {
-    const preferredOrg = await resolvePreferredOrganization(membership.user_id);
+    const preferredOrg = await resolvePreferredOrganization(current?.userId ?? membership.user_id);
     if (preferredOrg) {
-      await backfillPrimaryOrganization(membership.user_id, preferredOrg);
+      await backfillPrimaryOrganization(current?.userId ?? membership.user_id, preferredOrg);
     }
   } catch (err) {
-    logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
+    logger.warn({ err, userId: current?.userId ?? membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
   }
-}
-
-/**
- * Delete a non-active membership from the local cache only.
- *
- * WorkOS membership.updated events can mark a membership inactive. That should
- * remove local access immediately, but it must not run owner-succession logic:
- * ordinary membership events never authorize owner recovery.
- */
-async function deleteInactiveMembershipCache(membership: OrganizationMembershipData): Promise<void> {
-  const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
-
-  logger.info({
-    membershipId: membership.id,
-    userId: membership.user_id,
-    orgId: membership.organization_id,
-    role: deletedRole,
-    status: membership.status,
-  }, 'Deleted non-active organization membership from local cache');
-}
-
-/**
- * Delete organization membership from local database
- */
-async function deleteMembership(membership: OrganizationMembershipData): Promise<void> {
-  const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
-
-  logger.info({
-    membershipId: membership.id,
-    userId: membership.user_id,
-    orgId: membership.organization_id,
-    role: deletedRole,
-  }, 'Deleted organization membership');
-
-  // Owner recovery requires an explicit authenticated, consented operation.
-  // A deletion event cannot authorize a grant to a remaining member.
-
+  return true;
 }
 
 /**
@@ -891,9 +914,9 @@ export function createWorkOSWebhooksRouter(): Router {
         switch (event.event) {
           case 'organization_membership.created': {
             const membership = event.data as unknown as OrganizationMembershipData;
-            await upsertMembership(membership);
+            const synchronizedActiveMembership = await upsertMembership(membership);
             // Try to auto-link to Slack account by email (in case user.created didn't catch it)
-            if (membership.status === 'active') {
+            if (synchronizedActiveMembership) {
               let workosUser: any;
               try {
                 workosUser = await getWorkos().userManagement.getUser(membership.user_id);
@@ -947,7 +970,7 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'organization_membership.deleted': {
             const membership = event.data as unknown as OrganizationMembershipData;
-            await deleteMembership(membership);
+            await upsertMembership(membership);
             invalidateUnifiedUsersCache();
             break;
           }

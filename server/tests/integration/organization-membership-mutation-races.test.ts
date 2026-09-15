@@ -2,7 +2,7 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { generateKeyPair, SignJWT } from 'jose';
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import type { Pool } from 'pg';
 
 const state = vi.hoisted(() => {
@@ -305,6 +305,27 @@ describe('independent mounted management race and residual-state attacks', () =>
     expect(response.status).toBe(401);
     expect(state.reads).toEqual([]);
     await noEffects();
+  });
+
+  it('unknown kid from a healthy JWKS remains 401 and makes no provider or audit call', async () => {
+    const jwk = { ...await exportJWK(verificationKey), alg: 'RS256', kid: 'known-key' };
+    __setJWKSForTesting(createLocalJWKSet({ keys: [jwk] }));
+    try {
+      const bearer = await new SignJWT({ client_id: 'client_mock_id', org_id: org })
+        .setProtectedHeader({ alg: 'RS256', kid: 'unknown-key' })
+        .setSubject(A)
+        .setIssuedAt()
+        .setJti(String(++sequence))
+        .setExpirationTime('5m')
+        .sign(signingKey);
+      const response = await request(app).post(`/api/organizations/${org}/invitations`)
+        .set('Authorization', `Bearer ${bearer}`).send({ email: 'invitee@membership-race.example.test' });
+      expect(response.status).toBe(401);
+      expect(state.reads).toEqual([]);
+      await noEffects();
+    } finally {
+      __setJWKSForTesting(async () => verificationKey);
+    }
   });
 
   it('bearer user-source outage returns authorization_unavailable before provider reads or writes', async () => {

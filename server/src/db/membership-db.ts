@@ -183,6 +183,29 @@ export async function deleteOrganizationMembership(
   }
 }
 
+/** Delete only the exact provider membership represented by a webhook event. */
+export async function deleteExactOrganizationMembership(
+  userId: string,
+  organizationId: string,
+  membershipId: string,
+  client: PoolClient,
+): Promise<string | null> {
+  const result = await client.query<{ role: string }>(
+    `DELETE FROM organization_memberships
+     WHERE workos_user_id = $1 AND workos_organization_id = $2 AND workos_membership_id = $3
+     RETURNING role`,
+    [userId, organizationId, membershipId],
+  );
+  if (result.rowCount === 1) {
+    await client.query(
+      `UPDATE users SET primary_organization_id = NULL, updated_at = NOW()
+       WHERE workos_user_id = $1 AND primary_organization_id = $2`,
+      [userId, organizationId],
+    );
+  }
+  return result.rows[0]?.role ?? null;
+}
+
 // ── Invitation seat type ─────────────────────────────────────────────
 
 /**
