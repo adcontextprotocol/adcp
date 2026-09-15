@@ -89,13 +89,15 @@ vi.mock('../../src/db/certification-db.js', () => ({
   getProgress: vi.fn(),
 }));
 
-vi.mock('../../src/addie/admin-status-lookup.js', () => ({
-  isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
+const adminMocks = vi.hoisted(() => ({ check: vi.fn().mockResolvedValue(false), ledGroups: vi.fn().mockResolvedValue([]) }));
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>(),
+  isAuthenticatedUserAAOAdmin: adminMocks.check,
 }));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
   WorkingGroupDatabase: class {
-    getCommitteesLedByUser = vi.fn().mockResolvedValue([]);
+    getCommitteesLedByUser = adminMocks.ledGroups;
   },
 }));
 
@@ -116,6 +118,7 @@ import {
   createAddieChatRouter,
   prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
+import { AAOAdminLookupUnavailableError } from '../../src/addie/admin-status-lookup.js';
 import { MAX_INPUT_LENGTH } from '../../src/addie/security.js';
 import { DIRECTORY_TOOLS } from '../../src/addie/mcp/directory-tools.js';
 import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from '../../src/mcp/chat-tool.js';
@@ -123,6 +126,8 @@ import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonym
 
 describe('prepareRequestWithMemberTools organization selection', () => {
   beforeEach(() => {
+    adminMocks.check.mockReset().mockResolvedValue(false);
+    adminMocks.ledGroups.mockReset().mockResolvedValue([]);
     memberContextMocks.getWebMemberContext.mockReset();
     memberContextMocks.getWebMemberContext.mockResolvedValue({
       is_mapped: false,
@@ -149,9 +154,53 @@ describe('prepareRequestWithMemberTools organization selection', () => {
       'org_selected_123',
     );
 
-    expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith('user_123', 'org_selected_123');
+    expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith('user_123', 'org_selected_123', undefined);
     expect(prepared.requestContext).toContain('## Authoritative time context');
     expect(prepared.requestContext).toMatch(/- utc_instant: \d{4}-\d{2}-\d{2}T/);
+  });
+
+  it.each([
+    ['credential_admin', 'canonical_member', true],
+    ['credential_member', 'canonical_admin', false],
+  ])('uses authenticated %s rather than linked %s for escalation tools', async (credential, canonical, allowed) => {
+    const principal = { id: canonical, authWorkosUserId: credential, email: `${credential}@example.com` };
+    adminMocks.check.mockImplementation(async (user) => (user.authWorkosUserId ?? user.id) === 'credential_admin');
+    const prepared = await prepareRequestWithMemberTools('Resolve escalation 12', canonical, 'thread-1', true, undefined, null, principal);
+    expect(adminMocks.check).toHaveBeenCalledWith(principal);
+    expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith(canonical, null, principal);
+    expect(prepared.isAAOAdmin).toBe(allowed);
+    for (const tool of ['list_escalations', 'resolve_escalation']) {
+      expect(prepared.requestTools.tools.some((entry) => entry.name === tool)).toBe(allowed);
+      expect(prepared.requestTools.handlers.has(tool)).toBe(allowed);
+    }
+    if (!allowed) expect(prepared.requestContext).toContain('organization ownership does not grant it');
+  });
+
+  it('does not assemble a reduced catalog when administrator authorization is unavailable', async () => {
+    adminMocks.check.mockRejectedValue(new AAOAdminLookupUnavailableError());
+    await expect(prepareRequestWithMemberTools('Resolve escalation 12', 'user_123', 'thread-1', true, undefined, null, { id: 'user_123' }))
+      .rejects.toMatchObject({ code: 'admin_authorization_unavailable', statusCode: 503 });
+  });
+
+  it.each([
+    ['credential_leader', 'canonical_member', true],
+    ['credential_member', 'canonical_leader', false],
+  ])('assembles meeting tools from authenticated %s instead of linked %s', async (credential, canonical, allowed) => {
+    const principal = { id: canonical, authWorkosUserId: credential };
+    adminMocks.ledGroups.mockImplementation(async (userId) => userId.endsWith('_leader')
+      ? [{ id: 'wg_led', committee_type: 'working_group' }] : []);
+
+    const prepared = await prepareRequestWithMemberTools('Schedule a meeting', canonical, 'thread-1', true, undefined, null, principal);
+
+    expect(adminMocks.ledGroups).toHaveBeenCalledWith(credential);
+    expect(prepared.requestTools.handlers.has('schedule_meeting')).toBe(allowed);
+    expect(prepared.requestTools.tools.some((tool) => tool.name === 'schedule_meeting')).toBe(allowed);
+  });
+
+  it('does not infer platform authority from a canonical member context when auth provenance is absent', async () => {
+    const prepared = await prepareRequestWithMemberTools('Resolve escalation 12', 'canonical_admin', 'thread-1', true);
+    expect(adminMocks.check).not.toHaveBeenCalled();
+    expect(prepared.requestTools.handlers.has('resolve_escalation')).toBe(false);
   });
 
   it('overrides the anonymous directory handler with the authenticated member context', async () => {
@@ -205,7 +254,7 @@ describe('mounted Addie web-thread ownership', () => {
     })()),
   } as any;
 
-  function app(router?: any) {
+  function app(router?: any, prepareRequest?: any) {
     const instance = express();
     instance.use(express.json());
     instance.use((req, _res, next) => {
@@ -218,7 +267,7 @@ describe('mounted Addie web-thread ownership', () => {
         : {};
       next();
     });
-    instance.use('/api/addie/chat', createAddieChatRouter({ chatClient, router }).apiRouter);
+    instance.use('/api/addie/chat', createAddieChatRouter({ chatClient, router, prepareRequest }).apiRouter);
     return instance;
   }
 
@@ -236,6 +285,25 @@ describe('mounted Addie web-thread ownership', () => {
       message_id: '33333333-3333-4333-8333-333333333333',
     });
     threadMocks.addMessageFeedback.mockReset().mockResolvedValue(true);
+  });
+
+  it('returns retryable authorization guidance without executing chat on lookup outage', async () => {
+    const prepareRequest = vi.fn().mockRejectedValue(new AAOAdminLookupUnavailableError());
+    chatClient.processMessage.mockClear();
+    const response = await request(app(undefined, prepareRequest)).post('/api/addie/chat').send({ message: 'List escalations' }).expect(503);
+    expect(response.body).toMatchObject({ error: 'admin_authorization_unavailable', message: expect.stringContaining('try again') });
+    expect(response.headers['retry-after']).toBeDefined();
+    expect(chatClient.processMessage).not.toHaveBeenCalled();
+  });
+
+  it('emits a retryable stream error without executing chat on authorization outage', async () => {
+    const prepareRequest = vi.fn().mockRejectedValue(new AAOAdminLookupUnavailableError());
+    chatClient.processMessageStream.mockClear();
+    const response = await request(app(undefined, prepareRequest)).post('/api/addie/chat/stream').send({ message: 'List escalations' }).expect(200);
+    expect(response.text).toContain('event: stream_error');
+    expect(response.text).toContain('admin_authorization_unavailable');
+    expect(response.text).toContain('"recoverable":true');
+    expect(chatClient.processMessageStream).not.toHaveBeenCalled();
   });
 
   it('hides another user\'s thread on the mounted GET route', async () => {

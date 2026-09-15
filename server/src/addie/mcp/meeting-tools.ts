@@ -15,7 +15,8 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import type { ThreadContext } from '../thread-service.js';
 import type { RecurrenceRule, CreateMeetingSeriesInput } from '../../types.js';
-import { isSlackUserAAOAdmin, isWebUserAAOAdmin } from './admin-tools.js';
+import { isSlackUserAAOAdmin } from './admin-tools.js';
+import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-status-lookup.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import * as meetingService from '../../services/meeting-service.js';
@@ -432,7 +433,8 @@ When add_to_series is true, adds them to all upcoming meetings in the same serie
 export function createMeetingToolHandlers(
   memberContext?: MemberContext | null,
   slackUserId?: string,
-  threadContext?: ThreadContext | null
+  threadContext?: ThreadContext | null,
+  adminPrincipal?: AAOAdminPrincipal,
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -448,7 +450,14 @@ export function createMeetingToolHandlers(
 
   // Helper to check scheduling permission
   const checkSchedulePermission = async (): Promise<string | null> => {
-    if (slackUserId) {
+    if (adminPrincipal) {
+      if (await isAuthenticatedUserAAOAdmin(adminPrincipal)) return null;
+      const credentialId = adminPrincipal.authWorkosUserId ?? adminPrincipal.id;
+      const ledGroups = await workingGroupDb.getCommitteesLedByUser(credentialId);
+      if (ledGroups.length === 0) {
+        return '⚠️ You need to be an admin or committee leader to schedule meetings.';
+      }
+    } else if (slackUserId) {
       const canSchedule = await canScheduleMeetings(slackUserId);
       if (!canSchedule) {
         return '⚠️ You need to be an admin or committee leader to schedule meetings.';
@@ -490,17 +499,20 @@ export function createMeetingToolHandlers(
     // Non-admin users can only schedule meetings for groups they lead
     // This check runs for both Slack and web channels
     const userId = getUserId();
-    if (userId) {
+    const authorizationUserId = adminPrincipal
+      ? adminPrincipal.authWorkosUserId ?? adminPrincipal.id
+      : userId;
+    if (authorizationUserId) {
       // Determine AAO admin status from either Slack or web context
       let isAAOAdmin = false;
-      if (slackUserId) {
+      if (adminPrincipal) {
+        isAAOAdmin = await isAuthenticatedUserAAOAdmin(adminPrincipal);
+      } else if (slackUserId) {
         isAAOAdmin = await isSlackUserAAOAdmin(slackUserId);
-      } else if (memberContext?.workos_user?.workos_user_id) {
-        isAAOAdmin = await isWebUserAAOAdmin(memberContext.workos_user.workos_user_id);
       }
 
       if (!isAAOAdmin) {
-        const isGroupLeader = await workingGroupDb.isLeader(workingGroup.id, userId);
+        const isGroupLeader = await workingGroupDb.isLeader(workingGroup.id, authorizationUserId);
         if (!isGroupLeader) {
           return `⚠️ You can only schedule meetings for committees you lead. You're not a leader of "${workingGroup.name}".`;
         }

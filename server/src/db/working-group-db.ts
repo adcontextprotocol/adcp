@@ -213,6 +213,20 @@ export class WorkingGroupDatabase {
   }
 
   /**
+   * Get only a working-group ID by slug.
+   *
+   * Authorization checks use this narrow lookup so they do not fetch leaders
+   * or other presentation data on every uncached decision.
+   */
+  async getWorkingGroupIdBySlug(slug: string): Promise<string | null> {
+    const result = await query<{ id: string }>(
+      'SELECT id FROM working_groups WHERE slug = $1',
+      [slug],
+    );
+    return result.rows[0]?.id ?? null;
+  }
+
+  /**
    * Update working group
    */
   async updateWorkingGroup(
