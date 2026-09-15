@@ -51,6 +51,7 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+  queryWithTimeout: mocks.poolQuery,
 }));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
@@ -130,9 +131,17 @@ describe('Addie real global-admin boundary', () => {
     });
     mocks.isAdminGroupMember.mockResolvedValue(true);
     mocks.poolQuery.mockImplementation((sql: string) => {
-      if (sql.includes('FROM users')) {
+      if (sql.includes('pg_catalog.pg_is_in_recovery()')) {
         return Promise.resolve({
-          rows: [{ first_name: 'SSO', last_name: 'Admin' }],
+          rows: [{
+            in_recovery: false,
+            authenticated_user_id: 'user_sso_admin',
+            canonical_user_id: 'user_sso_admin',
+            identity_id: 'identity_sso_admin',
+            authorization_epoch: '0',
+            email: 'sso-admin@example.test', email_verified: true,
+            first_name: 'SSO', last_name: 'Admin', grant_id: null,
+          }],
           rowCount: 1,
         });
       }

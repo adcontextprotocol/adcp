@@ -54,6 +54,7 @@ vi.mock('../../src/db/org-filters.js', () => ({
 vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   getPool: () => ({ query: mocks.poolQuery }),
+  queryWithTimeout: mocks.poolQuery,
 }));
 
 vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
@@ -182,10 +183,27 @@ describe('network-health global authorization boundary', () => {
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
     mocks.checkPlatformBan.mockResolvedValue({ banned: false });
     mocks.isWebUserAAOAdmin.mockResolvedValue(false);
-    mocks.poolQuery.mockImplementation((sql: string) => {
-      if (sql.includes('FROM users')) {
+    mocks.poolQuery.mockImplementation((sql: string, params: unknown[]) => {
+      if (sql.includes('pg_catalog.pg_is_in_recovery()')) {
+        const userId = params[0] as string;
+        const isAdmin = userId === 'user_platform_admin';
         return Promise.resolve({
-          rows: [{ first_name: 'Regular', last_name: 'User' }],
+          rows: [{
+            in_recovery: false,
+            authenticated_user_id: userId,
+            canonical_user_id: userId,
+            identity_id: `identity_${userId}`,
+            authorization_epoch: '0',
+            email: isAdmin ? 'platform-admin@example.test' : 'user@example.test',
+            email_verified: true,
+            first_name: isAdmin ? 'Platform' : 'Regular',
+            last_name: isAdmin ? 'Admin' : 'User',
+            grant_id: null,
+            grant_organization_id: null,
+            grant_role: null,
+            grant_effective_from: null,
+            grant_effective_until: null,
+          }],
           rowCount: 1,
         });
       }
