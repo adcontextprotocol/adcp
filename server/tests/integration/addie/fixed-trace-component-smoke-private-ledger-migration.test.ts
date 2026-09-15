@@ -380,7 +380,10 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     const opened = dispatchEntry(21);
     const precheckRead = deferred();
     const releasePrecheck = deferred();
+    const intentCommitted = deferred();
+    const releaseCommittedIntent = deferred();
     let blocked = false;
+    let committed = false;
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
     const controlledPool = {
@@ -395,6 +398,11 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
             precheckRead.resolve();
             await releasePrecheck.promise;
           }
+          if (!committed && sql === 'COMMIT') {
+            committed = true;
+            intentCommitted.resolve();
+            await releaseCommittedIntent.promise;
+          }
           return output;
         };
         return connection;
@@ -402,19 +410,30 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     };
     const contender = new Client({ connectionString: databaseUrl });
     await contender.connect();
+    let pendingIntent: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordProviderIntent']> | undefined;
+    let recovery: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordUnknownExposure']> | undefined;
     try {
       const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(controlledPool as never);
-      const pendingIntent = ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) });
+      pendingIntent = ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) });
       await precheckRead.promise;
       // This committed intent is deliberately injected after the initial
       // precheck but before the target plan lock is acquired.
       await insertIntent(contender, authorizationDigest, opened, uniqueAttemptId().slice('attempt_'.length));
-      const recovery = ledger.recordUnknownExposure(reservationFor(authorizationDigest));
       releasePrecheck.resolve();
+      expect(await Promise.race([
+        intentCommitted.promise.then(() => 'committed'), pendingIntent.then(() => 'settled'),
+      ])).toBe('committed');
+      recovery = ledger.recordUnknownExposure(reservationFor(authorizationDigest));
       expect(await recovery).toEqual({ status: 'recorded' });
+      releaseCommittedIntent.resolve();
       expect(await pendingIntent).toEqual({ status: 'refused', reason: 'unknown_exposure' });
       expect((await client!.query("SELECT a.status, count(*) FILTER (WHERE t.status = 'intent_recorded')::int AS open FROM addie_fixed_trace_component_smoke_authorizations a LEFT JOIN addie_fixed_trace_component_smoke_attempts t USING (authorization_digest) WHERE a.authorization_digest = $1 GROUP BY a.status", [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure', open: 0 }]);
-    } finally { await contender.end(); await pool.end(); await client!.query('BEGIN'); }
+    } finally {
+      releasePrecheck.resolve();
+      releaseCommittedIntent.resolve();
+      await Promise.allSettled([pendingIntent, recovery]);
+      await contender.end(); await pool.end(); await client!.query('BEGIN');
+    }
   });
 
   it('reports recovery lock failure as uncertainty and never claims durable poisoning', async () => {
