@@ -77,9 +77,15 @@ const EXEMPT_EXACT = [
 ];
 
 function isExemptPath(path: string): boolean {
-  return EXEMPT_EXACT.includes(path) ||
+  // Express routes accept a single trailing slash by default. Normalize that
+  // equivalent spelling before applying exact MCP/external-route exemptions;
+  // otherwise `/mcp/` is intercepted here before its bearer authenticator can
+  // return the required challenge. Remove only one slash so near-misses such
+  // as `/mcp//` and appended paths remain protected.
+  const routePath = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+  return EXEMPT_EXACT.includes(routePath) ||
     EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
-    PER_TENANT_MCP_PATH.test(path);
+    PER_TENANT_MCP_PATH.test(routePath);
 }
 
 /**

@@ -77,6 +77,7 @@ describe('csrfProtection', () => {
 
   const perTenantMcpPaths = [
     '/sales/mcp',
+    '/sales/mcp/',
     '/sales/mcp-strict',
     '/sales/mcp-strict-required',
     '/sales/mcp-strict-forbidden',
@@ -167,6 +168,7 @@ describe('csrfProtection', () => {
 
   const exemptExactPaths = [
     '/mcp',
+    '/mcp/',
     '/mcp-strict',
     '/mcp-strict-required',
     '/mcp-strict-forbidden',
@@ -201,6 +203,8 @@ describe('csrfProtection', () => {
   // to `startsWith`. Today's check is exact equality, so these paths must
   // continue to be rejected even though they look like exempt entries.
   const nearMissExactPaths = [
+    '/mcp//',                  // more than one trailing slash
+    '/mcp/extra',              // appended path after slash
     '/mcp-stricter',           // strict-prefix only
     '/mcp-strict-extra',       // appended segment, no slash
     '/mcp-strict/extra',       // appended path
