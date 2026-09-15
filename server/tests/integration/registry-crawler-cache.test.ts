@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { PublisherDatabase } from '../../src/db/publisher-db.js';
+import { AdagentsManifestProvenanceError, PublisherDatabase } from '../../src/db/publisher-db.js';
 import { FederatedIndexService } from '../../src/federated-index.js';
 import type { Pool } from 'pg';
 import { PostgresStateStore } from '@adcp/sdk/server';
@@ -85,10 +85,21 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
   });
 
   it('requires a provenance-aware refresh and refuses URLs that cannot be retained completely', async () => {
-    await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST });
-    expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest).toBeNull();
-    await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST, discoveryMethod: 'authoritative_location', resolvedUrl: 'https://shared.example/' + 'x'.repeat(8192) });
-    expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest).toBeNull();
+    await publisherDb.upsertAdagentsCache({
+      domain: TEST_DOMAIN,
+      manifest: { ...FIXTURE_MANIFEST, last_updated: '2099-01-01T00:00:00Z' },
+    });
+    const before = await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN);
+    expect(before.manifest).toBeNull();
+    await expect(publisherDb.upsertAdagentsCache({
+      domain: TEST_DOMAIN,
+      manifest: { ...FIXTURE_MANIFEST, last_updated: '2026-04-26T00:00:00Z' },
+      discoveryMethod: 'authoritative_location',
+      resolvedUrl: 'https://shared.example/' + 'x'.repeat(8192),
+    })).rejects.toBeInstanceOf(AdagentsManifestProvenanceError);
+    expect(await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).toEqual(before);
+    // A pre-migration/unprovenanced cache timestamp is not trusted rollback
+    // state and cannot prevent the first authority-bound refresh.
     await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST, discoveryMethod: 'direct', resolvedUrl: `https://${TEST_DOMAIN}/.well-known/adagents.json` });
     expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest).toEqual({ ...FIXTURE_MANIFEST, collections: [] });
   });
@@ -211,6 +222,147 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
       expect(rows[0].source_type).toBe('adagents_json');
       expect(rows[0].workos_organization_id).toBe('org_test_publisher_owner');
       expect(rows[0].created_by_email).toBe('owner@example.com');
+    });
+
+    it('atomically pins the first authority and rejects a pointer swap without changing cache or catalog', async () => {
+      const firstLocation = 'https://shared.example/first.json';
+      const changedLocation = 'https://attacker.example/changed.json';
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST,
+        discoveryMethod: 'authoritative_location', resolvedUrl: firstLocation,
+      });
+      const changedManifest = {
+        ...FIXTURE_MANIFEST,
+        last_updated: '2026-04-26T00:00:00Z',
+        authorized_agents: [{ ...FIXTURE_MANIFEST.authorized_agents[0], url: 'https://attacker.example/mcp' }],
+      };
+      await expect(publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN, manifest: changedManifest,
+        discoveryMethod: 'authoritative_location', resolvedUrl: changedLocation,
+      })).rejects.toThrow(/independent confirmation/);
+
+      const snapshot = await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN);
+      expect(snapshot.resolvedUrl).toBe(firstLocation);
+      expect(snapshot.manifest?.authorized_agents).toEqual(FIXTURE_MANIFEST.authorized_agents);
+      const state = await pool.query<{ location: string }>(
+        "SELECT data->>'location' AS location FROM adcp_state WHERE collection = 'supply_path_authority_v1' AND id = $1",
+        [TEST_DOMAIN],
+      );
+      expect(state.rows).toEqual([{ location: firstLocation }]);
+      const catalog = await pool.query<{ agent_url: string }>(
+        `SELECT DISTINCT caa.agent_url
+           FROM catalog_agent_authorizations caa
+          WHERE caa.evidence = 'adagents_json' AND caa.deleted_at IS NULL
+            AND (caa.publisher_domain = $1 OR caa.property_rid IN (
+              SELECT property_rid FROM catalog_properties WHERE created_by = $2
+            ))`,
+        [TEST_DOMAIN, `adagents_json:${TEST_DOMAIN}`],
+      );
+      expect(new Set(catalog.rows.map(row => row.agent_url))).toEqual(new Set([TEST_AGENT]));
+    });
+
+    it('rejects policy-invalid provenance without changing an existing pin, cache, or catalog', async () => {
+      const firstLocation = 'https://shared.example/first.json';
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST,
+        discoveryMethod: 'authoritative_location', resolvedUrl: firstLocation,
+      });
+      const before = await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN);
+      const changedManifest = {
+        ...FIXTURE_MANIFEST,
+        last_updated: '2026-04-26T00:00:00Z',
+        authorized_agents: [{ ...FIXTURE_MANIFEST.authorized_agents[0], url: 'https://attacker.example/mcp' }],
+      };
+      await expect(publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN, manifest: changedManifest,
+        discoveryMethod: 'authoritative_location', resolvedUrl: 'https://attacker.example:8443/changed.json',
+      })).rejects.toBeInstanceOf(AdagentsManifestProvenanceError);
+
+      expect(await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).toEqual(before);
+      const state = await pool.query<{ location: string }>(
+        "SELECT data->>'location' AS location FROM adcp_state WHERE collection = 'supply_path_authority_v1' AND id = $1",
+        [TEST_DOMAIN],
+      );
+      expect(state.rows).toEqual([{ location: firstLocation }]);
+      const catalog = await pool.query<{ agent_url: string }>(
+        `SELECT DISTINCT caa.agent_url
+           FROM catalog_agent_authorizations caa
+          WHERE caa.evidence = 'adagents_json' AND caa.deleted_at IS NULL
+            AND (caa.publisher_domain = $1 OR caa.property_rid IN (
+              SELECT property_rid FROM catalog_properties WHERE created_by = $2
+            ))`,
+        [TEST_DOMAIN, `adagents_json:${TEST_DOMAIN}`],
+      );
+      expect(new Set(catalog.rows.map(row => row.agent_url))).toEqual(new Set([TEST_AGENT]));
+    });
+
+    it('rolls back a first authority pin when a later step in the cache transaction fails', async () => {
+      await expect(publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN,
+        manifest: FIXTURE_MANIFEST,
+        discoveryMethod: 'authoritative_location',
+        resolvedUrl: 'https://shared.example/rollback.json',
+        eventsDb: { writeEvent: async () => { throw new Error('injected event failure'); } } as never,
+      })).rejects.toThrow('injected event failure');
+      expect((await pool.query(
+        "SELECT 1 FROM adcp_state WHERE collection = 'supply_path_authority_v1' AND id = $1",
+        [TEST_DOMAIN],
+      )).rowCount).toBe(0);
+      expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [TEST_DOMAIN])).rowCount).toBe(0);
+      expect((await pool.query(
+        'SELECT 1 FROM catalog_properties WHERE created_by = $1',
+        [`adagents_json:${TEST_DOMAIN}`],
+      )).rowCount).toBe(0);
+    });
+
+    it('rejects non-monotonic authority refreshes while accepting equal and newer timestamps', async () => {
+      const location = 'https://shared.example/monotonic.json';
+      const write = (manifest: Record<string, unknown>) => publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN, manifest,
+        discoveryMethod: 'authoritative_location', resolvedUrl: location,
+      });
+      await write(FIXTURE_MANIFEST);
+      await expect(write({ ...FIXTURE_MANIFEST, last_updated: '2026-04-24T23:59:59Z' })).rejects.toThrow(/older than the cached manifest/);
+      await expect(write({ ...FIXTURE_MANIFEST, last_updated: 'not-a-date' })).rejects.toThrow(/older than the cached manifest/);
+      const { last_updated: _lastUpdated, ...missingTimestamp } = FIXTURE_MANIFEST;
+      await expect(write(missingTimestamp)).rejects.toThrow(/older than the cached manifest/);
+      await expect(write({ ...FIXTURE_MANIFEST, authorized_agents: [{ ...FIXTURE_MANIFEST.authorized_agents[0], authorized_for: 'Equal timestamp' }] })).resolves.toBeDefined();
+      await expect(write({ ...FIXTURE_MANIFEST, last_updated: '2026-04-26T00:00:00Z' })).resolves.toBeDefined();
+      expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest?.last_updated).toBe('2026-04-26T00:00:00Z');
+    });
+
+    it('serializes concurrent first pins so cache, authority, and catalog share one winner', async () => {
+      const candidates = [
+        { location: 'https://a.example/manifest.json', agent: 'https://a-agent.example/mcp' },
+        { location: 'https://b.example/manifest.json', agent: 'https://b-agent.example/mcp' },
+      ];
+      const results = await Promise.allSettled(candidates.map(candidate => publisherDb.upsertAdagentsCache({
+        domain: TEST_DOMAIN,
+        manifest: {
+          ...FIXTURE_MANIFEST,
+          authorized_agents: [{ ...FIXTURE_MANIFEST.authorized_agents[0], url: candidate.agent }],
+        },
+        discoveryMethod: 'authoritative_location', resolvedUrl: candidate.location,
+      })));
+      expect(results.map(result => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+      const state = await pool.query<{ location: string }>(
+        "SELECT data->>'location' AS location FROM adcp_state WHERE collection = 'supply_path_authority_v1' AND id = $1",
+        [TEST_DOMAIN],
+      );
+      const snapshot = await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN);
+      const winner = candidates.find(candidate => candidate.location === state.rows[0]?.location)!;
+      expect(snapshot.resolvedUrl).toBe(winner.location);
+      expect(snapshot.manifest?.authorized_agents?.[0]?.url).toBe(winner.agent);
+      const catalog = await pool.query<{ agent_url: string }>(
+        `SELECT DISTINCT caa.agent_url
+           FROM catalog_agent_authorizations caa
+          WHERE caa.evidence = 'adagents_json' AND caa.deleted_at IS NULL
+            AND (caa.publisher_domain = $1 OR caa.property_rid IN (
+              SELECT property_rid FROM catalog_properties WHERE created_by = $2
+            ))`,
+        [TEST_DOMAIN, `adagents_json:${TEST_DOMAIN}`],
+      );
+      expect(new Set(catalog.rows.map(row => row.agent_url))).toEqual(new Set([winner.agent]));
     });
   });
 

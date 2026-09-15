@@ -42,6 +42,7 @@ A collection is a persistent, publisher-controlled content program that produces
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `collection_id` | string | Yes | Publisher-assigned identifier. Declared in the publisher's `adagents.json`. Products reference collections via `collections` selectors. Use distribution identifiers for cross-seller matching. |
+| `publisher_domain` | string | Conditional | Owning publisher namespace. Required when a collection is served from a cross-origin shared authoritative document; optional in a publisher-origin document. |
 | `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH), `channel` (continuously programmed audio/video stream). Defaults to `series`. |
 | `name` | string | Yes | Human-readable collection name |
 | `description` | string | No | What the collection is about |
@@ -257,7 +258,7 @@ existing owner-sales clause, and the upgrade path from an
 
 The registry supply-path endpoint returns `semantics_version: "1"`. Its evaluator and authoritative SDK implementations consume the same [canonical golden vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/supply-path/vectors.json). Consumers MUST NOT treat results from older evaluator semantics as equivalent to version 1.
 
-Version 1 requires an affirmative host `collections` selector naming the owner. A broad property grant with no collection constraint does not attest owner-sold carriage. Every claimed host property ID must resolve, and the matching grant must cover all of them. Identifier-only distribution entries remain valid discovery data, but cannot prove a host property binding. Missing or unknown authorization discriminators, malformed selectors, and country, effective-time or placement constraints that cannot be evaluated in the supplied context fail closed. Revocations take precedence over declarations. Agent URL identity follows the protocol canonicalization rules and preserves case-sensitive paths and query values.
+Version 1 requires an affirmative host `collections` selector naming the owner. A broad property grant with no collection constraint does not attest owner-sold carriage. Every claimed host property ID must resolve, and the matching grant must cover all of them. Identifier-only distribution entries remain valid discovery data, but cannot prove a host property binding. Missing or unknown authorization discriminators and their companion selectors fail closed on both the owner's and host's agent declarations. Malformed selectors and country, effective-time or placement constraints that cannot be evaluated in the supplied context also fail closed. Revocations take precedence over declarations. Agent URL identity follows the protocol canonicalization rules and preserves case-sensitive paths and query values.
 
 A query omitting `collection_id` returns the strongest complete individual collection path. It never combines one collection's carriage with another collection's authorization. The weaker `host_delegated` state retains its documented owner declarations plus host inventory-partner evidence requirements; it does not require a host `adagents.json`, prove concrete property coverage, or override revocation.
 

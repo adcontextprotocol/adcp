@@ -10,7 +10,12 @@ const AGENT = 'https://sales.channel-owner.example';
 
 function ownerManifest(overrides: Partial<AdagentsManifest> = {}): AdagentsManifest {
   return {
-    authorized_agents: [{ url: AGENT, authorized_for: 'Owner-sold avails' }],
+    authorized_agents: [{
+      url: AGENT,
+      authorized_for: 'Owner-sold avails',
+      authorization_type: 'property_ids',
+      property_ids: ['owner_inventory'],
+    }],
     collections: [{
       collection_id: 'retro_news',
       name: 'Acme Retro News',

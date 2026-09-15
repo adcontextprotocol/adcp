@@ -14,7 +14,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -103,7 +107,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -189,7 +197,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -271,7 +283,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -354,7 +370,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -437,7 +457,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -520,7 +544,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -603,7 +631,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -691,7 +723,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -779,7 +815,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -870,7 +910,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -960,7 +1004,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1050,7 +1098,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1140,7 +1192,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1232,7 +1288,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1311,7 +1371,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1404,7 +1468,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1499,7 +1567,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1587,7 +1659,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1678,7 +1754,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1769,7 +1849,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1860,7 +1944,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -1951,7 +2039,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2042,7 +2134,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2132,7 +2228,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2222,7 +2322,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2312,7 +2416,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2405,7 +2513,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2534,7 +2646,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2624,7 +2740,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2712,7 +2832,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2810,7 +2934,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -2871,7 +2999,7 @@
       }
     },
     {
-      "id": "host-delegated-without-host-adagents",
+      "id": "owner-agent-missing-discriminator",
       "input": {
         "ownerDomain": "channel-owner.example",
         "hostDomain": "hoststream.example",
@@ -2885,6 +3013,85 @@
             {
               "url": "https://sales.channel-owner.example",
               "authorized_for": "Owner-sold avails"
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "hoststream_ctv"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv",
+              "name": "HostStream CTV",
+              "property_type": "ctv_app",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            }
+          ],
+          "authorized_agents": []
+        }
+      },
+      "expected": {
+        "semantics_version": "1",
+        "state": "owner_attested",
+        "legs": {
+          "owner_collection_declared": {
+            "ok": true
+          },
+          "owner_distribution_carriage": {
+            "ok": true
+          },
+          "owner_agent_declared": {
+            "ok": false,
+            "failure": "agent_not_declared_by_owner"
+          },
+          "host_authorization": {
+            "ok": false,
+            "failure": "no_agent_entry"
+          },
+          "inventory_partner_domain": {
+            "ok": true
+          }
+        },
+        "resolved_collection_id": "retro_news"
+      }
+    },
+    {
+      "id": "host-delegated-without-host-adagents",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "collectionId": "retro_news",
+        "hostInventoryPartnerDomains": [
+          "channel-owner.example"
+        ],
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3012,7 +3219,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3101,7 +3312,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3192,7 +3407,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3283,7 +3502,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3376,7 +3599,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3468,7 +3695,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3559,7 +3790,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3652,7 +3887,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3746,7 +3985,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3839,7 +4082,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -3932,7 +4179,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -4022,7 +4273,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5130,7 +5385,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5198,7 +5457,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5273,7 +5536,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5366,7 +5633,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5464,7 +5735,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5526,7 +5801,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5628,7 +5907,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5727,7 +6010,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5826,7 +6113,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -5918,7 +6209,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6010,7 +6305,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6105,7 +6404,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6200,7 +6503,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6299,7 +6606,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6397,7 +6708,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6498,7 +6813,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6590,7 +6909,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6681,7 +7004,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6770,7 +7097,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6861,7 +7192,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -6962,7 +7297,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -7063,6 +7402,10 @@
                     "retro_news"
                   ]
                 }
+              ],
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
               ]
             }
           ],
@@ -7164,6 +7507,10 @@
                     "retro_news"
                   ]
                 }
+              ],
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
               ]
             }
           ],
@@ -7258,7 +7605,11 @@
           "authorized_agents": [
             {
               "url": "https://sales.channel-owner.example",
-              "authorized_for": "Owner-sold avails"
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -7340,6 +7691,10 @@
                 {
                   "publisher_domain": "other-owner.example"
                 }
+              ],
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
               ]
             }
           ],
@@ -7422,6 +7777,10 @@
                 {
                   "publisher_domain": "channel-owner.example"
                 }
+              ],
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
               ]
             }
           ],
@@ -7499,7 +7858,11 @@
             {
               "url": "https://sales.channel-owner.example",
               "authorized_for": "Owner-sold avails",
-              "collections": []
+              "collections": [],
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "owner_inventory"
+              ]
             }
           ],
           "collections": [
@@ -7536,6 +7899,243 @@
           "authorized_agents": []
         },
         "requireExplicitOwnerPublisherDomain": true
+      },
+      "expected": {
+        "semantics_version": "1",
+        "state": "owner_attested",
+        "legs": {
+          "owner_collection_declared": {
+            "ok": true
+          },
+          "owner_distribution_carriage": {
+            "ok": true
+          },
+          "owner_agent_declared": {
+            "ok": false,
+            "failure": "agent_not_declared_by_owner"
+          },
+          "host_authorization": {
+            "ok": false,
+            "failure": "no_agent_entry"
+          },
+          "inventory_partner_domain": {
+            "ok": true
+          }
+        },
+        "resolved_collection_id": "retro_news"
+      }
+    },
+    {
+      "id": "owner-agent-invalid-property-id",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "collectionId": "retro_news",
+        "hostInventoryPartnerDomains": [
+          "channel-owner.example"
+        ],
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_ids",
+              "property_ids": [
+                "INVALID ID"
+              ]
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "hoststream_ctv"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv",
+              "name": "HostStream CTV",
+              "property_type": "ctv_app",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            }
+          ],
+          "authorized_agents": []
+        }
+      },
+      "expected": {
+        "semantics_version": "1",
+        "state": "owner_attested",
+        "legs": {
+          "owner_collection_declared": {
+            "ok": true
+          },
+          "owner_distribution_carriage": {
+            "ok": true
+          },
+          "owner_agent_declared": {
+            "ok": false,
+            "failure": "agent_not_declared_by_owner"
+          },
+          "host_authorization": {
+            "ok": false,
+            "failure": "no_agent_entry"
+          },
+          "inventory_partner_domain": {
+            "ok": true
+          }
+        },
+        "resolved_collection_id": "retro_news"
+      }
+    },
+    {
+      "id": "owner-agent-invalid-property-tag",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "collectionId": "retro_news",
+        "hostInventoryPartnerDomains": [
+          "channel-owner.example"
+        ],
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "property_tags",
+              "property_tags": [
+                "INVALID TAG"
+              ]
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "hoststream_ctv"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv",
+              "name": "HostStream CTV",
+              "property_type": "ctv_app",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            }
+          ],
+          "authorized_agents": []
+        }
+      },
+      "expected": {
+        "semantics_version": "1",
+        "state": "owner_attested",
+        "legs": {
+          "owner_collection_declared": {
+            "ok": true
+          },
+          "owner_distribution_carriage": {
+            "ok": true
+          },
+          "owner_agent_declared": {
+            "ok": false,
+            "failure": "agent_not_declared_by_owner"
+          },
+          "host_authorization": {
+            "ok": false,
+            "failure": "no_agent_entry"
+          },
+          "inventory_partner_domain": {
+            "ok": true
+          }
+        },
+        "resolved_collection_id": "retro_news"
+      }
+    },
+    {
+      "id": "owner-agent-malformed-inline-property",
+      "input": {
+        "ownerDomain": "channel-owner.example",
+        "hostDomain": "hoststream.example",
+        "agentUrl": "https://sales.channel-owner.example",
+        "collectionId": "retro_news",
+        "hostInventoryPartnerDomains": [
+          "channel-owner.example"
+        ],
+        "ownerManifest": {
+          "authorized_agents": [
+            {
+              "url": "https://sales.channel-owner.example",
+              "authorized_for": "Owner-sold avails",
+              "authorization_type": "inline_properties",
+              "properties": [
+                {}
+              ]
+            }
+          ],
+          "collections": [
+            {
+              "collection_id": "retro_news",
+              "name": "Retro News",
+              "kind": "channel",
+              "distribution": [
+                {
+                  "publisher_domain": "hoststream.example",
+                  "property_ids": [
+                    "hoststream_ctv"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "hostManifest": {
+          "properties": [
+            {
+              "property_id": "hoststream_ctv",
+              "name": "HostStream CTV",
+              "property_type": "ctv_app",
+              "identifiers": [
+                {
+                  "type": "roku_channel_id",
+                  "value": "123"
+                }
+              ]
+            }
+          ],
+          "authorized_agents": []
+        }
       },
       "expected": {
         "semantics_version": "1",

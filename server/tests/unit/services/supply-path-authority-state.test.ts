@@ -25,6 +25,15 @@ describe('persistent supply-path authority state', () => {
     vi.setSystemTime(new Date('2026-09-08T00:00:00Z'));
     expect((await observeSupplyPathAuthority(host, null, undefined, store)).revoked).toEqual([]);
   });
+  it('does not restart an expired hold while the revocation remains published', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-01T00:00:00Z'));
+    const store = new InMemoryStateStore();
+    await observeSupplyPathAuthority(host, revoked(), pointer, store);
+    vi.setSystemTime(new Date('2026-09-09T00:00:00Z'));
+    expect((await observeSupplyPathAuthority(host, revoked(), pointer, store)).revoked).toEqual(['owner.example']);
+    vi.setSystemTime(new Date('2026-09-10T00:00:00Z'));
+    expect((await observeSupplyPathAuthority(host, null, undefined, store)).revoked).toEqual([]);
+  });
   it('rejects changed pointers and preserves holds after independently confirmed migrations', async () => {
     const store = new InMemoryStateStore();
     await observeSupplyPathAuthority(host, revoked(), pointer, store);

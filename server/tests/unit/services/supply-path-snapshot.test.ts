@@ -13,6 +13,20 @@ describe('registry cache authority provenance', () => {
     expect(delegated.explicitPublisher).toBe(true);
   });
   it.each([
+    'https://www.host.example/.well-known/adagents.json',
+    'https://static.host.example/adagents.json',
+  ])('accepts a direct well-known redirect inside the original registrable domain: %s', async resolvedUrl => {
+    const direct = await supplyPathSnapshotEvidence(publisher, { ...snapshot(), resolvedUrl }, new InMemoryStateStore());
+    expect(direct.manifest).toEqual(snapshot().manifest);
+    expect(direct.explicitPublisher).toBe(true);
+  });
+  it('does not trust a direct redirect across private-suffix tenants', async () => {
+    const result = await supplyPathSnapshotEvidence('owner.github.io', {
+      ...snapshot(), resolvedUrl: 'https://attacker.github.io/.well-known/adagents.json',
+    }, new InMemoryStateStore());
+    expect(result.manifest).toBeNull();
+  });
+  it.each([
     { resolvedUrl: null }, { resolvedUrl: 'https://cdn.example/' + 'x'.repeat(8192) },
     { fetchedAt: null }, { fetchedAt: new Date(0) }, { fetchedAt: new Date('2100-01-01') },
     { expiresAt: new Date(0) }, { discoveryMethod: 'manager_domain' }, { discoveryMethod: 'community' },

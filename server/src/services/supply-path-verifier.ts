@@ -14,6 +14,24 @@ import { agentIdentity, domain, record, records, strings } from './supply-path-i
 
 export const SUPPLY_PATH_STATES = ['unverified', 'owner_attested', 'host_delegated', 'verified_owner_sold'] as const;
 
+const PROPERTY_TYPES = new Set([
+  'website', 'mobile_app', 'ctv_app', 'desktop_app', 'dooh', 'podcast', 'radio',
+  'linear_tv', 'streaming_audio', 'ai_assistant',
+]);
+const PROPERTY_IDENTIFIER_TYPES = new Set([
+  'domain', 'subdomain', 'network_id', 'ios_bundle', 'android_package',
+  'apple_app_store_id', 'google_play_id', 'roku_store_id', 'fire_tv_asin',
+  'samsung_app_id', 'apple_tv_bundle', 'bundle_id', 'venue_id', 'screen_id',
+  'openooh_venue_type', 'rss_url', 'apple_podcast_id', 'spotify_collection_id',
+  'podcast_guid', 'station_id', 'facility_id',
+]);
+const PROPERTY_CHANNELS = new Set([
+  'display', 'olv', 'social', 'search', 'ctv', 'linear_tv', 'radio',
+  'streaming_audio', 'podcast', 'dooh', 'ooh', 'print', 'cinema', 'email',
+  'gaming', 'retail_media', 'influencer', 'affiliate', 'product_placement',
+  'sponsored_intelligence',
+]);
+
 export function parseInventoryPartnerDomains(content: string): string[] {
   const partners = new Set<string>();
   for (const line of content.split(/\r?\n/)) {
@@ -52,6 +70,45 @@ function coversCollection(entry: Record<string, unknown>, owner: string, id: str
       domain(selector.publisher_domain) === owner &&
       (selector.collection_ids === undefined || (id !== undefined && selector.collection_ids.includes(id)))
   );
+}
+
+function hasPropertyAuthorizationEnvelope(entry: Record<string, unknown>): boolean {
+  const propertyToken = (value: unknown): value is string =>
+    typeof value === 'string' && /^[a-z0-9_]+$/.test(value);
+  const propertyTokens = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.length > 0 && value.every(propertyToken);
+  const optionalUniqueList = (value: unknown, valid: (item: unknown) => boolean): boolean =>
+    value === undefined || (Array.isArray(value) && value.every(valid) && new Set(value).size === value.length);
+  const validInlineProperty = (value: unknown): boolean => {
+    if (!record(value) || typeof value.property_type !== 'string' || !PROPERTY_TYPES.has(value.property_type) ||
+      typeof value.name !== 'string' ||
+      !Array.isArray(value.identifiers) || value.identifiers.length === 0) return false;
+    if (value.property_id !== undefined && !propertyToken(value.property_id)) return false;
+    if (value.publisher_domain !== undefined && typeof value.publisher_domain !== 'string') return false;
+    if (!optionalUniqueList(value.tags, propertyToken) ||
+      !optionalUniqueList(value.supported_channels, item => typeof item === 'string' && PROPERTY_CHANNELS.has(item))) {
+      return false;
+    }
+    return value.identifiers.every(identifier => record(identifier) &&
+      typeof identifier.type === 'string' && PROPERTY_IDENTIFIER_TYPES.has(identifier.type) &&
+      typeof identifier.value === 'string');
+  };
+  if (entry.authorization_type === 'property_ids') return propertyTokens(entry.property_ids);
+  if (entry.authorization_type === 'property_tags') return propertyTokens(entry.property_tags);
+  if (entry.authorization_type === 'inline_properties') {
+    return Array.isArray(entry.properties) && entry.properties.length > 0 && entry.properties.every(validInlineProperty);
+  }
+  if (entry.authorization_type === 'publisher_properties') {
+    if (!Array.isArray(entry.publisher_properties) || entry.publisher_properties.length === 0 ||
+      !entry.publisher_properties.every(record)) return false;
+    try {
+      entry.publisher_properties.forEach(selector => parsePublisherPropertySelector(selector));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 /** Resolve one entry at a time: separate grants are alternatives, never merged across collection scopes. */
@@ -314,6 +371,7 @@ export function verifySupplyPath(input: SupplyPathInput): SupplyPathVerdict {
           e =>
             agentIdentity(e.url) === agent &&
             owner &&
+            hasPropertyAuthorizationEnvelope(e) &&
             (!input.requireExplicitOwnerPublisherDomain || e.collections !== undefined) &&
             coversCollection(e, owner, input.collectionId) &&
             !unsupportedConstraints(e).length

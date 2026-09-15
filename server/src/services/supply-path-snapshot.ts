@@ -1,4 +1,5 @@
 import type { AdcpStateStore } from '@adcp/sdk/server';
+import { getDomain } from 'tldts';
 import type { SupplyPathManifest } from './supply-path-contract.js';
 import { observeSupplyPathAuthority } from './supply-path-authority-state.js';
 import { record } from './supply-path-input.js';
@@ -24,7 +25,14 @@ export async function supplyPathSnapshotEvidence(publisher: string, snapshot: Su
     }
   }
   const secure = resolved !== null && resolved.protocol === 'https:' && !resolved.username && !resolved.password && !resolved.href.includes('#') && (!resolved.port || resolved.port === '443');
-  const trustedSource = secure && (snapshot.discoveryMethod === 'authoritative_location' || (snapshot.discoveryMethod === 'direct' && resolved?.origin === origin));
+  const publisherSite = getDomain(publisher, { allowPrivateDomains: true });
+  const resolvedSite = resolved ? getDomain(resolved.hostname, { allowPrivateDomains: true }) : null;
+  // Initial well-known discovery permits HTTPS redirects anywhere inside the
+  // original PSL+PRIVATE registrable domain. Explicit authoritative_location
+  // URLs remain exact, redirect-free locations validated by the fetcher.
+  const trustedSource = secure && (snapshot.discoveryMethod === 'authoritative_location' ||
+    (snapshot.discoveryMethod === 'direct' &&
+      (resolved?.origin === origin || (publisherSite !== null && resolvedSite === publisherSite))));
   const age = snapshot.fetchedAt ? Date.now() - snapshot.fetchedAt.getTime() : Infinity;
   const fresh = age >= 0 && age <= 7 * 86400000 && (!snapshot.expiresAt || snapshot.expiresAt.getTime() > Date.now());
   const observation = trustedSource && fresh && record(snapshot.manifest) ? snapshot.manifest : null;

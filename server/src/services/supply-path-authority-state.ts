@@ -14,6 +14,13 @@ const persistentStore = new PostgresStateStore({
 type HeldRevocation = { publisher_domain: string; revoked_at: string; first_observed_at: number };
 type AuthorityState = Record<string, unknown> & { location?: string; revoked: HeldRevocation[] };
 
+export class SupplyPathAuthorityChangeUnconfirmedError extends Error {
+  constructor() {
+    super('Authoritative location changed; publisher migration requires independent confirmation');
+    this.name = 'SupplyPathAuthorityChangeUnconfirmedError';
+  }
+}
+
 /** Persist observations atomically in the existing SDK document store, shared by registry workers. */
 export async function observeSupplyPathAuthority(
   authority: string, manifest: SupplyPathManifest | null, location?: string, store: AdcpStateStore = persistentStore,
@@ -33,8 +40,16 @@ export async function observeSupplyPathAuthority(
   let unchanged: AuthorityState | null = null;
   const state = await patchWithRetry<AuthorityState>(store, COLLECTION, authority, current => {
     if (!current && !location && !incoming.length) return null;
-    if (current?.location && location && current.location !== location) throw new Error('Authoritative location changed; publisher migration requires independent confirmation');
-    const held = new Map((current?.revoked ?? []).filter(entry => entry.first_observed_at + HOLD_MS > now).map(entry => [entry.publisher_domain, entry]));
+    if (current?.location && location && current.location !== location) {
+      throw new SupplyPathAuthorityChangeUnconfirmedError();
+    }
+    const incomingDomains = new Set(incoming.map(entry => entry.publisher_domain));
+    // A still-published revocation remains effective without restarting its
+    // first-observation clock. Once it disappears after the original hold has
+    // expired, drop it immediately instead of inventing a second seven-day hold.
+    const held = new Map((current?.revoked ?? [])
+      .filter(entry => entry.first_observed_at + HOLD_MS > now || incomingDomains.has(entry.publisher_domain))
+      .map(entry => [entry.publisher_domain, entry]));
     for (const entry of incoming) {
       const prior = held.get(entry.publisher_domain);
       if (!prior) held.set(entry.publisher_domain, { ...entry, first_observed_at: now });

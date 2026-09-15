@@ -6,6 +6,8 @@ import { normalizeIdentifier } from '../services/identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
+import { PostgresStateStore } from '@adcp/sdk/server';
+import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
 
 const log = createLogger('publisher-db');
 const ADAGENTS_CACHE_LOCK_TIMEOUT_MS = 5_000;
@@ -159,6 +161,27 @@ export class PublisherCrawlLeaseLostError extends Error {
     super('Publisher crawl request lease is no longer current');
     this.name = 'PublisherCrawlLeaseLostError';
   }
+}
+
+export class AdagentsManifestRollbackError extends Error {
+  constructor() {
+    super('Refreshed adagents.json last_updated is older than the cached manifest');
+    this.name = 'AdagentsManifestRollbackError';
+  }
+}
+
+export class AdagentsManifestProvenanceError extends Error {
+  constructor() {
+    super('Refreshed adagents.json provenance is incomplete or not authoritative');
+    this.name = 'AdagentsManifestProvenanceError';
+  }
+}
+
+function manifestUpdatedAt(manifest: AdagentsManifest | null): number | null {
+  const value = manifest?.last_updated;
+  if (typeof value !== 'string') return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export interface RecordAdagentsValidationFailureInput {
@@ -1159,11 +1182,17 @@ export class PublisherDatabase {
         );
         if (lease.rowCount !== 1) throw new PublisherCrawlLeaseLostError();
       }
-      const previousResult = await client.query<{ adagents_json: AdagentsManifest | null }>(
-        `SELECT adagents_json FROM publishers WHERE domain = $1 FOR UPDATE`,
+      const previousResult = await client.query<{
+        adagents_json: AdagentsManifest | null;
+        supply_path_provenance: { discovery_method?: string } | null;
+      }>(
+        `SELECT adagents_json, supply_path_provenance FROM publishers WHERE domain = $1 FOR UPDATE`,
         [domain],
       );
       const previousManifest = previousResult.rows[0]?.adagents_json ?? null;
+      const previousDiscoveryMethod = previousResult.rows[0]?.supply_path_provenance?.discovery_method;
+      const previousAuthorityAdmitted = previousDiscoveryMethod === 'direct' ||
+        previousDiscoveryMethod === 'authoritative_location';
 
       // Normalize array fields before caching. The validator only enforces
       // `authorized_agents` shape, so a publisher serving a JSON-valid file
@@ -1178,6 +1207,32 @@ export class PublisherDatabase {
           ? input.manifest.authorized_agents
           : [],
       };
+      const resolvedUrlForProvenance = typeof input.resolvedUrl === 'string' && input.resolvedUrl.length <= 8192
+        ? input.resolvedUrl
+        : null;
+      const isAuthorityRefresh = input.discoveryMethod === 'direct' || input.discoveryMethod === 'authoritative_location';
+      if (isAuthorityRefresh) {
+        if (resolvedUrlForProvenance === null) throw new AdagentsManifestProvenanceError();
+        // Migration 597 deliberately leaves historical cache rows without
+        // provenance. They are not an admitted rollback baseline and must not
+        // block their first authority-bound refresh.
+        const previousUpdatedAt = previousAuthorityAdmitted ? manifestUpdatedAt(previousManifest) : null;
+        const candidateUpdatedAt = manifestUpdatedAt(safeManifest);
+        if (previousUpdatedAt !== null && (candidateUpdatedAt === null || candidateUpdatedAt < previousUpdatedAt)) {
+          throw new AdagentsManifestRollbackError();
+        }
+        // Bind pin admission to the same transaction that adopts the manifest
+        // and projects its catalog authorizations. A pointer swap throws here,
+        // before any cache/catalog mutation; later failures roll the pin back.
+        const admitted = await supplyPathSnapshotEvidence(domain, {
+          manifest: safeManifest,
+          resolvedUrl: resolvedUrlForProvenance,
+          discoveryMethod: input.discoveryMethod ?? null,
+          fetchedAt: new Date(),
+          expiresAt: input.expiresAt ?? null,
+        }, new PostgresStateStore(client));
+        if (admitted.manifest === null) throw new AdagentsManifestProvenanceError();
+      }
       const changedFields = adagentsChangedFields(previousManifest, safeManifest);
       const writePublisherRevisionEvent = async (): Promise<void> => {
         if (!input.eventsDb || changedFields.length === 0) return;
@@ -1256,7 +1311,7 @@ export class PublisherDatabase {
           truncateResolvedUrl(input.resolvedUrl),
           input.discoveryMethod ?? null,
           input.managerDomain ?? null,
-          typeof input.resolvedUrl === 'string' && input.resolvedUrl.length <= 8192 ? input.resolvedUrl : null,
+          resolvedUrlForProvenance,
         ]
       );
 
