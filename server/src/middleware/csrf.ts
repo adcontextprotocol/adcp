@@ -59,14 +59,18 @@ const EXEMPT_PREFIXES = [
   "/api/addie/v1/",      // LLM-compatible chat completions
 ];
 
-/** Exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */
-const EXEMPT_EXACT = [
+/** MCP paths exempt from CSRF (Bearer/RFC 9421 auth). */
+const EXEMPT_MCP_EXACT = [
   "/mcp",                // MCP Streamable HTTP (Bearer-token auth)
   // Training agent strict-mode MCP endpoints. Server-to-server, authenticated
   // by RFC 9421 signature or bearer token; CSRF doesn't apply.
   "/mcp-strict",
   "/mcp-strict-required",
   "/mcp-strict-forbidden",
+];
+
+/** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */
+const EXEMPT_EXACT = [
   "/stripe-webhook",     // Stripe webhook (raw body route)
   "/auth/bridge-callback", // Cross-domain session bridge (origin-validated)
   "/auth/native/start",    // Native public client; protected by state + PKCE
@@ -78,14 +82,17 @@ const EXEMPT_EXACT = [
 
 function isExemptPath(path: string): boolean {
   // Express routes accept a single trailing slash by default. Normalize that
-  // equivalent spelling before applying exact MCP/external-route exemptions;
+  // equivalent spelling before applying only MCP-route exemptions;
   // otherwise `/mcp/` is intercepted here before its bearer authenticator can
   // return the required challenge. Remove only one slash so near-misses such
   // as `/mcp//` and appended paths remain protected.
-  const routePath = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
-  return EXEMPT_EXACT.includes(routePath) ||
+  const mcpRoutePath = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+  return EXEMPT_MCP_EXACT.includes(mcpRoutePath) ||
+    EXEMPT_EXACT.includes(path) ||
+    // Prefix exemptions deliberately use the raw path: they already include
+    // a slash boundary and do not need Express route-equivalence handling.
     EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
-    PER_TENANT_MCP_PATH.test(routePath);
+    PER_TENANT_MCP_PATH.test(mcpRoutePath);
 }
 
 /**
