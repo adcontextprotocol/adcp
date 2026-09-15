@@ -66,10 +66,12 @@ vi.mock('@modelcontextprotocol/sdk/server/streamableHttp.js', () => ({
 }));
 
 import { configureMCPRoutes } from '../../src/mcp/routes.js';
+import { csrfProtection } from '../../src/middleware/csrf.js';
 
 function createApp() {
   const app = express();
   app.use(express.json());
+  app.use(csrfProtection);
   const router = express.Router();
   configureMCPRoutes(router);
   app.use(router);
@@ -85,6 +87,13 @@ beforeEach(() => {
 });
 
 describe('MCP route principal authorization', () => {
+  it('routes a trailing slash through bearer authentication instead of CSRF rejection', async () => {
+    const response = await request(createApp()).post('/mcp/').send({ method: 'tools/list' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.events).toContain('bearer');
+  });
+
   it('rate-limits before mutable authority checks and never reaches tools on denial', async () => {
     mocks.authorize.mockResolvedValue({ authorized: false, reason: 'platform_banned' });
 

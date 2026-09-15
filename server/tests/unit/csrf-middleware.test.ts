@@ -77,6 +77,7 @@ describe('csrfProtection', () => {
 
   const perTenantMcpPaths = [
     '/sales/mcp',
+    '/sales/mcp/',
     '/sales/mcp-strict',
     '/sales/mcp-strict-required',
     '/sales/mcp-strict-forbidden',
@@ -97,6 +98,8 @@ describe('csrfProtection', () => {
   // Guard against the regex over-matching shapes that aren't real MCP routes
   // (and could collide with future cookie-authed routes).
   const nearMissTenantPaths = [
+    '/sales/mcp//',               // more than one trailing slash
+    '/sales/mcp/extra',           // appended path segment
     '/sales/mcp-strict/extra',     // appended path segment
     '/sales/mcp-strictly',          // strict-prefix-but-not-equal
     '/sales/mcp-extra',             // not a known suffix
@@ -167,9 +170,13 @@ describe('csrfProtection', () => {
 
   const exemptExactPaths = [
     '/mcp',
+    '/mcp/',
     '/mcp-strict',
+    '/mcp-strict/',
     '/mcp-strict-required',
+    '/mcp-strict-required/',
     '/mcp-strict-forbidden',
+    '/mcp-strict-forbidden/',
     '/stripe-webhook',
     '/auth/bridge-callback',
     '/token',
@@ -197,15 +204,18 @@ describe('csrfProtection', () => {
     expect(res._status).toBe(403);
   });
 
-  // Guards EXEMPT_EXACT against a future refactor that switches `Array.includes`
-  // to `startsWith`. Today's check is exact equality, so these paths must
-  // continue to be rejected even though they look like exempt entries.
+  // Guards exact exemptions against over-matching. MCP routes accept one
+  // Express-equivalent trailing slash; other exact routes remain byte-exact.
   const nearMissExactPaths = [
+    '/mcp//',                  // more than one trailing slash
+    '/mcp/extra',              // appended path after slash
     '/mcp-stricter',           // strict-prefix only
     '/mcp-strict-extra',       // appended segment, no slash
     '/mcp-strict/extra',       // appended path
     '/mcps',                   // ambiguous bare /mcp variant
     '/mcp-strictly',           // strict-prefix variant
+    '/token/',                 // non-MCP exact exemptions stay byte-exact
+    '/register/',              // non-MCP exact exemptions stay byte-exact
   ];
 
   it.each(nearMissExactPaths)('rejects POST to %s — must NOT match exempt-exact entries', (path) => {
