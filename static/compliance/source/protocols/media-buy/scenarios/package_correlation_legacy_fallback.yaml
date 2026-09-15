@@ -40,8 +40,21 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    # required so get_media_buys can resolve the account before attribution is checked
+    - account_id: "acct_legacy_package_correlation"
+      brand:
+        domain: "acmeoutdoor.example"
+      operator: "pinnacle-agency.example"
+      billing: "operator"
+      status: "active"
+      sandbox: true
   media_buys:
     - media_buy_id: "legacy_package_correlation_buy"
+      account:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
       status: "active"
       currency: "USD"
       total_budget: 5000
