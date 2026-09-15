@@ -202,7 +202,7 @@ const KITCHEN_CABINET_SLUG = "kitchen-cabinet";
 // Site-admin membership can be revoked on another replica. Keep successful
 // membership decisions short-lived so every replica rechecks within a minute.
 const ADMIN_POSITIVE_CACHE_TTL_MS = 60 * 1000;
-const ADMIN_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
+const ADMIN_NEGATIVE_CACHE_TTL_MS = 60 * 1000;
 const COUNCIL_CACHE_TTL_MS = 30 * 60 * 1000;
 // Shared cache module — invalidators can be called without dragging the
 // rest of admin-tools (and its Anthropic-instantiating dependencies)
@@ -247,10 +247,9 @@ export async function isSlackUserAAOAdmin(
 
     if (!adminGroup) {
       logger.warn("Admin check: aao-admin working group not found in DB");
-      // Cache the negative result for a shorter time to avoid repeated DB lookups
       adminStatusCache.set(slackUserId, {
         isAdmin: false,
-        expiresAt: Date.now() + 5 * 60 * 1000,
+        expiresAt: Date.now() + ADMIN_NEGATIVE_CACHE_TTL_MS,
       });
       return false;
     }

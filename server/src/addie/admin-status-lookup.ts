@@ -36,7 +36,7 @@ const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
 // performed an admin grant/revoke. Other replicas must therefore re-check
 // membership quickly enough for an emergency revocation to take effect.
 export const AAO_ADMIN_POSITIVE_CACHE_TTL_MS = 60 * 1000;
-const AAO_ADMIN_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
+const AAO_ADMIN_NEGATIVE_CACHE_TTL_MS = 60 * 1000;
 
 const wgDb = new WorkingGroupDatabase();
 
