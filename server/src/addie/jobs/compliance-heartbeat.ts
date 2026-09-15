@@ -23,7 +23,7 @@ import {
   type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query, withDatabaseDeadline } from '../../db/client.js';
+import { query } from '../../db/client.js';
 import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
@@ -32,7 +32,6 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
-import { getVerificationProfileShadowRollout } from '../../db/system-settings-db.js';
 import {
   pruneVerificationProfileShadowAssessments,
   recordVerificationProfileShadowAssessment,
@@ -496,9 +495,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     }
   }
 
-  // Shadow persistence is deliberately outside the public heartbeat loop.
-  // Re-check the audited switch with a short deadline before every write so a
-  // disable or automatic expiry takes effect within an already-running batch.
+  // Comparison persistence is deliberately outside the public heartbeat loop.
+  // It reuses the completed run and has no agent traffic or badge side effects.
   const publicProcessingDurationMs = Date.now() - batchStartedAt;
   const shadowFlushStartedAt = Date.now();
   const shadowStats = {
@@ -507,34 +505,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     recorded: 0,
     disabled: 0,
     errors: 0,
-    setting_errors: 0,
     total_write_latency_ms: 0,
     max_write_latency_ms: 0,
   };
   for (const pending of pendingShadowAssessments) {
-    let enabled = false;
-    try {
-      enabled = (await withDatabaseDeadline(
-        Date.now() + 500,
-        () => getVerificationProfileShadowRollout(),
-        // Expiry is an audited compare-and-set write when the 72-hour window
-        // elapses, so this bounded operation cannot use a read-only transaction.
-        { readOnly: false },
-      )).enabled;
-    } catch (settingError) {
-      shadowStats.setting_errors++;
-      shadowStats.errors++;
-      logger.error(
-        { settingError, agentUrl: pending.agentUrl },
-        'Verification profile shadow setting could not be read; collection remains disabled',
-      );
-      continue;
-    }
-    if (!enabled) {
-      shadowStats.disabled++;
-      continue;
-    }
-
     shadowStats.attempted++;
     const writeStartedAt = Date.now();
     try {
@@ -569,8 +543,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     }
   }
   // Emit one aggregate health record for every scheduled heartbeat, including
-  // empty queues and disabled collection. That makes a frozen pre-rollout
-  // baseline and the collection window comparable without exposing endpoints.
+  // empty queues, without exposing endpoint URLs.
   logger.info(
     {
       publicProcessingDurationMs,

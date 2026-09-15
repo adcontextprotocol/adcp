@@ -272,6 +272,48 @@
       text-decoration: underline;
     }
     .verification-embed-toggle:hover { color: var(--color-primary-700); }
+    .grading-profile-comparison {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+    .grading-profile-comparison-header {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .grading-profile-comparison-header strong { color: var(--color-text-primary); }
+    .grading-profile-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+    .grading-profile-card {
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      font-size: var(--text-xs);
+    }
+    .grading-profile-card--selected { border-color: var(--color-primary-600); }
+    .grading-profile-name { font-weight: var(--font-semibold); color: var(--color-text-primary); }
+    .grading-profile-status { display: block; margin: var(--space-1) 0; font-weight: var(--font-semibold); }
+    .grading-profile-status--passing { color: var(--color-success-fg); }
+    .grading-profile-status--failing { color: var(--color-error-600); }
+    .grading-profile-status--partial,
+    .grading-profile-status--unavailable { color: var(--color-text-muted); }
+    .grading-profile-note { margin-top: var(--space-2); color: var(--color-text-muted); font-size: var(--text-xs); }
+    .grading-profile-provenance { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .grading-profile-provenance dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-2); }
+    .grading-profile-provenance dt { font-weight: var(--font-semibold); }
+    .grading-profile-provenance dd { margin: 0; overflow-wrap: anywhere; }
+    @media (max-width: 700px) {
+      .grading-profile-grid { grid-template-columns: 1fr; }
+    }
     .verification-embed-drawer {
       display: none;
       flex-direction: column;
@@ -2224,6 +2266,81 @@
         </div>`;
     }
 
+    function renderGradingProfileComparisons(cs) {
+      const comparisons = Array.isArray(cs?.grading_profile_comparisons)
+        ? cs.grading_profile_comparisons
+        : [];
+      if (comparisons.length === 0) return '';
+
+      const profileNames = ['legacy', 'spec', 'sandbox'];
+      return comparisons.map(comparison => {
+        const version = typeof comparison.compliance_bundle_version === 'string'
+          ? comparison.compliance_bundle_version
+          : 'version unavailable';
+        if (!comparison.profiles || comparison.availability === 'pending' || comparison.availability === 'temporarily_unavailable') {
+          return `<div class="grading-profile-comparison">
+            <div class="grading-profile-comparison-header"><strong>Agent-wide grading preview</strong></div>
+            <div class="grading-profile-note">${escapeHtml(comparison.unavailable_reason || 'Comparison evidence is unavailable. Legacy remains authoritative.')}</div>
+          </div>`;
+        }
+        const assessedAt = comparison.assessed_at ? new Date(comparison.assessed_at) : null;
+        const freshness = assessedAt && !Number.isNaN(assessedAt.getTime())
+          ? `${comparison.stale ? 'Stale · ' : ''}${timeAgo(assessedAt)}`
+          : 'Assessment time unavailable';
+        const selected = comparison.selected_profile || 'legacy';
+        const profiles = comparison.profiles && typeof comparison.profiles === 'object'
+          ? comparison.profiles
+          : {};
+        const cards = profileNames.map(name => {
+          const profile = profiles[name] || {};
+          // Freshness applies to the complete comparison, not an individual
+          // profile. Fail closed if an older or inconsistent API response
+          // happens to retain a passing per-profile status on a stale row.
+          const available = comparison.availability !== 'stale'
+            && profile.available !== false
+            && typeof profile.status === 'string';
+          const status = available ? profile.status : 'unavailable';
+          const statusLabel = status === 'passing' ? 'Passed'
+            : status === 'failing' ? 'Failed'
+            : status === 'partial' ? 'Incomplete'
+            : 'Unavailable';
+          const selectedClass = selected === name ? ' grading-profile-card--selected' : '';
+          return `<div class="grading-profile-card${selectedClass}">
+            <span class="grading-profile-name">${escapeHtml(name.charAt(0).toUpperCase() + name.slice(1))}${selected === name ? ' · Current' : ''}</span>
+            <span class="grading-profile-status grading-profile-status--${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
+            <span>${escapeHtml(profile.explanation || 'No explanation available.')}</span>
+            ${!available && profile.observed_status ? `<span class="grading-profile-note">Historical observation: ${escapeHtml(profile.observed_status)}</span>` : ''}
+          </div>`;
+        }).join('');
+        const evidence = comparison.evidence && typeof comparison.evidence === 'object' ? comparison.evidence : {};
+        const sourceRun = comparison.source_run_id || 'Unavailable';
+        const policy = comparison.evaluator_policy_version || 'Unavailable';
+        const target = comparison.requested_compliance_target || 'Unavailable';
+        const sourceTestedAt = comparison.source_tested_at ? new Date(comparison.source_tested_at) : null;
+        const testedLabel = sourceTestedAt && !Number.isNaN(sourceTestedAt.getTime())
+          ? sourceTestedAt.toLocaleString()
+          : 'Unavailable';
+        return `<div class="grading-profile-comparison">
+          <div class="grading-profile-comparison-header">
+            <strong>Agent-wide grading preview · ${escapeHtml(version)}</strong>
+            <span>${escapeHtml(freshness)}</span>
+          </div>
+          <div class="grading-profile-grid">${cards}</div>
+          <details class="grading-profile-provenance">
+            <summary>Evidence and provenance</summary>
+            <dl>
+              <dt>Source run</dt><dd><code>${escapeHtml(sourceRun)}</code></dd>
+              <dt>Evaluator policy</dt><dd><code>${escapeHtml(policy)}</code></dd>
+              <dt>Requested target</dt><dd>${escapeHtml(target)}</dd>
+              <dt>Source tested</dt><dd>${escapeHtml(testedLabel)}</dd>
+              <dt>Evidence</dt><dd>${escapeHtml(String(evidence.selected_storyboard_count ?? 0))} storyboards; ${escapeHtml(String(evidence.observed_failure_count ?? 0))} observed failures; ${escapeHtml(String(evidence.flat_failure_count ?? 0))} run-level failure records; ${escapeHtml(String(evidence.controller_gap_phase_count ?? 0))} controller-gap phases; ${escapeHtml(String(evidence.sandbox_unresolved_bundle_count ?? 0))} unresolved Sandbox bundles</dd>
+            </dl>
+          </details>
+          <div class="grading-profile-note">Agent-wide preview only—not an exact badge-role grade. Legacy still controls the public registry and badge. Comparing profiles does not contact the agent.</div>
+        </div>`;
+      }).join('');
+    }
+
     function renderVerificationPanel(cs, agentUrl, hasAuth) {
       const badges = Array.isArray(cs && cs.verified_badges) ? cs.verified_badges : [];
       // Audit-comment from #3603: values MUST NOT end in "Agent" or
@@ -2361,6 +2478,7 @@
             </div>
             ${declaredHtml}
             <div class="verification-eligibility-hint">${hint}</div>
+            ${typeof renderGradingProfileComparisons === 'function' ? renderGradingProfileComparisons(cs) : ''}
             ${buildNoticesSectionHtml(cs)}
           </div>`;
       }
@@ -2492,6 +2610,7 @@
             <span>AAO Verified</span>
             <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
           </div>
+          ${typeof renderGradingProfileComparisons === 'function' ? renderGradingProfileComparisons(cs) : ''}
           ${rowsHtml}
           ${buildNoticesSectionHtml(cs)}
         </div>`;

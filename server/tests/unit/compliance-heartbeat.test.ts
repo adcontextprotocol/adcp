@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   revokeBadge: vi.fn(),
   getRegistryMetadata: vi.fn(),
   query: vi.fn(),
-  withDatabaseDeadline: vi.fn(),
   comply: vi.fn(),
   complianceResultToDbInput: vi.fn(),
   classifyCapabilityResolutionError: vi.fn(),
@@ -23,7 +22,6 @@ const mocks = vi.hoisted(() => ({
   adaptAuthForSdk: vi.fn(),
   revokeUnsupportedPublicBadges: vi.fn(),
   runBadgeFanOut: vi.fn(),
-  getVerificationProfileShadowRollout: vi.fn(),
   recordVerificationProfileShadowAssessment: vi.fn(),
   pruneVerificationProfileShadowAssessments: vi.fn(),
   deriveVerificationProfileShadowAssessment: vi.fn(),
@@ -62,7 +60,6 @@ vi.mock('../../src/db/compliance-db.js', () => ({
 
 vi.mock('../../src/db/client.js', () => ({
   query: mocks.query,
-  withDatabaseDeadline: mocks.withDatabaseDeadline,
 }));
 
 vi.mock('../../src/db/compliance-refresh-requests-db.js', () => ({
@@ -105,10 +102,6 @@ vi.mock('../../src/services/badge-issuance.js', () => ({
   runBadgeFanOut: mocks.runBadgeFanOut,
 }));
 
-vi.mock('../../src/db/system-settings-db.js', () => ({
-  getVerificationProfileShadowRollout: mocks.getVerificationProfileShadowRollout,
-}));
-
 vi.mock('../../src/db/verification-profile-shadow-db.js', () => ({
   recordVerificationProfileShadowAssessment: mocks.recordVerificationProfileShadowAssessment,
   pruneVerificationProfileShadowAssessments: mocks.pruneVerificationProfileShadowAssessments,
@@ -138,7 +131,6 @@ describe('runComplianceHeartbeatJob', () => {
       { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
     ]);
     mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
-    mocks.withDatabaseDeadline.mockImplementation(async (_deadline, operation) => operation());
     mocks.resolveOwnerAuth.mockResolvedValue(undefined);
     mocks.getLastKnownSupportedVersions.mockResolvedValue(['3.1']);
     mocks.countComplianceRuns.mockResolvedValue(4);
@@ -158,7 +150,6 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.recordComplianceRun.mockResolvedValue({});
     mocks.getBadgesForAgent.mockResolvedValue([]);
     mocks.getRegistryMetadata.mockResolvedValue(null);
-    mocks.getVerificationProfileShadowRollout.mockResolvedValue({ enabled: false });
     mocks.recordVerificationProfileShadowAssessment.mockResolvedValue(true);
     mocks.pruneVerificationProfileShadowAssessments.mockResolvedValue(0);
     mocks.revokeUnsupportedPublicBadges.mockResolvedValue({ issued: [], revoked: [], degraded: [], unchanged: [] });
@@ -195,7 +186,7 @@ describe('runComplianceHeartbeatJob', () => {
         queue: { eligibleBacklog: 0, selectedCount: 0, batchLimit: 1 },
         inputs: expect.objectContaining({ policyVersion: 'verification-profiles-v3' }),
         outcomes: { checked: 0, passed: 0, failed: 0, skipped: 0 },
-        shadow: expect.objectContaining({ candidates: 0, errors: 0, setting_errors: 0 }),
+        shadow: expect.objectContaining({ candidates: 0, attempted: 0, errors: 0 }),
       }),
       'Compliance heartbeat shadow flush completed after public processing',
     );
@@ -409,13 +400,12 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
   });
 
-  it('records shadow evidence only when the audited collection switch is enabled', async () => {
+  it('records comparison evidence from every authoritative heartbeat', async () => {
     const complianceResult = {
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
     };
-    mocks.getVerificationProfileShadowRollout.mockResolvedValueOnce({ enabled: true });
     mocks.comply.mockResolvedValueOnce(complianceResult);
     mocks.recordComplianceRun.mockResolvedValueOnce({
       run: { id: 'run-shadow' },
@@ -438,15 +428,9 @@ describe('runComplianceHeartbeatJob', () => {
         lifecycleStage: 'testing',
       }),
     );
-    expect(mocks.withDatabaseDeadline).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.any(Function),
-      { readOnly: false },
-    );
   });
 
   it('keeps public compliance successful when shadow persistence fails', async () => {
-    mocks.getVerificationProfileShadowRollout.mockResolvedValueOnce({ enabled: true });
     mocks.comply.mockResolvedValueOnce({
       overall_status: 'passing',
       summary: { headline: 'All good' },
@@ -468,7 +452,7 @@ describe('runComplianceHeartbeatJob', () => {
     });
   });
 
-  it('flushes shadow writes after public processing and rechecks disable before every write', async () => {
+  it('flushes every comparison write after public processing', async () => {
     const complianceResult = {
       overall_status: 'passing',
       summary: { headline: 'All good' },
@@ -482,9 +466,6 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.recordComplianceRun
       .mockResolvedValueOnce({ run: { id: 'run-one' }, statusTransition: null, storyboardStatuses: [] })
       .mockResolvedValueOnce({ run: { id: 'run-two' }, statusTransition: null, storyboardStatuses: [] });
-    mocks.getVerificationProfileShadowRollout
-      .mockResolvedValueOnce({ enabled: true })
-      .mockResolvedValueOnce({ enabled: false });
     mocks.recordVerificationProfileShadowAssessment.mockImplementationOnce(async () => {
       expect(mocks.recordComplianceRun).toHaveBeenCalledTimes(2);
       return true;
@@ -498,37 +479,10 @@ describe('runComplianceHeartbeatJob', () => {
       skipped: 0,
     });
 
-    expect(mocks.getVerificationProfileShadowRollout).toHaveBeenCalledTimes(2);
-    expect(mocks.recordVerificationProfileShadowAssessment).toHaveBeenCalledTimes(1);
+    expect(mocks.recordVerificationProfileShadowAssessment).toHaveBeenCalledTimes(2);
     expect(mocks.recordVerificationProfileShadowAssessment).toHaveBeenCalledWith(
       expect.objectContaining({ sourceRunId: 'run-one' }),
     );
-  });
-
-  it('fails shadow collection closed when its setting cannot be read', async () => {
-    mocks.getVerificationProfileShadowRollout.mockRejectedValueOnce(new Error('settings unavailable'));
-    mocks.comply.mockResolvedValueOnce({
-      overall_status: 'passing',
-      summary: { headline: 'All good' },
-      agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
-    });
-    mocks.recordComplianceRun.mockResolvedValueOnce({
-      run: { id: 'run-setting-failure' },
-      statusTransition: null,
-      storyboardStatuses: [],
-    });
-
-    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
-    await expect(runComplianceHeartbeatJob({ limit: 1 })).resolves.toEqual({
-      checked: 1,
-      passed: 1,
-      failed: 0,
-      skipped: 0,
-    });
-    // Pure derivation may be queued after public processing, but a failed
-    // bounded setting read must prevent any shadow persistence.
-    expect(mocks.deriveVerificationProfileShadowAssessment).toHaveBeenCalledOnce();
-    expect(mocks.recordVerificationProfileShadowAssessment).not.toHaveBeenCalled();
   });
 
   it('keeps public compliance successful when retention cleanup fails', async () => {
