@@ -53,7 +53,17 @@ vi.mock('../../src/services/brand-logo-auth.js', async () => {
 });
 vi.mock('../../src/addie/admin-status-lookup.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/addie/admin-status-lookup.js');
-  return { ...actual, isWebUserAAOAdmin };
+  const resolve = async (principal: any) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    const isAdmin = await isWebUserAAOAdmin(id);
+    return { isAdmin, mechanism: isAdmin ? 'aao_admin_working_group' : null };
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
 });
 vi.mock('../../src/notifications/registry.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/notifications/registry.js');

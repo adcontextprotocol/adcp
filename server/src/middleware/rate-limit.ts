@@ -2,7 +2,6 @@ import rateLimit from 'express-rate-limit';
 import type { IncrementResponse, Options, Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { isBreakGlassAdminEmail } from '../auth/admin-access.js';
 import { CachedPostgresStore, PostgresStore, type WeightedIncrementStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
@@ -101,20 +100,17 @@ export const agentCardValidationRateLimiter = rateLimit({
  * env var for emergency access, matching requireAdmin semantics.
  */
 async function skipForAdmins(req: Request): Promise<boolean> {
-  const user = (req as any).user as { id?: string; email?: string; isAdmin?: boolean } | undefined;
+  const user = (req as any).user as { id?: string; authWorkosUserId?: string; email?: string; isAdmin?: boolean } | undefined;
   if (!user) return false;
 
-  if (user.isAdmin === true) return true;
-
-  if (isBreakGlassAdminEmail(user.email)) {
-    return true;
-  }
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) return true;
+  if (process.env.NODE_ENV !== 'production' && user.id?.startsWith('user_dev_') && user.isAdmin === true) return true;
 
   if (!user.id) return false;
 
   try {
-    const { isWebUserAAOAdmin } = await import('../addie/mcp/admin-tools.js');
-    return await isWebUserAAOAdmin(user.id);
+    const { isAuthenticatedUserAAOAdmin } = await import('../addie/admin-status-lookup.js');
+    return await isAuthenticatedUserAAOAdmin({ ...user, id: user.id });
   } catch (err) {
     logger.warn({ err, userId: user.id }, 'admin check failed in rate limiter; applying limit');
     return false;
