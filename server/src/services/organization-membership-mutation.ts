@@ -5,7 +5,7 @@ import type { WorkOS } from '@workos-inc/node';
 import { getPool } from '../db/client.js';
 import { getOrganizationAuthorizationUserId, getOrganizationAuthenticationStamp } from '../auth/organization-principal.js';
 import { getAuthorizationEnforcementWorkos } from '../auth/workos-client.js';
-import { verifyWorkOSJWT } from '../auth/workos-jwt.js';
+import { isInvalidWorkOSJWTError, verifyWorkOSJWT } from '../auth/workos-jwt.js';
 import { DEV_USERS, isDevModeEnabled, invalidateSessionsForUsers } from '../middleware/auth.js';
 import { getSeatLimits, resolveMembershipTier, type SeatType, type MembershipTierRow } from '../db/organization-db.js';
 import { createLogger } from '../logger.js';
@@ -293,10 +293,7 @@ export class OrganizationMembershipMutation {
       if (!req.accessToken) throw new MembershipMutationError(401, 'Invalid credential');
       try { verified = await verifyWorkOSJWT(req.accessToken); }
       catch (error) {
-        const name = (error as Error).name;
-        const code = (error as { code?: string }).code;
-        const invalid = name === 'JWTExpired' || name === 'JWTClaimValidationFailed' || name === 'JWSInvalid' || name === 'JWTInvalid' || name === 'JWSSignatureVerificationFailed';
-        throw new MembershipMutationError(invalid || code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED' ? 401 : 503, 'Credential verification failed');
+        throw new MembershipMutationError(isInvalidWorkOSJWTError(error) ? 401 : 503, 'Credential verification failed');
       }
       if (verified.isM2M || verified.sub !== actorId) throw new MembershipMutationError(401, 'Credential principal changed');
       if (verified.orgId && verified.orgId !== orgId) mutationDenied('Organization selectors do not agree');

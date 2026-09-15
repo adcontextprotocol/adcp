@@ -179,7 +179,14 @@ export function registerOrganizationMembershipMutations(router: Router): void {
   for (const decision of ['approve', 'reject'] as const) {
     router.post(`/:orgId/join-requests/:requestId/${decision}`, requireAuth, handler('admin', false, async (tx, req) => {
       const role = roleInput(req.body?.role, false);
-      const [join] = await tx.rows<JoinRequest>('SELECT * FROM organization_join_requests WHERE id = $1 AND workos_organization_id = $2', [req.params.requestId, tx.orgId]);
+      // Hold the request row through the provider call and local commit. A requester
+      // cancellation uses a conditional UPDATE on this same row, so approval and
+      // cancellation now have one database serialization point instead of allowing
+      // a provider membership to be created from a stale pending snapshot.
+      const [join] = await tx.rows<JoinRequest>(
+        'SELECT * FROM organization_join_requests WHERE id = $1 AND workos_organization_id = $2 FOR UPDATE',
+        [req.params.requestId, tx.orgId],
+      );
       if (!join) notFound('Request not found');
       if (join.status !== 'pending') conflict('Request not pending');
       if (req.body?.reason !== undefined && typeof req.body.reason !== 'string') invalid('Invalid rejection reason');

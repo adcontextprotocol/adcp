@@ -41,6 +41,18 @@ export interface VerifiedWorkOSToken {
   payload: JWTPayload;
 }
 
+export function isInvalidWorkOSJWTError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: unknown }).code;
+  return err.name === 'JWTExpired'
+    || err.name === 'JWTClaimValidationFailed'
+    || err.name === 'JWSInvalid'
+    || err.name === 'JWTInvalid'
+    || err.name === 'JWSSignatureVerificationFailed'
+    || code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED'
+    || code === 'ERR_WORKOS_TOKEN_APPLICATION_MISMATCH';
+}
+
 let jwks: KeyResolver | null = null;
 
 function getJWKS(): KeyResolver {
@@ -99,8 +111,9 @@ export async function verifyWorkOSJWT(token: string): Promise<VerifiedWorkOSToke
     typeof payload.client_id === 'string' ? payload.client_id : undefined;
   const applicationId = azp ?? clientIdClaim;
   if (!applicationId || applicationId !== workosClientId()) {
-    throw new Error(
-      `Token application id ("${applicationId ?? 'missing'}") does not match this application`,
+    throw Object.assign(
+      new Error(`Token application id ("${applicationId ?? 'missing'}") does not match this application`),
+      { code: 'ERR_WORKOS_TOKEN_APPLICATION_MISMATCH' },
     );
   }
 

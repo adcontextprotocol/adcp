@@ -119,6 +119,21 @@ function expectNoProviders() {
     expect(spy).not.toHaveBeenCalled();
   }
 }
+async function waitForDatabaseLock(queryFragment: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const result = await pool.query(
+      `SELECT 1 FROM pg_stat_activity
+       WHERE datname = current_database()
+         AND pid <> pg_backend_pid()
+         AND wait_event_type = 'Lock'
+         AND query ILIKE '%' || $1 || '%'`,
+      [queryFragment],
+    );
+    if (result.rowCount) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for blocked database query containing ${queryFragment}`);
+}
 
 beforeAll(async () => {
   const connectionString = process.env.DATABASE_URL;
@@ -378,6 +393,63 @@ describe('mounted implicit onboarding containment', () => {
     expect(mocks.getUser).not.toHaveBeenCalled();
     expect((await pool.query('SELECT * FROM organization_memberships WHERE workos_user_id = $1', [B])).rows).toEqual([]);
     expectNoProviders();
+  });
+  it('invitation acceptance continuously transfers its seat reservation while a concurrent invite waits', async () => {
+    const advisoryKey = 6827001;
+    const blocker = await pool.connect();
+    try {
+      await pool.query('UPDATE organizations SET membership_tier = NULL, subscription_status = NULL WHERE workos_organization_id = $1', [ORG]);
+      await pool.query(`INSERT INTO organization_memberships
+        (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type)
+        VALUES ($1, $2, 'om_acceptance_admin', 'a@unrelated.test', 'admin', 'contributor')`, [A, ORG]);
+      mocks.list.mockImplementation(async ({ userId }: any) => ({ data: userId === A ? [{
+        id: 'om_acceptance_admin', userId: A, organizationId: ORG, status: 'active', role: { slug: 'admin' },
+      }] : [] }));
+      await pool.query(`INSERT INTO invitation_seat_types
+        (workos_invitation_id, workos_organization_id, email, seat_type, source)
+        VALUES ('inv_acceptance_race', $1, 'b@containment.test', 'community_only', 'invited')`, [ORG]);
+
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock($1)', [advisoryKey]);
+      await pool.query(`CREATE FUNCTION containment_acceptance_barrier() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN PERFORM pg_advisory_xact_lock(${advisoryKey}); RETURN NEW; END $$`);
+      await pool.query(`CREATE TRIGGER containment_acceptance_barrier BEFORE INSERT ON organization_memberships
+        FOR EACH ROW EXECUTE FUNCTION containment_acceptance_barrier()`);
+
+      const acceptance = request(app).post('/api/webhooks/workos').set('WorkOS-Signature', 'test').send({
+        id: 'evt_acceptance_reservation', event: 'organization_membership.created', created_at: new Date().toISOString(),
+        data: { id: 'om_acceptance_member', user_id: B, organization_id: ORG, status: 'active', role: { slug: 'member' } },
+      }).then(response => response);
+      await waitForDatabaseLock('INSERT INTO organization_memberships');
+
+      const concurrentInvite = request(app).post(`/api/organizations/${ORG}/invitations`)
+        .set('Cookie', cookie(A, true, 'a@unrelated.test'))
+        .send({ email: 'later@containment.test', role: 'member', seat_type: 'community_only' })
+        .then(response => response);
+      await waitForDatabaseLock('SELECT workos_organization_id FROM organizations');
+
+      // The accepting transaction has consumed the row internally, but every
+      // independent session still observes the reservation until the member
+      // row is committed. Capacity is never externally released between them.
+      expect((await pool.query(`SELECT COUNT(*)::int AS count FROM invitation_seat_types
+        WHERE workos_organization_id = $1 AND seat_type = 'community_only'`, [ORG])).rows[0].count).toBe(1);
+      expect((await pool.query('SELECT 1 FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2', [B, ORG])).rowCount).toBe(0);
+
+      await blocker.query('COMMIT');
+      expect((await acceptance).status).toBe(200);
+      const denied = await concurrentInvite;
+      expect(denied.status, JSON.stringify(denied.body)).toBe(403);
+      expect(denied.body.error).toBe('Seat limit reached');
+      expect(mocks.sendInvitation).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT seat_type FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2', [B, ORG])).rows)
+        .toEqual([{ seat_type: 'community_only' }]);
+      expect((await pool.query('SELECT 1 FROM invitation_seat_types WHERE workos_organization_id = $1', [ORG])).rowCount).toBe(0);
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => {});
+      blocker.release();
+      await pool.query('DROP TRIGGER IF EXISTS containment_acceptance_barrier ON organization_memberships');
+      await pool.query('DROP FUNCTION IF EXISTS containment_acceptance_barrier()');
+    }
   });
   it('BEFORE RETURN NULL membership trigger aborts success', async () => {
     await pool.query(`CREATE FUNCTION containment_suppress() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`);

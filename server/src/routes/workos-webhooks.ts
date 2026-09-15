@@ -229,55 +229,70 @@ async function upsertMembership(
 
   const incomingRole = membership.role?.slug || 'member';
 
-  // Consume any pending seat_type + provisioning_source staged by the
-  // endpoint that triggered this membership creation. Falls back to defaults
-  // when no row was staged (e.g. someone added the membership directly in
-  // WorkOS rather than through one of our endpoints).
-  const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
-  const hasExplicitSeatType = consumed !== null;
-  const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor' : 'community_only';
-  const provisioningSource = consumed?.source || 'webhook';
+  const client = await getPool().connect();
+  let refusedSeat: { seatType: SeatType; reason: string } | undefined;
+  try {
+    await client.query('BEGIN');
 
-  // Seat-cap enforcement for un-staged membership adds. When the membership
-  // came through one of our invite endpoints, the cap was already checked at
-  // issue time and the row in invitation_seat_types reserved the seat — the
-  // consume above releases that reservation, so re-checking would always
-  // pass. Webhook-driven adds without a staged invite (SSO domain auto-join,
-  // dashboard direct add, API direct add) bypass our checks entirely. Refuse
-  // and notify so a multi-user company can't squeeze onto a 1-seat
-  // individual sub by adding members in WorkOS directly.
-  if (!hasExplicitSeatType) {
-    const availability = await canAddSeat(membership.organization_id, seatType);
-    if (!availability.allowed) {
+    // Management-side seat decisions lock this row too. Keep the invitation
+    // reservation visible until the membership is inserted in this same
+    // transaction, so no concurrent invitation can observe transient capacity.
+    const org = await client.query(
+      'SELECT workos_organization_id FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+      [membership.organization_id],
+    );
+    if (org.rowCount !== 1) throw new Error('Membership organization not found');
+
+    const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email, client);
+    const hasExplicitSeatType = consumed !== null;
+    const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor' : 'community_only';
+    const provisioningSource = consumed?.source || 'webhook';
+
+    // Unstaged provider writes have no reservation, so perform the ordinary cap
+    // check while holding the same organization lock used by management writes.
+    if (!hasExplicitSeatType) {
+      const availability = await canAddSeat(membership.organization_id, seatType, client);
+      if (!availability.allowed) {
+        refusedSeat = { seatType, reason: availability.reason ?? 'Seat cap reached' };
+        await client.query('ROLLBACK');
+        return;
+      }
+    }
+
+    await upsertOrganizationMembership({
+      user_id: membership.user_id,
+      organization_id: membership.organization_id,
+      membership_id: membership.id,
+      email: userData.email,
+      first_name: userData.first_name,
+      last_name: userData.last_name,
+      role: incomingRole,
+      seat_type: seatType,
+      has_explicit_seat_type: hasExplicitSeatType,
+      provisioning_source: provisioningSource,
+    }, client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+    if (refusedSeat) {
       logger.warn({
         orgId: membership.organization_id,
         userId: membership.user_id,
         email: userData.email,
-        seatType,
-        reason: availability.reason,
+        seatType: refusedSeat.seatType,
+        reason: refusedSeat.reason,
       }, 'Refusing to mirror webhook-driven membership: org over seat cap');
       void notifyAdminsOfRefusedMembership({
         orgId: membership.organization_id,
         newUserEmail: userData.email,
-        seatType,
-        reason: availability.reason ?? 'Seat cap reached',
+        seatType: refusedSeat.seatType,
+        reason: refusedSeat.reason,
       });
-      return;
     }
   }
-
-  await upsertOrganizationMembership({
-    user_id: membership.user_id,
-    organization_id: membership.organization_id,
-    membership_id: membership.id,
-    email: userData.email,
-    first_name: userData.first_name,
-    last_name: userData.last_name,
-    role: incomingRole,
-    seat_type: seatType,
-    has_explicit_seat_type: hasExplicitSeatType,
-    provisioning_source: provisioningSource,
-  });
 
   // Set primary_organization_id if not already set (prefer paying orgs).
   // Best-effort — same rationale as upsertUser: a transient backfill failure

@@ -502,12 +502,13 @@ export async function getSeatUsage(orgId: string): Promise<{ contributor: number
  */
 export async function canAddSeat(
   orgId: string,
-  seatType: SeatType
+  seatType: SeatType,
+  externalClient?: PoolClient,
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const pool = getPool();
-  const client = await pool.connect();
+  const client = externalClient ?? await getPool().connect();
+  const ownsTransaction = externalClient === undefined;
   try {
-    await client.query('BEGIN');
+    if (ownsTransaction) await client.query('BEGIN');
 
     // Lock the org row to serialize concurrent seat checks and resolve
     // the tier from the same (locked) read.
@@ -554,7 +555,7 @@ export async function canAddSeat(
       community_only: (total - contributors) + pendingCommunity,
     };
 
-    await client.query('COMMIT');
+    if (ownsTransaction) await client.query('COMMIT');
 
     const limit = seatType === 'contributor' ? limits.contributor : limits.community;
     const used = seatType === 'contributor' ? usage.contributor : usage.community_only;
@@ -564,10 +565,10 @@ export async function canAddSeat(
     if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at https://agenticadvertising.org/dashboard/membership to add more.` };
     return { allowed: true };
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (ownsTransaction) await client.query('ROLLBACK');
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 

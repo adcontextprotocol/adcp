@@ -50,10 +50,11 @@ export interface MembershipUpsertResult {
 /** Mirror the provider role; never infer an owner from organization cardinality. */
 export async function upsertOrganizationMembership(
   params: MembershipUpsertParams,
+  externalClient?: PoolClient,
 ): Promise<MembershipUpsertResult> {
-  const pool = getPool();
+  const database = externalClient ?? getPool();
 
-  const result = await pool.query<{ role: string }>(
+  const result = await database.query<{ role: string }>(
     `INSERT INTO organization_memberships (
       workos_user_id,
       workos_organization_id,
@@ -192,10 +193,11 @@ export async function deleteOrganizationMembership(
 export async function consumeInvitationSeatType(
   organizationId: string,
   email: string,
+  externalClient?: PoolClient,
 ): Promise<{ seat_type: string; source: ProvisioningSource | null } | null> {
-  const pool = getPool();
+  const database = externalClient ?? getPool();
 
-  const result = await pool.query<{ seat_type: string; source: string | null }>(
+  const result = await database.query<{ seat_type: string; source: string | null }>(
     `DELETE FROM invitation_seat_types
      WHERE workos_organization_id = $1 AND lower(email) = lower($2)
      RETURNING seat_type, source`,

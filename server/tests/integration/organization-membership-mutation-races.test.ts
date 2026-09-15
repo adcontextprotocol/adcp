@@ -82,6 +82,7 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { __setJWKSForTesting } from '../../src/auth/workos-jwt.js';
 import { stopAuthTimers } from '../../src/middleware/auth.js';
+import { JoinRequestDatabase } from '../../src/db/join-request-db.js';
 
 const org = 'org_mutation_race_test';
 const otherOrg = 'org_mutation_race_other';
@@ -91,6 +92,7 @@ const target = 'user_mutation_race_target';
 const newcomer = 'user_mutation_race_new';
 let pool: Pool;
 let signingKey: Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
+let verificationKey: Awaited<ReturnType<typeof generateKeyPair>>['publicKey'];
 let sequence = 0;
 let joinId: string;
 let seatId: string;
@@ -129,6 +131,22 @@ function barrier() {
   const resumed = new Promise<void>(resolve => { release = resolve; });
   return { arrived, release, hook: async () => { reached(); await resumed; } };
 }
+async function waitForDatabaseLock(options: { pid?: number; queryFragment?: string }): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const result = await pool.query(
+      `SELECT 1 FROM pg_stat_activity
+       WHERE datname = current_database()
+         AND pid <> pg_backend_pid()
+         AND wait_event_type = 'Lock'
+         AND ($1::int IS NULL OR pid = $1)
+         AND ($2::text IS NULL OR query ILIKE '%' || $2 || '%')`,
+      [options.pid ?? null, options.queryFragment ?? null],
+    );
+    if (result.rowCount) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for blocked database query: ${JSON.stringify(options)}`);
+}
 type Family = { name: string; method: 'post' | 'patch' | 'delete'; path: () => string; body?: () => object };
 const families: Family[] = [
   { name: 'join approve', method: 'post', path: () => `/join-requests/${joinId}/approve` },
@@ -153,7 +171,8 @@ beforeAll(async () => {
   await runMigrations();
   const keys = await generateKeyPair('RS256');
   signingKey = keys.privateKey;
-  __setJWKSForTesting(async () => keys.publicKey);
+  verificationKey = keys.publicKey;
+  __setJWKSForTesting(async () => verificationKey);
 }, 60000);
 afterAll(async () => { stopAuthTimers(); __setJWKSForTesting(null); await closeDatabase(); });
 beforeEach(async () => {
@@ -203,6 +222,93 @@ function staticRole(userId: string, role: string) {
 // either can change after the final read. These tests do not claim provider
 // CAS/atomicity; detected post-write changes require honest reconciliation.
 describe('independent mounted management race and residual-state attacks', () => {
+  it('join approval holds the pending row until commit, then cancellation loses and replay makes no provider call', async () => {
+    const gate = barrier();
+    state.afterWrite = gate.hook;
+    const approval = call(families[0], await cookie()).then(response => response);
+    await gate.arrived;
+
+    const cancellation = new JoinRequestDatabase().cancelRequest(joinId, newcomer);
+    await waitForDatabaseLock({ queryFragment: 'UPDATE organization_join_requests' });
+    gate.release();
+
+    expect((await approval).status).toBe(200);
+    expect(await cancellation).toBeNull();
+    expect((await pool.query('SELECT status FROM organization_join_requests WHERE id=$1', [joinId])).rows[0].status).toBe('approved');
+    expect(state.writes).toEqual(['create_membership']);
+
+    const beforeReplay = [...state.writes];
+    expect((await call(families[0], await cookie())).status).toBe(409);
+    expect(state.writes).toEqual(beforeReplay);
+    expect((await pool.query('SELECT id FROM registry_audit_log WHERE workos_organization_id=$1', [org])).rowCount).toBe(1);
+  });
+
+  it('requester cancellation holding the row lock wins before approval and prevents every provider call', async () => {
+    const canceller = await pool.connect();
+    try {
+      await canceller.query('BEGIN');
+      const cancelled = await canceller.query(
+        "UPDATE organization_join_requests SET status='cancelled', updated_at=NOW() WHERE id=$1 AND workos_user_id=$2 AND status='pending' RETURNING id",
+        [joinId, newcomer],
+      );
+      expect(cancelled.rowCount).toBe(1);
+
+      const approval = call(families[0], await cookie()).then(response => response);
+      await waitForDatabaseLock({ queryFragment: 'SELECT * FROM organization_join_requests' });
+      expect(state.writes).toEqual([]);
+      await canceller.query('COMMIT');
+
+      expect((await approval).status).toBe(409);
+      expect((await pool.query('SELECT status FROM organization_join_requests WHERE id=$1', [joinId])).rows[0].status).toBe('cancelled');
+      await noEffects();
+    } finally {
+      await canceller.query('ROLLBACK').catch(() => {});
+      canceller.release();
+    }
+  });
+
+  it('JWT verification source outage returns authorization_unavailable before provider reads or writes', async () => {
+    const bearer = await token();
+    __setJWKSForTesting(async () => { throw Object.assign(new Error('JWKS unavailable'), { code: 'ECONNRESET' }); });
+    try {
+      const response = await request(app).post(`/api/organizations/${org}/invitations`)
+        .set('Authorization', `Bearer ${bearer}`).send({ email: 'invitee@membership-race.example.test' });
+      expect(response.status).toBe(503);
+      expect(response.body.error).toBe('authorization_unavailable');
+      expect(state.reads).toEqual([]);
+      await noEffects();
+    } finally {
+      __setJWKSForTesting(async () => verificationKey);
+    }
+  });
+
+  it('bearer user-source outage returns authorization_unavailable before provider reads or writes', async () => {
+    const bearer = await token();
+    await pool.query('ALTER TABLE users RENAME TO membership_race_users_unavailable');
+    try {
+      const response = await request(app).post(`/api/organizations/${org}/invitations`)
+        .set('Authorization', `Bearer ${bearer}`).send({ email: 'invitee@membership-race.example.test' });
+      expect(response.status).toBe(503);
+      expect(response.body.error).toBe('authorization_unavailable');
+      expect(state.reads).toEqual([]);
+      expect(state.writes).toEqual([]);
+    } finally {
+      await pool.query('ALTER TABLE membership_race_users_unavailable RENAME TO users');
+    }
+    await noEffects();
+  });
+
+  it('invalid bearer signature remains 401 and makes no provider call', async () => {
+    const unrelated = await generateKeyPair('RS256');
+    const bearer = await new SignJWT({ client_id: 'client_mock_id', org_id: org })
+      .setProtectedHeader({ alg: 'RS256' }).setSubject(A).setIssuedAt().setExpirationTime('5m').sign(unrelated.privateKey);
+    const response = await request(app).post(`/api/organizations/${org}/invitations`)
+      .set('Authorization', `Bearer ${bearer}`).send({ email: 'invitee@membership-race.example.test' });
+    expect(response.status).toBe(401);
+    expect(state.reads).toEqual([]);
+    await noEffects();
+  });
+
   for (const role of ['owner', 'admin']) it(`target promotion to ${role} before deletion is terminal`, async () => {
     await member(A, 'admin');
     const gate = barrier();

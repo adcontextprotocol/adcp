@@ -11,7 +11,7 @@ import {
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
-import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
+import { verifyWorkOSJWT, looksLikeJWT, isInvalidWorkOSJWTError } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
 import { getAuthorizationFingerprint } from '../db/authorization-epoch-db.js';
@@ -195,6 +195,23 @@ function isTransientAuthError(err: unknown): boolean {
   return false;
 }
 
+class AuthorizationUnavailableError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = 'AuthorizationUnavailableError';
+  }
+}
+
+function sendAuthorizationUnavailable(res: Response, isHtmlRequest: boolean): Response {
+  if (isHtmlRequest) {
+    return res.status(503).send('Authorization service temporarily unavailable. Please try again shortly.');
+  }
+  return res.status(503).json({
+    error: 'authorization_unavailable',
+    message: 'Unable to verify authorization right now. Please try again shortly.',
+  });
+}
+
 /**
  * Invalidate session cache for a specific cookie (e.g., on logout)
  */
@@ -374,8 +391,11 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   try {
     verified = await verifyWorkOSJWT(token);
   } catch (err) {
-    logger.debug({ err }, 'Bearer JWT verification failed');
-    return null;
+    if (isInvalidWorkOSJWTError(err)) {
+      logger.debug({ err }, 'Bearer JWT verification failed');
+      return null;
+    }
+    throw new AuthorizationUnavailableError('Bearer JWT verification source unavailable', err);
   }
 
   if (verified.isM2M || !verified.sub) return null;
@@ -383,15 +403,23 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   // Confirm the subject corresponds to a real local user. This catches
   // tokens from WorkOS accounts that have been deleted or never synced,
   // and gives us names for the synthesized WorkOSUser.
-  const pool = getPool();
-  const localUser = await pool.query<{
-    first_name: string | null;
-    last_name: string | null;
-    email: string | null;
-  }>(
-    `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
-    [verified.sub],
-  );
+  let localUser: {
+    rowCount: number | null;
+    rows: Array<{ first_name: string | null; last_name: string | null; email: string | null }>;
+  };
+  try {
+    const pool = getPool();
+    localUser = await pool.query<{
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    }>(
+      `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
+      [verified.sub],
+    );
+  } catch (err) {
+    throw new AuthorizationUnavailableError('Bearer JWT user source unavailable', err);
+  }
   if (localUser.rowCount === 0) {
     logger.warn({ sub: verified.sub }, 'Bearer JWT verified but user not found in local DB');
     return null;
@@ -898,7 +926,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   // Check for OAuth-issued user JWT (user SSO'd via AuthKit through the
   // MCP OAuth flow and is now calling the REST API with that token).
-  const jwtAuth = await validateWorkOSBearerJWT(req);
+  let jwtAuth: ValidatedBearerJWT | null;
+  try {
+    jwtAuth = await validateWorkOSBearerJWT(req);
+  } catch (error) {
+    if (error instanceof AuthorizationUnavailableError) {
+      logger.warn({ err: error.cause, path: req.path }, 'Bearer authorization source unavailable');
+      return sendAuthorizationUnavailable(res, !!isHtmlRequest);
+    }
+    throw error;
+  }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT');
     // Canonicalization must not mutate a cached provider credential object.
@@ -1930,7 +1967,16 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     return next();
   }
 
-  const jwtAuth = await validateWorkOSBearerJWT(req);
+  let jwtAuth: ValidatedBearerJWT | null;
+  try {
+    jwtAuth = await validateWorkOSBearerJWT(req);
+  } catch (error) {
+    if (error instanceof AuthorizationUnavailableError) {
+      logger.warn({ err: error.cause, path: req.path }, 'Optional bearer authorization source unavailable');
+      return sendAuthorizationUnavailable(res, false);
+    }
+    throw error;
+  }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT (optional auth)');
     req.user = jwtAuth.user;
