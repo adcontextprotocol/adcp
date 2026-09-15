@@ -8,11 +8,9 @@
 import type { WorkOS } from '@workos-inc/node';
 import type { PoolClient } from 'pg';
 import { getPool, getClient } from './client.js';
-import { findPayingOrgForDomain } from './org-filters.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('membership-db');
-const OWNERLESS_PROMOTION_LOCK_TIMEOUT_MS = 5_000;
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -47,81 +45,16 @@ export interface MembershipUpsertResult {
   assigned_role: string;
 }
 
-async function withOwnerlessOrgPromotionLock<T>(
-  organizationId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  const client = await getClient();
-  let callbackCompleted = false;
-
-  try {
-    await client.query('BEGIN');
-    await client.query("SELECT set_config('lock_timeout', $1, true)", [
-      `${OWNERLESS_PROMOTION_LOCK_TIMEOUT_MS}ms`,
-    ]);
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      `membership-ownerless-promote:${organizationId}`,
-    ]);
-
-    const result = await fn();
-    callbackCompleted = true;
-
-    try {
-      await client.query('COMMIT');
-    } catch (err) {
-      logger.warn(
-        { err, orgId: organizationId },
-        'Failed to commit ownerless-org promotion advisory lock transaction',
-      );
-      try {
-        await client.query('ROLLBACK');
-      } catch (rollbackErr) {
-        logger.warn(
-          { err: rollbackErr, orgId: organizationId },
-          'Failed to rollback ownerless-org promotion advisory lock transaction after commit failure',
-        );
-      }
-    }
-
-    return result;
-  } catch (err) {
-    if (!callbackCompleted) {
-      try {
-        await client.query('ROLLBACK');
-      } catch (rollbackErr) {
-        logger.warn(
-          { err: rollbackErr, orgId: organizationId },
-          'Failed to rollback ownerless-org promotion advisory lock transaction',
-        );
-      }
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
 // ── Upsert ───────────────────────────────────────────────────────────
 
-/**
- * Insert or update an organization membership. Writes the role exactly as
- * given — auto-promote decisioning lives in the webhook handler now, so
- * WorkOS is the source of truth and local can never disagree.
- *
- * History: this used to auto-promote inside the SQL via CASE/NOT-EXISTS,
- * with the webhook handler pushing the promotion to WorkOS afterward and
- * rolling back local on failure. The rollback is best-effort; a missed
- * rollback left at least one prod org with role='owner' locally and
- * role='member' in WorkOS for months (see ozoneproject incident, 2026-05).
- * The webhook handler now resolves the role against WorkOS BEFORE calling
- * this function, so local never gets ahead of WorkOS.
- */
+/** Mirror the provider role; never infer an owner from organization cardinality. */
 export async function upsertOrganizationMembership(
   params: MembershipUpsertParams,
+  externalClient?: PoolClient,
 ): Promise<MembershipUpsertResult> {
-  const pool = getPool();
+  const database = externalClient ?? getPool();
 
-  const result = await pool.query<{ role: string }>(
+  const result = await database.query<{ role: string }>(
     `INSERT INTO organization_memberships (
       workos_user_id,
       workos_organization_id,
@@ -167,7 +100,10 @@ export async function upsertOrganizationMembership(
     ],
   );
 
-  const assigned_role = result.rows[0]?.role || params.role;
+  if (result.rowCount !== 1 || !result.rows[0]) {
+    throw new Error('Membership upsert did not write exactly one row');
+  }
+  const assigned_role = result.rows[0].role;
 
   logger.info({
     membershipId: params.membership_id,
@@ -180,19 +116,8 @@ export async function upsertOrganizationMembership(
 }
 
 /**
- * Resolve the role to assign for an incoming membership, promoting to
- * 'owner' in WorkOS first when the org has no other admin/owner. This
- * is the new home for ownerless-org safety-net promotion — performing
- * the WorkOS write *before* the local upsert guarantees local can never
- * disagree with WorkOS, even if the process crashes mid-flight.
- *
- * Returns:
- *   { role, promoted, error? }
- *
- * `promoted: true` indicates that WorkOS was successfully updated to
- * 'owner'; the caller should write an audit row. `error` is set on
- * promotion attempts that failed — caller writes a failure audit row
- * and falls back to the input role for the local write.
+ * Compatibility entry point. Ordinary membership events preserve the provider
+ * role. First-owner and recovery grants require a separate explicit flow.
  */
 export async function resolveRoleWithWorkosFirstPromote(args: {
   workos: WorkOS;
@@ -200,79 +125,8 @@ export async function resolveRoleWithWorkosFirstPromote(args: {
   userId: string;
   organizationId: string;
   incomingRole: string;
-}): Promise<{
-  role: string;
-  promoted: boolean;
-  promotionError?: unknown;
-}> {
-  const { workos, membershipId, userId, organizationId, incomingRole } = args;
-
-  // Only the 'member' input is eligible for ownerless-org promotion. Any
-  // explicit role from WorkOS passes through unchanged.
-  if (incomingRole !== 'member') {
-    return { role: incomingRole, promoted: false };
-  }
-
-  try {
-    return await withOwnerlessOrgPromotionLock(organizationId, async () => {
-      // Source-of-truth check: page through WorkOS memberships and look for
-      // an existing admin/owner that isn't this same user.
-      let hasOtherAdmin = false;
-      try {
-        let after: string | undefined;
-        do {
-          const page = await workos.userManagement.listOrganizationMemberships({
-            organizationId,
-            statuses: ['active'],
-            limit: 100,
-            after,
-          });
-          for (const m of page.data) {
-            if (m.userId === userId) continue;
-            const slug = m.role?.slug;
-            if (slug === 'admin' || slug === 'owner') {
-              hasOtherAdmin = true;
-              break;
-            }
-          }
-          if (hasOtherAdmin) break;
-          after = page.listMetadata?.after ?? undefined;
-        } while (after);
-      } catch (err) {
-        // Can't verify WorkOS state — refuse to promote. Writing 'owner' locally
-        // when we don't know what WorkOS thinks is exactly the drift this rewrite
-        // is fixing.
-        logger.warn({ err, orgId: organizationId, userId },
-          'Could not list WorkOS memberships for ownerless-org check — assigning member');
-        return { role: 'member', promoted: false, promotionError: err };
-      }
-
-      if (hasOtherAdmin) {
-        return { role: 'member', promoted: false };
-      }
-
-      // No other admin/owner — promote this membership to owner in WorkOS.
-      // If WorkOS rejects the update (role not configured, transient 5xx, etc.)
-      // we fall back to writing 'member' locally so the two sides stay aligned.
-      try {
-        await workos.userManagement.updateOrganizationMembership(membershipId, {
-          roleSlug: 'owner',
-        });
-      } catch (err) {
-        logger.warn({ err, orgId: organizationId, userId, membershipId },
-          'Failed to promote member to owner in WorkOS — falling back to member locally');
-        return { role: 'member', promoted: false, promotionError: err };
-      }
-
-      return { role: 'owner', promoted: true };
-    });
-  } catch (err) {
-    logger.warn(
-      { err, orgId: organizationId, userId, membershipId },
-      'Could not acquire ownerless-org promotion lock — assigning member',
-    );
-    return { role: 'member', promoted: false, promotionError: err };
-  }
+}): Promise<{ role: string; promoted: boolean; promotionError?: unknown }> {
+  return { role: args.incomingRole, promoted: false };
 }
 
 // ── Delete ───────────────────────────────────────────────────────────
@@ -329,6 +183,29 @@ export async function deleteOrganizationMembership(
   }
 }
 
+/** Delete only the exact provider membership represented by a webhook event. */
+export async function deleteExactOrganizationMembership(
+  userId: string,
+  organizationId: string,
+  membershipId: string,
+  client: PoolClient,
+): Promise<string | null> {
+  const result = await client.query<{ role: string }>(
+    `DELETE FROM organization_memberships
+     WHERE workos_user_id = $1 AND workos_organization_id = $2 AND workos_membership_id = $3
+     RETURNING role`,
+    [userId, organizationId, membershipId],
+  );
+  if (result.rowCount === 1) {
+    await client.query(
+      `UPDATE users SET primary_organization_id = NULL, updated_at = NOW()
+       WHERE workos_user_id = $1 AND primary_organization_id = $2`,
+      [userId, organizationId],
+    );
+  }
+  return result.rows[0]?.role ?? null;
+}
+
 // ── Invitation seat type ─────────────────────────────────────────────
 
 /**
@@ -339,10 +216,11 @@ export async function deleteOrganizationMembership(
 export async function consumeInvitationSeatType(
   organizationId: string,
   email: string,
+  externalClient?: PoolClient,
 ): Promise<{ seat_type: string; source: ProvisioningSource | null } | null> {
-  const pool = getPool();
+  const database = externalClient ?? getPool();
 
-  const result = await pool.query<{ seat_type: string; source: string | null }>(
+  const result = await database.query<{ seat_type: string; source: string | null }>(
     `DELETE FROM invitation_seat_types
      WHERE workos_organization_id = $1 AND lower(email) = lower($2)
      RETURNING seat_type, source`,
@@ -408,163 +286,16 @@ export interface DomainLinkResult {
 }
 
 /**
- * Check whether a user's email domain matches a verified domain on an
- * organization with an active subscription — directly or via the brand
- * registry hierarchy (e.g. AnalyticsIQ → Alliant). If so, and the org has
- * consented to the relevant auto-provisioning class, create a WorkOS
- * membership for them on the resolved paying org.
- *
- * Two consent flags on the resolved org, with different defaults:
- *   - auto_provision_verified_domain (default true) gates DIRECT matches
- *     where the user's domain is a verified organization_domains row
- *     (DNS-verified by WorkOS). Low risk, on by default.
- *   - auto_provision_brand_hierarchy_children (default false) gates
- *     INHERITED matches where the user's domain reaches the org via
- *     brands.house_domain ascent. Higher risk because the edge comes from
- *     LLM classification or admin PATCH, ages on M&A, and the joining user
- *     gets no domain-level confirmation. Opt-in.
- *
- * Idempotent: short-circuits when the user is already in the resolved org's
- * local membership cache, and treats `organization_membership_already_exists`
- * from WorkOS as success. Safe to call on every authenticated request.
- *
- * Hierarchy walk uses the same trust gates as resolveEffectiveMembership
- * (high-confidence classifications, 180-day TTL, max 4 hops up) so pre-link
- * auto-provisioning and post-link inheritance stay coherent.
+ * Disabled: an email/domain match is neither exact-credential proof nor subject
+ * consent. Keep this compatibility entry point inert for background callers.
+ * Re-enabling requires an explicit authenticated action and durable audit.
  */
 export async function autoLinkByVerifiedDomain(
-  workos: WorkOS,
-  userId: string,
-  email: string,
+  _workos: WorkOS,
+  _userId: string,
+  _email: string,
 ): Promise<DomainLinkResult | null> {
-  const pool = getPool();
-  const emailDomain = email.split('@')[1]?.toLowerCase();
-  if (!emailDomain) return null;
-
-  const owner = await findPayingOrgForDomain(emailDomain);
-  if (!owner) return null;
-
-  // Direct verified-domain auto-provisioning is on by default; hierarchical
-  // is opt-in. The two flags are separate because the trust models differ:
-  // direct = WorkOS DNS-verified the user's domain (strong signal); inherited
-  // = LLM classifier (or admin PATCH) decided the input domain is a child of
-  // the matched parent (weaker, ages on M&A, no domain-level confirmation
-  // from the joining user).
-  if (owner.is_inherited) {
-    if (!owner.auto_provision_hierarchy_allowed) return null;
-
-    // Cohort gate: only auto-join users whose users.created_at is on or
-    // after the moment the parent enabled hierarchical auto-provisioning.
-    // Without this, flipping the flag retroactively grafts the entire
-    // backlog of child-domain users into the parent on their next request.
-    // Grandfather semantics matches the SaaS norm.
-    if (owner.auto_provision_hierarchy_enabled_at) {
-      const userRow = await pool.query<{ created_at: Date | null }>(
-        'SELECT created_at FROM users WHERE workos_user_id = $1',
-        [userId],
-      );
-      const userCreatedAt = userRow.rows[0]?.created_at ?? null;
-      // No user row yet → just-created via webhook; treat as new joiner.
-      // Otherwise require the user's account to post-date the opt-in.
-      if (userCreatedAt && userCreatedAt < owner.auto_provision_hierarchy_enabled_at) {
-        logger.info(
-          {
-            userId,
-            email,
-            orgId: owner.organization_id,
-            userCreatedAt,
-            hierarchyEnabledAt: owner.auto_provision_hierarchy_enabled_at,
-          },
-          'Auto-link skipped: user predates hierarchy opt-in (grandfather semantics)',
-        );
-        return null;
-      }
-    }
-  } else {
-    if (!owner.auto_provision_direct_allowed) return null;
-  }
-
-  const orgId = owner.organization_id;
-  const orgName = owner.organization_name;
-
-  // Already a member of the resolved org? (Post-link, the membership exists
-  // on the paying org regardless of which child domain the user matched
-  // from.)
-  const existing = await pool.query<{ exists: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM organization_memberships
-       WHERE workos_organization_id = $1 AND workos_user_id = $2
-     ) AS exists`,
-    [orgId, userId],
-  );
-  if (existing.rows[0]?.exists) return null;
-
-  // Stage the provisioning source so the organization_membership.created
-  // webhook handler can record 'verified_domain' on the local cache row.
-  // Clear any stale (org, email) staging row first; consumeInvitationSeatType
-  // matches by (org, email) and we don't want a leftover row from a prior
-  // failed attempt to win.
-  const stagingKey = `verified_domain_${orgId}_${userId}`;
-  await pool.query(
-    'DELETE FROM invitation_seat_types WHERE workos_organization_id = $1 AND lower(email) = lower($2)',
-    [orgId, email],
-  );
-  await pool.query(
-    `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
-     VALUES ($1, $2, $3, 'community_only', 'verified_domain')
-     ON CONFLICT (workos_invitation_id) DO UPDATE SET seat_type = EXCLUDED.seat_type, source = EXCLUDED.source`,
-    [stagingKey, orgId, email],
-  );
-
-  // Always create as member. Auto-promotion to owner for ownerless orgs is
-  // handled by resolveRoleWithWorkosFirstPromote when the
-  // organization_membership.created webhook fires — that path pages WorkOS for
-  // existing admin/owner memberships before promoting, so it reflects live state
-  // rather than the local cache.
-  try {
-    await workos.userManagement.createOrganizationMembership({
-      userId,
-      organizationId: orgId,
-      roleSlug: 'member',
-    });
-
-    logger.info(
-      {
-        userId,
-        email,
-        orgId,
-        orgName,
-        matchedDomain: owner.matched_domain,
-        isInherited: owner.is_inherited,
-        hierarchyChain: owner.hierarchy_chain,
-      },
-      owner.is_inherited
-        ? 'Auto-linked user to organization via inherited brand-hierarchy domain'
-        : 'Auto-linked user to organization via verified domain',
-    );
-    return { organizationId: orgId, organizationName: orgName, role: 'member' };
-  } catch (err: any) {
-    if (err?.code === 'organization_membership_already_exists') {
-      // Membership exists but wasn't returned by list — return as success
-      logger.info({ userId, orgId }, 'Auto-link skipped: membership already exists in WorkOS');
-      return { organizationId: orgId, organizationName: orgName, role: 'member' };
-    }
-    // Roll back the staging row so a stale 'verified_domain' source can't be
-    // consumed by an unrelated future invite for the same (org, email) pair.
-    try {
-      await pool.query(
-        'DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1',
-        [stagingKey],
-      );
-    } catch (rollbackErr) {
-      logger.error(
-        { err: rollbackErr, userId, orgId, email, stagingKey },
-        'CRITICAL: failed to rollback verified_domain staging row after createOrganizationMembership failure — manually delete row to avoid source leak',
-      );
-    }
-    logger.warn({ err, userId, orgId }, 'Failed to auto-link user to organization');
-    return null;
-  }
+  return null;
 }
 
 // ── Auto-provision digest queries ───────────────────────────────────

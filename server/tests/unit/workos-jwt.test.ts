@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { SignJWT, createLocalJWKSet, generateKeyPair, exportJWK, type KeyLike } from 'jose';
 import {
   looksLikeJWT,
   verifyWorkOSJWT,
+  isInvalidWorkOSJWTError,
   __setJWKSForTesting,
 } from '../../src/auth/workos-jwt.js';
 
@@ -44,6 +45,26 @@ describe('looksLikeJWT', () => {
 
   it('rejects empty string', () => {
     expect(looksLikeJWT('')).toBe(false);
+  });
+});
+
+describe('isInvalidWorkOSJWTError', () => {
+  it.each([
+    ['JOSENotSupported', 'ERR_JOSE_NOT_SUPPORTED'],
+    ['JOSEAlgNotAllowed', 'ERR_JOSE_ALG_NOT_ALLOWED'],
+  ])('classifies unsupported token algorithm %s as an invalid credential', (name, code) => {
+    expect(isInvalidWorkOSJWTError(Object.assign(new Error('unsupported token'), { name, code }))).toBe(true);
+  });
+
+  it('does not classify a JWKS transport outage as an invalid credential', () => {
+    expect(isInvalidWorkOSJWTError(Object.assign(new Error('source unavailable'), { code: 'ECONNRESET' }))).toBe(false);
+  });
+
+  it('classifies a healthy JWKS no-matching-key result as an invalid credential', () => {
+    expect(isInvalidWorkOSJWTError(Object.assign(new Error('no applicable key found'), {
+      name: 'JWKSNoMatchingKey',
+      code: 'ERR_JWKS_NO_MATCHING_KEY',
+    }))).toBe(true);
   });
 });
 
@@ -132,6 +153,55 @@ describe('verifyWorkOSJWT', () => {
       .setExpirationTime('5m')
       .sign(other.privateKey);
     await expect(verifyWorkOSJWT(token)).rejects.toThrow();
+  });
+
+  it('treats an unknown kid from a healthy JWKS as an invalid credential', async () => {
+    const jwk = { ...await exportJWK(publicKey), alg: 'RS256', kid: 'known-key' };
+    __setJWKSForTesting(createLocalJWKSet({ keys: [jwk] }));
+    try {
+      const token = await new SignJWT({ sub: 'user_01ABC', azp: EXPECTED_AZP })
+        .setProtectedHeader({ alg: 'RS256', kid: 'unknown-key' })
+        .setExpirationTime('5m')
+        .sign(privateKey);
+      let failure: unknown;
+      try { await verifyWorkOSJWT(token); } catch (error) { failure = error; }
+      expect(failure).toBeDefined();
+      expect(isInvalidWorkOSJWTError(failure)).toBe(true);
+    } finally {
+      __setJWKSForTesting(async () => ({ ...jwk, kid: undefined }));
+    }
+  });
+
+  it('treats a malformed protected header as invalid before consulting JWKS', async () => {
+    const resolver = vi.fn(async () => publicKey);
+    __setJWKSForTesting(resolver);
+    try {
+      let failure: unknown;
+      try { await verifyWorkOSJWT('aaaa.bbbb.cccc'); } catch (error) { failure = error; }
+      expect(isInvalidWorkOSJWTError(failure)).toBe(true);
+      expect(resolver).not.toHaveBeenCalled();
+    } finally {
+      const jwk = await exportJWK(publicKey);
+      __setJWKSForTesting(async () => ({ ...jwk, alg: 'RS256' }));
+    }
+  });
+
+  it('rejects a non-string kid before consulting the JWKS source', async () => {
+    const resolver = vi.fn(async () => publicKey);
+    __setJWKSForTesting(resolver);
+    try {
+      const token = await new SignJWT({ sub: 'user_01ABC', azp: EXPECTED_AZP })
+        .setProtectedHeader({ alg: 'RS256', kid: 7 } as any)
+        .setExpirationTime('5m')
+        .sign(privateKey);
+      let failure: unknown;
+      try { await verifyWorkOSJWT(token); } catch (error) { failure = error; }
+      expect(isInvalidWorkOSJWTError(failure)).toBe(true);
+      expect(resolver).not.toHaveBeenCalled();
+    } finally {
+      const jwk = await exportJWK(publicKey);
+      __setJWKSForTesting(async () => ({ ...jwk, alg: 'RS256' }));
+    }
   });
 
   it('flags M2M tokens (client_credentials)', async () => {

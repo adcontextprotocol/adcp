@@ -11,11 +11,11 @@ import {
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
-import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
+import { verifyWorkOSJWT, looksLikeJWT, isInvalidWorkOSJWTError } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
 import { getAuthorizationFingerprint } from '../db/authorization-epoch-db.js';
-import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
+import { getOrganizationAuthorizationUserId, stampOrganizationAuthentication, copyOrganizationAuthenticationStamp } from '../auth/organization-principal.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 
@@ -195,6 +195,23 @@ function isTransientAuthError(err: unknown): boolean {
   return false;
 }
 
+class AuthorizationUnavailableError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = 'AuthorizationUnavailableError';
+  }
+}
+
+function sendAuthorizationUnavailable(res: Response, isHtmlRequest: boolean): Response {
+  if (isHtmlRequest) {
+    return res.status(503).send('Authorization service temporarily unavailable. Please try again shortly.');
+  }
+  return res.status(503).json({
+    error: 'authorization_unavailable',
+    message: 'Unable to verify authorization right now. Please try again shortly.',
+  });
+}
+
 /**
  * Invalidate session cache for a specific cookie (e.g., on logout)
  */
@@ -252,6 +269,11 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
   if (!authHeader?.startsWith('Bearer ')) return null;
 
   const token = authHeader.slice(7); // Remove 'Bearer ' prefix
+
+  // A syntactically compact JWT is always handled locally by the JWT verifier,
+  // even when its first segment happens to share an API-key prefix. This keeps
+  // malformed JWTs from triggering a provider API-key validation side effect.
+  if (looksLikeJWT(token)) return null;
 
   // WorkOS API keys use 'wos_api_key_' (legacy) or 'sk_' (current) prefix
   if (!isWorkOSApiKeyFormat(token)) return null;
@@ -355,7 +377,6 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice(7);
 
-  if (isWorkOSApiKeyFormat(token)) return null; // handled by validateWorkOSApiKey
   if (ADMIN_API_KEY && token === ADMIN_API_KEY) return null; // handled by hasValidAdminApiKey
   if (!looksLikeJWT(token)) return null;
 
@@ -374,8 +395,11 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   try {
     verified = await verifyWorkOSJWT(token);
   } catch (err) {
-    logger.debug({ err }, 'Bearer JWT verification failed');
-    return null;
+    if (isInvalidWorkOSJWTError(err)) {
+      logger.debug({ err }, 'Bearer JWT verification failed');
+      return null;
+    }
+    throw new AuthorizationUnavailableError('Bearer JWT verification source unavailable', err);
   }
 
   if (verified.isM2M || !verified.sub) return null;
@@ -383,15 +407,23 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   // Confirm the subject corresponds to a real local user. This catches
   // tokens from WorkOS accounts that have been deleted or never synced,
   // and gives us names for the synthesized WorkOSUser.
-  const pool = getPool();
-  const localUser = await pool.query<{
-    first_name: string | null;
-    last_name: string | null;
-    email: string | null;
-  }>(
-    `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
-    [verified.sub],
-  );
+  let localUser: {
+    rowCount: number | null;
+    rows: Array<{ first_name: string | null; last_name: string | null; email: string | null }>;
+  };
+  try {
+    const pool = getPool();
+    localUser = await pool.query<{
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    }>(
+      `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
+      [verified.sub],
+    );
+  } catch (err) {
+    throw new AuthorizationUnavailableError('Bearer JWT user source unavailable', err);
+  }
   if (localUser.rowCount === 0) {
     logger.warn({ sub: verified.sub }, 'Bearer JWT verified but user not found in local DB');
     return null;
@@ -754,23 +786,32 @@ export function invalidateSessionsForUsers(workosUserIds: string[]): void {
  */
 async function attachIdentityId(user: WorkOSUser): Promise<void> {
   if (isSyntheticUser(user.id)) return;
+  const credentialId = getOrganizationAuthorizationUserId(user);
   try {
     const result = await getPool().query<{
       identity_id: string;
       primary_workos_user_id: string | null;
+      binding_version: string;
+      epoch: string | null;
     }>(
-      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
+      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id,
+              iwu.xmin::text AS binding_version, ae.epoch::text AS epoch
          FROM identity_workos_users iwu
          LEFT JOIN identity_workos_users primary_iwu
            ON primary_iwu.identity_id = iwu.identity_id
           AND primary_iwu.is_primary = TRUE
+         LEFT JOIN authorization_epochs ae ON ae.workos_user_id = iwu.workos_user_id
         WHERE iwu.workos_user_id = $1`,
-      [user.id]
+      [credentialId]
     );
     const row = result.rows[0];
     if (!row) return;
 
     user.identityId = row.identity_id;
+    stampOrganizationAuthentication(user, {
+      credentialId, canonicalUserId: row.primary_workos_user_id ?? credentialId,
+      identityId: row.identity_id, bindingVersion: row.binding_version, epoch: row.epoch,
+    });
 
     if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
       // Non-primary binding signed in. Swap id so app-state reads see the
@@ -779,7 +820,7 @@ async function attachIdentityId(user: WorkOSUser): Promise<void> {
         { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
         'Identity id-swap: routing non-primary binding to canonical user'
       );
-      user.authWorkosUserId = user.id;
+      user.authWorkosUserId = credentialId;
       user.id = row.primary_workos_user_id;
     }
   } catch (err) {
@@ -889,10 +930,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   // Check for OAuth-issued user JWT (user SSO'd via AuthKit through the
   // MCP OAuth flow and is now calling the REST API with that token).
-  const jwtAuth = await validateWorkOSBearerJWT(req);
+  let jwtAuth: ValidatedBearerJWT | null;
+  try {
+    jwtAuth = await validateWorkOSBearerJWT(req);
+  } catch (error) {
+    if (error instanceof AuthorizationUnavailableError) {
+      logger.warn({ err: error.cause, path: req.path }, 'Bearer authorization source unavailable');
+      return sendAuthorizationUnavailable(res, !!isHtmlRequest);
+    }
+    throw error;
+  }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT');
-    req.user = jwtAuth.user;
+    // Canonicalization must not mutate a cached provider credential object.
+    req.user = { ...jwtAuth.user };
     req.accessToken = jwtAuth.rawToken;
 
     try {
@@ -990,7 +1041,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     } else if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
-      req.user = cached.user;
+      req.user = { ...cached.user };
+      copyOrganizationAuthenticationStamp(cached.user, req.user);
       req.accessToken = cached.accessToken;
 
       // If session was refreshed, update the cookie
@@ -1919,10 +1971,21 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     return next();
   }
 
-  const jwtAuth = await validateWorkOSBearerJWT(req);
+  let jwtAuth: ValidatedBearerJWT | null;
+  try {
+    jwtAuth = await validateWorkOSBearerJWT(req);
+  } catch (error) {
+    if (error instanceof AuthorizationUnavailableError) {
+      logger.warn({ err: error.cause, path: req.path }, 'Optional bearer authorization source unavailable');
+      return sendAuthorizationUnavailable(res, false);
+    }
+    throw error;
+  }
   if (jwtAuth) {
     logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT (optional auth)');
-    req.user = jwtAuth.user;
+    // Canonicalization and authorization stamping mutate the request user.
+    // Never let those request-local fields poison the positive bearer cache.
+    req.user = { ...jwtAuth.user };
     req.accessToken = jwtAuth.rawToken;
 
     try {

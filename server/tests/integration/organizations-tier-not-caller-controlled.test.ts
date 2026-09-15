@@ -119,7 +119,6 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
     });
     await runMigrations();
     server = new HTTPServer();
-    await server.start(0);
     app = server.app;
   });
 
@@ -136,7 +135,6 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id LIKE $1`, [
       `${TEST_ORG_PREFIX}%`,
     ]);
-    await server?.stop();
     await closeDatabase();
   });
 
@@ -153,7 +151,7 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
     await pool.query(`DELETE FROM organization_domains WHERE domain LIKE $1`, [`%${TEST_DOMAIN}`]);
   });
 
-  it('ignores caller-supplied membership_tier — DB row stores NULL', async () => {
+  it('denies onboarding without persisting caller-supplied membership_tier', async () => {
     const res = await request(app)
       .post('/api/organizations')
       .send({
@@ -166,21 +164,15 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
         membership_tier: 'company_leader',
       });
 
-    expect(res.status).toBeGreaterThanOrEqual(200);
-    expect(res.status).toBeLessThan(300);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(mockCreateOrganization).not.toHaveBeenCalled();
+    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT * FROM organizations WHERE workos_organization_id = $1', [createdOrgId])).rowCount).toBe(0);
 
-    const orgId = res.body?.organization?.id ?? res.body?.id;
-    expect(orgId).toBeTruthy();
-
-    const row = await pool.query<{ membership_tier: string | null }>(
-      `SELECT membership_tier FROM organizations WHERE workos_organization_id = $1`,
-      [orgId],
-    );
-    expect(row.rowCount).toBe(1);
-    expect(row.rows[0].membership_tier).toBeNull();
   });
 
-  it('does not 400 when caller-supplied corporate_domain disagrees with email — field is ignored', async () => {
+  it('denies onboarding without attaching a caller-supplied corporate_domain', async () => {
     const res = await request(app)
       .post('/api/organizations')
       .send({
@@ -192,16 +184,11 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
         corporate_domain: 'someone-else.example',
       });
 
-    expect(res.status).not.toBe(400);
-    expect(res.status).toBeGreaterThanOrEqual(200);
-    expect(res.status).toBeLessThan(300);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('organization_onboarding_disabled');
+    expect(mockCreateOrganization).not.toHaveBeenCalled();
+    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
+    expect((await pool.query('SELECT * FROM organization_domains WHERE workos_organization_id = $1', [createdOrgId])).rowCount).toBe(0);
 
-    const orgId = res.body?.organization?.id ?? res.body?.id;
-    const domainRow = await pool.query<{ domain: string }>(
-      `SELECT domain FROM organization_domains WHERE workos_organization_id = $1`,
-      [orgId],
-    );
-    expect(domainRow.rows.map((r) => r.domain)).toContain(TEST_DOMAIN);
-    expect(domainRow.rows.map((r) => r.domain)).not.toContain('someone-else.example');
   });
 });
