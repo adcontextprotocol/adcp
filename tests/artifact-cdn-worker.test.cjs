@@ -273,6 +273,78 @@ async function withMockEdgeCache(cache, callback) {
 }
 
 describe('artifact CDN Worker', () => {
+  it('denies absent prereleases before redirects, origin fallback or edge-cache access', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    testEnv.FALLBACK_ORIGIN = 'https://origin.example';
+    const edgeCache = new MockEdgeCache();
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => assert.fail('missing prereleases must not reach the origin');
+    clearVersionCacheForTests();
+
+    try {
+      await withMockEdgeCache(edgeCache, async () => {
+        for (const mount of ['schemas', 'compliance']) {
+          for (const version of ['3.2.0-rc.4', '3.2.0-rc.4+build.1', 'v3.2.0-rc.4']) {
+            for (const suffix of ['', '/', '/index.json', '/foo.json', '/candidate-only.yaml', '/tmp/offer.json']) {
+              for (const method of ['GET', 'HEAD']) {
+                const response = await handleRequest(
+                  new Request(`https://artifacts.example/${mount}/${version}${suffix}`, { method }),
+                  testEnv,
+                  {},
+                );
+                assert.equal(response.status, 404, `${method} /${mount}/${version}${suffix}`);
+                assert.equal(response.headers.get('location'), null);
+                assert.equal(response.headers.get('cache-control'), 'no-store');
+                assert.equal(response.headers.get('etag'), null);
+                assert.equal(response.headers.get('access-control-allow-origin'), '*');
+                assert.equal(await response.text(), method === 'HEAD' ? '' : 'Not Found');
+              }
+            }
+          }
+        }
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+
+    assert.equal(testEnv.ARTIFACTS.getCalls.size, 0);
+    assert.equal(testEnv.ARTIFACTS.headCalls.size, 0);
+    assert.equal(edgeCache.matches, 0);
+    assert.equal(edgeCache.puts, 0);
+  });
+
+  it('does not proxy missing files from an exact prerelease or a stale version listing', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    testEnv.FALLBACK_ORIGIN = 'https://origin.example';
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => assert.fail('exact prerelease file misses must not reach the origin');
+    clearVersionCacheForTests();
+
+    try {
+      for (const mount of ['schemas', 'compliance']) {
+        const key = `${mount}/3.1.0-beta.3/index.json`;
+        for (const method of ['GET', 'HEAD']) {
+          const response = await handleRequest(
+            new Request(`https://artifacts.example/${mount}/3.1.0-beta.3/candidate-only.json`, { method }),
+            testEnv,
+            {},
+          );
+          assert.equal(response.status, 404);
+          assert.equal(response.headers.get('cache-control'), 'no-store');
+        }
+        // The cached prefix can outlive its objects; an object miss still cannot proxy.
+        testEnv.ARTIFACTS.entries.delete(key);
+        const response = await handleRequest(new Request(`https://artifacts.example/${key}`), testEnv, {});
+        assert.equal(response.status, 404);
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+      }
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it('rewrites major aliases to the latest matching semver directory', async () => {
     const response = await fetchPath('/schemas/v3/foo.json');
 

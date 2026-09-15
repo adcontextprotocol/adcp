@@ -210,25 +210,21 @@ function releaseStatusMetadata(version: string): {
  * release in the same major. Staying at-or-below keeps a frozen 3.0.x doc
  * pointing at 3.0.x schemas rather than jumping forward to a newer minor.
  *
- * When the requested version is stable, prerelease candidates are excluded so
- * a missing stable pin (e.g. /schemas/3.0.0/...) never silently resolves to a
- * release candidate; when the requested version is itself a prerelease, lower
- * prereleases (and stables) on the line are eligible. Returns undefined when
- * nothing in the same major qualifies.
+ * Only stable schema docs pins may fall back, and only to stable candidates.
+ * Prerelease requests always require their exact published version.
  */
 export function resolvePinnedFallback(
   versions: string[],
   requested: string,
 ): string | undefined {
   const parsed = semver.parse(requested);
-  if (!parsed) return undefined;
+  if (!parsed || parsed.prerelease.length > 0) return undefined;
 
-  const wantStable = parsed.prerelease.length === 0;
   const eligible = (v: string): boolean => {
     if (!isSelectableRelease(v)) return false;
     const p = semver.parse(v);
     if (!p || p.major !== parsed.major) return false;
-    if (wantStable && p.prerelease.length > 0) return false;
+    if (p.prerelease.length > 0) return false;
     return semver.lte(v, requested);
   };
 
@@ -410,6 +406,13 @@ function mountVersionedStaticRoutes(
   });
 
   app.use(mountPath, async (req, res, next) => {
+    const notFound = () => {
+      res.status(404).set({
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+        "Content-Type": "text/plain; charset=utf-8",
+      }).end(req.method === "HEAD" ? undefined : "Not Found");
+    };
     // Capture before any rewrite — caches key on the original URL, so the
     // immutable-cache decision must be based on what the client requested.
     const originalPath = req.path;
@@ -443,29 +446,33 @@ function mountVersionedStaticRoutes(
       }
     }
 
-    // 2. Pinned semver path whose exact version directory is missing: resolve
-    //    to the nearest published release on the same line (e.g. a 3.0.19 docs
-    //    snapshot's links to /schemas/3.0.19/... resolve to the 3.0.18 schemas
-    //    they were built against). Without this, frozen doc snapshots that pin
-    //    schema links to a docs-only version bump 404. Tracks whether the
-    //    original request was an exact published directory hit so the cache
-    //    policy below stays correct.
+    // 2. Only stable schema pins have a docs-gap fallback contract. Prereleases
+    //    and compliance pins require an exact published version before any
+    //    directory redirect, cache header, or compatibility rewrite can run.
     let exactPinnedHit = false;
+    let requiresExactVersion = false;
+    let resolvedPinnedFallback = false;
     if (!isAlias && isPinnedVersionPath(originalPath)) {
       const requestedVersion = originalPath.split("/")[1];
+      requiresExactVersion = mountPath === "/compliance"
+        || semver.prerelease(requestedVersion) !== null;
       try {
         const versions = await getSchemaVersions();
         const exactVersion = versions.find((version) => version === requestedVersion);
         if (exactVersion) {
           exactPinnedHit = true;
-        } else {
+        } else if (!requiresExactVersion) {
           const fallback = resolvePinnedFallback(versions, requestedVersion);
           if (fallback) {
             req.url = "/" + fallback + originalPath.slice(requestedVersion.length + 1);
+            resolvedPinnedFallback = true;
           }
         }
       } catch {
-        // Fall through; static handler below will produce the 404.
+        // Exact-only pins fail closed if the published versions cannot be read.
+      }
+      if (requiresExactVersion && !exactPinnedHit) {
+        return notFound();
       }
     }
 
@@ -505,11 +512,16 @@ function mountVersionedStaticRoutes(
     }
 
     // 5. Redirect bare version directories to their index.json.
+    // serve-static redirects using the original URL; match the Worker's
+    // resolved target for bare docs-gap pins instead.
+    if (resolvedPinnedFallback && matchVersionedDir(req.path + "/")) {
+      return res.redirect(301, mountPath + req.path + "/");
+    }
     if (matchVersionedDir(req.path)) {
       return res.redirect(mountPath + req.path + "index.json");
     }
 
-    schemasStatic(req, res, next);
+    schemasStatic(req, res, requiresExactVersion ? notFound : next);
   });
 
   app.get(mountPath + "/", async (_req, res) => {
