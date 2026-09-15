@@ -19,6 +19,8 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { PublisherDatabase } from '../../src/db/publisher-db.js';
 import { FederatedIndexService } from '../../src/federated-index.js';
 import type { Pool } from 'pg';
+import { PostgresStateStore } from '@adcp/sdk/server';
+import { observeSupplyPathAuthority, approveSupplyPathAuthorityChange } from '../../src/services/supply-path-authority-state.js';
 
 const TEST_DOMAIN = 'crawler-cache.example.com';
 const TEST_AGENT = 'https://agent.crawler-cache.example.com/mcp';
@@ -70,6 +72,41 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
     federatedIndex = new FederatedIndexService();
   });
 
+  it('binds supply-path provenance to the successful manifest across failed recrawls', async () => {
+    const target = 'https://shared.example/' + 'a'.repeat(2100) + '/publisher.json';
+    await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST, resolvedUrl: target, discoveryMethod: 'authoritative_location' });
+    const before = await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN);
+    expect(before.resolvedUrl).toBe(target);
+    expect(before.discoveryMethod).toBe('authoritative_location');
+    await publisherDb.recordFailedAdagentsFetch({ domain: TEST_DOMAIN, statusCode: 503, resolvedUrl: `https://${TEST_DOMAIN}/.well-known/adagents.json` });
+    expect(await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).toEqual(before);
+    await publisherDb.recordFailedAdagentsFetch({ domain: TEST_DOMAIN, statusCode: 503 });
+    expect(await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).toEqual(before);
+  });
+
+  it('requires a provenance-aware refresh and refuses URLs that cannot be retained completely', async () => {
+    await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST });
+    expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest).toBeNull();
+    await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST, discoveryMethod: 'authoritative_location', resolvedUrl: 'https://shared.example/' + 'x'.repeat(8192) });
+    expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest).toBeNull();
+    await publisherDb.upsertAdagentsCache({ domain: TEST_DOMAIN, manifest: FIXTURE_MANIFEST, discoveryMethod: 'direct', resolvedUrl: `https://${TEST_DOMAIN}/.well-known/adagents.json` });
+    expect((await publisherDb.getSupplyPathSnapshot(TEST_DOMAIN)).manifest).toEqual({ ...FIXTURE_MANIFEST, collections: [] });
+  });
+
+  it('shares durable revocations and authority pins across independent PostgreSQL store instances', async () => {
+    const first = new PostgresStateStore(pool);
+    const second = new PostgresStateStore(pool);
+    const location = 'https://shared.example/publisher.json';
+    await Promise.all([
+      observeSupplyPathAuthority(TEST_DOMAIN, { revoked_publisher_domains: ['owner.example'] }, location, first),
+      observeSupplyPathAuthority(TEST_DOMAIN, { revoked_publisher_domains: ['second-owner.example'] }, location, second),
+    ]);
+    expect((await observeSupplyPathAuthority(TEST_DOMAIN, null, undefined, new PostgresStateStore(pool))).revoked.sort()).toEqual(['owner.example', 'second-owner.example']);
+    await expect(observeSupplyPathAuthority(TEST_DOMAIN, {}, 'https://changed.example/publisher.json', second)).rejects.toThrow(/independent confirmation/);
+    await approveSupplyPathAuthorityChange(TEST_DOMAIN, 'https://changed.example/publisher.json', first);
+    expect((await observeSupplyPathAuthority(TEST_DOMAIN, {}, 'https://changed.example/publisher.json', second)).revoked).toHaveLength(2);
+  });
+
   // Scope cleanup tightly so parallel runs of other tests sharing the
   // .example.com pattern don't trample our fixtures.
   const TEST_CREATED_BY = [
@@ -81,6 +118,7 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
   const TEST_DOMAINS = [TEST_DOMAIN, VICTIM_DOMAIN, ATTACKER_DOMAIN];
 
   async function clearTestFixtures() {
+    await pool.query("DELETE FROM adcp_state WHERE collection = 'supply_path_authority_v1' AND id = $1", [TEST_DOMAIN]);
     // Identifiers must clear before properties — catalog_identifiers FKs to
     // catalog_properties. Delete via the property_rid join so any identifier
     // value (including ones the tests didn't list explicitly) gets caught.

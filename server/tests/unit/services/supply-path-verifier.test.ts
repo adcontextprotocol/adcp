@@ -76,7 +76,7 @@ describe('verifySupplyPath', () => {
     expect(verdict.state).toBe('verified_owner_sold');
   });
 
-  it('accepts an unconstrained host grant as covering the collection', () => {
+  it('requires an affirmative owner collection selector on the host grant', () => {
     const verdict = verifySupplyPath(input({
       hostManifest: hostManifest({
         authorized_agents: [{
@@ -86,7 +86,8 @@ describe('verifySupplyPath', () => {
         }],
       }),
     }));
-    expect(verdict.state).toBe('verified_owner_sold');
+    expect(verdict.state).toBe('owner_attested');
+    expect(verdict.legs.host_authorization.failure).toBe('collection_scope_mismatch');
   });
 
   it('diagnoses collection_scope_mismatch when the host names a different owner', () => {
